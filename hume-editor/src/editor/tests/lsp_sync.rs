@@ -545,7 +545,7 @@ fn none_sync_server_gets_no_didchange_but_diagnostics_still_remap() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 0) (cons 0 0) "X")))))"#,
     );

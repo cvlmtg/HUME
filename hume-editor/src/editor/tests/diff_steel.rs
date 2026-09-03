@@ -81,7 +81,7 @@ fn diff_buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "probe" "" (lambda ()
+            r#"(define-typed-command! "probe" "" (lambda ()
                  (define b (open-buffer! "{scratch_str}"))
                  (close-buffer! b)
                  (diff-buffer-lines b "a\nb\n")))"#

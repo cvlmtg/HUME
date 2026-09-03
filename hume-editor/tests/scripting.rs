@@ -844,6 +844,76 @@ fn repeatable_and_inline_output_mutually_exclusive() {
     );
 }
 
+// ── define-typed-command! ────────────────────────────────────────────────
+
+#[test]
+fn define_typed_command_registers_into_typed_table() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-typed-command! "greet" "doc" (lambda (arg) (+ 1 0)))"#,
+        &mut mock,
+    )
+    .expect("define-typed-command! must succeed");
+
+    assert!(
+        mock.registered_typed_cmds.iter().any(|d| d.name == "greet"),
+        "greet must land in registered_typed_cmds, not registered_cmds"
+    );
+    assert!(
+        !mock.registered_cmds.iter().any(|d| d.name == "greet"),
+        "define-typed-command! must never register a mappable command"
+    );
+}
+
+/// `define-typed-command!` has no `#:repeatable` keyword — dot-repeat has
+/// no meaning for a `:` command. Steel's keyword-arg lambda syntax silently
+/// ignores an unrecognized `#:key value` pair rather than erroring, so this
+/// pins that outcome (registration still succeeds) rather than a rejection
+/// no mechanism here actually produces.
+#[test]
+fn define_typed_command_ignores_unrecognized_repeatable_keyword() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-typed-command! "bad-cmd" "doc" (lambda () (+ 1 0)) #:repeatable #t)"#,
+        &mut mock,
+    )
+    .expect("an unrecognized keyword is silently ignored, not rejected");
+    assert!(
+        mock.registered_typed_cmds
+            .iter()
+            .any(|d| d.name == "bad-cmd"),
+        "the command must still register despite the ignored keyword"
+    );
+}
+
+/// A name already claimed by `define-command!` (mappable) collides with
+/// `define-typed-command!` for the same name, and vice versa — the two
+/// kinds share one namespace in the real `CommandRegistry`.
+#[test]
+fn define_typed_command_collides_with_existing_mappable_name() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-command! "dup" "doc" (lambda () (+ 1 0)))"#,
+        &mut mock,
+    )
+    .expect("first define-command! must succeed");
+
+    let result = h.eval_source(
+        r#"(define-typed-command! "dup" "doc" (lambda () (+ 1 0)))"#,
+        &mut mock,
+    );
+    assert!(
+        result.is_err(),
+        "define-typed-command! must reject a name already claimed as mappable"
+    );
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
 
 /// Cancelling a watchdog with a long budget wakes the thread immediately.

@@ -4,7 +4,6 @@
 // strings embed OS paths) live in `unix/plugins.rs`.
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use crate::editor::registry::MappableCommand;
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
@@ -80,7 +79,7 @@ fn keypress_dispatch_command_table_desync_reports_error() {
     ed.scripting = Some(ScriptingHost::new());
 
     let before = state(&ed);
-    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("ghost-cmd".into(), Some(1), false);
 
     assert_eq!(
         state(&ed),

@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 
 /// A `#:repeatable` command inside a lazy plugin must be recorded in
 /// `last_repeatable_action` on its FIRST dispatch, after the Lazy→SteelBacked
@@ -44,7 +43,7 @@ fn lazy_repeatable_round_trip() {
     ed.scripting = Some(host);
 
     // First dispatch: Lazy miss → plugin activates → SteelBacked runs.
-    ed.execute_keymap_command("tp-del".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("tp-del".into(), Some(1), false);
     assert_eq!(ed.doc().text().to_string(), " bar\n");
 
     // The re-query must see the now-activated SteelBacked repeatable entry.

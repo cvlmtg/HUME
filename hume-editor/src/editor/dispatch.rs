@@ -12,26 +12,6 @@ use super::{Editor, InlineOutputDispatch, Severity, commands};
 
 // ── Command dispatch context ──────────────────────────────────────────────────
 
-/// Where a Steel-backed dispatch's positional lambda args come from.
-///
-/// The two origins marshal differently (see [`Editor::run_steel_command`]):
-/// keymap dispatch injects `count`/`extend` by the target lambda's declared
-/// arity; the `:` command line injects its typed argument (or a fixed `1`
-/// when none was typed) and rejects any arity it can't satisfy with a single
-/// value. A plain `Option<String>` on [`CmdCtx`] couldn't distinguish "not a
-/// `:` dispatch" from "`:` dispatch with no typed arg" — the latter still
-/// needs the minibuf marshalling rules (e.g. one arg for a variadic command,
-/// not the two a keymap dispatch would inject), so the origin itself must be
-/// explicit.
-#[derive(Debug, Clone)]
-pub(crate) enum ArgSource {
-    /// Keymap trie leaf or dot-repeat replay.
-    Keymap,
-    /// The `:` command line, carrying the (possibly absent) typed argument —
-    /// already `%`/`#`-expanded by the caller.
-    Minibuf(Option<String>),
-}
-
 /// Per-dispatch context assembled by the key handler and passed through
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
@@ -43,13 +23,10 @@ pub(crate) struct CmdCtx {
     /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
     /// for the same "as if no count was typed" behavior. `Some(n)` is every
     /// other case — an explicit user count, a script's explicit `n`, or a
-    /// non-keybind origin's default (`:cmd`, insert-mode leaf, no-arg `call!`).
+    /// non-keybind origin's default (insert-mode leaf, no-arg `call!`).
     pub count: Option<usize>,
     /// Whether this command runs in Extend mode.
     pub extend: bool,
-    /// Where this dispatch's Steel lambda arguments come from. `Keymap` for
-    /// native commands too (unused there — only Steel-backed dispatch reads it).
-    pub arg_source: ArgSource,
 }
 
 impl Editor {
@@ -138,7 +115,27 @@ impl Editor {
         // fires both — it routes through run_dispatch_pipeline with its own meta.
     }
 
-    /// Run the body of a Steel-backed or Lazy command.
+    /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard
+    /// warning on failure.
+    ///
+    /// Shared by [`Self::run_steel_command`] (a mappable `Lazy` stub) and
+    /// [`Self::run_typed_steel_command`] (a typed `TypedBody::Lazy` stub) —
+    /// the two Lazy-stub call sites, one per registry kind.
+    fn activate_lazy_and_report(
+        &mut self,
+        plugin: &hume_scripting::attribution::PluginId,
+        name: &str,
+    ) -> bool {
+        if self.activate_lazy_plugin(plugin, name) {
+            true
+        } else {
+            self.report(Severity::Warning, format!("unknown command: {name}"));
+            false
+        }
+    }
+
+    /// Run the body of a Steel-backed or Lazy mappable command (bound to a
+    /// key, or dispatched via `call!`/dot-repeat).
     ///
     /// Returns `false` if the command aborted (lazy activation failure, scripting
     /// error, or `scripting` is `None`). On error, the caller skips AFTER stages.
@@ -161,14 +158,10 @@ impl Editor {
         // `inline_output` from the resolved SteelBacked entry before dispatch.
         if let MappableCommand::Lazy { plugin, .. } = &cmd {
             let plugin = plugin.clone();
-            if !self.activate_lazy_plugin(&plugin, name) {
-                self.report(Severity::Warning, format!("unknown command: {name}"));
+            if !self.activate_lazy_and_report(&plugin, name) {
                 return false;
             }
         }
-
-        let focused_pane_id = self.state.focused_pane_id;
-        let focused_buffer_id = self.focused_buffer_id();
 
         // Re-query: a Lazy stub is now SteelBacked after activation above;
         // a SteelBacked entry is unchanged. Pure registry metadata — resolved
@@ -193,54 +186,114 @@ impl Editor {
                 }
             };
 
-        // Marshal Steel lambda args — the rules differ by dispatch origin.
-        let effective_args = match &ctx.arg_source {
-            ArgSource::Keymap => {
-                // Inject count and extend as leading lambda args based on declared arity.
-                if cmd_arity > 2 {
-                    self.report(
-                        Severity::Error,
-                        format!(
-                            "{name}: lambda declares {cmd_arity} required params; \
-                             keymap injection supplies at most 2 (count, extend)"
-                        ),
-                    );
-                    return false;
-                }
-                match (cmd_arity, cmd_is_variadic) {
-                    (0, false) => vec![],
-                    (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
-                    _ => vec![
-                        steel::rvals::SteelVal::IntV(count as isize),
-                        steel::rvals::SteelVal::BoolV(extend),
-                    ],
-                }
-            }
-            ArgSource::Minibuf(arg) => {
-                // Any mappable command can be invoked from the command line with
-                // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
-                // all work without needing typed-command wrappers.
-                if cmd_arity == 0 && !cmd_is_variadic {
-                    vec![]
-                } else if cmd_arity == 1 || cmd_is_variadic {
-                    match arg {
-                        // No arg typed: default count=1 for count-type lambdas;
-                        // string-type lambdas reject IntV(1) via their own
-                        // (string? x) guard.
-                        Some(s) => vec![steel::rvals::SteelVal::StringV(s.clone().into())],
-                        None => vec![steel::rvals::SteelVal::IntV(1)],
-                    }
-                } else {
-                    self.report(
-                        Severity::Error,
-                        format!(
-                            "{name}: requires {cmd_arity} args; the minibuffer can only supply 1"
-                        ),
-                    );
-                    return false;
-                }
+        // Inject count and extend as leading lambda args based on declared arity.
+        if cmd_arity > 2 {
+            self.report(
+                Severity::Error,
+                format!(
+                    "{name}: lambda declares {cmd_arity} required params; \
+                     keymap injection supplies at most 2 (count, extend)"
+                ),
+            );
+            return false;
+        }
+        let effective_args = match (cmd_arity, cmd_is_variadic) {
+            (0, false) => vec![],
+            (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
+            _ => vec![
+                steel::rvals::SteelVal::IntV(count as isize),
+                steel::rvals::SteelVal::BoolV(extend),
+            ],
+        };
+
+        self.call_steel_command_body(name, char_arg, effective_args, inline_output)
+    }
+
+    /// Run the body of a Steel-backed or Lazy *typed* command, dispatched
+    /// from the `:` command line via `(define-typed-command! …)`.
+    ///
+    /// Mirrors [`Self::run_steel_command`] but resolves metadata from
+    /// [`super::registry::TypedBody`] rather than `MappableCommand`, and
+    /// marshals `(arg force)` rather than `(count extend)` — the two never
+    /// share a lookup because the registry keeps the kinds strictly separate
+    /// (see `registry/mod.rs`'s module doc). Returns `false` on the same
+    /// failure classes as `run_steel_command`.
+    pub(super) fn run_typed_steel_command(
+        &mut self,
+        name: &str,
+        lazy_plugin: Option<hume_scripting::attribution::PluginId>,
+        arg: Option<String>,
+        force: bool,
+    ) -> bool {
+        if let Some(plugin) = lazy_plugin
+            && !self.activate_lazy_and_report(&plugin, name)
+        {
+            return false;
+        }
+
+        let (inline_output, cmd_arity, cmd_is_variadic) = match self
+            .state
+            .config
+            .registry
+            .get_typed(name)
+            .map(|tc| &tc.body)
+        {
+            Some(super::registry::TypedBody::Steel {
+                inline_output,
+                arity,
+                is_variadic,
+            }) => (*inline_output, *arity, *is_variadic),
+            _ => {
+                self.report(
+                    Severity::Error,
+                    format!("{name}: internal error — command lost after activation"),
+                );
+                return false;
             }
         };
+
+        if cmd_arity > 2 {
+            self.report(
+                Severity::Error,
+                format!(
+                    "{name}: lambda declares {cmd_arity} required params; \
+                     typed-command injection supplies at most 2 (arg, force)"
+                ),
+            );
+            return false;
+        }
+        // Scheme-idiomatic absence: an untyped argument is `#f`, not a
+        // sentinel string or a fabricated count — a lambda that only cares
+        // whether an arg was given writes a plain `(if arg …)` guard.
+        let arg_val = match &arg {
+            Some(s) => steel::rvals::SteelVal::StringV(s.clone().into()),
+            None => steel::rvals::SteelVal::BoolV(false),
+        };
+        let effective_args = match (cmd_arity, cmd_is_variadic) {
+            (0, false) => vec![],
+            (1, false) => vec![arg_val],
+            _ => vec![arg_val, steel::rvals::SteelVal::BoolV(force)],
+        };
+
+        self.call_steel_command_body(name, None, effective_args, inline_output)
+    }
+
+    /// Invoke a Steel command lambda by name with pre-marshalled positional
+    /// args, bracketing the call for `#:inline-output` commands.
+    ///
+    /// Shared by [`Self::run_steel_command`] and
+    /// [`Self::run_typed_steel_command`] — the two differ only in how they
+    /// resolve `name`'s metadata and marshal `effective_args`; the Steel
+    /// invocation, alt-screen bracket, and effect application are one funnel.
+    fn call_steel_command_body(
+        &mut self,
+        name: &str,
+        char_arg: Option<char>,
+        effective_args: Vec<steel::rvals::SteelVal>,
+        inline_output: bool,
+    ) -> bool {
+        let focused_pane_id = self.state.focused_pane_id;
+        let focused_buffer_id = self.focused_buffer_id();
 
         // Alt-screen bracketing for inline-output commands is lazy: entering
         // the alt-screen and printing the running banner happens on the

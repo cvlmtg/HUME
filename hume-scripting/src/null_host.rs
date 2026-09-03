@@ -23,7 +23,7 @@ use crate::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
     OutputHost, SettingsHost,
 };
-use crate::types::{GrammarReg, SteelCmdDef};
+use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
 /// Event names `NullHost` reports as known — the names scripting-crate unit
 /// tests actually register (`on-buffer-open`, `on-buffer-save`), plus one
@@ -175,8 +175,18 @@ impl CommandHost for NullHost {
     fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> {
         Ok(())
     }
+    fn register_typed_command(&mut self, _def: SteelTypedCmdDef) -> Result<(), String> {
+        Ok(())
+    }
     fn unregister_command(&mut self, _name: &str) {}
     fn register_lazy_command(&mut self, _name: &str, _plugin: &PluginId) -> Result<(), String> {
+        Ok(())
+    }
+    fn register_lazy_typed_command(
+        &mut self,
+        _name: &str,
+        _plugin: &PluginId,
+    ) -> Result<(), String> {
         Ok(())
     }
     fn lazy_command_owner(&self, _name: &str) -> Option<PluginId> {
@@ -259,11 +269,17 @@ impl CommandHost for FailingRegisterHost {
             def.name
         ))
     }
+    fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
+        self.inner.register_typed_command(def)
+    }
     fn unregister_command(&mut self, name: &str) {
         self.inner.unregister_command(name)
     }
     fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
         self.inner.register_lazy_command(name, plugin)
+    }
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+        self.inner.register_lazy_typed_command(name, plugin)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
         self.inner.lazy_command_owner(name)
@@ -359,6 +375,39 @@ impl EditorHost for LazyStubHost {
     }
 }
 
+impl LazyStubHost {
+    /// Shared body behind `register_command`/`register_typed_command`: both
+    /// claim `name` in the same `defined` set — the real `CommandRegistry`
+    /// keeps mappable and typed names in one namespace, so a name defined as
+    /// one kind must collide when re-defined as the other.
+    fn register_defined(&mut self, name: String) -> Result<(), String> {
+        if self.defined.contains(&name) {
+            return Err(format!("'{name}' conflicts with existing command"));
+        }
+        // A define overwrites a same-name Lazy stub — mirrors
+        // CommandRegistry::register/register_typed allowing Some(Lazy) | None.
+        self.lazy.remove(&name);
+        self.defined.insert(name);
+        Ok(())
+    }
+
+    /// Shared body behind `register_lazy_command`/`register_lazy_typed_command`.
+    fn register_lazy(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+        if self.defined.contains(name) {
+            return Err(format!("'{name}' conflicts with an existing command"));
+        }
+        if let Some(owner) = self.lazy.get(name) {
+            return if owner == plugin {
+                Ok(())
+            } else {
+                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
+            };
+        }
+        self.lazy.insert(name.to_string(), plugin.clone());
+        Ok(())
+    }
+}
+
 impl CommandHost for LazyStubHost {
     fn is_valid_register_name(&self, ch: char) -> bool {
         self.inner.is_valid_register_name(ch)
@@ -376,31 +425,19 @@ impl CommandHost for LazyStubHost {
         self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
-        if self.defined.contains(&def.name) {
-            return Err(format!("'{}' conflicts with existing command", def.name));
-        }
-        // A SteelBacked define overwrites a same-name Lazy stub — mirrors
-        // CommandRegistry::register allowing Some(Lazy) | None.
-        self.lazy.remove(&def.name);
-        self.defined.insert(def.name);
-        Ok(())
+        self.register_defined(def.name)
+    }
+    fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
+        self.register_defined(def.name)
     }
     fn unregister_command(&mut self, name: &str) {
         self.defined.remove(name);
     }
     fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
-        if self.defined.contains(name) {
-            return Err(format!("'{name}' conflicts with an existing command"));
-        }
-        if let Some(owner) = self.lazy.get(name) {
-            return if owner == plugin {
-                Ok(())
-            } else {
-                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
-            };
-        }
-        self.lazy.insert(name.to_string(), plugin.clone());
-        Ok(())
+        self.register_lazy(name, plugin)
+    }
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String> {
+        self.register_lazy(name, plugin)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
         self.lazy.get(name).cloned()

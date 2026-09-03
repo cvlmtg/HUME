@@ -53,7 +53,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
+        r##"(define-typed-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
 
@@ -109,7 +109,7 @@ fn markdown_popup_paints_per_run_styles() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading\n\nplain text" #:lang "markdown")))"##,
+        r##"(define-typed-command! "go" "" (lambda () (show-popup! "# heading\n\nplain text" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
     let rect = Rect::new(0, 0, 30, 10);
@@ -129,7 +129,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda ()
+        r##"(define-typed-command! "go" "" (lambda ()
              (show-popup! "# heading" #:lang "markdown" #:anchor 'bottom)))"##,
     );
     type_cmd(&mut ed, ":go");
@@ -176,7 +176,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda ()
+        r##"(define-typed-command! "go" "" (lambda ()
              (show-popup! "```rust\nfn foo() -> i32\n```\ndoc text" #:lang "markdown" #:anchor 'bottom)))"##,
     );
     type_cmd(&mut ed, ":go");
@@ -199,7 +199,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading")))"##,
+        r##"(define-typed-command! "go" "" (lambda () (show-popup! "# heading")))"##,
     );
     type_cmd(&mut ed, ":go");
 
@@ -227,7 +227,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     run(
         &mut ed,
         tmp.path(),
-        r##"(define-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
+        r##"(define-typed-command! "go" "" (lambda () (show-popup! "# heading" #:lang "markdown")))"##,
     );
     type_cmd(&mut ed, ":go");
 

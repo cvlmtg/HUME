@@ -5,10 +5,9 @@
 // binary and empty-cmd spawn failures, kill-on-cancel).
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 #[test]

@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -336,7 +335,7 @@ fn dot_repeats_plain_paste_after() {
     let mut ed = editor_from("-[ab]>cd\n");
 
     ed.state.kill_ring.push(vec!["ab".to_string()]);
-    ed.execute_keymap_command("paste-after".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("paste-after".into(), Some(1), false);
     // Plain paste never collapses on repeat — move off the pasted text so
     // the replayed paste lands next to it instead of replacing it.
     ed.feed_key(key('l'));
@@ -1070,7 +1069,6 @@ fn dot_repeat_of_select_word_nearest_on_line_deletes_the_word() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
     ed.feed_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "bar\n");
@@ -1276,7 +1274,7 @@ fn steel_dot_repeatable_round_trip() {
     );
 
     // Run the repeatable Steel command.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false);
     // "foo" deleted; buffer is " bar\n".
     assert_eq!(ed.doc().text().to_string(), " bar\n", "first run");
 
@@ -1328,7 +1326,7 @@ fn steel_command_is_not_repeatable() {
     );
 
     // Run the Steel command — it calls (call! "delete") internally.
-    ed.execute_keymap_command("del-sel".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("del-sel".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete", not "del-sel".
     assert_eq!(
@@ -1368,7 +1366,7 @@ fn non_repeatable_steel_does_not_hijack_dot() {
     );
 
     // Run the non-repeatable Steel command.
-    ed.execute_keymap_command("noop-move".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("noop-move".into(), Some(1), false);
 
     // last_repeatable_action must still be "delete".
     assert_eq!(

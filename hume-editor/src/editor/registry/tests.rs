@@ -346,11 +346,14 @@ fn runtime_register_and_lookup() {
 #[test]
 fn mappable_commands_not_shadowed_by_typed() {
     // Mappable commands like clear-search and select-all-matches must remain
-    // accessible as mappable so keybinds continue to work. The command line
-    // reaches them via the fallback in execute_command, not via get_typed.
+    // accessible as mappable so keybinds continue to work — and, since `:`
+    // resolves only typed commands, neither is reachable from the command
+    // line at all (see registry/mod.rs's module doc).
     let reg = CommandRegistry::with_defaults();
     assert!(reg.get_mappable("clear-search").is_some());
     assert!(reg.get_mappable("select-all-matches").is_some());
+    assert!(reg.get_typed("clear-search").is_none());
+    assert!(reg.get_typed("select-all-matches").is_none());
 }
 
 #[test]
@@ -370,7 +373,7 @@ fn runtime_register_typed_and_lookup() {
         name: Cow::Owned("steel-typed-cmd".to_string()),
         doc: Cow::Borrowed("A dummy Steel typed command for testing."),
         aliases: &["stc"],
-        fun: dummy_typed,
+        body: TypedBody::Native(dummy_typed),
         completer: None,
     });
 

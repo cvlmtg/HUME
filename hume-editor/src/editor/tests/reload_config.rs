@@ -321,7 +321,7 @@ fn reset_clears_buffer_overrides() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "widen-tabs" "" (lambda () (set-buffer-option! (current-buffer) "tab-width" 8)))"#,
+        r#"(define-typed-command! "widen-tabs" "" (lambda () (set-buffer-option! (current-buffer) "tab-width" 8)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -415,7 +415,7 @@ fn reset_clears_plugin_decorations() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "mark" "" (lambda ()
+        r#"(define-typed-command! "mark" "" (lambda ()
              (register-sign-source! "linter" (current-buffer) 7)
              (set-signs! "linter" (current-buffer) (list (list 0 "!" "warn-scope")))))"#,
         tmp.path(),
@@ -459,7 +459,7 @@ fn reset_cancels_pending_steel_timers() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "start" "" (lambda () (after 100000 (lambda () (car '())))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after 100000 (lambda () (car '())))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -539,7 +539,7 @@ fn reset_tears_down_an_open_prompt_session_completely() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
         tmp.path(),
     );

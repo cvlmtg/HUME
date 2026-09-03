@@ -9,7 +9,7 @@
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
-use super::dispatch::{ArgSource, CmdCtx};
+use super::dispatch::CmdCtx;
 use super::registry::MappableCommand;
 use super::{Editor, EditorState, Mode, commands, doc_ops};
 
@@ -241,7 +241,6 @@ impl Editor {
                 let ctx = CmdCtx {
                     count: Some(count),
                     extend: false,
-                    arg_source: ArgSource::Keymap,
                 };
                 let cmd_name = action.command.clone();
                 // A Steel command can succeed when first run yet fail on dot-repeat:

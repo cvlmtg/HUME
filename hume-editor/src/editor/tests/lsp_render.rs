@@ -208,7 +208,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-extra-highlights! "linter" (current-buffer) (list (list 1 4 "unused")))))"#,
         tmp.path(),
     );
@@ -238,9 +238,9 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm-a" "" (lambda ()
+        r#"(define-typed-command! "arm-a" "" (lambda ()
              (set-extra-highlights! "a" (current-buffer) (list (list 0 1 "shared")))))
-           (define-command! "arm-b" "" (lambda ()
+           (define-typed-command! "arm-b" "" (lambda ()
              (set-extra-highlights! "b" (current-buffer) (list (list 2 3 "shared")))))"#,
         tmp.path(),
     );
@@ -277,9 +277,9 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm-zzz" "" (lambda ()
+        r#"(define-typed-command! "arm-zzz" "" (lambda ()
              (set-extra-highlights! "zzz" (current-buffer) (list (list 1 4 "zzz-scope")))))
-           (define-command! "arm-aaa" "" (lambda ()
+           (define-typed-command! "arm-aaa" "" (lambda ()
              (set-extra-highlights! "aaa" (current-buffer) (list (list 1 4 "aaa-scope")))))"#,
         tmp.path(),
     );
@@ -322,7 +322,7 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-extra-highlights! "linter" (current-buffer)
                (list (list 0 8 "diagnostic.warning.qa-regression-marker")))))"#,
         tmp.path(),
@@ -375,7 +375,7 @@ fn search_match_beats_extra_highlight_in_overlapping_region() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-extra-highlights! "linter" (current-buffer) (list (list 0 8 "diagnostic.warning")))))"#,
         tmp.path(),
     );

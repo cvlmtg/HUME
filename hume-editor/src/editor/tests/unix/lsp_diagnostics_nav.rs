@@ -52,8 +52,12 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
     (ed, guard)
 }
 
+/// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` — key-bindable,
+/// not typed — through the keymap pipeline, the way their bound keys
+/// (`g n`/`g p`) would. `:diagnostics` (typed) dispatches via `type_cmd`
+/// directly at its one call site instead.
 fn run(ed: &mut Editor, cmd: &str) {
-    type_cmd(ed, cmd);
+    ed.execute_keymap_command(cmd.to_owned().into(), Some(1), false);
     ed.settle();
 }
 
@@ -86,7 +90,7 @@ fn next_from_before_a_jumps_to_a() {
     );
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, ":goto-next-diagnostic");
+    run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -106,7 +110,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
     );
     set_cursor(&mut ed, 3); // sitting exactly on A's start
 
-    run(&mut ed, ":goto-next-diagnostic");
+    run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -126,7 +130,7 @@ fn next_from_after_b_wraps_to_a() {
     );
     set_cursor(&mut ed, 11); // past both diagnostics
 
-    run(&mut ed, ":goto-next-diagnostic");
+    run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -146,7 +150,7 @@ fn prev_from_after_b_jumps_to_b() {
     );
     set_cursor(&mut ed, 11);
 
-    run(&mut ed, ":goto-prev-diagnostic");
+    run(&mut ed, "goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -166,7 +170,7 @@ fn prev_from_before_a_wraps_to_b() {
     );
     set_cursor(&mut ed, 0);
 
-    run(&mut ed, ":goto-prev-diagnostic");
+    run(&mut ed, "goto-prev-diagnostic");
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -182,7 +186,7 @@ fn empty_buffer_reports_no_diagnostics() {
     let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
     let before = state(&ed);
 
-    run(&mut ed, ":goto-next-diagnostic");
+    run(&mut ed, "goto-next-diagnostic");
 
     assert_eq!(state(&ed), before, "no diagnostics means no movement");
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -202,7 +206,8 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         &[DIAG_A, DIAG_B],
     );
 
-    run(&mut ed, ":diagnostics");
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
 
     let rows = {
         let guard = ed.state.drawer_view.read().unwrap();

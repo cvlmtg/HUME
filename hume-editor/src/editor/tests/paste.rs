@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 // ── Explicit-register paste reads (`"N`/`"k`p) ──────────────────────────────
@@ -1248,7 +1247,7 @@ fn consecutive_paste_repeats_last_not_ring_head() {
 // unrelated command in between two calls).
 
 fn dispatch_command(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 /// Bare plain paste reads the kill-ring head, not the clipboard — unlike

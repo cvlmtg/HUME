@@ -1,5 +1,4 @@
 use super::*;
-use hume_scripting::host::CommandHost;
 use pretty_assertions::assert_eq;
 
 /// Open a second real (file-backed) buffer with content `"world\n"` and
@@ -171,6 +170,24 @@ fn colon_unknown_sets_error() {
         Some("Unknown command: nonsense")
     );
     assert!(!ed.state.should_quit);
+}
+
+/// `:` resolves only typed commands — a real editor command's name (not a
+/// nonsense string) must be rejected the same way, and must not dispatch.
+/// See `registry/mod.rs`'s module doc.
+#[test]
+fn colon_editor_command_name_is_unknown_and_does_not_dispatch() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let before = state(&ed);
+    for ch in ":select-next-word".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Unknown command: select-next-word")
+    );
+    assert_eq!(state(&ed), before, "selection must be untouched");
 }
 
 #[test]

@@ -1,4 +1,3 @@
-use super::super::registry::MappableCommand;
 use super::super::{Editor, Severity, scripting_setup::make_init_host};
 use hume_scripting::PluginStatus;
 
@@ -70,12 +69,13 @@ impl Editor {
         }
         self.activate_and_trace(plugin, &format!("by command '{name}'"));
         self.flush_script_messages();
-        // Loop guard: if name is still Lazy (body never defined it) or gone,
-        // remove the stub and signal failure so the caller does not re-enter.
-        let unresolved = matches!(
-            self.state.config.registry.get_mappable(name),
-            Some(MappableCommand::Lazy { .. }) | None
-        );
+        // Loop guard: if name is still a Lazy stub (mappable or typed — body
+        // never defined it) or gone, remove it and signal failure so the
+        // caller does not re-enter. `lazy_owner` covers both stub kinds so
+        // this check works whether `name` was declared via `#:commands` or
+        // `#:typed-commands`.
+        let unresolved = !self.state.config.registry.contains(name)
+            || self.state.config.registry.lazy_owner(name).is_some();
         if unresolved {
             self.state.config.registry.unregister(name);
             false

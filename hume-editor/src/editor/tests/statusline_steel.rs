@@ -13,7 +13,7 @@ fn pushed_text_renders_for_the_focused_buffer() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-statusline-text! "greeting" (current-buffer) "hello")))"#,
         tmp.path(),
     );
@@ -36,7 +36,7 @@ fn pushed_text_is_not_shown_once_a_different_buffer_is_focused() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "arm" "" (lambda ()
+            r#"(define-typed-command! "arm" "" (lambda ()
                  (set-statusline-text! "greeting" (current-buffer) "hello")
                  (switch-to-buffer! (open-buffer! "{other_str}"))))"#
         ),
@@ -63,7 +63,7 @@ fn closing_the_buffer_clears_its_pushed_text() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "arm" "" (lambda ()
+            r#"(define-typed-command! "arm" "" (lambda ()
                  (define b (open-buffer! "{scratch_str}"))
                  (set-statusline-text! "greeting" b "hello")
                  (close-buffer! b)))"#
@@ -88,22 +88,22 @@ fn empty_text_clears_a_previously_pushed_value() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "set" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-statusline-text! "greeting" (current-buffer) "hello")))
-           (define-command! "clear" "" (lambda ()
+           (define-typed-command! "unarm" "" (lambda ()
              (set-statusline-text! "greeting" (current-buffer) "")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
-    type_cmd(&mut ed, ":set");
-    type_cmd(&mut ed, ":clear");
+    type_cmd(&mut ed, ":arm");
+    type_cmd(&mut ed, ":unarm");
 
     assert_eq!(custom_text(&ed, "greeting"), "");
 
     // A clear leaves no tombstone behind — pushing again under the same
     // name and buffer must show the new value, not be shadowed by a stale
     // empty entry.
-    type_cmd(&mut ed, ":set");
+    type_cmd(&mut ed, ":arm");
     assert_eq!(custom_text(&ed, "greeting"), "hello");
 }
 
@@ -120,7 +120,7 @@ fn set_statusline_text_on_a_stale_bid_raises_unknown_buffer() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "arm" "" (lambda ()
+            r#"(define-typed-command! "arm" "" (lambda ()
                  (define b (open-buffer! "{scratch_str}"))
                  (close-buffer! b)
                  (set-statusline-text! "greeting" b "hello")))"#
@@ -151,7 +151,7 @@ fn set_statusline_text_on_an_unplaceable_name_raises_an_error() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-statusline-text! "a,b" (current-buffer) "hello")))"#,
         tmp.path(),
     );

@@ -5,10 +5,9 @@
 // coverage (happy path, #:nul, nonzero exit, kill-on-close).
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
@@ -23,7 +22,7 @@ fn stale_token_returns_false_without_spawning() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "spawn-stale" "" (lambda ()
           (log! 'info (to-string
@@ -62,7 +61,7 @@ fn spawn_failure_raises_and_leaves_the_picker_open() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-bad" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '())))
@@ -87,7 +86,7 @@ fn empty_cmd_raises_naming_the_arg() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-empty" "" (lambda ()
           (picker-source-spawn! tok "" '())))
@@ -114,7 +113,7 @@ fn ok_exit_codes_rejects_a_value_outside_i32_range() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "definitely-not-a-real-binary-xyz" '()

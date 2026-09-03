@@ -138,7 +138,9 @@ fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
 }
 
 fn run_fmt(ed: &mut Editor) {
-    type_cmd(ed, ":lsp-fmt");
+    // :format-source and the key-bindable lsp-fmt share one body
+    // (lsp/format-source!) — dispatch through the typed `:` entry point.
+    type_cmd(ed, ":format-source");
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -185,6 +187,44 @@ fn whole_buffer_edit_is_one_undo_step() {
         ed.doc().text().to_string(),
         before,
         "a single 'u' must fully restore the pre-format text"
+    );
+}
+
+/// `:format-source` (typed) and `lsp-fmt` (editor command, dispatched here
+/// via `call!` the way an `on-buffer-save` hook does) share one
+/// implementation (`lsp/format-source!`) — both must format identically.
+#[test]
+fn format_source_and_lsp_fmt_call_produce_the_same_edit() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard) = setup(
+        &file_dir.path().join("main.rs"),
+        tmp.path(),
+        |backend, _sid| {
+            backend.respond_to(
+                "textDocument/formatting",
+                serde_json::json!([text_edit(
+                    0,
+                    0,
+                    3,
+                    0,
+                    "formatted1\nformatted2\nformatted3\n"
+                )]),
+            );
+        },
+    );
+
+    // lsp-fmt is key-bindable, not typed — dispatch through the keymap
+    // pipeline, the way an `on-buffer-save` hook's `(call! "lsp-fmt")` would.
+    ed.execute_keymap_command("lsp-fmt".into(), Some(1), false);
+    ed.settle();
+    ed.drain_lsp();
+    ed.settle();
+
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "formatted1\nformatted2\nformatted3\n",
+        "lsp-fmt (editor command) must format the same way :format-source does"
     );
 }
 

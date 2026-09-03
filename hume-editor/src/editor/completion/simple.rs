@@ -4,12 +4,14 @@ use super::{
 
 // ── CommandCompleter ──────────────────────────────────────────────────────────
 
-/// Completes command names from the registry.
+/// Completes typed command names from the registry.
 ///
 /// The completed token is the command name prefix `input[0..cursor]`.
 /// Only canonical names are offered — abbreviated aliases (e.g. `w` for
 /// `write`) still dispatch when typed directly, but are omitted from the
-/// popup so it doesn't get cluttered with shorthand.
+/// popup so it doesn't get cluttered with shorthand. Editor (key-bindable)
+/// commands are never offered here — `:` can't dispatch them; see
+/// `registry/mod.rs`'s module doc.
 pub(crate) struct CommandCompleter;
 
 impl Completer for CommandCompleter {
@@ -17,7 +19,7 @@ impl Completer for CommandCompleter {
         let prefix = &input[..cursor.min(input.len())];
         let mut candidates: Vec<Completion> = ctx
             .registry
-            .names()
+            .typed_names()
             .filter(|name| {
                 // `str::get` returns None if `prefix.len()` is off a char boundary or
                 // out of range — safe for non-ASCII command/alias names from plugins.

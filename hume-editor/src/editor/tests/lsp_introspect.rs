@@ -209,7 +209,7 @@ fn buffer_generation_changes_after_an_edit() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "snap" "" (lambda () (log! 'info (to-string (buffer-generation (current-buffer))))))"#,
+        r#"(define-typed-command! "snap" "" (lambda () (log! 'info (to-string (buffer-generation (current-buffer))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

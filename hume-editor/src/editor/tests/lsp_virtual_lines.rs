@@ -40,7 +40,7 @@ fn virtual_line_renders_after_its_anchor_line() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "^ unused variable" 'scope "diagnostic.warning")))))"#,
     );
@@ -70,7 +70,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "hint")))))"#,
     );
@@ -106,7 +106,7 @@ fn before_anchored_virtual_line_renders_above_its_line() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "git-diff" (current-buffer)
                (list (hash 'line 1 'anchor 'before 'text "- deleted line")))))"#,
     );
@@ -129,7 +129,7 @@ fn per_segment_scopes_style_the_virtual_lines_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "let x"
                            'segments (list (list 0 3 "keyword") (list 4 5 "string")))))))"#,
@@ -152,7 +152,7 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "abcdef" 'scope "base"
                            'segments (list (list 2 4 "kw")))))))"#,
@@ -188,7 +188,7 @@ fn no_segments_yields_an_empty_segment_list() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "hint" 'scope "base")))))"#,
     );
@@ -218,7 +218,7 @@ fn no_scope_falls_back_to_ui_virtual_as_the_base_scope() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "hint")))))"#,
     );
@@ -267,7 +267,7 @@ fn generic_virtual_line_with_no_scope_tints_the_full_row_when_ui_virtual_has_a_b
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "V" 'anchor 'before)))))"#,
     );
@@ -303,7 +303,7 @@ fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (set-virtual-lines! "git-diff" (current-buffer)
                    (list (hash 'line 0 'text "V" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
         ),
@@ -352,7 +352,7 @@ fn virtual_line_with_empty_text_still_renders_its_background_bar() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (set-virtual-lines! "git-diff" (current-buffer)
                    (list (hash 'line 0 'text "" 'anchor 'before 'scope "{TINT_SCOPE}")))))"#
         ),
@@ -385,7 +385,7 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (set-virtual-lines! "linter" (current-buffer)
                (list (hash 'line 0 'text "abcdef"
                            'segments (list (list 0 3 "a") (list 3 6 "b")))))))"#,

@@ -12,7 +12,7 @@ fn after_fires_once_past_its_deadline() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -36,7 +36,7 @@ fn a_timer_not_yet_due_does_not_fire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "start" "" (lambda () (after 100000 (lambda () (call! "move-right")))))"#,
+        r#"(define-typed-command! "start" "" (lambda () (after 100000 (lambda () (call! "move-right")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -60,7 +60,7 @@ fn cancel_timer_before_it_fires_prevents_the_thunk() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "start-and-cancel" "" (lambda ()
+        r#"(define-typed-command! "start-and-cancel" "" (lambda ()
              (define id (after 0 (lambda () (call! "move-right"))))
              (cancel-timer! id)))"#,
         tmp.path(),
@@ -87,7 +87,7 @@ fn debounce_collapses_a_rapid_burst_into_one_trailing_call() {
         &mut ed,
         &mut host,
         r#"(define tick (debounce 0 (lambda () (call! "move-right"))))
-           (define-command! "burst" "" (lambda () (tick) (tick) (tick)))"#,
+           (define-typed-command! "burst" "" (lambda () (tick) (tick) (tick)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -118,7 +118,7 @@ fn debounce_shares_one_pending_timer_across_all_keys() {
         &mut ed,
         &mut host,
         r#"(define tick (debounce 0 (lambda (key) (log! 'warn (string-append "fired:" key)))))
-           (define-command! "burst" "" (lambda () (tick "a") (tick "b")))"#,
+           (define-typed-command! "burst" "" (lambda () (tick "a") (tick "b")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -146,7 +146,7 @@ fn debounce_by_keys_pending_timers_independently() {
         &mut ed,
         &mut host,
         r#"(define tick (debounce-by 0 (lambda (key) (log! 'warn (string-append "fired:" key)))))
-           (define-command! "burst" "" (lambda ()
+           (define-typed-command! "burst" "" (lambda ()
              (tick "a") (tick "a") (tick "a")
              (tick "b") (tick "b")))"#,
         tmp.path(),
@@ -179,8 +179,8 @@ fn an_erroring_thunk_lands_in_the_message_log_and_the_wheel_survives() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "boom" "" (lambda () (after 0 (lambda () (car '())))))
-           (define-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
+        r#"(define-typed-command! "boom" "" (lambda () (after 0 (lambda () (car '())))))
+           (define-typed-command! "start" "" (lambda () (after 0 (lambda () (call! "move-right")))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

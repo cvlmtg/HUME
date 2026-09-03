@@ -2,7 +2,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use hume_scripting::ScriptingHost;
 
 // ── core:pickers — end-to-end plugin tests ────────────────────────────────────
@@ -29,7 +28,7 @@ const PICKERS_PLUGIN: &str = include_str!(concat!(
 ));
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 /// Load the real `core:pickers` plugin, plus `extra_source` appended to the

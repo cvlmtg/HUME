@@ -11,7 +11,6 @@
 //! interaction with wrapping.
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 /// `editor_from` plus `WrapMode::None` — mirrors `visual_move.rs`'s
@@ -32,7 +31,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
     } else {
         "copy-selection-on-prev-line"
     };
-    ed.execute_keymap_command(name.into(), Some(count), false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.into(), Some(count), false);
 }
 
 /// Build an editor from `initial`, run the copy command, and compare the

@@ -1,7 +1,6 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use crate::editor::event::EditorEvent;
-use crate::editor::registry::MappableCommand;
+use crate::editor::registry::{MappableCommand, TypedBody};
 use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::{PluginStatus, ScriptingHost};
 
@@ -64,8 +63,8 @@ fn lazy_stub_present_after_init() {
 #[test]
 fn first_dispatch_activates_plugin_and_runs() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda () (call! "move-right")))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (call! "move-right")))"#,
     );
     let before = state(&ed);
 
@@ -78,18 +77,13 @@ fn first_dispatch_activates_plugin_and_runs() {
         before,
         "dispatching lazy 'bar' must move the cursor"
     );
-    // Stub must be replaced by a real SteelBacked command.
+    // Stub must be replaced by a real Steel typed command.
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::SteelBacked { .. })
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Steel { .. })
         ),
-        "stub must be replaced by SteelBacked after first dispatch; got: {:?}",
-        ed.state
-            .config
-            .registry
-            .get_mappable("bar")
-            .map(|c| c.name())
+        "stub must be replaced by a Steel typed command after first dispatch"
     );
 }
 
@@ -100,7 +94,7 @@ fn first_dispatch_activates_plugin_and_runs() {
 #[test]
 fn loop_guard_removes_stub_when_body_never_defines_command() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
         // Plugin body exists but never defines "bar".
         r#"(define-command! "other-cmd" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -108,8 +102,8 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
     // Stub must be present before dispatch.
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
         "Lazy stub must be present before dispatch"
     );
@@ -118,13 +112,8 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 
     // Stub must have been removed by the loop guard.
     assert!(
-        ed.state.config.registry.get_mappable("bar").is_none(),
-        "stub must be removed when body never defines the command; got: {:?}",
-        ed.state
-            .config
-            .registry
-            .get_mappable("bar")
-            .map(|c| c.name())
+        ed.state.config.registry.get_typed("bar").is_none(),
+        "stub must be removed when body never defines the command"
     );
 }
 
@@ -139,7 +128,7 @@ fn loop_guard_removes_stub_when_body_never_defines_command() {
 #[test]
 fn failed_activation_does_not_leave_a_queued_lsp_registration() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
         r#"(register-lsp-server! "rust" #:command "rust-analyzer")
            (error "intentional mid-body error")"#,
     );
@@ -162,9 +151,9 @@ fn failed_activation_does_not_leave_a_queued_lsp_registration() {
 #[test]
 fn lazy_plugin_defined_language_is_registered_on_activation() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
         r#"(%define-language! "foo" '() '() '() #f)
-           (define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+           (define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
     assert!(
@@ -241,13 +230,13 @@ fn body_error_removes_stub_and_marks_failed() {
     use hume_scripting::attribution::PluginId;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
         "stub must be present before dispatch"
     );
@@ -256,7 +245,7 @@ fn body_error_removes_stub_and_marks_failed() {
 
     // Stub removed.
     assert!(
-        ed.state.config.registry.get_mappable("bar").is_none(),
+        ed.state.config.registry.get_typed("bar").is_none(),
         "stub must be removed after body error"
     );
     // Plugin state is Failed.
@@ -286,8 +275,8 @@ fn lazy_cmd_arg_passed_on_first_call() {
     // verify that after activation the command is SteelBacked (i.e. arg was
     // accepted, no arity error), and the plugin is Loaded.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda (x) (+ 1 0)))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda (x) (+ 1 0)))"#,
     );
 
     // Dispatch ":bar hello" — would fail at arity check if arg were dropped.
@@ -306,10 +295,10 @@ fn lazy_cmd_arg_passed_on_first_call() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("bar"),
-            Some(MappableCommand::SteelBacked { .. })
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Steel { .. })
         ),
-        "stub must be replaced by SteelBacked after first dispatch with arg"
+        "stub must be replaced by a Steel typed command after first dispatch with arg"
     );
 }
 
@@ -863,14 +852,14 @@ fn plugin_calls_cross_plugin_cmd_auto_activates_dep() {
     std::fs::create_dir_all(&dir_b).unwrap();
     std::fs::write(
         dir_b.join("plugin.scm"),
-        "(define-command! \"b-cmd\" \"doc\" (lambda () (call! \"a-cmd\")))",
+        "(define-typed-command! \"b-cmd\" \"doc\" (lambda () (call! \"a-cmd\")))",
     )
     .unwrap();
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
         "(declare-plugin \"user/tpa\" #:commands '(\"a-cmd\"))\n\
-         (declare-plugin \"user/tp\"  #:commands '(\"b-cmd\"))",
+         (declare-plugin \"user/tp\"  #:typed-commands '(\"b-cmd\"))",
     )
     .unwrap();
 
@@ -1110,7 +1099,7 @@ fn native_command_survives_failed_shadowing_plugin() {
         // Eager command whose body triggers the lazy plugin via call! —
         // the in-Steel activation path (empty builtin_cmd_names).
         r#"(declare-plugin "user/tp" #:commands '("bar"))
-           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+           (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         // Plugin body shadows a native command.
         r#"(define-command! "move-left" "doc" (lambda () (+ 1 0)))"#,
     );
@@ -1180,7 +1169,7 @@ fn plugin_keybinding_rolled_back_on_failed_activation() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))
-           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+           (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         r#"(bind-key! 'normal "Q" "some-cmd") (error "boom")"#,
     );
 
@@ -1219,7 +1208,7 @@ fn plugin_hook_rolled_back_on_failed_activation() {
 
     let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))
-           (define-command! "trigger" "doc" (lambda () (call! "bar")))"#,
+           (define-typed-command! "trigger" "doc" (lambda () (call! "bar")))"#,
         r#"(register-hook! 'on-buffer-save (lambda (bid) 0)) (error "boom")"#,
     );
 
@@ -1610,8 +1599,8 @@ fn command_trigger_logs_trace_on_activation() {
     use crate::editor::Severity;
 
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
     );
 
     assert!(
@@ -1760,13 +1749,17 @@ fn load_plugin_in_runtime_plugin_body_fails_fast() {
     std::fs::write(
         tp_dir.join("plugin.scm"),
         // Plugin body calls (load-plugin) at runtime — hard error expected.
-        r#"(define-command! "bar" "doc" (lambda () (+ 1 0)))
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))
            (load-plugin "user/dep")"#,
     )
     .unwrap();
     std::fs::write(dep_dir.join("plugin.scm"), r#"(+ 1 0)"#).unwrap();
     let init = dir.path().join("init.scm");
-    std::fs::write(&init, r#"(declare-plugin "user/tp" #:commands '("bar"))"#).unwrap();
+    std::fs::write(
+        &init,
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+    )
+    .unwrap();
 
     let mut ed = editor_from("-[a]>b\n");
     let mut host = ScriptingHost::new();
@@ -1859,8 +1852,8 @@ fn lazy_plugin_call_bang_at_body_top_level_is_drained_on_runtime_activation() {
     // load time.  When "trigger-me" is dispatched, the plugin activates and the
     // body-level (call! "move-right") should execute.
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("trigger-me"))"#,
-        r#"(define-command! "trigger-me" "doc" (lambda () (+ 1 0)))
+        r#"(declare-plugin "user/tp" #:typed-commands '("trigger-me"))"#,
+        r#"(define-typed-command! "trigger-me" "doc" (lambda () (+ 1 0)))
            (call! "move-right")"#,
     );
     let before = state(&ed);
@@ -2139,10 +2132,14 @@ fn core_lsp_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("lsp-install"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("lsp-install")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
-        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+        "manifest.scm's #:typed-commands entries must be registered as Lazy stubs, \
          including \"lsp-install\""
     );
     assert!(
@@ -2331,10 +2328,14 @@ fn core_plum_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("plum-list-plugins"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("plum-list-plugins")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
-        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+        "manifest.scm's #:typed-commands entries must be registered as Lazy stubs, \
          including \"plum-list-plugins\""
     );
     assert!(
@@ -2400,18 +2401,26 @@ fn core_git_diff_real_manifest_scm_resolves_via_zero_trigger_declare() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("toggle-git-signs"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("toggle-git-signs")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
-        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+        "manifest.scm's #:typed-commands entries must be registered as Lazy stubs, \
          including \"toggle-git-signs\""
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("toggle-inline-diff"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("toggle-inline-diff")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
-        "manifest.scm's #:commands entries must be registered as Lazy stubs, \
+        "manifest.scm's #:typed-commands entries must be registered as Lazy stubs, \
          including \"toggle-inline-diff\""
     );
     assert!(
@@ -2769,7 +2778,7 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
 
     let define_probe = r#"
-(define-command! "probe-resolve-lang-arg" ""
+(define-typed-command! "probe-resolve-lang-arg" ""
   (lambda ()
     (unless (equal? (call! "stdlib/resolve-lang-arg" "probe-cmd" "rust") "rust")
       (error "resolve-lang-arg: typed string argument must win"))
@@ -2893,51 +2902,46 @@ fn core_stdlib_git_probes_outside_a_work_tree() {
 /// Fail oracle: if lazy activation's AFTER-stage bookkeeping (jump/paste/
 /// dot-repeat) diverged between the two entry points — e.g. one skipped
 /// the repeatable-action stamp — one of the two snapshots would differ.
+/// A lazy *mappable* command's first dispatch via keypress activates its
+/// plugin and runs the real body — same invariant the typed path exercises
+/// in `lazy_typed_command_first_dispatch_via_command_line` below, covering
+/// the other half of `declare-plugin`'s two stub kinds
+/// (`#:commands`/`#:typed-commands`).
 #[test]
-fn lazy_command_first_dispatch_parity_keypress_vs_minibuf() {
-    let (mut ed_key, _dir_key) = setup_lazy_editor(
+fn lazy_command_first_dispatch_via_keypress() {
+    let (mut ed, _dir) = setup_lazy_editor(
         r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
         r#"(define-command! "bar" "" (lambda () (call! "delete")) #:repeatable #t)"#,
     );
-    let before_key = snapshot_bookkeeping(&ed_key);
-    ed_key.execute_keymap_command("bar".into(), Some(1), false, ArgSource::Keymap);
-    let snap_key = snapshot_bookkeeping(&ed_key);
+    let before = snapshot_bookkeeping(&ed);
+    ed.execute_keymap_command("bar".into(), Some(1), false);
+    let after = snapshot_bookkeeping(&ed);
 
-    let (mut ed_mb, _dir_mb) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("bar"))"#,
-        r#"(define-command! "bar" "" (lambda () (call! "delete")) #:repeatable #t)"#,
+    assert_ne!(before, after, "first dispatch must run and leave a trace");
+    assert_eq!(ed.doc().text().to_string(), "b\n");
+    assert!(
+        matches!(
+            ed.state.config.registry.get_mappable("bar"),
+            Some(MappableCommand::SteelBacked { .. })
+        ),
+        "bar stub must have activated on first dispatch"
     );
-    let before_mb = snapshot_bookkeeping(&ed_mb);
-    type_cmd(&mut ed_mb, ":bar");
-    let snap_mb = snapshot_bookkeeping(&ed_mb);
-
-    assert_eq!(
-        before_key, before_mb,
-        "pre-condition: both fresh editors must start identical"
-    );
-    assert_eq!(
-        snap_key, snap_mb,
-        "lazy command's first dispatch must leave identical bookkeeping via \
-         keypress vs `:` line"
-    );
-    // Both paths must have actually activated the plugin and run the command.
-    assert_eq!(ed_key.doc().text().to_string(), "b\n");
-    assert_eq!(ed_mb.doc().text().to_string(), "b\n");
 }
 
-/// `:cmd arg` on a lazy command's very first dispatch must forward `arg` to
-/// the lambda — pins the ordering `Editor::run_steel_command` now depends on:
-/// activation (which replaces the `Lazy` stub with `SteelBacked`) must
-/// complete before `ArgSource::Minibuf` marshalling reads the resolved arity.
+/// `:cmd arg` on a lazy *typed* command's very first dispatch must forward
+/// `arg` to the lambda — pins the ordering `Editor::run_typed_steel_command`
+/// depends on: activation (which replaces the typed `Lazy` stub with
+/// `TypedBody::Steel`) must complete before arg marshalling reads the
+/// resolved arity.
 ///
 /// Fail oracle: if activation ran after arg marshalling instead of before,
 /// the stub's `Lazy` arity (not yet resolved) would be used instead of the
 /// real lambda's arity, and the forwarded arg would never reach `call!`.
 #[test]
-fn lazy_command_first_call_minibuf_arg_forwarded() {
+fn lazy_typed_command_first_dispatch_via_command_line() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("echo-arg"))"#,
-        r#"(define-command! "echo-arg" "" (lambda (x) (when (string? x) (call! x))))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("echo-arg"))"#,
+        r#"(define-typed-command! "echo-arg" "" (lambda (x) (when (string? x) (call! x))))"#,
     );
     let before = state(&ed);
 
@@ -2954,8 +2958,12 @@ fn lazy_command_first_call_minibuf_arg_forwarded() {
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("echo-arg"),
-            Some(MappableCommand::SteelBacked { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("echo-arg")
+                .map(|tc| &tc.body),
+            Some(crate::editor::registry::TypedBody::Steel { .. })
         ),
         "echo-arg stub must have activated on first dispatch"
     );
@@ -2978,20 +2986,28 @@ fn lazy_command_first_call_minibuf_arg_forwarded() {
 #[test]
 fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_one() {
     let (mut ed, _dir) = setup_lazy_editor(
-        r#"(declare-plugin "user/tp" #:commands '("stub-a" "stub-b"))"#,
+        r#"(declare-plugin "user/tp" #:typed-commands '("stub-a" "stub-b"))"#,
         r#"(error "intentional plugin failure")"#,
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("stub-a"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("stub-a")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
         "stub-a must be present before dispatch"
     );
     assert!(
         matches!(
-            ed.state.config.registry.get_mappable("stub-b"),
-            Some(MappableCommand::Lazy { .. })
+            ed.state
+                .config
+                .registry
+                .get_typed("stub-b")
+                .map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
         ),
         "stub-b must be present before dispatch"
     );
@@ -2999,11 +3015,11 @@ fn failed_activation_removes_all_of_the_plugins_stubs_not_just_the_dispatched_on
     type_cmd(&mut ed, ":stub-a");
 
     assert!(
-        ed.state.config.registry.get_mappable("stub-a").is_none(),
+        ed.state.config.registry.get_typed("stub-a").is_none(),
         "the dispatched stub must be gone after failed activation"
     );
     assert!(
-        ed.state.config.registry.get_mappable("stub-b").is_none(),
+        ed.state.config.registry.get_typed("stub-b").is_none(),
         "a sibling stub of the same failed plugin must ALSO be gone \
          immediately — not left dangling until it is itself dispatched"
     );

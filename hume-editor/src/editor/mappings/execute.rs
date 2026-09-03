@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use super::super::commands;
-use super::super::dispatch::{ArgSource, CmdCtx};
+use super::super::dispatch::CmdCtx;
 use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 
@@ -16,7 +16,6 @@ impl Editor {
         name: Cow<'static, str>,
         count: Option<usize>,
         extend: bool,
-        arg_source: ArgSource,
     ) {
         let Some(reg_cmd) = self
             .state
@@ -29,11 +28,7 @@ impl Editor {
             return;
         };
 
-        let ctx = CmdCtx {
-            count,
-            extend,
-            arg_source,
-        };
+        let ctx = CmdCtx { count, extend };
         self.dispatch(reg_cmd, ctx);
     }
 

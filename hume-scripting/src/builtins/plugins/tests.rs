@@ -567,7 +567,7 @@ fn declare_plugin_bang_direct_zero_trigger_call_errors() {
     use crate::{ScriptingHost, null_host::NullHost};
     let mut host = ScriptingHost::new();
     let result = host.eval_source(
-        r#"(%declare-plugin! "user/direct-zero" '() '() '() (hash))"#,
+        r#"(%declare-plugin! "user/direct-zero" '() '() '() '() (hash))"#,
         &mut NullHost,
     );
     let err = result.expect_err("direct %declare-plugin! with zero activation entries must error");

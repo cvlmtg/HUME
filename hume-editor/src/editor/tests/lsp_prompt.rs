@@ -12,7 +12,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -35,7 +35,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -55,7 +55,7 @@ fn prompt_prefill_is_visible_and_editable() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "Name: " (lambda (s) (log! 'info (to-string s))) #:prefill "old")))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -83,7 +83,7 @@ fn second_prompt_while_one_is_open_errors() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "a" (lambda (s) (log! 'info "cb1")))
              (prompt! "b" (lambda (s) (log! 'info "cb2")))))"#,
     );
@@ -108,7 +108,7 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (prompt! "x: " (lambda (s) (void)))))
            (register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
     );
@@ -146,7 +146,7 @@ fn symbol_under_cursor_on_a_word_char_returns_the_whole_word() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
+        r#"(define-typed-command! "check" "" (lambda ()
              (log! 'info (symbol-under-cursor (current-buffer)))))"#,
     );
     type_cmd(&mut ed, ":check");
@@ -160,7 +160,7 @@ fn symbol_under_cursor_on_whitespace_returns_empty() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
+        r#"(define-typed-command! "check" "" (lambda ()
              (log! 'info (to-string "[" (symbol-under-cursor (current-buffer)) "]"))))"#,
     );
     type_cmd(&mut ed, ":check");
@@ -174,7 +174,7 @@ fn symbol_under_cursor_on_punctuation_returns_empty() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
+        r#"(define-typed-command! "check" "" (lambda ()
              (log! 'info (to-string "[" (symbol-under-cursor (current-buffer)) "]"))))"#,
     );
     type_cmd(&mut ed, ":check");

@@ -20,13 +20,12 @@
 use hume_grid::Rect;
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use hume_engine::pipeline::RenderContext;
 use hume_scripting::host::TruncateEnd;
 use steel::rvals::SteelVal;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
@@ -41,7 +40,7 @@ fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
 #[test]
 fn picker_bang_opens_session_and_returns_its_token() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (log! 'info (to-string (picker! (list (cons "one" "p1") (cons "two" "p2"))
                (lambda (x) (log! 'info (to-string x)))
                #:prompt "sel: ")))))"#,
@@ -72,7 +71,7 @@ fn picker_bang_opens_session_and_returns_its_token() {
 #[test]
 fn picker_bang_truncate_defaults_to_head() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -89,7 +88,7 @@ fn picker_bang_truncate_defaults_to_head() {
 #[test]
 fn picker_bang_truncate_tail_reaches_the_session() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (void)) #:truncate 'tail)))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -106,7 +105,7 @@ fn picker_bang_truncate_tail_reaches_the_session() {
 #[test]
 fn picker_bang_truncate_rejects_an_unknown_symbol() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (void)) #:truncate 'middle)))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -125,7 +124,7 @@ fn picker_bang_truncate_rejects_an_unknown_symbol() {
 #[test]
 fn live_picker_bang_truncate_tail_reaches_the_session() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:command (lambda (q) #f) #:truncate 'tail)))"#,
     );
@@ -145,7 +144,7 @@ fn live_picker_bang_truncate_tail_reaches_the_session() {
 #[test]
 fn end_to_end_accept_fires_payload_then_normal_editing_resumes() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1") (cons "two" "p2"))
                (lambda (x) (log! 'info (to-string x))))))"#,
     );
@@ -191,7 +190,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "push-real" "" (lambda ()
           (log! 'info (to-string (picker-push! tok (list (cons "two" "p2")))))))
@@ -232,7 +231,7 @@ fn picker_push_bang_applies_matching_token_and_rejects_stale_or_no_picker() {
 #[test]
 fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go-a" "" (lambda ()
+        r#"(define-typed-command! "go-a" "" (lambda ()
              (picker! (list (cons "a-item" "pa")) (lambda (x) (log! 'info (to-string "A:" x))))))
            (define-command! "go-b" "" (lambda ()
              (picker! (list (cons "b-item" "pb")) (lambda (x) (log! 'info (to-string "B:" x))))))"#,
@@ -260,7 +259,7 @@ fn opening_a_second_picker_fires_the_first_callback_with_false_exactly_once() {
 #[test]
 fn picker_close_bang_fires_false_once_and_is_idempotent() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x))))))
            (define-command! "close-it" "" (lambda () (picker-close!)))"#,
     );
@@ -307,7 +306,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok-a #f)
-        (define-command! "go-a" "" (lambda ()
+        (define-typed-command! "go-a" "" (lambda ()
           (set! tok-a (picker! (list (cons "a-item" "pa")) (lambda (x) (log! 'info (to-string "A:" x)))))))
         (define-command! "go-b" "" (lambda ()
           (picker! (list (cons "b-item" "pb")) (lambda (x) (log! 'info (to-string "B:" x))))))
@@ -347,7 +346,7 @@ fn picker_close_bang_with_a_stale_token_leaves_a_later_picker_open() {
 #[test]
 fn picker_bang_rejects_proper_list_items_naming_the_arg() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (list "a" "b")) (lambda (x) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -368,7 +367,7 @@ fn picker_bang_rejects_proper_list_items_naming_the_arg() {
 #[test]
 fn picker_bang_rejects_hash_f_payload() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "a" #f)) (lambda (x) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -402,7 +401,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (picker! (list (cons "small" "{path}"))
                    (lambda (p) (when p (switch-to-buffer! (open-buffer! p)))))))"#
         ),
@@ -453,7 +452,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (picker! (list (cons "tall" "{path}"))
                    (lambda (p) (when p (begin
                      (switch-to-buffer! (open-buffer! p))
@@ -583,7 +582,7 @@ fn picker_bang_silently_ignores_an_on_query_change_keyword() {
     // `#:on-query-change` parameter, and never wires the value to anything —
     // live requery lives on `live-picker!` instead.
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (picker! (list (cons "one" "p1")) (lambda (x) (void))
                #:on-query-change (lambda (q) (log! 'info "must never fire")))))"#,
     );
@@ -607,7 +606,7 @@ fn picker_bang_silently_ignores_an_on_query_change_keyword() {
 #[test]
 fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:query "seed" #:debounce-ms 100000
                #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
@@ -628,7 +627,7 @@ fn live_picker_seed_spawn_is_synchronous_and_not_debounced() {
 #[test]
 fn live_picker_empty_seed_calls_no_builder() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:command (lambda (q) (log! 'info (string-append "q=" q)) #f))))"#,
     );
@@ -646,7 +645,7 @@ fn live_picker_keystroke_keeps_previous_rows_until_the_new_search_delivers() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (live-picker! (lambda (x) (void))
             #:debounce-ms 100000
             #:command (lambda (q) (log! 'info (string-append "q=" q)) #f)))))
@@ -689,7 +688,7 @@ fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() 
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (live-picker! (lambda (x) (void))
             #:debounce-ms 0
             #:command (lambda (q) (error "boom"))))))
@@ -724,7 +723,7 @@ fn live_picker_debounced_respawn_raise_clears_stale_rows_and_unsticks_pending() 
 #[test]
 fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_latest_query() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms 0
                #:command (lambda (q) (log! 'warn (string-append "fired:" q)) #f))))"#,
@@ -757,7 +756,7 @@ fn live_picker_rapid_keystrokes_collapse_to_one_trailing_builder_call_with_the_l
 #[test]
 fn live_picker_backspace_to_empty_cancels_a_pending_nonempty_spawn() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms 0
                #:command (lambda (q)
@@ -795,7 +794,7 @@ fn live_picker_rows_keep_source_order_regardless_of_query() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (live-picker! (lambda (x) (void))
             #:query "zzz-does-not-fuzzy-match-anything"
             #:debounce-ms 100000
@@ -823,7 +822,7 @@ fn live_picker_token_scopes_picker_close() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (live-picker! (lambda (x) (log! 'info (to-string x)))
             #:command (lambda (q) #f)))))
         (define-command! "close-stale" "" (lambda ()
@@ -849,7 +848,7 @@ fn live_picker_token_scopes_picker_close() {
 #[test]
 fn live_picker_rejects_a_non_callable_command() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void)) #:command '())))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -868,7 +867,7 @@ fn live_picker_rejects_a_non_callable_command() {
 #[test]
 fn live_picker_rejects_a_negative_debounce_ms() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:debounce-ms -1 #:command (lambda (q) #f))))"#,
     );
@@ -883,7 +882,7 @@ fn live_picker_rejects_a_negative_debounce_ms() {
 #[test]
 fn live_picker_requires_command() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -897,7 +896,7 @@ fn live_picker_requires_command() {
 #[test]
 fn live_picker_rejects_a_builder_return_that_is_not_an_argv_list() {
     let (mut ed, _tmp) = editor_with(
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (live-picker! (lambda (x) (void))
                #:query "seed"
                #:command (lambda (q) 42))))"#,
@@ -923,7 +922,7 @@ fn picker_replace_bang_swaps_items_instead_of_appending() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! (list (cons "one" "p1")) (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "replace-real" "" (lambda ()
           (log! 'info (to-string (picker-replace! tok (list (cons "two" "p2")))))))
@@ -960,7 +959,7 @@ fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "stop-stale" "" (lambda ()
           (log! 'info (to-string (picker-source-stop! (+ tok 1))))))

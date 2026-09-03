@@ -11,7 +11,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "second" "sortText" "b")
                      (hash "label" "first" "sortText" "a")
@@ -33,7 +33,7 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "orange")                  ; "rn" scattered from offset 1 (r@1, n@3)
                      ; "rn" is a scattered subsequence of "random" (r@0, n@2) —
@@ -71,7 +71,7 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "Vec") (hash "label" "vec_deque")))
              (completion-update-filter! "Vec")
@@ -100,7 +100,7 @@ fn update_filter_with_trailing_space_matches_nothing() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar")))
              (completion-update-filter! "foo ")
@@ -127,7 +127,7 @@ fn update_filter_with_only_a_space_matches_nothing() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar") (hash "label" "foo")))
              (completion-update-filter! " ")
@@ -149,7 +149,7 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
@@ -171,7 +171,7 @@ fn accept_normalizes_crlf_in_insert_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hel\r\nlo")))
              (completion-update-filter! "fo")
@@ -193,7 +193,7 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "foobar")))
              (completion-accept! 0)))"#,
@@ -214,7 +214,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foo-bar" "insertText" "foo-bar")))
              (completion-accept! 0)))"#,
@@ -234,7 +234,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "format!" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -263,7 +263,7 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
@@ -294,7 +294,7 @@ fn accept_is_one_undo_step() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
@@ -318,7 +318,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
              (completion-dismiss!)
              (completion-accept! 0)))"#,
@@ -344,9 +344,9 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "begin" "" (lambda ()
+        r#"(define-typed-command! "begin" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-command! "finish" "" (lambda ()
+           (define-typed-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
     type_cmd(&mut ed, ":begin");
@@ -387,9 +387,9 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "begin" "" (lambda ()
+        r#"(define-typed-command! "begin" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-command! "finish" "" (lambda ()
+           (define-typed-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
     type_cmd(&mut ed, ":begin");
@@ -427,7 +427,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -462,7 +462,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
              (completion-accept! 0)))"#,
     );
@@ -499,7 +499,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -547,7 +547,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "wxyz" "insertText" "X"
                            "additionalTextEdits"
@@ -576,7 +576,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -599,9 +599,9 @@ fn begin_with_empty_items_clears_an_already_open_session() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "open" "" (lambda ()
+        r#"(define-typed-command! "open" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-command! "reopen-empty" "" (lambda ()
+           (define-typed-command! "reopen-empty" "" (lambda ()
              (completion-begin! (current-buffer) (list))))"#,
     );
     type_cmd(&mut ed, ":open");
@@ -624,7 +624,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")))
              (completion-update-filter! "fo")
@@ -657,7 +657,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
@@ -675,7 +675,7 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello"))
                #:incomplete #t)))
@@ -701,7 +701,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))))
            (register-hook! 'on-completion-refilter (lambda (bid text)
@@ -735,7 +735,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (completion-begin! (current-buffer) (list {items}))
                  (completion-update-filter! "item5")
                  (completion-top 64)
@@ -817,7 +817,7 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "good") (hash "kind" 1)))
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
@@ -848,7 +848,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -878,7 +878,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x"
                            "textEdit" (hash "insert" (hash "start" (hash "line" 0 "character" 1)

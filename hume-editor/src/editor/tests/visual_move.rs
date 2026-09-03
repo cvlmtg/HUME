@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use hume_editing::selection::{DisplayColOrigin, StickyDisplayCol};
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, InlineInsert};
 use hume_engine::types::ScopeId;
@@ -1076,7 +1075,6 @@ fn select_word_nearest_scopes_to_visual_subrow() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
 
     let sel = ed.current_selections().primary();
@@ -1111,7 +1109,6 @@ fn select_word_nearest_no_oscillation_on_repeated_j() {
             std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
             Some(1),
             false,
-            ArgSource::Keymap,
         )
     };
 
@@ -1151,7 +1148,6 @@ fn select_word_nearest_absorbs_whitespace_bookend_by_default() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
 
     let sel = ed.current_selections().primary();
@@ -1187,7 +1183,6 @@ fn select_word_nearest_does_not_absorb_previous_row_whitespace() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
 
     let sel = ed.current_selections().primary();
@@ -1226,12 +1221,7 @@ fn select_word_absorbs_previous_row_whitespace_unlike_nearest_on_line() {
         saved: None,
     });
 
-    ed.execute_keymap_command(
-        std::borrow::Cow::Borrowed("select-word"),
-        Some(1),
-        false,
-        ArgSource::Keymap,
-    );
+    ed.execute_keymap_command(std::borrow::Cow::Borrowed("select-word"), Some(1), false);
 
     let sel = ed.current_selections().primary();
     assert_eq!(
@@ -1254,7 +1244,6 @@ fn select_word_nearest_respects_word_selects_whitespace_off() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
 
     let sel = ed.current_selections().primary();
@@ -1336,7 +1325,7 @@ fn steel_call_move_down_ignores_outer_keystrokes_count() {
     ed.scripting = Some(host);
     // Simulates `5<key>` bound to "steel-move-down": the outer count (5) must
     // have no bearing on the inner call's buffer-line-vs-visual-row choice.
-    ed.execute_keymap_command("steel-move-down".into(), Some(5), false, ArgSource::Keymap);
+    ed.execute_keymap_command("steel-move-down".into(), Some(5), false);
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -1378,7 +1367,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_row() {
 
     ed.scripting = Some(host);
     // Simulates a bare `<key>` bound to "steel-jk": no count was typed.
-    ed.execute_keymap_command("steel-jk".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("steel-jk".into(), None, false);
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -1423,7 +1412,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-jk".into(), Some(3), false, ArgSource::Keymap);
+    ed.execute_keymap_command("steel-jk".into(), Some(3), false);
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -1455,7 +1444,7 @@ fn steel_call_move_down_zero_count_moves_visual_row() {
 
     ed.scripting = Some(host);
     // Outer count is Some(1) — irrelevant, since the body hardcodes 0.
-    ed.execute_keymap_command("steel-vis".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("steel-vis".into(), Some(1), false);
 
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -1501,7 +1490,7 @@ fn generated_bare_name_wrapper_accepts_zero_count() {
     .expect("define-command! must succeed");
 
     ed.scripting = Some(host);
-    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false, ArgSource::Keymap);
+    ed.execute_keymap_command("steel-vis-direct".into(), Some(1), false);
 
     assert_eq!(
         ed.current_selections().primary().head(),

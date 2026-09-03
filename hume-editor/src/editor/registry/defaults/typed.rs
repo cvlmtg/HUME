@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::*;
-use crate::editor::registry::{ArgCompleter, CommandRegistry, TypedCommand};
+use crate::editor::registry::{ArgCompleter, CommandRegistry, TypedBody, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_typed_commands(&mut self) {
@@ -15,7 +15,7 @@ impl CommandRegistry {
                     name: Cow::Borrowed($name),
                     doc: Cow::Borrowed($doc),
                     aliases: $aliases,
-                    fun: $fun,
+                    body: TypedBody::Native($fun),
                     completer: $completer,
                 })
             };

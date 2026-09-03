@@ -21,8 +21,9 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
   #:events '(on-lsp-attach)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#;
+               "goto-next-diagnostic" "goto-prev-diagnostic"
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+  #:typed-commands '("diagnostics"))"#;
 
 /// Same manifest as `DECLARE_LSP` but keyed on `on-buffer-save` instead of
 /// `on-lsp-attach` — used to prove a positive activation result isn't a
@@ -33,8 +34,9 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
   #:events '(on-buffer-save)
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
-               "goto-next-diagnostic" "goto-prev-diagnostic" "diagnostics"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger"))"#;
+               "goto-next-diagnostic" "goto-prev-diagnostic"
+               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+  #:typed-commands '("diagnostics"))"#;
 
 /// Mirrors `lsp_hover.rs`'s `setup`, but declares `core:lsp` lazily
 /// (`declare_src`, normally `DECLARE_LSP`) instead of `(load-plugin
@@ -160,8 +162,9 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     // the lazy stub (`activate_lazy_plugin`, called from the same dispatch
     // path before re-querying and running the now-real command) — the same
     // drain sequence `lsp_hover.rs`'s `run_hover` uses for an eagerly-loaded
-    // plugin is enough here too.
-    type_cmd(&mut ed, ":lsp-hover");
+    // plugin is enough here too. lsp-hover is key-bindable, not typed —
+    // dispatch through the keymap pipeline, the way `K` would.
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

@@ -86,11 +86,15 @@ fn setup(
     (ed, guard, sid)
 }
 
+/// `cmd` carries a leading `:` for caller readability (`":lsp-goto-definition"`)
+/// even though every `lsp-goto-*` command is key-bindable, not typed —
+/// dispatched here through the keymap pipeline, the way its bound key would.
 fn run_goto(ed: &mut Editor, cmd: &str) {
-    type_cmd(ed, cmd);
-    // Drain the Command-mode entry/exit's on-mode-change hooks now (mirrors
-    // the real interactive loop, which drains after every keystroke) before
-    // the async response arrives — same ordering fix as lsp_hover.rs.
+    let name = cmd.strip_prefix(':').unwrap_or(cmd);
+    ed.execute_keymap_command(name.to_owned().into(), Some(1), false);
+    // Settle now (mirrors the real interactive loop, which drains after
+    // every keystroke) before the async response arrives — same ordering
+    // fix as lsp_hover.rs.
     ed.settle();
     ed.drain_lsp();
     ed.settle();

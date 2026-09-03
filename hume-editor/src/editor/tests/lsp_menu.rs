@@ -12,7 +12,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     run(
         ed,
         tmp,
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (show-menu! (list "Extract function" "Inline variable" "Rename")
                (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
@@ -205,7 +205,7 @@ fn selected_row_renders_with_the_menu_selected_scope() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (show-menu! (list "Extract function" "Inline variable")
                (lambda (idx) (void)))))"#,
     );

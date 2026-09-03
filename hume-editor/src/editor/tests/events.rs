@@ -562,9 +562,9 @@ fn fifo_order_preserved_across_call_and_event_items() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-save (lambda (bid) (log! 'trace "event")))
-           (define-command! "arm" "" (lambda ()
+           (define-typed-command! "arm" "" (lambda ()
              (prompt! "x" (lambda (s) (log! 'trace "call-0")))))
-           (define-command! "start" "" (lambda ()
+           (define-typed-command! "start" "" (lambda ()
              (after 0 (lambda () (log! 'trace "call-a")))
              (after 0 (lambda () (log! 'trace "call-b")))))"#,
         tmp.path(),
@@ -1427,7 +1427,7 @@ fn text_changed_feedback_loop_is_cut_off_by_drain_cap() {
              (lambda (bid)
                (call! "make-text-uppercase")
                (call! "make-text-lowercase")))
-           (define-command! "kick" "" (lambda () (call! "make-text-uppercase")))"#,
+           (define-typed-command! "kick" "" (lambda () (call! "make-text-uppercase")))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1827,7 +1827,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-text-changed (lambda (bid) (log! 'trace "changed")))
-           (define-command! "start" ""
+           (define-typed-command! "start" ""
              (lambda () (after 0 (lambda () (close-buffer! (current-buffer))))))"#,
         tmp.path(),
     );

@@ -16,8 +16,6 @@ use hume_test_fixtures::{
 };
 use hume_treesitter::registry::QueryPaths;
 
-use crate::editor::dispatch::ArgSource;
-
 /// Require this file's grammar fixture — see
 /// `hume_test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
@@ -166,7 +164,7 @@ const NAV_SRC: &str =
 #[test]
 fn goto_next_function_selects_the_whole_next_function_head_at_start() {
     let mut ed = rust_editor(NAV_SRC);
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
     assert_eq!(
         selected_text(&ed),
         "fn alpha() {\n    let c = || {\n        1;\n    };\n}"
@@ -182,15 +180,15 @@ fn goto_next_function_selects_the_whole_next_function_head_at_start() {
 #[test]
 fn goto_next_function_a_second_press_skips_a_nested_closure() {
     let mut ed = rust_editor(NAV_SRC);
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
     assert_eq!(selected_text(&ed), "fn beta() {\n    2;\n}");
 }
 
 #[test]
 fn goto_prev_function_from_inside_a_function_selects_that_function() {
     let mut ed = rust_editor("fn alpha() {\n    1;\n}\n\nfn beta() {\n    -[2]>;\n}\n");
-    ed.execute_keymap_command("goto-prev-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-prev-function".into(), None, false);
     assert_eq!(selected_text(&ed), "fn beta() {\n    2;\n}");
 }
 
@@ -202,12 +200,7 @@ fn goto_prev_function_with_count_two_advances_two_objects_backward() {
     let mut ed = rust_editor(
         "fn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n\nfn third() {\n    -[3]>;\n}\n",
     );
-    ed.execute_keymap_command(
-        "goto-prev-function".into(),
-        Some(2),
-        false,
-        ArgSource::Keymap,
-    );
+    ed.execute_keymap_command("goto-prev-function".into(), Some(2), false);
     assert_eq!(selected_text(&ed), "fn second() {\n    2;\n}");
 }
 
@@ -219,7 +212,7 @@ fn goto_prev_function_with_count_two_advances_two_objects_backward() {
 #[test]
 fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() {
     let mut ed = rust_editor("fn alpha() {\n    1;\n}\n\nfn beta() {\n    -[2]>;\n}\n");
-    ed.execute_keymap_command("goto-prev-function".into(), None, true, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-prev-function".into(), None, true);
     assert_eq!(selected_text(&ed), "fn beta() {\n    2;\n}");
 }
 
@@ -233,8 +226,8 @@ fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() 
 #[test]
 fn goto_next_function_extend_after_move_keeps_both_functions_selected() {
     let mut ed = rust_editor("-[/]>/ c\nfn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n");
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
-    ed.execute_keymap_command("goto-next-function".into(), None, true, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
+    ed.execute_keymap_command("goto-next-function".into(), None, true);
     assert_eq!(
         selected_text(&ed),
         "fn first() {\n    1;\n}\n\nfn second() {\n    2;\n}"
@@ -248,12 +241,7 @@ fn goto_next_function_with_count_two_advances_two_objects() {
     let mut ed = rust_editor(
         "-[/]>/ c\nfn first() {\n    1;\n}\n\nfn second() {\n    2;\n}\n\nfn third() {\n    3;\n}\n",
     );
-    ed.execute_keymap_command(
-        "goto-next-function".into(),
-        Some(2),
-        false,
-        ArgSource::Keymap,
-    );
+    ed.execute_keymap_command("goto-next-function".into(), Some(2), false);
     assert_eq!(selected_text(&ed), "fn second() {\n    2;\n}");
 }
 
@@ -262,7 +250,7 @@ fn goto_next_function_with_count_two_advances_two_objects() {
 fn goto_next_function_at_the_last_function_is_unchanged() {
     let mut ed = rust_editor("fn only() {\n    -[3]>;\n}\n");
     let before = state(&ed);
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
     assert_eq!(before, state(&ed));
 }
 
@@ -270,7 +258,7 @@ fn goto_next_function_at_the_last_function_is_unchanged() {
 fn goto_next_function_records_a_jump_list_entry() {
     let mut ed = rust_editor(NAV_SRC);
     let before = state(&ed);
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
     assert_ne!(before, state(&ed));
     ed.handle_key(key_ctrl('o')); // jump-backward
     assert_eq!(before, state(&ed));
@@ -282,7 +270,7 @@ fn goto_next_function_records_a_jump_list_entry() {
 fn goto_next_function_extend_keeps_the_anchor() {
     let mut ed = rust_editor(NAV_SRC);
     let anchor_before = ed.current_selections().primary().anchor();
-    ed.execute_keymap_command("goto-next-function".into(), None, true, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, true);
     let sel = ed.current_selections().primary();
     assert_eq!(sel.anchor(), anchor_before);
     assert_ne!(sel.head(), anchor_before);
@@ -293,7 +281,7 @@ fn goto_next_function_extend_keeps_the_anchor() {
 #[test]
 fn goto_next_argument_selects_the_trimmed_argument_with_no_comma() {
     let mut ed = rust_editor("fn call_site() {\n    foo(-[a]>aa, bbb, ccc);\n}\n");
-    ed.execute_keymap_command("goto-next-argument".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-argument".into(), None, false);
     assert_eq!(selected_text(&ed), "bbb");
 }
 
@@ -339,7 +327,7 @@ fn structural_commands_are_no_ops_without_a_grammar() {
     }
     assert_eq!(before, state(&ed), "m a f without a grammar");
 
-    ed.execute_keymap_command("goto-next-function".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-function".into(), None, false);
     assert_eq!(before, state(&ed), "goto-next-function without a grammar");
 }
 
@@ -591,7 +579,7 @@ fn around_class_on_a_struct_includes_the_declaration() {
 fn goto_next_class_selects_the_whole_next_struct() {
     let mut ed =
         rust_editor("-[/]>/ c\nstruct Alpha {\n    a: i32,\n}\n\nstruct Beta {\n    b: i32,\n}\n");
-    ed.execute_keymap_command("goto-next-class".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-class".into(), None, false);
     assert_eq!(selected_text(&ed), "struct Alpha {\n    a: i32,\n}");
     let sel = ed.current_selections().primary();
     assert_eq!(sel.head(), sel.start());
@@ -621,7 +609,7 @@ fn around_comment_selects_the_whole_contiguous_block() {
 #[test]
 fn goto_next_comment_selects_the_whole_block() {
     let mut ed = rust_editor("-[s]>truct S {}\n\n// line one\n// line two\n");
-    ed.execute_keymap_command("goto-next-comment".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-comment".into(), None, false);
     assert_eq!(selected_text(&ed), "// line one\n// line two");
 }
 
@@ -653,7 +641,7 @@ fn goto_next_unit_test_skips_a_plain_function_and_lands_on_the_test() {
     let mut ed = rust_editor(
         "-[/]>/ c\nfn plain() {\n    1;\n}\n\n#[test]\nfn it_works() {\n    assert!(true);\n}\n",
     );
-    ed.execute_keymap_command("goto-next-test".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-test".into(), None, false);
     assert_eq!(
         selected_text(&ed),
         "#[test]\nfn it_works() {\n    assert!(true);\n}"
@@ -697,7 +685,7 @@ fn around_value_on_an_array_element_selects_just_that_element() {
 #[test]
 fn goto_next_value_walks_array_elements() {
     let mut ed = rust_editor("fn make_arr2() {\n    let arr = [-[1]>0, 20, 30];\n}\n");
-    ed.execute_keymap_command("goto-next-value".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-value".into(), None, false);
     assert_eq!(selected_text(&ed), "20");
 }
 
@@ -716,7 +704,7 @@ fn goto_next_test_with_two_tests_lands_on_the_first_test_only() {
     let mut ed = rust_editor(
         "-[u]>se super::*;\n\n#[test]\nfn one() {\n    assert!(true);\n}\n\n#[test]\nfn two() {\n    assert!(true);\n}\n",
     );
-    ed.execute_keymap_command("goto-next-test".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-next-test".into(), None, false);
     assert_eq!(
         selected_text(&ed),
         "#[test]\nfn one() {\n    assert!(true);\n}"
@@ -732,7 +720,7 @@ fn goto_prev_test_from_the_gap_between_two_tests_lands_on_the_first_test_only() 
     let mut ed = rust_editor(
         "#[test]\nfn one() {\n    assert!(true);\n}\n-[\n]>#[test]\nfn two() {\n    assert!(true);\n}\n",
     );
-    ed.execute_keymap_command("goto-prev-test".into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command("goto-prev-test".into(), None, false);
     assert_eq!(
         selected_text(&ed),
         "#[test]\nfn one() {\n    assert!(true);\n}"

@@ -194,9 +194,10 @@ fn esc_in_normal_clears_search() {
     );
 }
 
-/// `:clear-search` in Command mode clears the active search regex and its cached state.
+/// `clear-search`, dispatched as a key command (it's not typed — `Esc` is
+/// its usual trigger), clears the active search regex and its cached state.
 #[test]
-fn command_clear_search_clears_search() {
+fn clear_search_command_clears_search() {
     let mut ed = editor_from("-[h]>ello hello\n").with_search_regex("hello");
 
     assert!(
@@ -204,26 +205,21 @@ fn command_clear_search_clears_search() {
         "pre-condition: search pattern is set"
     );
 
-    // :clear-search (canonical name)
-    ed.handle_key(key(':'));
-    for ch in "clear-search".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    ed.execute_keymap_command("clear-search".into(), Some(1), false);
     ed.sync_search_cache();
 
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
         ed.search_pattern().is_none(),
-        "search pattern should be cleared by :clear-search"
+        "search pattern should be cleared by clear-search"
     );
     assert!(
         ed.current_search_cursor().match_count.is_none(),
-        "match_count should be cleared by :clear-search"
+        "match_count should be cleared by clear-search"
     );
     assert!(
         ed.search_matches().matches.is_empty(),
-        "matches should be cleared by :clear-search"
+        "matches should be cleared by clear-search"
     );
 }
 

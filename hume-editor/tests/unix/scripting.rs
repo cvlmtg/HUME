@@ -793,7 +793,7 @@ fn declare_plugin_bang_no_triggers_hard_error_scripting_level() {
     let init_path = dir.path().join("init.scm");
     std::fs::write(
         &init_path,
-        r#"(%declare-plugin! "user/tp" '() '() '() (hash))"#,
+        r#"(%declare-plugin! "user/tp" '() '() '() '() (hash))"#,
     )
     .unwrap();
 

@@ -128,7 +128,7 @@ fn buffer_lines_out_of_range_end_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "probe" "" (lambda ()
+        r#"(define-typed-command! "probe" "" (lambda ()
              (buffer-lines (current-buffer) #:end 10)))"#,
         tmp.path(),
     );
@@ -160,7 +160,7 @@ fn buffer_lines_start_past_end_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "probe" "" (lambda ()
+        r#"(define-typed-command! "probe" "" (lambda ()
              (buffer-lines (current-buffer) #:start 3 #:end 1)))"#,
         tmp.path(),
     );
@@ -221,7 +221,7 @@ fn assert_stale_bid_raises(builtin_call: &str, builtin_name: &str) {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "probe" "" (lambda ()
+            r#"(define-typed-command! "probe" "" (lambda ()
                  (define b (open-buffer! "{scratch_str}"))
                  (close-buffer! b)
                  ({builtin_call} b)))"#
@@ -310,7 +310,7 @@ fn line_to_offset_out_of_range_line_raises() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "probe" "" (lambda ()
+        r#"(define-typed-command! "probe" "" (lambda ()
              (line->offset (current-buffer) 2)))"#,
         tmp.path(),
     );
@@ -345,7 +345,7 @@ fn line_to_offset_on_a_stale_bid_raises_invalid_buffer_id() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "probe" "" (lambda ()
+            r#"(define-typed-command! "probe" "" (lambda ()
                  (define b (open-buffer! "{scratch_str}"))
                  (close-buffer! b)
                  (line->offset b 0)))"#

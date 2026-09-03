@@ -509,17 +509,26 @@ impl Editor {
         let (cmd, force, inline_arg) =
             super::mappings::command_mode::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
-        if let Some(tc) = self.state.config.registry.get_typed(cmd) {
-            let fun = tc.fun;
-            let result = fun(self, arg, force);
-            if let Err(ref e) = result {
-                self.report(Severity::Error, e.message().to_owned());
-            }
-            result
-        } else {
-            Err(crate::editor::error::CommandError::new(format!(
+        match self.state.config.registry.get_typed(cmd) {
+            Some(tc) => match tc.body {
+                super::registry::TypedBody::Native(fun) => {
+                    let result = fun(self, arg, force);
+                    if let Err(ref e) = result {
+                        self.report(Severity::Error, e.message().to_owned());
+                    }
+                    result
+                }
+                // No Steel-typed-command test needs this helper yet — extend
+                // it (mirroring Editor::run_typed_steel_command) when one does.
+                super::registry::TypedBody::Steel { .. } | super::registry::TypedBody::Lazy(_) => {
+                    panic!(
+                        "execute_typed: '{cmd}' is a Steel-backed typed command, not supported by this test helper"
+                    )
+                }
+            },
+            None => Err(crate::editor::error::CommandError::new(format!(
                 "unknown command: {cmd}"
-            )))
+            ))),
         }
     }
 }
@@ -717,7 +726,7 @@ fn run_probe(
     body: &str,
 ) -> bool {
     let source = format!(
-        r#"(define-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
+        r#"(define-typed-command! "probe" "" (lambda () (when (begin {body}) (call! "move-right"))))"#
     );
     install_source(ed, host, &source, tmp);
     let before = state(ed);

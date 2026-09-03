@@ -1,7 +1,6 @@
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::commands::cmd_clear_search;
-use super::super::dispatch::ArgSource;
 use super::super::keymap::WalkResult;
 use hume_ops::MotionMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
@@ -85,7 +84,7 @@ impl Editor {
                 // Extend resolution: sticky extend (mode == Extend) OR one-shot
                 // ctrl_extend carried into WaitCharPending from the original keypress.
                 let extend = (self.state.mode() == EditorMode::Extend) || wc.ctrl_extend;
-                self.execute_keymap_command(wc.cmd_name.clone(), count, extend, ArgSource::Keymap);
+                self.execute_keymap_command(wc.cmd_name.clone(), count, extend);
             }
             // Non-char/Enter/Tab key (e.g. Esc after pressing `f`): cancel the wait.
             // Clear count so a prefix like `3f<Esc>` doesn't leak into the next command.
@@ -250,7 +249,7 @@ impl Editor {
                     self.state.pending_keys.clear();
                     self.state.pending_ctrl_extend = false;
                     let count = self.state.count.take();
-                    self.execute_keymap_command(cmd.name.clone(), count, false, ArgSource::Keymap);
+                    self.execute_keymap_command(cmd.name.clone(), count, false);
                     return;
                 }
                 WalkResult::Interior => {
@@ -391,7 +390,7 @@ impl Editor {
                         .get_mappable(cmd.name.as_ref())
                         .is_some_and(|r| r.is_extendable());
                 let count = self.state.count.take();
-                self.execute_keymap_command(cmd.name.clone(), count, extend, ArgSource::Keymap);
+                self.execute_keymap_command(cmd.name.clone(), count, extend);
             }
             WalkResult::WaitChar(mut wc) => {
                 self.state.pending_keys.clear();

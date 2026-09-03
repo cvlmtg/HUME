@@ -136,6 +136,16 @@ macro_rules! builtins {
 // declare-plugin's tested propagate-to-caller contract (4 tests in
 // builtins/plugins/tests.rs, via .expect_err).
 //
+// define-typed-command! — the typed (`:` command line) counterpart of
+// define-command!, sharing its collision-guard logic (commands::check_definable)
+// and its command_table/cmd_owners bookkeeping, but registering a
+// TypedBody::Steel entry instead of a MappableCommand::SteelBacked one — the
+// editor's CommandRegistry keeps the two kinds strictly separate, so a name
+// defined one way is never reachable the other. No #:repeatable: dot-repeat
+// has no meaning for a `:` command. declare-plugin's #:typed-commands is its
+// lazy-activation counterpart to #:commands, registering a typed Lazy stub
+// (register_lazy_typed_command) instead of a mappable one.
+//
 // load-plugin — eager init-context activation; declares/resolves then
 // delegates to %activate-plugin-inline. Valid only during init.scm /
 // :reload-config (enforced by %load-plugin!). #:config as above.
@@ -299,7 +309,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         open "write-register!" registers::write_register(name: String, values: SteelVal);
 
         // Plugin lifecycle
-        open "%declare-plugin!" plugins::declare_plugin(name: String, commands: SteelVal, events: SteelVal, languages: SteelVal, config: SteelVal);
+        open "%declare-plugin!" plugins::declare_plugin(name: String, commands: SteelVal, typed_commands: SteelVal, events: SteelVal, languages: SteelVal, config: SteelVal);
         open "resolve-plugin-path" plugins::resolve_plugin_path(name: String);
 
         // Plugin introspection and explicit activation
@@ -326,6 +336,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // the (define-command! …) Steel wrapper in BOOTSTRAP exposes keyword
         // args (#:repeatable, #:inline-output).
         config "%define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
+        // Typed (`:` command line) counterpart — see the module-doc paragraph
+        // above BOOTSTRAP. No #:repeatable keyword arg.
+        config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool);
         // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
         // (call! name args…) macro desugars to (%dispatch-command …) which routes
         // activated plugin commands inline in Steel and falls back here for everything else.

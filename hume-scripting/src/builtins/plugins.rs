@@ -144,8 +144,8 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
-/// `(%declare-plugin! name commands events languages config)` — Rust primitive
-/// backing the Scheme-side `declare-plugin` wrapper.
+/// `(%declare-plugin! name commands typed-commands events languages config)`
+/// — Rust primitive backing the Scheme-side `declare-plugin` wrapper.
 ///
 /// Top-level only: valid only at the top level of `init.scm`.  A plugin can
 /// never declare another plugin — see `ensure_top_level`.
@@ -172,10 +172,46 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 /// - Records into `declared_plugins` for PLUM compat.
 /// - Filters colliding command entries (logs `Severity::Error`, continues).
 /// - Registers the plugin in `LazyRegistry`.
+///
+/// Filters `cmd_list`'s names against the built-in set and claims each
+/// surviving one as a `Lazy` stub via `register`, logging (not failing) a
+/// collision instead of dropping the whole declaration. Shared by
+/// `#:commands`/`#:typed-commands` processing in [`declare_plugin`] — the two
+/// differ only in which `CommandHost` method claims the name
+/// (`register_lazy_command` vs `register_lazy_typed_command`).
+fn filter_and_register_lazy(
+    ctx: &mut SteelCtx,
+    cmd_list: Vec<String>,
+    plugin_id: &PluginId,
+    register: impl Fn(&mut dyn crate::host::CommandHost, &str, &PluginId) -> Result<(), String>,
+) -> Vec<String> {
+    let mut valid = Vec::with_capacity(cmd_list.len());
+    for cmd in cmd_list {
+        if ctx.builtin_cmd_names.contains(&cmd) {
+            ctx.log(
+                crate::log::LogLevel::Error,
+                format!(
+                    "declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"
+                ),
+            );
+            continue;
+        }
+        match register(ctx.host.commands(), &cmd, plugin_id) {
+            Ok(()) => valid.push(cmd),
+            Err(msg) => ctx.log(
+                crate::log::LogLevel::Error,
+                format!("declare-plugin: {msg}; activation entry ignored"),
+            ),
+        }
+    }
+    valid
+}
+
 pub(crate) fn declare_plugin(
     ctx: &mut SteelCtx,
     name: String,
     commands: SteelVal,
+    typed_commands: SteelVal,
     events: SteelVal,
     languages: SteelVal,
     config: SteelVal,
@@ -203,6 +239,8 @@ pub(crate) fn declare_plugin(
     // below — a malformed entry must leave `declared_plugins`/`plugin_configs`
     // untouched, or PLUM would list a plugin the lazy registry never learns about.
     let cmd_list = list_to_strings(commands, &declare_arg_label(ctx, "#:commands"))?;
+    let typed_cmd_list =
+        list_to_strings(typed_commands, &declare_arg_label(ctx, "#:typed-commands"))?;
     let evt_label = declare_arg_label(ctx, "#:events");
     let evt_list: Vec<String> = list_items(events, &evt_label)?
         .iter()
@@ -214,7 +252,7 @@ pub(crate) fn declare_plugin(
     // define-command!.  A name that can't survive quoting is a typo — this
     // check is independent of the plugin's on-disk path, so it runs
     // regardless of whether the plugin turns out to be absent.
-    for cmd in &cmd_list {
+    for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
         if cmd.contains('"') || cmd.contains('\\') {
             steel::stop!(Generic =>
                 "declare-plugin: command name '{}' must not contain '\"' or '\\'", cmd);
@@ -224,12 +262,16 @@ pub(crate) fn declare_plugin(
     // Hard error: nothing declared at all. Checked against the raw (unfiltered)
     // lists, before path resolution — collision filtering only happens once the
     // plugin is confirmed present on disk (see below), so a non-empty
-    // `cmd_list` always skips this branch regardless of what filtering later
-    // drops.
-    if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
+    // `cmd_list`/`typed_cmd_list` always skips this branch regardless of what
+    // filtering later drops.
+    if cmd_list.is_empty()
+        && typed_cmd_list.is_empty()
+        && evt_list.is_empty()
+        && lang_list.is_empty()
+    {
         return Err(generic_err(format!(
             "declare-plugin: '{name}' declares no activation entries; it could never be activated. \
-             Add #:commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
+             Add #:commands/#:typed-commands/#:events/#:languages, or use (load-plugin \"{name}\") for eager loading."
         )));
     }
 
@@ -274,38 +316,31 @@ pub(crate) fn declare_plugin(
     // Filter colliding command names against the editor's live registry —
     // reached only now that the plugin is confirmed on disk. Each collision
     // logs a non-fatal Error (visible in :messages) and the name is dropped.
-    // `register_lazy_command` claims the name in the same registry
-    // `define-command!` and native commands live in, so this is the single
-    // check for "is this name available" across builtin, activation, and
-    // command-table names.
-    let mut valid = Vec::with_capacity(cmd_list.len());
-    for cmd in cmd_list {
-        if ctx.builtin_cmd_names.contains(&cmd) {
-            ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: command '{cmd}' conflicts with a built-in; activation entry ignored"),
-            );
-            continue;
-        }
-        match ctx.host.commands().register_lazy_command(&cmd, &plugin_id) {
-            Ok(()) => valid.push(cmd),
-            Err(msg) => ctx.log(
-                crate::log::LogLevel::Error,
-                format!("declare-plugin: {msg}; activation entry ignored"),
-            ),
-        }
-    }
-    let cmd_list = valid;
+    // `register_lazy_command`/`register_lazy_typed_command` claims the name
+    // in the same registry `define-command!`/`define-typed-command!` and
+    // native commands live in, so this is the single check for "is this name
+    // available" across builtin, activation, and command-table names.
+    let cmd_list = filter_and_register_lazy(ctx, cmd_list, &plugin_id, |c, name, plugin| {
+        c.register_lazy_command(name, plugin)
+    });
+    let typed_cmd_list =
+        filter_and_register_lazy(ctx, typed_cmd_list, &plugin_id, |c, name, plugin| {
+            c.register_lazy_typed_command(name, plugin)
+        });
 
-    // Hard error: all supplied #:commands entries collided, and no #:events/
-    // #:languages entries either — the plugin has no usable activation entry
-    // left. The all-empty case already returned above, so reaching here means
-    // `cmd_list` was non-empty before filtering — the message always names
-    // the collision, never "none were supplied".
-    if cmd_list.is_empty() && evt_list.is_empty() && lang_list.is_empty() {
+    // Hard error: all supplied #:commands/#:typed-commands entries collided,
+    // and no #:events/#:languages entries either — the plugin has no usable
+    // activation entry left. The all-empty case already returned above, so
+    // reaching here means at least one list was non-empty before filtering —
+    // the message always names the collision, never "none were supplied".
+    if cmd_list.is_empty()
+        && typed_cmd_list.is_empty()
+        && evt_list.is_empty()
+        && lang_list.is_empty()
+    {
         return Err(generic_err(format!(
             "declare-plugin: '{name}' declares no activation entries; \
-             all #:commands entries conflicted with existing commands. \
+             all #:commands/#:typed-commands entries conflicted with existing commands. \
              Fix the collision or use (load-plugin \"{name}\") for eager loading."
         )));
     }
@@ -313,7 +348,7 @@ pub(crate) fn declare_plugin(
     // Pre-seed cmd_owners so (command-plugin "cmd") resolves correctly before
     // the plugin body is evaluated (before activation).  Only for accepted
     // names — a filtered-out collision must not gain attribution here.
-    for cmd in &cmd_list {
+    for cmd in cmd_list.iter().chain(typed_cmd_list.iter()) {
         ctx.registries
             .cmd_owners
             .insert(cmd.clone(), Owner::Plugin(plugin_id.clone()));
@@ -539,11 +574,12 @@ pub(crate) fn begin_lazy_activation(ctx: &mut SteelCtx, id_str: String) -> Steel
 ///
 /// On failure, rolls back everything the partially-evaluated body
 /// registered, so a `Failed` plugin leaves no live footprint: commands
-/// (`define-command!`) are removed from `command_table`, `cmd_owners`, and
-/// the editor's `CommandRegistry` (Steel globals defined before the error
-/// stay in the VM's symbol table but are unreachable through HUME's
-/// dispatch); hooks (`register-hook!`) tagged with this plugin's id are
-/// dropped via `HookRegistry::remove_owned_by`; key bindings (`bind-key!` /
+/// (`define-command!`/`define-typed-command!`) are removed from
+/// `command_table`/`typed_command_table`, `cmd_owners`, and the editor's
+/// `CommandRegistry` (Steel globals defined before the error stay in the
+/// VM's symbol table but are unreachable through HUME's dispatch); hooks
+/// (`register-hook!`) tagged with this plugin's id are dropped via
+/// `HookRegistry::remove_owned_by`; key bindings (`bind-key!` /
 /// `bind-key-extend!` / `bind-wait-char!` / `unbind-key!`) queue an
 /// `Effect::BindKey`/`BindWaitChar`/`UnbindKey` rather than mutating the
 /// keymap inline, so `ctx.pop_effect_marks(success)` below drops a failed
@@ -598,7 +634,11 @@ pub(crate) fn finish_lazy_activation(
             .map(|(name, _)| name.clone())
             .collect();
         for name in orphans {
+            // Only one of the two ever has an entry for a given name — the
+            // other remove is a no-op — since command_table/typed_command_table
+            // are disjoint by kind (see typed_command_table's own doc).
             ctx.registries.command_table.remove(&name);
+            ctx.registries.typed_command_table.remove(&name);
             ctx.registries.cmd_owners.remove(&name);
             ctx.host.commands().unregister_command(&name);
         }

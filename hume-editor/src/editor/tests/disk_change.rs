@@ -1602,7 +1602,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (picker! (list (cons "target" "{path}"))
                    (lambda (p) (when p (switch-to-buffer! (open-buffer! p)))))))"#
         ),

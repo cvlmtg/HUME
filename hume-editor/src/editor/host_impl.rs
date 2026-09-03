@@ -20,7 +20,7 @@ use crate::editor::commands::effective_word_chars;
 use crate::editor::diff_bridge;
 use crate::editor::lsp::LspState;
 use crate::editor::register_ops;
-use crate::editor::registry::MappableCommand;
+use crate::editor::registry::{MappableCommand, TypedBody, TypedCommand};
 use crate::editor::timer_bridge::TimerHandle;
 use crate::lock_ext::LockExt;
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
@@ -427,26 +427,60 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
 
 impl<'a> CommandHost for EditorHostImpl<'a> {
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
-        match self.state.config.registry.get_mappable(&def.name) {
-            Some(MappableCommand::Lazy { .. }) | None => {
-                self.state
-                    .config
-                    .registry
-                    .register(MappableCommand::SteelBacked {
-                        name: def.name.into(),
-                        doc: def.doc.into(),
-                        arity: def.arity,
-                        is_variadic: def.is_variadic,
-                        inline_output: def.inline_output,
-                        repeatable: def.repeatable,
-                    });
-                Ok(())
-            }
-            Some(_) => Err(format!(
+        // `get_mappable` misses a name claimed by a typed command (it returns
+        // `None` for a `Command::Typed` entry, same as for a free name) —
+        // `contains` is the kind-agnostic check needed to reject that case too.
+        let claimed_by_other = match self.state.config.registry.get_mappable(&def.name) {
+            Some(MappableCommand::Lazy { .. }) => false,
+            Some(_) => true,
+            None => self.state.config.registry.contains(&def.name),
+        };
+        if claimed_by_other {
+            return Err(format!(
                 "define-command!: '{}' conflicts with existing command",
                 def.name
-            )),
+            ));
         }
+        self.state
+            .config
+            .registry
+            .register(MappableCommand::SteelBacked {
+                name: def.name.into(),
+                doc: def.doc.into(),
+                arity: def.arity,
+                is_variadic: def.is_variadic,
+                inline_output: def.inline_output,
+                repeatable: def.repeatable,
+            });
+        Ok(())
+    }
+
+    fn register_typed_command(
+        &mut self,
+        def: hume_scripting::SteelTypedCmdDef,
+    ) -> Result<(), String> {
+        let claimed_by_other = match self.state.config.registry.get_typed(&def.name) {
+            Some(tc) => !matches!(tc.body, TypedBody::Lazy(_)),
+            None => self.state.config.registry.contains(&def.name),
+        };
+        if claimed_by_other {
+            return Err(format!(
+                "define-typed-command!: '{}' conflicts with existing command",
+                def.name
+            ));
+        }
+        self.state.config.registry.register_typed(TypedCommand {
+            name: def.name.into(),
+            doc: def.doc.into(),
+            aliases: &[],
+            body: TypedBody::Steel {
+                arity: def.arity,
+                is_variadic: def.is_variadic,
+                inline_output: def.inline_output,
+            },
+            completer: None,
+        });
+        Ok(())
     }
 
     fn unregister_command(&mut self, name: &str) {
@@ -458,9 +492,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         name: &str,
         plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
-        if let Some(MappableCommand::Lazy { plugin: owner, .. }) =
-            self.state.config.registry.get_mappable(name)
-        {
+        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
             return if owner == plugin {
                 // Duplicate declare-plugin call for the same plugin — no-op;
                 // first declaration wins.
@@ -479,11 +511,38 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
-        match self.state.config.registry.get_mappable(name) {
-            Some(MappableCommand::Lazy { plugin, .. }) => Some(plugin.clone()),
-            _ => None,
+    fn register_lazy_typed_command(
+        &mut self,
+        name: &str,
+        plugin: &hume_scripting::attribution::PluginId,
+    ) -> Result<(), String> {
+        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
+            return if owner == plugin {
+                Ok(())
+            } else {
+                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
+            };
         }
+        if self.state.config.registry.contains(name) {
+            return Err(format!("'{name}' conflicts with an existing command"));
+        }
+        self.state.config.registry.register_typed(TypedCommand {
+            name: name.to_owned().into(),
+            // No doc for a not-yet-loaded stub — mirrors `MappableCommand::Lazy`,
+            // which carries no doc field at all (`MappableCommand::doc()`
+            // answers `""` for it too).
+            doc: std::borrow::Cow::Borrowed(""),
+            aliases: &[],
+            body: TypedBody::Lazy(plugin.clone()),
+            completer: None,
+        });
+        Ok(())
+    }
+
+    /// The plugin owning `name`'s `Lazy` stub — mappable or typed alike.
+    /// See [`crate::editor::registry::CommandRegistry::lazy_owner`].
+    fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
+        self.state.config.registry.lazy_owner(name).cloned()
     }
 
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
@@ -538,7 +597,6 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 // as visual-row movement instead of buffer-line movement).
                 count,
                 extend,
-                arg_source: crate::editor::dispatch::ArgSource::Keymap,
             },
         );
         // Clear the prefix when we armed it, so it does not bleed into the

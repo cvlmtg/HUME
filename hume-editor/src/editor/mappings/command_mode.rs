@@ -1,9 +1,9 @@
 use termina::event::KeyEvent;
 
 use super::super::commands::typed_goto_line;
-use super::super::dispatch::ArgSource;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
+use super::super::registry::TypedBody;
 use super::super::{Editor, Mode, Severity};
 use crate::editor::error::CommandError;
 
@@ -346,26 +346,30 @@ impl Editor {
             None => None,
         };
 
-        if let Some(tc) = self.state.config.registry.get_typed(cmd) {
-            let fun = tc.fun;
-            if let Err(e) = fun(self, expanded.as_deref(), force) {
-                self.report(Severity::Error, e.message().to_owned());
+        // `:` resolves only typed commands — an editor (key-bindable) command's
+        // name is unreachable here; see `registry/mod.rs`'s module doc.
+        match self.state.config.registry.get_typed(cmd) {
+            Some(tc) => match &tc.body {
+                TypedBody::Native(fun) => {
+                    let fun = *fun;
+                    if let Err(e) = fun(self, expanded.as_deref(), force) {
+                        self.report(Severity::Error, e.message().to_owned());
+                    }
+                }
+                // Lazy-stub activation and Steel arg marshalling both happen
+                // inside `Editor::run_typed_steel_command`, so `:bar arg`
+                // cannot silently drop `arg` on the plugin's first call.
+                TypedBody::Steel { .. } => {
+                    self.run_typed_steel_command(cmd, None, expanded, force);
+                }
+                TypedBody::Lazy(plugin) => {
+                    let plugin = plugin.clone();
+                    self.run_typed_steel_command(cmd, Some(plugin), expanded, force);
+                }
+            },
+            None => {
+                self.report(Severity::Warning, format!("Unknown command: {cmd}"));
             }
-        } else if self.state.config.registry.get_mappable(cmd).is_some() {
-            // Any mappable command can be invoked from the command line with
-            // an implicit count of 1. This means `:clear-search`, `:undo`, etc.
-            // all work without needing typed-command wrappers. Lazy-stub
-            // activation and Steel-backed arg marshalling both happen inside
-            // dispatch (`Editor::run_steel_command`) via `ArgSource::Minibuf`,
-            // so `:bar arg` cannot silently drop `arg` on the first call.
-            self.execute_keymap_command(
-                cmd.to_owned().into(),
-                Some(1),
-                false,
-                ArgSource::Minibuf(expanded),
-            );
-        } else {
-            self.report(Severity::Warning, format!("Unknown command: {cmd}"));
         }
     }
 }

@@ -36,10 +36,61 @@ use super::errors::generic_err;
 use crate::SteelCtx;
 use crate::attribution::Owner;
 use crate::log::LogLevel;
-use crate::types::SteelCmdDef;
+use crate::types::{SteelCmdDef, SteelTypedCmdDef};
 use hume_engine::types::MAX_COUNT;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
+
+/// Shared guards behind `define-command!` and `define-typed-command!`: name
+/// syntax, built-in shadowing, true re-definition, and lazy-stub self-
+/// ownership. `builtin_name` only changes the error text — both callers
+/// check the same `command_table`/`cmd_owners`, since a mappable and a typed
+/// command share one Steel-side proc namespace just as they share one
+/// namespace in the editor's `CommandRegistry`.
+fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result<(), SteelErr> {
+    if name.contains('"') || name.contains('\\') {
+        steel::stop!(Generic =>
+            "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
+    }
+    if ctx.builtin_cmd_names.contains(name) {
+        steel::stop!(Generic =>
+            "{}: '{}' conflicts with a built-in command and cannot be redefined",
+            builtin_name, name);
+    }
+    // Guard against true re-definition: command_table is set only when a
+    // command body is actually registered. cmd_owners is pre-seeded by
+    // declare_plugin for activation command ownership before the body runs, so
+    // checking cmd_owners here would falsely reject a plugin defining its own
+    // activation command.
+    if ctx.registries.command_table.contains_key(name) {
+        // cmd_owners must have an entry whenever command_table does (both are
+        // written together, see the insert pair below) — a miss here would be
+        // a registries-desync bug, not a normal "unknown owner" case.
+        let owner = ctx
+            .registries
+            .cmd_owners
+            .get(name)
+            .expect("command_table entry implies a cmd_owners entry");
+        steel::stop!(Generic =>
+            "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
+    }
+    // Guard against stealing a lazy plugin's activation command. A lazy plugin
+    // can still define its own activation command during its own body (the
+    // stub stays registered until unregister_lazy_stubs_of runs at the end of
+    // finish_lazy_activation), so we exempt the self-ownership case.
+    if let Some(claimant) = ctx.host.commands().lazy_command_owner(name) {
+        let is_self = matches!(
+            ctx.plugin_stack.current_owner(),
+            Owner::Plugin(ref cur) if *cur == claimant
+        );
+        if !is_self {
+            steel::stop!(Generic =>
+                "{}: command '{}' is already claimed as an activation command by lazy plugin '{}'",
+                builtin_name, name, claimant);
+        }
+    }
+    Ok(())
+}
 
 /// `(%define-command! name doc proc repeatable inline-output)`
 ///
@@ -75,48 +126,7 @@ pub(crate) fn define_command(
             "define-command!: '#:repeatable #t' and '#:inline-output #t' are mutually exclusive \
              — shell-out commands must not participate in dot-repeat");
     }
-    let builtin_name = "define-command!";
-    if name.contains('"') || name.contains('\\') {
-        steel::stop!(Generic =>
-            "{}: command name '{}' must not contain '\"' or '\\'", builtin_name, name);
-    }
-    if ctx.builtin_cmd_names.contains(&name) {
-        steel::stop!(Generic =>
-            "{}: '{}' conflicts with a built-in command and cannot be redefined",
-            builtin_name, name);
-    }
-    // Guard against true re-definition: command_table is set only when a
-    // command body is actually registered. cmd_owners is pre-seeded by
-    // declare_plugin for activation command ownership before the body runs, so
-    // checking cmd_owners here would falsely reject a plugin defining its own
-    // activation command.
-    if ctx.registries.command_table.contains_key(&name) {
-        // cmd_owners must have an entry whenever command_table does (both are
-        // written together, see the insert pair below) — a miss here would be
-        // a registries-desync bug, not a normal "unknown owner" case.
-        let owner = ctx
-            .registries
-            .cmd_owners
-            .get(&name)
-            .expect("command_table entry implies a cmd_owners entry");
-        steel::stop!(Generic =>
-            "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
-    }
-    // Guard against stealing a lazy plugin's activation command. A lazy plugin
-    // can still define its own activation command during its own body (the
-    // stub stays registered until unregister_lazy_stubs_of runs at the end of
-    // finish_lazy_activation), so we exempt the self-ownership case.
-    if let Some(claimant) = ctx.host.commands().lazy_command_owner(&name) {
-        let is_self = matches!(
-            ctx.plugin_stack.current_owner(),
-            Owner::Plugin(ref cur) if *cur == claimant
-        );
-        if !is_self {
-            steel::stop!(Generic =>
-                "{}: command '{}' is already claimed as an activation command by lazy plugin '{}'",
-                builtin_name, name, claimant);
-        }
-    }
+    check_definable(ctx, "define-command!", &name)?;
     let proc = super::args::callable_arg(proc, "define-command! third arg (proc)")?;
     let (arity, is_variadic) = match &proc {
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
@@ -142,6 +152,54 @@ pub(crate) fn define_command(
         .map_err(generic_err)?;
     let current_owner = ctx.plugin_stack.current_owner();
     ctx.registries.command_table.insert(name.clone(), proc);
+    ctx.registries.cmd_owners.insert(name, current_owner);
+    Ok(SteelVal::Void)
+}
+
+/// `(%define-typed-command! name doc proc inline-output)`
+///
+/// Native primitive behind the `(define-typed-command! …)` Steel wrapper.
+/// Registers `proc` as a typed command invocable from the `:` command line —
+/// the typed counterpart of [`define_command`]. No `repeatable` parameter:
+/// dot-repeat is meaningless for a `:` command, so there is nothing to
+/// mutually-exclude against `inline_output` the way `define-command!` does.
+///
+/// When dispatched, the lambda receives leading `arg`/`force` arguments based
+/// on its declared arity:
+/// - `(lambda ())` — no injection.
+/// - `(lambda (arg))` — the typed argument (a string), or `#f` if none.
+/// - `(lambda (arg force))` — the argument and whether `!` was appended.
+///
+/// Raises a Steel error under the same conditions as `define-command!`.
+pub(crate) fn define_typed_command(
+    ctx: &mut SteelCtx,
+    name: String,
+    doc: String,
+    proc: SteelVal,
+    inline_output: bool,
+) -> SteelResult {
+    check_definable(ctx, "define-typed-command!", &name)?;
+    let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
+    let (arity, is_variadic) = match &proc {
+        SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
+        _ => (0, false),
+    };
+    ctx.host
+        .commands()
+        .register_typed_command(SteelTypedCmdDef {
+            name: name.clone(),
+            doc,
+            arity,
+            is_variadic,
+            inline_output,
+        })
+        .map_err(generic_err)?;
+    let current_owner = ctx.plugin_stack.current_owner();
+    // typed_command_table, not command_table — see its own doc for why the
+    // separation matters (keeps `call!` from reaching a `:`-only command).
+    ctx.registries
+        .typed_command_table
+        .insert(name.clone(), proc);
     ctx.registries.cmd_owners.insert(name, current_owner);
     Ok(SteelVal::Void)
 }

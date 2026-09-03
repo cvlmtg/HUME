@@ -91,6 +91,7 @@
 (#%register-global "declared-plugins")
 (#%register-global "define-command!")
 (#%register-global "define-language!")
+(#%register-global "define-typed-command!")
 (#%register-global "delete")
 (#%register-global "delete-char-backward")
 (#%register-global "delete-char-forward")

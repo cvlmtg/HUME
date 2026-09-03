@@ -96,13 +96,14 @@ fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
 }
 
 fn run_hover(ed: &mut Editor) {
-    type_cmd(ed, ":lsp-hover");
-    // Drain the Command-mode entry/exit's on-mode-change hooks (which
-    // include lsp-hover's own close-on-mode-change dismiss) *before* the
-    // async response arrives — mirrors the real interactive loop, which
-    // drains hooks after every keystroke, well before any network response
-    // could land. Draining hooks only at the end would incorrectly replay
-    // those stale mode changes after the popup is shown, closing it.
+    // `lsp-hover` is key-bindable, not typed — dispatch it the way `K` would,
+    // through the keymap pipeline, not `:`.
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
+    // Settle *before* the async response arrives — mirrors the real
+    // interactive loop, which drains hooks after every keystroke, well
+    // before any network response could land. Draining only at the end
+    // would incorrectly replay any hooks queued by dispatch itself after
+    // the popup is shown, closing it.
     ed.settle();
     ed.drain_lsp();
     ed.settle();
@@ -454,7 +455,7 @@ fn allow_stale_is_honored_despite_an_intervening_edit() {
         },
     );
 
-    type_cmd(&mut ed, ":lsp-hover");
+    ed.execute_keymap_command("lsp-hover".into(), Some(1), false);
 
     // Bump the buffer's text_gen between send and drain — without
     // #:allow-stale this response would be dropped. No settle() call until

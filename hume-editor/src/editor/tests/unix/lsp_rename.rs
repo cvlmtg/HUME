@@ -91,7 +91,9 @@ fn setup(
 }
 
 fn run_rename(ed: &mut Editor) {
-    type_cmd(ed, ":lsp-rename");
+    // lsp-rename is key-bindable, not typed — dispatch through the keymap
+    // pipeline, the way its bound key (`G R`) would.
+    ed.execute_keymap_command("lsp-rename".into(), Some(1), false);
     ed.settle();
 }
 

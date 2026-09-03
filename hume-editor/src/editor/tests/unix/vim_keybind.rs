@@ -248,12 +248,12 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
     assert!(heads.contains(&16), "copy at col 0 of line 3");
 }
 
-/// `:` invocation hands the typed count over as a string (`ArgSource::Minibuf`
-/// in `hume-editor/src/editor/dispatch.rs`), not the integer that keymap
-/// dispatch supplies — the command must normalize it instead of raising a
-/// type error comparing a string to `0`.
+/// `:` resolves only typed commands — a plugin-defined editor command like
+/// `vim-change-to-eol-or-copy-line` (bound to a key, `define-command!`, not
+/// `define-typed-command!`) is unreachable from the command line, same as a
+/// native one. See `registry/mod.rs`'s module doc.
 #[test]
-fn vim_change_to_eol_or_copy_line_typed_with_count_copies() {
+fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
     // "hello\nworld\nfoo\nbar\n": col 0 of each line is offset 0, 6, 12, 16.
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[h]>ello\nworld\nfoo\nbar\n");
     ed.handle_key(key(':'));
@@ -274,13 +274,10 @@ fn vim_change_to_eol_or_copy_line_typed_with_count_copies() {
         .collect();
     assert_eq!(
         heads.len(),
-        4,
-        "typed count=3 must add one copy per line below, same as keymap dispatch"
+        1,
+        "unknown : command must not dispatch anything"
     );
-    assert!(heads.contains(&0), "original cursor at col 0 of line 0");
-    assert!(heads.contains(&6), "copy at col 0 of line 1");
-    assert!(heads.contains(&12), "copy at col 0 of line 2");
-    assert!(heads.contains(&16), "copy at col 0 of line 3");
+    assert!(heads.contains(&0), "original cursor untouched");
 }
 
 /// A count prefix combined with an already-wide selection still forwards the

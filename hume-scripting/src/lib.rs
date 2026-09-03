@@ -64,7 +64,7 @@ pub use log::LogLevel;
 pub use types::{
     Effect, EvalError, GrammarReg, LspServerStatusEntry, PendingLanguageReg, PendingLspNotify,
     PendingLspRequest, PendingLspServerOp, PendingLspServerReg, SteelCmdDef, SteelCmdResult,
-    VirtualLineSpec,
+    SteelTypedCmdDef, VirtualLineSpec,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than
@@ -124,6 +124,18 @@ pub(crate) struct ScriptingRegistries {
     /// Populated by `define_command` inline during init or plugin activation.
     /// Consulted by `%lookup-plugin-proc` in both init and command mode.
     pub(crate) command_table: rustc_hash::FxHashMap<String, SteelVal>,
+    /// Same as `command_table`, but for `define-typed-command!` procs.
+    ///
+    /// Kept separate — not a second key range in `command_table` — so
+    /// `%lookup-plugin-proc`/`%dispatch-command` (the `call!` path, which
+    /// only ever reads `command_table`) can never reach a typed command's
+    /// proc: `call!` invoking a `:`-only command would break the strict
+    /// mappable/typed separation the editor's `CommandRegistry` enforces
+    /// (see `registry/mod.rs`'s module doc there). `call_steel_cmd` — the
+    /// Rust-driven path used by both keypress/`call!` dispatch and `:`
+    /// dispatch — checks both tables, since its caller has already resolved
+    /// which kind `name` is through the editor's own registry.
+    pub(crate) typed_command_table: rustc_hash::FxHashMap<String, SteelVal>,
     /// Per-plugin config value passed via `#:config` on `(load-plugin …)` /
     /// `(declare-plugin …)`. Read back by the plugin body through `(plugin-config)`,
     /// resolved via the top of `plugin_stack` — works identically whether the
@@ -678,6 +690,7 @@ impl ScriptingHost {
             .registries
             .command_table
             .get(name)
+            .or_else(|| self.registries.typed_command_table.get(name))
             .cloned()
             .ok_or_else(|| {
                 format!(

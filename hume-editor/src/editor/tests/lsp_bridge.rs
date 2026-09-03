@@ -86,7 +86,7 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker")))))
              (lsp-request #f "textDocument/completion" (hash)
@@ -131,7 +131,7 @@ fn lsp_stop_clears_supersede_entries() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace "fired"))
                #:supersede "k")))"#,
@@ -162,7 +162,7 @@ fn response_delivers_decoded_result_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (when (equal? (hash-ref result "contents") "hi")
                  (call! "move-right"))))))"#,
@@ -193,7 +193,7 @@ fn protocol_error_delivers_err_hashmap_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (when (and (hash? err) (equal? (hash-ref err "code") -32601))
                  (call! "move-right"))))))"#,
@@ -225,7 +225,7 @@ fn timeout_delivers_err_string_timeout_to_callback() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (when (equal? err "timeout")
                  (call! "move-right"))))))"#,
@@ -326,7 +326,7 @@ fn callback_calling_lsp_request_does_not_reenter_synchronously() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (call! "move-right")
                (lsp-request #f "textDocument/definition" (hash) (lambda (err2 result2)
@@ -365,7 +365,7 @@ fn callback_error_lands_in_message_log_not_a_crash() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (car '())))))"#,
         tmp.path(),
@@ -457,7 +457,7 @@ fn lsp_request_with_unknown_server_reports_an_error_and_fires_callback_with_err(
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request "no-such-language" "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
                  (call! "move-right"))))))"#,
@@ -501,7 +501,7 @@ fn lsp_request_against_a_crashed_server_fires_callback_with_err() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
                (when (string? err)
                  (call! "move-right"))))))"#,
@@ -535,7 +535,7 @@ fn lsp_request_rejects_false_as_params_instead_of_sending_it_on_the_wire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" #f (lambda (err result) (begin)))))"#,
         tmp.path(),
     );

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::{BufferId, PaneId};
 
 use crate::attribution::PluginId;
-use crate::types::{GrammarReg, SteelCmdDef, VirtualLineSpec};
+use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef, VirtualLineSpec};
 
 /// Key-binding mode, as recognised by `bind-key!`/`unbind-key!`.
 ///
@@ -304,7 +304,18 @@ pub trait CommandHost {
     /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String>;
 
-    /// Remove a previously registered Steel command from the `CommandRegistry`.
+    /// Register a Steel *typed* command in the editor's `CommandRegistry`,
+    /// invocable from the `:` command line.
+    ///
+    /// Called inline from `define-typed-command!` during init or plugin load.
+    /// Overwrites a typed `Lazy` stub for the same name (expected path: a
+    /// lazy plugin body's `define-typed-command!` replaces the activation
+    /// stub declared via `#:typed-commands`).
+    /// Returns `Err(msg)` if the name conflicts with any non-Lazy existing command.
+    fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String>;
+
+    /// Remove a previously registered Steel command (mappable or typed) from
+    /// the `CommandRegistry`.
     ///
     /// Called by `finish_lazy_activation` on the failure path to roll back
     /// commands that a partially-evaluated plugin body registered before erroring.
@@ -325,19 +336,28 @@ pub trait CommandHost {
     /// message names the conflicting owner for a specific declare-time log.
     fn register_lazy_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
 
-    /// The plugin that owns `name`'s `Lazy` stub, or `None` if `name` is not a
-    /// pending lazy activation entry (already activated, never declared, or a
-    /// non-lazy command).
+    /// Register a typed `Lazy` activation stub for `name`, owned by `plugin`.
+    ///
+    /// Called from `declare-plugin`'s `#:typed-commands` processing — the
+    /// typed counterpart of [`Self::register_lazy_command`]. Same conflict
+    /// rules, same message shape.
+    fn register_lazy_typed_command(&mut self, name: &str, plugin: &PluginId) -> Result<(), String>;
+
+    /// The plugin that owns `name`'s `Lazy` stub — mappable or typed alike —
+    /// or `None` if `name` is not a pending lazy activation entry (already
+    /// activated, never declared, or a non-lazy command).
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId>;
 
-    /// Remove every remaining `Lazy` stub owned by `plugin`.
+    /// Remove every remaining `Lazy` stub owned by `plugin` — mappable and
+    /// typed alike.
     ///
     /// Called by `finish_lazy_activation` on both the success and failure
     /// path: on success, any stub the plugin body didn't itself replace via
-    /// `define-command!` is dead weight (the plugin is now `Loaded` and will
-    /// never re-run its body); on failure, every stub the plugin ever claimed
-    /// must be freed so a later plugin can claim the name. Never removes a
-    /// `SteelBacked` command — only `Lazy` entries.
+    /// `define-command!`/`define-typed-command!` is dead weight (the plugin
+    /// is now `Loaded` and will never re-run its body); on failure, every
+    /// stub the plugin ever claimed must be freed so a later plugin can claim
+    /// the name. Never removes a resolved `SteelBacked`/`Steel` command —
+    /// only `Lazy` entries.
     fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId);
 }
 

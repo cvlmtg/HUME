@@ -7,11 +7,10 @@
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use hume_engine::pipeline::RenderContext;
 
 fn call(ed: &mut Editor, name: &str) {
-    ed.execute_keymap_command(name.to_string().into(), None, false, ArgSource::Keymap);
+    ed.execute_keymap_command(name.to_string().into(), None, false);
 }
 
 fn editor_with(source: &str) -> (Editor, tempfile::TempDir) {
@@ -28,7 +27,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "printf 'a\nb\nc\n'"))))
@@ -61,7 +60,7 @@ fn nul_delimited_source_splits_on_nul() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "printf 'a\\0b'") #:nul #t)))
@@ -83,7 +82,7 @@ fn nonzero_exit_reports_a_status_message() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 4"))))
@@ -106,7 +105,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-no-matches" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "exit 1") #:ok-exit-codes '(0 1))))
@@ -147,7 +146,7 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sh"
@@ -207,7 +206,7 @@ fn respawn_reports_an_already_exited_outgoing_source() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-first" "" (lambda ()
           (picker-source-spawn! tok "sh" (list "-c" "echo boom >&2; exit 2"))))
@@ -252,7 +251,7 @@ fn respawn_does_not_report_a_still_running_outgoing_source() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (void))))))
         (define-command! "spawn-first" "" (lambda ()
           (picker-source-spawn! tok "sleep" (list "30"))))
@@ -279,7 +278,7 @@ fn picker_close_kills_the_source_child() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (picker! '() (lambda (x) (log! 'info (to-string x)))))))
         (define-command! "spawn-it" "" (lambda ()
           (picker-source-spawn! tok "sleep" (list "30"))))
@@ -343,7 +342,7 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     let (mut ed, _tmp) = editor_with(
         r#"
         (define tok #f)
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (set! tok (live-picker! (lambda (x) (log! 'info (to-string x)))
             #:query "a"
             #:debounce-ms 0
@@ -427,7 +426,7 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let (mut ed, _tmp) = editor_with(
         r#"
-        (define-command! "go" "" (lambda ()
+        (define-typed-command! "go" "" (lambda ()
           (live-picker! (lambda (x) (log! 'info (to-string x)))
             #:query "a"
             #:debounce-ms 0

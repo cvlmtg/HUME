@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use pretty_assertions::assert_eq;
 
 // ── word-chars (configurable extra word characters) ────────────────────────
@@ -97,7 +96,7 @@ fn symbol_under_cursor_returns_whole_hyphenated_word() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
+        r#"(define-typed-command! "check" "" (lambda ()
              (log! 'info (symbol-under-cursor (current-buffer)))))"#,
     );
     type_cmd(&mut ed, ":check");
@@ -112,7 +111,6 @@ fn select_word_nearest_on_line_follows_word_chars() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
     assert_eq!(state(&ed), "-[foo-bar ]>baz\n");
 }
@@ -140,7 +138,6 @@ fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_row() {
         std::borrow::Cow::Borrowed("select-word-nearest-on-line"),
         Some(1),
         false,
-        ArgSource::Keymap,
     );
     assert_eq!(state(&ed), "hello world -[foo-bar]>\n");
 }

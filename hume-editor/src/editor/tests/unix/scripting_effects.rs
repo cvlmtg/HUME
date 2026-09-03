@@ -141,7 +141,7 @@ fn failed_command_delivers_committed_activation_effects() {
         r#"(register-lsp-server! "widget" #:command "widget-lsp")
            (define-command! "b-cmd" "" (lambda () 0))"#,
         r#"(declare-plugin "user/efx" #:commands '("b-cmd"))
-           (define-command! "outer-fail" ""
+           (define-typed-command! "outer-fail" ""
              (lambda ()
                (register-lsp-server! "before" #:command "x")
                (call! "b-cmd")
@@ -273,7 +273,7 @@ fn steel_open_buffer_detects_language() {
     std::fs::write(
         &init_path,
         format!(
-            r#"(define-command! "go" "" (lambda () (open-buffer! "{}")))"#,
+            r#"(define-typed-command! "go" "" (lambda () (open-buffer! "{}")))"#,
             target.display()
         ),
     )
@@ -326,7 +326,7 @@ fn steel_open_buffer_missing_path_opens_new_file() {
     std::fs::write(
         &init_path,
         format!(
-            r#"(define-command! "go" "" (lambda () (open-buffer! "{}")))"#,
+            r#"(define-typed-command! "go" "" (lambda () (open-buffer! "{}")))"#,
             target.display()
         ),
     )
@@ -385,7 +385,7 @@ fn buffer_opened_and_closed_in_one_eval_fires_neither_hook() {
     std::fs::write(
         &init_path,
         format!(
-            r#"(define-command! "go" "" (lambda () (close-buffer! (open-buffer! "{}"))))"#,
+            r#"(define-typed-command! "go" "" (lambda () (close-buffer! (open-buffer! "{}"))))"#,
             target.display()
         ),
     )

@@ -52,7 +52,7 @@ fn apply_text_edits_single_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 1) (cons 0 3) "XY")))))"#,
     );
@@ -72,7 +72,7 @@ fn apply_text_edits_normalizes_crlf_in_new_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 1) (cons 0 3) "X\r\nY")))))"#,
     );
@@ -94,7 +94,7 @@ fn apply_text_edits_utf8_server_uses_byte_offsets_not_utf16_units() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 3) (cons 0 4) "X")))))"#,
     );
@@ -110,7 +110,7 @@ fn apply_text_edits_multiple_edits_same_line_apply_descending() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              ; Two edits on the same line, given out of order — must not
              ; corrupt each other's offsets (the classic ascending-with-
              ; fixups bug).
@@ -135,7 +135,7 @@ fn apply_text_edits_same_position_inserts_apply_in_array_order() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 0) (cons 0 0) "1")
                      (list (cons 0 0) (cons 0 0) "2")))))"#,
@@ -156,7 +156,7 @@ fn apply_text_edits_adjacent_not_overlapping_accepted() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 0) (cons 0 2) "AA")
                      (list (cons 0 2) (cons 0 4) "BB")))))"#,
@@ -173,7 +173,7 @@ fn apply_text_edits_overlapping_rejected() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 0) (cons 0 3) "A")
                      (list (cons 0 2) (cons 0 5) "B")))))"#,
@@ -194,7 +194,7 @@ fn apply_text_edits_reversed_range_rejected() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 3) (cons 0 0) "X")))))"#,
     );
@@ -214,7 +214,7 @@ fn apply_text_edits_is_one_undo_step() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 0) (cons 0 1) "Z")
                      (list (cons 0 5) (cons 0 6) "W")))))"#,
@@ -246,7 +246,7 @@ fn apply_text_edits_version_mismatch_rejected() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-text-edits! (current-buffer)
                    (list (list (cons 0 0) (cons 0 1) "Z"))
                    #:expect-generation {stale_gen})))"#
@@ -276,7 +276,7 @@ fn apply_workspace_edit_changes_shape() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-workspace-edit!
                    (hash "changes"
                      (hash {:?}
@@ -313,7 +313,7 @@ fn apply_workspace_edit_document_changes_shape() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-workspace-edit!
                    (hash "documentChanges"
                      (list (hash "textDocument" (hash "uri" {:?} "version" void)
@@ -349,7 +349,7 @@ fn apply_workspace_edit_mixed_open_and_unopened_files() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-workspace-edit!
                    (hash "changes"
                      (hash {:?} (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -401,7 +401,7 @@ fn apply_workspace_edit_one_invalid_file_aborts_the_whole_edit() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-workspace-edit!
                    (hash "documentChanges"
                      (list
@@ -450,7 +450,7 @@ fn apply_workspace_edit_duplicate_entry_for_the_same_file_is_rejected_not_a_pani
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (apply-workspace-edit!
                    (hash "documentChanges"
                      (list
@@ -489,7 +489,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list (current-buffer) 0 3))))"#,
     );
     let before = state(&ed);
@@ -512,7 +512,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list (current-buffer) 0 0))))"#,
     );
 
@@ -562,7 +562,7 @@ fn goto_location_other_open_buffer_by_path_string() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (goto-location! (list {:?} 0 1))))"#,
             file.to_str().unwrap()
         ),
@@ -583,7 +583,7 @@ fn goto_location_unopened_path_opens_it() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (goto-location! (list {:?} 0 2))))"#,
             file.to_str().unwrap()
         ),
@@ -600,7 +600,7 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list (current-buffer) 999 0))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -645,7 +645,7 @@ fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list (current-buffer) 20 0))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -680,7 +680,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list {dir_target:?} 0 0))))"#
         ),
     );
@@ -707,7 +707,7 @@ fn goto_missing_path_opens_new_file_buffer() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
              (goto-location! (list {target_str:?} 0 0))))"#
         ),
     );

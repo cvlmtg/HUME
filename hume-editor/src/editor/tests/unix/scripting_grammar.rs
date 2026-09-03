@@ -86,7 +86,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     // rather than through the full `init_scripting` path.
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
-        r#"(define-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        r#"(define-typed-command! "attach-json" "Attach JSON grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
         parser.display(),
         hl.display(),
     );
@@ -381,7 +381,7 @@ fn install_real_json_grammar_e2e() {
     // scan at the first non-[A-Za-z_-] char (Vim convention — digits are args).
     let prelude_src = std::fs::read_to_string(runtime_scheme_dir().join("prelude.scm")).unwrap();
     let body = format!(
-        r#"(define-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
+        r#"(define-typed-command! "attach-json" "attach json grammar" (lambda () (register-grammar! "json" "{}" "tree_sitter_json" "{}")))"#,
         out_path.display(),
         hl_path.display(),
     );

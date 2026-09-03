@@ -469,7 +469,7 @@ fn get_option_round_trips_word_chars() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "check" "" (lambda ()
+        r#"(define-typed-command! "check" "" (lambda ()
              (log! 'info (get-option (current-buffer) "word-chars"))))"#,
     );
     type_cmd(&mut ed, ":check");

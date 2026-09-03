@@ -28,6 +28,28 @@ fn command_completer_prefix_filters() {
     assert!(result.candidates.iter().any(|c| c.replacement == "quit"));
 }
 
+/// `:` Tab completion offers only typed commands — an editor (key-bindable)
+/// command's name must never appear, even though it's a real registered
+/// name. See `registry/mod.rs`'s module doc.
+#[test]
+fn command_completer_excludes_editor_commands() {
+    let (reg, store, dir) = make_ctx_parts();
+    let ctx = ctx(&reg, &store, dir.path());
+    let result = CommandCompleter.complete("", 0, &ctx);
+    for editor_cmd in ["select-next-word", "move-left", "clear-search"] {
+        assert!(
+            !result
+                .candidates
+                .iter()
+                .any(|c| c.replacement == editor_cmd),
+            "{editor_cmd} is an editor command and must not appear in : completion"
+        );
+    }
+    // A typed command with the same "move-"-ish shape stays absent too —
+    // sanity that the filter isn't accidentally over-broad.
+    assert!(result.candidates.iter().any(|c| c.replacement == "write"));
+}
+
 #[test]
 fn command_completer_no_match_returns_empty() {
     let (reg, store, dir) = make_ctx_parts();
@@ -115,7 +137,7 @@ fn command_completer_non_ascii_name_does_not_panic() {
         name: Cow::Borrowed("naïve-cmd"),
         doc: Cow::Borrowed(""),
         aliases: &[],
-        fun: noop,
+        body: crate::editor::registry::TypedBody::Native(noop),
         completer: None,
     });
     let store = crate::editor::buffer::store::BufferStore::new();

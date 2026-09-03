@@ -76,6 +76,8 @@ pub(crate) struct MockHost {
     pub(crate) grammars: rustc_hash::FxHashSet<String>,
     /// Commands registered via `(define-command! …)` during evals.
     pub(crate) registered_cmds: Vec<hume_scripting::SteelCmdDef>,
+    /// Typed commands registered via `(define-typed-command! …)` during evals.
+    pub(crate) registered_typed_cmds: Vec<hume_scripting::SteelTypedCmdDef>,
     /// Names treated as native by `command_is_native`.  Empty by default
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
@@ -93,10 +95,19 @@ impl MockHost {
             settings: hume::settings::EditorSettings::default(),
             grammars: rustc_hash::FxHashSet::default(),
             registered_cmds: Vec::new(),
+            registered_typed_cmds: Vec::new(),
             native_names: rustc_hash::FxHashSet::default(),
             dispatched_native: Vec::new(),
             lazy_cmds: rustc_hash::FxHashMap::default(),
         }
+    }
+
+    /// Whether `name` is already claimed by a defined (non-Lazy) command,
+    /// mappable or typed — the two vectors are one namespace in the real
+    /// registry. Shared by `register_command`/`register_typed_command`.
+    fn is_registered(&self, name: &str) -> bool {
+        self.registered_cmds.iter().any(|d| d.name == name)
+            || self.registered_typed_cmds.iter().any(|d| d.name == name)
     }
 }
 
@@ -292,11 +303,12 @@ impl CommandHost for MockHost {
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
         // Mirrors `EditorHostImpl::register_command` (host_impl.rs), reduced
         // to what this mock actually tracks: a name already in
-        // `registered_cmds` is a SteelBacked/native/typed conflict (the real
-        // host's `Some(_) => Err` branch); a name only in `lazy_cmds` is a
-        // `Lazy` stub, which the real `CommandRegistry::register` allows
-        // overwriting (`Some(Lazy) | None => Ok`) — so clear it here too.
-        if self.registered_cmds.iter().any(|d| d.name == def.name) {
+        // `registered_cmds`/`registered_typed_cmds` is a SteelBacked/native/
+        // typed conflict (the real host's `Some(_) => Err` branch); a name
+        // only in `lazy_cmds` is a `Lazy` stub, which the real
+        // `CommandRegistry::register` allows overwriting (`Some(Lazy) | None
+        // => Ok`) — so clear it here too.
+        if self.is_registered(&def.name) {
             return Err(format!(
                 "define-command!: '{}' conflicts with existing command",
                 def.name
@@ -306,8 +318,26 @@ impl CommandHost for MockHost {
         self.registered_cmds.push(def);
         Ok(())
     }
+    fn register_typed_command(
+        &mut self,
+        def: hume_scripting::SteelTypedCmdDef,
+    ) -> Result<(), String> {
+        // Mirrors `register_command` above — mappable and typed names share
+        // one namespace in the real registry, so the collision check covers
+        // both vectors (see `is_registered`).
+        if self.is_registered(&def.name) {
+            return Err(format!(
+                "define-typed-command!: '{}' conflicts with existing command",
+                def.name
+            ));
+        }
+        self.lazy_cmds.remove(&def.name);
+        self.registered_typed_cmds.push(def);
+        Ok(())
+    }
     fn unregister_command(&mut self, name: &str) {
         self.registered_cmds.retain(|d| d.name != name);
+        self.registered_typed_cmds.retain(|d| d.name != name);
     }
     fn register_lazy_command(
         &mut self,
@@ -320,6 +350,14 @@ impl CommandHost for MockHost {
         // real behavior it's meant to prove. Tests that need real collision
         // semantics use a real `Editor` + `EditorHostImpl` instead (see
         // `hume-editor/src/editor/tests/plugins.rs`).
+        self.lazy_cmds.insert(name.to_owned(), plugin.clone());
+        Ok(())
+    }
+    fn register_lazy_typed_command(
+        &mut self,
+        name: &str,
+        plugin: &hume_scripting::attribution::PluginId,
+    ) -> Result<(), String> {
         self.lazy_cmds.insert(name.to_owned(), plugin.clone());
         Ok(())
     }

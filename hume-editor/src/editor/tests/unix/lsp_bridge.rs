@@ -31,7 +31,7 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash)
                (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker"))))
                #:supersede "k")
@@ -121,7 +121,7 @@ fn callback_fires_normally_without_an_intervening_edit() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "test-cmd" "" (lambda ()
+            r#"(define-typed-command! "test-cmd" "" (lambda ()
                  (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right")))))"#
         ),
@@ -155,7 +155,7 @@ fn stale_response_is_dropped_without_allow_stale() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "test-cmd" "" (lambda ()
+            r#"(define-typed-command! "test-cmd" "" (lambda ()
                  (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right")))))"#
         ),
@@ -195,7 +195,7 @@ fn allow_stale_delivers_despite_buffer_moving_on() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "test-cmd" "" (lambda ()
+            r#"(define-typed-command! "test-cmd" "" (lambda ()
                  (lsp-request #f "textDocument/hover" (hash "textDocument" (hash "uri" "{uri}")) (lambda (err result)
                    (call! "move-right")) #:allow-stale #t)))"#
         ),
@@ -255,7 +255,7 @@ fn didchange_reaches_the_wire_before_a_same_dispatch_request() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(define-command! "test-cmd" "" (lambda ()
+        r#"(define-typed-command! "test-cmd" "" (lambda ()
              (apply-text-edits! (current-buffer) (list (list (cons 0 0) (cons 0 0) "Z")))
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result) (begin)))))"#,
         tmp.path(),

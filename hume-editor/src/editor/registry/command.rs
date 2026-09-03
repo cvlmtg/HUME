@@ -515,20 +515,9 @@ pub(crate) enum ArgCompleter {
 /// stored in [`super::CommandRegistry`] alongside [`MappableCommand`] entries in a
 /// single `HashMap`, sharing the same namespace.
 ///
-/// The function signature differs from mappable commands: it receives an
-/// optional string argument (e.g. the path for `:w foo.txt`) and a force flag
-/// (whether `!` was appended), rather than a numeric count.
-///
-/// `fun` deliberately keeps `&mut Editor` rather than [`EditorCmdFn`]'s
-/// `(&mut EditorState, &mut EngineView, …)` shape, for three reasons: typed
-/// commands are not Steel-dispatchable — only callers are the `:` command
-/// line and tests, so `&mut Editor` here never runs while the Steel engine is
-/// borrowed; some handlers genuinely need shell-level fields (`:e` and `:set
-/// buffer language=` reach `scripting` for `activate_lazy_language_plugins`
-/// and `parse_worker` for `setup_buffer_syntax`, neither reachable from the
-/// coarse shape); and this is the Editor-orchestration layer, driving
-/// whole-app ops (`:w`, `:e`, `:bd`, `:split`, `:set language`) that
-/// legitimately span state + view + `parse_worker` + Steel together.
+/// The signature differs from mappable commands: it receives an optional
+/// string argument (e.g. the path for `:w foo.txt`) and a force flag (whether
+/// `!` was appended), rather than a numeric count — see [`TypedBody`].
 pub(crate) struct TypedCommand {
     /// Canonical name, e.g. `"write"`. Used as the registry key.
     pub name: Cow<'static, str>,
@@ -541,9 +530,48 @@ pub(crate) struct TypedCommand {
     /// `&'static [&'static str]` covers all built-in commands. Steel-registered
     /// typed commands pass `&[]` and register aliases separately if needed.
     pub aliases: &'static [&'static str],
-    /// The function to execute. Receives the editor, an optional argument
-    /// (e.g. a file path), and whether `!` was appended.
-    pub fun: fn(&mut super::super::Editor, Option<&str>, bool) -> Result<(), CommandError>,
+    /// How this command executes — see [`TypedBody`].
+    pub body: TypedBody,
     /// Argument completer for this command's `:` command-line argument, if any.
     pub completer: Option<ArgCompleter>,
+}
+
+/// How a [`TypedCommand`] executes when dispatched from `:`.
+///
+/// Three shapes, mirroring [`MappableCommand`]'s native/Steel/Lazy split —
+/// but a typed command is never Steel-dispatchable *itself* the way
+/// `MappableCommand::SteelBacked` is (there is no `(write)` bare binding);
+/// `Steel`/`Lazy` here mean the command's *body* is a Steel lambda invoked
+/// only from the `:` line, defined via `(define-typed-command! …)`.
+pub(crate) enum TypedBody {
+    /// A command implemented in Rust. Receives the editor, an optional
+    /// argument (e.g. a file path), and whether `!` was appended.
+    ///
+    /// Kept as `&mut Editor` rather than [`EditorCmdFn`]'s `(&mut
+    /// EditorState, &mut EngineView, …)` shape, for three reasons: the only
+    /// callers are the `:` command line and tests, so `&mut Editor` here
+    /// never runs while the Steel engine is borrowed; some handlers
+    /// genuinely need shell-level fields (`:e` and `:set buffer language=`
+    /// reach `scripting` for `activate_lazy_language_plugins` and
+    /// `parse_worker` for `setup_buffer_syntax`, neither reachable from the
+    /// coarse shape); and this is the Editor-orchestration layer, driving
+    /// whole-app ops (`:w`, `:e`, `:bd`, `:split`, `:set language`) that
+    /// legitimately span state + view + `parse_worker` + Steel together.
+    Native(fn(&mut super::super::Editor, Option<&str>, bool) -> Result<(), CommandError>),
+    /// A command implemented as a Steel lambda, registered by
+    /// `(define-typed-command! …)`. The lambda receives `(arg force)`,
+    /// `(arg)`, or `()` based on its declared arity — see
+    /// `Editor::run_typed_steel_command` in `dispatch.rs`.
+    Steel {
+        /// Number of required positional parameters (0, 1, or 2).
+        arity: u16,
+        /// `true` if the lambda accepts a rest parameter.
+        is_variadic: bool,
+        /// `true` if dispatch should bracket the call with an alt-screen exit
+        /// so subprocess output streams live to the terminal.
+        inline_output: bool,
+    },
+    /// A placeholder for a lazy plugin's typed command that has not yet been
+    /// loaded. Mirrors [`MappableCommand::Lazy`] — see its doc.
+    Lazy(hume_scripting::attribution::PluginId),
 }

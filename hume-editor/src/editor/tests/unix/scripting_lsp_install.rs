@@ -615,7 +615,7 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
         &mut ed,
         data_tmp.path(),
         "(load-plugin \"core:stdlib\")\n\
-         (declare-plugin \"core:lsp\" #:commands '(\"lsp-install\"))",
+         (declare-plugin \"core:lsp\" #:typed-commands '(\"lsp-install\"))",
     );
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");

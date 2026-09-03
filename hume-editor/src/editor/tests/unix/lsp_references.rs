@@ -75,7 +75,9 @@ fn setup(
 }
 
 fn run_references(ed: &mut Editor) {
-    type_cmd(ed, ":lsp-references");
+    // lsp-references is key-bindable, not typed — dispatch through the
+    // keymap pipeline, the way its bound key (`z r`) would.
+    ed.execute_keymap_command("lsp-references".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

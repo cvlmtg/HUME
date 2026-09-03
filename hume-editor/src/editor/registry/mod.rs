@@ -8,7 +8,10 @@
 //! - [`TypedCommand`] — invocable from the `:` command line. The dispatcher
 //!   in `execute_command` (`mappings/command_mode.rs`) calls
 //!   [`CommandRegistry::get_typed`] to resolve name or alias to a
-//!   `TypedCommand`.
+//!   `TypedCommand`. `:` resolves *only* typed commands — a mappable
+//!   command's name is unreachable from the command line, and a typed
+//!   command's name is unreachable from a key binding. Each is looked up by
+//!   its own accessor; there is no cross-kind fallback.
 //!
 //! The shared namespace prevents name collisions between the two kinds and
 //! provides a single source for `:help` and command-palette display.
@@ -41,7 +44,7 @@ mod defaults;
 
 pub(crate) use command::{
     ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, SelectionBody, SelectionTracking,
-    StructuralBody, TypedCommand,
+    StructuralBody, TypedBody, TypedCommand,
 };
 pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
@@ -73,11 +76,10 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
 /// - **Typed commands** are invoked from the `:` command line. The dispatcher
 ///   (`execute_command` in `mappings/command_mode.rs`) resolves them via
 ///   [`Self::get_typed`]. Aliases are supported via [`Self::alias_map`].
-/// - The `:` command line also falls back to **mappable commands** when no
-///   typed command matches — any mappable command can be invoked by name
-///   from the command line with an implicit `count = 1`.
 ///
-/// The single `commands` map prevents name collisions between the two kinds.
+/// The two are strictly separate: `:` resolves only typed commands ([`Self::get_typed`]),
+/// a key binding resolves only mappable commands ([`Self::get_mappable`]). The single
+/// `commands` map still prevents name collisions between them.
 pub(crate) struct CommandRegistry {
     /// All commands keyed by canonical name.
     commands: FxHashMap<Cow<'static, str>, Command>,
@@ -121,17 +123,22 @@ impl CommandRegistry {
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
-    /// Remove a single dynamic (`SteelBacked`/`Lazy`) command by name.
+    /// Remove a single dynamic Steel-defined command by name — a mappable
+    /// `SteelBacked`/`Lazy`, or a typed `TypedBody::Steel`/`TypedBody::Lazy`.
     ///
-    /// Native mappables and typed commands are never removed: every caller
-    /// (Lazy-stub cleanup, failed-plugin rollback) only legitimately owns
-    /// dynamic entries, so refusing anything else keeps a buggy rollback from
-    /// deleting a built-in command for the rest of the session.
+    /// Native mappables and native typed commands are never removed: every
+    /// caller (Lazy-stub cleanup, failed-plugin rollback) only legitimately
+    /// owns dynamic entries, so refusing anything else keeps a buggy rollback
+    /// from deleting a built-in command for the rest of the session.
     pub(crate) fn unregister(&mut self, name: &str) {
-        if matches!(
-            self.commands.get(name),
-            Some(Command::Mappable(mc)) if !mc.is_native()
-        ) {
+        let removable = match self.commands.get(name) {
+            Some(Command::Mappable(mc)) => !mc.is_native(),
+            Some(Command::Typed(tc)) => {
+                matches!(tc.body, TypedBody::Steel { .. } | TypedBody::Lazy(_))
+            }
+            None => false,
+        };
+        if removable {
             self.commands.remove(name);
         }
     }
@@ -147,8 +154,8 @@ impl CommandRegistry {
     /// Register a typed command.
     ///
     /// Inserts the canonical name into `commands` and each alias into
-    /// `alias_map`. This is the future `define-typed-command!` entry point
-    /// for the Steel scripting layer.
+    /// `alias_map`. Called by the native default registrations and by
+    /// `(define-typed-command! …)`.
     pub(crate) fn register_typed(&mut self, cmd: TypedCommand) {
         let canonical = cmd.name.clone();
         for &alias in cmd.aliases {
@@ -176,9 +183,9 @@ impl CommandRegistry {
 
     /// Look up a typed command by canonical name or alias (case-insensitive).
     ///
-    /// Returns `None` if the name is unknown or resolves to a mappable command.
-    /// The `:` command dispatcher falls back to [`Self::get_mappable`] when
-    /// this returns `None` — see `execute_command` in `mappings/command_mode.rs`.
+    /// Returns `None` if the name is unknown or resolves to a mappable
+    /// command — `:` never falls back to a mappable command; see
+    /// `execute_command` in `mappings/command_mode.rs`.
     pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
         let canonical = ci_get(&self.alias_map, name)
             .map(|c| c.as_ref())
@@ -192,6 +199,16 @@ impl CommandRegistry {
     /// Iterate over all registered canonical command names (not aliases).
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
         self.commands.keys().map(|k| k.as_ref())
+    }
+
+    /// Iterate over the canonical names of every registered typed command
+    /// (not aliases). Feeds `:` Tab completion (`CommandCompleter`) — the
+    /// typed-only counterpart of [`Self::native_mappable_names`].
+    pub(crate) fn typed_names(&self) -> impl Iterator<Item = &str> {
+        self.commands.iter().filter_map(|(k, v)| match v {
+            Command::Typed(_) => Some(k.as_ref()),
+            _ => None,
+        })
     }
 
     /// Iterate over the names of native mappable commands only:
@@ -214,7 +231,20 @@ impl CommandRegistry {
         self.commands.len()
     }
 
-    /// Every current `Lazy` stub as `(name, owning plugin)`.
+    /// The plugin owning `name`'s `Lazy` stub — mappable or typed alike — or
+    /// `None` if `name` is not a pending lazy activation entry.
+    ///
+    /// Single source of truth for "is this name currently claimed as a lazy
+    /// stub": since the two kinds share one namespace, `define-command!`'s
+    /// and `define-typed-command!`'s self-ownership guards, and lazy-plugin
+    /// activation's unresolved-stub check, all read this rather than
+    /// matching on `Command::Mappable`/`Command::Typed` themselves.
+    pub(crate) fn lazy_owner(&self, name: &str) -> Option<&hume_scripting::attribution::PluginId> {
+        lazy_owner_of(self.commands.get(name)?)
+    }
+
+    /// Every current `Lazy` stub as `(name, owning plugin)` — mappable and
+    /// typed alike.
     ///
     /// Used by `:plugin-status` (via `lazy_status_string`) to report which
     /// commands a `Declared` plugin is still waiting on — the registry is the
@@ -222,28 +252,40 @@ impl CommandRegistry {
     pub(crate) fn lazy_stubs(&self) -> Vec<(String, hume_scripting::attribution::PluginId)> {
         self.commands
             .iter()
-            .filter_map(|(name, cmd)| match cmd {
-                Command::Mappable(MappableCommand::Lazy { plugin, .. }) => {
-                    Some((name.as_ref().to_string(), plugin.clone()))
-                }
-                _ => None,
+            .filter_map(|(name, cmd)| {
+                lazy_owner_of(cmd).map(|plugin| (name.as_ref().to_string(), plugin.clone()))
             })
             .collect()
     }
 
-    /// Remove every remaining `Lazy` stub owned by `plugin`.
+    /// Remove every remaining `Lazy` stub owned by `plugin` — mappable and
+    /// typed alike.
     ///
     /// Called by `finish_lazy_activation` (via `CommandHost::unregister_lazy_
     /// stubs_of`) on both the success and failure path — never touches a
-    /// `SteelBacked` command, even one that just replaced a stub of the same
-    /// name for this plugin.
+    /// resolved `SteelBacked`/`Steel` command, even one that just replaced a
+    /// stub of the same name for this plugin.
     pub(crate) fn unregister_lazy_stubs_of(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
     ) {
-        self.commands.retain(|_, cmd| {
-            !matches!(cmd, Command::Mappable(MappableCommand::Lazy { plugin: p, .. }) if p == plugin)
-        });
+        self.commands
+            .retain(|_, cmd| lazy_owner_of(cmd) != Some(plugin));
+    }
+}
+
+/// Shared match behind [`CommandRegistry::lazy_owner`],
+/// [`CommandRegistry::lazy_stubs`], and [`CommandRegistry::unregister_lazy_stubs_of`]
+/// — a free function (not a `&self` method) so it can be called from inside
+/// `self.commands`'s own iterator/`retain` closures without a borrow conflict.
+fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::PluginId> {
+    match cmd {
+        Command::Mappable(MappableCommand::Lazy { plugin, .. }) => Some(plugin),
+        Command::Typed(TypedCommand {
+            body: TypedBody::Lazy(plugin),
+            ..
+        }) => Some(plugin),
+        _ => None,
     }
 }
 

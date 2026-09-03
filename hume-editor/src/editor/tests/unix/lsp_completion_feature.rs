@@ -204,7 +204,7 @@ fn null_response_opens_no_session() {
     // Directly exercise the session state the completion orchestration tests
     // already cover: no
     // active session means accept! must error.
-    let source = r#"(define-command! "try-accept" "" (lambda () (completion-accept! 0)))"#;
+    let source = r#"(define-typed-command! "try-accept" "" (lambda () (completion-accept! 0)))"#;
     let mut host = ed.scripting.take().unwrap();
     eval_with_real_host(&mut ed, &mut host, source, tmp.path());
     ed.scripting = Some(host);

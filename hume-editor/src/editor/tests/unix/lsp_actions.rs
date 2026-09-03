@@ -95,7 +95,9 @@ fn setup_with_capabilities(
 }
 
 fn run_actions(ed: &mut Editor) {
-    type_cmd(ed, ":lsp-code-actions");
+    // lsp-code-actions is key-bindable, not typed — dispatch through the
+    // keymap pipeline, the way its bound key (`z a`) would.
+    ed.execute_keymap_command("lsp-code-actions".into(), Some(1), false);
     ed.settle();
     ed.drain_lsp();
     ed.settle();

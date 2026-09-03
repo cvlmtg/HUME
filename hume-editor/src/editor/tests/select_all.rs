@@ -9,11 +9,7 @@ fn select_all_matches_creates_selection_per_match() {
     // "ab cd ab\n" — two "ab" matches at 0 and 6.
     let mut ed = editor_from("-[a]>b cd ab\n").with_search_regex("ab");
 
-    ed.handle_key(key(':'));
-    for ch in "select-all-matches".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
 
     assert_eq!(
         ed.current_selections().len(),
@@ -31,11 +27,7 @@ fn select_all_matches_no_search_is_noop() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     let original = state(&ed);
 
-    ed.handle_key(key(':'));
-    for ch in "select-all-matches".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
 
     assert_eq!(state(&ed), original);
 }
@@ -48,11 +40,7 @@ fn select_all_matches_uses_search_register_fallback() {
     // No live regex — forces register fallback.
     assert!(ed.search_pattern().is_none());
 
-    ed.handle_key(key(':'));
-    for ch in "select-all-matches".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    ed.execute_keymap_command("select-all-matches".into(), Some(1), false);
 
     assert_eq!(ed.current_selections().len(), 2);
 }

@@ -432,7 +432,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         &mut ed,
         &mut host,
         r#"(register-hook! 'on-buffer-close (lambda (bid) (log! 'warn "close-hook-fired")))
-           (define-command! "go" "" (lambda () (close-buffer! (current-buffer))))"#,
+           (define-typed-command! "go" "" (lambda () (close-buffer! (current-buffer))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);

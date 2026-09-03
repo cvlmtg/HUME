@@ -144,7 +144,7 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
         &mut ed,
         &mut host,
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (define b (open-buffer! "{file_str}"))
                  (set-buffer-language! b "notes")))"#
         ),

@@ -1668,16 +1668,17 @@ fn mil_on_empty_line_is_noop() {
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
 
-// ── Minibuffer arity-rule for Steel commands ──────────────────────────────
+// ── Typed-command arity rule for Steel commands ───────────────────────────
 
-/// Wire up a Steel command and return the editor + scripting host ready for use.
+/// Wire up a Steel *typed* command and return the editor + scripting host
+/// ready for use.
 ///
-/// Uses `EditorHostImpl` so `define-command!` registers the command directly
-/// into the editor's `CommandRegistry` inline — no separate `register_steel_cmds`
-/// needed.  The `arity` / `is_variadic` override re-registers with explicit
-/// values (useful when the test arity differs from what Steel infers).
-fn setup_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) -> Editor {
-    use crate::editor::registry::MappableCommand;
+/// Uses `EditorHostImpl` so `define-typed-command!` registers the command
+/// directly into the editor's `CommandRegistry` inline. The `arity` /
+/// `is_variadic` override re-registers with explicit values (useful when the
+/// test arity differs from what Steel infers).
+fn setup_typed_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) -> Editor {
+    use crate::editor::registry::{TypedBody, TypedCommand};
     use crate::editor::scripting_setup::make_init_host;
     use hume_scripting::ScriptingHost;
 
@@ -1687,30 +1688,30 @@ fn setup_arity_test(src: &str, name: &str, arity: u16, is_variadic: bool) -> Edi
         let mut init_host = make_init_host(&mut ed.state, &mut ed.view);
         host.eval_source(src, &mut init_host).unwrap();
     }
-    // Override arity/is_variadic so minibuffer dispatch uses the test-supplied values.
-    ed.state
-        .config
-        .registry
-        .register(MappableCommand::SteelBacked {
-            name: name.to_owned().into(),
-            doc: std::borrow::Cow::Borrowed(""),
+    // Override arity/is_variadic so typed dispatch uses the test-supplied values.
+    ed.state.config.registry.register_typed(TypedCommand {
+        name: name.to_owned().into(),
+        doc: std::borrow::Cow::Borrowed(""),
+        aliases: &[],
+        body: TypedBody::Steel {
             arity,
             is_variadic,
             inline_output: false,
-            repeatable: false,
-        });
+        },
+        completer: None,
+    });
     ed.scripting = Some(host);
     ed
 }
 
-/// arity-1 + string arg: the rule converts the typed string to `StringV` and the
-/// lambda receives it, queuing it as a command name, which runs `move-right`.
+/// arity-1 + typed arg: the arg reaches the lambda as `StringV`, queued as a
+/// command name via `call!`, which runs `move-right`.
 /// Oracle: state changes → cursor moved → arg was forwarded.
 /// Verification: changing "move-right" in the assert to something else → fails.
 #[test]
-fn minibuffer_arity_rule_forwards_string_arg_to_arity_1() {
-    let mut ed = setup_arity_test(
-        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+fn typed_arity_rule_forwards_string_arg_to_arity_1() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
         "echo-cmd",
         1,
         false,
@@ -1731,21 +1732,21 @@ fn minibuffer_arity_rule_forwards_string_arg_to_arity_1() {
     );
 }
 
-/// arity-1 + no arg: the rule passes `IntV(1)` as default count.  A string-type
-/// lambda that checks `(string? x)` gets an integer, fails the check, and does
-/// nothing — cursor stays put.  A count-type lambda `(lambda (count) ...)` gets
-/// a valid count=1 rather than a type-mismatch boolean.
+/// arity-1 + no arg: the rule passes `#f` (Scheme's spelling of "no argument
+/// typed"), not a sentinel string or a fabricated count. A string-type lambda
+/// that checks `(string? x)` gets a boolean, fails the check, and does
+/// nothing — cursor stays put.
 #[test]
-fn minibuffer_arity_rule_passes_default_count_when_no_arg() {
-    let mut ed = setup_arity_test(
-        r#"(define-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
+fn typed_arity_rule_passes_false_when_no_arg() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "echo-cmd" "" (lambda (x) (when (string? x) (call! x))))"#,
         "echo-cmd",
         1,
         false,
     );
 
     let before = state(&ed);
-    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes IntV(1); string guard rejects it.
+    // `:echo-cmd<Enter>` — no arg → arity-1 rule passes #f; string guard rejects it.
     ed.handle_key(key(':'));
     for ch in "echo-cmd".chars() {
         ed.handle_key(key(ch));
@@ -1759,30 +1760,57 @@ fn minibuffer_arity_rule_passes_default_count_when_no_arg() {
     );
 }
 
-/// arity-2 + one arg (the most the minibuffer can supply): the rule reports an
-/// error and never invokes the command.  Cursor stays; error is logged.
-/// The command needs no real lambda — the early return fires before call_steel_cmd.
+/// arity-2 (`arg force`, the most a typed command can receive): both values
+/// reach the lambda — the arg as `StringV`, `!` as `#t`.
 #[test]
-fn minibuffer_arity_rule_errors_on_arity_2() {
-    use crate::editor::registry::MappableCommand;
-
-    let mut ed = editor_from("-[a]>b\n");
-    ed.state
-        .config
-        .registry
-        .register(MappableCommand::SteelBacked {
-            name: "needs-two".to_owned().into(),
-            doc: std::borrow::Cow::Borrowed(""),
-            arity: 2,
-            is_variadic: false,
-            inline_output: false,
-            repeatable: false,
-        });
+fn typed_arity_rule_forwards_arg_and_force_to_arity_2() {
+    let mut ed = setup_typed_arity_test(
+        r#"(define-typed-command! "echo-cmd" ""
+             (lambda (x force) (when (and (string? x) force) (call! x))))"#,
+        "echo-cmd",
+        2,
+        false,
+    );
 
     let before = state(&ed);
-    // `:needs-two<Enter>` — arity-2 command, minibuffer can only supply 1 arg.
+    // `:echo-cmd! move-right<Enter>` — force=#t only when `!` is appended.
     ed.handle_key(key(':'));
-    for ch in "needs-two".chars() {
+    for ch in "echo-cmd! move-right".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_ne!(
+        state(&ed),
+        before,
+        "arity-2 rule must forward both arg and force; cursor must have moved"
+    );
+}
+
+/// arity-3 (more than a typed command can supply): the rule reports an error
+/// and never invokes the command. Cursor stays; error is logged. The command
+/// needs no real lambda — the early return fires before call_steel_cmd.
+#[test]
+fn typed_arity_rule_errors_on_arity_3() {
+    use crate::editor::registry::{TypedBody, TypedCommand};
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.state.config.registry.register_typed(TypedCommand {
+        name: "needs-three".to_owned().into(),
+        doc: std::borrow::Cow::Borrowed(""),
+        aliases: &[],
+        body: TypedBody::Steel {
+            arity: 3,
+            is_variadic: false,
+            inline_output: false,
+        },
+        completer: None,
+    });
+
+    let before = state(&ed);
+    // `:needs-three<Enter>` — arity-3 command, typed dispatch supplies at most 2.
+    ed.handle_key(key(':'));
+    for ch in "needs-three".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
@@ -1796,7 +1824,7 @@ fn minibuffer_arity_rule_errors_on_arity_2() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.text.contains("requires 2 args")),
+            .any(|e| e.text.contains("supplies at most 2")),
         "arity rule must log a user-facing error"
     );
 }

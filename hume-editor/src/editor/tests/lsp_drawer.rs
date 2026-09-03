@@ -13,7 +13,7 @@ fn arm_three_items(ed: &mut Editor, tmp: &Path) {
     run(
         ed,
         tmp,
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (show-drawer-list! (list "one.rs:1" "two.rs:2" "three.rs:3")
                (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
@@ -69,7 +69,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "refresh" "" (lambda ()
+        r#"(define-typed-command! "refresh" "" (lambda ()
              (show-drawer-list! (list "replaced")
                (lambda (idx) (void)))))"#,
     );
@@ -223,7 +223,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (show-drawer-list! (list {items_scm})
                    (lambda (idx) (log! 'info (to-string idx))))))"#
         ),
@@ -270,7 +270,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
         ed,
         tmp,
         &format!(
-            r#"(define-command! "go" "" (lambda ()
+            r#"(define-typed-command! "go" "" (lambda ()
                  (show-drawer-list! (list {items_scm})
                    (lambda (idx) (log! 'info (to-string idx))))))"#
         ),
@@ -361,7 +361,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (show-drawer-list! (list "line 3")
                (lambda (idx) (goto-location! (list (current-buffer) 2 1))))))"#,
     );
@@ -397,7 +397,7 @@ fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "go" "" (lambda ()
+        r#"(define-typed-command! "go" "" (lambda ()
              (show-drawer-list! (list "src/a.rs:1: unused import" "src/b.rs:9: TODO")
                (lambda (idx) (void)))))"#,
     );

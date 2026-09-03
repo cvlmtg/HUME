@@ -1,16 +1,17 @@
 (require-builtin steel/meta as hm.)
 
-(define (declare-plugin name #:commands  [commands  '()]
-                             #:events    [events    '()]
-                             #:languages [languages '()]
-                             #:config    [config    (hash)])
-  (if (and (null? commands) (null? events) (null? languages))
+(define (declare-plugin name #:commands       [commands       '()]
+                             #:typed-commands [typed-commands '()]
+                             #:events         [events         '()]
+                             #:languages      [languages      '()]
+                             #:config         [config         (hash)])
+  (if (and (null? commands) (null? typed-commands) (null? events) (null? languages))
       (let ((prog (%begin-manifest-declare! name config)))
         (when prog
           (with-handler
             (lambda (e) (%finish-manifest-declare! name #f) (raise-error e))
             (begin (hm.eval-string prog) (%finish-manifest-declare! name #t)))))
-      (%declare-plugin! name commands events languages config)))
+      (%declare-plugin! name commands typed-commands events languages config)))
 
 (define (load-plugin name #:config [config (hash)])
   (%load-plugin! name config)
@@ -27,6 +28,10 @@
                          #:repeatable    [repeatable    #f]
                          #:inline-output [inline-output #f])
   (%define-command! name doc proc repeatable inline-output))
+
+(define (define-typed-command! name doc proc
+                               #:inline-output [inline-output #f])
+  (%define-typed-command! name doc proc inline-output))
 
 (define (%dispatch-command name args)
   (let ((proc (%lookup-plugin-proc name)))

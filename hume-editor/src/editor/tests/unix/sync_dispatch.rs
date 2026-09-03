@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::dispatch::ArgSource;
 use hume_scripting::ScriptingHost;
 
 /// When a Lazy command stub is dispatched with extend=true (e.g. Ctrl+key), the
@@ -46,7 +45,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     ed.scripting = Some(host);
 
     // Dispatch with extend=true on the first (Lazy) call.
-    ed.execute_keymap_command("tp-branch".into(), Some(1), true, ArgSource::Keymap);
+    ed.execute_keymap_command("tp-branch".into(), Some(1), true);
 
     // move-right advances by 1 char on line 1; move-down would land on line 2.
     // (The inner (call! "move-right") dispatches without extend, so the

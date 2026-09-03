@@ -25,6 +25,32 @@ pub struct SteelCmdDef {
     pub repeatable: bool,
 }
 
+/// A Steel typed-command definition built by `define-typed-command!` during
+/// init or plugin load.
+///
+/// Passed immediately to [`crate::host::CommandHost::register_typed_command`]
+/// so the editor can insert a typed `Command::Typed` entry in its
+/// `CommandRegistry` inline — no deferred second pass after a successful eval.
+/// No `repeatable` field: dot-repeat is meaningless for a `:` command, so
+/// `define-typed-command!`'s Scheme wrapper declares no `#:repeatable`
+/// keyword to carry one from (an unrecognized `#:key value` pair at the call
+/// site is silently ignored by Steel's keyword-arg lambda syntax, not
+/// rejected — there is no enforcement here beyond the absent keyword).
+#[derive(Debug)]
+pub struct SteelTypedCmdDef {
+    pub name: String,
+    pub doc: String,
+    /// Number of required positional parameters the lambda accepts (0, 1, or
+    /// 2 — `(arg)`/`(arg force)`). Introspected once at definition time from
+    /// the closure's arity.
+    pub arity: u16,
+    /// `true` if the lambda accepts a rest parameter (variadic).
+    pub is_variadic: bool,
+    /// `true` if dispatch should bracket this command with an alt-screen exit
+    /// so subprocess output streams live to the terminal.
+    pub inline_output: bool,
+}
+
 /// Language identity registration queued by `(define-language! …)`, applied
 /// via `Editor::apply_pending_language_regs` as part of `Effect::LanguageReg`
 /// application (`Editor::apply_script_effects`).

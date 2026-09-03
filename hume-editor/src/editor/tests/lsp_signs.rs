@@ -26,7 +26,7 @@ fn plugin_sign_editor(signcolumn: Option<&str>, arm_body: &str) -> (Editor, Pane
         let bid = ed.focused_buffer_id();
         ed.state.buffers.get_mut(bid).overrides.signcolumn = Some(signcolumn.parse().unwrap());
     }
-    let source = format!(r#"(define-command! "arm" "" (lambda () {arm_body}))"#);
+    let source = format!(r#"(define-typed-command! "arm" "" (lambda () {arm_body}))"#);
     run(&mut ed, tmp.path(), &source);
     type_cmd(&mut ed, ":arm");
 
@@ -77,7 +77,7 @@ fn set_signs_for_an_unregistered_source_errors_naming_the_builtin() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "arm" "" (lambda ()
+        r#"(define-typed-command! "arm" "" (lambda ()
              (set-signs! "nope" (current-buffer) (list (list 0 "!" "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm");
@@ -111,7 +111,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "arm-b" "" (lambda ()
+        r#"(define-typed-command! "arm-b" "" (lambda ()
              (set-signs! "b" (current-buffer) (list (list 0 "-" "sc")))))"#,
     );
     type_cmd(&mut ed, ":arm-b");
@@ -126,7 +126,7 @@ fn registered_sources_keep_the_gutter_width_stable_as_signs_come_and_go() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-command! "clear-b" "" (lambda ()
+        r#"(define-typed-command! "clear-b" "" (lambda ()
              (set-signs! "b" (current-buffer) '())))"#,
     );
     type_cmd(&mut ed, ":clear-b");
