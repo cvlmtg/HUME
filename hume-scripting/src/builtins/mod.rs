@@ -245,6 +245,24 @@ macro_rules! builtins {
 // while the Engine is already borrowed. Defined here (not only prelude.scm)
 // so test harnesses without the full prelude still have it.
 //
+// %apply-command — %dispatch-command's shared funnel for both of its direct
+// (apply proc args) sites, so a #:inline-output command reached via call!
+// (a hook body, a timer thunk, another command's own body) gets the same
+// alt-screen bracket as one dispatched by keypress or `:`, which otherwise
+// only Editor::call_steel_command_body arms. %arm-inline-output! reads the
+// registry for `name`'s declared flag and, if set, saves whatever bracket
+// state was already live before installing a fresh one; %restore-inline-output!
+// pops it back. Deliberately NOT paired via with-handler: raising a native
+// error out of a handler nested inside an outer with-handler is the pinned
+// VM-stack-corruption hazard (known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack,
+// lib.rs), so a body that raises between the arm and the restore simply
+// skips the restore — the backstop is run_steel_session's own unconditional
+// drain of any unpopped saves at the end of every session, not a Steel-side
+// unwind. The arm is skipped for a name %arm-inline-output! doesn't declare
+// inline-output (native, unknown, un-activated Lazy), which is also why it's
+// unconditionally safe to call before every apply site rather than only the
+// ones already known to resolve to a SteelBacked command.
+//
 // %port-safe? — writing to `port` is TUI-safe unless it IS the real stdout
 // port, in which case defer to the gate (see builtins/io.rs's module doc for
 // why steel-core's original print fns are captured before PRINT_GATE_SHIMS
@@ -346,6 +364,11 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // %lookup-plugin-proc: returns the Steel closure for an activated plugin command,
         // or #f. Called by %dispatch-command in Steel to decide inline-apply vs. %call-native!.
         open "%lookup-plugin-proc" commands::lookup_plugin_proc(name: String);
+        // %arm-inline-output!/%restore-inline-output!: the call!-path counterpart
+        // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command's
+        // in-VM apply — see the BOOTSTRAP comment block above for the full picture.
+        open "%arm-inline-output!" commands::arm_inline_output(name: String);
+        open "%restore-inline-output!" commands::restore_inline_output();
         cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
         open "pending-char" commands::pending_char();
         open "command-plugin" commands::command_plugin(name: String);

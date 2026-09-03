@@ -69,14 +69,6 @@ pub(crate) struct SteelCtx<'a> {
     /// see [`EvalMode`] for the effective legality context builtins gate on,
     /// which also depends on the live `plugin_stack`.
     pub(crate) session: EvalSession,
-    /// True when it is safe to write directly to stdout: either during init
-    /// (before the alt-screen TUI is up) or inside an `#:inline-output` command
-    /// body (alt-screen temporarily left). See `EditorHost::is_inline_output_command`.
-    /// Gates all ten steel-core print shims (`displayln`/`display`/`print`/
-    /// `println`/`newline`/`write`/`write-string`/`write-char`/
-    /// `simple-display`/`simple-displayln`) via `%stdout-gate!`
-    /// (`builtins::io::stdout_gate`) — see that module's doc comment.
-    pub(crate) is_inline_output: bool,
     // ── Multi-buffer focus snapshot ──────────────────────────────────────────
     pub(crate) focused_pane_id: PaneId,
     pub(crate) focused_buffer_id: BufferId,
@@ -160,7 +152,6 @@ impl<'a> SteelCtx<'a> {
             wait_char_request: None,
             pending_char: None,
             session: EvalSession::Init,
-            is_inline_output: false,
             focused_pane_id: PaneId::default(),
             focused_buffer_id: BufferId::default(),
             live_focused_buffer_id: BufferId::default(),
@@ -259,10 +250,6 @@ impl<'a> SteelCtx<'a> {
         focused_buffer_id: BufferId,
         pending_char: Option<char>,
     ) -> Self {
-        // Read before `host` is moved into the struct below.
-        let is_inline_output = host
-            .output()
-            .is_some_and(|output| output.is_inline_output_command());
         Self {
             host,
             plugin_stack: host_bundle.plugin_stack,
@@ -276,7 +263,6 @@ impl<'a> SteelCtx<'a> {
             wait_char_request: None,
             pending_char,
             session: EvalSession::Runtime,
-            is_inline_output,
             focused_pane_id,
             focused_buffer_id,
             live_focused_buffer_id: focused_buffer_id,

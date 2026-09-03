@@ -56,11 +56,32 @@ pub(crate) struct EditorHostImpl<'a> {
     /// ever reaches `Armed` from that same call site, so its early return
     /// guarantees this is never read as `None` when it matters.
     pub(crate) terminal: Option<&'a hume_platform::terminal::SharedTerm>,
+    /// Whether `Editor::run`'s event loop currently owns the terminal — the
+    /// same flag `call_steel_command_body`'s own arm consults
+    /// (`Editor::tui_active`), threaded in here so `arm_inline_output` can
+    /// make the identical Armed-vs-Headless call for a `call!`-armed nested
+    /// command. Deliberately its own field rather than inferred from
+    /// `terminal.is_some()`: `attach_terminal` runs before the event loop
+    /// starts, so a live `terminal` handle does not by itself mean the
+    /// alt-screen is up.
+    pub(crate) tui_active: bool,
+    /// Whether the kitty keyboard protocol is active — carried into a fresh
+    /// `Armed` state the same way `call_steel_command_body` does today.
+    /// Meaningless (and unread) when `tui_active` is `false`.
+    pub(crate) kitty_enabled: bool,
 }
 
 impl<'a> EditorHostImpl<'a> {
     /// Convenience constructor for the (common) case with no LSP/timer
     /// access — init evals, and every non-LSP/non-timer test in the suite.
+    ///
+    /// `tui_active: false` unconditionally: every caller is either an init
+    /// eval (no event loop running yet) or a direct Rust helper that never
+    /// reaches Steel dispatch at all — neither has a live alt-screen to
+    /// protect, so a `call!` to an `#:inline-output` command reached this way
+    /// arms `Headless`, matching what happens today by accident (stdout stays
+    /// permitted at init because `EvalSession::Init` allows it independently;
+    /// see `builtins::io::stdout_is_safe`).
     pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
         Self {
             state,
@@ -68,6 +89,8 @@ impl<'a> EditorHostImpl<'a> {
             lsp: None,
             timers: None,
             terminal: None,
+            tui_active: false,
+            kitty_enabled: false,
         }
     }
 
@@ -76,6 +99,11 @@ impl<'a> EditorHostImpl<'a> {
     /// already split out (rather than `&mut Editor`) because each call site
     /// holds a simultaneous disjoint borrow of `self.scripting` — passing
     /// `self` as a whole would conflict with that borrow.
+    ///
+    /// `tui_active`/`kitty_enabled` are plain `bool`s read out of `Editor`
+    /// before the split (same disjoint-field-read shape as `terminal`) —
+    /// see `arm_inline_output`'s doc for why they can't be inferred from
+    /// `terminal.is_some()`.
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
@@ -86,6 +114,8 @@ impl<'a> EditorHostImpl<'a> {
             super::timer_bridge::TimerPayload,
         >,
         terminal: Option<&'a hume_platform::terminal::SharedTerm>,
+        tui_active: bool,
+        kitty_enabled: bool,
     ) -> Self {
         Self {
             state,
@@ -96,6 +126,8 @@ impl<'a> EditorHostImpl<'a> {
                 payloads: timer_payloads,
             }),
             terminal,
+            tui_active,
+            kitty_enabled,
         }
     }
 
@@ -822,6 +854,57 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
             self.state.inline_output_entered = true;
         }
         Ok(())
+    }
+
+    fn arm_inline_output(&mut self, name: &str) -> bool {
+        // Mappable only: `%dispatch-command` (`call!`'s expansion) reaches
+        // `command_table`/`get_mappable`, never `typed_command_table` — a
+        // typed command is not `call!`-reachable, so matching one here would
+        // arm for a path that can't actually happen.
+        let declared = matches!(
+            self.state.config.registry.get_mappable(name),
+            Some(MappableCommand::SteelBacked {
+                inline_output: true,
+                ..
+            })
+        );
+        if !declared {
+            return false;
+        }
+        // Mirrors `Editor::call_steel_command_body`'s own arm — except when
+        // the state we're saving is already `Entered`: the alt-screen is
+        // already open for this exact session, so adopt it directly rather
+        // than manufacturing a fresh `Armed` that would re-enter the bracket
+        // and reprint the running banner for a screen already showing.
+        let saved = std::mem::replace(
+            &mut self.state.inline_output,
+            super::InlineOutputDispatch::Inactive,
+        );
+        self.state.inline_output = if matches!(saved, super::InlineOutputDispatch::Entered) {
+            super::InlineOutputDispatch::Entered
+        } else if self.tui_active {
+            super::InlineOutputDispatch::Armed {
+                kitty: self.kitty_enabled,
+                mouse: self.state.settings.mouse_enabled,
+                name: name.to_string(),
+            }
+        } else {
+            super::InlineOutputDispatch::Headless
+        };
+        self.state.inline_output_saved.push(saved);
+        true
+    }
+
+    fn restore_inline_output(&mut self) {
+        if let Some(saved) = self.state.inline_output_saved.pop() {
+            self.state.inline_output = saved;
+        }
+    }
+
+    fn reset_inline_output(&mut self) {
+        while let Some(saved) = self.state.inline_output_saved.pop() {
+            self.state.inline_output = saved;
+        }
     }
 }
 

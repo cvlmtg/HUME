@@ -787,6 +787,8 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         lsp: None,
         timers: None,
         terminal: None,
+        tui_active: false,
+        kitty_enabled: false,
     };
     let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
     assert!(

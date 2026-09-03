@@ -343,6 +343,8 @@ macro_rules! live_host {
                 payloads: &mut $ed.timer_payloads,
             }),
             terminal: $ed.terminal.as_ref(),
+            tui_active: $ed.tui_active,
+            kitty_enabled: $ed.kitty_enabled,
         }
     }};
 }
@@ -940,6 +942,7 @@ mod file_io;
 mod find;
 mod incremental_parse;
 mod injections_editor;
+mod inline_output;
 mod jump_list;
 mod kitty;
 mod language;

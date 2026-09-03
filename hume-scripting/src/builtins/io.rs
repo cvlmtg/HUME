@@ -54,25 +54,35 @@ use crate::SteelCtx;
 use super::SteelResult;
 use super::errors::generic_err;
 
+/// Whether the host reports an inline-output bracket currently live —
+/// read fresh from `ctx.host` on every call rather than a value cached at
+/// session start, so a bracket a `call!`-armed nested command opens mid-body
+/// (`OutputHost::arm_inline_output`) is visible to the very next print.
+fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
+    ctx.host
+        .output()
+        .is_some_and(|output| output.is_inline_output_command())
+}
+
 /// Whether it is currently safe to write directly to the real process
 /// stdout: init (before the alt-screen TUI is up) or an `#:inline-output`
-/// command body (alt-screen temporarily left). See `SteelCtx::is_inline_output`.
-fn stdout_is_safe(ctx: &SteelCtx) -> bool {
-    ctx.is_inline_output || ctx.session == crate::context::EvalSession::Init
+/// command body (alt-screen temporarily left). See [`is_inline_output_command`].
+fn stdout_is_safe(ctx: &mut SteelCtx) -> bool {
+    ctx.session == crate::context::EvalSession::Init || is_inline_output_command(ctx)
 }
 
 /// `(%stdout-gate!)` — called by each gated print shim (see
 /// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
 /// to the real stdout. Returns `#f` (write must be suppressed) unless
-/// [`stdout_is_safe`]. When safe via `is_inline_output` specifically (not
-/// the init session, which prints pre-terminal with no bracket to open),
+/// [`stdout_is_safe`]. When safe via [`is_inline_output_command`] specifically
+/// (not the init session, which prints pre-terminal with no bracket to open),
 /// lazily enters the alt-screen bracket on this, the first real write of the
 /// command body.
 pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
     if !stdout_is_safe(ctx) {
         return Ok(SteelVal::BoolV(false));
     }
-    if ctx.is_inline_output
+    if is_inline_output_command(ctx)
         && let Some(output) = ctx.host.output()
     {
         output

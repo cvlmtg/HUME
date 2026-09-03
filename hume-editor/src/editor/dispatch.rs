@@ -321,6 +321,8 @@ impl Editor {
         let Some(scripting) = self.scripting.as_mut() else {
             return false;
         };
+        let tui_active = self.tui_active;
+        let kitty_enabled = self.kitty_enabled;
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
                 &mut self.state,
@@ -329,6 +331,8 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
+                tui_active,
+                kitty_enabled,
             );
             scripting.call_steel_cmd(
                 name,
@@ -342,19 +346,52 @@ impl Editor {
 
         // Close the bracket only if a builtin actually opened it. This runs
         // before `match result` below so a Steel error raised after screen
-        // entry still gets the TUI restored first. Scoped to this dispatch
-        // either way: reset unconditionally so stale state can't outlive it
-        // and leak into a later command's `SteelCtx`.
-        //
-        // `armed_or_entered` covers both shapes an inline-output command can
-        // take: `Entered` (it produced output, so the alt-screen bracket
-        // needs closing below) and `Armed` (it declared `#:inline-output` and
-        // ran, but produced none — a formatter with no stdout, say — so
-        // there's no bracket to close). Either way the subprocess ran with
-        // the real terminal and may well have rewritten one of our open
-        // files, so both are disk-change check trigger points; only
-        // `Headless`/`Inactive` (no interactive user to answer a confirm)
-        // are excluded.
+        // entry still gets the TUI restored first.
+        self.close_inline_output_bracket();
+
+        let (wait_char_cmd, effects) = match result {
+            Ok(r) => (r.wait_char_request, r.effects),
+            Err(e) => {
+                self.apply_script_effects(e.effects);
+                self.report(Severity::Error, e.message);
+                return false;
+            }
+        };
+
+        self.flush_script_messages();
+        self.apply_script_effects(effects);
+        if let Some(wc) = wait_char_cmd {
+            self.state.wait_char = Some(crate::editor::keymap::WaitCharPending {
+                cmd_name: wc.into(),
+                ctrl_extend: false,
+            });
+        }
+
+        true
+    }
+
+    /// Close the `#:inline-output` bracket if a builtin actually opened it,
+    /// and queue the disk-change sweep an entered/armed subprocess may
+    /// warrant. Scoped to whatever `state.inline_output` holds right now, so
+    /// it fits every Steel-session boundary that can arm one: the top-level
+    /// dispatch that owns the whole bracket lifecycle
+    /// ([`Self::call_steel_command_body`]), and a hook/queued-call batch
+    /// that only ever *arms* one indirectly, through a nested
+    /// `(call! …)` to an `#:inline-output` command
+    /// (`hume_scripting::host::OutputHost::arm_inline_output`).
+    ///
+    /// Reset unconditionally so stale state can't outlive this call and leak
+    /// into a later dispatch's `SteelCtx`.
+    ///
+    /// `armed_or_entered` covers both shapes an inline-output command can
+    /// take: `Entered` (it produced output, so the alt-screen bracket needs
+    /// closing below) and `Armed` (it declared `#:inline-output` and ran, but
+    /// produced none — a formatter with no stdout, say — so there's no
+    /// bracket to close). Either way the subprocess ran with the real
+    /// terminal and may well have rewritten one of our open files, so both
+    /// are disk-change check trigger points; only `Headless`/`Inactive` (no
+    /// interactive user to answer a confirm) are excluded.
+    pub(super) fn close_inline_output_bracket(&mut self) {
         let armed_or_entered = matches!(
             self.state.inline_output,
             InlineOutputDispatch::Armed { .. } | InlineOutputDispatch::Entered
@@ -387,25 +424,5 @@ impl Editor {
             // confirm its own subprocess just caused.
             self.state.queue_event(EditorEvent::OnFocusGained);
         }
-
-        let (wait_char_cmd, effects) = match result {
-            Ok(r) => (r.wait_char_request, r.effects),
-            Err(e) => {
-                self.apply_script_effects(e.effects);
-                self.report(Severity::Error, e.message);
-                return false;
-            }
-        };
-
-        self.flush_script_messages();
-        self.apply_script_effects(effects);
-        if let Some(wc) = wait_char_cmd {
-            self.state.wait_char = Some(crate::editor::keymap::WaitCharPending {
-                cmd_name: wc.into(),
-                ctrl_extend: false,
-            });
-        }
-
-        true
     }
 }

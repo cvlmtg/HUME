@@ -68,34 +68,6 @@ fn mode_derives_from_session_and_plugin_stack() {
     assert_eq!(h.ctx_activation().mode(), EvalMode::PluginActivation);
 }
 
-// ── Terminal safety ───────────────────────────────────────────────────────
-
-/// `new_command` reads `is_inline_output` off the host rather than
-/// hardcoding it — `NullHost` (default) reports `false`.
-///
-/// Fail oracle: hardcode `is_inline_output: false` in `new_command` →
-/// this assert fires even though the host says `true`.
-#[test]
-fn new_command_reads_inline_output_true_from_host() {
-    use crate::null_host::RecordingInlineOutputHost;
-    let mut host = RecordingInlineOutputHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx_with_host(&mut host);
-    assert!(
-        ctx.is_inline_output,
-        "new_command must read is_inline_output_command() from the host"
-    );
-}
-
-/// The harness's default `NullHost` reports `is_inline_output_command() ==
-/// false`, so a plain `ctx()` must carry `is_inline_output == false`.
-#[test]
-fn new_command_defaults_inline_output_false() {
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx();
-    assert!(!ctx.is_inline_output, "NullHost must default to false");
-}
-
 // ── Focus snapshot (new_command) ──────────────────────────────────────────
 
 /// `new_command` stores the focus IDs passed in; `live_focused_buffer_id`

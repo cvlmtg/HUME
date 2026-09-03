@@ -465,6 +465,8 @@ impl Editor {
         let args = event.steel_args();
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
+        let tui_active = self.tui_active;
+        let kitty_enabled = self.kitty_enabled;
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
             let mut impl_host = EditorHostImpl::full(
@@ -474,9 +476,15 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
+                tui_active,
+                kitty_enabled,
             );
             host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
         };
+        // A hook body can `(call! …)` an `#:inline-output` command just like
+        // any other Steel body — close whatever bracket that armed before
+        // reporting the result, same as `call_steel_command_body`'s own close.
+        self.close_inline_output_bracket();
         self.flush_script_messages();
         self.apply_script_result(result, "hook error: ");
     }
@@ -488,6 +496,8 @@ impl Editor {
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
+        let tui_active = self.tui_active;
+        let kitty_enabled = self.kitty_enabled;
         let Some(host_scr) = self.scripting.as_mut() else {
             return;
         };
@@ -499,9 +509,15 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
+                tui_active,
+                kitty_enabled,
             );
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };
+        // A queued call (timer thunk, LSP/prompt/picker callback, …) can
+        // `(call! …)` an `#:inline-output` command just like a hook body —
+        // see `fire_one_event`'s identical close.
+        self.close_inline_output_bracket();
         self.flush_script_messages();
         self.apply_script_result(result, "steel call error: ");
     }

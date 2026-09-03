@@ -890,6 +890,43 @@ fn define_typed_command_ignores_unrecognized_repeatable_keyword() {
     );
 }
 
+/// `#:inline-output #t` sets `SteelTypedCmdDef.inline_output: true`; plain
+/// `define-typed-command!` sets it to `false` — the typed counterpart of
+/// `define_command_inline_output_sets_flag`, asserted independently rather
+/// than inferred from the mappable side: the two registries are strictly
+/// separate and free to diverge.
+#[test]
+fn define_typed_command_inline_output_sets_flag() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-typed-command! "inline-typed" "doc" (lambda () (+ 1 0)) #:inline-output #t)
+           (define-typed-command! "plain-typed"  "doc" (lambda () (+ 1 0)))"#,
+        &mut mock,
+    )
+    .expect("eval should succeed");
+
+    let inline = mock
+        .registered_typed_cmds
+        .iter()
+        .find(|d| d.name == "inline-typed")
+        .expect("inline-typed not found");
+    let plain = mock
+        .registered_typed_cmds
+        .iter()
+        .find(|d| d.name == "plain-typed")
+        .expect("plain-typed not found");
+    assert!(
+        inline.inline_output,
+        "#:inline-output #t should set inline_output = true"
+    );
+    assert!(
+        !plain.inline_output,
+        "plain define-typed-command! should set inline_output = false"
+    );
+}
+
 /// A name already claimed by `define-command!` (mappable) collides with
 /// `define-typed-command!` for the same name, and vice versa — the two
 /// kinds share one namespace in the real `CommandRegistry`.

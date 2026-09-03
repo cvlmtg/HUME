@@ -366,6 +366,14 @@ pub(crate) struct EditorState {
     /// write to the real stdout, and so the screen is only entered lazily, on
     /// the first byte of actual output. See [`InlineOutputDispatch`].
     pub(crate) inline_output: InlineOutputDispatch,
+    /// Bracket states saved by `OutputHost::arm_inline_output` for a nested
+    /// `(call! name …)` to an `#:inline-output` command — pushed on arm,
+    /// popped by the matching `restore_inline_output`. Never touches
+    /// `inline_output` directly on its own: it's the stack a *later* dispatch
+    /// (or, if a raise skipped the matching restore, `reset_inline_output` at
+    /// the Steel session's tail) unwinds back through. Empty whenever no
+    /// nested arm is outstanding — the common case.
+    pub(crate) inline_output_saved: Vec<InlineOutputDispatch>,
     /// Test-only seam: flips `true` when a command body actually enters the
     /// inline-output terminal bracket (via `ensure_inline_output_screen`).
     /// Lets tests assert the bracket was skipped (rather than merely that it
@@ -575,6 +583,7 @@ impl Default for EditorState {
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,
             inline_output: InlineOutputDispatch::Inactive,
+            inline_output_saved: Vec::new(),
             #[cfg(test)]
             inline_output_entered: false,
             motion_format_scratch: hume_engine::format::FormatScratch::new(),

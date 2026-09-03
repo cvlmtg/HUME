@@ -75,6 +75,7 @@ const EDITOR_STATE_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ("history", "preserved"),
     ("force_full_redraw", "preserved"),
     ("inline_output", "preserved"),
+    ("inline_output_saved", "preserved"),
     ("inline_output_entered", "preserved: test-only seam"),
     ("motion_format_scratch", "preserved"),
     ("visual_move_target_display_cols", "preserved"),

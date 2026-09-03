@@ -1277,4 +1277,25 @@ pub trait OutputHost {
     /// call more than once per command body: only the first call (per
     /// dispatch) does anything.
     fn ensure_inline_output_screen(&mut self) -> Result<(), String>;
+
+    /// Arms the bracket for a `(call! name …)`-dispatched command if `name`
+    /// is a Steel command declared `#:inline-output #t`, saving whatever
+    /// bracket state was already live so a matching [`Self::restore_inline_output`]
+    /// (or, failing that, [`Self::reset_inline_output`] at the session's
+    /// tail) can put it back. Returns `false` — no state touched — for a
+    /// native, unknown, or un-activated `Lazy` command; the caller must not
+    /// pair a restore in that case, since nothing was pushed.
+    fn arm_inline_output(&mut self, name: &str) -> bool;
+
+    /// Pop the state [`Self::arm_inline_output`] saved for its matching call.
+    /// Only ever called immediately after `arm_inline_output` returned `true`.
+    fn restore_inline_output(&mut self);
+
+    /// Unconditionally clears any bracket state left over from an unpaired
+    /// `arm_inline_output` — an inner `call!`'s body raised before its
+    /// matching `restore_inline_output` ran, so the pairing never happened.
+    /// Called once at the tail of every Steel session regardless of outcome;
+    /// a no-op once every arm this session was already paired (the common
+    /// case).
+    fn reset_inline_output(&mut self);
 }

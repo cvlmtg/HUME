@@ -264,6 +264,31 @@ pub(crate) fn call_command_primitive(
     }
 }
 
+/// `(%arm-inline-output! name)` — see `%apply-command` in `bootstrap.scm`.
+/// Arms the alt-screen bracket for a `call!`-dispatched `name` if it is a
+/// Steel command declared `#:inline-output #t`, saving whatever bracket
+/// state was already live. Returns whether it armed, so the Scheme caller
+/// knows whether to pair a `%restore-inline-output!` — a `#f` name (native,
+/// unknown, un-activated `Lazy`) touches no state and needs no restore.
+pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult {
+    let armed = ctx
+        .host
+        .output()
+        .is_some_and(|output| output.arm_inline_output(&name));
+    Ok(SteelVal::BoolV(armed))
+}
+
+/// `(%restore-inline-output!)` — pops the state `%arm-inline-output!` saved.
+/// Only ever called after `%arm-inline-output!` returned `#t`; a body that
+/// raises before reaching it leaves the save unpopped, unwound instead by
+/// `run_steel_session`'s unconditional drain at the end of the session.
+pub(crate) fn restore_inline_output(ctx: &mut SteelCtx) -> SteelResult {
+    if let Some(output) = ctx.host.output() {
+        output.restore_inline_output();
+    }
+    Ok(SteelVal::Void)
+}
+
 /// `%lookup-plugin-proc` — return the Steel closure for an activated plugin
 /// command, or `#f` if the name is not in the `command_table`.
 ///

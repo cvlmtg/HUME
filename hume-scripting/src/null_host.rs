@@ -296,10 +296,25 @@ impl CommandHost for FailingRegisterHost {
 /// the `SteelCtx::new_command` wiring that reads the flag off the host (see
 /// `context.rs` tests) without pulling in the editor crate's real
 /// `EditorHostImpl`.
-#[derive(Default)]
 pub(crate) struct RecordingInlineOutputHost {
     inner: NullHost,
+    /// Backs `is_inline_output_command`. Defaults to `true` (see the manual
+    /// `Default` impl below — `#[derive(Default)]` would default this `false`
+    /// and silently close the gate every other test using this host relies
+    /// on being open). Set to `false` explicitly by the one test that needs
+    /// it isolated from `EvalSession::Init`'s own, independent safety reason.
+    pub(crate) inline_output: bool,
     pub(crate) ensure_calls: usize,
+}
+
+impl Default for RecordingInlineOutputHost {
+    fn default() -> Self {
+        Self {
+            inner: NullHost,
+            inline_output: true,
+            ensure_calls: 0,
+        }
+    }
 }
 
 impl EditorHost for RecordingInlineOutputHost {
@@ -328,12 +343,22 @@ impl EditorHost for RecordingInlineOutputHost {
 
 impl OutputHost for RecordingInlineOutputHost {
     fn is_inline_output_command(&self) -> bool {
-        true
+        self.inline_output
     }
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
         self.ensure_calls += 1;
         Ok(())
     }
+    // This host has no command registry to consult (unlike
+    // `is_inline_output_command` above, which is a fixed stance for gate
+    // tests, not a per-command decision) — the `call!`-nesting behavior
+    // these three back is exercised against the real `EditorHostImpl`
+    // instead (`hume-editor`'s inline-output dispatch tests).
+    fn arm_inline_output(&mut self, _name: &str) -> bool {
+        false
+    }
+    fn restore_inline_output(&mut self) {}
+    fn reset_inline_output(&mut self) {}
 }
 
 /// Like [`NullHost`] but tracks command-name claims like a minimal

@@ -33,16 +33,23 @@
                                #:inline-output [inline-output #f])
   (%define-typed-command! name doc proc inline-output))
 
+(define (%apply-command proc name args)
+  (if (%arm-inline-output! name)
+      (let ((r (apply proc args)))
+        (%restore-inline-output!)
+        r)
+      (apply proc args)))
+
 (define (%dispatch-command name args)
   (let ((proc (%lookup-plugin-proc name)))
     (if proc
-        (apply proc args)
+        (%apply-command proc name args)
         (let ((owner (%lazy-command-owner name)))
           (if owner
               (begin
                 (%activate-plugin-inline owner)
                 (let ((proc2 (%lookup-plugin-proc name)))
-                  (if proc2 (apply proc2 args) (%call-native! name args))))
+                  (if proc2 (%apply-command proc2 name args) (%call-native! name args))))
               (%call-native! name args))))))
 
 (define (register-lsp-server! language #:command command
