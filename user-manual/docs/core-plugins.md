@@ -1,6 +1,6 @@
 # Core Plugins
 
-HUME ships a some plugins under the `core:` namespace — a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your `init.scm`, so a default HUME is exactly what you see.
+HUME ships a some plugins under the `core:` namespace — a plugin and grammar manager, language server support, live git diff, and a few keymap alternatives. **None of them load automatically.** Nothing runs until you ask for it in your [`init.scm`](configuration.md), so a default HUME is exactly what you see.
 
 There are two ways to bring a plugin in:
 

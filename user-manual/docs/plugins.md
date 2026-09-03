@@ -8,7 +8,7 @@ Plugins are installed and updated by **PLUM**, a bundled plugin — see [Core Pl
 
 ## Installing a plugin
 
-Add a `declare-plugin` or `load-plugin` call to your `init.scm`.
+Add a `declare-plugin` or `load-plugin` call to your [`init.scm`](configuration.md).
 
 ```scheme
 (declare-plugin "core:stdlib")

@@ -7,8 +7,9 @@ getting a language working is usually one command.
 
 ## Setup
 
-Bring in `core:lsp` from your `init.scm`, and make sure a server is registered for the
-languages you use. The easiest way to get a server is
+Bring in `core:lsp` from your [`init.scm`](configuration.md) — see [Core Plugins](core-plugins.md#core-lsp)
+for how it fits alongside HUME's other bundled plugins — and make sure a server is
+registered for the languages you use. The easiest way to get a server is
 [`:lsp-install`](#installing-servers) — run it once per language and it downloads,
 verifies, and registers the server in one step, no separate download tool needed. If
 you'd rather manage a server yourself (a local build, a version the seeded catalog

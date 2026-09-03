@@ -107,7 +107,7 @@ HUME's `:sort` permutes whole rows, keyed by whatever text you select on each on
 
 ### Configuration language
 
-Helix uses TOML. HUME uses **Scheme** (`init.scm`). You bind keys and set options by calling Scheme functions:
+Helix uses TOML. HUME uses **Scheme** ([`init.scm`](configuration.md)). You bind keys and set options by calling Scheme functions:
 
 ```scheme
 (set-option! "theme" "sand")

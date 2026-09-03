@@ -166,7 +166,7 @@ HUME has panes built in: `Ctrl+p` is the prefix, `Ctrl+p s` and `Ctrl+p v` split
 
 ### Configuration
 
-Kakoune's `kakrc` is kakscript: `map` for keys, `set-option` for options, `hook` for events, `define-command` for new commands. HUME's `init.scm` is Scheme, with the same four ideas under different names:
+Kakoune's `kakrc` is kakscript: `map` for keys, `set-option` for options, `hook` for events, `define-command` for new commands. HUME's [`init.scm`](configuration.md) is Scheme, with the same four ideas under different names:
 
 ```scheme
 (set-option! "theme" "sand")

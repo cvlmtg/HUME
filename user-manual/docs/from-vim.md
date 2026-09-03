@@ -155,7 +155,7 @@ Vim uses `[count]` before commands (e.g. `3dw`). HUME also supports count prefix
 
 ### Line motion
 
-HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default — load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in `init.scm` to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl+6` (see below). `G` is bound, but not to Vim's meaning — see the muscle-memory traps table above — and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
+HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g s` (first non-blank), `g e` (last line). The vim keys `0` / `$` / `^` are not bound by default — load `(load-plugin "core:stdlib")` then `(load-plugin "core:vim-keybind")` in your [`init.scm`](configuration.md) to get them back with their vim meaning, alongside `C` / `D` (change / delete to end of line) and `Ctrl+6` (see below). `G` is bound, but not to Vim's meaning — see the muscle-memory traps table above — and `core:vim-keybind` does not restore it; `g e` reaches the last line either way.
 
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
