@@ -65,29 +65,40 @@
                                  ") — nothing formatted")))
           (else (lsp/format-fan-out! bid gen td ranges)))))))
 
+;;; Shared body behind `lsp-fmt` (editor command — bind a key, or call it from
+;;; a hook like `on-buffer-save`) and `:format-source` (typed command — the
+;;; `:` line entry point): format the buffer via LSP — the selected lines
+;;; when every selection spans one or more complete lines, the whole buffer
+;;; otherwise, or nothing (with a warning) for a mix of the two.
+(define (lsp/format-source!)
+  (let* ((bid (current-buffer))
+         (rp (lsp-linewise-ranges-params bid)))
+    (if (not rp)
+        ;; No path or no attached server (the third reason `rp` can be #f
+        ;; — `bid` shown in no pane — can't happen for `(current-buffer)`)
+        ;; — `lsp-server-for-buffer` distinguishes the two, since a
+        ;; capability guard can't: without a server there's no
+        ;; `lsp-capabilities` to check in the first place.
+        (log! 'info (if (lsp-server-for-buffer bid)
+                         "buffer has no path — nothing to format"
+                         "no LSP server attached to this buffer"))
+        (let* ((td (hash-ref rp "textDocument"))
+               (ranges (hash-ref rp "ranges"))
+               (gen (buffer-generation bid)))
+          (cond
+            ((selections-linewise? bid) (lsp/format-linewise! bid gen td ranges))
+            ((selections-charwise? bid)
+             (lsp/guard-capability "documentFormattingProvider"
+               (lambda ()
+                 (lsp-request #f "textDocument/formatting"
+                   (hash "textDocument" td "options" (lsp/format-options))
+                   (lsp/format-callback bid gen)))))
+            (else (log! 'warn "mixed whole-line and partial selections — nothing formatted")))))))
+
 (define-command! "lsp-fmt"
-  ":lsp-fmt — format the buffer via LSP: the selected lines when every selection spans one or more complete lines, the whole buffer otherwise, or nothing (with a warning) for a mix of the two."
-  (lambda ()
-    (let* ((bid (current-buffer))
-           (rp (lsp-linewise-ranges-params bid)))
-      (if (not rp)
-          ;; No path or no attached server (the third reason `rp` can be #f
-          ;; — `bid` shown in no pane — can't happen for `(current-buffer)`)
-          ;; — `lsp-server-for-buffer` distinguishes the two, since a
-          ;; capability guard can't: without a server there's no
-          ;; `lsp-capabilities` to check in the first place.
-          (log! 'info (if (lsp-server-for-buffer bid)
-                           "buffer has no path — nothing to format"
-                           "no LSP server attached to this buffer"))
-          (let* ((td (hash-ref rp "textDocument"))
-                 (ranges (hash-ref rp "ranges"))
-                 (gen (buffer-generation bid)))
-            (cond
-              ((selections-linewise? bid) (lsp/format-linewise! bid gen td ranges))
-              ((selections-charwise? bid)
-               (lsp/guard-capability "documentFormattingProvider"
-                 (lambda ()
-                   (lsp-request #f "textDocument/formatting"
-                     (hash "textDocument" td "options" (lsp/format-options))
-                     (lsp/format-callback bid gen)))))
-              (else (log! 'warn "mixed whole-line and partial selections — nothing formatted"))))))))
+  "Format the buffer via LSP — bind this to a key, or call it from a hook (e.g. `on-buffer-save`)."
+  (lambda () (lsp/format-source!)))
+
+(define-typed-command! "format-source"
+  ":format-source — format the buffer via LSP from the command line."
+  (lambda () (lsp/format-source!)))

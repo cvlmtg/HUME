@@ -59,7 +59,7 @@
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
   (lambda () (lsp/diag-jump -1)))
 
-(define-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
+(define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
   (lambda ()
     (let ((diags (diagnostics-for-buffer (current-buffer))))
       (if (null? diags)

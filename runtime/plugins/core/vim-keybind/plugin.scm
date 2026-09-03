@@ -21,22 +21,11 @@
   ;; count 0 is the dispatcher's spelling of "no count typed" — a count prefix,
   ;; even 1, is an explicit ask for the multicursor copy, so it wins over the
   ;; collapsed-cursor vim gesture and is forwarded verbatim.
-  ;;
-  ;; `:` invocation hands a typed argument over as a string rather than an
-  ;; integer (see core:stdlib README's `stdlib/resolve-lang-arg` entry for
-  ;; why) — normalize it here so `(= count 0)` below doesn't raise a type
-  ;; error.
   (lambda (count)
-    (let ((n (if (string? count)
-                 (or (string->number count)
-                     (error (string-append
-                             "vim-change-to-eol-or-copy-line: count must be a number, got \""
-                             count "\"")))
-                 count)))
-      (if (and (= n 0)
-               (call! "stdlib/all-single-char?" (current-selections)))
-          (call! "vim-change-to-eol")
-          (call! "copy-selection-on-next-line" n)))))
+    (if (and (= count 0)
+             (call! "stdlib/all-single-char?" (current-selections)))
+        (call! "vim-change-to-eol")
+        (call! "copy-selection-on-next-line" count))))
 
 (define-command! "vim-delete-to-eol"
   "Delete from the cursor to the end of the line."

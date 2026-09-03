@@ -194,7 +194,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-(define-command! "plum-install-grammar"
+(define-typed-command! "plum-install-grammar"
   "Install (or repair) a tree-sitter grammar by name, always from a clean re-clone (default: the current buffer's language)."
   (lambda (arg)
     (let ((name (plum/resolve-grammar-arg "plum-install-grammar" arg)))
@@ -217,7 +217,7 @@
           (plum/batch-run "installed grammar" missing plum/install-grammar))))
   #:inline-output #t)
 
-(define-command! "plum-list-grammars"
+(define-typed-command! "plum-list-grammars"
   "Log declared, installed, orphan, and missing grammar lists."
   (lambda ()
     (let ((declared  (grammar-source-names))
@@ -229,7 +229,7 @@
       (log! 'info (string-append "PLUM grammars orphan:     " (string-join orphans   ", ")))
       (log! 'info (string-append "PLUM grammars missing:    " (string-join missing   ", "))))))
 
-(define-command! "plum-cleanup-grammars"
+(define-typed-command! "plum-cleanup-grammars"
   "Delete compiled grammar files that are no longer in the declared source list."
   (lambda ()
     (let ((orphans (plum/orphan-grammars)))

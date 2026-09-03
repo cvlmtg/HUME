@@ -85,10 +85,10 @@
                     (string-append "git-diff: " label " on (" (git-diff/buffer-ref bid) ")")
                     (string-append "git-diff: " label " off")))))
 
-(define-command! "toggle-git-signs"
+(define-typed-command! "toggle-git-signs"
   "Toggle gutter +/-/~ signs for the current buffer's git diff. Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff)."
   (lambda (arg) (git-diff/run-toggle! (current-buffer) "signs?" "signs" arg)))
 
-(define-command! "toggle-inline-diff"
+(define-typed-command! "toggle-inline-diff"
   "Toggle inline git diff rendering (virtual deleted lines, word highlights, background tint). Optional argument: a git ref to diff against, e.g. :toggle-inline-diff HEAD~2 (default: the `ref` config value, shared with toggle-git-signs)."
   (lambda (arg) (git-diff/run-toggle! (current-buffer) "inline?" "inline diff" arg)))

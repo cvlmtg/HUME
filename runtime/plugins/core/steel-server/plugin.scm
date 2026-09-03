@@ -21,7 +21,7 @@
                             #:root-markers '("cog.scm")
                             #:env (if home (list (cons "STEEL_LSP_HOME" home)) '())))))
 
-(define-command! "steel-server-install"
+(define-typed-command! "steel-server-install"
   "Install steel-language-server with cargo and register it for scheme buffers."
   (lambda ()
     (if (which "steel-language-server")

@@ -285,7 +285,7 @@
               (when had-dir?
                 (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again")))))))
 
-(define-command! "lsp-install"
+(define-typed-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."
   (lambda (arg)
     (let ((lang (call! "stdlib/resolve-lang-arg" "lsp-install" arg)))
@@ -297,7 +297,7 @@
          (lsp/lsp-install-or-report! (hash-ref *lsp-lang->server* lang))))))
   #:inline-output #t)
 
-(define-command! "lsp-uninstall"
+(define-typed-command! "lsp-uninstall"
   "Shut down and remove an installed language server by name."
   (lambda (arg)
     (cond
@@ -327,7 +327,7 @@
                              (log! 'info (string-append "LSP: removed " name))))))
               (log! 'info (string-append "LSP: nothing to uninstall for " name))))))))
 
-(define-command! "lsp-servers"
+(define-typed-command! "lsp-servers"
   "Log the LSP server catalog: languages, seeded version, and install status."
   (lambda ()
     (for-each
