@@ -46,7 +46,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b #` is the quickest way back to the previous buffer. There's no default key for it, but `:goto-alternate-file` can be bound to one — and `core:vim-keybind` binds it to `Ctrl+6` for you.
+`:b #` is the quickest way back to the previous buffer. There's no default key for it, but `:goto-alternate-buffer` can be bound to one — and `core:vim-keybind` binds it to `Ctrl+6` for you.
 
 ## Panes
 
@@ -136,4 +136,4 @@ There is no listing command. Open the command line with `:` and press `Tab` — 
 
 ## Running key commands from `:`
 
-Every command that can be bound to a key can also be typed at `:`, even without a short alias — `:undo`, `:select-all-matches`, `:goto-alternate-file`, and so on. Typed this way they take no count and run once.
+Every command that can be bound to a key can also be typed at `:`, even without a short alias — `:undo`, `:select-all-matches`, `:goto-alternate-buffer`, and so on. Typed this way they take no count and run once.

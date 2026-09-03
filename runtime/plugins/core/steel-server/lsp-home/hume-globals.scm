@@ -107,7 +107,7 @@
 (#%register-global "flip-selections")
 (#%register-global "force-quit")
 (#%register-global "get-option")
-(#%register-global "goto-alternate-file")
+(#%register-global "goto-alternate-buffer")
 (#%register-global "goto-first-line")
 (#%register-global "goto-first-nonblank")
 (#%register-global "goto-last-line")

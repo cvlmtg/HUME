@@ -418,9 +418,9 @@ impl CommandRegistry {
         )
         .reg(self);
         ecmd(
-            "goto-alternate-file",
+            "goto-alternate-buffer",
             "Switch to the most-recently-focused other buffer.",
-            cmd_goto_alternate_file,
+            cmd_goto_alternate_buffer,
         )
         .jump()
         .reg(self);

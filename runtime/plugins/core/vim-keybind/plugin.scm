@@ -53,7 +53,7 @@
 
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
 ;; Portable form of vim's Ctrl+^; see README for legacy-terminal caveat.
-(bind-key! 'normal "ctrl-6" "goto-alternate-file")
+(bind-key! 'normal "ctrl-6" "goto-alternate-buffer")
 
 ;; ── C / D ─────────────────────────────────────────────────────────────────────
 ;; change-to-eol: 'smart (default) → context-sensitive C; 'on → unconditional

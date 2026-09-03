@@ -12,15 +12,15 @@ fn alternate_buffer_none_with_single_buffer() {
     assert_eq!(ed.alternate_buffer(), None);
 }
 
-// ── goto-alternate-file  ───────────────────────────────────────────────────────
+// ── goto-alternate-buffer  ────────────────────────────────────────────────────
 
 #[test]
-fn goto_alternate_file_warns_when_no_alternate() {
+fn goto_alternate_buffer_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     let id_before = ed.focused_buffer_id();
     live_host!(ed)
-        .run_command_sync("goto-alternate-file", Some(1), false, None)
-        .expect("goto-alternate-file must not error");
+        .run_command_sync("goto-alternate-buffer", Some(1), false, None)
+        .expect("goto-alternate-buffer must not error");
     assert_eq!(
         ed.focused_buffer_id(),
         id_before,
@@ -66,16 +66,16 @@ fn colon_e_percent_errors_with_no_path() {
     assert!(msg.contains("No file name"), "unexpected status: {msg:?}");
 }
 
-// ── goto-alternate-file in registry ──────────────────────────────────────────
+// ── goto-alternate-buffer in registry ──────────────────────────────────────────
 
 #[test]
-fn goto_alternate_file_is_registered_as_jump() {
+fn goto_alternate_buffer_is_registered_as_jump() {
     let reg = super::super::registry::CommandRegistry::with_defaults();
     let cmd = reg
-        .get_mappable("goto-alternate-file")
-        .expect("goto-alternate-file must be registered");
+        .get_mappable("goto-alternate-buffer")
+        .expect("goto-alternate-buffer must be registered");
     assert!(
         cmd.meta().is_jump,
-        "goto-alternate-file must have jump:true"
+        "goto-alternate-buffer must have jump:true"
     );
 }

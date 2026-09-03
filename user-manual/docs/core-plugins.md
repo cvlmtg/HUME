@@ -165,7 +165,7 @@ for them; HUME's four bundled themes do.
 
 ## core:vim-keybind
 
-Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate file, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
+Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
 
 ```scheme
 (declare-plugin "core:stdlib")

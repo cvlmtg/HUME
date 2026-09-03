@@ -72,14 +72,14 @@ pub(crate) fn cmd_jump_forward(
 
 // ── Alternate buffer ─────────────────────────────────────────────────────────
 
-/// `Ctrl+6` / `goto-alternate-file` — switch to the most-recently-focused
+/// `Ctrl+6` / `goto-alternate-buffer` — switch to the most-recently-focused
 /// other buffer.
 ///
 /// Uses `switch_to_buffer_without_jump` because `execute_keymap_command` already
 /// records the pre-switch state for all `is_jump=true` commands. Using the
 /// `_with_jump` variant here would push twice, corrupting the jump list on the
 /// second Ctrl+O.
-pub(crate) fn cmd_goto_alternate_file(
+pub(crate) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
