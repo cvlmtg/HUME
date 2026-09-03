@@ -108,6 +108,8 @@ fn build_text_object_trie() -> KeyTrie {
         (&['`'],             "inner-backtick",       "around-backtick"),
         // ── Line ─────────────────────────────────────────────────────────
         (&['l'],             "inner-line",           "around-line"),
+        // ── Paragraph ────────────────────────────────────────────────────
+        (&['p'],             "inner-paragraph",      "around-paragraph"),
     ];
 
     let mut inner_trie = KeyTrie::new();

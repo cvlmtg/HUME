@@ -27,14 +27,14 @@ Move the cursor/selection. Callable as `(name)` or `(call! "name")`.
 | `goto-next-class` | `g t` | Select the next class or type. |
 | `goto-next-comment` | `g c` | Select the next comment. |
 | `goto-next-function` | `g f` | Select the next function. |
-| `goto-next-paragraph` | `}` | Move cursors to the start of the next paragraph. |
+| `goto-next-paragraph` | `}` | Select the next paragraph. |
 | `goto-next-test` | `g u` | Select the next unit test. |
 | `goto-next-value` | `g v` | Select the next array/tuple/struct value. |
 | `goto-prev-argument` | `g A` | Select the previous argument. |
 | `goto-prev-class` | `g T` | Select the previous class or type. |
 | `goto-prev-comment` | `g C` | Select the previous comment. |
 | `goto-prev-function` | `g F` | Select the previous function. |
-| `goto-prev-paragraph` | `{` | Move cursors to the first empty line above the current paragraph. |
+| `goto-prev-paragraph` | `{` | Select the previous paragraph. |
 | `goto-prev-test` | `g U` | Select the previous unit test. |
 | `goto-prev-value` | `g V` | Select the previous array/tuple/struct value. |
 | `move-down` | `j` / `↓` | Move cursors down one visual line (one buffer line with a count). |
@@ -82,6 +82,7 @@ Select a delimited region around the cursor.
 | `around-double-quote` | `m a "` | Select content including the nearest `"`. |
 | `around-function` | `m a f` | Select the function including its signature (and attributes/decorators). Requires a grammar with a `textobjects.scm`. |
 | `around-line` | `m a l` | Select the line including its newline. |
+| `around-paragraph` | `m a p` | Select the paragraph plus its trailing blank gap. |
 | `around-paren` | `m a (` / `m a )` | Select content including the nearest `()`. |
 | `around-single-quote` | `m a '` | Select content including the nearest `'`. |
 | `around-test` | `m a u` | Select the whole unit test, including its attribute or decorator. Requires a grammar with a `textobjects.scm`. |
@@ -98,6 +99,7 @@ Select a delimited region around the cursor.
 | `inner-double-quote` | `m i "` | Select content inside the nearest `"`. |
 | `inner-function` | `m i f` | Select inside a function. Requires a grammar with a `textobjects.scm`. |
 | `inner-line` | `m i l` | Select inner line content (excluding the newline). |
+| `inner-paragraph` | `m i p` | Select the paragraph's text, excluding any trailing blank gap. |
 | `inner-paren` | `m i (` / `m i )` | Select content inside the nearest `()`. |
 | `inner-single-quote` | `m i '` | Select content inside the nearest `'`. |
 | `inner-test` | `m i u` | Select inside a unit test function's body. Requires a grammar with a `textobjects.scm`. |

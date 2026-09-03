@@ -1,50 +1,77 @@
 use super::super::*;
 use hume_test_fixtures::assert_state;
 
-// ── goto_next_paragraph (]p) ───────────────────────────────────────────────────
+// ── goto_next_paragraph (`}`) ────────────────────────────────────────────────
 
 #[test]
 fn goto_next_paragraph_basic() {
-    // Skip "hello\nworld" paragraph and the empty gap line, land on "foo".
+    // Selects the next paragraph. No trailing gap here — "foo" is the last
+    // paragraph — so the span stops at its own text.
     assert_state!(
         "-[h]>ello\nworld\n\nfoo\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\nworld\n\n-[f]>oo\n"
+        "hello\nworld\n\n<[foo]-\n"
     );
 }
 
 #[test]
-fn goto_next_paragraph_no_paragraph_below() {
-    // No empty line below — land at EOF.
+fn goto_next_paragraph_multiline() {
     assert_state!(
-        "-[h]>ello\nworld\n",
+        "-[a]>\n\nfoo\nbar\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\nworld-[\n]>"
+        "a\n\n<[foo\nbar]-\n"
     );
 }
 
 #[test]
-fn goto_next_paragraph_from_empty_line() {
-    // Starting on an empty line — skip the gap, land on the next paragraph.
+fn goto_next_paragraph_includes_trailing_gap() {
+    // The target paragraph isn't the last one, so its own trailing gap is
+    // part of the selection too.
     assert_state!(
-        "-[\n]>\nfoo\n",
+        "-[a]>\n\nfoo\n\nbar\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "\n\n-[f]>oo\n"
+        "a\n\n<[foo\n\n]-bar\n"
     );
 }
 
 #[test]
 fn goto_next_paragraph_multiple_empty_lines() {
-    // Multiple empty lines in the gap — skip all of them.
     assert_state!(
         "-[\n]>\n\nfoo\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "\n\n\n-[f]>oo\n"
+        "\n\n\n<[foo]-\n"
     );
 }
 
 #[test]
-fn goto_next_paragraph_empty_buffer() {
+fn goto_next_paragraph_from_empty_line() {
+    assert_state!(
+        "-[\n]>\nfoo\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "\n\n<[foo]-\n"
+    );
+}
+
+#[test]
+fn goto_next_paragraph_no_paragraph_below_is_noop() {
+    assert_state!(
+        "-[h]>ello\nworld\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "-[h]>ello\nworld\n"
+    );
+}
+
+#[test]
+fn goto_next_paragraph_at_eof_is_noop() {
+    assert_state!(
+        "hello-[\n]>",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "hello-[\n]>"
+    );
+}
+
+#[test]
+fn goto_next_paragraph_empty_buffer_is_noop() {
     assert_state!(
         "-[\n]>",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
@@ -53,39 +80,60 @@ fn goto_next_paragraph_empty_buffer() {
 }
 
 #[test]
-fn goto_next_paragraph_at_eof() {
+fn goto_next_paragraph_sequential() {
+    // Two consecutive `}` presses walk through three paragraphs.
     assert_state!(
-        "hello-[\n]>",
+        "-[a]>\n\nb\n\nc\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello-[\n]>"
+        "a\n\n<[b\n\n]-c\n"
+    );
+    assert_state!(
+        "a\n\n<[b\n\n]-c\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "a\n\nb\n\n<[c]-\n"
     );
 }
 
-// ── goto_prev_paragraph ([p) ───────────────────────────────────────────────────
+#[test]
+fn goto_next_paragraph_count_two_matches_two_presses() {
+    assert_state!(
+        "-[a]>\n\nb\n\nc\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 2, MotionMode::Move),
+        "a\n\nb\n\n<[c]-\n"
+    );
+}
+
+// ── goto_prev_paragraph (`{`) ────────────────────────────────────────────────
 
 #[test]
 fn goto_prev_paragraph_basic() {
-    // Land on the empty gap line above "world".
     assert_state!(
         "hello\n\nwor-[l]>d\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\n-[\n]>world\n"
+        "<[hello\n\n]-world\n"
+    );
+}
+
+#[test]
+fn goto_prev_paragraph_multiline() {
+    assert_state!(
+        "foo\nbar\n\nba-[z]>\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "<[foo\nbar\n\n]-baz\n"
     );
 }
 
 #[test]
 fn goto_prev_paragraph_multiple_empty_lines() {
-    // Multiple empty lines — land on the first (topmost) one.
     assert_state!(
         "hello\n\n\nwor-[l]>d\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\n-[\n]>\nworld\n"
+        "<[hello\n\n\n]-world\n"
     );
 }
 
 #[test]
-fn goto_prev_paragraph_no_paragraph_above() {
-    // No gap above — land on line 0 (no-op if already there).
+fn goto_prev_paragraph_no_paragraph_above_is_noop() {
     assert_state!(
         "-[h]>ello\nworld\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
@@ -94,99 +142,117 @@ fn goto_prev_paragraph_no_paragraph_above() {
 }
 
 #[test]
-fn goto_prev_paragraph_from_empty_line() {
-    // Starting on the empty gap line — skip gap + paragraph, land on the
-    // empty line above the paragraph before it.
+fn goto_prev_paragraph_from_gap_selects_nearest_paragraph() {
+    // Cursor sits in the gap above one preceding paragraph — that paragraph
+    // (plus the gap it's already in) is the target.
     assert_state!(
         "hello\n-[\n]>world\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "-[h]>ello\n\nworld\n"
+        "<[hello\n\n]-world\n"
     );
 }
 
-// ── multi-paragraph navigation ────────────────────────────────────────────
+#[test]
+fn goto_prev_paragraph_from_gap_selects_nearest_not_the_one_before_it() {
+    // Two paragraphs precede the gap — the nearest one ("hello") is the
+    // target, not the one before it ("foo"). A backward scan that skipped
+    // an extra paragraph here would land on "foo" instead.
+    assert_state!(
+        "foo\n\nhello\n-[\n]>world\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "foo\n\n<[hello\n\n]-world\n"
+    );
+}
 
 #[test]
-fn goto_next_paragraph_sequential() {
-    // Two consecutive ]p motions walk through three paragraphs.
+fn goto_prev_paragraph_from_leading_gap_is_noop() {
+    // Nothing precedes the gap itself — no previous paragraph exists.
     assert_state!(
-        "-[a]>\n\nb\n\nc\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "a\n\n-[b]>\n\nc\n"
-    );
-    assert_state!(
-        "a\n\n-[b]>\n\nc\n",
-        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "a\n\nb\n\n-[c]>\n"
+        "-[\n]>hello\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "-[\n]>hello\n"
     );
 }
 
 #[test]
 fn goto_prev_paragraph_sequential() {
-    // Two consecutive [p motions walk backward through three paragraphs.
     assert_state!(
         "a\n\nb\n\n-[c]>\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "a\n\nb\n-[\n]>c\n"
+        "a\n\n<[b\n\n]-c\n"
     );
     assert_state!(
-        "a\n\nb\n-[\n]>c\n",
+        "a\n\n<[b\n\n]-c\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "a\n-[\n]>b\n\nc\n"
+        "<[a\n\n]-b\n\nc\n"
     );
 }
 
-// ── extend variants ───────────────────────────────────────────────────────
+#[test]
+fn goto_prev_paragraph_empty_buffer_is_noop() {
+    assert_state!(
+        "-[\n]>",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "-[\n]>"
+    );
+}
+
+// ── Extend variants ───────────────────────────────────────────────────────────
 
 #[test]
 fn extend_goto_next_paragraph_creates_selection() {
-    // Anchor stays at 0, head moves to 'w' at the start of "world".
     assert_state!(
         "-[h]>ello\n\nworld\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Extend),
-        "-[hello\n\nw]>orld\n"
+        "-[hello\n\nworld]>\n"
+    );
+}
+
+#[test]
+fn extend_goto_next_paragraph_after_move_keeps_both_paragraphs() {
+    assert_state!(
+        "a\n\n<[b\n\n]-c\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Extend),
+        "a\n\n-[b\n\nc]>\n"
     );
 }
 
 #[test]
 fn extend_goto_prev_paragraph_creates_selection() {
-    // Anchor stays on 'w', head moves back to the empty gap line.
     assert_state!(
         "hello\n\n-[w]>orld\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Extend),
-        "hello\n<[\nw]-orld\n"
+        "<[hello\n\nw]-orld\n"
     );
 }
 
-// ── multi-cursor paragraph motions ────────────────────────────────────────
+#[test]
+fn extend_goto_prev_paragraph_after_move_keeps_both_paragraphs() {
+    assert_state!(
+        "a\n\n<[b\n\n]-c\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Extend),
+        "<[a\n\nb\n\n]-c\n"
+    );
+}
+
+// ── Multi-cursor ─────────────────────────────────────────────────────────────
 
 #[test]
-fn goto_next_paragraph_multi_cursor() {
-    // Two cursors in different paragraphs, each jumps to the start of the next one.
-    // "hello\n\nworld\n\nfoo\n": cursor at 'w'(7) → 'f'(14); cursor at 'f'(14) → '\n'(17).
+fn goto_next_paragraph_multi_cursor_merges_when_target_overlaps() {
+    // The 'w' cursor's target ("foo") fully contains the 'f' cursor's own
+    // unchanged position (no paragraph below it), so the two merge.
     assert_state!(
         "hello\n\n-[w]>orld\n\n-[f]>oo\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\n\nworld\n\n-[f]>oo-[\n]>"
+        "hello\n\nworld\n\n<[foo]-\n"
     );
 }
 
 #[test]
 fn goto_prev_paragraph_multi_cursor() {
-    // Same buffer; each cursor jumps backward to the gap above its paragraph.
-    // Cursor at 'w'(7) → '\n'(6) (gap). Cursor at 'f'(14) → '\n'(13) (gap).
     assert_state!(
         "hello\n\n-[w]>orld\n\n-[f]>oo\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "hello\n-[\n]>world\n-[\n]>foo\n"
-    );
-}
-
-#[test]
-fn goto_prev_paragraph_empty_buffer() {
-    assert_state!(
-        "-[\n]>",
-        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
-        "-[\n]>"
+        "<[hello\n\n]-<[world\n\n]-foo\n"
     );
 }

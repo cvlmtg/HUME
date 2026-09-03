@@ -31,16 +31,19 @@ described in [Word Motions](word-motions.md).
 
 Structural navigation — `goto-next-function`/`goto-prev-function` and the
 matching pairs for the other tree-sitter object kinds (class, comment, test,
-argument) — is a fourth pattern, combining pieces of the other three. Like a
-text object, each step returns a whole object span rather than just a
-coordinate. Like a motion, it's a repeatable, count-driven search that can
-no-op: pressing it past the last object in the buffer leaves the selection
-where it already was rather than producing a new one. Its extend mode
-borrows the text object's growth rule rather than the plain motion one:
-instead of pinning the anchor and moving only the head, each further press
-*unites* the newly found object with whatever is already selected — so
-growing across several objects in a row, or over one nested inside the one
-just selected, never loses ground already covered.
+argument), plus the paragraph motions (`{`/`}`) — is a fourth pattern,
+combining pieces of the other three. Like a text object, each step returns a
+whole object span rather than just a coordinate. Like a motion, it's a
+repeatable, count-driven search that can no-op: pressing it past the last
+object in the buffer leaves the selection where it already was rather than
+producing a new one. Its extend mode borrows the text object's growth rule
+rather than the plain motion one: instead of pinning the anchor and moving
+only the head, each further press *unites* the newly found object with
+whatever is already selected — so growing across several objects in a row,
+or over one nested inside the one just selected, never loses ground already
+covered. The paragraph motions reach this same pattern through a lexical
+scan for blank-line boundaries rather than a tree-sitter query — the pattern
+doesn't care how the object was found, only that a whole span comes back.
 
 This leads to four framework entry points — one per pattern: motion, text
 object, word select, and structural navigation.

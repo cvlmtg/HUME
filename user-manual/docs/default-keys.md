@@ -21,8 +21,8 @@ Keys marked **kitty only** require the kitty keyboard protocol, auto-detected at
 | `W` / `B` | `select-next-uppercase-word` / `select-prev-uppercase-word` | WORD variants of `w` / `b` |
 | `Home` | `goto-line-start` | Start of line (idiomatic form is `g h`) |
 | `End` | `goto-line-end` | End of line (idiomatic form is `g l`) |
-| `{` | `goto-prev-paragraph` | Up to the blank line above this paragraph |
-| `}` | `goto-next-paragraph` | Down to the start of the next paragraph |
+| `{` | `goto-prev-paragraph` | Select the previous paragraph |
+| `}` | `goto-next-paragraph` | Select the next paragraph |
 | `#` | `goto-matching-pair` | Jump to the matching bracket or tag |
 | `PageDown` / `PageUp` | `page-down` / `page-up` | Scroll one viewport down / up |
 | `Ctrl+d` / `Ctrl+u` | `half-page-down` / `half-page-up` | Scroll half a viewport down / up |
@@ -79,6 +79,7 @@ Text objects (use the `m` prefix):
 | `` m i ` `` / `` m a ` `` | `inner-backtick` / `around-backtick` | Inner / around `` `…` `` |
 | `m i a` / `m a a` | `inner-argument` / `around-argument` | Inner / around argument (structure-aware) |
 | `m i l` / `m a l` | `inner-line` / `around-line` | Inner / around line |
+| `m i p` / `m a p` | `inner-paragraph` / `around-paragraph` | Inner / around paragraph |
 | `m i f` / `m a f` | `inner-function` / `around-function` | Inner / around function |
 | `m i t` / `m a t` | `inner-class` / `around-class` | Inner / around class or type |
 | `m i c` / `m a c` | `inner-comment` / `around-comment` | Inner / around comment |

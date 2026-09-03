@@ -129,17 +129,24 @@ impl CommandRegistry {
         );
 
         // ── Paragraph motions ─────────────────────────────────────────────────
+        // Select the whole paragraph plus its trailing blank gap, like the
+        // structural `goto-next-<kind>` family selects its object — the
+        // `finder` is a lexical scan (`hume_ops::motion::paragraph`) rather
+        // than a tree-sitter one, so this stays a `Plain` body here instead
+        // of moving to `structural.rs`.
         super::motion!(
             self,
             "goto-next-paragraph",
-            "Move cursors to the start of the next paragraph.",
-            cmd_goto_next_paragraph
+            "Select the next paragraph.",
+            cmd_goto_next_paragraph,
+            jump
         );
         super::motion!(
             self,
             "goto-prev-paragraph",
-            "Move cursors to the first empty line above the current paragraph.",
-            cmd_goto_prev_paragraph
+            "Select the previous paragraph.",
+            cmd_goto_prev_paragraph,
+            jump
         );
 
         // ── Line selection ────────────────────────────────────────────────────

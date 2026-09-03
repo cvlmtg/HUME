@@ -193,17 +193,17 @@ the bottom.
 1.6 Paragraph Motion
 --------------------
 
-+---+---------------------------------------------------+
-| { | jump to the previous blank line (paragraph start) |
-+---+---------------------------------------------------+
-| } | jump to the next blank line (paragraph end)       |
-+---+---------------------------------------------------+
++---+-------------------------------+
+| { | select the previous paragraph |
++---+-------------------------------+
+| } | select the next paragraph     |
++---+-------------------------------+
 
 Exercise
 ~~~~~~~~
 
-Press ``}`` twice to jump two paragraphs forward, then press ``{``
-twice to jump back.
+Press ``}`` twice to select the next two paragraphs in turn, then
+press ``{`` twice to walk back.
 
 1.7 Count Prefixes
 ------------------
@@ -215,7 +215,7 @@ Prefix a motion with digits to repeat it:
 +----+--------------------------+
 | 5j | move five lines down     |
 +----+--------------------------+
-| 2{ | jump two paragraphs back |
+| 2{ | select 2 paragraphs back |
 +----+--------------------------+
 
 Counts apply to motions, not edits.
@@ -245,7 +245,7 @@ Summary
 +-----------------+---------------------------------------------+
 | gh / gl / gs    | line start / end / first non-blank          |
 +-----------------+---------------------------------------------+
-| { / }           | paragraph motion                            |
+| { / }           | select previous / next paragraph            |
 +-----------------+---------------------------------------------+
 | Ctrl+d / Ctrl+u | scroll half-page down / up                  |
 +-----------------+---------------------------------------------+
@@ -1084,6 +1084,8 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 | mi`  ma` | inner / around backtick                   |
 +----------+-------------------------------------------+
 | mil  mal | inner / around line (incl. \n)            |
++----------+-------------------------------------------+
+| mip  map | inner / around paragraph (excl. gap)      |
 +----------+-------------------------------------------+
 | mia  maa | inner / around argument (comma-separated) |
 +----------+-------------------------------------------+

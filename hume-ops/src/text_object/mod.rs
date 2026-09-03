@@ -7,6 +7,7 @@ use crate::MotionMode;
 mod argument;
 mod bracket;
 mod line;
+mod paragraph;
 mod quote;
 mod word;
 
@@ -16,6 +17,7 @@ pub use bracket::{
     cmd_inner_brace, cmd_inner_bracket, cmd_inner_paren,
 };
 pub use line::{cmd_around_line, cmd_inner_line};
+pub use paragraph::{cmd_around_paragraph, cmd_inner_paragraph};
 pub use quote::{
     cmd_around_backtick, cmd_around_double_quote, cmd_around_single_quote, cmd_inner_backtick,
     cmd_inner_double_quote, cmd_inner_single_quote,

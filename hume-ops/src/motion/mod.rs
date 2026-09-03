@@ -78,7 +78,8 @@ pub use word::{
     cmd_select_prev_word,
 };
 mod paragraph;
-use paragraph::{goto_next_paragraph, goto_prev_paragraph};
+pub use paragraph::{cmd_goto_next_paragraph, cmd_goto_prev_paragraph};
+pub(crate) use paragraph::{current_paragraph_start, paragraph_span};
 mod line_select;
 pub use line_select::{cmd_select_line, cmd_select_line_backward};
 mod find;
@@ -156,9 +157,3 @@ pub fn cmd_goto_matching_pair(
 ) -> SelectionSet {
     apply_motion(text, sels, mode, 1, goto_matching_pair)
 }
-
-// Paragraph motions.
-motion_cmd!(/// Move or extend cursors to the start of the next paragraph (`]p`).
-    cmd_goto_next_paragraph, goto_next_paragraph);
-motion_cmd!(/// Move or extend cursors to the first empty line above the current paragraph (`[p`).
-    cmd_goto_prev_paragraph, goto_prev_paragraph);

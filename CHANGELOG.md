@@ -33,6 +33,18 @@
   formats nothing, rather than silently reformatting the whole buffer.
 
 ### Editing
+- `goto-prev-paragraph` (`{`) now lands on the first line of the previous paragraph instead of
+  the blank gap above the current one, mirroring `goto-next-paragraph` (`}`), which already
+  lands on the next paragraph's first line rather than stopping in the gap.
+- **Breaking**: `goto-next-paragraph`/`goto-prev-paragraph` (`}`/`{`) now select the whole
+  paragraph — plus its trailing blank gap — instead of moving a bare cursor, matching every other
+  navigation command (`w` selects the word; `goto-next-function` and the rest of the structural
+  family select the whole object). Pressing `}`/`{` past the last/first paragraph now does nothing
+  instead of clamping to EOF/BOF, and both now record a jump-list entry (`Ctrl+o` returns)
+  regardless of how far the hop moved. `{` from inside a blank-line gap now selects the nearest
+  paragraph above it rather than skipping past it, mirroring how `}` from a gap already selects
+  the nearest one below. New `m i p`/`m a p` text objects select the paragraph on its own — the
+  text only, or the text plus its trailing gap — for when a bare selection is wanted instead.
 - New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
 - `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl+W`, `*`, quote auto-pairing, the identifier under the cursor used by plugin commands (e.g. rename), and the LSP completion fallback replace span now honor a buffer's configured `word-chars` (see the new setting below) — e.g. with `-` configured, `foo-bar` is one word instead of three. Bracket pairs are unaffected: only pairs whose opening and closing character are the same (`'`, `"`, `` ` ``) skip auto-pairing after a word character. `W`/`B`/`MM` are unaffected: they already treat punctuation and word characters as one class. With `word-chars` configured, `*` can now still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there).
 - New `indent`/`unindent` (`>`/`<`) shift every line touched by a selection by one indent level (a count shifts by that many, e.g. `3>`), in the buffer's `tab-width`/`tab-style`. Blank and whitespace-only lines are left alone. Each touched line's whole indent is re-rendered to the new width rather than just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (re-rendered in the buffer's `tab-style`, so a mixed tabs-and-spaces indent normalizes as a side effect rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin rather than going negative, so `>` afterwards lands on a full level, not back where `<` started.

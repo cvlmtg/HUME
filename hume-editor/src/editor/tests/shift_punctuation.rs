@@ -50,8 +50,8 @@ fn shift_a_still_inserts_at_line_end() {
 fn close_brace_goto_next_paragraph_when_shift_set() {
     let mut ed = editor_from("-[h]>ello\n\nworld\n");
     ed.handle_key(key_shift('}'));
-    // goto-next-paragraph moves head to the first char of the next paragraph.
-    assert_eq!(state(&ed), "hello\n\n-[w]>orld\n");
+    // goto-next-paragraph selects the next paragraph, head at its start.
+    assert_eq!(state(&ed), "hello\n\n<[world]-\n");
 }
 
 /// `?` delivered as Char('?') + SHIFT must still enter backward search.

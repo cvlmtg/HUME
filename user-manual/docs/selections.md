@@ -51,6 +51,7 @@ Text objects select structured regions in one step. They use the `m` prefix — 
 | `` m i ` `` / `` m a ` `` | Inside `` `…` `` / including `` `…` `` |
 | `m i a` / `m a a` | Argument (trimmed) / argument + separator comma |
 | `m i l` / `m a l` | Line content (no newline) / full line (with newline) |
+| `m i p` / `m a p` | Paragraph text / the paragraph plus its trailing blank gap |
 | `m i f` / `m a f` | Inside a function / the function including its signature (and attributes, decorators, …) |
 | `m i t` / `m a t` | Inside a class or type / the class or type including its header |
 | `m i c` / `m a c` | Inside a comment / the whole comment block |
@@ -77,8 +78,6 @@ Two shortcuts select the word under the cursor directly:
 |-----|--------|
 | `m m` | Word under the cursor (plus one adjacent whitespace run by default, same rule as `w`/`b`; disable `word-selects-whitespace` for `m i w` instead — see [Configuration](configuration.md)) |
 | `M M` | WORD under the cursor (same as `m a W` by default) |
-
-There is no paragraph text object; use the `{` and `}` paragraph motions.
 
 `m i` selects just the structure's content; `m a` includes what surrounds it — one adjacent whitespace run for words, the delimiters themselves for brackets:
 

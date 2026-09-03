@@ -364,6 +364,52 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
     );
 }
 
+/// `}` (goto-next-paragraph) records a jump even for a one-line hop —
+/// unlike a plain motion, it's registered `jump: true`, the same as the
+/// structural `goto-next-<kind>` family, since it now selects a whole
+/// object exactly like they do.
+#[test]
+fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
+    let text = BufferText::from("hello\n\nworld\n");
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+    let before = state(&ed);
+
+    ed.handle_key(key('}'));
+    assert_ne!(state(&ed), before);
+
+    // jump-backward should restore the pre-jump position, even though the
+    // hop crossed only one line — well under the jump-line-threshold a
+    // plain motion is gated by.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
+/// A no-op `}` (no paragraph below) must not record a jump — `is_jump`
+/// alone doesn't record one; the command must actually have moved (see
+/// `goto_matching_pair_noop_does_not_clobber_forward_history` above).
+#[test]
+fn goto_next_paragraph_noop_does_not_record_jump() {
+    let text = BufferText::from("hello\nworld\n"); // single paragraph, nothing below
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+    let before = state(&ed);
+
+    ed.handle_key(key('}'));
+    assert_eq!(state(&ed), before, "no paragraph below — must be a no-op");
+
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(
+        state(&ed),
+        before,
+        "a no-op close-brace must not have pushed a jump entry"
+    );
+}
+
 /// search-next + jump-backward + jump-forward round-trip, all matches on different lines.
 #[test]
 fn search_n_ctrl_o_ctrl_i_different_lines() {

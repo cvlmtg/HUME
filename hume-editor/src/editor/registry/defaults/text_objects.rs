@@ -4,11 +4,11 @@ use std::borrow::Cow;
 use crate::editor::registry::{CommandRegistry, MappableCommand, SelectionBody, SelectionTracking};
 use hume_ops::text_object::{
     cmd_around_angle, cmd_around_backtick, cmd_around_brace, cmd_around_bracket,
-    cmd_around_double_quote, cmd_around_line, cmd_around_paren, cmd_around_single_quote,
-    cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle, cmd_inner_backtick,
-    cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line, cmd_inner_paren,
-    cmd_inner_single_quote, cmd_inner_uppercase_word, cmd_inner_word, cmd_select_uppercase_word,
-    cmd_select_word,
+    cmd_around_double_quote, cmd_around_line, cmd_around_paragraph, cmd_around_paren,
+    cmd_around_single_quote, cmd_around_uppercase_word, cmd_around_word, cmd_inner_angle,
+    cmd_inner_backtick, cmd_inner_brace, cmd_inner_bracket, cmd_inner_double_quote, cmd_inner_line,
+    cmd_inner_paragraph, cmd_inner_paren, cmd_inner_single_quote, cmd_inner_uppercase_word,
+    cmd_inner_word, cmd_select_uppercase_word, cmd_select_word,
 };
 
 use super::builder::ecmd;
@@ -27,6 +27,20 @@ impl CommandRegistry {
             "around-line",
             "Select the line including its newline.",
             cmd_around_line
+        );
+
+        // ── Text objects — paragraph ────────────────────────────────────────────
+        super::selection!(
+            self,
+            "inner-paragraph",
+            "Select the paragraph's text, excluding any trailing blank gap.",
+            cmd_inner_paragraph
+        );
+        super::selection!(
+            self,
+            "around-paragraph",
+            "Select the paragraph plus its trailing blank gap.",
+            cmd_around_paragraph
         );
 
         // ── Text objects — word ───────────────────────────────────────────────
