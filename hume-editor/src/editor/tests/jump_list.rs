@@ -387,6 +387,29 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     assert_eq!(state(&ed), before);
 }
 
+/// `{` (goto-prev-paragraph) records a jump even for a one-line hop — same
+/// `jump: true` registration as `}`, checked separately since the two are
+/// driven by distinct start-finding code (`next_paragraph_start` vs
+/// `prev_paragraph_start`).
+#[test]
+fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
+    let text = BufferText::from("hello\n\nworld\n");
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(7)); // on 'w'
+    let doc = Buffer::new(text, sels);
+    let mut ed = Editor::for_testing(doc);
+    ed.state.mode = Mode::Normal;
+    let before = state(&ed);
+
+    ed.handle_key(key('{'));
+    assert_ne!(state(&ed), before);
+
+    // jump-backward should restore the pre-jump position, even though the
+    // hop crossed only one line — well under the jump-line-threshold a
+    // plain motion is gated by.
+    ed.handle_key(key_ctrl('o'));
+    assert_eq!(state(&ed), before);
+}
+
 /// A no-op `}` (no paragraph below) must not record a jump — `is_jump`
 /// alone doesn't record one; the command must actually have moved (see
 /// `goto_matching_pair_noop_does_not_clobber_forward_history` above).

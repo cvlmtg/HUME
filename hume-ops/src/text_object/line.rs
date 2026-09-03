@@ -1,7 +1,6 @@
 //! Inner/around line text objects.
 
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::{is_empty_line, line_content_end, line_end_exclusive};
+use hume_editing::lines::{is_empty_line, line_end_exclusive, line_last_char};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 
@@ -16,14 +15,7 @@ fn inner_line(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
         return None; // empty line — no selectable content
     }
     let line_start = text.line_to_char(line);
-    // line_content_end returns the grapheme cluster *start* of the last
-    // non-newline grapheme (uses prev_grapheme_boundary internally, so
-    // combining clusters are handled correctly).
-    let content_start = line_content_end(text, line);
-    // Convert grapheme start → last codepoint of that cluster, so the
-    // selection includes all combining marks (same convention as inner_word).
-    let end_inclusive = next_grapheme_boundary(text, content_start).saturating_sub(1);
-    Some((line_start, end_inclusive))
+    Some((line_start, line_last_char(text, line)))
 }
 
 /// Around line: the full line including the trailing newline.

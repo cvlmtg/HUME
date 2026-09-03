@@ -1,23 +1,10 @@
-use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::{is_empty_line, line_content_end};
+use hume_editing::lines::{is_empty_line, line_last_char};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 
 use super::{MotionMode, apply_object_motion};
 
 // ── Paragraph span (shared with `text_object::paragraph`) ──────────────────────
-
-/// The last char a selection may cover on `line`: the last codepoint of its
-/// final grapheme cluster (so a trailing combining mark is never orphaned),
-/// or the line's own `\n` when the line is empty.
-///
-/// `line_content_end` answers with that cluster's *start* — where a cursor
-/// lands — so the round trip through `next_grapheme_boundary` converts to
-/// its last codepoint; an identity on the single-codepoint clusters most
-/// text is made of, the `\n` of an empty line included.
-fn paragraph_last_char(text: &BufferText, line: usize) -> usize {
-    next_grapheme_boundary(text, line_content_end(text, line)).saturating_sub(1)
-}
 
 /// First line of the paragraph containing the non-empty line `line`.
 ///
@@ -44,8 +31,8 @@ fn paragraph_first_line(text: &BufferText, line: usize) -> usize {
 /// the landing line as a span end, only as a cursor position.
 ///
 /// A paragraph with no trailing gap is exactly one that ends the buffer, so
-/// `paragraph_last_char` on the unextended end line already answers both
-/// cases — no separate EOF branch needed.
+/// `line_last_char` on the unextended end line already answers both cases —
+/// no separate EOF branch needed.
 pub(crate) fn paragraph_span(
     text: &BufferText,
     first_line: usize,
@@ -65,7 +52,7 @@ pub(crate) fn paragraph_span(
 
     (
         text.line_to_char(first_line),
-        paragraph_last_char(text, end_line),
+        line_last_char(text, end_line),
     )
 }
 
@@ -100,51 +87,32 @@ fn next_paragraph_start(text: &BufferText, pos: usize) -> Option<usize> {
 /// `None` if none exists (blank lines, or the enclosing paragraph itself,
 /// reach the buffer start with no gap in between).
 ///
-/// Starting inside a blank-line gap is handled separately from starting
-/// inside paragraph text: the nearest paragraph above the gap is the
-/// target, not skipped past — mirroring how `next_paragraph_start` treats a
-/// gap as belonging to no paragraph rather than eating an extra one.
+/// Mirrors `next_paragraph_start`'s two-phase walk in the other direction:
+/// leave the enclosing paragraph, then its gap. Starting inside a blank-line
+/// gap skips the first phase on its own (its condition is already false) and
+/// lands on the nearest paragraph above rather than skipping past it — the
+/// same "gap belongs to no paragraph" rule `next_paragraph_start` applies
+/// forward. Running out of buffer during either phase means there is nothing
+/// above.
 fn prev_paragraph_start(text: &BufferText, pos: usize) -> Option<usize> {
     let mut line = text.char_to_line(pos);
 
-    if is_empty_line(text, line) {
-        while line > 0 && is_empty_line(text, line) {
-            line -= 1;
-        }
-        if is_empty_line(text, line) {
-            return None; // blank all the way to BOF — nothing above
-        }
-    } else {
-        while line > 0 && !is_empty_line(text, line) {
-            line -= 1;
-        }
-        if line == 0 {
-            return None; // this paragraph starts at line 0 — nothing above it
-        }
-        while line > 0 && is_empty_line(text, line) {
-            line -= 1;
-        }
-        if is_empty_line(text, line) {
-            return None; // blank all the way to BOF — nothing above
-        }
+    while !is_empty_line(text, line) {
+        line = line.checked_sub(1)?;
+    }
+    while is_empty_line(text, line) {
+        line = line.checked_sub(1)?;
     }
 
     // `line` is the last line of the previous paragraph — climb to its first.
     Some(paragraph_first_line(text, line))
 }
 
-/// Span of the next paragraph, plus its trailing gap.
-fn find_next_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    Some(paragraph_span(text, next_paragraph_start(text, pos)?, true))
-}
-
-/// Span of the previous paragraph, plus its trailing gap.
-fn find_prev_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    Some(paragraph_span(text, prev_paragraph_start(text, pos)?, true))
-}
-
 /// Select the next paragraph, plus its trailing blank gap (`}`). No-op if
 /// there is no paragraph below.
+///
+/// Not a `motion_cmd!`: the finder yields a span, not a head — the same
+/// `apply_object_motion` the structural `goto-next-<kind>` family uses.
 pub fn cmd_goto_next_paragraph(
     text: &BufferText,
     sels: SelectionSet,
@@ -152,7 +120,7 @@ pub fn cmd_goto_next_paragraph(
     mode: MotionMode,
 ) -> SelectionSet {
     apply_object_motion(text, sels, mode, count, false, |pos| {
-        find_next_paragraph(text, pos)
+        Some(paragraph_span(text, next_paragraph_start(text, pos)?, true))
     })
 }
 
@@ -165,6 +133,6 @@ pub fn cmd_goto_prev_paragraph(
     mode: MotionMode,
 ) -> SelectionSet {
     apply_object_motion(text, sels, mode, count, true, |pos| {
-        find_prev_paragraph(text, pos)
+        Some(paragraph_span(text, prev_paragraph_start(text, pos)?, true))
     })
 }

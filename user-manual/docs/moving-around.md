@@ -111,7 +111,7 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 | `{` | The previous paragraph |
 | `}` | The next paragraph |
 
-A paragraph is a block of non-blank lines delimited by blank lines. Both keys select the whole paragraph, plus the blank gap on the far side from where you started — `}` includes the gap below the paragraph it lands on, `{` the gap above. The jump is recorded, so `Ctrl+o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md) for `m i p`/`m a p`, which select just the paragraph.
+A paragraph is a block of non-empty lines delimited by empty lines. Both keys select the whole paragraph they land on, plus the blank gap below it, if it has one. The jump is recorded, so `Ctrl+o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md) for `m i p`/`m a p`, which select just the paragraph.
 
 ## Scrolling
 

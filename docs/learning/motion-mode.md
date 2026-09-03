@@ -59,7 +59,7 @@ The inner position function is a pure coordinate calculation — it knows
 nothing about anchors or multi-cursor. The move/extend mode is a concern of
 the dispatch layer, not of the motion itself. This means:
 
-- Adding a new motion (e.g. "next paragraph") requires one position function;
+- Adding a new motion (e.g. "go to line end") requires one position function;
   Move and Extend variants come for free.
 - Testing the motion is simple: just assert on the returned position.
 - The same move-right position function powers both `l` (Move) and `l` in

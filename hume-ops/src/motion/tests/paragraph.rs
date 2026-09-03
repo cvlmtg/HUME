@@ -36,10 +36,12 @@ fn goto_next_paragraph_includes_trailing_gap() {
 
 #[test]
 fn goto_next_paragraph_multiple_empty_lines() {
+    // A two-line gap between the current and target paragraphs — both are
+    // swallowed reaching "foo", not just the nearer one.
     assert_state!(
-        "-[\n]>\n\nfoo\n",
+        "-[a]>\n\n\nfoo\n",
         |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
-        "\n\n\n<[foo]-\n"
+        "a\n\n\n<[foo]-\n"
     );
 }
 

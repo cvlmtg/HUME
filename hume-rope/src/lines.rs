@@ -238,6 +238,19 @@ pub fn line_content_end(rope: &Rope, line: usize) -> usize {
     }
 }
 
+/// The last char a selection may cover on `line`: the last codepoint of its
+/// final grapheme cluster (so a trailing combining mark is never orphaned),
+/// or the line's own `\n` when the line is empty.
+///
+/// [`line_content_end`] answers with that cluster's *start* — where a cursor
+/// lands — so the round trip through `next_grapheme_boundary` converts to its
+/// last codepoint; an identity on the single-codepoint clusters most text is
+/// made of, the `\n` of an empty line included.
+pub fn line_last_char(rope: &Rope, line: usize) -> usize {
+    let slice = rope.slice(..);
+    crate::grapheme::next_grapheme_boundary(slice, line_content_end(rope, line)).saturating_sub(1)
+}
+
 /// 0-based char column of `char_pos` within `line` — `char_pos` minus the
 /// line's start offset. The char-unit sibling of
 /// [`crate::grapheme::grapheme_col_in_line`] /

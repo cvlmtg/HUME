@@ -129,11 +129,11 @@ impl CommandRegistry {
         );
 
         // ── Paragraph motions ─────────────────────────────────────────────────
-        // Select the whole paragraph plus its trailing blank gap, like the
-        // structural `goto-next-<kind>` family selects its object — the
-        // `finder` is a lexical scan (`hume_ops::motion::paragraph`) rather
-        // than a tree-sitter one, so this stays a `Plain` body here instead
-        // of moving to `structural.rs`.
+        // Select the whole paragraph plus its trailing blank gap, if it has
+        // one, like the structural `goto-next-<kind>` family selects its
+        // object — the `finder` is a lexical scan (`hume_ops::motion::paragraph`)
+        // rather than a tree-sitter one, so this stays a `Plain` body here
+        // instead of moving to `structural.rs`.
         super::motion!(
             self,
             "goto-next-paragraph",

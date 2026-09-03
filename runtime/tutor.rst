@@ -1085,7 +1085,7 @@ Text objects select structured regions. Prefix ``mi`` for INNER
 +----------+-------------------------------------------+
 | mil  mal | inner / around line (incl. \n)            |
 +----------+-------------------------------------------+
-| mip  map | inner / around paragraph (excl. gap)      |
+| mip  map | inner / around paragraph (incl. gap)      |
 +----------+-------------------------------------------+
 | mia  maa | inner / around argument (comma-separated) |
 +----------+-------------------------------------------+

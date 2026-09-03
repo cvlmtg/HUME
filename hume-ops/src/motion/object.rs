@@ -1,10 +1,12 @@
 //! Structural object navigation — the Move/Extend/count policy behind
 //! `goto-next-<kind>` / `goto-prev-<kind>`, parameterized over a `finder`
-//! rather than a tree: this crate cannot depend on `hume-treesitter`, so the
-//! caller (`hume-editor`) supplies `finder` as a closure over
-//! `hume_treesitter::textobjects::ObjectSpans::adjacent`, whose
-//! `Option<(usize, usize)>` contract this module's `finder` parameter
-//! matches exactly.
+//! rather than a tree: this crate cannot depend on `hume-treesitter`, so
+//! `hume-editor` supplies `finder` as a closure over
+//! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
+//! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
+//! caller whose `finder` is a lexical blank-line scan instead — `apply_object_motion`
+//! only cares that `finder` returns `Option<(usize, usize)>` and honors the
+//! strict-progress contract described below, not how the span was found.
 
 use super::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
@@ -54,10 +56,11 @@ use hume_editing::text::BufferText;
 /// `finder` returning `None` stops the loop early for that selection and
 /// keeps its last result, so a `count` past the last object leaves the
 /// selection on that last object rather than clearing it. No fixed-point
-/// check is needed here (unlike `apply_motion`): `adjacent` requires strict
-/// progress (`start > pos` forward, `start < pos` backward), so every
-/// successful step actually moves and a stalled search returns `None`
-/// rather than repeating a position.
+/// check is needed here (unlike `apply_motion`): every `finder` is required
+/// to make strict progress (`start > pos` forward, `start < pos` backward —
+/// `adjacent`'s own contract, upheld independently by the paragraph finders'
+/// blank-line walks), so every successful step actually moves and a stalled
+/// search returns `None` rather than repeating a position.
 ///
 /// Uses `map` (which always merges) so that cursors converging on the same
 /// object are merged, exactly as `apply_motion` and `apply_text_object` do.

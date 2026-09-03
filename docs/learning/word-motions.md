@@ -12,7 +12,7 @@ structural navigation over tree-sitter objects like functions and classes:
 
 | Pattern | Returns | Anchor (in Move mode) | Typical use |
 |---|---|---|---|
-| Motion | a new cursor position | depends on Move vs Extend mode | `h/j/k/l`, paragraph, goto-line |
+| Motion | a new cursor position | depends on Move vs Extend mode | `h/j/k/l`, goto-line |
 | Text object | an optional selected range | the range's start | `iw`, `i(`, `i"` |
 | Word select | an optional selected range | the selected span's start | `w/b/W/B` |
 

@@ -33,9 +33,6 @@
   formats nothing, rather than silently reformatting the whole buffer.
 
 ### Editing
-- `goto-prev-paragraph` (`{`) now lands on the first line of the previous paragraph instead of
-  the blank gap above the current one, mirroring `goto-next-paragraph` (`}`), which already
-  lands on the next paragraph's first line rather than stopping in the gap.
 - **Breaking**: `goto-next-paragraph`/`goto-prev-paragraph` (`}`/`{`) now select the whole
   paragraph — plus its trailing blank gap — instead of moving a bare cursor, matching every other
   navigation command (`w` selects the word; `goto-next-function` and the rest of the structural

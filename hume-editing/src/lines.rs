@@ -46,6 +46,11 @@ pub fn line_content_end(text: &BufferText, line: usize) -> usize {
     hume_rope::lines::line_content_end(text.rope(), line)
 }
 
+/// See [`hume_rope::lines::line_last_char`].
+pub fn line_last_char(text: &BufferText, line: usize) -> usize {
+    hume_rope::lines::line_last_char(text.rope(), line)
+}
+
 /// See [`hume_rope::lines::char_col_in_line`].
 pub fn char_col_in_line(text: &BufferText, line: usize, char_pos: usize) -> usize {
     hume_rope::lines::char_col_in_line(text.rope(), line, char_pos)
