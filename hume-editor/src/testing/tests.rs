@@ -98,7 +98,7 @@ mod mock_host {
             ))
             .expect_err("missing grammar path must be rejected");
         assert!(
-            err.contains("grammar library not found"),
+            err.contains("grammar load failed"),
             "unexpected message: {err}"
         );
         assert!(
@@ -121,7 +121,7 @@ mod mock_host {
             ))
             .expect_err("missing highlights path must be rejected");
         assert!(
-            err.contains("highlights query not found"),
+            err.contains("highlights.scm read failed"),
             "unexpected message: {err}"
         );
     }

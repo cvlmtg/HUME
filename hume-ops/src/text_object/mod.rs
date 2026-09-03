@@ -76,11 +76,10 @@ pub(crate) fn apply_text_object_extend(
         let forward = sel.anchor() <= sel.head();
 
         // First try from head (correct for initial extend from a cursor).
-        if let Some((start, end)) = text_object(text, sel.head()) {
-            let new_start = sel.start().min(start);
-            let new_end = sel.end().max(end);
-            if new_start != sel.start() || new_end != sel.end() {
-                return Selection::directed(new_start, new_end, forward);
+        if let Some(found) = text_object(text, sel.head()) {
+            let grown = sel.union_span(found, forward);
+            if grown.start() != sel.start() || grown.end() != sel.end() {
+                return grown;
             }
         }
 
@@ -88,11 +87,9 @@ pub(crate) fn apply_text_object_extend(
         // bracket/quote searches find the enclosing pair rather than the current one.
         let past_end = next_grapheme_boundary(text, sel.end());
         if past_end < text.len_chars()
-            && let Some((start, end)) = text_object(text, past_end)
+            && let Some(found) = text_object(text, past_end)
         {
-            let new_start = sel.start().min(start);
-            let new_end = sel.end().max(end);
-            return Selection::directed(new_start, new_end, forward);
+            return sel.union_span(found, forward);
         }
 
         sel

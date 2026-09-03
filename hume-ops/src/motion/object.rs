@@ -37,13 +37,13 @@ use hume_editing::text::BufferText;
 /// skip every object between the anchor and the head.
 ///
 /// The result is the *union* of the current selection with the found span —
-/// `Selection::new(current.start().min(start), current.end().max(end))`
-/// forward, edges swapped backward — rather than a plain replacement of the
-/// anchor-opposite edge: `adjacent` only guarantees `start > origin` (or `<`
-/// backward), not that the found span extends past the current selection's
-/// far edge. Searching from `head()` on a Move result can land on an object
-/// nested *inside* the object just selected (its own start satisfies the
-/// origin check; its end doesn't), and a plain replacement would then throw
+/// `current.union_span((start, end), !backward)` — rather than a plain
+/// replacement of the anchor-opposite edge: `adjacent` only guarantees
+/// `start > origin` (or `<` backward), not that the found span extends past
+/// the current selection's far edge. Searching from `head()` on a Move
+/// result can land on an object nested *inside* the object just selected
+/// (its own start satisfies the origin check; its end doesn't), and a plain
+/// replacement would then throw
 /// away everything past that nested object's end — the same anchor-loss bug
 /// a naive fix for that Move-result case would reintroduce, just reached
 /// through nesting instead. The union absorbs a nested find with no visible
@@ -82,15 +82,7 @@ pub fn apply_object_motion(
             };
             current = match mode {
                 MotionMode::Move => Selection::new(end, start),
-                MotionMode::Extend => {
-                    let new_start = current.start().min(start);
-                    let new_end = current.end().max(end);
-                    if backward {
-                        Selection::new(new_end, new_start)
-                    } else {
-                        Selection::new(new_start, new_end)
-                    }
-                }
+                MotionMode::Extend => current.union_span((start, end), !backward),
             };
         }
         current

@@ -143,6 +143,25 @@ impl Selection {
         }
     }
 
+    /// This selection's extent unioned with `(start, end)` — `min` of both
+    /// starts, `max` of both ends — built with [`Self::directed`] so the
+    /// caller controls which end becomes the anchor.
+    ///
+    /// Shared by every "extend to cover a newly found match" path:
+    /// `hume-ops`'s `text_object::apply_text_object_extend`,
+    /// `text_object::word::apply_nearest_word_result`, and
+    /// `motion::apply_object_motion`'s Extend arm. A found range only
+    /// guarantees it starts past (or ends before) the search origin, not
+    /// that it extends past the selection's own far edge — a plain
+    /// replacement would shrink the selection when the found range nests
+    /// inside what's already selected; the union absorbs it with no visible
+    /// change instead.
+    pub fn union_span(&self, (start, end): (usize, usize), forward: bool) -> Self {
+        let new_start = self.start().min(start);
+        let new_end = self.end().max(end);
+        Self::directed(new_start, new_end, forward)
+    }
+
     /// The stationary end (the end that stays put when the user extends).
     pub fn anchor(&self) -> usize {
         self.anchor

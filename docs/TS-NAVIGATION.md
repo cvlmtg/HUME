@@ -95,7 +95,7 @@ together: no single field alone distinguishes "already installed" from every oth
 `bake` also advances `tree_gen` on the ordinary path, before `install`'s own successful arm ever
 runs.
 
-`hume-editor` wraps this in `commands/structural.rs::ensure_syntax_current`, which no-ops instead
+`hume-editor` wraps this in `syntax/parse.rs::ensure_syntax_current`, which no-ops instead
 of running the synchronous parse in three cases where it can't help: no committed tree yet (before
 the worker's first parse lands, `object_spans` already returns nothing regardless — a synchronous
 full parse here would just duplicate work the worker is already doing); the buffer is over

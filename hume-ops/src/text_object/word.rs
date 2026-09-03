@@ -309,9 +309,7 @@ pub fn apply_nearest_word_result(
         },
         MotionMode::Extend => {
             let forward = sel.anchor() <= sel.head();
-            let new_start = sel.start().min(start);
-            let new_end = sel.end().max(end);
-            let s = Selection::directed(new_start, new_end, forward);
+            let s = sel.union_span((start, end), forward);
             match sel.sticky_display_col() {
                 Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
                 None => s,

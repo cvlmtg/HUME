@@ -61,11 +61,22 @@ pub fn helix_injections_path(name: &str) -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
+/// Where `name`'s Helix-maintained textobjects query would live, regardless
+/// of whether the fetch script actually found one. [`helix_textobjects_path`]
+/// is what every caller wants once the fixture is known to exist; this is
+/// the one other callers need — naming the path in a `require_fixture_file`
+/// panic before presence is known — so both read from the one join instead
+/// of a caller re-deriving "sits beside `grammar_parser_path`'s file" on its
+/// own.
+pub fn helix_textobjects_path_unchecked(name: &str) -> PathBuf {
+    fixtures_root().join(name).join("helix-textobjects.scm")
+}
+
 /// Absolute path to the *Helix-maintained* textobjects query for `name`,
 /// fetched by `scripts/fetch-test-grammars.sh` from the pinned Helix commit.
 /// `None` if the fetch script found no Helix textobjects query for `name`.
 pub fn helix_textobjects_path(name: &str) -> Option<PathBuf> {
-    let path = fixtures_root().join(name).join("helix-textobjects.scm");
+    let path = helix_textobjects_path_unchecked(name);
     path.exists().then_some(path)
 }
 

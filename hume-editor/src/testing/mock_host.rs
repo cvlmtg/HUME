@@ -238,17 +238,26 @@ impl LanguageHost for MockHost {
     // has no reason to perform it. A path that exists but doesn't actually
     // parse as a valid grammar/query still succeeds here; no test needs that
     // finer-grained failure through `MockHost` today.
+    //
+    // Error prefixes mirror `RegisterError`'s `Display` (`hume-treesitter`'s
+    // `registry.rs`: `"grammar load failed: ..."` / `"highlights.scm read
+    // failed: ..."`) rather than inventing separate wording — a caller that
+    // only ever sees `MockHost`'s errors should still learn the real vocabulary.
+    // The detail past the prefix is this mock's own (the path), not a
+    // reproduction of the OS-specific `io::Error`/dlopen text the real host
+    // would show — that text is platform- and locale-dependent and not worth
+    // faking byte-for-byte for an existence check.
     fn attach_grammar(&mut self, reg: &hume_scripting::GrammarReg) -> Result<(), String> {
         if !reg.grammar_path.exists() {
             return Err(format!(
-                "register-grammar! '{}': grammar library not found: {}",
+                "register-grammar! '{}': grammar load failed: failed to open grammar library: {}",
                 reg.name,
                 reg.grammar_path.display()
             ));
         }
         if !reg.highlights_path.exists() {
             return Err(format!(
-                "register-grammar! '{}': highlights query not found: {}",
+                "register-grammar! '{}': highlights.scm read failed: {}",
                 reg.name,
                 reg.highlights_path.display()
             ));

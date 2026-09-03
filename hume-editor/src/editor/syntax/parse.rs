@@ -175,9 +175,9 @@ impl Editor {
             // "should another request be posted for this generation?", and a
             // generation whose parse failed has already been attempted. The
             // stronger `is_current` here would re-post it every frame forever.
-            // The on-demand path (`commands::structural::ensure_syntax_current`)
-            // asks the other question — "are the layers safe to read?" — and
-            // must use `is_current`.
+            // The on-demand path (`ensure_syntax_current`, below) asks the
+            // other question — "are the layers safe to read?" — and must
+            // use `is_current`.
             if buf
                 .syntax
                 .as_ref()

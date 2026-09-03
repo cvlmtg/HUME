@@ -11,8 +11,8 @@ use super::*;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::Selection;
 use hume_test_fixtures::{
-    grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
-    require_grammars,
+    grammar_query_path, helix_textobjects_path, helix_textobjects_path_unchecked,
+    require_fixture_file, require_grammars,
 };
 use hume_treesitter::registry::QueryPaths;
 
@@ -22,8 +22,10 @@ use crate::editor::dispatch::ArgSource;
 /// `hume_test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["rust"]);
-    let to_path = grammar_parser_path("rust").with_file_name("helix-textobjects.scm");
-    require_fixture_file(&to_path, "rust helix-textobjects.scm");
+    require_fixture_file(
+        &helix_textobjects_path_unchecked("rust"),
+        "rust helix-textobjects.scm",
+    );
 }
 
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
