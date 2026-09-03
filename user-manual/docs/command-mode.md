@@ -1,6 +1,6 @@
 # Command mode
 
-Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command mode prompt, type a name, and press `Enter`. `Esc` dismisses without running.
+Command mode is where HUME reaches commands that aren't bound to a key. Press `:` in Normal mode to open the command mode prompt, type a name, and press `Enter`. `Esc` dismisses without running.
 
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 

@@ -43,7 +43,7 @@ Changes apply to the current session and are not persisted — for persistent co
 (set-option! "option-name" value)
 ```
 
-Sets the global default. The value is a string, boolean, or integer. Callable from `init.scm`, a plugin body, or a command/hook body — anywhere Steel code runs.
+Sets the global default. The value is a string, boolean, or integer. Callable from `init.scm`, a plugin body, or a command/hook body — anywhere Scheme code runs.
 
 ```scheme
 (set-option! "line-number-style" "absolute")
@@ -198,7 +198,7 @@ A theme editor is available online — a single-file HTML tool you download and 
 (unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` takes an editor command's name — the same names in [Builtin Commands](builtin-commands.md) — never a typed (`:`-only) command; there's no way to bind one of those to a key.
+`bind-key!` takes an editor command's name — the same names in [Builtin Commands](builtin-commands.md) — never a typed command; there's no way to bind one of those to a key.
 
 `bind-key!` — binds a key in the given mode (`'normal`, `'insert`, `'extend`).
 `unbind-key!` — removes a binding.
@@ -254,7 +254,7 @@ The same applies to the double quote: bind `"` as `"\""`.
 
 ## Statusline
 
-The statusline is fully configurable from Steel:
+The statusline is fully configurable from Scheme:
 
 ```scheme
 (configure-statusline! '("Mode" "Separator" "FileName") '() '("Position"))

@@ -156,7 +156,7 @@ Kakoune's `.` repeats the last insert-mode change, and `<a-.>` repeats the last 
 
 Kakoune is built to hand text to other programs: `|` pipes selections through a command, `!` inserts a command's output, and `%sh{ … }` expansions let the config shell out for anything the editor doesn't do itself. None of that exists in HUME.
 
-The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Steel (Scheme) instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
+The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
 
 ### Splits and windows
 

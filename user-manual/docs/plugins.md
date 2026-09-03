@@ -1,6 +1,6 @@
 # Plugins
 
-Plugins are written in the same language as your config, so the line between configuring HUME and extending it is thin — a plugin is mostly just `init.scm` code that lives somewhere reusable.
+Plugins are written in Scheme, the same language as your config, so the line between configuring HUME and extending it is thin.
 
 The first half of this page covers using plugins other people wrote; [Writing a plugin](#writing-a-plugin) covers making your own.
 
@@ -157,7 +157,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
     (call! "collapse-selection")))
 ```
 
-`call!` dispatches any editor command — built-in and Steel-defined alike — activating the target plugin on demand.
+`call!` dispatches any editor command — built-in and Scheme-defined alike — activating the target plugin on demand.
 
 ::: warning `call!` can't run typed commands
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
@@ -287,7 +287,7 @@ For lazy plugins, declare the events that should trigger activation via `#:event
 
 `set-option!` works from a hook or command handler too, not just at the top level of your plugin — it changes the *global* default, so use it there when that's really what you want.
 
-For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Steel](#reading-options-from-steel) below.
+For a per-buffer override, `(set-buffer-option! buffer-id "option" value)` sets an option just on the buffer named by `buffer-id`, which also works from hook and command bodies (see [Buffer options](configuration.md#buffer-options) for the list of settable options). Pass the buffer id the hook itself hands you rather than assuming the buffer you're editing — a hook can fire for a buffer other than the one you're currently focused on. `language` isn't an option; set it with `set-buffer-language!` instead. To read a specific buffer's options back the same way, see [Reading options from Scheme](#reading-options-from-scheme) below.
 
 A few more examples:
 
@@ -303,7 +303,7 @@ A few more examples:
       (log! 'info (string-append (to-string (length errs)) " errors")))))
 ```
 
-### Reading options from Steel
+### Reading options from Scheme
 
 ```scheme
 (get-option "option-name")

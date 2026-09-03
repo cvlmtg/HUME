@@ -118,7 +118,7 @@ This makes HUME's config a real programming language — conditionals, loops, an
 
 ### Plugin system
 
-Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Steel (Scheme) scripts installed from GitHub. Declare the plugin, then run `:plum-install-plugins` to fetch it — here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
+Helix has no built-in plugin system. HUME has [PLUM](core-plugins.md#core-plum), a plugin manager where plugins are Scheme scripts installed from GitHub. Declare the plugin, then run `:plum-install-plugins` to fetch it — here's [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker and HUME's first official third-party plugin:
 
 ```scheme
 (declare-plugin "core:stdlib")
@@ -133,7 +133,7 @@ Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is c
 (configure-statusline! '("Mode" "FileName") '("SearchMatches") '("Position"))
 ```
 
-You can also add your own custom elements from Steel — see [Statusline](configuration.md#custom-elements).
+You can also add your own custom elements from Scheme — see [Statusline](configuration.md#custom-elements).
 
 ### Surround
 
@@ -172,6 +172,6 @@ A theme editor is also available online — a single-file HTML tool you download
 
 ### What HUME has that Helix doesn't
 
-- Scripting and plugins (Steel/Scheme)
+- Scripting and plugins (Scheme)
 - Smart paste with kill ring
 - Hook system (on-buffer-open, on-buffer-save, etc.)

@@ -1,6 +1,6 @@
 # Builtin Commands
 
-These are editor commands — reached from a key binding or `(call! …)`, never from the command mode prompt. (Typed commands, the `:`-only kind, are listed on the [Command mode](command-mode.md) page instead.) Every command below is a native one — owned by the editor itself (plugin id `"hume"`), not a Steel plugin. They are callable two ways from Scheme:
+These are editor commands — reached from a key binding or from a plugin with `(call! …)`, never from the command mode prompt. (Typed commands are listed on the [Command mode](command-mode.md) page instead.) Every command below is a native one — owned by the editor itself, not a plugin. They are callable two ways from Scheme:
 
 ```scheme
 ;; directly, as a bare binding
@@ -9,7 +9,7 @@ These are editor commands — reached from a key binding or `(call! …)`, never
 (call! "move-left")
 ```
 
-The first form is only valid for builtins (they are pre-registered in the Steel engine); `call!` works for any key-bindable command, builtin or Steel-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
+The first form is only valid for builtins (they are pre-registered in the Steel scripting engine); `call!` works for any key-bindable command, builtin or Scheme-defined. Each entry lists the command name and what it does. For key bindings that trigger these commands, see the [key reference](default-keys.md) and the per-topic pages.
 
 ## Motions
 

@@ -17,7 +17,7 @@ This page is a lookup reference — tables of signatures and one-line effects. F
 | `(configure-statusline! left center right)` | Configure the three statusline sections — each a list of element name strings |
 | `(set-statusline-text! source bid text)` | Push `text` for a `"steel:<source>"` statusline element, scoped to `bid`; empty string clears it |
 
-See [Reading options from Steel](plugins.md#reading-options-from-steel) for `get-option`'s fallback rules, [Statusline](configuration.md#statusline) for the built-in element names, and [Custom elements](configuration.md#custom-elements) for `configure-statusline!`/`set-statusline-text!` together.
+See [Reading options from Scheme](plugins.md#reading-options-from-scheme) for `get-option`'s fallback rules, [Statusline](configuration.md#statusline) for the built-in element names, and [Custom elements](configuration.md#custom-elements) for `configure-statusline!`/`set-statusline-text!` together.
 
 ## Key bindings
 
@@ -38,7 +38,7 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 |------|--------|
 | `(define-command! name doc proc #:repeatable #:inline-output)` | Register `name` as an editor command |
 | `(define-typed-command! name doc proc #:inline-output)` | Register `name` as a typed command, reachable as `:name` |
-| `(call! name args ...)` | Dispatch any editor command (built-in or Steel-defined), activating its plugin on demand |
+| `(call! name args ...)` | Dispatch any editor command (built-in or Scheme-defined), activating its plugin on demand |
 | `(request-wait-char! cmd-name)` | From inside a running command, dispatch `cmd-name` once the user types a character |
 | `(pending-char)` | Read the character captured by a `WaitChar` binding or `request-wait-char!`, or `#f` outside that context |
 | `(command-plugin name)` | The id string of the plugin that registered command `name` — `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in |
