@@ -2,7 +2,7 @@ use super::MotionMode;
 use crate::WordCtx;
 use crate::text_object::{expand_word_unit, word_unit_at};
 use hume_editing::grapheme::{
-    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+    cluster_last_char, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -132,17 +132,18 @@ pub(super) fn find_word_end_from(
 
     loop {
         let next_pos = next_grapheme_boundary(text, pos);
-        // `next_pos - 1` is the last codepoint of the grapheme cluster that
-        // starts at `pos`. For a single-codepoint cluster (the common case)
-        // this equals `pos`; for a multi-codepoint cluster such as "e\u{0301}"
-        // (é = base letter + combining accent) it includes the trailing
-        // combining marks that logically belong to the same grapheme.
+        // cluster_last_char(pos) is the last codepoint of the grapheme
+        // cluster that starts at `pos`. For a single-codepoint cluster (the
+        // common case) this equals `pos`; for a multi-codepoint cluster such
+        // as "e\u{0301}" (é = base letter + combining accent) it includes the
+        // trailing combining marks that logically belong to the same
+        // grapheme.
         if next_pos >= len {
-            return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
+            return cluster_last_char(text, pos);
         }
         let next_cat = chars.classify(text.char_at(next_pos).expect("next_pos < len"));
         if is_boundary(cat, next_cat) {
-            return next_pos - 1; // grapheme-safe: next_pos is a grapheme boundary; -1 is the last codepoint of the current cluster
+            return cluster_last_char(text, pos);
         }
         pos = next_pos;
     }

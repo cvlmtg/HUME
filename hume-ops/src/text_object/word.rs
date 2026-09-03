@@ -2,7 +2,7 @@
 //! `mm`/`MM`/nearest-word-on-line family they share with visual-move.
 
 use hume_editing::grapheme::{
-    next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
+    cluster_last_char, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
 use hume_editing::lines::line_end_exclusive;
 use hume_editing::selection::{Selection, SelectionSet};
@@ -57,13 +57,10 @@ pub fn inner_word_impl(
         }
         end_grapheme_start = next_pos;
     }
-    // Convert grapheme start → inclusive char-level end. For a 1-codepoint
-    // grapheme this equals end_grapheme_start. For e + U+0301 (2 codepoints),
-    // next_grapheme_boundary returns start+2, so end = start+1 (the combining
-    // codepoint), ensuring the selection includes the full grapheme cluster.
-    // Subtracting 1 is safe: the buffer always has a trailing '\n', so
-    // next_grapheme_boundary is always > 0.
-    let end = next_grapheme_boundary(text, end_grapheme_start) - 1; // grapheme-safe: result of next_grapheme_boundary is a cluster boundary; -1 is the last codepoint of the current cluster
+    // end_grapheme_start tracks the *start* of the final grapheme cluster;
+    // convert to its last codepoint so a trailing combining mark (e.g. the
+    // U+0301 in "e\u{0301}") is included in the returned range.
+    let end = cluster_last_char(text, end_grapheme_start);
 
     Some((start, end))
 }
@@ -138,9 +135,7 @@ pub fn expand_word_unit(
     if run_end_start == end {
         (start, end)
     } else {
-        // grapheme-safe: run_end_start is a grapheme boundary reached via
-        // next_grapheme_boundary; -1 is the last codepoint of that cluster.
-        (start, next_grapheme_boundary(text, run_end_start) - 1)
+        (start, cluster_last_char(text, run_end_start))
     }
 }
 

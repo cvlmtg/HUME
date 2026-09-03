@@ -105,6 +105,17 @@ fn goto_next_paragraph_count_two_matches_two_presses() {
     );
 }
 
+#[test]
+fn goto_next_paragraph_count_overshoot_stops_at_last() {
+    // Only 2 paragraphs lie below "a" — a count of 5 stops at "c" (the last
+    // one) rather than erroring or wrapping past it.
+    assert_state!(
+        "-[a]>\n\nb\n\nc\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 5, MotionMode::Move),
+        "a\n\nb\n\n<[c]-\n"
+    );
+}
+
 // ── goto_prev_paragraph (`{`) ────────────────────────────────────────────────
 
 #[test]
@@ -173,6 +184,17 @@ fn goto_prev_paragraph_from_leading_gap_is_noop() {
         "-[\n]>hello\n",
         |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
         "-[\n]>hello\n"
+    );
+}
+
+#[test]
+fn goto_prev_paragraph_count_overshoot_stops_at_first() {
+    // Only 2 paragraphs lie above "c" — a count of 5 stops at "a" (the
+    // first one) rather than erroring or wrapping past it.
+    assert_state!(
+        "a\n\nb\n\n-[c]>\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 5, MotionMode::Move),
+        "<[a\n\n]-b\n\nc\n"
     );
 }
 

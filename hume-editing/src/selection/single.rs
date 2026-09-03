@@ -1,4 +1,4 @@
-use crate::grapheme::next_grapheme_boundary;
+use crate::grapheme::cluster_last_char;
 use crate::lines::is_line_start;
 use crate::text::BufferText;
 
@@ -211,9 +211,7 @@ impl Selection {
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
     pub fn end_inclusive(&self, text: &BufferText) -> usize {
-        // next_grapheme_boundary returns one past the cluster; subtract 1 to
-        // get the last codepoint index (inclusive upper bound for the range).
-        next_grapheme_boundary(text, self.end()).saturating_sub(1)
+        cluster_last_char(text, self.end())
     }
 
     /// Returns `true` if the far end of the selection sits on a `\n`.

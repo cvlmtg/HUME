@@ -247,8 +247,7 @@ pub fn line_content_end(rope: &Rope, line: usize) -> usize {
 /// last codepoint; an identity on the single-codepoint clusters most text is
 /// made of, the `\n` of an empty line included.
 pub fn line_last_char(rope: &Rope, line: usize) -> usize {
-    let slice = rope.slice(..);
-    crate::grapheme::next_grapheme_boundary(slice, line_content_end(rope, line)).saturating_sub(1)
+    crate::grapheme::cluster_last_char(rope.slice(..), line_content_end(rope, line))
 }
 
 /// 0-based char column of `char_pos` within `line` — `char_pos` minus the

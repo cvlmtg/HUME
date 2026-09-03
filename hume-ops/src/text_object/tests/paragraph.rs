@@ -80,3 +80,65 @@ fn around_paragraph_blank_line_is_noop() {
         "hello\n-[\n]>world\n"
     );
 }
+
+// ── Grapheme clusters ────────────────────────────────────────────────────────
+
+#[test]
+fn inner_paragraph_combining_grapheme_at_end() {
+    // "cafe\u{0301}" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5) — the
+    // paragraph's last line ends in a 2-codepoint grapheme cluster. The span
+    // end must land on the combining mark (4), not the 'e' alone (3).
+    assert_state!(
+        "-[c]>afe\u{0301}\n\nworld\n",
+        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        "-[cafe\u{0301}]>\n\nworld\n"
+    );
+}
+
+// ── Whitespace-only lines ────────────────────────────────────────────────────
+
+#[test]
+fn inner_paragraph_whitespace_only_line_does_not_split() {
+    // A whitespace-only line is not empty (Helix semantics — is_empty_line
+    // requires zero content chars), so it doesn't break the paragraph: all
+    // three lines are one paragraph.
+    assert_state!(
+        "-[a]>\n   \nb\n\nc\n",
+        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        "-[a\n   \nb]>\n\nc\n"
+    );
+}
+
+// ── Extend variants ───────────────────────────────────────────────────────────
+
+#[test]
+fn extend_inner_paragraph_unions_with_selection() {
+    assert_state!(
+        "para -[o]>ne\nline two\n\nworld\n",
+        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Extend),
+        "-[para one\nline two]>\n\nworld\n"
+    );
+}
+
+#[test]
+fn extend_around_paragraph_grows_past_current() {
+    // Selection already covers the first paragraph via a prior `map`;
+    // pressing extend-`map` again should grow to include the next paragraph
+    // and its gap too (the past-end retry in apply_text_object_extend).
+    assert_state!(
+        "-[hello\n\n]>world\n\nfoo\n",
+        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Extend),
+        "-[hello\n\nworld\n\n]>foo\n"
+    );
+}
+
+// ── Multi-cursor ─────────────────────────────────────────────────────────────
+
+#[test]
+fn inner_paragraph_multi_cursor_distinct_paragraphs() {
+    assert_state!(
+        "-[h]>ello\n\n-[w]>orld\n",
+        |(text, sels)| cmd_inner_paragraph(&text, sels, 0, MotionMode::Move),
+        "-[hello]>\n\n-[world]>\n"
+    );
+}

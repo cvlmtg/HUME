@@ -125,6 +125,22 @@ pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: usize) -> usize 
     prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
 }
 
+/// Last codepoint of the grapheme cluster starting at `cluster_start` — the
+/// inverse of [`snap_to_cluster_start`], and the inclusive counterpart to
+/// [`next_grapheme_boundary`]'s exclusive one.
+///
+/// For a single-codepoint cluster (the common case) this equals
+/// `cluster_start`. For a multi-codepoint cluster such as `e` + U+0301
+/// (combining acute) it includes the trailing combining mark, so a selection
+/// or delete range built from this end never orphans it. Callers that need
+/// this must not step `next_grapheme_boundary(..) - 1` by hand: the buffer's
+/// structural trailing `\n` guarantees `next_grapheme_boundary` is always
+/// `> 0` here, but only this function's `saturating_sub` makes that safe to
+/// forget.
+pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: usize) -> usize {
+    next_grapheme_boundary(slice, cluster_start).saturating_sub(1)
+}
+
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
 /// the `&str` sibling of [`prev_grapheme_boundary`], for the short, already
 /// contiguous strings the UI edits in place (a minibuffer prompt, a picker
