@@ -347,6 +347,116 @@ fn test_around_spans_attribute_and_body() {
     );
 }
 
+// Reproduces the `gu`/`gU` bug (`goto-next-test`/`goto-prev-test` jumping
+// all the way to the end of the file): with two sequential `#[test]` fns,
+// `collect_hulls` reduces one tree-sitter match's captured nodes into a
+// single hull per match, but the query engine reports an extra match whose
+// captured nodes span *both* tests, alongside the two correct per-test
+// matches — three spans for two tests. `adjacent` then sometimes picks that
+// spurious merged span instead of a single test's.
+#[test]
+fn test_around_two_sequential_tests_has_no_spurious_merged_span() {
+    let source = "#[test]\nfn one() {\n    assert!(true);\n}\n\n#[test]\nfn two() {\n    assert!(true);\n}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
+    let texts: Vec<String> = around
+        .spans
+        .iter()
+        .map(|&sp| span_text(&text, sp))
+        .collect();
+    assert_eq!(
+        texts,
+        vec![
+            "#[test]\nfn one() {\n    assert!(true);\n}".to_string(),
+            "#[test]\nfn two() {\n    assert!(true);\n}".to_string(),
+        ],
+        "expected exactly the two per-test spans, got: {texts:?}"
+    );
+}
+
+// Pre-existing behavior, unrelated to and unaffected by the contiguity fix
+// below: proven with a raw match dump that tree-sitter's `.` anchor does
+// *not* treat a comment (a grammar `extra`, per
+// `tests/fixtures/grammars/rust/src/grammar.json`'s `extras` list) as
+// transparent. `function.around`'s `((attribute_item)* @function.around .
+// (function_item ...) @function.around)` can't bridge the gap a comment
+// creates, so the quantifier backtracks to its zero-attribute alternative —
+// the attribute is captured by *no* match here, not merged into one that
+// skips over the comment. `collect_hulls` never sees a multi-node hull to
+// reason about in this case; there is no gap for the fix below to cross.
+#[test]
+fn function_around_drops_the_attribute_across_a_comment_today() {
+    let source = "#[inline]\n// why inline\nfn foo() {\n    1\n}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let pos = text.byte_to_char(source.find('1').unwrap());
+
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Function, ObjectSpan::Around);
+    let span = around.enclosing(pos).expect("function.around at the body");
+    assert_eq!(span_text(&text, span), "fn foo() {\n    1\n}");
+}
+
+/// Characterization test the contiguity fix must preserve: `test.around`'s
+/// quantified group lists `(line_comment) @test.around` as one of its own
+/// alternatives, so a comment between `#[test]` and `fn` is captured
+/// directly as an ordinary adjacent sibling — a real multi-node hull with
+/// zero gap between any two of its nodes, not a case the fix should touch.
+#[test]
+fn test_around_hulls_a_comment_explicitly_captured_between_attribute_and_function() {
+    let source = "#[test]\n// why\nfn one() {\n    assert!(true);\n}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let pos = text.byte_to_char(source.find("assert!").unwrap());
+
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
+    let span = around.enclosing(pos).expect("test.around at the body");
+    assert_eq!(
+        span_text(&text, span),
+        "#[test]\n// why\nfn one() {\n    assert!(true);\n}"
+    );
+}
+
+/// The legitimate neighbor of the bug: `[(attribute_item)|(line_comment)]*`
+/// exists so a *second* real attribute on the same test is still part of
+/// one object, not dropped as non-contiguous.
+#[test]
+fn test_around_with_two_attributes_on_one_test_still_hulls_both() {
+    let source = "#[test]\n#[should_panic]\nfn one() {\n    panic!();\n}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let pos = text.byte_to_char(source.find("panic!").unwrap());
+
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
+    let span = around.enclosing(pos).expect("test.around at the body");
+    assert_eq!(
+        span_text(&text, span),
+        "#[test]\n#[should_panic]\nfn one() {\n    panic!();\n}"
+    );
+}
+
+/// Guards the drop-don't-trim decision: a bogus match spanning `#[test] fn
+/// one` through `#[should_panic] fn two` must not survive trimmed down to
+/// `[#[should_panic], fn two]` — that would fabricate a test object out of a
+/// function with no `#[test]` attribute of its own.
+#[test]
+fn test_around_does_not_fabricate_a_test_from_a_non_test_function() {
+    let source = "#[test]\nfn one() {\n    assert!(true);\n}\n\n#[should_panic]\nfn two() {\n    panic!();\n}\n";
+    let (syn, text) = rust_syntax(source);
+    let layers = syn.layers().expect("layers installed");
+    let around = ObjectSpans::collect(layers, &text, ObjectKind::Test, ObjectSpan::Around);
+    let texts: Vec<String> = around
+        .spans
+        .iter()
+        .map(|&sp| span_text(&text, sp))
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["#[test]\nfn one() {\n    assert!(true);\n}".to_string()],
+        "only the real #[test] function may be a test object: {texts:?}"
+    );
+}
+
 // No pattern captures `function_item`'s body as `class.*` — only
 // struct/enum/union/trait/impl do — so a cursor inside a method's body must
 // resolve `class.inside` to the enclosing `impl`'s body, not the method's

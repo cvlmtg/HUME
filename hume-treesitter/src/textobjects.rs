@@ -359,12 +359,61 @@ impl ObjectSpans {
     }
 }
 
+/// The hull — `min(start_byte) ‥ max(end_byte)` — of every node `m` captured
+/// under `capture_idx`, **iff those nodes describe one contiguous region**;
+/// `None` otherwise (an empty capture, or a non-contiguous one — see below).
+///
+/// A quantified capture (`(attribute_item)* @function.around`, `(line_comment)+
+/// @comment.around`) genuinely can span several nodes for one real object —
+/// a function's leading attributes, a run of line comments — and hulling
+/// those is exactly what a grouped Helix pattern is written to mean. But an
+/// *unanchored* quantifier (no `.` between two of its repetitions, or
+/// between its last repetition and what follows) lets tree-sitter match
+/// across unrelated intervening siblings: the rust `test.around` pattern's
+/// `[(attribute_item)|(line_comment)]*` group, with no anchor before it, can
+/// skip clean over one `#[test] fn`'s whole body and latch onto the *next*
+/// test's own `#[test]` attribute, reporting one match whose captured nodes
+/// span both tests. Hulling that blindly silently selects text the query
+/// never actually described as one object.
+///
+/// So two consecutively captured nodes must be contiguous to hull together:
+/// either they overlap/nest (a capture applied to both a parent and a
+/// child, or twice to the same node, as `parameter.around`'s wrapping group
+/// capture and its inner `","?` do), or the second is literally the first's
+/// `next_sibling()` — the same adjacency tree-sitter's own `.` anchor
+/// enforces, checked here only across a quantifier's *own* unanchored gaps.
+/// A match failing this is **dropped whole, never trimmed** to its
+/// contiguous prefix: trimming would still fabricate an object out of
+/// content the query never grouped — the bogus `test.around` match's
+/// trailing run is `[a later attribute, that later fn]`, and keeping even
+/// that would tag an unrelated function as a test.
+fn capture_hull(m: &tree_sitter::QueryMatch, capture_idx: u32) -> Option<(usize, usize)> {
+    let mut nodes = m.nodes_for_capture_index(capture_idx);
+    let first = nodes.next()?;
+    let mut prev = first;
+    let (mut hull_start, mut hull_end) = (first.start_byte(), first.end_byte());
+    for node in nodes {
+        debug_assert!(
+            node.start_byte() >= prev.start_byte(),
+            "tree-sitter yields one capture's nodes in document order"
+        );
+        let contiguous = node.start_byte() <= hull_end
+            || prev.next_sibling().is_some_and(|sib| sib.id() == node.id());
+        if !contiguous {
+            return None;
+        }
+        hull_start = hull_start.min(node.start_byte());
+        hull_end = hull_end.max(node.end_byte());
+        prev = node;
+    }
+    Some((hull_start, hull_end))
+}
+
 /// Run `query`'s matches over `layer`'s tree and, for every match that
-/// captures `capture_idx`, push the hull — `min(start_byte) ‥
-/// max(end_byte)` over every node that match captured under it — as an
-/// inclusive char span. A match without the capture contributes nothing; a
-/// zero-width hull (a `MISSING` node standing in for absent syntax) is
-/// dropped.
+/// captures `capture_idx`, push [`capture_hull`]'s result as an inclusive
+/// char span. A match without the capture, or whose captured nodes aren't
+/// contiguous, contributes nothing; so does a zero-width hull (a `MISSING`
+/// node standing in for absent syntax).
 ///
 /// `set_byte_range` is deliberately never used here, unlike the highlighter:
 /// the cursor prunes children outside its range, which truncates a grouped
@@ -383,11 +432,7 @@ fn collect_hulls(
     let root = layer.tree.root_node();
     let mut matches = cursor.matches(&query.query, root, RopeProvider(text.rope()));
     while let Some(m) = matches.next() {
-        let hull = m
-            .nodes_for_capture_index(capture_idx)
-            .map(|node| (node.start_byte(), node.end_byte()))
-            .reduce(|(hs, he), (start, end)| (hs.min(start), he.max(end)));
-        let Some((start_byte, end_byte)) = hull else {
+        let Some((start_byte, end_byte)) = capture_hull(m, capture_idx) else {
             continue;
         };
         if start_byte >= end_byte {

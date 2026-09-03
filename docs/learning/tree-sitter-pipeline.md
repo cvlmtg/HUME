@@ -140,6 +140,18 @@ start to the latest node's end* — a hull drawn around every node the pattern s
 node in isolation. This is what lets "select the function" include its attribute without the query
 author having to special-case attributes at every call site.
 
+This only makes sense when the tagged nodes are actually next to each other — that is the whole
+premise of reading them as one object. A loosely written pattern can occasionally ask a query engine
+for "one or more of this kind of node, tagged with this same object name," without also pinning down
+that each one has to sit directly beside the last. Nothing stops the engine from satisfying that
+request by picking two nodes that are nowhere near each other — the tag doesn't guarantee adjacency
+by itself. Read naively, that produces an "object" that's really two unrelated things stitched
+together by a shared name, stretching from wherever the first one happens to sit to wherever the
+second does — which can be nearly the whole file. The fix is to check adjacency before trusting a
+multi-node tag: if the tagged nodes genuinely sit side by side, hull them as one object as before; if
+they don't, there's no real object there and the match is set aside entirely, rather than reporting a
+"whole file" object no query author ever meant to describe.
+
 ### Selecting: smallest wins
 
 When you ask to select "the enclosing function," there may be several functions whose span contains

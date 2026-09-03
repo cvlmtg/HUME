@@ -700,3 +700,56 @@ fn goto_next_value_walks_array_elements() {
     ed.execute_keymap_command("goto-next-value".into(), None, false, ArgSource::Keymap);
     assert_eq!(selected_text(&ed), "20");
 }
+
+/// Reproduces the `gu`/`gU` bug: with two `#[test]` fns in the buffer, the
+/// underlying tree-sitter query for `test.around` also reports a spurious
+/// match spanning from the first test's `#[test]` attribute through the
+/// *last* test's closing brace (see
+/// `test_around_two_sequential_tests_has_no_spurious_merged_span` in
+/// `hume-treesitter`). `goto-next-test` from before the first test lands on
+/// that merged span — selecting every test at once — instead of just the
+/// first one. This is the mechanism behind `gu` extending toward the end of
+/// a file like `hume-editing/src/lines/tests.rs`, which has many
+/// `#[test]` fns.
+#[test]
+fn goto_next_test_with_two_tests_lands_on_the_first_test_only() {
+    let mut ed = rust_editor(
+        "-[u]>se super::*;\n\n#[test]\nfn one() {\n    assert!(true);\n}\n\n#[test]\nfn two() {\n    assert!(true);\n}\n",
+    );
+    ed.execute_keymap_command("goto-next-test".into(), None, false, ArgSource::Keymap);
+    assert_eq!(
+        selected_text(&ed),
+        "#[test]\nfn one() {\n    assert!(true);\n}"
+    );
+}
+
+/// `gU`'s half of the same bug: `adjacent`'s backward tie-break also picks
+/// the spurious merged span when the cursor sits in the gap right after the
+/// first test. From the blank line between the two tests, `goto-prev-test`
+/// must land on the first test alone.
+#[test]
+fn goto_prev_test_from_the_gap_between_two_tests_lands_on_the_first_test_only() {
+    let mut ed = rust_editor(
+        "#[test]\nfn one() {\n    assert!(true);\n}\n-[\n]>#[test]\nfn two() {\n    assert!(true);\n}\n",
+    );
+    ed.execute_keymap_command("goto-prev-test".into(), None, false, ArgSource::Keymap);
+    assert_eq!(
+        selected_text(&ed),
+        "#[test]\nfn one() {\n    assert!(true);\n}"
+    );
+}
+
+/// `enclosing`'s half of the same bug: from the gap between two tests,
+/// `around-test` (`m a u`) must find no enclosing test at all, not the
+/// spurious merged span that (wrongly) contains the gap position.
+#[test]
+fn around_test_from_the_gap_between_two_tests_is_a_no_op() {
+    let mut ed = rust_editor(
+        "#[test]\nfn one() {\n    assert!(true);\n}\n-[\n]>#[test]\nfn two() {\n    assert!(true);\n}\n",
+    );
+    let before = selected_text(&ed);
+    for ch in "mau".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(selected_text(&ed), before);
+}
