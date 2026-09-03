@@ -8,7 +8,8 @@ notion is itself configurable per buffer — see [CharClass](charclass.md#word-i
 Word select is one of several distinct patterns for creating selections from
 cursor movement — this doc covers the three most directly relevant to it;
 see [Motions vs Text Objects](motions-vs-text-objects.md) for a fourth,
-structural navigation over tree-sitter objects like functions and classes:
+structural navigation over whole object spans — tree-sitter objects like
+functions and classes, and the paragraph motions:
 
 | Pattern | Returns | Anchor (in Move mode) | Typical use |
 |---|---|---|---|

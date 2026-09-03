@@ -215,7 +215,7 @@ Prefix a motion with digits to repeat it:
 +----+--------------------------+
 | 5j | move five lines down     |
 +----+--------------------------+
-| 2{ | select 2 paragraphs back |
+| 2{ | select paragraph 2 back  |
 +----+--------------------------+
 
 Counts apply to motions, not edits.

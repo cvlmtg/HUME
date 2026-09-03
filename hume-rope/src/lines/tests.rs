@@ -320,6 +320,47 @@ fn line_content_end_crlf_only_line_is_not_empty() {
     assert_eq!(line_content_end(&buf, 1), 2);
 }
 
+// ── line_last_char ───────────────────────────────────────────────────────
+//
+// No CRLF cases here (unlike line_content_end's own suite above): every
+// buffer this function actually sees has `\r` normalized away at
+// construction (`normalize_line_endings`, called from `BufferText::from`
+// and `ChangeSetBuilder::insert`) — a raw `\r` reaches `hume-rope` only
+// through this test module's own `rope()` helper, which bypasses that
+// normalization and so cannot stand in for a real buffer here.
+
+#[test]
+fn line_last_char_normal_line() {
+    // "hello\nworld\n" — every char is its own cluster, so this is the same
+    // answer as line_content_end.
+    let buf = rope("hello\nworld\n");
+    assert_eq!(line_last_char(&buf, 0), 4);
+}
+
+#[test]
+fn line_last_char_empty_line_returns_newline_pos() {
+    // "hello\n\nworld\n" — line 1 is empty; line_content_end already lands
+    // on its own '\n', so the cluster round trip is a no-op.
+    let buf = rope("hello\n\nworld\n");
+    assert_eq!(line_last_char(&buf, 1), 6);
+}
+
+#[test]
+fn line_last_char_combining_grapheme_before_newline() {
+    // "cafe\u{0301}\n" = c(0) a(1) f(2) e(3) combining_acute(4) \n(5).
+    // line_content_end lands on the cluster's start (3); line_last_char
+    // must extend through the combining mark to 4, not stop at 3.
+    let buf = rope("cafe\u{0301}\n");
+    assert_eq!(line_last_char(&buf, 0), 4);
+}
+
+#[test]
+fn line_last_char_last_content_line() {
+    // "a\nb\nc\n": last content line is 2 ("c"), last char at 4.
+    let buf = rope("a\nb\nc\n");
+    assert_eq!(line_last_char(&buf, last_content_line(&buf)), 4);
+}
+
 // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
 
 #[test]

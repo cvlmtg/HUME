@@ -81,6 +81,19 @@ fn around_paragraph_blank_line_is_noop() {
     );
 }
 
+#[test]
+fn around_paragraph_gap_reaches_buffer_end() {
+    // The paragraph's trailing gap runs all the way to EOF (no further
+    // paragraph below) — the span must stop at the buffer's last valid
+    // position (content domain), not walk onto the phantom trailing line
+    // one past it. See `paragraph_span`'s doc comment.
+    assert_state!(
+        "-[a]>\n\n\n",
+        |(text, sels)| cmd_around_paragraph(&text, sels, 0, MotionMode::Move),
+        "-[a\n\n\n]>"
+    );
+}
+
 // ── Grapheme clusters ────────────────────────────────────────────────────────
 
 #[test]

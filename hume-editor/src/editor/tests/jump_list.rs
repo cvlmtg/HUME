@@ -410,26 +410,77 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     assert_eq!(state(&ed), before);
 }
 
-/// A no-op `}` (no paragraph below) must not record a jump — `is_jump`
-/// alone doesn't record one; the command must actually have moved (see
-/// `goto_matching_pair_noop_does_not_clobber_forward_history` above).
+/// A no-op `}` (no paragraph below) must not truncate forward jump-list
+/// history — same failure mode as
+/// `goto_matching_pair_noop_does_not_clobber_forward_history` above.
+/// Asserting the pre/post state is unchanged (as the previous version of
+/// this test did) can't catch a wrongly-pushed entry: a no-op's own jump
+/// restores right back to where it already was, so that assertion passes
+/// whether or not the entry was pushed. Forward history is the only
+/// observable that distinguishes the two.
 #[test]
-fn goto_next_paragraph_noop_does_not_record_jump() {
-    let text = BufferText::from("hello\nworld\n"); // single paragraph, nothing below
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
-    let doc = Buffer::new(text, sels);
-    let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
-    let before = state(&ed);
+fn goto_next_paragraph_noop_does_not_clobber_forward_history() {
+    let mut ed = jump_editor(10); // single paragraph, nothing below to select
 
-    ed.handle_key(key('}'));
-    assert_eq!(state(&ed), before, "no paragraph below — must be a no-op");
+    // `gg` — records a jump, puts us at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
 
+    // Jump backward to the original line-10 position.
     ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, at_top);
+
+    // `}` — the whole buffer is one paragraph, nothing below — a no-op.
+    ed.handle_key(key('}'));
     assert_eq!(
         state(&ed),
-        before,
-        "a no-op close-brace must not have pushed a jump entry"
+        back_at_start,
+        "}} must not move — nothing below"
+    );
+
+    // Forward history (the jump to line 0) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        at_top,
+        "a no-op }} must not have truncated forward jump-list history"
+    );
+}
+
+/// `{` counterpart to the no-op test above, checked separately since the
+/// no-op paths are driven by distinct code (`prev_paragraph_start`'s
+/// `checked_sub` underflow vs `next_paragraph_start`'s `line < total`
+/// guard).
+#[test]
+fn goto_prev_paragraph_noop_does_not_clobber_forward_history() {
+    let mut ed = jump_editor(10); // single paragraph, nothing above to select
+
+    // `gg` — records a jump, puts us at line 0.
+    ed.handle_key(key('g'));
+    ed.handle_key(key('g'));
+    let at_top = state(&ed);
+
+    // Jump backward to the original line-10 position.
+    ed.handle_key(key_ctrl('o'));
+    let back_at_start = state(&ed);
+    assert_ne!(back_at_start, at_top);
+
+    // `{` — the whole buffer is one paragraph, nothing above — a no-op.
+    ed.handle_key(key('{'));
+    assert_eq!(
+        state(&ed),
+        back_at_start,
+        "{{ must not move — nothing above"
+    );
+
+    // Forward history (the jump to line 0) must still be there.
+    ed.handle_key(key_ctrl('i'));
+    assert_eq!(
+        state(&ed),
+        at_top,
+        "a no-op {{ must not have truncated forward jump-list history"
     );
 }
 

@@ -159,6 +159,34 @@ fn devanagari_vowel_sign() {
     assert_eq!(prev_grapheme_boundary(buf.slice(..), 2), 0);
 }
 
+// ── cluster_last_char ───────────────────────────────────────────────────────
+
+#[test]
+fn cluster_last_char_single_codepoint_is_identity() {
+    // Every char in "hello" is its own 1-codepoint cluster.
+    let buf = rope("hello");
+    assert_eq!(cluster_last_char(buf.slice(..), 0), 0);
+    assert_eq!(cluster_last_char(buf.slice(..), 4), 4);
+}
+
+#[test]
+fn cluster_last_char_combining_char_returns_the_combining_mark() {
+    // "e\u{0301}x\n" (é = e + combining acute): the cluster starting at 0
+    // spans chars 0-1, so its last codepoint is 1 (the mark), not 0 (the
+    // base letter).
+    let buf = rope("e\u{0301}x");
+    assert_eq!(cluster_last_char(buf.slice(..), 0), 1);
+}
+
+#[test]
+fn cluster_last_char_saturates_at_eof() {
+    // Single-char buffer: the structural '\n' is its own cluster, and
+    // next_grapheme_boundary(0) returns len_chars() (1) — the saturating_sub
+    // must not underflow past it.
+    let buf = rope("");
+    assert_eq!(cluster_last_char(buf.slice(..), 0), 0);
+}
+
 // ── grapheme_count ────────────────────────────────────────────────────────
 
 #[test]

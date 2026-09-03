@@ -35,6 +35,20 @@ fn goto_next_paragraph_includes_trailing_gap() {
 }
 
 #[test]
+fn goto_next_paragraph_gap_reaches_buffer_end() {
+    // The target paragraph's trailing gap runs all the way to EOF (two
+    // blank lines, no paragraph below) — the span must stop at the
+    // buffer's last valid position (content domain), not walk onto the
+    // phantom trailing line one past it. See `paragraph_span`'s doc
+    // comment.
+    assert_state!(
+        "-[a]>\n\nb\n\n\n",
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        "a\n\n<[b\n\n\n]-"
+    );
+}
+
+#[test]
 fn goto_next_paragraph_multiple_empty_lines() {
     // A two-line gap between the current and target paragraphs — both are
     // swallowed reaching "foo", not just the nearer one.
