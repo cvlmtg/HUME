@@ -101,6 +101,11 @@ impl Editor {
     ///
     /// Drains even when the worker is disconnected: results buffered before
     /// it exited are still valid and should land.
+    ///
+    /// See [`Self::reparse_stale_buffers`]'s doc for the other caller's own
+    /// reason to drain first — the two cover different wake sources (a key
+    /// racing a completion vs. a completion with no key pending) and neither
+    /// makes the other's call here redundant.
     pub(in crate::editor) fn install_parse_results(&mut self) {
         let dones = self.parse_worker.drain_done();
         for done in dones {
@@ -120,6 +125,18 @@ impl Editor {
     /// Non-blocking: drains any completed backend results, then for each
     /// visible buffer drives `Syntax::frame_tick` (bake + gen-gate + in-flight
     /// dedup, all internal) and submits any returned reparse request.
+    ///
+    /// The drain here is not redundant with [`Self::install_parse_results`]'s
+    /// other call site in `Editor::run` (before dispatching a terminal
+    /// event): that one only runs on the `Ok(true)` branch of `poll`, i.e.
+    /// when an actual event is about to be read. A parse-worker wake with
+    /// *no* event pending takes `poll`'s `Ok(false)` branch straight back to
+    /// `settle()` — this function, via `drain_async_sources`, is the only
+    /// place that result ever gets installed. Skip the drain here and a
+    /// buffer whose async parse finishes while the user is idle (a large
+    /// file just opened, a slow injected-layer grammar, an LSP edit with no
+    /// follow-up keystroke) never highlights until the next actual keypress
+    /// happens to trigger the other call site — or never, if none comes.
     pub(in crate::editor) fn reparse_stale_buffers(&mut self) {
         self.install_parse_results();
 
