@@ -56,8 +56,8 @@ fn is_comment_start(text: &BufferText, lt_pos: usize) -> bool {
 /// of `-->` — all three are HTML5 parse errors but real markup hits them.
 fn skip_comment_body(cursor: &mut CharCursor<'_>) {
     let mut dashes = 0u32;
-    let mut offset = 0usize; // chars consumed since the confirmed "<!--"
-    while let Some((_, ch)) = cursor.next() {
+    // offset: chars consumed since the confirmed "<!--"
+    for (offset, (_, ch)) in cursor.by_ref().enumerate() {
         match ch {
             '-' => dashes += 1,
             // `--!>` closes like `-->` — keep `dashes` alive across the `!`.
@@ -65,7 +65,6 @@ fn skip_comment_body(cursor: &mut CharCursor<'_>) {
             '>' if dashes >= 2 || offset == 0 || (offset == 1 && dashes == 1) => return,
             _ => dashes = 0,
         }
-        offset += 1;
     }
 }
 
