@@ -99,7 +99,7 @@ A plugin is a directory containing a `plugin.scm` — that file is the entry poi
     (log! 'info "Hello from my plugin!")))
 ```
 
-This registers `:hello`, typed at the command line.
+This registers `:hello`, typed at the command mode prompt.
 
 ### Defining commands
 
@@ -117,7 +117,7 @@ Two verbs, matching the two kinds of command described in [Command mode](command
     ...))
 ```
 
-`define-command!` registers an editor command — bind it to a key, or dispatch it with `call!`; it's never reachable from `:`. `define-typed-command!` registers a typed command — reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a doc string shown in command help.
+`define-command!` registers an editor command — bind it to a key, or dispatch it with `call!`; it's never reachable from the command mode prompt. `define-typed-command!` registers a typed command — reachable only as `:typed-command-name`; it's never bindable to a key and never reachable through `call!`. Both take the same first two arguments: a name and a doc string shown in command help.
 
 An editor command's lambda receives the leading arguments its declared arity asks for — `()`, `(count)`, or `(count extend)` — `count` is what a key press's count prefix injects (`0` means "no count typed"), `extend` whether Extend mode is active. A typed command's lambda instead receives `()`, `(arg)`, or `(arg force)` — `arg` is the text typed after the command name (a string, or `#f` if none was typed), `force` whether `!` was appended.
 

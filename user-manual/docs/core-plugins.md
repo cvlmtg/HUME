@@ -46,7 +46,7 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
 
-`plum-ensure-grammars` — install a list of grammars not yet compiled — is for `init.scm` (`(call! "plum-ensure-grammars" '("rust" "toml"))`), not the command line; it takes a list argument, not text a `:` line can express.
+`plum-ensure-grammars` — install a list of grammars not yet compiled — is for `init.scm` (`(call! "plum-ensure-grammars" '("rust" "toml"))`), not the command mode prompt; it takes a list argument, not text a `:` line can express.
 
 Leaving PLUM out only removes these commands. Already-installed plugins and grammars keep working without it — PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow.
 

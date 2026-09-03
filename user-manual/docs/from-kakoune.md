@@ -162,7 +162,7 @@ The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds 
 
 Kakoune has no window management by design — you run multiple clients against one session and let tmux or your window manager arrange them.
 
-HUME has panes built in: `Ctrl+p` is the prefix, `Ctrl+p s` and `Ctrl+p v` split, `Ctrl+p h/j/k/l` move focus, `Ctrl+p c` closes. `:sp` and `:vsp` do the same from the command line. There is no client/server model, so no attaching a second client to a running session.
+HUME has panes built in: `Ctrl+p` is the prefix, `Ctrl+p s` and `Ctrl+p v` split, `Ctrl+p h/j/k/l` move focus, `Ctrl+p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
 
 ### Configuration
 

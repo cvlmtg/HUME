@@ -6,7 +6,7 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 
 - Select-then-act: motions change the selection; operators act on it
 - Selections are always visible and always cover at least one character
-- `:` command line, `/` search
+- `:` command mode prompt, `/` search
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`) — HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount, so a mixed-tabs-and-spaces indent gets normalized as a side effect

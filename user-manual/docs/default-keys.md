@@ -121,7 +121,7 @@ Text objects (use the `m` prefix):
 | `A` | `insert-at-line-end` | Insert at end of line |
 | `o` | `open-line-below` | Open new line below, insert |
 | `O` | `open-line-above` | Open new line above, insert |
-| `:` | `command-mode` | Open command line |
+| `:` | `command-mode` | Open command mode prompt |
 | `/` | `search-forward` | Search forward |
 | `?` | `search-backward` | Search backward |
 
@@ -255,7 +255,7 @@ The status bar shows `EXT` in Extend mode.
 | `Shift+Tab` | Complete (previous) |
 | `Up` / `Down` | Recall previous / next command starting with the typed prefix |
 | `Left` / `Right` | Move the cursor |
-| `Backspace` | Delete character before cursor; on empty input, dismiss the command line |
+| `Backspace` | Delete character before cursor; on empty input, dismiss the command mode prompt |
 | `Ctrl+w` | Delete word before cursor |
 
 ## Search mode

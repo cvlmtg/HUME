@@ -88,7 +88,7 @@ and select it as a whole — cursor (head) on its first character:
 | `g v` / `g V` | `goto-next-value` / `goto-prev-value` | The next/previous array/tuple/struct value |
 
 Lowercase jumps forward, uppercase jumps backward — the same letter each kind uses as its
-[text object](selections.md) key. Each also runs from the command line, e.g.
+[text object](selections.md) key. Each also runs from the command mode prompt, e.g.
 `:goto-next-function`. They stop at either end of the buffer instead of wrapping, and each
 records a jump-list entry, so `Ctrl+o` returns to where you jumped from. Without a matching
 grammar, every one of these commands is a silent no-op.

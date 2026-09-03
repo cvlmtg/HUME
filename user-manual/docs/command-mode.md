@@ -1,11 +1,11 @@
 # Command mode
 
-Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command line, type a name, and press `Enter`. `Esc` dismisses without running.
+Anything that doesn't deserve a keystroke lives behind `:`. Press `:` in Normal mode to open the command mode prompt, type a name, and press `Enter`. `Esc` dismisses without running.
 
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 
-- **Typed commands** — everything on this page. Reached only from `:`, take a text argument and an optional `!`, never a count.
-- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key, never from `:`.
+- **Typed commands** — everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`, never a count.
+- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key, never from the command mode prompt.
 
 Most typed commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
 
@@ -136,4 +136,4 @@ Plugins add commands of their own once you load them. The `:plum-*` commands (in
 
 ## Finding a command
 
-There is no listing command. Open the command line with `:` and press `Tab` — completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands — those aren't reachable from `:` at all; see [Builtin Commands](builtin-commands.md) for the full list.
+There is no listing command. Open the command mode prompt with `:` and press `Tab` — completion shows every registered typed name and alias, including stubs for plugins that haven't loaded yet. It never shows editor commands — those aren't reachable from the command mode prompt at all; see [Builtin Commands](builtin-commands.md) for the full list.

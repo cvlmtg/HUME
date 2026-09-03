@@ -31,7 +31,7 @@ Pasting text from outside HUME — your system clipboard via the terminal's own 
 
 - In Insert mode, the text is inserted at the cursor. Auto-pairing does not run on pasted text, so pasted brackets and quotes are never doubled up.
 - In Normal or Extend mode, a real selection is replaced; on a bare cursor the text is inserted in front of it.
-- On the command line and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
+- On the command mode prompt and in search/select prompts, line breaks in the pasted text become spaces, since those fields are single-line.
 
 ## Whitespace and the kill ring
 
