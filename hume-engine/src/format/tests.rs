@@ -334,14 +334,14 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
     )
 }
 
-/// Slice the arena text backing an `Indicator`/`Virtual` cell — panics if
+/// Slice the arena text backing a `Whitespace`/`Virtual` cell — panics if
 /// `content` isn't one of those variants (test-only helper).
 fn cell_text<'a>(arena: &'a str, content: &CellContent) -> &'a str {
     match content {
-        CellContent::Indicator { start, len } | CellContent::Virtual { start, len } => {
+        CellContent::Whitespace { start, len } | CellContent::Virtual { start, len } => {
             &arena[*start as usize..*start as usize + *len as usize]
         }
-        other => panic!("expected Indicator or Virtual content, got {other:?}"),
+        other => panic!("expected Whitespace or Virtual content, got {other:?}"),
     }
 }
 
@@ -388,7 +388,7 @@ fn newline_indicator_all_mode_blank_line() {
     assert!(
         graphemes
             .iter()
-            .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
+            .any(|g| matches!(&g.content, CellContent::Whitespace { .. }))
     );
 }
 
@@ -402,7 +402,7 @@ fn newline_indicator_none_mode() {
     assert!(
         !graphemes
             .iter()
-            .any(|g| matches!(&g.content, CellContent::Indicator { .. }))
+            .any(|g| matches!(&g.content, CellContent::Whitespace { .. }))
     );
 }
 
@@ -414,7 +414,7 @@ fn space_indicator_all_mode() {
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("a b\n", ws);
-    // Space at index 1 should be Indicator
+    // Space at index 1 should be a Whitespace indicator
     let space_g = graphemes.iter().find(|g| g.display_col == 1).unwrap();
     assert_eq!(cell_text(&arena, &space_g.content), "·");
 }
@@ -482,7 +482,7 @@ fn space_indicator_trailing_mode_interior() {
                 .find(|g| g.display_col == display_col)
                 .unwrap()
                 .content,
-            CellContent::Indicator { .. }
+            CellContent::Whitespace { .. }
         )
     };
     // Leading spaces (cols 0-1): plain.
@@ -521,34 +521,36 @@ fn space_indicator_trailing_mode_blank_line() {
 
 #[test]
 fn tab_indicator_trailing_mode_interior() {
-    // Same interior-whitespace bug, for tabs. Both the glyph and the
-    // off-state fallback are `CellContent::Indicator` (tabs always
-    // render through the arena — see `grapheme_display`), so the glyph
-    // text itself is the only way to distinguish "shown" from "hidden".
+    // Same interior-whitespace bug, for tabs. The leading/interior tabs
+    // must be `TabFill` (blank, no scope) and only the trailing tab a
+    // `Whitespace` glyph — the variant itself is now the "shown" vs.
+    // "hidden" distinction, rather than a string compare on arena text.
     let ws = WhitespaceConfig {
         tab: crate::pane::WhitespaceRender::Trailing,
         tab_char: "→",
         ..WhitespaceConfig::default()
     };
     let (_, graphemes, arena) = do_format_ws("\tA\tB\t\n", ws);
-    let glyph_at_offset = |byte_offset: usize| {
-        let g = graphemes
+    let content_at_offset = |byte_offset: usize| {
+        graphemes
             .iter()
             .find(|g| g.byte_range.start == byte_offset)
-            .unwrap();
-        cell_text(&arena, &g.content).to_string()
+            .unwrap()
+            .content
     };
-    assert_eq!(
-        glyph_at_offset(0),
-        " ",
-        "leading tab renders as plain space"
+    assert!(
+        matches!(content_at_offset(0), CellContent::TabFill),
+        "leading tab renders as blank fill"
+    );
+    assert!(
+        matches!(content_at_offset(2), CellContent::TabFill),
+        "interior tab renders as blank fill"
     );
     assert_eq!(
-        glyph_at_offset(2),
-        " ",
-        "interior tab renders as plain space"
+        cell_text(&arena, &content_at_offset(4)),
+        "→",
+        "trailing tab renders as the glyph"
     );
-    assert_eq!(glyph_at_offset(4), "→", "trailing tab renders as the glyph");
 }
 
 // ── Wrap modes ────────────────────────────────────────────────────────
@@ -603,8 +605,8 @@ fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_row() {
     let (tab_idx, _) = row0
         .iter()
         .enumerate()
-        .find(|(_, g)| matches!(g.content, CellContent::Indicator { .. }))
-        .expect("the tab's own Indicator cell must be on row0");
+        .find(|(_, g)| matches!(g.content, CellContent::TabFill))
+        .expect("the tab's own TabFill cell must be on row0");
     assert!(
         tab_idx + 1 < row0.len()
             && matches!(row0[tab_idx + 1].content, CellContent::WidthContinuation),
@@ -887,11 +889,13 @@ fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
 
     let resolve = |g: &Grapheme| -> String {
         match g.content {
-            CellContent::Indicator { start, len }
-            | CellContent::Placeholder { start, len }
-            | CellContent::Virtual { start, len } => {
+            // `Whitespace` never appears here — inline inserts have no
+            // whitespace-indicator setting of their own; a tab is always
+            // `TabFill`, drawn as a plain space with no arena entry.
+            CellContent::Placeholder { start, len } | CellContent::Virtual { start, len } => {
                 scratch.virtual_texts[start as usize..start as usize + len as usize].to_string()
             }
+            CellContent::TabFill => " ".to_string(),
             _ => String::new(),
         }
     };

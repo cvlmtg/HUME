@@ -62,7 +62,7 @@ inherits = "dark"
 "diff.minus.word"   = { fg = "white", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
 # ── Whitespace ────────────────────────────────────────────────────────────────
-"ui.whitespace" = { fg = "#c0c0c8" }
+"ui.virtual.whitespace" = { fg = "#c0c0c8" }
 
 # ── Inlay hints ───────────────────────────────────────────────────────────────
 "ui.virtual.inlay-hint" = { fg = "#a0a0a8" }

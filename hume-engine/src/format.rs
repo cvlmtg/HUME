@@ -26,9 +26,10 @@ pub struct FormatScratch {
     /// `RenderRow::line_text`.
     pub line_texts: String,
     /// Per-frame arena backing the content line's `CellContent::Virtual`
-    /// (inline inserts) and `Indicator` (whitespace glyphs, tab fill) text
-    /// ranges, none of which can be `&'static str` (LSP hints,
-    /// Steel-configured icons). Cleared per buffer line in
+    /// (inline inserts) and `Whitespace` (indicator glyphs) text ranges,
+    /// none of which can be `&'static str` (LSP hints, Steel-configured
+    /// icons). `TabFill` needs no arena entry — its text is always a single
+    /// space. Cleared per buffer line in
     /// [`FormatScratch::clear_line_bufs`], mirroring `line_texts` — compose
     /// for that line always runs before the clear.
     pub virtual_texts: String,
@@ -569,7 +570,7 @@ pub fn format_buffer_line(
                 char_offset: char_pos,
                 display_col: wrap.current_display_col,
                 width: 1,
-                content: CellContent::Indicator { start, len },
+                content: CellContent::Whitespace { start, len },
                 indent_depth,
                 scope: None,
             });
@@ -715,11 +716,10 @@ fn grapheme_display(
         hume_rope::width::Cluster::Tab { width } => {
             let content = if should_render_whitespace(whitespace.tab, is_trailing) {
                 let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
-                CellContent::Indicator { start, len }
+                CellContent::Whitespace { start, len }
             } else {
                 // Tabs render as spaces when the indicator is off.
-                let (start, len) = push_arena_text(virtual_texts, " ");
-                CellContent::Indicator { start, len }
+                CellContent::TabFill
             };
             (width as u8, content)
         }
@@ -753,7 +753,7 @@ fn grapheme_display(
                     whitespace.nbsp_char
                 };
                 let (start, len) = push_arena_text(virtual_texts, glyph);
-                CellContent::Indicator { start, len }
+                CellContent::Whitespace { start, len }
             } else {
                 // Regular grapheme (or a space-family one with the
                 // indicator off).
@@ -799,9 +799,9 @@ pub(crate) struct VirtualRun<'a> {
     /// — just the one position each of `push_virtual_cells`'s output
     /// `Grapheme`s reuses for both ends of their own (always-empty)
     /// `byte_range`. That value still matters: `RowMap`'s `NearestContent`
-    /// filter reads emptiness to tell an `Indicator` that is real content
-    /// from one that only decorates, and `style_row` reads it as the byte
-    /// position highlighting layers against.
+    /// filter reads emptiness to tell a `Whitespace`/`Placeholder` cell that
+    /// is real content from one that only decorates, and `style_row` reads
+    /// it as the byte position highlighting layers against.
     pub byte_offset: usize,
     /// For an inline insert, the char offset of the real grapheme it
     /// precedes (not `usize::MAX`): keeps the row non-decreasing in
@@ -866,10 +866,7 @@ pub(crate) fn push_virtual_cells(
         // guarantee is enforced at this chokepoint rather than at each
         // producer.
         let content = match classified {
-            hume_rope::width::Cluster::Tab { .. } => {
-                let (start, len) = push_arena_text(arena, " ");
-                CellContent::Indicator { start, len }
-            }
+            hume_rope::width::Cluster::Tab { .. } => CellContent::TabFill,
             hume_rope::width::Cluster::Placeholder(p) => {
                 let (start, len) = push_arena_text(arena, p.as_str());
                 CellContent::Placeholder { start, len }

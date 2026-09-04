@@ -139,11 +139,14 @@ fn row_text(r: &RenderRow<'_>) -> String {
         .iter()
         .filter_map(|g| match g.content {
             CellContent::Virtual { start, len }
-            | CellContent::Indicator { start, len }
+            | CellContent::Whitespace { start, len }
             | CellContent::Placeholder { start, len } => {
                 let start = start as usize;
                 Some(r.virtual_texts[start..start + len as usize].to_string())
             }
+            // No arena entry — blank across its whole reserved width, same
+            // as `render::compose_row`'s `TabFill` arm draws it on screen.
+            CellContent::TabFill => Some(" ".repeat(g.width as usize)),
             CellContent::Grapheme => Some(r.line_text[g.byte_range.clone()].to_string()),
             CellContent::WidthContinuation | CellContent::Empty => None,
         })
@@ -759,7 +762,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     // indicator (`whitespace-newline`) enabled: `format.rs` pushes it at the
     // same column and char_offset as the EOL sentinel, so a sticky column
     // past the end of the text must still land on the last real character —
-    // not the indicator cell, which `Indicator`'s tab/space-glyph cases make
+    // not the indicator cell, which `Whitespace`'s tab/space-glyph cases make
     // ineligible for a blanket exclusion.
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
@@ -1038,8 +1041,8 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
         "tab at display_col 0, tab_width 4 -> full stop"
     );
     assert!(
-        matches!(cells[0].content, CellContent::Indicator { .. }),
-        "a tab renders as a space-filled Indicator, matching a real buffer line's tab with its indicator off"
+        matches!(cells[0].content, CellContent::TabFill),
+        "a tab renders as TabFill, matching a real buffer line's tab with its indicator off"
     );
     assert_eq!(
         cells[1].display_col, 4,

@@ -60,7 +60,7 @@
 "diff.minus.word"   = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
 # ── Whitespace ────────────────────────────────────────────────────────────────
-"ui.whitespace" = { fg = "bg3" }
+"ui.virtual.whitespace" = { fg = "bg3" }
 
 # ── Completion popup ──────────────────────────────────────────────────────────
 "ui.menu"          = { fg = "fg2", bg = "bg2" }

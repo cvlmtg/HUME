@@ -599,7 +599,7 @@ fn indicator_content_fills_tab_width() {
         char_offset: 0,
         display_col: 0,
         width: 4,
-        content: CellContent::Indicator { start: 0, len: 3 }, // "→" is 3 bytes
+        content: CellContent::Whitespace { start: 0, len: 3 }, // "→" is 3 bytes
         indent_depth: 0,
         scope: None,
     }];
@@ -621,7 +621,39 @@ fn indicator_content_fills_tab_width() {
     assert_eq!(buf.cell(3, 0).unwrap().text(), " ");
 }
 
-// ── Virtual/Indicator content arena ───────────────────────────────────
+#[test]
+fn tab_fill_blanks_its_whole_width() {
+    // A tab with its indicator off (`TabFill`, no arena text at all) must
+    // still blank its full reserved width, exactly as the glyph's own
+    // trailing fill does above — this is that same fill with no glyph in
+    // front of it.
+    let graphemes = vec![Grapheme {
+        byte_range: 0..1,
+        char_offset: 0,
+        display_col: 0,
+        width: 4,
+        content: CellContent::TabFill,
+        indent_depth: 0,
+        scope: None,
+    }];
+    let rows = [simple_row(0..1)];
+    let styles = vec![ResolvedStyle::default()];
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: 0,
+    };
+    let viewport = ViewportState::new(20, 5);
+    let buf = do_compose_row(
+        "\t", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    );
+    for x in 0..4 {
+        assert_eq!(buf.cell(x, 0).unwrap().text(), " ");
+    }
+}
+
+// ── Virtual/Whitespace content arena ───────────────────────────────────
 
 #[test]
 fn virtual_cell_wider_than_one_column_renders_from_the_arena() {

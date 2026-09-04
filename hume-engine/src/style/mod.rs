@@ -195,13 +195,22 @@ pub(crate) fn style_row(
         // Each theme.resolve(id) is an O(1) Vec index.
         style = hl.layer_at(g.byte_range.start, style, theme);
 
-        // Tier 2d½: an unrenderable cluster's stand-in. Layered over the
-        // syntax highlight so `<202e>` reads as a placeholder rather than as
-        // whatever token it sits inside — these are the characters a reader
-        // most needs to notice. Under Tier 2e so a decoration that carries
-        // its own scope still wins.
-        if matches!(g.content, crate::types::CellContent::Placeholder { .. }) {
-            style = style.layer(theme.ui.invisible);
+        // Tier 2d½: an unrenderable cluster's stand-in, or an opted-in
+        // whitespace glyph. Layered over the syntax highlight so `<202e>`
+        // reads as a placeholder rather than as whatever token it sits
+        // inside — these are the characters a reader most needs to notice
+        // — and so a whitespace glyph takes the theme's dedicated colour
+        // rather than the token colour underneath it. Under Tier 2e so a
+        // decoration that carries its own scope still wins. `TabFill` gets
+        // neither scope: a tab's indicator being off must leave it unstyled.
+        match g.content {
+            crate::types::CellContent::Placeholder { .. } => {
+                style = style.layer(theme.ui.invisible);
+            }
+            crate::types::CellContent::Whitespace { .. } => {
+                style = style.layer(theme.ui.whitespace);
+            }
+            _ => {}
         }
 
         // Tier 2e: the cell's own scope (inline-insert decorations). Layered

@@ -43,11 +43,6 @@
 # hiding in source is exactly what this has to catch the eye for.
 "ui.virtual.invisible" = { fg = "bg", bg = "red" }
 "ui.virtual.inlay-hint" = { fg = "muted" }
-"ui.virtual.inlay-hint.parameter" = { fg = "muted" }
-"ui.virtual.inlay-hint.type" = { fg = "muted" }
-"ui.virtual.ruler" = { fg = "surface" }
-"ui.virtual.wrap" = { fg = "muted" }
-"ui.virtual.jump-label" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.gutter" = { bg = "bg" }
 "ui.gutter.selected" = { bg = "surface" }
 "diagnostic.error" = { fg = "red", modifiers = [ "underlined" ] }

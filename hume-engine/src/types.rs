@@ -85,7 +85,7 @@ pub struct Grapheme {
 
 /// What a grapheme cell displays.
 ///
-/// `Indicator` and `Virtual` reference a range in a per-frame text arena in
+/// `Whitespace`, `Placeholder`, and `Virtual` reference a range in a per-frame text arena in
 /// `FormatScratch` (`virtual_texts` for a content line's inline decorations,
 /// `virtual_row.texts` for a provider's virtual row — see
 /// `rows::RenderRow::virtual_texts`) rather than borrowing a string directly
@@ -100,14 +100,25 @@ pub enum CellContent {
     /// A real grapheme cluster. The text is read from the rope via `byte_range`.
     /// Avoids copying grapheme strings during formatting.
     Grapheme,
-    /// A substitution: whitespace indicator, tab fill character.
-    Indicator { start: u32, len: u16 },
+    /// A whitespace indicator glyph (`·`, `→`, `⏎`, `⍽`) the user opted into
+    /// seeing. A distinct variant from [`CellContent::TabFill`] because the
+    /// style stage gives this one its own scope (`ui.virtual.whitespace`):
+    /// unlike the blank a tab falls back to with its indicator off, this is
+    /// content the user asked to see and a theme should be able to colour.
+    Whitespace { start: u32, len: u16 },
+    /// A tab rendered as plain spaces because its indicator is off. Always
+    /// exactly one space per cell, so unlike every other arena-backed
+    /// variant this one carries no `(start, len)` — there is nothing to
+    /// look up. Deliberately unstyled: a theme's `ui.virtual.whitespace`
+    /// must not tint a tab expansion the user chose not to see indicators
+    /// for.
+    TabFill,
     /// The stand-in for a cluster the terminal must not be shown as itself —
     /// a control character it would act on, or an invisible one it would
-    /// collapse. Drawn exactly like an [`CellContent::Indicator`], but a
-    /// distinct variant because the style stage gives it its own scope
-    /// (`ui.virtual.invisible`): these are the characters a reader most needs
-    /// to notice, bidi overrides among them.
+    /// collapse. Drawn like [`CellContent::Whitespace`], but its own variant
+    /// because the style stage gives it its own scope (`ui.virtual.invisible`):
+    /// these are the characters a reader most needs to notice, bidi overrides
+    /// among them.
     Placeholder { start: u32, len: u16 },
     /// The right-hand padding cell of a double-width character.
     WidthContinuation,

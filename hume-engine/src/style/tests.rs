@@ -1284,6 +1284,130 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     );
 }
 
+#[test]
+fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
+    // An opted-in whitespace glyph must carry `ui.virtual.whitespace`
+    // regardless of the syntax colour at that position — the same
+    // contract `ui.virtual.invisible` gets for placeholders, above.
+    let rope = ropey::Rope::from_str("a \tb");
+    let ws = crate::pane::WhitespaceConfig {
+        space: crate::pane::WhitespaceRender::All,
+        tab: crate::pane::WhitespaceRender::All,
+        ..crate::pane::WhitespaceConfig::default()
+    };
+    let mut fmt = crate::format::FormatScratch::new();
+    crate::format::format_buffer_line(
+        &rope,
+        0,
+        4,
+        &ws,
+        &crate::pane::WrapMode::None,
+        None,
+        crate::format::FormatBound::Full,
+        &[],
+        &mut fmt,
+    );
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.virtual.whitespace",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    theme.bake(&crate::theme::ScopeRegistry::new());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &fmt.display_rows,
+        &fmt.graphemes,
+        &[],
+        EditorMode::Normal,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    let whitespace_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| matches!(g.content, CellContent::Whitespace { .. }))
+        .expect("the space indicator must produce a Whitespace cell");
+    assert_eq!(
+        scratch.styles[whitespace_idx].fg,
+        Some(Rgb(0, 255, 0)),
+        "the indicator must carry ui.virtual.whitespace"
+    );
+    let a_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| g.char_offset == 0 && matches!(g.content, CellContent::Grapheme))
+        .expect("'a' grapheme present");
+    assert_eq!(
+        scratch.styles[a_idx].fg, None,
+        "the text around it keeps its own styling"
+    );
+}
+
+#[test]
+fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
+    // A tab drawn as blank spaces (indicator off) must not pick up
+    // `ui.virtual.whitespace` — that scope belongs only to the glyph the
+    // user opted into, never to the fallback fill a theme's `bg` would
+    // otherwise leak onto every tab expansion regardless of the setting.
+    let rope = ropey::Rope::from_str("a\tb");
+    let ws = crate::pane::WhitespaceConfig {
+        tab: crate::pane::WhitespaceRender::None,
+        ..crate::pane::WhitespaceConfig::default()
+    };
+    let mut fmt = crate::format::FormatScratch::new();
+    crate::format::format_buffer_line(
+        &rope,
+        0,
+        4,
+        &ws,
+        &crate::pane::WrapMode::None,
+        None,
+        crate::format::FormatBound::Full,
+        &[],
+        &mut fmt,
+    );
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.virtual.whitespace",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    theme.bake(&crate::theme::ScopeRegistry::new());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &fmt.display_rows,
+        &fmt.graphemes,
+        &[],
+        EditorMode::Normal,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    let tab_fill_idx = fmt
+        .graphemes
+        .iter()
+        .position(|g| matches!(g.content, CellContent::TabFill))
+        .expect("the tab with its indicator off must produce a TabFill cell");
+    assert_eq!(
+        scratch.styles[tab_fill_idx].fg, None,
+        "tab fill must not inherit ui.virtual.whitespace"
+    );
+}
+
 // ── Inline-insert char_offset partition invariant ───────────────────────
 
 /// Drive the real formatter with a mid-row insert, then style the result —

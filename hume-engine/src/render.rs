@@ -127,7 +127,7 @@ impl<'a> Canvas<'a> {
     ///
     /// The frame's single text writer for anything measured beforehand: UI
     /// chrome (statusline, menus, pickers, the drawer), gutter cells, and —
-    /// inside `compose_row`, for a `CellContent::Indicator`/`Placeholder`
+    /// inside `compose_row`, for a `CellContent::Whitespace`/`Placeholder`
     /// cell — a pane-content whitespace glyph or unrenderable-cluster
     /// stand-in. That last case still measures against `CHROME_TAB_WIDTH`
     /// (this method's fixed tab width, not the pane's real one) safely: the
@@ -485,9 +485,10 @@ fn compose_gutter(
 /// virtual/filler rows that have no backing buffer line.
 ///
 /// `virtual_texts` is the per-frame arena backing this row's
-/// `CellContent::Indicator`/`Virtual` ranges (`FormatScratch::virtual_texts`
-/// for a content row, `virtual_row.texts` for a provider's virtual row) —
-/// same lifetime/borrow rationale as `line_str`.
+/// `CellContent::Whitespace`/`Placeholder`/`Virtual` ranges
+/// (`FormatScratch::virtual_texts` for a content row, `virtual_row.texts`
+/// for a provider's virtual row) — same lifetime/borrow rationale as
+/// `line_str`.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
@@ -565,8 +566,8 @@ pub(crate) fn compose_row(
 
         let cell_style = *style;
 
-        // A multi-column cell (double-width CJK grapheme, tab
-        // Indicator) whose left edge sits before `h_offset` still
+        // A multi-column cell (double-width CJK grapheme, a tab's
+        // Whitespace glyph or TabFill) whose left edge sits before `h_offset` still
         // passes the skip check above once its right edge crosses
         // it — but `content_x` above already clamped to 0, so
         // rendering the glyph there would draw its *full* width at
@@ -607,7 +608,7 @@ pub(crate) fn compose_row(
                     }
                 }
             }
-            CellContent::Indicator { start, len } | CellContent::Placeholder { start, len } => {
+            CellContent::Whitespace { start, len } | CellContent::Placeholder { start, len } => {
                 let s = resolve_arena_text(virtual_texts, *start, *len);
                 // The indicator's text may be wider than one cell — an
                 // unrenderable cluster's `<200b>` placeholder spans as many
@@ -621,6 +622,15 @@ pub(crate) fn compose_row(
                 // Fill the reserved cells the text didn't cover: a tab's
                 // expanse beyond its marker, or a wide cell's second column.
                 for ex in after..cell_end {
+                    canvas.set_cell(ex, y, " ", 1, cell_style);
+                }
+            }
+            CellContent::TabFill => {
+                // A tab with its indicator off: blank across its whole
+                // expanse, same `cell_style` a `Whitespace` glyph's fill
+                // would use — this is just that fill with no glyph in front.
+                let cell_end = (screen_x + g.width as u16).min(right_edge);
+                for ex in screen_x..cell_end {
                     canvas.set_cell(ex, y, " ", 1, cell_style);
                 }
             }

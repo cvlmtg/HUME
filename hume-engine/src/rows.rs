@@ -134,7 +134,7 @@ pub struct RenderRow<'m> {
     /// Buffer-line text that the row's real graphemes index by byte range.
     /// Empty for virtual rows, which have no buffer text.
     pub line_text: &'m str,
-    /// Arena backing `Indicator`/`Virtual` cell text.
+    /// Arena backing `Whitespace`/`Placeholder`/`Virtual` cell text.
     pub virtual_texts: &'m str,
     /// The row's own background scope (`VirtualLine::base_scope`) — `None`
     /// for content rows, which get their background from
@@ -646,12 +646,13 @@ impl<'a> RowMap<'a> {
                 // carries the real grapheme's `char_offset` it precedes, so
                 // minimising distance against it elsewhere on the row would
                 // land on a character that cell isn't at — excluded outright,
-                // not just deprioritised. `Indicator` covers tab/space
-                // glyphs, which *are* real content, except the newline
-                // indicator, which shares the EOL sentinel's column and must
-                // be excluded the same way — singled out by `byte_range`
-                // being empty, just like the sentinel it's drawn on top of
-                // (`format.rs`'s newline-indicator push).
+                // not just deprioritised. `Whitespace`/`TabFill` cover
+                // tab/space glyphs and blank tab fill, which *are* real
+                // content, except the newline indicator, which shares the
+                // EOL sentinel's column and must be excluded the same way —
+                // singled out by `byte_range` being empty, just like the
+                // sentinel it's drawn on top of (`format.rs`'s
+                // newline-indicator push).
                 //
                 // An exhaustive match (not a chain of exclusion filters) so a
                 // future `CellContent` variant forces a decision here instead
@@ -669,13 +670,13 @@ impl<'a> RowMap<'a> {
                             CellContent::WidthContinuation => false,
                             CellContent::Empty => admit_eol,
                             CellContent::Virtual { .. } => false,
-                            // Same rule as `Indicator`: a placeholder standing
-                            // in for real buffer text is a position the cursor
-                            // can land on; one standing in for decoration text
+                            // A substitution standing in for real buffer text
+                            // is a position the cursor can land on; one
+                            // standing in for decoration text (`push_virtual_cells`)
                             // has an empty byte range and is not.
-                            CellContent::Indicator { .. } | CellContent::Placeholder { .. } => {
-                                !g.byte_range.is_empty()
-                            }
+                            CellContent::Whitespace { .. }
+                            | CellContent::TabFill
+                            | CellContent::Placeholder { .. } => !g.byte_range.is_empty(),
                         })
                         .min_by_key(|g| target_display_col.abs_diff(g.display_col))
                         .map(|g| g.char_offset)
@@ -887,8 +888,9 @@ impl<'a> RowMap<'a> {
             row,
             graphemes: &vrow.graphemes,
             // A virtual row has no buffer text — every cell resolves out of
-            // `virtual_texts` instead, whether it is `Virtual` or the
-            // `Indicator` a tab or control character becomes.
+            // `virtual_texts` instead: `Virtual` text itself, or the
+            // `Placeholder` a control character becomes. A tab needs no
+            // arena lookup at all — it's `TabFill`, drawn as blanks directly.
             line_text: "",
             virtual_texts: &vrow.texts,
             base_scope,

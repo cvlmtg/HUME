@@ -59,7 +59,7 @@
 "diff.minus.word"   = { fg = "fg", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
 # ── Whitespace ────────────────────────────────────────────────────────────────
-"ui.whitespace" = { fg = "#464650" }
+"ui.virtual.whitespace" = { fg = "#464650" }
 
 # ── Pane background / seam dividers ─────────────────────────────────────────────
 "ui.background"     = { bg = "bg" }

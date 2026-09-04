@@ -135,6 +135,11 @@ pub struct UiScopes {
     /// theme that defines nothing still renders these muted rather than as
     /// ordinary text.
     pub invisible: ResolvedStyle,
+    /// `ui.virtual.whitespace` — an opted-in whitespace indicator glyph
+    /// (`·`, `→`, `⏎`, `⍽`). Dot-fallback reaches `ui.virtual`. Never applied
+    /// to `CellContent::TabFill` — the blank a tab renders as with its
+    /// indicator off must stay unstyled regardless of this scope.
+    pub whitespace: ResolvedStyle,
     /// Primary selection-head highlight (Normal/Extend/… modes). Falls back to `cursor` if unset.
     pub cursor_primary: ResolvedStyle,
     /// Primary selection-head highlight in Insert mode. Falls back to `cursor_insert` if unset.
@@ -321,6 +326,7 @@ impl Theme {
             // dot-fallback to ui.virtual for themes that don't define the guide explicitly
             indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
             invisible: self.resolve_raw("ui.virtual.invisible"),
+            whitespace: self.resolve_raw("ui.virtual.whitespace"),
             // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
             cursor_primary: self.resolve_raw("ui.cursor.primary"),
             // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,
