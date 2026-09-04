@@ -652,3 +652,57 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
         "placement must match a full re-derivation"
     );
 }
+
+// ── `distance`'s tightened cap (`scroll.rs`'s far-jump arm) ─────────────
+
+/// The tightened cap must not change *which* arm fires or *where* it lands —
+/// only how many lines it pays to get there. `top_line` and the returned
+/// row are derived from the arm-4 formula directly
+/// (`cursor_line - (height - margin - 1)`, `height - margin - 1`), the same
+/// values the untightened cap already produced, since a cursor this far below
+/// `top` returns `None` from `distance` under either cap.
+#[test]
+fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
+    let text: String = (0..150).map(|i| format!("line{i}\n")).collect();
+    let r = rope(&text);
+    let providers = no_providers();
+    let mut v = viewport(0, 10, 80);
+    let height = 10usize;
+    let margin = 2usize;
+    let cursor_line = 100;
+
+    let mut s = FormatScratch::new();
+    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
+    let row = ensure_cursor_visible(&mut v, &mut rm, RowPos::new(cursor_line, 0), margin);
+
+    let target = height - margin - 1;
+    assert_eq!(v.top_line, cursor_line - target);
+    assert_eq!(row, Some(target));
+}
+
+/// The forward walk must not format past the tightened cap
+/// (`height - margin - 1 = 7`). Line 9 sits past that cap but inside the old
+/// one (`height = 10`), so it is the exact line whose format count
+/// distinguishes the two — a far-below cursor (line 100) makes `distance`
+/// return `None` under either cap, isolating the assertion to the walk
+/// length rather than the arm it selects.
+#[test]
+fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
+    let text: String = (0..150).map(|i| format!("line{i}\n")).collect();
+    let r = rope(&text);
+    let formats = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(CountFormatsOf(9, std::rc::Rc::clone(&formats))));
+    let mut v = viewport(0, 10, 80);
+
+    let mut s = FormatScratch::new();
+    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
+    ensure_cursor_visible(&mut v, &mut rm, RowPos::new(100, 0), 2);
+
+    assert_eq!(
+        formats.get(),
+        0,
+        "line 9 sits past the tightened cap (height - margin - 1 = 7) but \
+         inside the old cap (height = 10) — the forward walk must not reach it"
+    );
+}

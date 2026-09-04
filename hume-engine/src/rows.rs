@@ -848,7 +848,16 @@ impl<'a> RowMap<'a> {
         let cached = self
             .cached
             .as_ref()
-            .expect("kind() resolved this line's block");
+            .expect("slot() resolved this line's block");
+        // `slot()`'s only callers (`render_row`'s `Before`/`After` arms) call
+        // `block(line)` immediately before reaching here, which guarantees
+        // `cached.line == line` — see `ensure_formatted`'s matching assert
+        // for why a future line-spanning cache on `block` must preserve that.
+        debug_assert_eq!(
+            cached.line, line,
+            "segment_virtual_row({line}, ..) called with a stale cache entry for line {}",
+            cached.line
+        );
         let vl = &cached.virtual_lines[vl_idx];
         let provider_id = vl.provider_id;
         let base_scope = vl.base_scope;
@@ -916,8 +925,19 @@ impl<'a> RowMap<'a> {
         } else {
             bound
         };
-        // After `block`, which either confirms the cache or replaces it.
+        // After `block`, which either confirms the cache or replaces it —
+        // `block` guarantees `cached.line == line` on return by construction
+        // (it either hits an already-matching entry or repopulates one), so
+        // the check below trusts that rather than re-comparing `line` itself.
+        // That guarantee is the one thing a future line-spanning cache on
+        // `block` must preserve: an early return that skips populating
+        // `cached` would make this check silently pass a stale entry through.
         let breakdown = self.block(line);
+        debug_assert_eq!(
+            self.cached.as_ref().map(|c| c.line),
+            Some(line),
+            "block({line}) must leave the cache pointed at the line it was asked for"
+        );
         if self
             .cached
             .as_ref()

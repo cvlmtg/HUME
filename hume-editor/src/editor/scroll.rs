@@ -65,13 +65,17 @@ pub(super) fn ensure_cursor_visible(
 
     // `None` means the cursor is more than a viewport's worth of rows below
     // the top, which wants the same correction as any other too-low cursor.
-    Some(match rm.distance(top, cursor_pos, height) {
+    //
+    // Capped at `target` rather than `height`: `rows_down < height - margin`
+    // is the only comparison this result ever feeds (below), so `Some(k)`
+    // for any `k >= target + 1` is indistinguishable from `None` at the call
+    // site — walking past `target` under wrap only pays for
+    // `format_buffer_line` calls whose answer nothing inspects.
+    let target = height.saturating_sub(margin).saturating_sub(1);
+    Some(match rm.distance(top, cursor_pos, target) {
         Some(rows_down) if rows_down < margin => scroll_back_from(viewport, rm, cursor_pos, margin),
         Some(rows_down) if rows_down < height.saturating_sub(margin) => rows_down,
-        _ => {
-            let target = height.saturating_sub(margin).saturating_sub(1);
-            scroll_back_from(viewport, rm, cursor_pos, target)
-        }
+        _ => scroll_back_from(viewport, rm, cursor_pos, target),
     })
 }
 
