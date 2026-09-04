@@ -12,33 +12,10 @@
 
 ;; ── Installed plugin discovery ────────────────────────────────────────────────
 
-;;; Walk <data>/plugins/<user>/<repo>/ and return a list of "user/repo"
-;;; strings for every entry that contains a plugin.scm file.
+;;; "user/repo" for every <data>/plugins/<user>/<repo>/ leaf containing a
+;;; plugin.scm file.
 (define (plum/installed-plugins)
-  (let ((pdir (plum/plugins-dir)))
-    (if (not (path-exists? pdir))
-        '()
-        (let user-loop ((users (call! "stdlib/list-subdirs" pdir))
-                        (result '()))
-          (cond
-            ((null? users)
-             (reverse result))
-            (else
-             (let* ((user  (car users))
-                    (udir  (path-join pdir user)))
-               (let repo-loop ((repos (call! "stdlib/list-subdirs" udir))
-                               (acc result))
-                 (cond
-                   ((null? repos)
-                    (user-loop (cdr users) acc))
-                   (else
-                    (let* ((repo (car repos))
-                           (scm  (path-join udir repo "plugin.scm")))
-                      (repo-loop
-                        (cdr repos)
-                        (if (path-exists? scm)
-                            (cons (string-append user "/" repo) acc)
-                            acc)))))))))))))
+  (plum/two-level-repos (plum/plugins-dir) "plugin.scm"))
 
 ;; ── Set operations ────────────────────────────────────────────────────────────
 

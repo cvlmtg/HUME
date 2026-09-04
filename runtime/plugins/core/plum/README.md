@@ -1,7 +1,8 @@
 # core:plum
 
 **PLUM** — the HUME **PLU**gin **M**anager. Installs and updates third-party Steel plugins
-from GitHub, and installs the tree-sitter grammars that power syntax highlighting.
+and themes from GitHub, and installs the tree-sitter grammars that power syntax
+highlighting.
 
 Requires `core:stdlib` declared (or loaded) first — grammar/plugin install and cleanup call
 `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
@@ -38,6 +39,10 @@ grammar workflow.
 | `:plum-install-grammar` | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) |
 | `:plum-list-grammars` | Log declared / installed / orphan / missing grammar lists |
 | `:plum-cleanup-grammars` | Delete compiled grammar files no longer declared |
+| `:plum-install-theme` | Install (or reinstall) a theme repo's `themes/*.toml` by `user/repo` GitHub slug |
+| `:plum-update-themes` | Run `git pull` in every installed theme repo and re-sync its `.toml` copies |
+| `:plum-list-themes` | Log installed theme repos, the theme names each provides, and any unmanaged `.toml` |
+| `:plum-remove-theme` | Remove an installed theme repo's `.toml` copies and its clone, by `user/repo` slug |
 
 `plum-ensure-grammars` — install any of the given (list of) grammar names not yet
 compiled — is not in the table above: it's a plain editor command, not a `:` command, and
@@ -52,19 +57,23 @@ never touches `<data>/servers/` or the LSP catalogs.
 
 ### File layout
 
-PLUM bundles two independent subsystems:
+PLUM bundles three independent subsystems:
 
-- `plugin.scm` — entry point; `require`s the two subsystems below.
+- `plugin.scm` — entry point; `require`s the three subsystems below.
 - `plugins.scm` — third-party **plugin** install/update/cleanup (`:plum-install-plugins` etc).
 - `grammars.scm` — tree-sitter **grammar** install pipeline (`:plum-install-grammar` etc);
   builds on the source catalog and path helpers core registers at startup (see "Grammar
   sources and the Helix pin" below).
+- `themes.scm` — third-party **theme** install/update/list/remove (`:plum-install-theme`
+  etc); see "Theme install" below.
 - `lib.scm` — shared utilities: `plum/read-file`, `plum/run!` (a `core:stdlib`
-  `stdlib/run` wrapper that raises instead of returning a status), and `plum/batch-run`
-  (batch installs), used by `plugins.scm` and `grammars.scm` as needed. Directory listing,
-  filesystem cleanup, and list search live in `core:stdlib` (`stdlib/list-subdirs`,
-  `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`) — reached
-  via `call!`, not local wrappers.
+  `stdlib/run` wrapper that raises instead of returning a status), `plum/batch-run`
+  (batch installs), `plum/safe-segment?` (validates one untrusted filesystem path
+  segment), and `plum/two-level-repos` (the `<root>/<user>/<repo>/` discovery walk shared
+  by plugin and theme-repo discovery) — used by `plugins.scm`, `grammars.scm`, and
+  `themes.scm` as needed. Directory listing, filesystem cleanup, and list search live in
+  `core:stdlib` (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`,
+  `stdlib/delete-dir`, `stdlib/delete-file`) — reached via `call!`, not local wrappers.
 
 ### Plugin discovery
 
@@ -149,3 +158,39 @@ files matching *this platform's* shared-library extension — a `.so` left behin
 `<data>/grammars/` shared with a Linux setup, for instance, is invisible to both registration
 and cleanup on macOS, not reported as an orphan and deleted. Remove it by hand if that ever
 comes up; it's inert either way (never dlopen'd on the platform it doesn't match).
+
+### Theme install
+
+A theme repo is a GitHub `user/repo` with a `themes/*.toml` directory at its root (e.g.
+[everforest.hume](https://github.com/cvlmtg/everforest.hume)) — `:plum-install-theme
+<user/repo>` clones it and copies that directory's `.toml` files flat into
+`<data>/themes/`, the search tier `hume-editor`'s theme loader and `:theme <Tab>`
+completer already read (both only ever glob `*.toml` files there, non-recursively).
+`:theme <name>` picks up an installed theme immediately — no `:reload-config`, unlike a
+plugin, since theme lookup hits the filesystem at load time and the completer re-scans
+on every `Tab`.
+
+The clone itself is kept, at `<data>/themes/sources/<user>/<repo>/` — the direct analog
+of `<data>/grammars/sources/<name>/`. A `sources/` *directory* has no extension, so it
+never matches the `*.toml` glob either consumer runs; it's invisible to both, exactly like
+a grammar's source tree is invisible to the compiled-grammar scan. Keeping it is what lets
+`:plum-update-themes`/`:plum-list-themes`/`:plum-remove-theme` work with **no separate
+state file** — PLUM's existing zero-state-file design (see "Plugin discovery" above)
+extends to themes because the clone itself is the provenance record for which repo a
+given `<data>/themes/<name>.toml` came from.
+
+`:plum-install-theme` always installs from a clean slate, the same discipline
+`:plum-install-grammar` uses: it purges any existing clone for that slug before cloning,
+which doubles as the repair path. If the clone succeeds but the repo turns out to have no
+`themes/*.toml`, the sync step raises and the stale clone is left on disk — a harmless
+leftover, overwritten by the same purge on the next `:plum-install-theme` attempt for
+that slug. This is deliberate, not an oversight: catching that failure to clean up
+immediately would mean wrapping a call that raises via a native-backed builtin
+(`plum/run!`, ultimately `stdlib/run`) in an inner `with-handler` that catches and
+re-raises — exactly the shape that corrupts Steel 0.8.2's VM continuation stack when it
+runs somewhere an outer handler also sits (hit for real once already, in this same
+plugin — see `plum/fetch-raw-query`'s own doc comment in `grammars.scm`). Letting the
+purge-on-next-attempt do the cleanup avoids the footgun entirely.
+
+Removing the theme currently active in `:theme` leaves it loaded in memory until the next
+`:theme <name>` or restart — `:plum-remove-theme` only touches files on disk.

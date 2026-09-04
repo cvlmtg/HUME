@@ -27,7 +27,7 @@ If you're writing a plugin yourself, see [Plugin API → Standard Library](plugi
 
 ## core:plum
 
-**PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins from GitHub, and installs the tree-sitter grammars that power syntax highlighting. Its install and cleanup commands depend on `core:stdlib`.
+**PLUM** — the HUME **PLU**gin **M**anager — installs and updates third-party plugins and themes from GitHub, and installs the tree-sitter grammars that power syntax highlighting. Its install and cleanup commands depend on `core:stdlib`.
 
 ```scheme
 (declare-plugin "core:stdlib")
@@ -45,6 +45,10 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-install-grammar <lang>` | Install and compile one grammar |
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
+| `:plum-install-theme <user/repo>` | Install (or reinstall) a theme repo's themes |
+| `:plum-update-themes` | Pull the latest version of every installed theme repo |
+| `:plum-list-themes` | Show installed theme repos and the themes each provides |
+| `:plum-remove-theme <user/repo>` | Remove an installed theme repo |
 
 `plum-ensure-grammars` — install a list of grammars not yet compiled — is for `init.scm`, not the command mode prompt; it takes a list argument.
 
@@ -52,7 +56,7 @@ PLUM never installs anything on its own: the commands below do the work when you
 (call! "plum-ensure-grammars" '("rust" "toml"))
 ```
 
-Leaving PLUM out only removes these commands. Already-installed plugins and grammars keep working without it — PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow.
+Leaving PLUM out only removes these commands. Already-installed plugins, grammars, and themes keep working without it — PLUM is only needed to install new ones. See [Syntax Highlighting](syntax-highlighting.md) for the grammar workflow and [Configuration](configuration.md#themes) for the theme workflow.
 
 ## core:lsp
 

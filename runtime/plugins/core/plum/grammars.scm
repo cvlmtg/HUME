@@ -30,17 +30,6 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
-;;; #t if `name` is safe to use as one filesystem path segment: no `.`/`..`
-;;; and no path separator. Guards `plum/fetch-raw-query`'s scratch-file path
-;;; against a dependency name parsed from a downloaded query file's
-;;; `; inherits:` line — untrusted content, unlike the top-level grammar
-;;; name (which always comes from the fixed catalog).
-(define (plum/safe-segment? name)
-  (and (not (equal? name "."))
-       (not (equal? name ".."))
-       (not (string-contains? name "/"))
-       (not (string-contains? name "\\"))))
-
 ;;; Fetch `name`'s `filename` query to a scratch file and return its raw
 ;;; content. `curl` is deliberately NOT wrapped in a `with-handler`: this
 ;;; runs inside `plum/resolve-query`'s tolerant handler, and re-raising a
@@ -48,6 +37,10 @@
 ;;; Steel 0.8.2's continuation stack (pinned by `steel_stdlib_availability`).
 ;;; Cost: a failed curl may leave a stale `tmp` — overwritten next attempt.
 (define (plum/fetch-raw-query name filename)
+  ;; `plum/safe-segment?` (lib.scm) guards this scratch-file path against a
+  ;; dependency name parsed from a downloaded query file's `; inherits:`
+  ;; line — untrusted content, unlike the top-level grammar name (which
+  ;; always comes from the fixed catalog).
   (unless (plum/safe-segment? name)
     ;; `plum/resolve-query`'s tolerant handler (used for every dependency
     ;; below the top level) swallows this raise the same as an ordinary

@@ -519,6 +519,7 @@ mod reload_config;
 mod scripting_effects;
 mod scripting_grammar;
 mod scripting_lsp_install;
+mod scripting_theme_install;
 mod sync_dispatch;
 mod theme_dirs;
 mod tutor;

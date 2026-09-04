@@ -1,6 +1,50 @@
 ;;; core:plum/lib.scm
 
-(provide plum/batch-run plum/run! plum/read-file)
+(provide plum/batch-run plum/run! plum/read-file plum/safe-segment? plum/two-level-repos)
+
+;; ── Path-segment validation ───────────────────────────────────────────────────
+
+;;; #t if `name` is safe to use as one filesystem path segment: no `.`/`..`
+;;; and no path separator. For any name that reaches `path-join`/a subprocess
+;;; arg but did not come from a fixed catalog — a GitHub "user/repo" slug
+;;; typed by the user, a dependency name parsed out of downloaded content.
+(define (plum/safe-segment? name)
+  (and (not (equal? name "."))
+       (not (equal? name ".."))
+       (not (string-contains? name "/"))
+       (not (string-contains? name "\\"))))
+
+;; ── Two-level repo discovery ──────────────────────────────────────────────────
+
+;;; Walk `root`/<user>/<repo>/ and return "user/repo" strings for every leaf
+;;; containing `marker` (a file or directory name proving the leaf holds
+;;; genuine content, not just an empty namespace directory) — shared by
+;;; plugin discovery (`marker` "plugin.scm") and theme-repo discovery
+;;; (`marker` "themes").
+(define (plum/two-level-repos root marker)
+  (if (not (path-exists? root))
+      '()
+      (let user-loop ((users (call! "stdlib/list-subdirs" root))
+                      (result '()))
+        (cond
+          ((null? users)
+           (reverse result))
+          (else
+           (let* ((user  (car users))
+                  (udir  (path-join root user)))
+             (let repo-loop ((repos (call! "stdlib/list-subdirs" udir))
+                             (acc result))
+               (cond
+                 ((null? repos)
+                  (user-loop (cdr users) acc))
+                 (else
+                  (let* ((repo (car repos))
+                         (entry (path-join udir repo marker)))
+                    (repo-loop
+                      (cdr repos)
+                      (if (path-exists? entry)
+                          (cons (string-append user "/" repo) acc)
+                          acc))))))))))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
 ;; Built on core:stdlib's `stdlib/run` (call! via core:stdlib — load it first,

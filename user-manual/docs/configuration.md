@@ -162,6 +162,14 @@ To see which themes are available, type `:theme ` and press `Tab`.
 
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
+To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)) — for example:
+
+```
+:plum-install-theme cvlmtg/everforest.hume
+```
+
+`:theme <Tab>` picks it up right away, no restart needed.
+
 HUME reads these Helix statusline scopes:
 
 - `ui.statusline` — fallback style for the statusline row, and the style
