@@ -236,11 +236,18 @@ pub fn around_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> 
     let (segments, idx, nudged_pos) = locate_argument(text, pos)?;
 
     if segments.len() == 1 {
-        // Only argument — no separator to eat; same as inner. Re-enter
-        // inner_argument (rather than trimming `segments[idx]` directly) so
-        // a cursor on the outer bracket of `foo((a))` still resolves to the
-        // nested pair's argument, not the whole `(a)` outer segment.
-        return inner_argument(text, nudged_pos);
+        // Only argument — no separator to eat; same as inner. A bracket-nudge
+        // (`nudged_pos != pos`) re-enters inner_argument so a cursor on the
+        // outer bracket of `foo((a))` still resolves to the nested pair's
+        // argument, not the whole `(a)` outer segment — inner_argument's own
+        // locate_argument call is what does that descent. Without a nudge,
+        // inner_argument would just re-resolve the same pair and segments
+        // this call already has, so trim directly instead.
+        return if nudged_pos == pos {
+            trim_segment(text, segments[idx])
+        } else {
+            inner_argument(text, nudged_pos)
+        };
     }
 
     let inner = trim_segment(text, segments[idx])?;

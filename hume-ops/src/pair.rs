@@ -94,21 +94,34 @@ pub(crate) fn find_bracket_pair(
     }
 }
 
+/// `bracket_role` for every ASCII byte, built from `BRACKET_PAIRS` so the
+/// table can never drift out of sync with the pairs it indexes. Every
+/// `BRACKET_PAIRS` char is ASCII, so a 128-entry table covers all of them;
+/// `bracket_role` is the hot per-char dispatch in
+/// [`find_tightest_bracket_pair`]'s scanning loops, where a linear scan over
+/// `BRACKET_PAIRS` would otherwise run on every character those loops visit,
+/// most of which aren't brackets at all.
+const BRACKET_ROLE_TABLE: [Option<(u8, bool)>; 128] = {
+    let mut table = [None; 128];
+    let mut k = 0;
+    while k < BRACKET_PAIRS.len() {
+        let (open, close) = BRACKET_PAIRS[k];
+        table[open as usize] = Some((k as u8, true));
+        table[close as usize] = Some((k as u8, false));
+        k += 1;
+    }
+    table
+};
+
 /// Which `BRACKET_PAIRS` entry `ch` belongs to, and whether it's the open
 /// side (`true`) or the close side (`false`). `None` for any other char.
 fn bracket_role(ch: char) -> Option<(usize, bool)> {
-    BRACKET_PAIRS
-        .iter()
-        .enumerate()
-        .find_map(|(k, &(open, close))| {
-            if ch == open {
-                Some((k, true))
-            } else if ch == close {
-                Some((k, false))
-            } else {
-                None
-            }
-        })
+    let byte = u32::from(ch);
+    if byte >= BRACKET_ROLE_TABLE.len() as u32 {
+        return None;
+    }
+    let (k, is_open) = BRACKET_ROLE_TABLE[byte as usize]?;
+    Some((k as usize, is_open))
 }
 
 /// Find the tightest (innermost, smallest-span) of the three `BRACKET_PAIRS`
