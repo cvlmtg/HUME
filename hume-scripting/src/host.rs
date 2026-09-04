@@ -1288,11 +1288,10 @@ pub trait OutputHost {
     /// unknown, or un-activated `Lazy` command.
     fn arm_inline_output(&mut self, name: &str) -> Option<usize>;
 
-    /// Truncate the bracket's frame stack back to `depth`, dropping this
-    /// call's own frame and any descendant frame a caught error left
-    /// unpaired above it. Called with the depth [`Self::arm_inline_output`]
-    /// returned, after a paired `call!` returns, and with `0` once at the
-    /// tail of every Steel session regardless of outcome — a no-op there
-    /// once every arm this session was already paired (the common case).
+    /// Truncate the bracket's frame stack back to `depth` — the value
+    /// [`Self::arm_inline_output`] returned, after a paired `call!` returns,
+    /// or `0` once at the tail of every Steel session regardless of outcome.
+    /// See `hume_editor`'s `InlineOutput::truncate` for why this truncates to
+    /// a depth rather than popping the top frame.
     fn truncate_inline_output(&mut self, depth: usize);
 }

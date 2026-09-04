@@ -859,7 +859,16 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         // `terminal` is `None` in tests that drive `tui_active: true` with no
         // real terminal attached (see `arm_inline_output`'s doc) — state
         // still transitions to entered so the gate/close logic is exercised,
-        // just without the real I/O there's no terminal to receive it.
+        // just without the real I/O there's no terminal to receive it. In
+        // production `attach_terminal` always runs before `tui_active` can go
+        // true (`lib.rs`, ahead of `Editor::run`), so `needs_enter()` firing
+        // (which only happens for a frame pushed with `tui_active`) implies a
+        // live terminal — a real break here would otherwise corrupt the TUI
+        // silently instead of loudly.
+        debug_assert!(
+            self.terminal.is_some() || cfg!(test),
+            "needs_enter() fired for a tui_active frame with no terminal attached"
+        );
         if let Some(term) = self.terminal {
             hume_platform::terminal::enter_inline_output(term, kitty, mouse)
                 .map_err(|e| format!("inline-output enter failed: {e}"))?;

@@ -392,7 +392,13 @@ impl Editor {
             // `terminal` is `None` in tests that drive `tui_active: true`
             // with no real terminal attached — the state transition still
             // happened (see `ensure_inline_output_screen`), just with no
-            // terminal to receive the physical close.
+            // terminal to receive the physical close. See that function's
+            // own `debug_assert!` for why a live `entered` with no terminal
+            // in a real (non-test) build would mean the invariant broke.
+            debug_assert!(
+                self.terminal.is_some() || cfg!(test),
+                "entered implies tui_active was true implies terminal attached"
+            );
             if let Some(term) = self.terminal.as_ref() {
                 hume_platform::terminal::print_return_prompt();
                 hume_platform::terminal::wait_for_keypress(term);

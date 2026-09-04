@@ -64,27 +64,28 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
         .is_some_and(|output| output.is_inline_output_command())
 }
 
-/// Whether it is currently safe to write directly to the real process
-/// stdout: init (before the alt-screen TUI is up) or an `#:inline-output`
-/// command body (alt-screen temporarily left). `inline` is
-/// [`is_inline_output_command`]'s result, hoisted by the caller rather than
-/// read again here — `stdout_gate` needs the same fact twice (whether it's
-/// safe at all, then whether to enter the alt-screen), and each read is a
-/// non-devirtualizable hop through `ctx.host`.
-fn stdout_is_safe(ctx: &SteelCtx, inline: bool) -> bool {
-    ctx.session == crate::context::EvalSession::Init || inline
-}
-
 /// `(%stdout-gate!)` — called by each gated print shim (see
 /// `PRINT_GATE_SHIMS` in `builtins/mod.rs`) immediately before it would write
-/// to the real stdout. Returns `#f` (write must be suppressed) unless
-/// [`stdout_is_safe`]. When safe via [`is_inline_output_command`] specifically
+/// to the real stdout. Returns `#f` (write must be suppressed) unless it's
+/// currently safe to write directly to the real process stdout: init (before
+/// the alt-screen TUI is up) or an `#:inline-output` command body (alt-screen
+/// temporarily left). When safe via [`is_inline_output_command`] specifically
 /// (not the init session, which prints pre-terminal with no bracket to open),
 /// lazily enters the alt-screen bracket on this, the first real write of the
 /// command body.
+///
+/// `inline` is read once and reused for both checks below (safe-at-all, then
+/// whether to enter the alt-screen) rather than re-read — each read is a
+/// non-devirtualizable hop through `ctx.host`.
+///
+/// Fail oracle for the `||`: flip the guard to `session != Init || !inline`
+/// (De Morgan's negation of `&&` rather than `||`) → pinned by
+/// `stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only`
+/// and `stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command`
+/// below, each isolating one of the two safe reasons from the other.
 pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
     let inline = is_inline_output_command(ctx);
-    if !stdout_is_safe(ctx, inline) {
+    if ctx.session != crate::context::EvalSession::Init && !inline {
         return Ok(SteelVal::BoolV(false));
     }
     if inline && let Some(output) = ctx.host.output() {

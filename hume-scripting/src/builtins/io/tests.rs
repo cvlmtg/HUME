@@ -2,38 +2,10 @@ use super::*;
 use crate::null_host::RecordingInlineOutputHost;
 use crate::test_support::SteelCtxTestHarness;
 
-// ── stdout_is_safe: the actual gate logic ─────────────────────────────────
-//
-// These three cases pin the `||` semantics of `stdout_is_safe` — each one
-// distinguishes `||` from a wrong `&&`.
-//
-// Fail oracle: change `stdout_is_safe` to `inline && ctx.session ==
-// EvalSession::Init` → `neither_flag_set_is_unsafe` still passes, but the
-// other two flip to `false` and fail.
-
-#[test]
-fn neither_flag_set_is_unsafe() {
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx(); // NullHost: EvalSession::Runtime, output() is None
-    assert!(!stdout_is_safe(&ctx, false));
-}
-
-#[test]
-fn init_session_alone_is_safe() {
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx_init(); // EvalSession::Init, output() is None
-    assert!(stdout_is_safe(&ctx, false));
-}
-
-#[test]
-fn is_inline_output_alone_is_safe() {
-    let mut host = RecordingInlineOutputHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, host reports inline_output=true
-    assert!(stdout_is_safe(&ctx, true));
-}
-
 // ── stdout_gate: behavior around the gate ──────────────────────────────────
+//
+// The three tests below between them pin the `||` semantics of the safety
+// check inside `stdout_gate` — see that function's own fail-oracle comment.
 
 /// Gate closed: returns `#f`, no bracket entry.
 #[test]

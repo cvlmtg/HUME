@@ -284,10 +284,9 @@ pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult
 
 /// `(%restore-inline-output! depth)` — truncates the bracket's frame stack
 /// back to `depth` (the value `%arm-inline-output!` returned for this same
-/// call). Only ever called after `%arm-inline-output!` returned non-`#f`; a
-/// body that raises before reaching it leaves its frame unpopped, unwound
-/// instead by `run_steel_session`'s unconditional truncate-to-zero at the
-/// end of the session.
+/// call). Only ever called after `%arm-inline-output!` returned non-`#f`; see
+/// `%apply-command` in `bootstrap.scm`'s BOOTSTRAP comment (`builtins/mod.rs`)
+/// for what happens when a body raises before reaching it.
 pub(crate) fn restore_inline_output(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult {
     let depth = super::args::usize_arg(depth, "%restore-inline-output!")?;
     if let Some(output) = ctx.host.output() {

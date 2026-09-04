@@ -39,16 +39,18 @@ use crate::watchdog::EvalWatchdog;
 /// Arm the watchdog, run `body` against `steel` with `ctx` visible as
 /// `*hume.ctx*`, then cancel the watchdog, reset the interrupt flag, and
 /// truncate any unrestored inline-output frame back to zero
-/// (`OutputHost::truncate_inline_output`).
+/// (`OutputHost::truncate_inline_output`) — the backstop for a `call!`-armed
+/// bracket (`bootstrap.scm`'s `%apply-command`) whose body raised before
+/// reaching its matching restore; see that function's own comment in
+/// `builtins/mod.rs`'s BOOTSTRAP block for why it isn't paired via
+/// `with-handler` instead. A no-op whenever every arm this session was
+/// already paired — the common case.
 ///
 /// Shared by `eval_source_raw` (compiles a source program), `call_steel_cmd` /
 /// `fire_hook` / `activate_plugin_inline` (direct function calls) so the
-/// arm / eval / cancel / reset ceremony lives in one place — and, since it's
-/// the one boundary every Steel entry point passes through regardless of
-/// outcome, the one place that can unconditionally undo a `call!`-armed
-/// inline-output bracket (`bootstrap.scm`'s `%apply-command`) whose body
-/// raised before reaching its matching restore. A no-op whenever every arm
-/// this session was already paired — the common case.
+/// arm / eval / cancel / reset / truncate ceremony lives in one place — the
+/// one boundary every Steel entry point passes through regardless of
+/// outcome.
 pub(crate) fn run_steel_session<'a, R>(
     steel: &mut Engine,
     watchdog: &EvalWatchdog,
