@@ -5,22 +5,11 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 
-use crate::pair::{BRACKET_PAIRS, find_bracket_pair};
+use crate::pair::find_tightest_bracket_pair;
 
 /// One comma segment's inclusive `(start, end)` char range, leading and
 /// trailing whitespace included.
 type Segment = (usize, usize);
-
-/// Find the tightest bracket pair among `()`, `[]`, `{}` that encloses `pos`.
-///
-/// Tries all three bracket types and returns the pair with the smallest span.
-/// Tightest means innermost — for nested structures, we want the closest pair.
-fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    BRACKET_PAIRS
-        .iter()
-        .filter_map(|&(open, close)| find_bracket_pair(text, pos, open, close))
-        .min_by_key(|&(o, c)| c - o)
-}
 
 /// Collect all comma-separated segments at depth 0 between `open_pos` and `close_pos`.
 ///

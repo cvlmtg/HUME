@@ -18,7 +18,7 @@ use hume_editing::text::BufferText;
 /// operator (`a < b`) far more often than a delimiter, which is why vim's own
 /// `matchpairs` default excludes it too; `<div>`/`</div>` tag matching is a
 /// separate scan ([`crate::tag`]).
-pub(crate) const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
 pub(crate) fn scan_left_for_open(
@@ -92,6 +92,138 @@ pub(crate) fn find_bracket_pair(
             Some((open_pos, close_pos))
         }
     }
+}
+
+/// Which `BRACKET_PAIRS` entry `ch` belongs to, and whether it's the open
+/// side (`true`) or the close side (`false`). `None` for any other char.
+fn bracket_role(ch: char) -> Option<(usize, bool)> {
+    BRACKET_PAIRS
+        .iter()
+        .enumerate()
+        .find_map(|(k, &(open, close))| {
+            if ch == open {
+                Some((k, true))
+            } else if ch == close {
+                Some((k, false))
+            } else {
+                None
+            }
+        })
+}
+
+/// Find the tightest (innermost, smallest-span) of the three `BRACKET_PAIRS`
+/// pairs that encloses `pos` — the combined-scan sibling of calling
+/// [`find_bracket_pair`] three times and taking the smallest span, which is
+/// what this replaces.
+///
+/// The three bracket types are resolved as **independent** candidates, never
+/// as "nearest unmatched open, of any type": on `{(abc}    )` with the
+/// cursor on `b`, `(` at index 1 is the nearest unmatched open, but its
+/// partner `)` at 10 gives `()` a span of 9, while `{}` resolves to `(0, 5)`
+/// — span 5 — and wins. A single depth counter shared across bracket types
+/// would return the `()` span instead; three counters, tracked in lockstep
+/// and combined only at the end, are load-bearing.
+///
+/// Each type still gets `find_bracket_pair`'s own on-open/on-close shortcut:
+/// if `pos` sits on that type's open or close char, that side costs no scan.
+/// The other two types fall into the both-directions case regardless. In
+/// that case the old per-type rightward scan started at `pos`, but the char
+/// at `pos` is by construction neither `open_k` nor `close_k` for a type
+/// that doesn't own it — it can't affect that type's depth — so starting
+/// every type's rightward scan at `pos + 1` is exactly equivalent, and is
+/// what makes one combined rightward pass legal.
+///
+/// A type whose leftward scan fails is dropped before the rightward pass
+/// runs at all — the old code's `?` short-circuit, preserved here as a cost
+/// optimization only (a dropped type was never going to be a candidate
+/// either way). The two passes each stop once every type still needing an
+/// answer has one — not once *any* type resolves, which the `{(abc}    )`
+/// example above would break, since `()` resolves before `{}` but loses.
+/// Ties (crossed nesting can produce genuine equal spans, e.g. `({a)}`) are
+/// broken by `BRACKET_PAIRS` order, matching `min_by_key`'s
+/// first-of-equal-minima behavior on the original per-type calls.
+pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+    let ch = text.char_at(pos)?;
+
+    // Leftward pass: each type's own first unmatched open, or the cursor
+    // itself if `pos` is on that type's open char.
+    let mut opens: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
+    let mut pending = 0usize;
+    for (k, &(open, _)) in BRACKET_PAIRS.iter().enumerate() {
+        if ch == open {
+            opens[k] = Some(pos);
+        } else {
+            pending += 1;
+        }
+    }
+    if pending > 0 {
+        let mut depths = [0usize; BRACKET_PAIRS.len()];
+        let mut cursor = text.chars_at(pos);
+        while let Some((i, c)) = cursor.prev() {
+            let Some((k, is_open)) = bracket_role(c) else {
+                continue;
+            };
+            if opens[k].is_some() {
+                continue;
+            }
+            if !is_open {
+                depths[k] += 1;
+            } else if depths[k] == 0 {
+                opens[k] = Some(i);
+                pending -= 1;
+                if pending == 0 {
+                    break;
+                }
+            } else {
+                depths[k] -= 1;
+            }
+        }
+    }
+
+    // Rightward pass: only for types that resolved an open above — a type
+    // with no unmatched open leftward is already out of the candidate set.
+    let mut closes: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
+    let mut pending = 0usize;
+    for (k, &(_, close)) in BRACKET_PAIRS.iter().enumerate() {
+        if opens[k].is_none() {
+            continue;
+        }
+        if ch == close {
+            closes[k] = Some(pos);
+        } else {
+            pending += 1;
+        }
+    }
+    if pending > 0 {
+        let mut depths = [0usize; BRACKET_PAIRS.len()];
+        // `pos + 1` cannot panic: `text.char_at(pos)` above already proved
+        // `pos < text.len_chars()`.
+        for (i, c) in text.chars_at(pos + 1) {
+            let Some((k, is_open)) = bracket_role(c) else {
+                continue;
+            };
+            if opens[k].is_none() || closes[k].is_some() {
+                continue;
+            }
+            if is_open {
+                depths[k] += 1;
+            } else if depths[k] == 0 {
+                closes[k] = Some(i);
+                pending -= 1;
+                if pending == 0 {
+                    break;
+                }
+            } else {
+                depths[k] -= 1;
+            }
+        }
+    }
+
+    opens
+        .iter()
+        .zip(closes.iter())
+        .filter_map(|(&open_pos, &close_pos)| Some((open_pos?, close_pos?)))
+        .min_by_key(|&(open_pos, close_pos)| close_pos - open_pos)
 }
 
 /// Find the bracket nearest `sel`'s head, scanning the selection span.
