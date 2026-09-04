@@ -1,4 +1,4 @@
-// Class B bottom drawer: (show-drawer-list!
+// Bottom drawer: (show-drawer-list!
 // items on-select) / (close-drawer!), the Normal/Extend-only key intercept
 // in `Editor::handle_key` (`handle_drawer_key`), and the engine chrome band
 // (see `hume-engine`'s `pane_area_*` tests for the partition math itself).

@@ -72,6 +72,32 @@ accent-coloured, a second focus cue alongside dimming. This is purely a
 rendering detail: the seam and its glyph exist only in the rendered frame,
 not in the buffer or the layout tree's own data.
 
+## Panes, bands, and overlays
+
+Not everything on screen is a pane. Three kinds of surface share the frame,
+and each behaves differently when the window is resized or when something
+temporary needs to appear:
+
+- **Panes** are what this page has described so far — leaves of the split
+  tree, each with its own buffer, cursor, and scroll position. Splitting
+  subdivides them, closing one hands its space to its neighbours, and every
+  pane is reachable by moving focus.
+- **Bands** are full-width strips reserved above or below the pane area — the
+  status line, an optional tab bar, a scrolling list shown at the bottom of
+  the screen. A band is not a pane: it has no buffer and no cursor, and it
+  isn't part of the split tree. Reserving one shrinks every pane exactly as a
+  terminal resize would, so a band never covers content — it makes room for
+  itself instead.
+- **Overlays** float on top of a pane and reserve no space at all — a
+  completion list, a selection menu, a hover popup. Whatever is underneath is
+  covered, not moved, which is why an overlay is for something transient you
+  dismiss rather than something you work inside.
+
+A future addition sits between the first two: a *docked* pane would be a real
+pane — its own cursor, its own motions — but with a fixed size along its
+split axis instead of a share that rebalances when siblings split or close,
+the way an ordinary pane's does.
+
 ## Splitting
 
 Splitting the focused pane creates a new pane next to it — vertically
@@ -95,7 +121,9 @@ handed back equally to the panes that remain, not all to one neighbour.
 
 - [The Rendering Pipeline](rendering-pipeline.md) — how a single pane's
   content is turned into styled terminal cells; splitting just means running
-  that pipeline once per pane and arranging the results.
+  that pipeline once per pane and arranging the results. Its "Stage 4" section
+  is where the status line, tab bar, and bottom band are composed into the
+  frame alongside the panes.
 - [Changesets: Describing Edits as Data](changesets.md) — the mechanism that
   keeps a non-editing pane's selections meaningful after another pane edits
   the shared buffer.

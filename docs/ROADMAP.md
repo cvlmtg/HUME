@@ -7,8 +7,8 @@
 - [ ] Tabline UI — engine-rendered buffer/tab bar; `TabBarProvider` slot already exists.
 - [ ] Scope-aware local rename — tree-sitter locals, LSP fallback via `core:lsp`.
 - [ ] Code folding — tree-sitter-powered collapse/expand.
-- [ ] Class A docked panes — fixed-row-count `LayoutTree` variant alongside ratio-based splits. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views. Deferred until the first concrete client is scoped.
-- [ ] Wire remaining Class B drawer clients — `:ls`, `:messages`, notifications, command/search history pagers onto the existing bottom-drawer primitive.
+- [ ] Docked panes — fixed-extent (along the split axis) `LayoutTree` variant alongside ratio-based splits, so a docked pane can be a column as well as a row. `equalize` (which currently rewrites every ratio in the tree on every split/close, see `LayoutTree::Split`'s doc comment) must be scoped to skip docked panes rather than resizing them. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views, undo-tree graph (`docs/UNDOTREE.md`). Deferred until the first concrete client is scoped.
+- [ ] Wire remaining bottom-drawer clients — `:ls`, `:messages`, notifications, command/search history pagers onto the existing bottom-drawer primitive.
 - [ ] Wrap indicator — configurable char prepended to continuation rows in soft-wrap mode.
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
 - [ ] `:e <new-path>` touch-or-open — create empty buffer bound to path when file doesn't exist; first `:w` writes it.

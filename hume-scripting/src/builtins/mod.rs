@@ -499,7 +499,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "show-menu!" ui::show_menu(items: SteelVal, on_select: SteelVal);
         cmd "close-menu!" ui::close_menu();
 
-        // Class B bottom drawer.
+        // Bottom drawer.
         cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
         cmd "close-drawer!" ui::close_drawer();
 

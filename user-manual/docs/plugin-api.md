@@ -222,7 +222,7 @@ Full walkthroughs — batch vs. streaming population, truncation direction, exit
 | `(close-popup!)` | Close the open popup |
 | `(show-menu! items on-select)` | Show a selection menu over `items`, a list of strings |
 | `(close-menu!)` | Close the open menu |
-| `(show-drawer-list! items on-select)` | Show a list in the Class B bottom drawer, over `items`, a list of strings |
+| `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a list of strings |
 | `(close-drawer!)` | Close the open drawer |
 
 ## Timers

@@ -1,4 +1,4 @@
-//! Class B bottom drawer (`show-drawer-list!`) — a generic, display-only
+//! Bottom drawer (`show-drawer-list!`) — a generic, display-only
 //! scrolling pick-list rendered in a chrome band above the statusline.
 //!
 //! Unlike the popup/menu widgets, the drawer has no per-frame geometry to
