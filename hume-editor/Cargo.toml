@@ -25,10 +25,22 @@ steel-core = { version = "0.8.2", features = ["custom-hash"] }
 ropey.workspace = true
 unicode-segmentation.workspace = true
 hume-grid = { path = "../hume-grid" }
-clap = { version = "4.6.1", features = ["derive"] }
+# `color`/`suggestions` (clap's other defaults) are dropped: our four-argument
+# CLI (main.rs) doesn't need "did you mean" suggestions, and unstyled --help
+# output is an acceptable trade for skipping `anstream`/`anstyle-parse`/etc.
+clap = { version = "4.6.1", default-features = false, features = [
+    "std",
+    "derive",
+    "help",
+    "usage",
+    "error-context",
+] }
 termina = "0.3.3"
 regex-cursor = "0.1.5"
-arboard = "3"
+# Text-only clipboard: `default-features = false` drops `image-data`, which
+# otherwise pulls in a JPEG/TIFF decoder and an ICC colour-management engine
+# (`image`, `tiff`, `zune-jpeg`, `moxcms`, ...) that `clipboard.rs` never uses.
+arboard = { version = "3", default-features = false }
 nucleo-matcher = "0.3.1"
 
 [dev-dependencies]

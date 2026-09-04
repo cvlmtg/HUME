@@ -19,7 +19,10 @@ test-util = []
 # ioctl_fionread` is a safe wrapper over the same ioctl, hence both crates.
 nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal", "process"] }
 rustix = "1"
-signal-hook = "0.3"
+# unix.rs uses only `consts::signal`, `flag::{register_conditional_shutdown,
+# register_usize}`, and `low_level::pipe::register` — the default `channel`/
+# `iterator` front-ends are dead code here.
+signal-hook = { version = "0.3", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 # ctrlc is Windows-only now — Unix termination goes through signal-hook
