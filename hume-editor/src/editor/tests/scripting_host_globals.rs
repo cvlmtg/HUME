@@ -5,7 +5,6 @@
 //! add on top of a pristine engine.
 
 use super::*;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 
 /// `<repo>/runtime/plugins/core/steel-server/lsp-home/`.
@@ -68,13 +67,7 @@ fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash:
     for rel in ["prelude.scm", "languages.scm", "grammars.scm"] {
         let path = runtime_root.join("scheme").join(rel);
         let effects = {
-            let mut ih = make_init_host(
-                &mut ed.state,
-                &mut ed.view,
-                ed.terminal.as_ref(),
-                ed.tui_active,
-                ed.kitty_enabled,
-            );
+            let mut ih = init_host!(ed);
             host.eval_init(&path, 10_000, &mut ih, builtin_names.clone())
                 .unwrap_or_else(|e| panic!("evaluating runtime/scheme/{rel}: {}", e.message))
         };
@@ -194,13 +187,7 @@ fn steel_server_plugin_registers_scheme_with_generated_globals_env() {
 
     let plugin_path = runtime_root.join("plugins/core/steel-server/plugin.scm");
     let effects = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&plugin_path, 10_000, &mut ih, builtin_names.clone())
             .unwrap_or_else(|e| panic!("evaluating plugin.scm: {}", e.message))
     };

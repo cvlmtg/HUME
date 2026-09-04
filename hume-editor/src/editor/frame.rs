@@ -460,20 +460,12 @@ impl Editor {
         &self.view.panes[self.state.focused_pane_id].viewport
     }
 
-    /// `true` if `ensure_inline_output_screen` has ever actually entered the
+    /// How many times `ensure_inline_output_screen` has actually entered the
     /// inline-output terminal bracket (alt-screen toggle + "press any key")
-    /// on this `Editor`. Off the event loop this must stay `false` for every
+    /// on this `Editor`. Off the event loop this must stay `0` for every
     /// `#:inline-output #t` command dispatched, output or not — see
-    /// `tui_active` on `Editor`.
-    #[cfg(all(test, unix))]
-    pub(crate) fn inline_output_entered(&self) -> bool {
-        self.state.inline_output.ever_entered()
-    }
-
-    /// [`Self::inline_output_entered`]'s exact-count twin — lets a
-    /// (cross-platform) test pin that the alt-screen was entered exactly
-    /// once even through nested `call!`s, rather than merely "at least
-    /// once".
+    /// `tui_active` on `Editor`. Also lets a test pin an exact count through
+    /// nested `call!`s (a re-entry bug shows up as `2`, not just "entered").
     #[cfg(test)]
     pub(crate) fn inline_output_enter_count(&self) -> usize {
         self.state.inline_output.enter_count()

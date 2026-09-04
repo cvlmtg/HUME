@@ -250,15 +250,17 @@ macro_rules! builtins {
 // (a hook body, a timer thunk, another command's own body) gets the same
 // alt-screen bracket as one dispatched by keypress or `:`, which otherwise
 // only Editor::call_steel_command_body arms. %arm-inline-output! reads the
-// registry for `name`'s declared flag and, if set, saves whatever bracket
-// state was already live before installing a fresh one; %restore-inline-output!
-// pops it back. Deliberately NOT paired via with-handler: raising a native
-// error out of a handler nested inside an outer with-handler is the pinned
+// registry for `name`'s declared flag and, if set, pushes a frame and
+// returns the depth to truncate back to; %restore-inline-output! truncates
+// to it rather than blindly popping the top, so a descendant frame a caught
+// error below it left unpaired can't be mistaken for this call's own frame.
+// Deliberately NOT paired via with-handler: raising a native error out of a
+// handler nested inside an outer with-handler is the pinned
 // VM-stack-corruption hazard (known_limitation_reraise_via_raise_error_inside_outer_tolerant_handler_corrupts_vm_stack,
 // lib.rs), so a body that raises between the arm and the restore simply
 // skips the restore — the backstop is run_steel_session's own unconditional
-// drain of any unpopped saves at the end of every session, not a Steel-side
-// unwind. The arm is skipped for a name %arm-inline-output! doesn't declare
+// truncate-to-zero at the end of every session, not a Steel-side unwind.
+// The arm is skipped for a name %arm-inline-output! doesn't declare
 // inline-output (native, unknown, un-activated Lazy), which is also why it's
 // unconditionally safe to call before every apply site rather than only the
 // ones already known to resolve to a SteelBacked command.
@@ -368,7 +370,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // of dispatch.rs's own inline-output arm/close, wrapping %dispatch-command's
         // in-VM apply — see the BOOTSTRAP comment block above for the full picture.
         open "%arm-inline-output!" commands::arm_inline_output(name: String);
-        open "%restore-inline-output!" commands::restore_inline_output();
+        open "%restore-inline-output!" commands::restore_inline_output(depth: SteelVal);
         cmd  "request-wait-char!" commands::request_wait_char(cmd: String);
         open "pending-char" commands::pending_char();
         open "command-plugin" commands::command_plugin(name: String);

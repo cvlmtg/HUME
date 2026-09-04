@@ -1,5 +1,4 @@
 use super::*;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 use pretty_assertions::assert_eq;
 
@@ -51,13 +50,7 @@ fn setup_vim_keybind_editor_with_config(
     let mut ed = editor_from(input);
     let mut host = ScriptingHost::new();
     let effects = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed loading core:vim-keybind");
@@ -442,13 +435,7 @@ fn smart_change_to_eol_without_stdlib_errors_at_load() {
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
     let err = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("'smart change-to-eol without core:stdlib must fail eval_init");
@@ -480,13 +467,7 @@ fn change_to_eol_off_also_requires_stdlib() {
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
     let err = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("'off change-to-eol without core:stdlib must fail eval_init");
@@ -517,13 +498,7 @@ fn change_to_eol_bogus_value_fails_load_with_enum_message() {
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
     let err = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect_err("a bogus change-to-eol value must fail eval_init");

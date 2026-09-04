@@ -3,7 +3,6 @@
 //! require strings embed OS paths) live in `unix/scripting_effects.rs`.
 
 use super::*;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 
 /// Atomic-eval contract, exercised through `call_steel_cmd` (a plain
@@ -24,13 +23,7 @@ fn failed_command_eval_effects_do_not_leak() {
     let mut ed = editor_from("-[a]>bcdef\n");
     let mut host = ScriptingHost::new();
     {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_source(
             r#"(define-command! "efx-fail" ""
                  (lambda ()
@@ -44,13 +37,7 @@ fn failed_command_eval_effects_do_not_leak() {
     let pid = ed.state.focused_pane_id;
     let bid = ed.focused_buffer_id();
     let result = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.call_steel_cmd("efx-fail", None, vec![], pid, bid, &mut ih)
     };
     assert!(

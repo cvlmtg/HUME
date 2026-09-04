@@ -7,30 +7,30 @@ use crate::test_support::SteelCtxTestHarness;
 // These three cases pin the `||` semantics of `stdout_is_safe` — each one
 // distinguishes `||` from a wrong `&&`.
 //
-// Fail oracle: change `stdout_is_safe` to `is_inline_output_command(ctx) &&
-// ctx.session == EvalSession::Init` → `neither_flag_set_is_unsafe` still
-// passes, but the other two flip to `false` and fail.
+// Fail oracle: change `stdout_is_safe` to `inline && ctx.session ==
+// EvalSession::Init` → `neither_flag_set_is_unsafe` still passes, but the
+// other two flip to `false` and fail.
 
 #[test]
 fn neither_flag_set_is_unsafe() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx(); // NullHost: EvalSession::Runtime, output() is None
-    assert!(!stdout_is_safe(&mut ctx));
+    let ctx = h.ctx(); // NullHost: EvalSession::Runtime, output() is None
+    assert!(!stdout_is_safe(&ctx, false));
 }
 
 #[test]
 fn init_session_alone_is_safe() {
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_init(); // EvalSession::Init, output() is None
-    assert!(stdout_is_safe(&mut ctx));
+    let ctx = h.ctx_init(); // EvalSession::Init, output() is None
+    assert!(stdout_is_safe(&ctx, false));
 }
 
 #[test]
 fn is_inline_output_alone_is_safe() {
     let mut host = RecordingInlineOutputHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, host reports inline_output=true
-    assert!(stdout_is_safe(&mut ctx));
+    let ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, host reports inline_output=true
+    assert!(stdout_is_safe(&ctx, true));
 }
 
 // ── stdout_gate: behavior around the gate ──────────────────────────────────
@@ -49,7 +49,7 @@ fn stdout_gate_returns_false_when_closed() {
 ///
 /// `inline_output: false` isolates this from the *other* safety reason —
 /// without it, `RecordingInlineOutputHost`'s own default (`true`) would make
-/// this pass for the wrong reason, since `stdout_is_safe` now reads the host
+/// this pass for the wrong reason, since `stdout_is_safe` reads the host
 /// live regardless of session.
 #[test]
 fn stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only() {
@@ -66,10 +66,10 @@ fn stdout_gate_returns_true_and_skips_ensure_when_open_via_init_session_only() {
 /// Gate open via the host's inline-output flag: returns `#t` and opens the
 /// bracket exactly once per call.
 #[test]
-fn stdout_gate_returns_true_and_calls_ensure_when_open_via_is_inline_output() {
+fn stdout_gate_returns_true_and_calls_ensure_when_open_via_inline_output_command() {
     let mut host = RecordingInlineOutputHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, is_inline_output=true
+    let mut ctx = h.ctx_with_host(&mut host); // EvalSession::Runtime, host reports inline_output=true
     let result = stdout_gate(&mut ctx);
     assert_eq!(result.unwrap(), SteelVal::BoolV(true));
     drop(ctx);

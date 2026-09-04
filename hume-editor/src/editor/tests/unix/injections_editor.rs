@@ -384,28 +384,30 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_tmp.path());
 
-    assert!(
-        !ed.inline_output_entered(),
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        0,
         "bracket must not have fired before any inline-output command ran"
     );
 
     type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
 
-    assert!(
-        !ed.inline_output_entered(),
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        0,
         "inline-output bracket must stay skipped when Editor::run never took the terminal"
     );
 }
 
 /// `lsp-servers` is `#:inline-output #t` and *does* print via `displayln`
 /// (one line per seeded server) — off the event loop that must still reach
-/// `EditorHostImpl::ensure_inline_output_screen`'s `Headless` no-op branch
+/// `EditorHostImpl::ensure_inline_output_screen`'s no-terminal early return
 /// rather than the real terminal: printing must succeed without ever
-/// flipping `inline_output_entered()`.
+/// entering the alt-screen.
 ///
-/// Flip: hardcode `ensure_inline_output_screen` to always enter (drop the
-/// `Headless`/`Armed` distinction) → this test hangs on `wait_for_keypress`
-/// against a real TTY, or panics against a non-TTY stdin in CI.
+/// Flip: drop the `needs_enter`/`tui` guard so `ensure_inline_output_screen`
+/// always enters → this test hangs on `wait_for_keypress` against a real
+/// TTY, or panics against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -416,8 +418,9 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 
     type_cmd(&mut ed, ":lsp-servers");
 
-    assert!(
-        !ed.inline_output_entered(),
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        0,
         "displayln output off the event loop must not enter the real terminal bracket"
     );
     assert!(

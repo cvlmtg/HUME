@@ -12,8 +12,6 @@ use hume_scripting::ScriptingHost;
 /// injected extend=false), the cursor would move down instead of right.
 #[test]
 fn lazy_command_first_dispatch_forwards_extend() {
-    use crate::editor::scripting_setup::make_init_host;
-
     let dir = safe_tempdir();
     let plugin_dir = dir.path().join("plugins").join("user").join("tp");
     std::fs::create_dir_all(&plugin_dir).unwrap();
@@ -38,13 +36,7 @@ fn lazy_command_first_dispatch_forwards_extend() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");

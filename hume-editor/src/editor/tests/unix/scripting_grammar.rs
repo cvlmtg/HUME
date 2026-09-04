@@ -18,7 +18,6 @@ use super::super::render_snapshot::render_to_styled_string;
 use super::super::scripting_grammar::{
     grammar_fixture, grammar_source, helix_pin, runtime_scheme_dir,
 };
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 use hume_test_fixtures::require_grammars;
 use hume_treesitter::registry::GrammarBundle;
@@ -96,13 +95,7 @@ fn register_grammar_command_mode_attaches_and_sweeps() {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
     {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
@@ -149,13 +142,7 @@ fn attach_json_via_init(register_grammar_call: &str) -> Arc<GrammarBundle> {
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let mut host = ScriptingHost::new();
     let effects = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
@@ -304,13 +291,7 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
         hume_editing::selection::SelectionSet::default(),
     ));
     let effects = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");
@@ -408,13 +389,7 @@ fn install_real_json_grammar_e2e() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(data_dir);
     {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");

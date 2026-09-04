@@ -53,7 +53,7 @@ pub(crate) fn compile_grammar(ctx: &mut SteelCtx, src: String, out: String) -> S
 
     // `tree-sitter build` inherits stdio, so this is a real terminal write —
     // open the bracket first. Init-time compiles run pre-terminal (no screen
-    // to enter, and `is_inline_output` is never set there anyway).
+    // to enter, and no `#:inline-output` frame is ever armed there anyway).
     if ctx.session == crate::context::EvalSession::Runtime
         && let Some(output) = ctx.host.output()
     {

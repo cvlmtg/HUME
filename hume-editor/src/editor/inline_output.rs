@@ -6,11 +6,11 @@
 //!
 //! - *A declared `#:inline-output` command is on the Steel call stack.*
 //!   Nests one frame per `call!` into a declared command, pushed by
-//!   [`InlineOutput::push`] and popped by [`InlineOutput::pop`] (the Rust
-//!   side of `%restore-inline-output!`) or dropped wholesale by
-//!   [`InlineOutput::drain_frames`] — the backstop for a frame a caught
-//!   Steel error left unpaired, and also how the top-level dispatch's own
-//!   frame closes, since nothing calls a matching `pop` for it.
+//!   [`InlineOutput::push`] and truncated back by [`InlineOutput::truncate`]
+//!   (the Rust side of `%restore-inline-output!`, called with the depth
+//!   `push` returned) — or with `0`, the backstop for a frame a caught Steel
+//!   error left unpaired, and also how the top-level dispatch's own frame
+//!   closes, since nothing calls a matching restore for it.
 //! - *The alt-screen has actually been left.* Happens at most once per
 //!   dispatch no matter how deep the `call!` nesting goes — entering twice
 //!   would pop the kitty keyboard-protocol stack twice for one push — and
@@ -28,11 +28,11 @@
 struct Frame {
     /// Printed in the running banner on first output.
     name: String,
-    /// Whether `Editor::run` owned the terminal when this frame was pushed —
-    /// the old `Armed`/`Headless` split. `false` means there is no alt-screen
-    /// to leave for this frame (tests, headless `run_keys`); the stdout gate
-    /// still opens (raw writes are safe with no TUI to protect), but
-    /// [`InlineOutput::needs_enter`] never fires for it.
+    /// Whether `Editor::run` owned the terminal when this frame was pushed.
+    /// `false` means there is no alt-screen to leave for this frame (tests,
+    /// headless `run_keys`); the stdout gate still opens (raw writes are
+    /// safe with no TUI to protect), but [`InlineOutput::needs_enter`] never
+    /// fires for it.
     tui: bool,
 }
 
@@ -64,8 +64,11 @@ pub(crate) struct InlineOutput {
 
 impl InlineOutput {
     /// Push a frame for `name`, currently executing with terminal ownership
-    /// `tui`. Marks `ran` when `tui` — see the module doc.
-    pub(crate) fn push(&mut self, name: &str, tui: bool) {
+    /// `tui`. Marks `ran` when `tui` — see the module doc. Returns the depth
+    /// to [`Self::truncate`] back to at the matching restore — the frame
+    /// count before this push, i.e. this frame's own index.
+    pub(crate) fn push(&mut self, name: &str, tui: bool) -> usize {
+        let depth = self.frames.len();
         if tui {
             self.ran = true;
         }
@@ -73,20 +76,23 @@ impl InlineOutput {
             name: name.to_string(),
             tui,
         });
+        depth
     }
 
-    /// Pop the innermost frame — the Rust side of a `call!`-armed nested
-    /// command's matching `%restore-inline-output!`. Never touches `entered`
-    /// or `ran`: an inner command's frame closing must not strand the outer
-    /// command still on the stack above it.
-    pub(crate) fn pop(&mut self) {
-        self.frames.pop();
-    }
-
-    /// Drop every outstanding frame. `entered`/`ran` survive — those are
-    /// read at the Rust boundary right after this runs.
-    pub(crate) fn drain_frames(&mut self) {
-        self.frames.clear();
+    /// Truncate the frame stack back to `depth` — the Rust side of a
+    /// `call!`-armed nested command's matching `%restore-inline-output!`, or
+    /// the unconditional `0` every Steel session's tail passes regardless of
+    /// outcome. Drops this call's own frame and any descendant frame a
+    /// caught error left unpaired above it, rather than blindly popping the
+    /// top: by the time a nested `call!` returns, its own frame is not
+    /// necessarily the top any more if something it called (directly or
+    /// transitively) raised and the raise was caught rather than propagated
+    /// — the raiser's frame is then a leak sitting above this call's own,
+    /// and a blind pop would remove the leak instead of the frame that's
+    /// actually closing. Never touches `entered`/`ran`: those are read at
+    /// the Rust boundary right after this runs.
+    pub(crate) fn truncate(&mut self, depth: usize) {
+        self.frames.truncate(depth);
     }
 
     /// Whether a declared `#:inline-output` command is anywhere on the
@@ -135,20 +141,19 @@ impl InlineOutput {
         std::mem::take(&mut self.ran)
     }
 
-    /// Test-only seam: whether the alt-screen has ever actually been left
-    /// during this `Editor`'s lifetime — see `enters`' own doc.
-    #[cfg(test)]
-    pub(crate) fn ever_entered(&self) -> bool {
-        self.enters > 0
-    }
-
     /// Test-only seam: how many times the alt-screen has actually been left
     /// during this `Editor`'s lifetime — lets a test pin an exact count (a
-    /// re-entry bug shows up as `2`, not just "entered"), same lifetime as
-    /// `ever_entered`.
+    /// re-entry bug shows up as `2`, not "entered"; `0` for "never entered").
     #[cfg(test)]
     pub(crate) fn enter_count(&self) -> usize {
         self.enters
+    }
+
+    /// Test-only seam: raw frame count, for asserting exactly which frames
+    /// a [`Self::truncate`] call removed.
+    #[cfg(test)]
+    pub(crate) fn frame_count(&self) -> usize {
+        self.frames.len()
     }
 }
 
@@ -162,12 +167,36 @@ mod tests {
         assert!(!io.is_open());
         io.push("outer", true);
         assert!(io.is_open());
-        io.push("inner", true);
+        let depth_inner = io.push("inner", true);
         assert!(io.is_open());
-        io.pop();
+        io.truncate(depth_inner);
         assert!(io.is_open(), "outer frame must still be on the stack");
-        io.pop();
+        io.truncate(0);
         assert!(!io.is_open());
+    }
+
+    /// The scenario `InlineOutput::truncate`'s own doc names: a `call!`
+    /// nested two levels deep raises and the raise is caught above it,
+    /// leaving its frame unpaired. The outer `call!`'s own restore must
+    /// still remove both the leaked frame and its own — not just the top
+    /// one a blind pop would take.
+    ///
+    /// Fail oracle: replace `truncate`'s body with `self.frames.pop();`
+    /// (ignoring `depth`) — `frame_count()` reports `2` (only the leak was
+    /// removed, `middle` itself stuck) instead of `1`.
+    #[test]
+    fn truncate_drops_a_leaked_descendant_frame_above_its_own() {
+        let mut io = InlineOutput::default();
+        io.push("outer", true);
+        let depth_middle = io.push("middle", true);
+        io.push("inner-leak", true); // raised and was caught; never truncated
+        io.truncate(depth_middle);
+        assert_eq!(
+            io.frame_count(),
+            1,
+            "middle's own frame and the leaked descendant above it must both \
+             be gone, leaving only outer"
+        );
     }
 
     #[test]
@@ -191,16 +220,16 @@ mod tests {
     }
 
     #[test]
-    fn drain_frames_preserves_entered_and_ran() {
+    fn truncate_to_zero_preserves_entered_and_ran() {
         let mut io = InlineOutput::default();
         io.push("cmd", true);
         io.mark_entered(true, true, false);
-        io.drain_frames();
+        io.truncate(0);
         assert!(!io.is_open());
-        assert!(io.take_ran(), "ran must survive a frame drain");
+        assert!(io.take_ran(), "ran must survive a full truncate");
         assert!(
             io.take_entered().is_some(),
-            "entered must survive a frame drain"
+            "entered must survive a full truncate"
         );
     }
 

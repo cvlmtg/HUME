@@ -358,13 +358,7 @@ fn missing_stdlib_errors_at_load() {
     let mut ed = editor_from("-[h]>ello\n");
     let mut host = ScriptingHost::new();
     let result = {
-        let mut ih = crate::editor::scripting_setup::make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     };
     let err = result.expect_err("core:lsp without core:stdlib must fail eval_init");

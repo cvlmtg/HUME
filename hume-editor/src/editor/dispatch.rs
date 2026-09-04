@@ -314,8 +314,6 @@ impl Editor {
         let Some(scripting) = self.scripting.as_mut() else {
             return false;
         };
-        let tui_active = self.tui_active;
-        let kitty_enabled = self.kitty_enabled;
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
                 &mut self.state,
@@ -324,8 +322,8 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
-                tui_active,
-                kitty_enabled,
+                self.tui_active,
+                self.kitty_enabled,
             );
             scripting.call_steel_cmd(
                 name,
@@ -380,14 +378,6 @@ impl Editor {
     /// `InlineOutput`'s own doc) — reading them here, once, is this
     /// boundary's whole job.
     ///
-    /// `take_entered` covers the shape that needs the physical close below
-    /// (a builtin produced output, so the alt-screen was left); `take_ran`
-    /// covers both that shape and a command that armed and ran with the
-    /// real terminal but produced none (a formatter with no stdout, say) —
-    /// either way the subprocess may well have rewritten one of our open
-    /// files, so both are disk-change check trigger points. A command that
-    /// never touched the terminal (not declared, or declared but off the
-    /// event loop) leaves both empty.
     pub(super) fn close_inline_output_bracket(&mut self) {
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {

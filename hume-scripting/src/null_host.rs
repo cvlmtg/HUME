@@ -352,13 +352,12 @@ impl OutputHost for RecordingInlineOutputHost {
     // This host has no command registry to consult (unlike
     // `is_inline_output_command` above, which is a fixed stance for gate
     // tests, not a per-command decision) — the `call!`-nesting behavior
-    // these three back is exercised against the real `EditorHostImpl`
+    // these two back is exercised against the real `EditorHostImpl`
     // instead (`hume-editor`'s inline-output dispatch tests).
-    fn arm_inline_output(&mut self, _name: &str) -> bool {
-        false
+    fn arm_inline_output(&mut self, _name: &str) -> Option<usize> {
+        None
     }
-    fn restore_inline_output(&mut self) {}
-    fn reset_inline_output(&mut self) {}
+    fn truncate_inline_output(&mut self, _depth: usize) {}
 }
 
 /// Like [`NullHost`] but tracks command-name claims like a minimal

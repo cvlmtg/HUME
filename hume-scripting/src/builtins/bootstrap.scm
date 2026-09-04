@@ -34,11 +34,10 @@
   (%define-typed-command! name doc proc inline-output))
 
 (define (%apply-command proc name args)
-  (if (%arm-inline-output! name)
-      (let ((r (apply proc args)))
-        (%restore-inline-output!)
-        r)
-      (apply proc args)))
+  (let* ((depth (%arm-inline-output! name))
+         (r (apply proc args)))
+    (when depth (%restore-inline-output! depth))
+    r))
 
 (define (%dispatch-command name args)
   (let ((proc (%lookup-plugin-proc name)))

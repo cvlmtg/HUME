@@ -472,8 +472,6 @@ impl Editor {
         let args = event.steel_args();
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        let tui_active = self.tui_active;
-        let kitty_enabled = self.kitty_enabled;
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
             let mut impl_host = EditorHostImpl::full(
@@ -483,15 +481,15 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
-                tui_active,
-                kitty_enabled,
+                self.tui_active,
+                self.kitty_enabled,
             );
             host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
         };
-        // A hook body can `(call! …)` an `#:inline-output` command just like
-        // any other Steel body — `apply_script_result` closes whatever
-        // bracket that armed.
         self.flush_script_messages();
+        // A hook body's own `call!` to an `#:inline-output` command is
+        // closed here too — see `apply_script_result`'s own doc for the
+        // full list of callers this funnel covers.
         self.apply_script_result(result, "hook error: ");
     }
 
@@ -502,8 +500,6 @@ impl Editor {
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
-        let tui_active = self.tui_active;
-        let kitty_enabled = self.kitty_enabled;
         let Some(host_scr) = self.scripting.as_mut() else {
             return;
         };
@@ -515,14 +511,11 @@ impl Editor {
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
                 self.terminal.as_ref(),
-                tui_active,
-                kitty_enabled,
+                self.tui_active,
+                self.kitty_enabled,
             );
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };
-        // A queued call (timer thunk, LSP/prompt/picker callback, …) can
-        // `(call! …)` an `#:inline-output` command just like a hook body —
-        // see `fire_one_event`'s identical close via `apply_script_result`.
         self.flush_script_messages();
         self.apply_script_result(result, "steel call error: ");
     }
@@ -622,7 +615,7 @@ impl Editor {
             let result = if self.config_path_override.is_some() && !init_path.is_file() {
                 Err(format!("--config: not found: {}", init_path.display()).into())
             } else {
-                let mut ih = make_init_host(
+                let mut ih = EditorHostImpl::init(
                     &mut self.state,
                     &mut self.view,
                     self.terminal.as_ref(),
@@ -788,7 +781,7 @@ impl Editor {
         };
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
-            let mut ih = make_init_host(
+            let mut ih = EditorHostImpl::init(
                 &mut self.state,
                 &mut self.view,
                 self.terminal.as_ref(),
@@ -804,23 +797,6 @@ impl Editor {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
-
-/// Build an `EditorHostImpl` from disjoint borrows of the editor's state and
-/// view, for the three init/activation call sites. `terminal`/`tui_active`/
-/// `kitty_enabled` are threaded through explicitly (not read off the state
-/// this builds against) since `init_scripting`'s init.scm eval and
-/// `Editor::activate_and_register`'s runtime lazy-plugin activation can both
-/// run with `Editor::run` already owning the terminal — see
-/// `EditorHostImpl::init`'s doc.
-pub(crate) fn make_init_host<'a>(
-    state: &'a mut super::EditorState,
-    view: &'a mut hume_engine::pipeline::EngineView,
-    terminal: Option<&'a hume_platform::terminal::SharedTerm>,
-    tui_active: bool,
-    kitty_enabled: bool,
-) -> EditorHostImpl<'a> {
-    EditorHostImpl::init(state, view, terminal, tui_active, kitty_enabled)
-}
 
 /// Map the scripting layer's `BindMode` (carried in `Effect::BindKey` and
 /// friends) to the editor's own. Fully qualified on both sides: this module

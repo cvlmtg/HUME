@@ -49,33 +49,32 @@ pub(crate) struct EditorHostImpl<'a> {
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
     pub(crate) timers: Option<TimerHandle<'a>>,
-    /// `Some` at the three call sites that thread every capability
-    /// (command dispatch, hook fire, queued-call drain) — `None` everywhere
-    /// else. Only [`OutputHost::ensure_inline_output_screen`] (reachable
-    /// from command dispatch) actually reads it; `state.inline_output` only
-    /// ever reaches `Armed` from that same call site, so its early return
-    /// guarantees this is never read as `None` when it matters.
+    /// `Some` at the six call sites built via [`Self::init`]/[`Self::full`]
+    /// (init/activation, command dispatch, hook fire, queued-call drain) —
+    /// `None` only for [`Self::new`]'s test/no-terminal callers.
+    /// [`OutputHost::ensure_inline_output_screen`] reads it when actually
+    /// entering the alt-screen; a live `terminal` here doesn't by itself mean
+    /// `tui_active` — see that field's own doc.
     pub(crate) terminal: Option<&'a hume_platform::terminal::SharedTerm>,
-    /// Whether `Editor::run`'s event loop currently owns the terminal — the
-    /// same flag `call_steel_command_body`'s own arm consults
-    /// (`Editor::tui_active`), threaded in here so `arm_inline_output` can
-    /// make the identical Armed-vs-Headless call for a `call!`-armed nested
-    /// command. Deliberately its own field rather than inferred from
-    /// `terminal.is_some()`: `attach_terminal` runs before the event loop
-    /// starts, so a live `terminal` handle does not by itself mean the
-    /// alt-screen is up.
+    /// Whether `Editor::run`'s event loop currently owns the terminal —
+    /// threaded in here so `arm_inline_output` can push a frame carrying the
+    /// right terminal-ownership fact for a `call!`-armed nested command, the
+    /// same fact top-level dispatch's own push carries. Deliberately its own
+    /// field rather than inferred from `terminal.is_some()`: `attach_terminal`
+    /// runs before the event loop starts, so a live `terminal` handle does
+    /// not by itself mean the alt-screen is up.
     pub(crate) tui_active: bool,
-    /// Whether the kitty keyboard protocol is active — carried into a fresh
-    /// `Armed` state the same way `call_steel_command_body` does today.
+    /// Whether the kitty keyboard protocol is active — read by
+    /// `ensure_inline_output_screen` when entering the alt-screen.
     /// Meaningless (and unread) when `tui_active` is `false`.
     pub(crate) kitty_enabled: bool,
 }
 
 impl<'a> EditorHostImpl<'a> {
-    /// Constructor for `make_init_host`'s three production callers:
-    /// `init_scripting` (init.scm + runtime scheme evals), `typed_reload_config`'s
-    /// re-eval, and `Editor::activate_and_register`'s runtime lazy-plugin
-    /// activation (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access —
+    /// Constructor for the three init/activation call sites: `init_scripting`
+    /// (init.scm + runtime scheme evals), `typed_reload_config`'s re-eval,
+    /// and `Editor::activate_and_register`'s runtime lazy-plugin activation
+    /// (`mappings/lazy.rs`). Unlike `full`, has no LSP/timer access —
     /// none of these three eval kinds reach an LSP or timer builtin
     /// (`require_cmd_ctx!` blocks command-mode builtins during init; lazy
     /// activation's body may itself later call a real command via `call!`,
@@ -119,12 +118,9 @@ impl<'a> EditorHostImpl<'a> {
     /// command dispatch, hook fire, and queued-call drain. Takes the fields
     /// already split out (rather than `&mut Editor`) because each call site
     /// holds a simultaneous disjoint borrow of `self.scripting` — passing
-    /// `self` as a whole would conflict with that borrow.
-    ///
-    /// `tui_active`/`kitty_enabled` are plain `bool`s read out of `Editor`
-    /// before the split (same disjoint-field-read shape as `terminal`) —
-    /// see `arm_inline_output`'s doc for why they can't be inferred from
-    /// `terminal.is_some()`.
+    /// `self` as a whole would conflict with that borrow. `tui_active`/
+    /// `kitty_enabled` can't be inferred from `terminal.is_some()` — see
+    /// `arm_inline_output`'s doc.
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
@@ -875,7 +871,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    fn arm_inline_output(&mut self, name: &str) -> bool {
+    fn arm_inline_output(&mut self, name: &str) -> Option<usize> {
         // Mappable only: `%dispatch-command` (`call!`'s expansion) reaches
         // `command_table`/`get_mappable`, never `typed_command_table` — a
         // typed command is not `call!`-reachable, so matching one here would
@@ -888,18 +884,13 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
             })
         );
         if !declared {
-            return false;
+            return None;
         }
-        self.state.inline_output.push(name, self.tui_active);
-        true
+        Some(self.state.inline_output.push(name, self.tui_active))
     }
 
-    fn restore_inline_output(&mut self) {
-        self.state.inline_output.pop();
-    }
-
-    fn reset_inline_output(&mut self) {
-        self.state.inline_output.drain_frames();
+    fn truncate_inline_output(&mut self, depth: usize) {
+        self.state.inline_output.truncate(depth);
     }
 }
 

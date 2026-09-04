@@ -8,7 +8,6 @@ use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
-use crate::editor::scripting_setup::make_init_host;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
@@ -20,13 +19,7 @@ fn eval_register(ed: &mut Editor, host: &mut ScriptingHost, source: &str, tmp: &
     let init_path = tmp.join("init.scm");
     std::fs::write(&init_path, source).unwrap();
     let effects = {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");

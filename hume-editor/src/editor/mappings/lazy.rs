@@ -1,4 +1,4 @@
-use super::super::{Editor, Severity, scripting_setup::make_init_host};
+use super::super::{Editor, Severity, host_impl::EditorHostImpl};
 use hume_scripting::PluginStatus;
 
 impl Editor {
@@ -18,7 +18,7 @@ impl Editor {
             let Some(host) = self.scripting.as_mut() else {
                 return;
             };
-            let mut ih = make_init_host(
+            let mut ih = EditorHostImpl::init(
                 &mut self.state,
                 &mut self.view,
                 self.terminal.as_ref(),

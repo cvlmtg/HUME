@@ -781,15 +781,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     assert_ne!(bid_a, bid_b, "must be genuinely different buffers");
     ed.switch_focused_pane(pid_a);
 
-    let mut impl_host = EditorHostImpl {
-        state: &mut ed.state,
-        view: &mut ed.view,
-        lsp: None,
-        timers: None,
-        terminal: None,
-        tui_active: false,
-        kitty_enabled: false,
-    };
+    let mut impl_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
     assert!(
         result.is_ok(),

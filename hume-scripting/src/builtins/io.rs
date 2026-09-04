@@ -66,9 +66,13 @@ fn is_inline_output_command(ctx: &mut SteelCtx) -> bool {
 
 /// Whether it is currently safe to write directly to the real process
 /// stdout: init (before the alt-screen TUI is up) or an `#:inline-output`
-/// command body (alt-screen temporarily left). See [`is_inline_output_command`].
-fn stdout_is_safe(ctx: &mut SteelCtx) -> bool {
-    ctx.session == crate::context::EvalSession::Init || is_inline_output_command(ctx)
+/// command body (alt-screen temporarily left). `inline` is
+/// [`is_inline_output_command`]'s result, hoisted by the caller rather than
+/// read again here — `stdout_gate` needs the same fact twice (whether it's
+/// safe at all, then whether to enter the alt-screen), and each read is a
+/// non-devirtualizable hop through `ctx.host`.
+fn stdout_is_safe(ctx: &SteelCtx, inline: bool) -> bool {
+    ctx.session == crate::context::EvalSession::Init || inline
 }
 
 /// `(%stdout-gate!)` — called by each gated print shim (see
@@ -79,12 +83,11 @@ fn stdout_is_safe(ctx: &mut SteelCtx) -> bool {
 /// lazily enters the alt-screen bracket on this, the first real write of the
 /// command body.
 pub(crate) fn stdout_gate(ctx: &mut SteelCtx) -> SteelResult {
-    if !stdout_is_safe(ctx) {
+    let inline = is_inline_output_command(ctx);
+    if !stdout_is_safe(ctx, inline) {
         return Ok(SteelVal::BoolV(false));
     }
-    if is_inline_output_command(ctx)
-        && let Some(output) = ctx.host.output()
-    {
+    if inline && let Some(output) = ctx.host.output() {
         output
             .ensure_inline_output_screen()
             .map_err(|e| generic_err(format!("print: {e}")))?;

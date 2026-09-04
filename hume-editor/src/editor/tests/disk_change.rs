@@ -1775,24 +1775,18 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
 #[test]
 fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
     use crate::editor::keymap::BindMode;
-    use crate::editor::scripting_setup::make_init_host;
     use hume_scripting::ScriptingHost;
 
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    // No real terminal in this harness — Armed (not Headless) is what makes
-    // `run_steel_command` queue `OnFocusGained` at all; only `Entered` (which
-    // this command's body never reaches, since it only logs) needs one.
+    // No real terminal in this harness — a frame pushed with `tui_active`
+    // is what makes `run_steel_command` queue `OnFocusGained` at all; only
+    // actually entering the alt-screen (which this command's body never
+    // reaches, since it only logs) needs a real terminal.
     ed.tui_active = true;
 
     let mut host = ScriptingHost::new();
     {
-        let mut init_host = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut init_host = init_host!(ed);
         host.eval_source(
             r#"(define-command! "lint-and-fix" "doc"
                  (lambda () (log! 'warn "lint: 1 issue auto-fixed")) #:inline-output #t)"#,

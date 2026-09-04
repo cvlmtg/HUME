@@ -38,7 +38,8 @@ use crate::watchdog::EvalWatchdog;
 
 /// Arm the watchdog, run `body` against `steel` with `ctx` visible as
 /// `*hume.ctx*`, then cancel the watchdog, reset the interrupt flag, and
-/// drain any unpopped inline-output save (`OutputHost::reset_inline_output`).
+/// truncate any unrestored inline-output frame back to zero
+/// (`OutputHost::truncate_inline_output`).
 ///
 /// Shared by `eval_source_raw` (compiles a source program), `call_steel_cmd` /
 /// `fire_hook` / `activate_plugin_inline` (direct function calls) so the
@@ -76,7 +77,7 @@ pub(crate) fn run_steel_session<'a, R>(
     watchdog.cancel();
     ctx.interrupt_flag.store(false, Ordering::Relaxed);
     if let Some(output) = ctx.host.output() {
-        output.reset_inline_output();
+        output.truncate_inline_output(0);
     }
     result
 }

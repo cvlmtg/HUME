@@ -14,7 +14,6 @@ use super::*;
 /// Not on Windows: Scheme `require` strings embed OS paths with forward slashes.
 #[test]
 fn lazy_repeatable_round_trip() {
-    use crate::editor::scripting_setup::make_init_host;
     use hume_scripting::ScriptingHost;
 
     let dir = safe_tempdir();
@@ -36,13 +35,7 @@ fn lazy_repeatable_round_trip() {
     let mut host = ScriptingHost::new();
     host.set_data_dir(dir.path().to_path_buf());
     {
-        let mut ih = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init must succeed");

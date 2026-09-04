@@ -5,7 +5,6 @@
 
 use super::*;
 use crate::editor::registry::MappableCommand;
-use crate::editor::scripting_setup::make_init_host;
 use hume_scripting::ScriptingHost;
 
 // ── CommandHost::register_lazy_command — collision rejection ─────────────────
@@ -30,13 +29,7 @@ fn lazy_stub_collision_rejected_and_stub_not_registered() {
 
     // "move-right" is a native built-in guaranteed to be in the registry.
     let result = {
-        let mut host = make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut host = init_host!(ed);
         host.commands().register_lazy_command("move-right", &plugin)
     };
 

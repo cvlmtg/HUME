@@ -353,6 +353,25 @@ macro_rules! live_host {
 #[allow(unused_imports)]
 pub(crate) use live_host;
 
+/// [`live_host!`]'s twin for the three init/activation call sites
+/// (`EditorHostImpl::init`, no LSP/timer access) — the test-harness mirror
+/// of `init_scripting`'s own construction, so a test driving `eval_init`
+/// directly gets the same `terminal`/`tui_active`/`kitty_enabled` shape
+/// production init does.
+macro_rules! init_host {
+    ($ed:ident) => {{
+        crate::editor::host_impl::EditorHostImpl::init(
+            &mut $ed.state,
+            &mut $ed.view,
+            $ed.terminal.as_ref(),
+            $ed.tui_active,
+            $ed.kitty_enabled,
+        )
+    }};
+}
+#[allow(unused_imports)]
+pub(crate) use init_host;
+
 // ── Test constructors ─────────────────────────────────────────────────────────
 
 // proptest requires `Debug` on strategy values; this minimal impl satisfies it.
@@ -691,13 +710,7 @@ fn eval_with_real_host(
     let init_path = tmp.join("init.scm");
     std::fs::write(&init_path, source).unwrap();
     let effects = {
-        let mut ih = crate::editor::scripting_setup::make_init_host(
-            &mut ed.state,
-            &mut ed.view,
-            ed.terminal.as_ref(),
-            ed.tui_active,
-            ed.kitty_enabled,
-        );
+        let mut ih = init_host!(ed);
         host.eval_init(&init_path, 10_000, &mut ih, Default::default())
     }
     .expect("eval_init");
