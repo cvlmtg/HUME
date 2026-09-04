@@ -38,10 +38,7 @@
       (if (null? missing)
           (log! 'info "PLUM: nothing to install")
           (let ((n (plum/batch-run "installed" missing
-                     (lambda (name)
-                       (plum/run! "git" (list "clone" "--"
-                                              (string-append "https://github.com/" name ".git")
-                                              (plum/plugin-dir name)))))))
+                     (lambda (name) (plum/clone-github! name (plum/plugin-dir name))))))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to activate the newly installed plugins")))))))
 

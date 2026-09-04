@@ -71,16 +71,21 @@
 
 ;; ── Installed-grammar discovery ───────────────────────────────────────────────
 
+;;; Sorted stems of files in `dir` ending in `suffix`, or '() if `dir` is
+;;; absent. Sorts *after* stripping the suffix — sorting full filenames would
+;;; put e.g. "a-b.x" ahead of "a.x" ('-' < '.').
+(define (stems-with-suffix dir suffix)
+  (if (not (path-exists? dir))
+      '()
+      (let ((slen (string-length suffix)))
+        (sort (map (lambda (f) (substring f 0 (- (string-length f) slen)))
+                   (filter (lambda (f) (and (ends-with? f suffix)
+                                            (> (string-length f) slen)))
+                           (map file-name (read-dir dir))))
+              string<?))))
+
 (define (installed-grammars)
-  (let ((gdir (grammars-dir)))
-    (if (not (path-exists? gdir))
-        '()
-        (let* ((suffix (string-append "." (platform-grammar-ext)))
-               (slen   (string-length suffix)))
-          (map (lambda (f) (substring f 0 (- (string-length f) slen)))
-               (filter (lambda (f) (and (ends-with? f suffix)
-                                        (> (string-length f) slen)))
-                       (sort (map file-name (read-dir gdir)) string<?)))))))
+  (stems-with-suffix (grammars-dir) (string-append "." (platform-grammar-ext))))
 
 ;; ── Startup registration ──────────────────────────────────────────────────────
 

@@ -302,6 +302,21 @@ fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
 // File discovery
 // ---------------------------------------------------------------------------
 
+/// A theme name safe to use as one filesystem path segment: no `.`/`..`, no
+/// path separator, and — matching `core:plum`'s own `plum/safe-segment?`
+/// (`runtime/plugins/core/plum/lib.scm`) — no `:` or `"`. The `:` rejection
+/// matters on Windows specifically: a name like `c:evil` makes `PathBuf::push`
+/// treat it as a drive-relative root, replacing the search directory entirely
+/// instead of joining onto it.
+fn is_safe_theme_name(name: &str) -> bool {
+    name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains(':')
+        && !name.contains('"')
+}
+
 /// Returns `(canonical_path, source)`.
 ///
 /// Reads the file first (matching on `NotFound` to skip to the next search dir),
@@ -309,8 +324,7 @@ fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
 /// successful read uses the unresolved path as the cycle key — safe because a
 /// deleted-after-read file cannot form a cycle.
 fn find_theme_file(name: &str, search_paths: &[PathBuf]) -> Result<(PathBuf, String), ThemeError> {
-    // Reject names with path separators or suspicious segments.
-    if name.contains('/') || name.contains('\\') || name == "." || name == ".." {
+    if !is_safe_theme_name(name) {
         return Err(ThemeError::NotFound {
             name: name.to_owned(),
         });

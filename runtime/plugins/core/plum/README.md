@@ -78,7 +78,7 @@ PLUM bundles three independent subsystems:
 
 #### Path safety
 
-`plum/safe-segment?` rejects `.`/`..`, a path separator, and `:`/`"` for any name that
+`plum/safe-segment?` rejects the empty string, `.`/`..`, a path separator, and `:`/`"` for any name that
 reaches `path-join`/a subprocess arg but did not come from a fixed catalog — either half
 of a GitHub `user/repo` slug typed by the user, or a dependency name parsed out of
 downloaded content. The `:` rejection matters on Windows specifically: a segment like

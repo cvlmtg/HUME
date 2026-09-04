@@ -9,7 +9,7 @@ use super::*;
 /// pure Scheme-syntax/logic smoke test, not an installation test.
 #[test]
 fn plum_plugin_loads_with_real_grammar_catalog() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -35,7 +35,7 @@ fn plum_plugin_loads_with_real_grammar_catalog() {
 /// "Filesystem and processes") works for loading and basic discovery.
 #[test]
 fn plum_list_runs_with_no_errors_against_empty_data_dir() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -69,7 +69,7 @@ fn plum_list_runs_with_no_errors_against_empty_data_dir() {
 /// the same raise a real `.DS_Store` next to an installed plugin used to hit.
 #[test]
 fn plum_installed_plugins_skips_a_stray_file_in_the_plugins_dir() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     // `load_plum` points `XDG_DATA_HOME` at `data_tmp`; HUME's data dir is
     // `$XDG_DATA_HOME/hume/` (`hume_platform::dirs::data_dir`), so the plugin
@@ -116,7 +116,7 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
 /// builtin) and fast-forward the clone to match.
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let origin_tmp = safe_tempdir();
     let origin_dir = origin_tmp.path();
@@ -174,7 +174,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
 /// definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let orphan_dir = data_tmp.path().join("hume/plugins/testuser/orphanrepo");
@@ -211,7 +211,7 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
 /// install-failure message instead.
 #[test]
 fn plum_install_grammar_no_arg_no_language_warns() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -238,7 +238,7 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 /// an unknown name deletes nothing.
 #[test]
 fn plum_install_grammar_unknown_name_warns() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -266,7 +266,7 @@ fn plum_install_grammar_unknown_name_warns() {
 /// of ever mentioning `nosuchlang`.
 #[test]
 fn plum_install_grammar_arg_overrides_buffer_language() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -302,7 +302,7 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// below for the case that does.
 #[test]
 fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -334,7 +334,7 @@ fn inline_output_command_does_not_enter_terminal_bracket_off_event_loop() {
 /// TTY, or panics against a non-TTY stdin in CI.
 #[test]
 fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>\n");
@@ -373,7 +373,7 @@ fn inline_output_command_with_real_output_still_skips_bracket_off_event_loop() {
 /// appears, and this assertion fails.
 #[test]
 fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     // `load_plum` points XDG_DATA_HOME at data_tmp — the real data dir is
@@ -426,7 +426,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 /// fail on that stub (no `@capture` in a comment-only file).
 #[test]
 fn plum_install_grammar_resolves_helix_inherits_chain() {
-    let _lock = TEST_GLOBALS.claim(Global::Env);
+    let _lock = lock();
 
     let data_tmp = safe_tempdir();
     let data_dir = data_tmp.path().join("hume");

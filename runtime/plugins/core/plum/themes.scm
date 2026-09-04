@@ -35,20 +35,16 @@
 
 ;; ── Theme-file discovery and sync ─────────────────────────────────────────────
 
-;;; Sorted `.toml` stems in `dir`, or '() if `dir` doesn't exist.
-(define (plum/toml-stems dir)
-  (if (not (path-exists? dir))
-      '()
-      (let* ((suffix ".toml")
-             (slen (string-length suffix)))
-        (sort (map (lambda (f) (substring f 0 (- (string-length f) slen)))
-                   (filter (lambda (f) (and (ends-with? f suffix)
-                                            (> (string-length f) slen)))
-                           (map file-name (read-dir dir))))
-              string<?))))
-
 (define (plum/repo-theme-names slug)
-  (plum/toml-stems (path-join (plum/theme-src-dir slug) "themes")))
+  (stems-with-suffix (path-join (plum/theme-src-dir slug) "themes") ".toml"))
+
+;;; Other installed repos (besides `slug`) that also provide `name` — there's
+;;; no state file recording which repo "owns" a `<data>/themes/<name>.toml`
+;;; copy, so a same-stem collision would otherwise overwrite silently.
+(define (plum/theme-owned-elsewhere name slug)
+  (filter (lambda (other) (and (not (equal? other slug))
+                               (member name (plum/repo-theme-names other))))
+          (plum/installed-theme-repos)))
 
 ;;; The sync step shared by install and update. Raises if the repo has no
 ;;; `themes/*.toml` at all. Returns the new name list.
@@ -63,14 +59,21 @@
       old-names)
     (for-each
       (lambda (name)
+        (let ((shadowed (plum/theme-owned-elsewhere name slug)))
+          (unless (null? shadowed)
+            (log! 'warn (string-append "PLUM: " slug "'s theme \"" name "\" shadows the same "
+                                       "name from " (string-join shadowed ", ")))))
         (call! "stdlib/write-file"
                (path-join (plum/themes-dir) (string-append name ".toml"))
                (plum/read-file (path-join (plum/theme-src-dir slug) "themes" (string-append name ".toml")))))
       names)
     names))
 
+;;; Marker is `.git`, not `themes` — a repo must stay discoverable (and so
+;;; removable) even after upstream drops its `themes/` directory and
+;;; `:plum-update-themes` starts failing its sync on every run.
 (define (plum/installed-theme-repos)
-  (plum/two-level-repos (plum/theme-sources-dir) "themes"))
+  (plum/two-level-repos (plum/theme-sources-dir) ".git"))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
@@ -86,7 +89,7 @@
           ;; later step raises. See README.md for why there's no
           ;; catch-and-cleanup here instead.
           (call! "stdlib/delete-dir" src-dir)
-          (plum/run! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") src-dir))
+          (plum/clone-github! slug src-dir)
           (let ((names (plum/sync-theme-files! slug old-names)))
             (log! 'info (string-append "PLUM: installed " slug ": " (string-join names ", ")))
             (log! 'info (string-append "PLUM: run :theme " (car names) " to try it"))))))))
@@ -118,7 +121,7 @@
             per-repo))
       (let* ((managed (apply append (map cdr per-repo)))
              (unmanaged (filter (lambda (n) (not (member n managed)))
-                                (plum/toml-stems (plum/themes-dir)))))
+                                (stems-with-suffix (plum/themes-dir) ".toml"))))
         (unless (null? unmanaged)
           (log! 'info (string-append "PLUM unmanaged: " (string-join unmanaged ", "))))))))
 
@@ -127,13 +130,18 @@
   (lambda (arg)
     (let ((slug (plum/parse-slug "plum-remove-theme" arg)))
       (when slug
-        (let ((names (plum/repo-theme-names slug)))
-          (if (null? names)
+        (let ((src-dir (plum/theme-src-dir slug))
+              (names   (plum/repo-theme-names slug)))
+          ;; "Installed" is the clone existing, not it still holding
+          ;; `themes/*.toml` — a repo whose sync already failed (see
+          ;; `plum/installed-theme-repos`'s marker) has an empty `names` but
+          ;; must still be removable, not reported as never installed.
+          (if (not (path-exists? src-dir))
               (log! 'info (string-append "PLUM: " slug " is not installed"))
               (begin
                 (for-each
                   (lambda (name)
                     (call! "stdlib/delete-file" (path-join (plum/themes-dir) (string-append name ".toml"))))
                   names)
-                (call! "stdlib/delete-dir" (plum/theme-src-dir slug))
+                (call! "stdlib/delete-dir" src-dir)
                 (log! 'info (string-append "PLUM: removed " slug ": " (string-join names ", "))))))))))

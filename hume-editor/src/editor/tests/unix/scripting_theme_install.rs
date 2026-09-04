@@ -34,6 +34,16 @@ fn error_log(ed: &Editor) -> Vec<&str> {
         .collect()
 }
 
+/// Warning-severity entries in `ed`'s log.
+fn warning_log(ed: &Editor) -> Vec<&str> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Warning)
+        .map(|e| e.text.as_str())
+        .collect()
+}
+
 fn plum_editor(data_dir: &Path) -> Editor {
     let mut ed = editor_from("-[x]>\n");
     load_plum(&mut ed, data_dir);
@@ -76,13 +86,15 @@ fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Pat
     let data_dir = canonical_data_dir(data_dir_root);
     let src_dir = data_dir.join("themes/sources").join(slug);
     std::fs::create_dir_all(src_dir.parent().unwrap()).unwrap();
-    let status = std::process::Command::new("git")
-        .args(["clone", "--quiet"])
-        .arg(origin)
-        .arg(&src_dir)
-        .status()
-        .unwrap();
-    assert!(status.success(), "fixture clone of {origin:?} failed");
+    git(
+        data_dir_root,
+        &[
+            "clone",
+            "--quiet",
+            origin.to_str().unwrap(),
+            src_dir.to_str().unwrap(),
+        ],
+    );
 
     let themes_dir = data_dir.join("themes");
     std::fs::create_dir_all(&themes_dir).unwrap();
@@ -118,13 +130,16 @@ fn install_theme_rejects_unsafe_slugs() {
     let data_tmp = safe_tempdir();
     let mut ed = plum_editor(data_tmp.path());
 
-    for (bad_slug, loud) in [
+    let cases = [
         ("../evil", true),
         ("a/b/c", false),
         ("nope", false),
         ("a/..", true),
         ("c:evil/repo", true),
-    ] {
+        ("a\"b/repo", true),
+        ("a\\b/repo", true),
+    ];
+    for (bad_slug, loud) in cases {
         type_cmd(&mut ed, &format!(":plum-install-theme {bad_slug}"));
         if !loud {
             let status = ed.state.status_msg.as_deref().unwrap_or_default();
@@ -135,12 +150,15 @@ fn install_theme_rejects_unsafe_slugs() {
         }
     }
 
-    // An uncaught Scheme `error`'s message is Debug-escaped on the way into
-    // the log, so an embedded `"` shows up as `\"`.
+    // An uncaught Scheme `error`'s message has each `"`/`\` backslash-escaped
+    // on the way into the log (Rust's `char::escape_debug`), so a slug
+    // containing one of those characters needs the same escaping applied
+    // before it's searched for.
     let log = ed.state.message_log.format_for_display();
-    for bad_slug in ["../evil", "a/..", "c:evil/repo"] {
+    for (bad_slug, _) in cases.into_iter().filter(|(_, loud)| *loud) {
+        let escaped: String = bad_slug.chars().flat_map(char::escape_debug).collect();
         assert!(
-            log.contains(&format!("\\\"{bad_slug}\\\" is not a valid")),
+            log.contains(&format!("\\\"{escaped}\\\" is not a valid")),
             "slug {bad_slug:?} must be rejected: {log}"
         );
     }
@@ -226,6 +244,37 @@ fn sync_errors_when_repo_has_no_themes_dir() {
     );
 }
 
+/// Two repos shipping the same theme stem shadow each other in
+/// `<data>/themes/` with no separate state file to notice — `plum/
+/// sync-theme-files!` must at least warn instead of overwriting silently.
+#[test]
+fn update_themes_warns_on_shadowed_theme_name() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+
+    let origin_a_tmp = safe_tempdir();
+    let origin_a = origin_a_tmp.path().join("acme-dark.hume");
+    init_theme_origin(&origin_a, &[("themes/dark.toml", THEME_TOML)]);
+    fabricate_installed_theme_repo(data_tmp.path(), "acme/dark.hume", &origin_a);
+
+    let origin_b_tmp = safe_tempdir();
+    let origin_b = origin_b_tmp.path().join("zed-dark.hume");
+    init_theme_origin(&origin_b, &[("themes/dark.toml", THEME_TOML)]);
+    fabricate_installed_theme_repo(data_tmp.path(), "zed/dark.hume", &origin_b);
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-update-themes");
+
+    let warnings = warning_log(&ed);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("dark")
+                && (w.contains("acme/dark.hume") || w.contains("zed/dark.hume"))),
+        "expected a shadowed-name warning naming \"dark\" and the other repo: {warnings:?}"
+    );
+}
+
 // ── List ──────────────────────────────────────────────────────────────────────
 //
 // Split into two tests so each checks the one line guaranteed to be the
@@ -298,6 +347,39 @@ fn remove_theme_deletes_copies_and_clone() {
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
     assert!(
         status.contains("removed acme/theme.hume: acme_dark"),
+        "expected a removal confirmation in status_msg: {status:?}"
+    );
+}
+
+/// A repo that loses its `themes/` directory upstream (a failed
+/// `:plum-update-themes` sync, per `sync_errors_when_repo_has_no_themes_dir`
+/// above) must still be removable — discovery keys on the clone existing,
+/// not on it still holding a `themes/` directory.
+#[test]
+fn remove_theme_survives_a_failed_sync() {
+    let _lock = lock();
+    let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/kept.toml", THEME_TOML)]);
+
+    // Upstream drops themes/ entirely; the update fails but the clone stays.
+    std::fs::remove_dir_all(origin.join("themes")).unwrap();
+    write_files(&origin, &[("README.md", "no themes here anymore")]);
+    commit_all(&origin, "drop themes");
+
+    let mut ed = plum_editor(data_tmp.path());
+    type_cmd(&mut ed, ":plum-update-themes");
+
+    let src_dir = canonical_data_dir(data_tmp.path()).join("themes/sources/acme/theme.hume");
+    assert!(src_dir.exists(), "the clone must survive a failed sync");
+
+    type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
+
+    assert!(
+        !src_dir.exists(),
+        "remove must delete a repo whose sync failed, not report it as never installed"
+    );
+    let status = ed.state.status_msg.as_deref().unwrap_or_default();
+    assert!(
+        status.contains("removed acme/theme.hume"),
         "expected a removal confirmation in status_msg: {status:?}"
     );
 }

@@ -301,6 +301,7 @@
 (#%register-global "smart-paste-before")
 (#%register-global "spawn-async!")
 (#%register-global "split-selection-on-newlines")
+(#%register-global "stems-with-suffix")
 (#%register-global "surround-add")
 (#%register-global "surround-angle")
 (#%register-global "surround-backtick")

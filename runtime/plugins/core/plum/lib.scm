@@ -1,12 +1,14 @@
 ;;; core:plum/lib.scm
 
-(provide plum/batch-run plum/run! plum/read-file plum/safe-segment? plum/two-level-repos)
+(provide plum/batch-run plum/run! plum/read-file plum/safe-segment? plum/two-level-repos
+         plum/clone-github!)
 
 ;; ── Path-segment validation ───────────────────────────────────────────────────
 
 ;;; Safe to use as one filesystem path segment — see README.md.
 (define (plum/safe-segment? name)
-  (and (not (equal? name "."))
+  (and (not (equal? name ""))
+       (not (equal? name "."))
        (not (equal? name ".."))
        (not (string-contains? name "/"))
        (not (string-contains? name "\\"))
@@ -17,7 +19,8 @@
 
 ;;; Walk `root`/<user>/<repo>/ and return "user/repo" strings for every leaf
 ;;; containing `marker` — shared by plugin discovery (`marker` "plugin.scm")
-;;; and theme-repo discovery (`marker` "themes").
+;;; and theme-repo discovery (`marker` ".git", so a repo stays discoverable
+;;; even after upstream drops its `themes/` directory).
 (define (plum/two-level-repos root marker)
   (if (not (path-exists? root))
       '()
@@ -45,6 +48,11 @@
        (error (string-append cmd ": " stderr)))
       ((not (= code 0))
        (error (string-append cmd ": failed (exit " (number->string code) "): " (trim stderr)))))))
+
+;;; git clone the GitHub repo named by "user/repo" `slug` into `dest`. `--`
+;;; guards against a slug-derived URL `git` might otherwise read as a flag.
+(define (plum/clone-github! slug dest)
+  (plum/run! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") dest)))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.

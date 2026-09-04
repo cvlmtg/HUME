@@ -1035,3 +1035,38 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
          not attempted-and-failed: {warnings:?}"
     );
 }
+
+/// `installed-grammars` must sort by stem, not by full filename: `"b-x.<ext>"
+/// < "b.<ext>"` (`-` sorts before `.`), so sorting before stripping the
+/// extension would put `b-x` ahead of `b`. Neither name is catalog-known, so
+/// `register-installed-grammars!` skips both silently — only the list order
+/// is under test.
+///
+/// Flip: sort the full filenames (as `installed-grammars` did before it was
+/// fixed to sort stems) and this fails, returning `"b-x,b"`.
+#[test]
+fn installed_grammars_sorts_by_stem_not_filename() {
+    let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
+    let ext = hume_test_fixtures::grammar_platform_ext();
+
+    let (errors, mut ed, _dirs) = init_errors_with_catalog(catalog, |data| {
+        let grammars = data.join("grammars");
+        std::fs::create_dir_all(&grammars).unwrap();
+        std::fs::write(grammars.join(format!("b.{ext}")), b"").unwrap();
+        std::fs::write(grammars.join(format!("b-x.{ext}")), b"").unwrap();
+    });
+    assert!(errors.is_empty(), "unexpected init errors: {errors:?}");
+
+    let mut host = ed.scripting.take().expect("init_scripting installs a host");
+    let result = {
+        let mut ih = init_host!(ed);
+        host.eval_source(r#"(error (string-join (installed-grammars) ","))"#, &mut ih)
+    };
+    ed.scripting = Some(host);
+
+    let err = result.expect_err("the raised list must surface as an eval error");
+    assert!(
+        err.contains("b,b-x"),
+        "installed-grammars must sort stems after stripping the extension: {err:?}"
+    );
+}

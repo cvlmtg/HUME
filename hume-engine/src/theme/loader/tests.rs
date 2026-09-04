@@ -362,6 +362,16 @@ fn path_traversal_is_rejected() {
     assert!(matches!(err, ThemeError::NotFound { .. }));
 }
 
+#[test]
+fn drive_relative_segment_is_rejected() {
+    assert!(!is_safe_theme_name("c:evil"));
+}
+
+#[test]
+fn quote_embedded_segment_is_rejected() {
+    assert!(!is_safe_theme_name("a\"b"));
+}
+
 // ── parse_theme ───────────────────────────────────────────────────────────
 
 #[test]
