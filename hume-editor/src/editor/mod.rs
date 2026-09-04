@@ -332,7 +332,7 @@ pub(crate) struct EditorState {
     pub(crate) force_full_redraw: bool,
     /// State of the `#:inline-output` bracket for the Steel command(s)
     /// currently on the call stack — pushed/popped by `OutputHost::
-    /// arm_inline_output`/`restore_inline_output`, read and driven by
+    /// arm_inline_output`/`truncate_inline_output`, read and driven by
     /// `EditorHostImpl::ensure_inline_output_screen`/`is_inline_output_command`
     /// so `SteelCtx` (and the gated print shims) know it's safe to write to
     /// the real stdout, and so the screen is only entered lazily, on the

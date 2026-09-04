@@ -295,6 +295,10 @@ impl Editor {
         let focused_pane_id = self.state.focused_pane_id;
         let focused_buffer_id = self.focused_buffer_id();
 
+        let Some(scripting) = self.scripting.as_mut() else {
+            return false;
+        };
+
         // Alt-screen bracketing for inline-output commands is lazy: entering
         // the alt-screen and printing the running banner happens on the
         // command body's *first actual output* (see
@@ -306,14 +310,14 @@ impl Editor {
         // arm_inline_output`), so top-level dispatch and `call!` share one
         // arming implementation. A command not declared `#:inline-output`
         // pushes nothing — `is_inline_output_command` must read closed for it
-        // even if its own body later `call!`s into a declared one.
+        // even if its own body later `call!`s into a declared one. Pushed
+        // only once there is a host to actually run the session that would
+        // otherwise drain it — an earlier push, before this guard, leaked a
+        // frame on the no-scripting-host early return below.
         if inline_output {
             self.state.inline_output.push(name, self.tui_active);
         }
 
-        let Some(scripting) = self.scripting.as_mut() else {
-            return false;
-        };
         let result = {
             let mut impl_host = crate::editor::host_impl::EditorHostImpl::full(
                 &mut self.state,
@@ -370,15 +374,19 @@ impl Editor {
     /// an `#:inline-output` command
     /// (`hume_scripting::host::OutputHost::arm_inline_output`).
     ///
-    /// By the time this runs, `InlineOutput`'s frame stack has already been
+    /// By the time this runs, `InlineOutput`'s frame stack is usually already
     /// drained — every Steel session's own tail
     /// (`hume_scripting::activation::run_steel_session`) does that
     /// unconditionally, including for the top-level dispatch's own frame,
-    /// which nothing else ever pops. `entered`/`ran` survive that drain (see
-    /// `InlineOutput`'s own doc) — reading them here, once, is this
-    /// boundary's whole job.
-    ///
+    /// which nothing else ever pops. Truncated to zero again here regardless,
+    /// as the backstop for the one caller
+    /// ([`Self::call_steel_command_body`]) that can reach this without ever
+    /// running a session at all — `call_steel_cmd`'s own registry/
+    /// `command_table` desync check fails before `run_steel_session` starts.
+    /// `entered`/`ran` survive either drain (see `InlineOutput`'s own doc) —
+    /// reading them here, once, is this boundary's whole job.
     pub(super) fn close_inline_output_bracket(&mut self) {
+        self.state.inline_output.truncate(0);
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {
             // `terminal` is `None` in tests that drive `tui_active: true`

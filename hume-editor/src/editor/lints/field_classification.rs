@@ -190,7 +190,7 @@ const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ),
 ];
 
-/// Exercises the tricky patterns actually present in `EditorState`: a
+/// Exercises the tricky patterns `EditorState`'s own field list can contain: a
 /// doc comment, an own-line attribute, a field whose type wraps onto a
 /// second line, a generic with an internal tuple (nested commas), and
 /// `pub(in crate::editor)` visibility (a `::` path separator inside the
@@ -201,7 +201,7 @@ fn struct_field_names_handles_wrapped_generics_and_attributes() {
         /// doc comment: mentions a colon, must not be read as a field
         pub(crate) buffers: BufferStore,
         #[cfg(test)]
-        pub(crate) inline_output_entered: bool,
+        pub(crate) test_only_probe: bool,
         pub(crate) minibuf_completion_view:
             Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
         pub(super) pending_work: VecDeque<crate::editor::event::PendingWork>,
@@ -211,7 +211,7 @@ fn struct_field_names_handles_wrapped_generics_and_attributes() {
         struct_field_names(body),
         vec![
             "buffers",
-            "inline_output_entered",
+            "test_only_probe",
             "minibuf_completion_view",
             "pending_work",
             "completion",

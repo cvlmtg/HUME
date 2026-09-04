@@ -57,13 +57,30 @@ fn dispatch_backslash(source: &str, cmd: &str, tui_active: bool) -> Editor {
 ///
 /// Fail oracle: drop `(%arm-inline-output! name)` from `%apply-command`
 /// (`bootstrap.scm`) → logs `"gate-closed"`.
+///
+/// Also covers the depth-`0` restore: `trigger` itself is not declared
+/// `#:inline-output`, so `%arm-inline-output!` returns `#f` for it and its
+/// own gate reads closed both before and after the nested `call!` — the
+/// common case, distinct from `nested_call_bang_restores_the_outer_commands_state`
+/// below, where the *outer* command is itself declared and restores to depth
+/// `1`. `%apply-command` discriminates "no restore" from "restore to this
+/// depth" with `(when depth …)`, which only works because Steel's `is_truthy`
+/// treats `(IntV 0)` as true — pinning the after-open/after-closed pair here
+/// exercises that depth-`0` branch instead of assuming it.
+///
+/// Fail oracle: make `%apply-command` skip the restore whenever `depth` is
+/// `0` (a plausible but wrong "falsy" reading) → logs `"trigger-after-open"`
+/// instead of `"trigger-after-closed"`.
 #[test]
 fn call_bang_to_inline_output_editor_command_opens_the_gate() {
     let ed = dispatch_backslash(
         r#"(define-command! "inner-probe" ""
              (lambda () (log! 'warn (if (%stdout-gate!) "gate-open" "gate-closed")))
              #:inline-output #t)
-           (define-command! "trigger" "" (lambda () (call! "inner-probe")))"#,
+           (define-command! "trigger" ""
+             (lambda ()
+               (call! "inner-probe")
+               (log! 'warn (if (%stdout-gate!) "trigger-after-open" "trigger-after-closed"))))"#,
         "trigger",
         false,
     );
@@ -73,6 +90,13 @@ fn call_bang_to_inline_output_editor_command_opens_the_gate() {
         "call! to an #:inline-output command must open the print gate; messages: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );
+    assert!(
+        logged(&ed, "trigger-after-closed"),
+        "trigger's own gate must be closed again once inner-probe's call! returns; \
+         messages: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+    assert!(!logged(&ed, "trigger-after-open"));
 }
 
 /// A typed command is never reachable through `call!` — `%dispatch-command`
@@ -502,5 +526,46 @@ fn editor_host_impl_init_threads_live_tui_active_into_arm() {
         ed.inline_output_enter_count(),
         1,
         "tui_active: true must enter the alt-screen exactly once"
+    );
+}
+
+// ── A pushed frame must never outlive a dispatch that never reaches a
+//    Steel session ──────────────────────────────────────────────────────────
+
+/// `call_steel_command_body` pushes a frame for a declared `#:inline-output`
+/// command before checking whether there is a scripting host to actually run
+/// it against. If `self.scripting` is `None` — the registry still knows the
+/// command (it was registered before the host went away), but there is
+/// nothing left to call — dispatch returns early without ever reaching
+/// `run_steel_session` (whose tail truncate-to-zero is what drains every
+/// *other* early-exit path) and without calling
+/// `close_inline_output_bracket` either. The pushed frame must not survive
+/// that early return: a later dispatch's `%stdout-gate!` must not inherit a
+/// gate this command never actually opened.
+///
+/// Fail oracle: this is the bug itself — push happens unconditionally ahead
+/// of the `let Some(scripting) = self.scripting.as_mut() else { return false }`
+/// guard in `call_steel_command_body`.
+#[test]
+fn no_scripting_host_does_not_leak_a_pushed_frame() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "orphan" "" (lambda () (+ 1 0)) #:inline-output #t)"#,
+    );
+    bind_backslash(&mut ed, "orphan");
+    // Simulate the scripting host having gone away after the command was
+    // registered — `run_steel_command` still resolves `orphan` from the
+    // registry (a separate store from the host's own `command_table`), so
+    // dispatch proceeds all the way to `call_steel_command_body` before
+    // finding out there is no host left to call.
+    ed.scripting = None;
+    ed.feed_event(key('\\'));
+
+    assert!(
+        !ed.state.inline_output.is_open(),
+        "a dispatch that never reaches a Steel session must not leave a pushed frame behind"
     );
 }
