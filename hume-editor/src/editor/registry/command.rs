@@ -269,10 +269,12 @@ pub(crate) enum MappableCommand {
     /// Signature: `fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>`
     ///
     /// Covers composite operations: mode changes, register access, undo group
-    /// management, and parameterized motions (find/till/replace). Returns `Err`
-    /// only for true user-facing failures (e.g. "no match", I/O errors).
-    /// Silent no-ops (boundary conditions) return `Ok(())`. Stored and
-    /// dispatched as a function pointer exactly like the other variants.
+    /// management, and parameterized motions (find/till/replace). Returns
+    /// `Err` for a user-facing failure, reported at that `CommandError`'s own
+    /// severity — `CommandError::transient` for a boundary condition (e.g.
+    /// "no match"), `CommandError::new` for a real failure (I/O errors).
+    /// Silent no-ops return `Ok(())`. Stored and dispatched as a function
+    /// pointer exactly like the other variants.
     EditorCmd {
         name: Cow<'static, str>,
         // Pending command-palette / :help integration.

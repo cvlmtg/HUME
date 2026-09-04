@@ -77,3 +77,35 @@ fn colon_edit_bang_path_parses() {
         ":e!<path> (no space) must parse as cmd=e force=true arg=<path>"
     );
 }
+
+/// A boundary condition (`:b` on a name that isn't open) is a transient
+/// refusal — shown, never logged. A genuine write failure (missing parent
+/// directory) is a real error — shown *and* logged, same fixture as
+/// `write_missing_parent_dir_errors_and_leaves_buffer_pending` in
+/// `tests/unix/file_io.rs`. Driven through `submit` (the real `:` minibuffer
+/// dispatch path), not `execute_typed`, which hardcodes `Severity::Error` on
+/// any `Err` and so can't distinguish the two.
+#[test]
+fn command_error_severity_routes_transient_vs_logged() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    submit(&mut ed, "b nosuchbuffer");
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("no buffer matching 'nosuchbuffer'")
+    );
+    assert_eq!(
+        ed.state.message_log.totals(),
+        (0, 0),
+        "an unresolved :b name is a boundary condition, not a failure worth logging"
+    );
+
+    let dir = safe_tempdir();
+    let path = dir.path().join("no-such-subdir").join("file.txt");
+    submit(&mut ed, &format!("w {}", path.display()));
+    assert_eq!(
+        ed.state.message_log.totals(),
+        (1, 0),
+        "a write that failed to happen is a real error and must reach :messages"
+    );
+}

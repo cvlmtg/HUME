@@ -58,7 +58,7 @@
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options))
              (lsp/format-callback bid gen)))
           ((> n cap)
-           (log! 'warn
+           (log! 'info
                  (string-append (number->string n)
                                  " ranges exceeds lsp.format-max-ranges ("
                                  (number->string cap)
@@ -69,7 +69,7 @@
 ;;; a hook like `on-buffer-save`) and `:format-source` (typed command — the
 ;;; `:` line entry point): format the buffer via LSP — the selected lines
 ;;; when every selection spans one or more complete lines, the whole buffer
-;;; otherwise, or nothing (with a warning) for a mix of the two.
+;;; otherwise, or nothing (with a status message) for a mix of the two.
 (define (lsp/format-source!)
   (let* ((bid (current-buffer))
          (rp (lsp-linewise-ranges-params bid)))
@@ -93,7 +93,7 @@
                  (lsp-request #f "textDocument/formatting"
                    (hash "textDocument" td "options" (lsp/format-options))
                    (lsp/format-callback bid gen)))))
-            (else (log! 'warn "mixed whole-line and partial selections — nothing formatted")))))))
+            (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"
   "Format the buffer via LSP — bind this to a key, or call it from a hook (e.g. `on-buffer-save`)."

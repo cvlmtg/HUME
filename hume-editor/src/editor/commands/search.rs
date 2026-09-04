@@ -216,7 +216,7 @@ fn search_jump(
             set_primary_selection(state, view, new_sel);
             Ok(())
         }
-        None => Err(CommandError::new("no match")),
+        None => Err(CommandError::transient("no match")),
     }
 }
 
@@ -268,7 +268,7 @@ pub(crate) fn cmd_select_all_matches(
 
     let matches = find_all_matches(doc(state, view).text(), &regex);
     if matches.is_empty() {
-        return Err(CommandError::new("no matches"));
+        return Err(CommandError::transient("no matches"));
     }
 
     let sels: Vec<Selection> = matches

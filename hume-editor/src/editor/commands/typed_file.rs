@@ -47,7 +47,9 @@ pub(crate) fn typed_quit(
     }
 
     if !force && ed.doc().is_dirty() {
-        return Err(CommandError::new("Unsaved changes (add ! to override)"));
+        return Err(CommandError::transient(
+            "Unsaved changes (add ! to override)",
+        ));
     }
 
     let current = ed.focused_buffer_id();
@@ -92,6 +94,13 @@ pub(crate) fn typed_quit_all(
                 ed.switch_to_buffer_with_jump(dirty_id);
             }
             let name = ed.state.buffers.get(ed.focused_buffer_id()).display_name();
+            // Stays Error, not transient: `EditorState::message_logged_this_input`
+            // (lifecycle.rs) keys off `message_log.totals()` moving, and
+            // `can_open_confirm` (buffer/disk.rs) reads that flag to refuse a
+            // disk-change reload confirm from popping over this exact message
+            // right after :qa's focus-move names the dirty buffer — a
+            // transient report wouldn't move totals() and would let the
+            // confirm steal the next keystroke.
             return Err(CommandError::new(format!(
                 "Unsaved changes in {name} (add ! to override)"
             )));
@@ -148,17 +157,17 @@ pub(crate) fn typed_set(
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
-        return Err(CommandError::new(USAGE));
+        return Err(CommandError::transient(USAGE));
     };
     let Some((scope_str, rest)) = arg.split_once(' ') else {
-        return Err(CommandError::new(USAGE));
+        return Err(CommandError::transient(USAGE));
     };
     // Tolerate stray extra whitespace before the key, matching the
     // `SetCompleter`'s tolerance (a6e5adc) — otherwise Tab can complete
     // through a double space into a command line that errors on Enter.
     let rest = rest.trim_start();
     let Some((key, value)) = rest.split_once('=') else {
-        return Err(CommandError::new("Expected key=value"));
+        return Err(CommandError::transient("Expected key=value"));
     };
     let bid = ed.focused_buffer_id();
 
@@ -174,7 +183,7 @@ pub(crate) fn typed_set(
                 } else {
                     if ed.state.config.languages.by_name(value).is_none() {
                         ed.report(
-                            Severity::Warning,
+                            Severity::Info,
                             format!("language '{value}' is not registered"),
                         );
                     }
@@ -183,7 +192,7 @@ pub(crate) fn typed_set(
                 ed.set_buffer_language_explicit(bid, new_lang);
                 Ok(())
             }
-            _ => Err(CommandError::new(
+            _ => Err(CommandError::transient(
                 "'language' is per-buffer — use ':set buffer language=<name>'",
             )),
         };
@@ -194,7 +203,7 @@ pub(crate) fn typed_set(
     // special-casing.
     let scopes = crate::settings::setting_scopes(key);
     if scopes.is_empty() {
-        return Err(CommandError::new(format!("unknown setting '{key}'")));
+        return Err(CommandError::transient(format!("unknown setting '{key}'")));
     }
 
     // Parse the scope token *after* confirming the key is real, so an
@@ -203,7 +212,7 @@ pub(crate) fn typed_set(
     // message — the user typed a real key, so that's the more useful error.
     let parsed_scope = scope_str.parse::<Scope>().ok();
     if !parsed_scope.is_some_and(|s| scopes.contains(&s)) {
-        return Err(CommandError::new(format!(
+        return Err(CommandError::transient(format!(
             "'{key}' cannot be set with :set {scope_str} — valid scopes: {}",
             scopes
                 .iter()
@@ -289,11 +298,11 @@ fn write_buffer_by_id(
 ) -> Result<(), CommandError> {
     let buf = ed.state.buffers.get_mut(bid);
     if buf.is_read_only() {
-        return Err(CommandError::new("Buffer is read-only"));
+        return Err(CommandError::transient("Buffer is read-only"));
     }
     if buf.file_meta.is_none() {
         let Some(path) = buf.path().map(std::path::Path::to_path_buf) else {
-            return Err(CommandError::new("no file name"));
+            return Err(CommandError::transient("no file name"));
         };
         // Stat fresh rather than assuming the path is still missing: a
         // new-file buffer carries no baseline to compare against
@@ -303,7 +312,7 @@ fn write_buffer_by_id(
         // stat-at-write-time reasoning as `stale_write_block`, just
         // discovered via existence instead of a signature mismatch.
         let write_result = match hume_platform::io::read_file_meta(&path) {
-            Ok(_) if !force => return Err(CommandError::new(STALE_WRITE_MSG)),
+            Ok(_) if !force => return Err(CommandError::transient(STALE_WRITE_MSG)),
             // Forced: write through `write_file_atomic`, not
             // `write_file_new` — the file now exists, so its
             // permissions/ownership/symlink target should be preserved
@@ -337,7 +346,7 @@ fn write_buffer_by_id(
         .as_mut()
         .expect("checked file_meta.is_none() above");
     if !force && let Some(msg) = stale_write_block(meta) {
-        return Err(CommandError::new(msg));
+        return Err(CommandError::transient(msg));
     }
     match hume_platform::io::write_file_atomic(&content, meta, force) {
         Ok(retried) => {
@@ -413,7 +422,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
                     None => true,
                 };
                 if targets_own_file && !force && own_baseline_differs {
-                    return Err(CommandError::new(STALE_WRITE_MSG));
+                    return Err(CommandError::transient(STALE_WRITE_MSG));
                 }
                 hume_platform::io::write_file_atomic(&content, &mut meta, force)
                     .map(|retried| (meta, retried))

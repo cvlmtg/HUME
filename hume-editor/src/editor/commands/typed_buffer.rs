@@ -64,7 +64,7 @@ pub(crate) fn typed_edit(
         // `display_path` are retained as-is — no need to re-seed them onto the
         // freshly read doc.
         let Some(path) = ed.doc().path().map(Path::to_path_buf) else {
-            return Err(CommandError::new("no file name"));
+            return Err(CommandError::transient("no file name"));
         };
         // Nothing on disk to reload from yet — a reload here would just be a
         // no-op, so short-circuit before the dirty check rather than making
@@ -79,7 +79,9 @@ pub(crate) fn typed_edit(
             return Ok(());
         }
         if ed.doc().is_dirty() && !force {
-            return Err(CommandError::new("unsaved changes (use :e! to force)"));
+            return Err(CommandError::transient(
+                "unsaved changes (use :e! to force)",
+            ));
         }
         let display = ed
             .doc()
@@ -161,7 +163,9 @@ pub(crate) fn typed_buffer_delete(
     force: bool,
 ) -> Result<(), CommandError> {
     if ed.doc().is_dirty() && !force {
-        return Err(CommandError::new("unsaved changes (use :bd! to force)"));
+        return Err(CommandError::transient(
+            "unsaved changes (use :bd! to force)",
+        ));
     }
     let id = ed.focused_buffer_id();
     ed.close_buffer(id);
@@ -184,7 +188,7 @@ pub(crate) fn typed_buffer(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let arg = arg.ok_or_else(|| CommandError::new("usage: :b <name|#|index>"))?;
+    let arg = arg.ok_or_else(|| CommandError::transient("usage: :b <name|#|index>"))?;
     let bid = resolve_buffer_arg(ed, arg)?;
     ed.enter_buffer(bid);
     Ok(())
@@ -239,21 +243,21 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     if arg == "#" {
         return ed
             .alternate_buffer()
-            .ok_or_else(|| CommandError::new("no alternate buffer"));
+            .ok_or_else(|| CommandError::transient("no alternate buffer"));
     }
 
     // 1. Numeric 1-based index.
     if let Ok(n) = arg.parse::<usize>() {
         let idx = n
             .checked_sub(1)
-            .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")))?;
+            .ok_or_else(|| CommandError::transient(format!("no buffer at index {n}")))?;
         return ed
             .state
             .buffers
             .iter()
             .nth(idx)
             .map(|(id, _)| id)
-            .ok_or_else(|| CommandError::new(format!("no buffer at index {n}")));
+            .ok_or_else(|| CommandError::transient(format!("no buffer at index {n}")));
     }
 
     // 2. Absolute path — match an open buffer by canonical OR lexical path.
@@ -264,7 +268,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
     let expanded = hume_platform::path::expand(arg);
     if Path::new(expanded.as_ref()).is_absolute() {
         return find_buffer_by_path_arg(ed, expanded.as_ref())
-            .ok_or_else(|| CommandError::new(format!("{arg}: not an open buffer")));
+            .ok_or_else(|| CommandError::transient(format!("{arg}: not an open buffer")));
     }
 
     // 3. Exact display-name match.
@@ -282,7 +286,7 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
                 .iter()
                 .map(|&id| label(ed.state.buffers.get(id)))
                 .collect();
-            return Err(CommandError::new(format!(
+            return Err(CommandError::transient(format!(
                 "ambiguous buffer name '{arg}': {}",
                 labels.join(", ")
             )));
@@ -299,14 +303,16 @@ fn resolve_buffer_arg(ed: &Editor, arg: &str) -> Result<BufferId, CommandError> 
         .map(|(id, _)| id)
         .collect();
     match prefix_matches.len() {
-        0 => Err(CommandError::new(format!("no buffer matching '{arg}'"))),
+        0 => Err(CommandError::transient(format!(
+            "no buffer matching '{arg}'"
+        ))),
         1 => Ok(prefix_matches[0]),
         _ => {
             let labels: Vec<String> = prefix_matches
                 .iter()
                 .map(|&id| label(ed.state.buffers.get(id)))
                 .collect();
-            Err(CommandError::new(format!(
+            Err(CommandError::transient(format!(
                 "ambiguous prefix '{arg}': {}",
                 labels.join(", ")
             )))

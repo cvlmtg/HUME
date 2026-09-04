@@ -107,7 +107,7 @@
     (if (string? name)
         name
         (begin
-          (log! 'warn (string-append cmd ": no language given and current buffer has no language set"))
+          (log! 'info (string-append cmd ": no language given and current buffer has no language set"))
           #f))))
 
 ;; ── Plugin config helpers ────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
 use crate::editor::registry::{CmdMeta, MappableCommand, SelectionBody, SelectionTracking};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
-use crate::editor::{EditorState, Mode, Severity};
+use crate::editor::{EditorState, Mode};
 use hume_ops::{MotionMode, WordCtx};
 
 use crate::editor::syntax::ensure_syntax_current;
@@ -121,12 +121,13 @@ pub(in crate::editor) fn run_native_body(
         }
         MappableCommand::EditorCmd { fun, .. } => {
             if let Err(e) = fun(state, view, count, motion_mode) {
-                state.report(Severity::Error, e.message().to_owned());
-                // No live EditorCmd body returns Err today (every refusal
-                // path — read-only buffers — takes the Ok(()) early-return
-                // through refuse_if_read_only instead), but a future one
-                // that fails without editing must get the same rollback, not
-                // a stamped no-op — see EditorState::command_refused.
+                // Reported at the error's own severity (e.g. search's "no
+                // match" is transient — statusline only; an I/O failure is
+                // logged) — see `CommandError::new` vs `::transient`. Every
+                // Err still stamps `command_refused` regardless of severity:
+                // rollback is about whether an edit happened, not about how
+                // loudly the failure is recorded.
+                state.report(e.severity(), e.message().to_owned());
                 state.command_refused = true;
             }
         }

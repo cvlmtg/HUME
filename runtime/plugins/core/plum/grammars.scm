@@ -151,12 +151,12 @@
 
 ;;; Resolve the target grammar for a `:` grammar command: a string argument
 ;;; wins; otherwise fall back to the current buffer's language. Returns the
-;;; name, or #f after logging a warning.
+;;; name, or #f after reporting a status message.
 (define (plum/resolve-grammar-arg cmd arg)
   (let ((name (call! "stdlib/resolve-lang-arg" cmd arg)))
     (cond ((not name) #f)
           ((not (grammar-source-known? name))
-           (log! 'warn (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
+           (log! 'info (string-append cmd ": unknown grammar \"" name "\" — see :plum-list-grammars"))
            #f)
           (else name))))
 

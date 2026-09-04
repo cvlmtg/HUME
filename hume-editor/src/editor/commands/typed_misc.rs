@@ -172,7 +172,7 @@ fn split_focused_pane(
     direction: Direction,
 ) -> Result<(), CommandError> {
     if !super::fits_split(&ed.state, &ed.view, direction) {
-        ed.report(Severity::Warning, super::SPLIT_TOO_SMALL_MSG.to_string());
+        ed.report(Severity::Info, super::SPLIT_TOO_SMALL_MSG.to_string());
         return Ok(());
     }
     let bid = match arg {
@@ -360,14 +360,14 @@ pub(crate) fn typed_goto_line(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    let raw = arg.ok_or_else(|| CommandError::new(":goto requires a line number"))?;
+    let raw = arg.ok_or_else(|| CommandError::transient(":goto requires a line number"))?;
     let n: usize = raw
         .trim()
         .parse()
-        .map_err(|_| CommandError::new(format!("invalid line number: {raw}")))?;
+        .map_err(|_| CommandError::transient(format!("invalid line number: {raw}")))?;
     let line0 = n
         .checked_sub(1)
-        .ok_or_else(|| CommandError::new(crate::cli::LINE_NUMBERS_START_AT_1))?;
+        .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
     // Snapshot before moving so Ctrl+O can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
@@ -401,18 +401,22 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
             // Any other `--`-prefixed token is a long flag, just not one we
             // recognize — report it as a flag, not a positional argument.
             _ if token.starts_with("--") => {
-                return Err(CommandError::new(format!("unknown flag: {token}")));
+                return Err(CommandError::transient(format!("unknown flag: {token}")));
             }
             _ if token.starts_with('-') && token.len() > 1 => {
                 for ch in token[1..].chars() {
                     match ch {
                         'r' => opts.reverse = true,
                         'i' => opts.insensitive = true,
-                        _ => return Err(CommandError::new(format!("unknown flag: -{ch}"))),
+                        _ => return Err(CommandError::transient(format!("unknown flag: -{ch}"))),
                     }
                 }
             }
-            _ => return Err(CommandError::new(format!("unknown argument: {token}"))),
+            _ => {
+                return Err(CommandError::transient(format!(
+                    "unknown argument: {token}"
+                )));
+            }
         }
     }
     Ok(opts)
@@ -433,7 +437,7 @@ pub(crate) fn typed_sort(
     force: bool,
 ) -> Result<(), CommandError> {
     if force {
-        return Err(CommandError::new(
+        return Err(CommandError::transient(
             "`:sort` takes no `!` — use `-r` to reverse",
         ));
     }
@@ -442,7 +446,7 @@ pub(crate) fn typed_sort(
     // doc_ops's read-only guard is a silent no-op — check explicitly here so
     // `:sort` on a read-only buffer (e.g. `:messages`) reports why nothing happened.
     if ed.focused_buffer_read_only() {
-        return Err(CommandError::new("Buffer is read-only"));
+        return Err(CommandError::transient("Buffer is read-only"));
     }
 
     // Computing the sort before touching the buffer is what lets a refusal
@@ -457,7 +461,7 @@ pub(crate) fn typed_sort(
         Ok(triple) => triple,
         Err(SortRefusal::NoAdjacentRows) => {
             ed.report(
-                Severity::Warning,
+                Severity::Info,
                 "sort needs at least two adjacent rows".to_string(),
             );
             return Ok(());

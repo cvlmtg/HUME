@@ -2876,14 +2876,17 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
         errors.is_empty(),
         "resolve-lang-arg assertions must all pass: {errors:?}"
     );
+    // Boundary condition, not a failure — Severity::Info, statusline only:
+    // the third `resolve-lang-arg` call (after `set-buffer-language!`)
+    // succeeds silently, so nothing overwrites the message from the middle
+    // (no-fallback) call.
     assert!(
         ed.state
-            .message_log
-            .entries()
-            .any(|e| e.severity == Severity::Warning
-                && e.text.contains("probe-cmd")
-                && e.text.contains("no language given")),
-        "the no-fallback case must log a warning naming the calling command"
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("probe-cmd") && m.contains("no language given")),
+        "the no-fallback case must report a status message naming the calling command, got: {:?}",
+        ed.state.status_msg
     );
 }
 

@@ -129,7 +129,7 @@ impl Editor {
         if self.activate_lazy_plugin(plugin, name) {
             true
         } else {
-            self.report(Severity::Warning, format!("unknown command: {name}"));
+            self.report(Severity::Info, format!("unknown command: {name}"));
             false
         }
     }
@@ -421,6 +421,14 @@ impl Editor {
     /// would otherwise leave unexplained at every site that only resolves
     /// one kind: the keymap dispatcher, Insert mode's trie leaf, the
     /// post-init keymap lint, and the `:` dispatcher.
+    ///
+    /// Stays `Warning`, not `Info`, despite two of its four callers
+    /// (`:` dispatch, Insert mode) being live-typo cases that would
+    /// otherwise fit this change's transient rule: the post-init keymap lint
+    /// caller (`scripting_setup.rs`) is a config-time diagnostic the user
+    /// won't see the moment it fires and needs to find later in
+    /// `:messages` — the shared function can't carry two severities, so it
+    /// keeps the one its least-ephemeral caller needs.
     pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
         let msg = self
             .state

@@ -620,11 +620,11 @@ fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
 
-    let log = ed.state.message_log.format_for_display();
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(
-        log.contains("no language server is seeded"),
+        msg.contains("no language server is seeded"),
         "dispatching :lsp-install must activate the lazily-declared plugin \
-         and then run normally: {log}"
+         and then run normally: {msg}"
     );
 }
 
@@ -674,10 +674,10 @@ fn lsp_install_unknown_language_warns() {
 
     type_cmd(&mut ed, ":lsp-install not-a-real-language-xyz");
 
-    let log = ed.state.message_log.format_for_display();
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(
-        log.contains("no language server is seeded"),
-        "an unseeded language must warn, not silently no-op: {log}"
+        msg.contains("no language server is seeded"),
+        "an unseeded language must report, not silently no-op: {msg}"
     );
 }
 
@@ -691,10 +691,10 @@ fn lsp_install_no_language_buffer_and_no_arg_warns() {
     // Fresh test buffer has no language set.
     type_cmd(&mut ed, ":lsp-install");
 
-    let log = ed.state.message_log.format_for_display();
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(
-        log.contains("no language given") || log.contains("no language set"),
-        "no arg + no buffer language must warn: {log}"
+        msg.contains("no language given") || msg.contains("no language set"),
+        "no arg + no buffer language must report a status message: {msg}"
     );
 }
 
@@ -801,11 +801,11 @@ fn lsp_install_no_arg_falls_back_to_buffer_language_not_the_count_sentinel() {
 
     type_cmd(&mut ed, ":lsp-install");
 
-    let log = ed.state.message_log.format_for_display();
+    let msg = ed.state.status_msg.as_deref().unwrap_or("");
     assert!(
-        log.contains("definitely-not-seeded"),
+        msg.contains("definitely-not-seeded"),
         "no-arg :lsp-install must resolve to the buffer's language, not misread the \
-         minibuffer's IntV(1) count sentinel as a string argument or as 'no language': {log}"
+         minibuffer's IntV(1) count sentinel as a string argument or as 'no language': {msg}"
     );
 }
 

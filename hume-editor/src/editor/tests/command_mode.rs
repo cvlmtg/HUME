@@ -1327,7 +1327,7 @@ fn sort_long_flags_through_the_minibuffer() {
 }
 
 #[test]
-fn sort_no_adjacent_rows_reports_a_warning() {
+fn sort_no_adjacent_rows_reports_info_without_logging() {
     let mut ed = editor_from("-[h]>ello\n");
     let before = state(&ed);
     ed.execute_typed("sort", None)
@@ -1338,8 +1338,9 @@ fn sort_no_adjacent_rows_reports_a_warning() {
     );
     assert_eq!(
         ed.state.message_log.totals(),
-        (0, 1),
-        "NoAdjacentRows is a Warning — it must land in message_log, not just the status line"
+        (0, 0),
+        "NoAdjacentRows is Severity::Info — a boundary condition, not a failure worth \
+         keeping in message_log"
     );
     assert_eq!(state(&ed), before, "a refusal must not touch the buffer");
 }

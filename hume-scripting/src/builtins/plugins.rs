@@ -75,6 +75,11 @@ fn record_declared(ctx: &mut SteelCtx, name: &str) {
 fn already_declared(ctx: &mut SteelCtx, plugin_id: &PluginId, name: &str) -> bool {
     match ctx.registries.lazy_registry.plugins.get(plugin_id) {
         Some(PluginState::Loaded) => {
+            // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
+            // `load_then_declare_ignored_with_soft_error` pins this as a
+            // deliberately-logged contradiction (load-then-declare), not an
+            // ordinary idempotent no-op — its own `Flip:` comment treats
+            // losing the log entry as the regression.
             ctx.log(
                 crate::log::LogLevel::Error,
                 format!("declare-plugin: '{name}' is already loaded; ignoring declare"),
@@ -462,6 +467,10 @@ pub(crate) fn load_plugin(ctx: &mut SteelCtx, name: String, config: SteelVal) ->
         ctx.registries.lazy_registry.plugins.get(&id),
         Some(PluginState::Declared { .. })
     ) {
+        // Stays Error, not Info: `hume-editor/tests/unix/scripting.rs`'s
+        // `declare_then_load_activates_and_logs_soft_error` pins this as a
+        // deliberately-logged contradiction, same reasoning as
+        // `already_declared` above.
         ctx.log(
             crate::log::LogLevel::Error,
             format!(

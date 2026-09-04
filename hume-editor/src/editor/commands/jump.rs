@@ -75,7 +75,7 @@ pub(crate) fn cmd_goto_alternate_buffer(
 ) -> Result<(), CommandError> {
     match alternate_buffer(state, view) {
         Some(id) => switch_to_buffer_without_jump(state, view, id),
-        None => state.report(Severity::Warning, "No alternate buffer".to_string()),
+        None => state.report(Severity::Info, "No alternate buffer".to_string()),
     }
     Ok(())
 }
@@ -282,7 +282,7 @@ pub(crate) fn cmd_vsplit_pane(
 }
 
 /// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
-/// No-ops with a warning when only one pane remains (`:q` owns quitting).
+/// No-ops with a status message when only one pane remains (`:q` owns quitting).
 pub(crate) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -292,7 +292,7 @@ pub(crate) fn cmd_close_pane(
     if view.panes.len() > 1 {
         super::close_focused_pane(state, view);
     } else {
-        state.report(Severity::Warning, "cannot close last pane".to_string());
+        state.report(Severity::Info, "cannot close last pane".to_string());
     }
     Ok(())
 }

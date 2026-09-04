@@ -140,7 +140,7 @@ pub(in crate::editor) fn split_pane_onto(
     direction: Direction,
 ) -> Result<(), CommandError> {
     if !fits_split(state, view, direction) {
-        state.report(Severity::Warning, SPLIT_TOO_SMALL_MSG.to_string());
+        state.report(Severity::Info, SPLIT_TOO_SMALL_MSG.to_string());
         return Ok(());
     }
     let old_focused = state.focused_pane_id;

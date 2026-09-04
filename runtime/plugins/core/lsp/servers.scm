@@ -292,7 +292,7 @@
       (cond
         ((not lang) (begin))
         ((not (hash-contains? *lsp-lang->server* lang))
-         (log! 'warn (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
+         (log! 'info (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
         (else
          (lsp/lsp-install-or-report! (hash-ref *lsp-lang->server* lang))))))
   #:inline-output #t)
@@ -302,7 +302,11 @@
   (lambda (arg)
     (cond
       ((not (string? arg))
-       (log! 'warn "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
+       (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
+      ;; Stays 'warn, not 'info: this also rejects a path-traversal name
+      ;; (e.g. "../plugins") — a security-relevant refusal worth a
+      ;; persistent :messages record, not an ordinary usage typo. Same
+      ;; reasoning as plum/fetch-raw-query's grammar-name rejection.
       ((not (lsp/valid-server-name? arg))
        (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
       (else

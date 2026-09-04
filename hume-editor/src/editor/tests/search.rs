@@ -136,6 +136,10 @@ fn search_no_match_behaviour() {
     // n: "no match" status message.
     ed.handle_key(key('n'));
     assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    // "no match" is a boundary condition, not a failure — it must not reach
+    // `:messages` or raise the unread-message statusline nudge.
+    assert_eq!(ed.state.message_log.totals(), (0, 0));
+    assert!(!ed.state.message_log.has_unseen());
 }
 
 /// Extend-search-next keeps the original anchor and moves the head to the match.

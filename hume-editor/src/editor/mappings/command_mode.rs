@@ -4,7 +4,7 @@ use super::super::commands::typed_goto_line;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::registry::TypedBody;
-use super::super::{Editor, Mode, Severity};
+use super::super::{Editor, Mode};
 use crate::editor::error::CommandError;
 
 impl Editor {
@@ -321,7 +321,7 @@ impl Editor {
             && arg.is_some_and(|a| !a.is_empty() && a.bytes().all(|b| b.is_ascii_digit()))
         {
             if let Err(e) = typed_goto_line(self, arg, false) {
-                self.report(Severity::Error, e.message().to_owned());
+                self.report(e.severity(), e.message().to_owned());
             }
             return;
         }
@@ -337,7 +337,7 @@ impl Editor {
                 match expand_command_arg(self, a) {
                     Ok(s) => Some(s),
                     Err(e) => {
-                        self.report(Severity::Error, e.message().to_owned());
+                        self.report(e.severity(), e.message().to_owned());
                         return;
                     }
                 }
@@ -353,7 +353,7 @@ impl Editor {
                 TypedBody::Native(fun) => {
                     let fun = *fun;
                     if let Err(e) = fun(self, expanded.as_deref(), force) {
-                        self.report(Severity::Error, e.message().to_owned());
+                        self.report(e.severity(), e.message().to_owned());
                     }
                 }
                 // Lazy-stub activation and Steel arg marshalling both happen
@@ -418,19 +418,17 @@ fn expand_command_arg(ed: &Editor, arg: &str) -> Result<String, CommandError> {
                 let path = ed
                     .doc()
                     .path()
-                    .ok_or_else(|| CommandError::new("No file name"))?;
+                    .ok_or_else(|| CommandError::transient("No file name"))?;
                 out.push_str(&path.display().to_string());
             }
             "#" => {
                 let alt_id = ed
                     .alternate_buffer()
-                    .ok_or_else(|| CommandError::new("No alternate buffer"))?;
-                let alt_path = ed
-                    .state
-                    .buffers
-                    .get(alt_id)
-                    .path()
-                    .ok_or_else(|| CommandError::new("Alternate buffer has no file name"))?;
+                    .ok_or_else(|| CommandError::transient("No alternate buffer"))?;
+                let alt_path =
+                    ed.state.buffers.get(alt_id).path().ok_or_else(|| {
+                        CommandError::transient("Alternate buffer has no file name")
+                    })?;
                 out.push_str(&alt_path.display().to_string());
             }
             other => out.push_str(other),

@@ -268,11 +268,12 @@ fn plum_cleanup_removes_orphan_plugin_directory() {
     );
 }
 
-/// `:plum-install-grammar` with no argument and no buffer language must warn
-/// with core:stdlib's shared "no language given" message (`stdlib/resolve-lang-arg`).
-/// A `(equal? name "")` guard is dead here — `name` is `#f`, not `""` — so it
-/// must not be relied on to catch this; letting a `#f` name fall through
-/// produces an opaque install-failure warning instead.
+/// `:plum-install-grammar` with no argument and no buffer language must
+/// report core:stdlib's shared "no language given" message
+/// (`stdlib/resolve-lang-arg`) in the statusline. A `(equal? name "")` guard
+/// is dead here — `name` is `#f`, not `""` — so it must not be relied on to
+/// catch this; letting a `#f` name fall through produces an opaque
+/// install-failure message instead.
 #[test]
 fn plum_install_grammar_no_arg_no_language_warns() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
@@ -283,25 +284,20 @@ fn plum_install_grammar_no_arg_no_language_warns() {
 
     type_cmd(&mut ed, ":plum-install-grammar");
 
-    let msgs: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| e.text.as_str())
-        .collect();
+    // Boundary condition, not a failure — Severity::Info, statusline only,
+    // never `:messages` (see Severity's routing table).
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            // Wording comes from core:stdlib's shared `stdlib/resolve-lang-arg`
-            // (the same resolver `:lsp-install` uses), not a plum-specific
-            // "no grammar name given" message.
-            e.severity == Severity::Warning && e.text.contains("no language given")
-        }),
-        "expected 'no language given' warning, got: {msgs:?}"
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains("no language given")),
+        "expected 'no language given' status message, got: {:?}",
+        ed.state.status_msg
     );
 }
 
-/// `:plum-install-grammar nosuchlang` — a name absent from the catalog warns
-/// with the unknown-grammar message instead of failing deep inside the
+/// `:plum-install-grammar nosuchlang` — a name absent from the catalog
+/// reports the unknown-grammar message instead of failing deep inside the
 /// install pipeline with an opaque hash-lookup error. This validation runs
 /// before the stale-source `delete-dir` purge in `plum/install-grammar`, so
 /// an unknown name deletes nothing.
@@ -315,17 +311,13 @@ fn plum_install_grammar_unknown_name_warns() {
 
     type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
 
-    let msgs: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| e.text.as_str())
-        .collect();
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
-        }),
-        "expected unknown-grammar warning naming 'nosuchlang', got: {msgs:?}"
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
+        "expected unknown-grammar message naming 'nosuchlang', got: {:?}",
+        ed.state.status_msg
     );
 }
 
@@ -348,17 +340,13 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
     type_cmd(&mut ed, ":set buffer language=rust");
     type_cmd(&mut ed, ":plum-install-grammar nosuchlang");
 
-    let msgs: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .map(|e| e.text.as_str())
-        .collect();
     assert!(
-        ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains(r#"unknown grammar "nosuchlang""#)
-        }),
-        "typed arg must win over buffer language 'rust', got: {msgs:?}"
+        ed.state
+            .status_msg
+            .as_deref()
+            .is_some_and(|m| m.contains(r#"unknown grammar "nosuchlang""#)),
+        "typed arg must win over buffer language 'rust', got: {:?}",
+        ed.state.status_msg
     );
 }
 
