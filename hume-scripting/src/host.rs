@@ -348,6 +348,19 @@ pub trait CommandHost {
     /// activated, never declared, or a non-lazy command).
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId>;
 
+    /// The plugin that owns `name`'s *mappable* `Lazy` stub — `None` if
+    /// `name` has no pending mappable activation, even if a typed stub of
+    /// the same name exists.
+    ///
+    /// Used by `%lazy-command-owner`, which backs `%dispatch-command`'s
+    /// (the `call!` path) lazy-activation branch: `call!` can only ever
+    /// reach a mappable command (`command_table`), so a typed-only name
+    /// reported here would trigger a plugin load for an activation that can
+    /// never succeed. [`Self::lazy_command_owner`] stays kind-agnostic for
+    /// the callers that genuinely want either kind (`check_definable`'s
+    /// self-ownership guard, `register_lazy_*`, `:plugin-status`).
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId>;
+
     /// Remove every remaining `Lazy` stub owned by `plugin` — mappable and
     /// typed alike.
     ///

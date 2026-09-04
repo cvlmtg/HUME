@@ -368,7 +368,7 @@ impl Editor {
                 }
             },
             None => {
-                self.report(Severity::Warning, format!("Unknown command: {cmd}"));
+                self.report_unknown_command(cmd, format!("Unknown command: {cmd}"));
             }
         }
     }

@@ -166,7 +166,7 @@ fn declare_arg_label(ctx: &SteelCtx, keyword: &str) -> String {
 ///   against the host's `known_event_names()` via `hooks::event_name_arg`
 ///   (this crate has no compiled-in list of its own) — the same decoder
 ///   `register-hook!` uses, so the two verbs can't drift on accepted form.
-///   `#:commands`/`#:languages` stay open strings.
+///   `#:commands`/`#:typed-commands`/`#:languages` stay open strings.
 /// - Stores `config` (the `#:config` value, first-wins) so the body can read
 ///   it back via `(plugin-config)` whenever activation eventually runs it.
 /// - Records into `declared_plugins` for PLUM compat.
@@ -651,10 +651,17 @@ pub(crate) fn finish_lazy_activation(
 }
 
 /// `(%lazy-command-owner name)` — return the owning plugin's id string if `name`
-/// is a registered activation command, or `#f` if not.  Used by `%dispatch-command`
-/// to decide whether a `command_table` miss should trigger inline activation.
+/// is a registered *mappable* activation command, or `#f` if not.  Used by
+/// `%dispatch-command` to decide whether a `command_table` miss should trigger
+/// inline activation.
+///
+/// Mappable-only deliberately: `%dispatch-command` backs `call!`, which can
+/// never reach a typed command (`typed_command_table` is a separate table —
+/// see its own doc). Reporting a typed-only stub as activatable here would
+/// load the plugin for a lookup that misses again right after and errors —
+/// a permanent side effect for a call that could never succeed.
 pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    match ctx.host.commands().lazy_command_owner(&name) {
+    match ctx.host.commands().lazy_mappable_command_owner(&name) {
         Some(id) => Ok(SteelVal::StringV(id.to_string().into())),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -663,7 +670,8 @@ pub(crate) fn lazy_command_owner(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// `(%begin-manifest-declare! name config)` — Rust primitive backing the
 /// zero-trigger branch of the Scheme `declare-plugin` wrapper.
 ///
-/// A `(declare-plugin "id")` call with no `#:commands`/`#:events`/`#:languages`
+/// A `(declare-plugin "id")` call with no
+/// `#:commands`/`#:typed-commands`/`#:events`/`#:languages`
 /// is routed here instead of `%declare-plugin!`: rather than hard-erroring,
 /// HUME looks for `<plugin-dir>/manifest.scm` and evaluates it so the plugin
 /// can declare itself with its own default activation triggers.
@@ -715,8 +723,9 @@ pub(crate) fn begin_manifest_declare(
     let manifest_path = dir.join("manifest.scm");
     if !path_exists(&manifest_path).map_err(generic_err)? {
         return Err(generic_err(format!(
-            "declare-plugin: '{name}' has no manifest.scm; add #:commands/#:events/#:languages \
-             to declare it explicitly, or use (load-plugin \"{name}\") for eager loading."
+            "declare-plugin: '{name}' has no manifest.scm; add \
+             #:commands/#:typed-commands/#:events/#:languages to declare it explicitly, \
+             or use (load-plugin \"{name}\") for eager loading."
         )));
     }
 

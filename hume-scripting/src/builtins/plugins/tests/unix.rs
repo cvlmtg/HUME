@@ -118,6 +118,68 @@ fn declare_plugin_drops_sole_command_conflicting_with_eager() {
     );
 }
 
+/// The typed twin of [`declare_plugin_drops_sole_command_conflicting_with_eager`],
+/// but a *partial* collision: no `hume-scripting` test exercised
+/// `#:typed-commands` through a real on-disk `declare-plugin` before this
+/// one, and no existing test (either kind) covers "one entry collides, one
+/// survives" — every prior collision test collided on the sole entry. One
+/// colliding name (`existing-typed`, already defined) must log an `Error`
+/// and be dropped; the plugin still declares because `fresh-typed` survives.
+///
+/// Fail oracle: if `filter_and_register_lazy` claimed `existing-typed`
+/// anyway, `lazy_command_owner("existing-typed")` would come back `Some`
+/// instead of `None`.
+#[test]
+fn declare_plugin_typed_commands_drops_colliding_entry_but_keeps_the_rest() {
+    use crate::ScriptingHost;
+    use crate::host::EditorHost;
+    use crate::null_host::LazyStubHost;
+    use tempfile::TempDir;
+
+    let dir = TempDir::new().unwrap();
+    let plugin_dir = dir.path().join("plugins").join("user").join("tp");
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.scm"), b"").unwrap();
+
+    let mut host = ScriptingHost::new();
+    host.set_data_dir(dir.path().to_path_buf());
+    let mut editor_host = LazyStubHost::default();
+
+    host.eval_source(
+        r#"(define-typed-command! "existing-typed" "doc" (lambda () 0))"#,
+        &mut editor_host,
+    )
+    .expect("pre-existing definition must succeed");
+
+    host.eval_source(
+        r#"(declare-plugin "user/tp" #:typed-commands '("existing-typed" "fresh-typed"))"#,
+        &mut editor_host,
+    )
+    .expect("declare-plugin must still succeed: one entry survives");
+
+    let messages = host.peek_pending_messages();
+    assert!(
+        messages.iter().any(|(level, msg)| {
+            matches!(level, crate::log::LogLevel::Error)
+                && msg.contains("existing-typed")
+                && msg.contains("activation entry ignored")
+        }),
+        "colliding entry must log an Error naming it; messages: {messages:?}"
+    );
+
+    let id = PluginId::parse("user/tp").unwrap();
+    assert_eq!(
+        editor_host.commands().lazy_command_owner("existing-typed"),
+        None,
+        "colliding entry must not become a lazy stub"
+    );
+    assert_eq!(
+        editor_host.commands().lazy_command_owner("fresh-typed"),
+        Some(id),
+        "the surviving entry must become a lazy stub owned by the plugin"
+    );
+}
+
 /// `#:config` passed to `(declare-plugin …)` at declare time must be observable
 /// by the plugin body via `(plugin-config)` whenever activation eventually runs
 /// it — the general mechanism this feature relies on, exercised on the lazy

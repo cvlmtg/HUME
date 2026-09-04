@@ -192,6 +192,9 @@ impl CommandHost for NullHost {
     fn lazy_command_owner(&self, _name: &str) -> Option<PluginId> {
         None
     }
+    fn lazy_mappable_command_owner(&self, _name: &str) -> Option<PluginId> {
+        None
+    }
     fn unregister_lazy_stubs_of(&mut self, _plugin: &PluginId) {}
 }
 
@@ -216,11 +219,12 @@ impl CursorHost for NullHost {
     }
 }
 
-/// Like [`NullHost`] but `register_command` fails.
+/// Like [`NullHost`] but `register_command`/`register_typed_command` fail.
 ///
-/// Exercises the `define-command!` path where the editor-side registry rejects
-/// the name (e.g. it shadows a native command): the builtin must propagate the
-/// error *without* recording the command in `command_table`/`cmd_owners`.
+/// Exercises the `define-command!`/`define-typed-command!` path where the
+/// editor-side registry rejects the name (e.g. it shadows a native command):
+/// the builtin must propagate the error *without* recording the command in
+/// `command_table`/`typed_command_table`/`cmd_owners`.
 #[derive(Default)]
 pub(crate) struct FailingRegisterHost {
     inner: NullHost,
@@ -270,7 +274,10 @@ impl CommandHost for FailingRegisterHost {
         ))
     }
     fn register_typed_command(&mut self, def: SteelTypedCmdDef) -> Result<(), String> {
-        self.inner.register_typed_command(def)
+        Err(format!(
+            "FailingRegisterHost: '{}' rejected by the command registry",
+            def.name
+        ))
     }
     fn unregister_command(&mut self, name: &str) {
         self.inner.unregister_command(name)
@@ -283,6 +290,9 @@ impl CommandHost for FailingRegisterHost {
     }
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
         self.inner.lazy_command_owner(name)
+    }
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId> {
+        self.inner.lazy_mappable_command_owner(name)
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {
         self.inner.unregister_lazy_stubs_of(plugin)
@@ -464,6 +474,15 @@ impl CommandHost for LazyStubHost {
         self.register_lazy(name, plugin)
     }
     fn lazy_command_owner(&self, name: &str) -> Option<PluginId> {
+        self.lazy.get(name).cloned()
+    }
+    // `lazy` tracks no kind (see the field doc) — this test double can't
+    // distinguish a typed-only stub from a mappable one, so it answers the
+    // same as `lazy_command_owner`. Fine for every current caller: no
+    // `hume-scripting` test dispatches `call!` against a typed-only lazy
+    // stub through this host (that scenario needs the real `EditorHostImpl`
+    // — see `lazy_mappable_command_owner`'s own doc).
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<PluginId> {
         self.lazy.get(name).cloned()
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &PluginId) {

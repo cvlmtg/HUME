@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
+use super::super::Editor;
 use super::super::commands;
 use super::super::dispatch::CmdCtx;
-use super::super::{Editor, Severity};
 use hume_editing::selection::Selection;
 
 impl Editor {
@@ -24,7 +24,7 @@ impl Editor {
             .get_mappable(name.as_ref())
             .cloned()
         else {
-            self.report(Severity::Warning, format!("unknown command: {name}"));
+            self.report_unknown_command(name.as_ref(), format!("unknown command: {name}"));
             return;
         };
 

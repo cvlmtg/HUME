@@ -202,7 +202,7 @@ fn format_status_waiting_with_triggers() {
         vec!["on-buffer-save".to_string()],
         vec!["rust".to_string()],
     );
-    let lazy_cmds = vec![("my-cmd".to_string(), id)];
+    let lazy_cmds = vec![("my-cmd".to_string(), id, false)];
     let out = reg.format_status(&lazy_cmds);
     assert!(out.contains("alice/lazy"), "plugin id must appear");
     assert!(out.contains("declared"), "state must be 'declared'");

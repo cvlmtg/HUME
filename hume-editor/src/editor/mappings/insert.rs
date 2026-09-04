@@ -103,7 +103,10 @@ impl Editor {
                     .get_mappable(cmd.name.as_ref())
                     .cloned()
                 else {
-                    self.report(Severity::Warning, format!("unknown command: {}", cmd.name));
+                    self.report_unknown_command(
+                        cmd.name.as_ref(),
+                        format!("unknown command: {}", cmd.name),
+                    );
                     return;
                 };
                 // Edit commands (e.g. Ctrl-W) must compose into the open insert-session

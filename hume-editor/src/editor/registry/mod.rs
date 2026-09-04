@@ -112,14 +112,7 @@ impl CommandRegistry {
     /// The name is extracted from the command and used as the `FxHashMap` key.
     /// For static built-ins the clone is a pointer copy (zero allocation).
     pub(crate) fn register(&mut self, cmd: MappableCommand) {
-        let key = match &cmd {
-            MappableCommand::Motion { name, .. }
-            | MappableCommand::Selection { name, .. }
-            | MappableCommand::Edit { name, .. }
-            | MappableCommand::EditorCmd { name, .. }
-            | MappableCommand::SteelBacked { name, .. }
-            | MappableCommand::Lazy { name, .. } => name.clone(),
-        };
+        let key = cmd.name().clone();
         self.commands.insert(key, Command::Mappable(cmd));
     }
 
@@ -149,6 +142,27 @@ impl CommandRegistry {
     /// when checking whether a name is already claimed by anything in the registry.
     pub(crate) fn contains(&self, name: &str) -> bool {
         self.commands.contains_key(name)
+    }
+
+    /// If `name` is registered as the *other* kind, a user-facing clause
+    /// explaining which and how it's actually reachable — `None` if `name`
+    /// is unregistered entirely.
+    ///
+    /// Shared by every "unknown command" site that can otherwise only say
+    /// a name doesn't exist when it actually exists as the wrong kind: the
+    /// keymap dispatcher and the post-init keymap lint (a mappable-only
+    /// lookup missing a typed name) and the `:` dispatcher (a typed-only
+    /// lookup missing a mappable name). One wording, so the three sites
+    /// can't drift into subtly different advice for the same mistake.
+    pub(crate) fn other_kind_hint(&self, name: &str) -> Option<String> {
+        match self.commands.get(name)? {
+            Command::Mappable(_) => Some(format!(
+                "'{name}' is an editor command — bind it to a key, or run it with call!, not `:`"
+            )),
+            Command::Typed(_) => Some(format!(
+                "'{name}' is a typed command — run it as `:{name}`; it can't be bound to a key"
+            )),
+        }
     }
 
     /// Register a typed command.
@@ -243,17 +257,43 @@ impl CommandRegistry {
         lazy_owner_of(self.commands.get(name)?)
     }
 
-    /// Every current `Lazy` stub as `(name, owning plugin)` — mappable and
-    /// typed alike.
+    /// The plugin owning `name`'s *mappable* `Lazy` stub — `None` if `name`
+    /// has no pending mappable activation, even when a typed stub of the
+    /// same name exists.
+    ///
+    /// Used only by `%lazy-command-owner` (the `call!`/`%dispatch-command`
+    /// lazy-activation check): `call!` can never reach a typed command, so
+    /// that path must not see a typed-only stub as activatable. Every other
+    /// caller wants [`Self::lazy_owner`]'s kind-agnostic answer.
+    pub(crate) fn lazy_mappable_owner(
+        &self,
+        name: &str,
+    ) -> Option<&hume_scripting::attribution::PluginId> {
+        match self.commands.get(name)? {
+            Command::Mappable(MappableCommand::Lazy { plugin, .. }) => Some(plugin),
+            _ => None,
+        }
+    }
+
+    /// Every current `Lazy` stub as `(name, owning plugin, is_typed)` —
+    /// mappable and typed alike.
     ///
     /// Used by `:plugin-status` (via `lazy_status_string`) to report which
     /// commands a `Declared` plugin is still waiting on — the registry is the
     /// sole owner of `Lazy` stubs, so this is the only source for that list.
-    pub(crate) fn lazy_stubs(&self) -> Vec<(String, hume_scripting::attribution::PluginId)> {
+    /// The `is_typed` tag lets the display tell the user whether a pending
+    /// name will need a key binding or `:` once its plugin loads.
+    pub(crate) fn lazy_stubs(&self) -> Vec<(String, hume_scripting::attribution::PluginId, bool)> {
         self.commands
             .iter()
             .filter_map(|(name, cmd)| {
-                lazy_owner_of(cmd).map(|plugin| (name.as_ref().to_string(), plugin.clone()))
+                lazy_owner_of(cmd).map(|plugin| {
+                    (
+                        name.as_ref().to_string(),
+                        plugin.clone(),
+                        is_typed_lazy(cmd),
+                    )
+                })
             })
             .collect()
     }
@@ -287,6 +327,20 @@ fn lazy_owner_of(cmd: &Command) -> Option<&hume_scripting::attribution::PluginId
         }) => Some(plugin),
         _ => None,
     }
+}
+
+/// `true` if `cmd` is a *typed* `Lazy` stub. Used only by
+/// [`CommandRegistry::lazy_stubs`] to tag its `(name, plugin)` pairs —
+/// [`lazy_owner_of`] already decides "is this some kind of stub at all";
+/// this refines "which kind" for the one caller that needs to know.
+fn is_typed_lazy(cmd: &Command) -> bool {
+    matches!(
+        cmd,
+        Command::Typed(TypedCommand {
+            body: TypedBody::Lazy(_),
+            ..
+        })
+    )
 }
 
 // ── Test-only helpers ─────────────────────────────────────────────────────────

@@ -242,6 +242,29 @@ impl<'a> EditorHostImpl<'a> {
         );
         Some(crate::ui::popup::MarkupSyntax { syntax, text })
     }
+
+    /// Shared guard behind `register_lazy_command`/`register_lazy_typed_command`:
+    /// both claim `name` in the same registry namespace and differ only in
+    /// what they insert on success. Returns `Ok(true)` when the caller should
+    /// go on to insert its stub, `Ok(false)` for a duplicate `declare-plugin`
+    /// call by the same plugin (first declaration wins, nothing to insert).
+    fn claim_lazy_name(
+        &self,
+        name: &str,
+        plugin: &hume_scripting::attribution::PluginId,
+    ) -> Result<bool, String> {
+        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
+            return if owner == plugin {
+                Ok(false)
+            } else {
+                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
+            };
+        }
+        if self.state.config.registry.contains(name) {
+            return Err(format!("'{name}' conflicts with an existing command"));
+        }
+        Ok(true)
+    }
 }
 
 impl<'a> EditorHost for EditorHostImpl<'a> {
@@ -551,22 +574,12 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         name: &str,
         plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
-        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
-            return if owner == plugin {
-                // Duplicate declare-plugin call for the same plugin — no-op;
-                // first declaration wins.
-                Ok(())
-            } else {
-                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
-            };
+        if self.claim_lazy_name(name, plugin)? {
+            self.state.config.registry.register(MappableCommand::Lazy {
+                name: name.to_owned().into(),
+                plugin: plugin.clone(),
+            });
         }
-        if self.state.config.registry.contains(name) {
-            return Err(format!("'{name}' conflicts with an existing command"));
-        }
-        self.state.config.registry.register(MappableCommand::Lazy {
-            name: name.to_owned().into(),
-            plugin: plugin.clone(),
-        });
         Ok(())
     }
 
@@ -575,26 +588,18 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         name: &str,
         plugin: &hume_scripting::attribution::PluginId,
     ) -> Result<(), String> {
-        if let Some(owner) = self.state.config.registry.lazy_owner(name) {
-            return if owner == plugin {
-                Ok(())
-            } else {
-                Err(format!("'{name}' already claimed by lazy plugin '{owner}'"))
-            };
+        if self.claim_lazy_name(name, plugin)? {
+            self.state.config.registry.register_typed(TypedCommand {
+                name: name.to_owned().into(),
+                // No doc for a not-yet-loaded stub — mirrors `MappableCommand::Lazy`,
+                // which carries no doc field at all (`MappableCommand::doc()`
+                // answers `""` for it too).
+                doc: std::borrow::Cow::Borrowed(""),
+                aliases: &[],
+                body: TypedBody::Lazy(plugin.clone()),
+                completer: None,
+            });
         }
-        if self.state.config.registry.contains(name) {
-            return Err(format!("'{name}' conflicts with an existing command"));
-        }
-        self.state.config.registry.register_typed(TypedCommand {
-            name: name.to_owned().into(),
-            // No doc for a not-yet-loaded stub — mirrors `MappableCommand::Lazy`,
-            // which carries no doc field at all (`MappableCommand::doc()`
-            // answers `""` for it too).
-            doc: std::borrow::Cow::Borrowed(""),
-            aliases: &[],
-            body: TypedBody::Lazy(plugin.clone()),
-            completer: None,
-        });
         Ok(())
     }
 
@@ -602,6 +607,19 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
     /// See [`crate::editor::registry::CommandRegistry::lazy_owner`].
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
         self.state.config.registry.lazy_owner(name).cloned()
+    }
+
+    /// The plugin owning `name`'s *mappable* `Lazy` stub only.
+    /// See [`crate::editor::registry::CommandRegistry::lazy_mappable_owner`].
+    fn lazy_mappable_command_owner(
+        &self,
+        name: &str,
+    ) -> Option<hume_scripting::attribution::PluginId> {
+        self.state
+            .config
+            .registry
+            .lazy_mappable_owner(name)
+            .cloned()
     }
 
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {

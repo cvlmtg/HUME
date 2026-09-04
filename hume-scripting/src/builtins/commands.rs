@@ -41,12 +41,38 @@ use hume_engine::types::MAX_COUNT;
 
 // ── Builtins ──────────────────────────────────────────────────────────────────
 
+/// The owner of `name`'s already-registered proc body — mappable
+/// (`command_table`) or typed (`typed_command_table`) — or `None` if no body
+/// has been defined yet under either table.
+///
+/// A pre-seeded `cmd_owners` entry with no matching table entry (a lazy
+/// stub's activation-command ownership, written by `declare_plugin` before
+/// its body ever runs) doesn't count as "defined" — see `check_definable`'s
+/// own doc for why that distinction matters.
+fn defined_owner<'a>(ctx: &'a SteelCtx, name: &str) -> Option<&'a Owner> {
+    if ctx.registries.command_table.contains_key(name)
+        || ctx.registries.typed_command_table.contains_key(name)
+    {
+        // cmd_owners must have an entry whenever either table does (both are
+        // written together, see the insert pairs in `define_command`/
+        // `define_typed_command`) — a miss here would be a registries-desync
+        // bug, not a normal "unknown owner" case.
+        Some(
+            ctx.registries.cmd_owners.get(name).expect(
+                "a defined command_table/typed_command_table entry implies a cmd_owners entry",
+            ),
+        )
+    } else {
+        None
+    }
+}
+
 /// Shared guards behind `define-command!` and `define-typed-command!`: name
 /// syntax, built-in shadowing, true re-definition, and lazy-stub self-
 /// ownership. `builtin_name` only changes the error text — both callers
-/// check the same `command_table`/`cmd_owners`, since a mappable and a typed
-/// command share one Steel-side proc namespace just as they share one
-/// namespace in the editor's `CommandRegistry`.
+/// check the same `command_table`/`typed_command_table`/`cmd_owners`, since a
+/// mappable and a typed command share one Steel-side proc namespace just as
+/// they share one namespace in the editor's `CommandRegistry`.
 fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result<(), SteelErr> {
     if name.contains('"') || name.contains('\\') {
         steel::stop!(Generic =>
@@ -57,20 +83,10 @@ fn check_definable(ctx: &mut SteelCtx, builtin_name: &str, name: &str) -> Result
             "{}: '{}' conflicts with a built-in command and cannot be redefined",
             builtin_name, name);
     }
-    // Guard against true re-definition: command_table is set only when a
-    // command body is actually registered. cmd_owners is pre-seeded by
-    // declare_plugin for activation command ownership before the body runs, so
-    // checking cmd_owners here would falsely reject a plugin defining its own
-    // activation command.
-    if ctx.registries.command_table.contains_key(name) {
-        // cmd_owners must have an entry whenever command_table does (both are
-        // written together, see the insert pair below) — a miss here would be
-        // a registries-desync bug, not a normal "unknown owner" case.
-        let owner = ctx
-            .registries
-            .cmd_owners
-            .get(name)
-            .expect("command_table entry implies a cmd_owners entry");
+    // Guard against true re-definition, mappable or typed: `cmd_owners` alone
+    // can't tell (see `defined_owner`'s doc) — checking it here would falsely
+    // reject a plugin defining its own lazy activation command.
+    if let Some(owner) = defined_owner(ctx, name) {
         steel::stop!(Generic =>
             "{}: command '{}' is already defined by '{}'", builtin_name, name, owner);
     }

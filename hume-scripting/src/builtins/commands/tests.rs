@@ -198,6 +198,87 @@ fn command_plugin_known_returns_owner() {
     assert_eq!(result, SteelVal::StringV("core:plum".into()));
 }
 
+// ── define-typed-command! validation ──────────────────────────────────────
+//
+// Mirrors "── define-command! validation ──" below — no test in this crate
+// called `define_typed_command` before this section.
+
+#[test]
+fn define_typed_command_name_with_double_quote_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = define_typed_command(
+        &mut ctx,
+        "bad\"name".to_string(),
+        "doc".to_string(),
+        SteelVal::BoolV(false), // type check comes after name check
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("must not contain"),
+        "expected name rejection, got: {err}"
+    );
+}
+
+#[test]
+fn define_typed_command_name_with_backslash_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = define_typed_command(
+        &mut ctx,
+        "bad\\name".to_string(),
+        "doc".to_string(),
+        SteelVal::BoolV(false),
+        false,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("must not contain"),
+        "expected name rejection, got: {err}"
+    );
+}
+
+/// When the host rejects the registration, `typed_command_table` and
+/// `cmd_owners` must stay clean — the host call runs *before* the table
+/// inserts. Mirrors `define_command_host_rejection_leaves_tables_clean`.
+///
+/// Fail oracle: move the inserts back above `host.register_typed_command` →
+/// the entries linger after the Err and both cleanliness asserts fire.
+#[test]
+fn define_typed_command_host_rejection_leaves_tables_clean() {
+    fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
+        Ok(SteelVal::Void)
+    }
+    let mut h = SteelCtxTestHarness::new();
+    let mut host = crate::null_host::FailingRegisterHost::default();
+    {
+        let mut ctx = h.ctx_init_with_host(&mut host);
+        let err = define_typed_command(
+            &mut ctx,
+            "rejected-cmd".to_string(),
+            "doc".to_string(),
+            SteelVal::FuncV(dummy_proc),
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("rejected by the command registry"),
+            "error must come from the host; got: {err}"
+        );
+    }
+    assert!(
+        !h.registries
+            .typed_command_table
+            .contains_key("rejected-cmd"),
+        "typed_command_table must not record a command the host rejected"
+    );
+    assert!(
+        !h.registries.cmd_owners.contains_key("rejected-cmd"),
+        "cmd_owners must not record a command the host rejected"
+    );
+}
+
 // ── define-command! validation ────────────────────────────────────────────
 
 #[test]
@@ -299,6 +380,48 @@ fn define_command_dup_names_error_names_existing_owner() {
         "doc".to_string(),
         SteelVal::BoolV(false),
         false,
+        false,
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("core:plum"),
+        "error must name the existing owner; got: {msg}"
+    );
+    assert!(
+        msg.contains("my-cmd"),
+        "error must name the command; got: {msg}"
+    );
+}
+
+/// Same collision, but both sides typed: `check_definable`'s re-definition
+/// guard used to check only `command_table`, so a second
+/// `define-typed-command!` for the same name fell through to the generic
+/// "conflicts with existing command" the editor-side host reports instead of
+/// naming the owner here. Mirrors
+/// `define_command_dup_names_error_names_existing_owner`, seeding
+/// `typed_command_table` instead of `command_table`.
+#[test]
+fn define_typed_command_dup_names_error_names_existing_owner() {
+    fn dummy_proc(_args: &[SteelVal]) -> SteelResult {
+        Ok(SteelVal::Void)
+    }
+    let mut h = SteelCtxTestHarness::new();
+    h.registries
+        .typed_command_table
+        .insert("my-cmd".to_string(), SteelVal::BoolV(false));
+    h.registries.cmd_owners.insert(
+        "my-cmd".to_string(),
+        Owner::Plugin(crate::attribution::PluginId::Core("plum".to_string())),
+    );
+    let mut ctx = h.ctx_init();
+    // A real callable proc: check_definable must reject before ever reaching
+    // `callable_arg`'s type check, or this fails on the wrong error entirely.
+    let err = define_typed_command(
+        &mut ctx,
+        "my-cmd".to_string(),
+        "doc".to_string(),
+        SteelVal::FuncV(dummy_proc),
         false,
     )
     .unwrap_err();

@@ -232,6 +232,22 @@ fn declare_plugin_bad_commands_names_the_builtin() {
     );
 }
 
+/// Same naming requirement for `#:typed-commands` — the sibling decoder no
+/// `hume-scripting` test exercised before this: every other `declare-plugin`
+/// decode test in this file supplies `#:commands` only.
+///
+/// Fail oracle: revert `declare_arg_label(ctx, "#:typed-commands")` back to a
+/// bare `"typed-commands"` label → the assertion on the
+/// `declare-plugin #:typed-commands` prefix fails.
+#[test]
+fn declare_plugin_bad_typed_commands_names_the_builtin() {
+    let err = declare_err(r#"(declare-plugin "user/tp" #:typed-commands '(1))"#);
+    assert!(
+        err.contains("declare-plugin #:typed-commands"),
+        "error must name the builtin; got: {err}"
+    );
+}
+
 /// Same naming requirement for an unknown `#:events` hook name.
 #[test]
 fn declare_plugin_unknown_hook_names_the_builtin() {
@@ -480,6 +496,51 @@ fn define_command_rejects_name_claimed_by_lazy_plugin() {
         editor_host.commands().lazy_command_owner("my-lazy-cmd"),
         Some(id),
         "Lazy stub must not be removed by the failed define-command!"
+    );
+}
+
+/// The typed twin of [`define_command_rejects_name_claimed_by_lazy_plugin`] —
+/// this section's "symmetric checks" had only the mappable half before this.
+/// `define-typed-command!` must reject a name already claimed as a lazy
+/// plugin's typed `Lazy` stub, even when the eager define runs first.
+///
+/// Fail oracle: remove the `lazy_command_owner` guard from
+/// `define_typed_command` → the eager define succeeds, the stub is orphaned,
+/// the plugin is stuck `Declared` and can never load.
+#[test]
+fn define_typed_command_rejects_name_claimed_by_lazy_plugin() {
+    use crate::ScriptingHost;
+    use crate::host::EditorHost;
+    use crate::null_host::LazyStubHost;
+
+    let id = PluginId::parse("core:my-plugin").unwrap();
+    let mut host = ScriptingHost::new();
+    // Simulate declare-plugin having claimed the name as a typed `Lazy` stub.
+    let mut editor_host = LazyStubHost::default();
+    editor_host
+        .commands()
+        .register_lazy_typed_command("my-lazy-cmd", &id)
+        .expect("stub claim must succeed on a fresh host");
+
+    let result = host.eval_source(
+        r#"(define-typed-command! "my-lazy-cmd" "doc" (lambda () 0))"#,
+        &mut editor_host,
+    );
+
+    assert!(
+        result.is_err(),
+        "define-typed-command! must reject a name claimed by a lazy plugin; got Ok"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.contains("claimed as an activation command"),
+        "error must name the collision; got: {err}"
+    );
+    // The stub must survive — only unregister_lazy_stubs_of removes it (on load/fail).
+    assert_eq!(
+        editor_host.commands().lazy_command_owner("my-lazy-cmd"),
+        Some(id),
+        "Lazy stub must not be removed by the failed define-typed-command!"
     );
 }
 

@@ -225,6 +225,9 @@ impl crate::host::CommandHost for ValidNameHost {
     fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
         self.inner.lazy_command_owner(name)
     }
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+        self.inner.lazy_mappable_command_owner(name)
+    }
     fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::PluginId) {
         self.inner.unregister_lazy_stubs_of(plugin)
     }
@@ -309,6 +312,9 @@ impl crate::host::CommandHost for RegisterCapableHost {
     }
     fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
         self.inner.lazy_command_owner(name)
+    }
+    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::PluginId> {
+        self.inner.lazy_mappable_command_owner(name)
     }
     fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::PluginId) {
         self.inner.unregister_lazy_stubs_of(plugin)

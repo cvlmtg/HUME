@@ -643,20 +643,25 @@ impl Editor {
             self.report(log_level_to_severity(level), text);
         }
         self.scripting = Some(host);
-        // Post-init lint: warn on keymap leaves that target an unknown command.
-        // Lazy stubs are registered live as each declare-plugin call runs during
-        // init.scm eval, so they already count as valid commands by this point.
-        // Built-in keymaps only reference registered built-ins, so any warnings
-        // here come from user bind-key! calls to typos / undeclared commands.
+        // Post-init lint: warn on keymap leaves that target a name a key
+        // binding can't actually reach. Lazy stubs are registered live as
+        // each declare-plugin call runs during init.scm eval, so they
+        // already count as valid mappable commands by this point.
+        // Built-in keymaps only reference registered built-ins, so any
+        // warnings here come from user bind-key! calls to typos, undeclared
+        // commands, or a typed-only command's name (`:`-only, never
+        // key-bindable — see `registry/mod.rs`'s module doc).
         {
             let mut names = self.state.config.keymap.all_command_names();
             names.sort_unstable();
             names.dedup();
             for name in &names {
-                if !self.state.config.registry.contains(name) {
-                    self.report(
-                        Severity::Warning,
-                        format!("key bound to unknown command '{name}' — typo, or missing from #:commands?"),
+                if self.state.config.registry.get_mappable(name).is_none() {
+                    self.report_unknown_command(
+                        name,
+                        format!(
+                            "key bound to unknown command '{name}' — typo, or missing from #:commands?"
+                        ),
                     );
                 }
             }

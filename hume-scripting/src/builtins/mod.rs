@@ -125,8 +125,8 @@ macro_rules! builtins {
 /// native/unknown → `%call-native!`.
 //
 // declare-plugin — manifest; entries forwarded to %declare-plugin!. A
-// zero-trigger call (no #:commands/#:events/#:languages) evaluates
-// <plugin-dir>/manifest.scm instead for its default entries (see
+// zero-trigger call (no #:commands/#:typed-commands/#:events/#:languages)
+// evaluates <plugin-dir>/manifest.scm instead for its default entries (see
 // %begin-manifest-declare!); caller's #:config wins over the manifest's.
 // Known limitation, left as-is pending an upstream steel-core fix: a
 // zero-trigger call inside an outer with-handler can hit the "no open

@@ -13,8 +13,9 @@ use crate::SteelCtx;
 /// drift apart between them.
 ///
 /// Symbol, not string: the event set is closed and host-defined, same rule
-/// as `bind-key!`'s mode argument. `#:commands` / `#:languages` stay
-/// strings — those names are open and user-chosen, not host-enumerated.
+/// as `bind-key!`'s mode argument. `#:commands` / `#:typed-commands` /
+/// `#:languages` stay strings — those names are open and user-chosen, not
+/// host-enumerated.
 ///
 /// This crate has no compiled-in list of event names of its own; the editor
 /// (`ctx.host.events().known_event_names()`) is the sole authority on which

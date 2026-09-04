@@ -364,6 +364,17 @@ impl CommandHost for MockHost {
     fn lazy_command_owner(&self, name: &str) -> Option<hume_scripting::attribution::PluginId> {
         self.lazy_cmds.get(name).cloned()
     }
+    // `lazy_cmds` tracks no kind, so this mock can't tell a typed-only stub
+    // from a mappable one — same answer as `lazy_command_owner`. A test
+    // needing the real mappable-only distinction (`call!` on a typed-only
+    // lazy name) uses a real `Editor` + `EditorHostImpl` instead, per this
+    // struct's own doc.
+    fn lazy_mappable_command_owner(
+        &self,
+        name: &str,
+    ) -> Option<hume_scripting::attribution::PluginId> {
+        self.lazy_cmds.get(name).cloned()
+    }
     fn unregister_lazy_stubs_of(&mut self, plugin: &hume_scripting::attribution::PluginId) {
         self.lazy_cmds.retain(|_, p| p != plugin);
     }

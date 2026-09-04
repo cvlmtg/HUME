@@ -187,23 +187,18 @@ impl Editor {
             };
 
         // Inject count and extend as leading lambda args based on declared arity.
-        if cmd_arity > 2 {
-            self.report(
-                Severity::Error,
-                format!(
-                    "{name}: lambda declares {cmd_arity} required params; \
-                     keymap injection supplies at most 2 (count, extend)"
-                ),
-            );
-            return false;
-        }
-        let effective_args = match (cmd_arity, cmd_is_variadic) {
-            (0, false) => vec![],
-            (1, false) => vec![steel::rvals::SteelVal::IntV(count as isize)],
-            _ => vec![
-                steel::rvals::SteelVal::IntV(count as isize),
-                steel::rvals::SteelVal::BoolV(extend),
-            ],
+        let effective_args = match marshal_leading_args(
+            cmd_arity,
+            cmd_is_variadic,
+            steel::rvals::SteelVal::IntV(count as isize),
+            steel::rvals::SteelVal::BoolV(extend),
+            "keymap injection supplies at most 2 (count, extend)",
+        ) {
+            Ok(args) => args,
+            Err(msg) => {
+                self.report(Severity::Error, format!("{name}: {msg}"));
+                return false;
+            }
         };
 
         self.call_steel_command_body(name, char_arg, effective_args, inline_output)
@@ -252,16 +247,6 @@ impl Editor {
             }
         };
 
-        if cmd_arity > 2 {
-            self.report(
-                Severity::Error,
-                format!(
-                    "{name}: lambda declares {cmd_arity} required params; \
-                     typed-command injection supplies at most 2 (arg, force)"
-                ),
-            );
-            return false;
-        }
         // Scheme-idiomatic absence: an untyped argument is `#f`, not a
         // sentinel string or a fabricated count — a lambda that only cares
         // whether an arg was given writes a plain `(if arg …)` guard.
@@ -269,10 +254,18 @@ impl Editor {
             Some(s) => steel::rvals::SteelVal::StringV(s.clone().into()),
             None => steel::rvals::SteelVal::BoolV(false),
         };
-        let effective_args = match (cmd_arity, cmd_is_variadic) {
-            (0, false) => vec![],
-            (1, false) => vec![arg_val],
-            _ => vec![arg_val, steel::rvals::SteelVal::BoolV(force)],
+        let effective_args = match marshal_leading_args(
+            cmd_arity,
+            cmd_is_variadic,
+            arg_val,
+            steel::rvals::SteelVal::BoolV(force),
+            "typed-command injection supplies at most 2 (arg, force)",
+        ) {
+            Ok(args) => args,
+            Err(msg) => {
+                self.report(Severity::Error, format!("{name}: {msg}"));
+                return false;
+            }
         };
 
         self.call_steel_command_body(name, None, effective_args, inline_output)
@@ -420,4 +413,47 @@ impl Editor {
             self.state.queue_event(EditorEvent::OnFocusGained);
         }
     }
+
+    /// Reports `Severity::Warning` for a command name that failed to
+    /// resolve the way the caller needed. If the registry recognizes `name`
+    /// under the *other* kind, names it and explains how it's actually
+    /// reachable instead of `fallback` — the dead end `601b27e1`'s split
+    /// would otherwise leave unexplained at every site that only resolves
+    /// one kind: the keymap dispatcher, Insert mode's trie leaf, the
+    /// post-init keymap lint, and the `:` dispatcher.
+    pub(in crate::editor) fn report_unknown_command(&mut self, name: &str, fallback: String) {
+        let msg = self
+            .state
+            .config
+            .registry
+            .other_kind_hint(name)
+            .unwrap_or(fallback);
+        self.report(Severity::Warning, msg);
+    }
+}
+
+/// Shared arity guard + argument marshalling behind
+/// [`Editor::run_steel_command`] and [`Editor::run_typed_steel_command`]:
+/// both cap a Steel command lambda at two leading injected params and
+/// marshal 0/1/2 of them based on declared arity. The two callers differ
+/// only in what the two values are (`count`/`extend` vs `arg`/`force`) and
+/// how the overflow error names them — `injection_desc` supplies that
+/// trailing clause verbatim.
+fn marshal_leading_args(
+    cmd_arity: u16,
+    cmd_is_variadic: bool,
+    first: steel::rvals::SteelVal,
+    second: steel::rvals::SteelVal,
+    injection_desc: &str,
+) -> Result<Vec<steel::rvals::SteelVal>, String> {
+    if cmd_arity > 2 {
+        return Err(format!(
+            "lambda declares {cmd_arity} required params; {injection_desc}"
+        ));
+    }
+    Ok(match (cmd_arity, cmd_is_variadic) {
+        (0, false) => vec![],
+        (1, false) => vec![first],
+        _ => vec![first, second],
+    })
 }

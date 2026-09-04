@@ -86,6 +86,45 @@ fn first_dispatch_activates_plugin_and_runs() {
     );
 }
 
+/// `call!` can never reach a typed command (`typed_command_table` is a
+/// separate table from `command_table` — see its own doc), so a typed-only
+/// lazy stub must not be activatable through `call!`: activating a plugin
+/// for a lookup that will miss again right after is a permanent side effect
+/// for a call that could never succeed.
+///
+/// Flip: without a mappable-only `%lazy-command-owner`, `(call! "bar")` would
+/// see the typed `Lazy` stub as an activatable owner, load the plugin, miss
+/// again in `command_table`, and leave the plugin `Loaded` anyway.
+#[test]
+fn call_bang_does_not_activate_a_typed_only_lazy_stub() {
+    use hume_scripting::attribution::PluginId;
+
+    let (ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))
+           (call! "bar")"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    let tp_id = PluginId::User {
+        user: "user".to_string(),
+        repo: "tp".to_string(),
+    };
+    assert!(
+        matches!(
+            ed.scripting.as_ref().unwrap().plugin_status(&tp_id),
+            Some(PluginStatus::Declared)
+        ),
+        "call! on a typed-only name must not activate the plugin"
+    );
+    assert!(
+        matches!(
+            ed.state.config.registry.get_typed("bar").map(|tc| &tc.body),
+            Some(TypedBody::Lazy(_))
+        ),
+        "bar's typed stub must remain unresolved"
+    );
+}
+
 /// Loop guard: if the plugin body never defines the declared command, the stub
 /// is removed after dispatch and a Warning is reported.
 ///
@@ -1702,6 +1741,36 @@ fn keymap_lint_warns_on_unknown_command() {
     );
 }
 
+/// A `bind-key!` targeting a real typed-only command's name (`:`-only, never
+/// key-bindable) must warn with a hint naming the actual kind, not the bare
+/// "unknown command" the lint gives a truly unregistered name — the same
+/// mistake `601b27e1` closed for keypress dispatch, here caught at init time
+/// instead of silently waiting for the first press.
+///
+/// Flip: a name genuinely absent from the registry (`bogus-unknown-cmd`,
+/// `keymap_lint_warns_on_unknown_command` above) must keep the generic
+/// message, since there's no other kind to name.
+#[test]
+fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
+    use crate::editor::Severity;
+
+    let (ed, _dirs) = setup_editor_with_init_scripting(r#"(bind-key! 'normal "Q" "write")"#, None);
+
+    assert!(
+        ed.state.message_log.entries().any(|e| {
+            e.severity == Severity::Warning
+                && e.text
+                    == "'write' is a typed command — run it as `:write`; it can't be bound to a key"
+        }),
+        "expected a kind-aware hint for 'write'; messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// Native default keymaps must never bind a key to a command that isn't a Rust
 /// built-in — `lsp-completion-trigger` (Ctrl+Space) lives entirely in
 /// `core:lsp`'s `plugin.scm` now, not in `keymap/defaults.rs`, so an editor
@@ -3050,6 +3119,34 @@ fn plugin_status_shows_pending_command_from_live_registry_stubs() {
     assert!(
         out.contains("user/tp") && out.contains("cmd:bar"),
         ":plugin-status must show the pending cmd:bar entry for user/tp; got: {out:?}"
+    );
+}
+
+/// The typed twin of the test above — a pending `#:typed-commands` entry
+/// must display as `:cmd:` (`:`-only, never key-bindable), not the bare
+/// `cmd:` a mappable entry gets, so the user knows which reachability a
+/// still-`Declared` plugin's pending name will have.
+///
+/// Flip: without the kind split, this would show `cmd:bar` instead — the
+/// same string `plugin_status_shows_pending_command_from_live_registry_stubs`
+/// asserts for a *mappable* pending entry.
+#[test]
+fn plugin_status_shows_pending_typed_command_with_kind_tag() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:typed-commands '("bar"))"#,
+        r#"(define-typed-command! "bar" "doc" (lambda () (+ 1 0)))"#,
+    );
+
+    type_cmd(&mut ed, ":plugin-status");
+
+    let out = ed.doc().text().to_string();
+    assert!(
+        out.contains("user/tp") && out.contains(":cmd:bar"),
+        ":plugin-status must show the pending :cmd:bar entry for user/tp; got: {out:?}"
+    );
+    assert!(
+        !out.contains(" cmd:bar") && !out.contains(",cmd:bar"),
+        "a typed-only pending entry must not also appear as a bare cmd:; got: {out:?}"
     );
 }
 

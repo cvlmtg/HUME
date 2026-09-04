@@ -951,6 +951,30 @@ fn define_typed_command_collides_with_existing_mappable_name() {
     );
 }
 
+/// The reverse direction of the collision above — asserted in that test's
+/// own doc comment ("and vice versa") but never actually exercised until
+/// this test.
+#[test]
+fn define_command_collides_with_existing_typed_name() {
+    let mut h = host();
+    let mut mock = MockHost::new();
+
+    h.eval_source(
+        r#"(define-typed-command! "dup" "doc" (lambda () (+ 1 0)))"#,
+        &mut mock,
+    )
+    .expect("first define-typed-command! must succeed");
+
+    let result = h.eval_source(
+        r#"(define-command! "dup" "doc" (lambda () (+ 1 0)))"#,
+        &mut mock,
+    );
+    assert!(
+        result.is_err(),
+        "define-command! must reject a name already claimed as typed"
+    );
+}
+
 // ── EvalWatchdog ──────────────────────────────────────────────────────────
 
 /// Cancelling a watchdog with a long budget wakes the thread immediately.

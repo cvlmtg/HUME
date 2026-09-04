@@ -174,7 +174,8 @@ fn colon_unknown_sets_error() {
 
 /// `:` resolves only typed commands — a real editor command's name (not a
 /// nonsense string) must be rejected the same way, and must not dispatch.
-/// See `registry/mod.rs`'s module doc.
+/// The message names the command's actual kind rather than saying "unknown"
+/// for a name the registry does recognize. See `registry/mod.rs`'s module doc.
 #[test]
 fn colon_editor_command_name_is_unknown_and_does_not_dispatch() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -185,7 +186,9 @@ fn colon_editor_command_name_is_unknown_and_does_not_dispatch() {
     ed.handle_key(key_enter());
     assert_eq!(
         ed.state.status_msg.as_deref(),
-        Some("Unknown command: select-next-word")
+        Some(
+            "'select-next-word' is an editor command — bind it to a key, or run it with call!, not `:`"
+        )
     );
     assert_eq!(state(&ed), before, "selection must be untouched");
 }

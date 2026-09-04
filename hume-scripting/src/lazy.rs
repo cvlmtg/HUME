@@ -121,12 +121,12 @@ impl LazyRegistry {
     /// entries from the maps, so `Loaded`/`Failed` rows show no activations.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin) — the sole source of pending command activations; this
-    /// registry does not track them itself.
+    /// plugin, `is_typed`) — the sole source of pending command activations;
+    /// this registry does not track them itself.
     ///
     /// Returns `""` if no plugins are declared; the caller reports "No plugins
     /// declared" rather than opening an empty scratch view.
-    pub(crate) fn format_status(&self, lazy_cmds: &[(String, PluginId)]) -> String {
+    pub(crate) fn format_status(&self, lazy_cmds: &[(String, PluginId, bool)]) -> String {
         if self.plugins.is_empty() {
             return String::new();
         }
@@ -190,17 +190,30 @@ impl LazyRegistry {
     /// Only meaningful for `Declared` plugins — on load/fail
     /// `finish_lazy_activation` drops the plugin's entries, so a non-`Declared`
     /// id yields nothing.
-    fn pending_activations(&self, id: &PluginId, lazy_cmds: &[(String, PluginId)]) -> String {
+    fn pending_activations(&self, id: &PluginId, lazy_cmds: &[(String, PluginId, bool)]) -> String {
         let mut parts = Vec::new();
 
+        // Split by kind — `cmd:` names are reachable once bound to a key,
+        // `:cmd:` names only from `:`; a flat list couldn't tell the user
+        // which a still-`Declared` plugin's pending name would turn out to be.
         let mut cmds: Vec<&str> = lazy_cmds
             .iter()
-            .filter(|(_, p)| p == id)
-            .map(|(c, _)| c.as_str())
+            .filter(|(_, p, is_typed)| p == id && !is_typed)
+            .map(|(c, ..)| c.as_str())
             .collect();
         cmds.sort_unstable();
         if !cmds.is_empty() {
             parts.push(format!("cmd:{}", cmds.join(",")));
+        }
+
+        let mut typed_cmds: Vec<&str> = lazy_cmds
+            .iter()
+            .filter(|(_, p, is_typed)| p == id && *is_typed)
+            .map(|(c, ..)| c.as_str())
+            .collect();
+        typed_cmds.sort_unstable();
+        if !typed_cmds.is_empty() {
+            parts.push(format!(":cmd:{}", typed_cmds.join(",")));
         }
 
         let mut evts: Vec<&str> = self

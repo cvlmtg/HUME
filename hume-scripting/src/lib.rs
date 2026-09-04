@@ -10,7 +10,7 @@
 //!   Resolves, records, and activates the plugin immediately via
 //!   `%activate-plugin-inline` (body run through `hm.eval-string` inside the
 //!   live VM, no `&mut Engine` needed). Self-declares.
-//! - `(declare-plugin name #:commands #:events #:languages #:config)` —
+//! - `(declare-plugin name #:commands #:typed-commands #:events #:languages #:config)` —
 //!   **lazy manifest**: records a `Declared` state + activation maps in
 //!   `LazyRegistry` without running the body. Requires at least one
 //!   activation trigger.
@@ -508,9 +508,12 @@ impl ScriptingHost {
     /// Format a human-readable plugin status table for `:plugin-status`.
     ///
     /// `lazy_cmds` is the editor's current `Lazy`-stub list (`name`, owning
-    /// plugin) — this crate doesn't track pending command activations itself,
-    /// so the caller supplies its live registry snapshot.
-    pub fn lazy_status_string(&self, lazy_cmds: &[(String, attribution::PluginId)]) -> String {
+    /// plugin, `is_typed`) — this crate doesn't track pending command
+    /// activations itself, so the caller supplies its live registry snapshot.
+    pub fn lazy_status_string(
+        &self,
+        lazy_cmds: &[(String, attribution::PluginId, bool)],
+    ) -> String {
         self.registries.lazy_registry.format_status(lazy_cmds)
     }
 
