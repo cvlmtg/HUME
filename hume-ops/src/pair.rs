@@ -115,7 +115,12 @@ const BRACKET_ROLE_TABLE: [Option<(u8, bool)>; 128] = {
 
 /// Which `BRACKET_PAIRS` entry `ch` belongs to, and whether it's the open
 /// side (`true`) or the close side (`false`). `None` for any other char.
-fn bracket_role(ch: char) -> Option<(usize, bool)> {
+///
+/// `pub(crate)`, not just the tables it's built from, so a caller that needs
+/// "is this char a bracket, and which side" — [`super::text_object::argument`]'s
+/// comma-depth counter is the current one — can ask the crate's one answer
+/// instead of hardcoding its own copy of `BRACKET_PAIRS`'s contents.
+pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
     let byte = u32::from(ch);
     if byte >= BRACKET_ROLE_TABLE.len() as u32 {
         return None;
@@ -350,3 +355,6 @@ pub(crate) fn find_quote_pair(
     }
     None
 }
+
+#[cfg(test)]
+mod tests;

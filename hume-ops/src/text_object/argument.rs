@@ -5,7 +5,7 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, blank_class};
 
-use crate::pair::find_tightest_bracket_pair;
+use crate::pair::{bracket_role, find_tightest_bracket_pair};
 
 /// One comma segment's inclusive `(start, end)` char range, leading and
 /// trailing whitespace included.
@@ -14,8 +14,10 @@ type Segment = (usize, usize);
 /// Collect all comma-separated segments at depth 0 between `open_pos` and `close_pos`.
 ///
 /// Returns a vec of `(start, end)` inclusive char-index pairs, one per segment,
-/// including leading/trailing whitespace. Commas inside nested `()`, `[]`, or `{}`
-/// are skipped. Returns an empty vec for adjacent brackets (`()`).
+/// including leading/trailing whitespace. Commas inside a nested bracket pair
+/// (any `BRACKET_PAIRS` type, via [`bracket_role`] — the same table
+/// [`find_tightest_bracket_pair`] resolves `open_pos`/`close_pos` against) are
+/// skipped. Returns an empty vec for adjacent brackets (`()`).
 fn find_comma_segments(text: &BufferText, open_pos: usize, close_pos: usize) -> Vec<Segment> {
     // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
     if close_pos <= open_pos + 1 {
@@ -32,15 +34,15 @@ fn find_comma_segments(text: &BufferText, open_pos: usize, close_pos: usize) -> 
         .chars_at(content_start)
         .take(content_end - content_start + 1)
     {
-        match ch {
-            '(' | '[' | '{' => depth += 1,
-            ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
+        match bracket_role(ch) {
+            Some((_, true)) => depth += 1,
+            Some((_, false)) => depth = depth.saturating_sub(1),
+            None if ch == ',' && depth == 0 => {
                 // i - 1 >= seg_start - 1; safe since seg_start >= content_start >= 1.
                 segments.push((seg_start, i - 1));
                 seg_start = i + 1;
             }
-            _ => {}
+            None => {}
         }
     }
 
