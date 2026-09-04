@@ -8,65 +8,39 @@
 // commands) is covered against a real *local* git origin: `git clone`/`git
 // pull` work identically against a local filesystem path, so these tests
 // exercise the real subprocess pipeline with no network involved.
+//
+// plum reports through `log!`: `'info` reaches `status_msg` only, and each
+// call overwrites the last, so a test asserts on whichever line is
+// guaranteed to run last; `'error` reaches `message_log` instead (see
+// `EditorState::report` in `message_log.rs`).
 
 use std::path::{Path, PathBuf};
 
 use super::*;
 use crate::editor::Severity;
 
-fn canonical_data_dir(root: &Path) -> PathBuf {
-    root.canonicalize().unwrap().join("hume")
+/// A theme file whose content no test asserts on — only its presence,
+/// absence, or filename matters.
+const THEME_TOML: &str = "\"ui.cursor.primary\" = { fg = \"#111111\" }";
+
+/// Error-severity entries in `ed`'s log. plum's own confirmations are all
+/// `log! 'info` (status_msg only), so anything here is a real failure.
+fn error_log(ed: &Editor) -> Vec<&str> {
+    ed.state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Error)
+        .map(|e| e.text.as_str())
+        .collect()
 }
 
-fn lock() -> ClaimGuard {
-    TEST_GLOBALS.claim(Global::Env)
-}
-
-/// Mirrors `scripting_lsp_install.rs`'s helper of the same name.
-fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
-    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("runtime");
-    let config_tmp = safe_tempdir();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_dir);
-    }
-    ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
-}
-
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency).
-fn load_plum(ed: &mut Editor, data_dir: &Path) {
-    load_with_init(
-        ed,
-        data_dir,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:plum\")",
-    );
+fn plum_editor(data_dir: &Path) -> Editor {
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_dir);
+    ed
 }
 
 // ── Local git fixture helpers ─────────────────────────────────────────────────
-
-/// `git -C dir <args>`, asserting success — test fixture plumbing only.
-fn git(dir: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args(args)
-        .status()
-        .expect("git must be on PATH for this test");
-    assert!(status.success(), "git {args:?} failed in {dir:?}");
-}
 
 /// Write `files` (path relative to `dir` -> content) to disk, creating
 /// parent directories as needed.
@@ -78,30 +52,18 @@ fn write_files(dir: &Path, files: &[(&str, &str)]) {
     }
 }
 
-/// `git add -A && git commit` with an explicit identity, so the commit
-/// succeeds with no global git config in the test environment.
+/// `git add -A && git commit`, relying on `init_theme_origin`'s `git_init`
+/// for the commit identity.
 fn commit_all(dir: &Path, message: &str) {
     git(dir, &["add", "-A"]);
-    git(
-        dir,
-        &[
-            "-c",
-            "user.email=test@hume.test",
-            "-c",
-            "user.name=HUME Test",
-            "commit",
-            "--quiet",
-            "-m",
-            message,
-        ],
-    );
+    git(dir, &["commit", "--quiet", "-m", message]);
 }
 
 /// `git init` at `dir`, write `files`, and commit them — a local origin a
 /// test can `git clone`/`git pull` from with no network access.
 fn init_theme_origin(dir: &Path, files: &[(&str, &str)]) {
     std::fs::create_dir_all(dir).unwrap();
-    git(dir, &["init", "--quiet"]);
+    git_init(dir);
     write_files(dir, files);
     commit_all(dir, "themes");
 }
@@ -130,27 +92,55 @@ fn fabricate_installed_theme_repo(data_dir_root: &Path, slug: &str, origin: &Pat
     }
 }
 
+/// A local origin holding `files`, cloned into the data dir as the installed
+/// repo `acme/theme.hume` — the on-disk state every post-clone test starts
+/// from. Both tempdirs must outlive the test (the clone in `data_tmp` points
+/// back at `origin_tmp` for `git pull`).
+fn installed_fixture(files: &[(&str, &str)]) -> (tempfile::TempDir, tempfile::TempDir, PathBuf) {
+    let data_tmp = safe_tempdir();
+    let origin_tmp = safe_tempdir();
+    let origin = origin_tmp.path().join("acme-theme.hume");
+    init_theme_origin(&origin, files);
+    fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
+    (data_tmp, origin_tmp, origin)
+}
+
 // ── Slug validation ────────────────────────────────────────────────────────────
 
-/// An unsafe or malformed "user/repo" slug is rejected before anything is
-/// created on disk — no clone, no sources directory.
+/// A malformed "user/repo" slug is a typo — reported at Info severity
+/// (statusline only), matching `plum/resolve-grammar-arg`'s routing for a
+/// bad grammar argument. A slug whose segments aren't safe path components
+/// reaches `path-join`/`git clone`, so it stays loud in `:messages`. Neither
+/// case starts a clone.
 #[test]
 fn install_theme_rejects_unsafe_slugs() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
+    let mut ed = plum_editor(data_tmp.path());
 
-    for bad_slug in ["../evil", "a/b/c", "nope", "a/.."] {
-        let mut ed = editor_from("-[x]>\n");
-        load_plum(&mut ed, data_tmp.path());
+    for (bad_slug, loud) in [
+        ("../evil", true),
+        ("a/b/c", false),
+        ("nope", false),
+        ("a/..", true),
+        ("c:evil/repo", true),
+    ] {
         type_cmd(&mut ed, &format!(":plum-install-theme {bad_slug}"));
+        if !loud {
+            let status = ed.state.status_msg.as_deref().unwrap_or_default();
+            assert!(
+                status.contains("expected a \"user/repo\" slug"),
+                "slug {bad_slug:?} must be rejected: {status:?}"
+            );
+        }
+    }
 
-        // An uncaught Scheme `error` from a typed-command body is reported at
-        // Error severity (message_log, not status_msg) — unlike plum's own
-        // `log! 'info` confirmations, which are status_msg-only (Severity::Info
-        // routing, see `message_log.rs`'s `EditorState::report`).
-        let log = ed.state.message_log.format_for_display();
+    // An uncaught Scheme `error`'s message is Debug-escaped on the way into
+    // the log, so an embedded `"` shows up as `\"`.
+    let log = ed.state.message_log.format_for_display();
+    for bad_slug in ["../evil", "a/..", "c:evil/repo"] {
         assert!(
-            log.contains("is not a valid"),
+            log.contains(&format!("\\\"{bad_slug}\\\" is not a valid")),
             "slug {bad_slug:?} must be rejected: {log}"
         );
     }
@@ -169,32 +159,14 @@ fn install_theme_rejects_unsafe_slugs() {
 #[test]
 fn update_themes_pulls_and_syncs_copies() {
     let _lock = lock();
-    let data_tmp = safe_tempdir();
-    let origin_tmp = safe_tempdir();
-    let origin = origin_tmp.path().join("acme-theme.hume");
-    init_theme_origin(
-        &origin,
-        &[(
-            "themes/old.toml",
-            "\"ui.cursor.primary\" = { fg = \"#111111\" }",
-        )],
-    );
-
-    fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
+    let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/old.toml", THEME_TOML)]);
 
     // Upstream drops old.toml, adds new.toml.
     std::fs::remove_file(origin.join("themes/old.toml")).unwrap();
-    write_files(
-        &origin,
-        &[(
-            "themes/new.toml",
-            "\"ui.cursor.primary\" = { fg = \"#222222\" }",
-        )],
-    );
+    write_files(&origin, &[("themes/new.toml", THEME_TOML)]);
     commit_all(&origin, "swap theme");
 
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-update-themes");
 
     let themes_dir = canonical_data_dir(data_tmp.path()).join("themes");
@@ -207,23 +179,15 @@ fn update_themes_pulls_and_syncs_copies() {
         "a theme added upstream must be copied into the data-dir"
     );
 
-    // plum/batch-run's summary is `log! 'info` — status_msg only, never
-    // message_log (Severity::Info routing).
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
     assert!(
         status.contains("1 updated theme repo"),
         "expected an update summary in status_msg: {status:?}"
     );
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
     assert!(
-        errors.is_empty(),
-        "update must not report an error: {errors:?}"
+        error_log(&ed).is_empty(),
+        "update must not report an error: {:?}",
+        error_log(&ed)
     );
 }
 
@@ -233,35 +197,22 @@ fn update_themes_pulls_and_syncs_copies() {
 #[test]
 fn sync_errors_when_repo_has_no_themes_dir() {
     let _lock = lock();
-    let data_tmp = safe_tempdir();
-    let origin_tmp = safe_tempdir();
-    let origin = origin_tmp.path().join("acme-theme.hume");
-    init_theme_origin(
-        &origin,
-        &[(
-            "themes/kept.toml",
-            "\"ui.cursor.primary\" = { fg = \"#111111\" }",
-        )],
-    );
-
-    fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
+    let (data_tmp, _origin_tmp, origin) = installed_fixture(&[("themes/kept.toml", THEME_TOML)]);
 
     // Upstream removes the themes/ directory entirely.
     std::fs::remove_dir_all(origin.join("themes")).unwrap();
     write_files(&origin, &[("README.md", "no themes here anymore")]);
     commit_all(&origin, "drop themes");
 
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-update-themes");
 
     // The per-item error is `log! 'error` (message_log). plum/batch-run's
     // "N updated — M failed" summary is `log! 'info`, logged *before* the
-    // per-item errors — Error severity also overwrites status_msg (see
-    // `EditorState::report`), so the summary text is overwritten by the
-    // error that follows it and isn't independently observable here; the
-    // untouched `kept.toml` below is the behavioral proof the failed repo
-    // didn't count as updated.
+    // per-item errors — Error severity also overwrites status_msg, so the
+    // summary text is overwritten by the error that follows it and isn't
+    // independently observable here; the untouched `kept.toml` below is the
+    // behavioral proof the failed repo didn't count as updated.
     let log = ed.state.message_log.format_for_display();
     assert!(
         log.contains("has no themes/*.toml"),
@@ -277,37 +228,20 @@ fn sync_errors_when_repo_has_no_themes_dir() {
 
 // ── List ──────────────────────────────────────────────────────────────────────
 //
-// `:plum-list-themes` reports (via `log! 'info`, so only the *last* line
-// survives as `status_msg` — see `EditorState::report`) one line per
-// installed repo, then a separate line naming any unmanaged `.toml`. Split
-// into two tests so each checks the one line guaranteed to be the final
-// `status_msg`, rather than a middle line an overwrite would hide.
+// Split into two tests so each checks the one line guaranteed to be the
+// final `status_msg`, rather than a middle line an overwrite would hide.
 
 /// One installed repo, no unmanaged files: the per-repo line is the last
 /// (and only) `log!` call, so it's exactly what `status_msg` holds after.
 #[test]
 fn list_themes_reports_installed_repo() {
     let _lock = lock();
-    let data_tmp = safe_tempdir();
-    let origin_tmp = safe_tempdir();
-    let origin = origin_tmp.path().join("acme-theme.hume");
-    init_theme_origin(
-        &origin,
-        &[
-            (
-                "themes/acme_dark.toml",
-                "\"ui.cursor.primary\" = { fg = \"#111111\" }",
-            ),
-            (
-                "themes/acme_light.toml",
-                "\"ui.cursor.primary\" = { fg = \"#eeeeee\" }",
-            ),
-        ],
-    );
-    fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
+    let (data_tmp, _origin_tmp, _origin) = installed_fixture(&[
+        ("themes/acme_dark.toml", THEME_TOML),
+        ("themes/acme_light.toml", THEME_TOML),
+    ]);
 
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-list-themes");
 
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
@@ -325,14 +259,9 @@ fn list_themes_reports_unmanaged_file() {
     let data_tmp = safe_tempdir();
     let themes_dir = canonical_data_dir(data_tmp.path()).join("themes");
     std::fs::create_dir_all(&themes_dir).unwrap();
-    std::fs::write(
-        themes_dir.join("hand_dropped.toml"),
-        "\"ui.cursor.primary\" = { fg = \"#000000\" }",
-    )
-    .unwrap();
+    std::fs::write(themes_dir.join("hand_dropped.toml"), THEME_TOML).unwrap();
 
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-list-themes");
 
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
@@ -348,17 +277,8 @@ fn list_themes_reports_unmanaged_file() {
 #[test]
 fn remove_theme_deletes_copies_and_clone() {
     let _lock = lock();
-    let data_tmp = safe_tempdir();
-    let origin_tmp = safe_tempdir();
-    let origin = origin_tmp.path().join("acme-theme.hume");
-    init_theme_origin(
-        &origin,
-        &[(
-            "themes/acme_dark.toml",
-            "\"ui.cursor.primary\" = { fg = \"#111111\" }",
-        )],
-    );
-    fabricate_installed_theme_repo(data_tmp.path(), "acme/theme.hume", &origin);
+    let (data_tmp, _origin_tmp, _origin) =
+        installed_fixture(&[("themes/acme_dark.toml", THEME_TOML)]);
 
     let data_dir = canonical_data_dir(data_tmp.path());
     let themes_dir = data_dir.join("themes");
@@ -366,8 +286,7 @@ fn remove_theme_deletes_copies_and_clone() {
     assert!(themes_dir.join("acme_dark.toml").exists());
     assert!(src_dir.exists());
 
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
 
     assert!(
@@ -376,7 +295,6 @@ fn remove_theme_deletes_copies_and_clone() {
     );
     assert!(!src_dir.exists(), "removed theme's clone must be deleted");
 
-    // Single `log! 'info` call — status_msg only, see `EditorState::report`.
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
     assert!(
         status.contains("removed acme/theme.hume: acme_dark"),
@@ -389,9 +307,7 @@ fn remove_theme_deletes_copies_and_clone() {
 fn remove_theme_not_installed_is_a_noop() {
     let _lock = lock();
     let data_tmp = safe_tempdir();
-
-    let mut ed = editor_from("-[x]>\n");
-    load_plum(&mut ed, data_tmp.path());
+    let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-remove-theme acme/theme.hume");
 
     let status = ed.state.status_msg.as_deref().unwrap_or_default();
@@ -399,15 +315,9 @@ fn remove_theme_not_installed_is_a_noop() {
         status.contains("acme/theme.hume is not installed"),
         "expected a not-installed notice in status_msg: {status:?}"
     );
-    let errors: Vec<&str> = ed
-        .state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Error)
-        .map(|e| e.text.as_str())
-        .collect();
     assert!(
-        errors.is_empty(),
-        "removing an uninstalled repo must not error: {errors:?}"
+        error_log(&ed).is_empty(),
+        "removing an uninstalled repo must not error: {:?}",
+        error_log(&ed)
     );
 }

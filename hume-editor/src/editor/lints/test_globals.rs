@@ -94,13 +94,10 @@ fn env_var_mutation_confined_to_guard_files() {
         "src/editor/tests/scripting_host_globals.rs",
         "src/editor/tests/settings_effects.rs",
         "src/editor/tests/unix/completion.rs",
-        "src/editor/tests/unix/injections_editor.rs",
         "src/editor/tests/unix/mod.rs",
         "src/editor/tests/unix/plugins.rs",
         "src/editor/tests/unix/reload_config.rs",
         "src/editor/tests/unix/scripting_grammar.rs",
-        "src/editor/tests/unix/scripting_lsp_install.rs",
-        "src/editor/tests/unix/scripting_theme_install.rs",
         "src/editor/tests/unix/theme_dirs.rs",
     ];
 

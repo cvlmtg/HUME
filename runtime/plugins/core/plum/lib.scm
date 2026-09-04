@@ -4,15 +4,22 @@
 
 ;; ── Path-segment validation ───────────────────────────────────────────────────
 
-;;; #t if `name` is safe to use as one filesystem path segment: no `.`/`..`
-;;; and no path separator. For any name that reaches `path-join`/a subprocess
-;;; arg but did not come from a fixed catalog — a GitHub "user/repo" slug
-;;; typed by the user, a dependency name parsed out of downloaded content.
+;;; #t if `name` is safe to use as one filesystem path segment: no `.`/`..`,
+;;; no path separator, no `:` or `"`. The `:` rejection matters on Windows —
+;;; a segment like `c:evil` after a single letter makes `PathBuf::push` treat
+;;; it as a drive-relative root, replacing the sandboxed base path entirely
+;;; instead of joining onto it (mirrors `hume_platform::path::is_safe_segment`'s
+;;; rule on the Rust side). For any name that reaches `path-join`/a subprocess
+;;; arg but did not come from a fixed catalog — either half of a GitHub
+;;; "user/repo" slug typed by the user, a dependency name parsed out of
+;;; downloaded content.
 (define (plum/safe-segment? name)
   (and (not (equal? name "."))
        (not (equal? name ".."))
        (not (string-contains? name "/"))
-       (not (string-contains? name "\\"))))
+       (not (string-contains? name "\\"))
+       (not (string-contains? name ":"))
+       (not (string-contains? name "\""))))
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
@@ -24,27 +31,14 @@
 (define (plum/two-level-repos root marker)
   (if (not (path-exists? root))
       '()
-      (let user-loop ((users (call! "stdlib/list-subdirs" root))
-                      (result '()))
-        (cond
-          ((null? users)
-           (reverse result))
-          (else
-           (let* ((user  (car users))
-                  (udir  (path-join root user)))
-             (let repo-loop ((repos (call! "stdlib/list-subdirs" udir))
-                             (acc result))
-               (cond
-                 ((null? repos)
-                  (user-loop (cdr users) acc))
-                 (else
-                  (let* ((repo (car repos))
-                         (entry (path-join udir repo marker)))
-                    (repo-loop
-                      (cdr repos)
-                      (if (path-exists? entry)
-                          (cons (string-append user "/" repo) acc)
-                          acc))))))))))))
+      (apply append
+             (map (lambda (user)
+                    (let ((udir (path-join root user)))
+                      (map (lambda (repo) (string-append user "/" repo))
+                           (filter (lambda (repo)
+                                     (path-exists? (path-join udir repo marker)))
+                                   (call! "stdlib/list-subdirs" udir)))))
+                  (call! "stdlib/list-subdirs" root)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
 ;; Built on core:stdlib's `stdlib/run` (call! via core:stdlib — load it first,

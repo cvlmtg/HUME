@@ -4,7 +4,7 @@
 and themes from GitHub, and installs the tree-sitter grammars that power syntax
 highlighting.
 
-Requires `core:stdlib` declared (or loaded) first — grammar/plugin install and cleanup call
+Requires `core:stdlib` declared (or loaded) first — plugin/grammar/theme install and cleanup call
 `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`,
 `stdlib/list-subdirs`, `stdlib/run`, `stdlib/resolve-lang-arg` via `call!`.
 

@@ -15,19 +15,10 @@
 //   nil (language "nix") — cargo-git, a Mason git-tag pin, a stub: not
 //     installable
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
 use crate::editor::Severity;
-
-/// Canonicalizes `root` (mirrors what `hume_scripting`'s `ScriptDirs::new`
-/// does internally) and returns `<root>/hume` — the actual directory `(data-dir)`
-/// resolves to. macOS temp dirs are symlinks (`/var/folders` ->
-/// `/private/var/folders`); comparing against the raw tempdir path would
-/// mismatch what a registered command's absolute path actually contains.
-fn canonical_data_dir(root: &Path) -> PathBuf {
-    root.canonicalize().unwrap().join("hume")
-}
 
 /// Write a receipt + a dummy binary file for `name` directly into
 /// `<data_dir>/servers/<name>/`, matching what `lsp/install-server!` would
@@ -41,63 +32,6 @@ fn fabricate_server(data_dir_root: &Path, name: &str, version: &str, bin: &str) 
     )
     .unwrap();
     std::fs::write(dir.join(bin), b"#!/bin/sh\n").unwrap();
-}
-
-fn lock() -> ClaimGuard {
-    TEST_GLOBALS.claim(Global::Env)
-}
-
-/// Load `init_src` into `ed`, pointing `HUME_RUNTIME` at the repo's real
-/// `runtime/` dir (so the real shipped plugin sources and
-/// lsp-servers.scm/lsp-sources.scm catalogs are used) and `XDG_DATA_HOME` at
-/// `data_dir`. Env vars are process-global — callers must hold a
-/// `TEST_GLOBALS.claim(Global::Env)` for the test's duration. Mirrors
-/// `injections_editor.rs`'s `load_plum`.
-fn load_with_init(ed: &mut Editor, data_dir: &std::path::Path, init_src: &str) {
-    let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("runtime");
-    let config_tmp = safe_tempdir();
-    let hume_config = config_tmp.path().join("hume");
-    std::fs::create_dir_all(&hume_config).unwrap();
-    std::fs::write(hume_config.join("init.scm"), init_src).unwrap();
-
-    unsafe {
-        std::env::set_var("XDG_CONFIG_HOME", config_tmp.path());
-        std::env::set_var("HUME_RUNTIME", &repo_runtime_dir);
-        std::env::set_var("XDG_DATA_HOME", data_dir);
-    }
-    ed.init_scripting(&mut Default::default());
-    unsafe {
-        std::env::remove_var("XDG_CONFIG_HOME");
-        std::env::remove_var("HUME_RUNTIME");
-        std::env::remove_var("XDG_DATA_HOME");
-    }
-}
-
-/// Load the real `core:plum` plugin (plus its `core:stdlib` dependency —
-/// `plum/fetch-query!` etc. call `stdlib/find`/`stdlib/write-file`/
-/// `stdlib/delete-dir`/`stdlib/delete-file` via `call!`) — plugin/grammar
-/// management, no LSP awareness at all (servers.scm lives entirely in
-/// core:lsp now).
-fn load_plum(ed: &mut Editor, data_dir: &std::path::Path) {
-    load_with_init(
-        ed,
-        data_dir,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:plum\")",
-    );
-}
-
-/// Load the real `core:lsp` plugin only (plus its documented `core:stdlib`
-/// dependency) — the entire LSP server lifecycle: install, uninstall,
-/// listing, and scan-on-load registration.
-fn load_lsp(ed: &mut Editor, data_dir: &std::path::Path) {
-    load_with_init(
-        ed,
-        data_dir,
-        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:lsp\")",
-    );
 }
 
 /// core:plum's own load must never error — a pure Scheme-syntax/logic smoke
