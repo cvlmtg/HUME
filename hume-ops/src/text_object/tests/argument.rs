@@ -205,10 +205,10 @@ fn inner_argument_trims_nbsp_matching_blank_class() {
 // `find_tightest_bracket_pair` resolves each bracket type ((), [], {}) as an
 // independent candidate and picks the smallest span — never "nearest
 // unmatched open, of any type". These pin that behavior on inputs where the
-// two rules disagree, ahead of the pass-combining rewrite in `pair.rs`.
+// two rules disagree.
 
 #[test]
-fn crossed_nesting_picks_the_smallest_span_not_the_nearest_open() {
+fn inner_argument_crossed_nesting_picks_the_smallest_span_not_the_nearest_open() {
     // `(` at 1 is the nearest unmatched open, but its partner `)` at 10 gives
     // `()` a span of 9. `{}` (0, 5) is tighter and wins, even though its open
     // is farther from the cursor than `(`'s.
@@ -220,7 +220,7 @@ fn crossed_nesting_picks_the_smallest_span_not_the_nearest_open() {
 }
 
 #[test]
-fn crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_order() {
+fn inner_argument_crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_order() {
     // `()` = (0, 3) and `{}` = (1, 4) are both span 3. `BRACKET_PAIRS` lists
     // `()` first, so it wins the tie.
     assert_state!(
@@ -231,7 +231,7 @@ fn crossed_nesting_equal_spans_break_the_tie_in_bracket_pairs_order() {
 }
 
 #[test]
-fn a_type_with_no_closing_bracket_is_dropped_not_ranked() {
+fn inner_argument_bracket_type_with_no_closing_bracket_is_dropped_not_ranked() {
     // `{` at 1 has no matching `}` anywhere, so `{}` is dropped from the
     // candidate set entirely — not treated as "nearest open, unmatched close
     // ignored". `()` = (0, 8) wins by being the only resolved candidate.
@@ -243,7 +243,7 @@ fn a_type_with_no_closing_bracket_is_dropped_not_ranked() {
 }
 
 #[test]
-fn cursor_on_an_open_bracket_only_shortcuts_that_type() {
+fn inner_argument_cursor_on_open_bracket_only_shortcuts_that_type() {
     // Cursor sits on `(`: only `()` takes the on-open shortcut (span found
     // without scanning left, right scan starts at pos + 1, past the `(`
     // itself). `[]` isn't on the cursor's char, so it still scans both
@@ -256,7 +256,7 @@ fn cursor_on_an_open_bracket_only_shortcuts_that_type() {
 }
 
 #[test]
-fn cursor_on_a_close_bracket_only_shortcuts_that_type() {
+fn inner_argument_cursor_on_close_bracket_only_shortcuts_that_type() {
     // Mirror of the above: cursor sits on `)`, only `()` takes the on-close
     // shortcut.
     assert_state!(
@@ -267,11 +267,11 @@ fn cursor_on_a_close_bracket_only_shortcuts_that_type() {
 }
 
 #[test]
-fn the_rightward_pass_must_resolve_every_surviving_type() {
+fn inner_argument_smallest_span_can_resolve_after_a_larger_candidate_already_did() {
     // `}` at 6 resolves `{}` = (0, 6) span 6 first, but `()` = (4, 9) span 5
-    // resolves later scanning the same rightward pass and wins. A rightward
-    // scan that stopped at the first type to resolve (rather than every
-    // surviving type) would return the `{}` span instead.
+    // resolves later and wins. A resolver that stopped at the first type to
+    // resolve (rather than every surviving type) would return the `{}` span
+    // instead.
     assert_state!(
         "{xxx(-[a]>}xx)\n",
         |(text, sels)| cmd_inner_argument(&text, sels, 0, MotionMode::Move),

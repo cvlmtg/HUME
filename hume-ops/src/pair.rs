@@ -112,9 +112,7 @@ fn bracket_role(ch: char) -> Option<(usize, bool)> {
 }
 
 /// Find the tightest (innermost, smallest-span) of the three `BRACKET_PAIRS`
-/// pairs that encloses `pos` — the combined-scan sibling of calling
-/// [`find_bracket_pair`] three times and taking the smallest span, which is
-/// what this replaces.
+/// pairs that encloses `pos`.
 ///
 /// The three bracket types are resolved as **independent** candidates, never
 /// as "nearest unmatched open, of any type": on `{(abc}    )` with the
@@ -126,37 +124,31 @@ fn bracket_role(ch: char) -> Option<(usize, bool)> {
 ///
 /// Each type still gets `find_bracket_pair`'s own on-open/on-close shortcut:
 /// if `pos` sits on that type's open or close char, that side costs no scan.
-/// The other two types fall into the both-directions case regardless. In
-/// that case the old per-type rightward scan started at `pos`, but the char
-/// at `pos` is by construction neither `open_k` nor `close_k` for a type
-/// that doesn't own it — it can't affect that type's depth — so starting
-/// every type's rightward scan at `pos + 1` is exactly equivalent, and is
-/// what makes one combined rightward pass legal.
+/// A type that doesn't own the char at `pos` can't have its depth changed by
+/// it, so every type's rightward scan starts at `pos + 1` regardless of
+/// whether that type took the shortcut — which is what lets one pass serve
+/// all three.
 ///
-/// A type whose leftward scan fails is dropped before the rightward pass
-/// runs at all — the old code's `?` short-circuit, preserved here as a cost
-/// optimization only (a dropped type was never going to be a candidate
-/// either way). The two passes each stop once every type still needing an
-/// answer has one — not once *any* type resolves, which the `{(abc}    )`
-/// example above would break, since `()` resolves before `{}` but loses.
-/// Ties (crossed nesting can produce genuine equal spans, e.g. `({a)}`) are
-/// broken by `BRACKET_PAIRS` order, matching `min_by_key`'s
-/// first-of-equal-minima behavior on the original per-type calls.
+/// The two passes each stop once every type still needing an answer has
+/// one — not once *any* type resolves, which the `{(abc}    )` example above
+/// would break, since `()` resolves before `{}` but loses. Ties (crossed
+/// nesting can produce genuine equal spans, e.g. `({a)}`) break in
+/// `BRACKET_PAIRS` order — `min_by_key` keeps the first of equal minima.
 pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let ch = text.char_at(pos)?;
+    let role = bracket_role(ch);
 
     // Leftward pass: each type's own first unmatched open, or the cursor
-    // itself if `pos` is on that type's open char.
+    // itself if `pos` is on that type's open char. `ch` can be at most one
+    // type's open char, so at most one slot is seeded here — `pending`
+    // always starts at 2 or 3, never 0.
     let mut opens: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
-    let mut pending = 0usize;
-    for (k, &(open, _)) in BRACKET_PAIRS.iter().enumerate() {
-        if ch == open {
-            opens[k] = Some(pos);
-        } else {
-            pending += 1;
-        }
+    let mut pending = BRACKET_PAIRS.len();
+    if let Some((k, true)) = role {
+        opens[k] = Some(pos);
+        pending -= 1;
     }
-    if pending > 0 {
+    {
         let mut depths = [0usize; BRACKET_PAIRS.len()];
         let mut cursor = text.chars_at(pos);
         while let Some((i, c)) = cursor.prev() {
@@ -182,17 +174,16 @@ pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Optio
 
     // Rightward pass: only for types that resolved an open above — a type
     // with no unmatched open leftward is already out of the candidate set.
+    // Unlike the leftward pass, `pending` can legitimately start at 0 here
+    // (no type resolved leftward, or the sole survivor took the on-close
+    // shortcut below), so this guard — unlike the leftward one — stays.
     let mut closes: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
-    let mut pending = 0usize;
-    for (k, &(_, close)) in BRACKET_PAIRS.iter().enumerate() {
-        if opens[k].is_none() {
-            continue;
-        }
-        if ch == close {
-            closes[k] = Some(pos);
-        } else {
-            pending += 1;
-        }
+    let mut pending = opens.iter().flatten().count();
+    if let Some((k, false)) = role
+        && opens[k].is_some()
+    {
+        closes[k] = Some(pos);
+        pending -= 1;
     }
     if pending > 0 {
         let mut depths = [0usize; BRACKET_PAIRS.len()];
@@ -221,8 +212,8 @@ pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Optio
 
     opens
         .iter()
-        .zip(closes.iter())
-        .filter_map(|(&open_pos, &close_pos)| Some((open_pos?, close_pos?)))
+        .zip(&closes)
+        .filter_map(|(&open_pos, &close_pos)| open_pos.zip(close_pos))
         .min_by_key(|&(open_pos, close_pos)| close_pos - open_pos)
 }
 
@@ -247,7 +238,8 @@ pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Optio
 /// crosses one.
 fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(usize, char, char)> {
     let classify = |(i, ch): (usize, char)| {
-        let &(o, c) = BRACKET_PAIRS.iter().find(|&(o, c)| ch == *o || ch == *c)?;
+        let (k, _) = bracket_role(ch)?;
+        let (o, c) = BRACKET_PAIRS[k];
         Some((i, o, c))
     };
     let head = sel.head();
