@@ -7,6 +7,7 @@ use crate::editor::commands::open_pane;
 use crate::editor::doc_ops;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_scripting::host::CommandHost;
 
 /// `open_buffer` allocates a new BufferId, seeds pane_state, and tracks MRU.
 #[test]
@@ -133,6 +134,61 @@ fn p6_bnext_bprev_cycle() {
     assert_eq!(ed.focused_buffer_id(), bid_c, "bprev wraps to c");
     let _ = ed.execute_typed("bp", None);
     assert_eq!(ed.focused_buffer_id(), bid_b, "bprev to b");
+}
+
+/// `goto-next-buffer`/`goto-prev-buffer` cycle through buffers in open-order —
+/// the mappable, key-bindable siblings of `:bnext`/`:bprev`.
+#[test]
+fn goto_next_prev_buffer_cycle() {
+    let mut ed = Editor::for_testing(Buffer::new(
+        BufferText::from("a\n"),
+        SelectionSet::default(),
+    ));
+    let bid_a = ed.focused_buffer_id();
+    let bid_b = ed.open_buffer(Buffer::new(
+        BufferText::from("b\n"),
+        SelectionSet::default(),
+    ));
+    let bid_c = ed.open_buffer(Buffer::new(
+        BufferText::from("c\n"),
+        SelectionSet::default(),
+    ));
+    // Still focused on a. goto-next-buffer → b.
+    live_host!(ed)
+        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .expect("goto-next-buffer must not error");
+    assert_eq!(ed.focused_buffer_id(), bid_b, "advances to b");
+    live_host!(ed)
+        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .expect("goto-next-buffer must not error");
+    assert_eq!(ed.focused_buffer_id(), bid_c, "advances to c");
+    live_host!(ed)
+        .run_command_sync("goto-next-buffer", Some(1), false, None)
+        .expect("goto-next-buffer must not error");
+    assert_eq!(ed.focused_buffer_id(), bid_a, "wraps to a");
+    // goto-prev-buffer from a → c.
+    live_host!(ed)
+        .run_command_sync("goto-prev-buffer", Some(1), false, None)
+        .expect("goto-prev-buffer must not error");
+    assert_eq!(ed.focused_buffer_id(), bid_c, "wraps to c");
+    live_host!(ed)
+        .run_command_sync("goto-prev-buffer", Some(1), false, None)
+        .expect("goto-prev-buffer must not error");
+    assert_eq!(ed.focused_buffer_id(), bid_b, "back to b");
+}
+
+/// Both directions are registered as mappable, key-bindable commands that
+/// record a jump-list entry on switch (mirrors
+/// `goto_alternate_buffer_is_registered_as_jump`).
+#[test]
+fn goto_next_prev_buffer_registered_as_jump() {
+    let reg = super::super::registry::CommandRegistry::with_defaults();
+    for name in ["goto-next-buffer", "goto-prev-buffer"] {
+        let cmd = reg
+            .get_mappable(name)
+            .unwrap_or_else(|| panic!("{name} must be registered"));
+        assert!(cmd.meta().is_jump, "{name} must have jump:true");
+    }
 }
 
 /// `:bd` closes the current buffer.

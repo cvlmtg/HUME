@@ -4,7 +4,7 @@ use hume_treesitter::textobjects::ObjectKind;
 
 /// Exhaustiveness guard: if a command is added without a registry entry,
 /// this test catches it.
-const EXPECTED_COMMAND_COUNT: usize = 184;
+const EXPECTED_COMMAND_COUNT: usize = 186;
 
 /// `STRUCTURAL_OBJECTS` is the only link between `ObjectKind` and the four
 /// commands (plus the `m i`/`m a` key) each kind ships. Nothing in the type

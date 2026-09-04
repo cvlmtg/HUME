@@ -80,6 +80,60 @@ pub(crate) fn cmd_goto_alternate_buffer(
     Ok(())
 }
 
+// ── Open-order buffer cycling ────────────────────────────────────────────────
+
+/// Which way [`goto_buffer_in_order`] steps through the open-order buffer list.
+pub(super) enum BufferStep {
+    Next,
+    Prev,
+}
+
+/// The one place an open-order buffer step is taken — shared by the mappable
+/// `goto-next-buffer`/`goto-prev-buffer` and their typed `:bnext`/`:bprev`
+/// spellings (`typed_buffer::typed_buffer_step`).
+///
+/// Uses `switch_to_buffer_without_jump` for the same reason as
+/// `cmd_goto_alternate_buffer` above: the mappable half carries `.jump()`, so
+/// `step_record_jump` already snapshots the outgoing position; the typed half
+/// has no `CmdMeta` to read and pushes its own entry instead. Needs no
+/// same-buffer guard — with one buffer open `next`/`prev` return it
+/// unchanged and the switch is inert, and both jump-recording paths gate on
+/// the cursor having actually moved.
+pub(super) fn goto_buffer_in_order(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    step: BufferStep,
+) {
+    let current = focused_buffer_id(state, view);
+    let target = match step {
+        BufferStep::Next => state.buffers.next(current),
+        BufferStep::Prev => state.buffers.prev(current),
+    };
+    switch_to_buffer_without_jump(state, view, target);
+}
+
+/// `goto-next-buffer` — switch to the next buffer in open-order.
+pub(crate) fn cmd_goto_next_buffer(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    goto_buffer_in_order(state, view, BufferStep::Next);
+    Ok(())
+}
+
+/// `goto-prev-buffer` — switch to the previous buffer in open-order.
+pub(crate) fn cmd_goto_prev_buffer(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    goto_buffer_in_order(state, view, BufferStep::Prev);
+    Ok(())
+}
+
 // ── Pane focus ───────────────────────────────────────────────────────────────
 
 /// Directional neighbour selection for pane focus.

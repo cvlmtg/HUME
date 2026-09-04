@@ -236,6 +236,8 @@ Split, focus, and close panes; switch buffers.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `goto-alternate-buffer` | — | Switch to the most-recently-focused other buffer. |
+| `goto-next-buffer` | — | Switch to the next buffer in open-order. |
+| `goto-prev-buffer` | — | Switch to the previous buffer in open-order. |
 | `pane-close` | `Ctrl+p c` | Close the focused pane. |
 | `pane-focus-down` | `Ctrl+p j` | Focus the pane below. |
 | `pane-focus-left` | `Ctrl+p h` | Focus the pane to the left. |

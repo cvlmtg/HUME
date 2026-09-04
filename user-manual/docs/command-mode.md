@@ -51,7 +51,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b #` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you.
+`:b #` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you. `:bn`/`:bp` likewise have bindable editor-command spellings, `goto-next-buffer` and `goto-prev-buffer`.
 
 ## Panes
 

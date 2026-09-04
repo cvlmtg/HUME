@@ -152,10 +152,12 @@ fn unactioned_change_does_not_refire_until_a_further_change_happens() {
 /// an externally-changed buffer this way must not silently show stale
 /// content with `:w` free to clobber the external edit.
 ///
-/// Fail oracle: without `Editor::enter_buffer` routing `:bnext`/`:bprev`
-/// through `switch_to_buffer_with_jump` and queuing `OnBufferEnter`, the
-/// target buffer's disk state stays `InSync` no matter what changed
-/// externally. Driven via `type_cmd_event`, not `type_cmd`: the check is
+/// Fail oracle: without `detect_buffer_enter`'s focus diff (`scripting_setup.rs`)
+/// observing the pane's new buffer and queuing `OnBufferEnter`, the target
+/// buffer's disk state stays `InSync` no matter what changed externally —
+/// this holds for any switch primitive `:bnext`/`:bprev` route through, since
+/// the diff is keyed on the focused (pane, buffer) pair, not on the call
+/// site. Driven via `type_cmd_event`, not `type_cmd`: the check is
 /// `OnBufferEnter`'s Rust reaction, observed only once `Editor::settle()`
 /// runs its focus diff — `type_cmd_event` settles after the command,
 /// `type_cmd` does not.

@@ -96,6 +96,10 @@
   reaches the last line and is unaffected; every other binding the plugin adds (`0`, `^`, `$`, `C`,
   `D`, `Ctrl+6`, Extend-mode `o`) is unchanged.
 
+### Files & buffers
+- New `goto-next-buffer`/`goto-prev-buffer` editor commands — the bindable-to-a-key
+  equivalents of `:bnext`/`:bprev`, for mapping from `init.scm`.
+
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.
 

@@ -424,6 +424,20 @@ impl CommandRegistry {
         )
         .jump()
         .reg(self);
+        ecmd(
+            "goto-next-buffer",
+            "Switch to the next buffer in open-order.",
+            cmd_goto_next_buffer,
+        )
+        .jump()
+        .reg(self);
+        ecmd(
+            "goto-prev-buffer",
+            "Switch to the previous buffer in open-order.",
+            cmd_goto_prev_buffer,
+        )
+        .jump()
+        .reg(self);
 
         // ── Editor commands — pane focus stubs ────────────────────────────────
         ecmd(

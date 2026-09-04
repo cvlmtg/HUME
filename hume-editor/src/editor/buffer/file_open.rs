@@ -417,11 +417,10 @@ impl Editor {
     }
 
     /// Switch the focused pane to `target`, or no-op if it's already focused
-    /// — the `:e`/`:b`/`:bn`/`:bp` entry point. Unlike
-    /// `switch_to_buffer_with_jump`, safe to call with a target that might
-    /// already be the focused buffer: that primitive's `push()` truncates
-    /// forward jump history unconditionally, so a same-buffer call would
-    /// corrupt it for nothing.
+    /// — the `:e`/`:b` entry point. Unlike `switch_to_buffer_with_jump`, safe
+    /// to call with a target that might already be the focused buffer: that
+    /// primitive's `push()` truncates forward jump history unconditionally,
+    /// so a same-buffer call would corrupt it for nothing.
     ///
     /// External-change detection does not run here: every genuine switch
     /// this produces raises `EditorEvent::OnBufferEnter`, observed by
@@ -429,7 +428,7 @@ impl Editor {
     /// no-op call raises nothing, matching Vim's `BufEnter`, which doesn't
     /// re-fire for re-entering the buffer you're already viewing.
     ///
-    /// Accepted cost of that parity: `:e`/`:b`/`:bn`/`:bp` re-targeting the
+    /// Accepted cost of that parity: `:e`/`:b` re-targeting the
     /// already-focused buffer runs no disk stat at all — it's genuinely a
     /// no-op, not a deferred one. An external change to that file still
     /// surfaces the moment any of terminal `FocusIn`, a genuine buffer-enter
