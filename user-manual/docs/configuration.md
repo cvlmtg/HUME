@@ -132,7 +132,7 @@ These options have a global default that every buffer without its own override r
 | `whitespace-newline` | `none` \| `all` | `none` | When to render newline indicators |
 | `language` | string | *(auto-detected)* | Language for syntax highlighting |
 
-Characters the terminal cannot be shown — control characters, and invisible ones such as a zero-width space or a bidirectional override — are always displayed as their codepoint (`<200b>`), highlighted, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
+Characters the terminal cannot be shown — control characters, and invisible ones such as a zero-width space or a bidirectional override — are always displayed as their codepoint (`<200b>`), styled with the theme's `ui.virtual.invisible` scope, whatever the options above are set to. They are not whitespace you can choose to hide: left invisible they misalign the rest of the line, and an unseen bidirectional override can make code read differently from how it runs.
 
 ## Text wrap
 
@@ -187,6 +187,25 @@ Popups and menus (LSP hover, completion, the fuzzy picker) read their own scopes
 - `ui.popup.scroll` — scrollbar thumb on a scrolled hover popup
 - `ui.menu` / `ui.menu.selected` — completion and picker rows / the selected row
 - `ui.menu.scroll` — scrollbar thumb on a scrolled menu
+
+HUME reads these Helix virtual-text scopes:
+
+- `ui.virtual` — fallback style for virtual/filler content (end-of-buffer
+  `~` rows, provider-drawn virtual lines), and the fallback every other
+  `ui.virtual.*` scope below reaches when a theme leaves it undefined
+- `ui.virtual.indent-guide` — indent guide columns (see `indent-guides`
+  under Buffer options)
+- `ui.virtual.whitespace` — the indicators shown for spaces, tabs, and
+  newlines when whitespace rendering is on (see `whitespace-space` and
+  friends under Buffer options)
+- `ui.virtual.inlay-hint` — LSP inlay hints; every hint kind is styled the
+  same way
+
+HUME also reads `ui.virtual.invisible`, a scope Helix doesn't have — see
+the note under Buffer options above. It does not currently read Helix's
+`ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`, or the
+per-kind `ui.virtual.inlay-hint.parameter`/`ui.virtual.inlay-hint.type`;
+declaring any of those in a theme has no effect yet.
 
 A theme editor is available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
