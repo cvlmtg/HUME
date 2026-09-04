@@ -24,6 +24,12 @@ export const SCOPES = [
   ]],
   ["Diff", ["diff.plus", "diff.minus", "diff.delta",
             "diff.plus.gutter", "diff.minus.gutter", "diff.delta.gutter"]],
+  // HUME reads these; ui.virtual.ruler/.wrap/.jump-label and the per-kind
+  // ui.virtual.inlay-hint.parameter/.type are Helix scopes HUME doesn't
+  // read yet, so they're deliberately left out here — see the Themes
+  // section of the user manual's Configuration page.
+  ["Virtual", ["ui.virtual", "ui.virtual.indent-guide", "ui.virtual.whitespace",
+               "ui.virtual.inlay-hint", "ui.virtual.invisible"]],
   ["Diagnostic", [
     "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
     "diagnostic.error.message", "diagnostic.warning.message",
@@ -64,6 +70,12 @@ export const DEFAULT_SC = {
   "ui.menu.selected": { fg: "black", bg: "blue" },
   "ui.menu.scroll": { fg: "yellow", bg: "dark-gray" },
   "ui.window": "gray", "ui.gutter": "gray",
+  "ui.virtual": "gray", "ui.virtual.indent-guide": "gray",
+  "ui.virtual.whitespace": "gray", "ui.virtual.inlay-hint": "gray",
+  // Deliberately loud, not muted like its Virtual siblings above — this is
+  // the stand-in for a character the terminal must never show as itself
+  // (a bidi override among them), and it has to catch the eye.
+  "ui.virtual.invisible": { fg: "black", bg: "red" },
   comment: { fg: "gray", modifiers: ["italic"] }, constant: "orange", "constant.numeric": "orange",
   "constant.character": "orange", "constant.character.escape": "magenta",
   string: "green", "string.special": "cyan",

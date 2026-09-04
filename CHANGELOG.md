@@ -102,6 +102,7 @@
 
 ### Appearance
 - Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.
+- Whitespace indicator glyphs (spaces, tabs, newlines shown by the `whitespace-*` options) are now themable via `ui.virtual.whitespace` — previously they always inherited whatever syntax color sat underneath them, regardless of what a theme set for that scope. The online theme editor gains a "Virtual" category with rows for it and the other `ui.virtual.*` scopes HUME reads, all previously invisible to the tool.
 
 ### Configuration & options
 - New `--config <FILE>` flag loads an arbitrary Steel config file instead of the default `init.scm`; `:reload-config` re-evaluates the same file. Themes and the data directory still resolve from the standard directories. Not valid with `--keys`.
