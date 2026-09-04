@@ -52,7 +52,8 @@ fn config_dir_with(env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
 /// - Windows: `%LOCALAPPDATA%\hume\` (falls back to `%APPDATA%\hume\` if `LOCALAPPDATA` is unset)
 ///
 /// Returns `None` only if the relevant env vars are unset. Callers should
-/// disable features that need on-disk storage (PLUM install, user plugins).
+/// disable features that need on-disk storage (PLUM install, user plugins,
+/// third-party theme installs).
 pub fn data_dir() -> Option<PathBuf> {
     data_dir_with(env_var)
 }

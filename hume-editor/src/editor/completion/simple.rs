@@ -112,9 +112,10 @@ impl Completer for BufferNameCompleter {
 
 /// Completes theme names for `:theme`.
 ///
-/// Scans `<config_dir>/themes/*.toml` and `<runtime_dir>/themes/*.toml`,
-/// strips the `.toml` extension, deduplicates (user theme wins over bundled),
-/// and filters by the current prefix.
+/// Scans `<config_dir>/themes/*.toml`, `<data_dir>/themes/*.toml`, and
+/// `<runtime_dir>/themes/*.toml`, strips the `.toml` extension, deduplicates
+/// (config wins over data-dir wins over bundled), and filters by the current
+/// prefix.
 pub(crate) struct ThemeCompleter;
 
 impl Completer for ThemeCompleter {

@@ -100,6 +100,7 @@ fn env_var_mutation_confined_to_guard_files() {
         "src/editor/tests/unix/reload_config.rs",
         "src/editor/tests/unix/scripting_grammar.rs",
         "src/editor/tests/unix/scripting_lsp_install.rs",
+        "src/editor/tests/unix/theme_dirs.rs",
     ];
 
     let mut paths = test_tree_rs_files(root);

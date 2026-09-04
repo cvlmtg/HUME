@@ -160,7 +160,7 @@ Accepted values:
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
+Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
 HUME reads these Helix statusline scopes:
 
@@ -353,8 +353,8 @@ HUME resolves its directories per OS:
 
 | Path | macOS / Linux | Windows |
 |------|---------------|---------|
-| Config dir (`init.scm`, user `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
-| Data dir (plugin clones, tree-sitter grammars) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
+| Config dir (`init.scm`, hand-authored `themes/`) | `$XDG_CONFIG_HOME/hume/` (default `~/.config/hume/`) | `%APPDATA%\hume\` |
+| Data dir (plugin clones, tree-sitter grammars, installed `themes/`) | `$XDG_DATA_HOME/hume/` (default `~/.local/share/hume/`) | `%LOCALAPPDATA%\hume\` (fallback `%APPDATA%\hume\`) |
 | Runtime dir (bundled `runtime/`: `tutor.rst`, `themes/`, `scheme/`, `init.scm.example`, core plugins) | see below | see below |
 
 `--config <FILE>` overrides only which file HUME evaluates as `init.scm` — user `themes/` and the data dir still resolve from the config dir above regardless.
@@ -366,7 +366,7 @@ HUME looks for its runtime directory in this order, taking the first that exists
 3. `runtime/` next to the binary (the Windows archive layout)
 4. `runtime/` in the current working directory (handy when running from a source checkout)
 
-Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars).
+Notable subpaths inside the data dir: `data/plugins/` (PLUM-managed plugin clones), `data/grammars/` and `data/grammars/sources/` (compiled and source tree-sitter grammars), `data/themes/` (installed third-party themes).
 
 ::: warning Plugins are trusted code
 Plugins run with the same privileges as HUME itself — they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.

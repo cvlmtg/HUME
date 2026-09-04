@@ -8,7 +8,8 @@ use crate::editor::message_log::{MessageLog, Severity};
 /// Load a theme by name and apply it to the engine view.
 ///
 /// Searches `<config_dir>/themes/<name>.toml` first, then
-/// `<runtime_dir>/themes/<name>.toml`. On success the engine view's theme is
+/// `<data_dir>/themes/<name>.toml`, then `<runtime_dir>/themes/<name>.toml`.
+/// On success the engine view's theme is
 /// replaced; `prepare_frame`'s `bake_if_stale` re-bakes it against the live
 /// scope registry before the next render (a freshly loaded theme's `baked`
 /// table starts empty, which is always stale). On failure a warning is pushed

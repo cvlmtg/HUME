@@ -824,14 +824,19 @@ pub(crate) fn log_level_to_severity(level: hume_scripting::LogLevel) -> Severity
 
 /// Ordered list of directories to search for theme TOML files.
 ///
-/// Config themes (user-defined) are listed before runtime themes (bundled) so
-/// that user overrides shadow built-in ones. Both `theme::load_theme_by_name`
-/// and [`crate::editor::completion::ThemeCompleter`] use this list as the
-/// single source of truth.
+/// Config themes (hand-authored, edited in place like `init.scm`) come first,
+/// then data-dir themes (installed by a tool — same provenance as PLUM's
+/// `data/plugins/`), then runtime themes (bundled) last — each tier shadows
+/// the next by name. Both `theme::load_theme_by_name` and
+/// [`crate::editor::completion::ThemeCompleter`] use this list as the single
+/// source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     if let Some(cfg) = hume_platform::dirs::config_dir() {
         paths.push(cfg.join("themes"));
+    }
+    if let Some(data) = hume_platform::dirs::data_dir() {
+        paths.push(data.join("themes"));
     }
     if let Some(rt) = hume_platform::dirs::runtime_dir() {
         paths.push(rt.join("themes"));
