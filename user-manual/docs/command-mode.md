@@ -4,8 +4,17 @@ Command mode is where HUME reaches commands that aren't bound to a key. Press `:
 
 Every command in this manual is one of two kinds, and each is reachable only its own way:
 
-- **Typed commands** — everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`, never a count.
-- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key, never from the command mode prompt.
+- **Typed commands** — everything on this page. Reached only from the command mode prompt, take a text argument and an optional `!`.
+- **Editor commands** — everything in the [Builtin Commands](builtin-commands.md) reference. Reached only from a key or a plugin (including your `init.scm`), never from the command mode prompt.
+
+::: info
+Navigate buffers with `:bprev`/`:bnext` from the command mode prompt. Doing this often enough to want a keybind? Use the editor commands `goto-prev-buffer`/`goto-next-buffer` in `init.scm` instead:
+
+```scheme
+(bind-key! 'normal "ctrl-h" "goto-prev-buffer")
+(bind-key! 'normal "ctrl-l" "goto-next-buffer")
+```
+:::
 
 Most typed commands have a short alias — both forms are listed below, and both work. Press `Tab` at any point for completion of names and, where it makes sense, arguments.
 
@@ -45,13 +54,13 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | Command | Effect |
 |---------|--------|
 | `:ls`, `:list-buffers` | List open buffers |
-| `:b <name>`, `:buffer <name>` | Switch buffer. Accepts a name, a unique filename prefix, a full path, a number from `:ls`, or `#` for the previous buffer |
+| `:b <name>`, `:buffer <name>` | Switch buffer. Accepts a name, a unique filename prefix, a full path, a number from `:ls`, or `#` for the previous buffer (`:b#` and `:b #` both work) |
 | `:bn`, `:bnext` | Next buffer |
 | `:bp`, `:bprev` | Previous buffer |
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b #` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you. `:bn`/`:bp` likewise have bindable editor-command spellings, `goto-next-buffer` and `goto-prev-buffer`.
+`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you.
 
 ## Panes
 

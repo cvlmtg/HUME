@@ -74,8 +74,8 @@ A lazy plugin needs at least one activation entry, or it could never activate. D
 - **`#:typed-commands`** — typed-command names the plugin provides (defined with `define-typed-command!`). Same stub-then-activate behavior as `#:commands`, but the stub appears in `:` Tab completion and is reachable only from `:`, never from a key or `call!`:
 
   ```scheme
-  (declare-plugin "cvlmtg/grep.hume" #:typed-commands '("grep-in"))
-  ; typing :grep-in the first time loads cvlmtg/grep.hume, then runs grep-in
+  (declare-plugin "cvlmtg/grep.hume" #:typed-commands '("picker-grep"))
+  ; typing :picker-grep the first time loads cvlmtg/grep.hume, then runs picker-grep
   ```
 - **`#:events`** — lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`).
 - **`#:languages`** — buffer language names that trigger loading.
