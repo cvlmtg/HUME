@@ -1,14 +1,11 @@
-;;; core:git-diff — diff.scm (see README.md "File layout" and "How it
-;;; works" → "Fetch/diff pipeline"). Word diff (`diff-words`) is called from
-;;; render.scm, not here.
+;;; core:git-diff — diff.scm. See docs/pipeline.md. Word diff
+;;; (`diff-words`) is called from render.scm, not here.
 
 (require "state.scm")
 (require "render.scm")
 
 (provide git-diff/schedule-refresh! git-diff/force-refresh! git-diff/cancel-fetch!)
 
-;;; Applies `hunks` to state + render, but only when they actually differ
-;;; from what's currently rendered — see README's "Fetch/diff pipeline".
 (define (git-diff/apply-hunks! bid hunks)
   (let ([entry (git-diff/buffer-entry bid)])
     (when (and entry (not (equal? (hash-ref entry "hunks") hunks)))
@@ -16,8 +13,8 @@
       (when (hash-ref entry "signs?") (git-diff/render-for! "signs?" bid hunks))
       (when (hash-ref entry "inline?") (git-diff/render-for! "inline?" bid hunks)))))
 
-;;; `spawn-async!` callback for the `git show` below — see README's
-;;; "Fetch/diff pipeline" for the exit-code/severity contract.
+;;; `spawn-async!` callback for the `git show` below — see docs/pipeline.md
+;;; for the exit-code/severity contract.
 (define (git-diff/handle-fetch-result! bid stdout stderr exit-code)
   (git-diff/entry-set! bid "job" #f)
   (if (= exit-code 0)
@@ -43,8 +40,8 @@
                              (git-diff/handle-fetch-result! bid stdout stderr exit-code)))])
     (git-diff/entry-set! bid "job" job)))
 
-;;; Immediate (non-debounced) refresh — `schedule-refresh!` below is the
-;;; debounced entry point every hook actually calls.
+;;; Immediate (non-debounced) refresh — `schedule-refresh!` is the debounced
+;;; entry point every hook actually calls.
 (define (git-diff/refresh! bid ref)
   (let ([entry (git-diff/buffer-entry bid)])
     (when (and entry (or (hash-ref entry "signs?") (hash-ref entry "inline?")))
@@ -56,8 +53,8 @@
                 (unless ref-text
                   (git-diff/fetch-ref! bid path ref)))))))))
 
-;;; Forces a fetch even through a sticky `'unavailable` cache — see README's
-;;; "Fetch/diff pipeline" for why, and why `hunks` is deliberately untouched.
+;;; Forces a fetch even through a sticky `'unavailable` cache — see
+;;; docs/pipeline.md for why, and why `hunks` is deliberately untouched.
 (define (git-diff/force-refresh! bid ref)
   (let ([entry (git-diff/buffer-entry bid)])
     (when entry
@@ -69,6 +66,5 @@
 (define (git-diff/cancel-fetch! bid)
   (git-diff/cancel-job! bid "job"))
 
-;;; `debounce-by`, keyed per `bid`, at 150ms — see README's "Fetch/diff
-;;; pipeline".
+;;; `debounce-by`, keyed per `bid`, at 150ms — see docs/pipeline.md.
 (define git-diff/schedule-refresh! (debounce-by 150 git-diff/refresh!))

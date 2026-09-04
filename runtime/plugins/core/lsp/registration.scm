@@ -1,8 +1,7 @@
 ;;; core:lsp/registration.scm — the LSP server catalog, receipt/path
 ;;; primitives, and the scan that turns an installed server into a live
 ;;; registration. `servers.scm` requires this file for its read-side
-;;; helpers. See README.md "How it works" → "Server install and
-;;; registration".
+;;; helpers. See docs/servers.md.
 
 (provide lsp/register-installed-servers! lsp/field lsp/servers-dir lsp/server-dir
          lsp/receipt-path lsp/read-receipt lsp/receipt-bin lsp/receipt-version
@@ -14,7 +13,6 @@
 ;;; lsp-servers.scm: (languages ...) (command . cmd) (args ...) (config . …).
 (define *lsp-servers* (hash))
 
-;;; Register one lsp-servers.scm entry: `(name field...)`.
 (define (lsp/declare-server! entry)
   (set! *lsp-servers* (hash-insert *lsp-servers* (car entry) (cdr entry))))
 
@@ -59,15 +57,12 @@
 ;; ── Registration ──────────────────────────────────────────────────────────────
 
 ;;; Registers `name` for every language it serves that isn't registered
-;;; yet — preserves a user's own manual `register-lsp-server!` instead of
-;;; last-wins-clobbering it. See README's "Server install and registration".
+;;; yet — see docs/servers.md.
 (define (lsp/register-server-languages! name cmd)
   (let* ((fields   (hash-ref *lsp-servers* name))
          (langs    (filter (lambda (lang-entry) (not (lsp-registered-for-language? (car lang-entry))))
                             (cdr (lsp/field fields 'languages))))
          (args     (cdr (lsp/field fields 'args)))
-         ;; `(config . "json")` or empty-tail `(config)` — `cdr` gives the
-         ;; JSON string or '() respectively.
          (config-json (cdr (lsp/field fields 'config)))
          (config (if (null? config-json) #f (json-parse config-json))))
     (for-each
@@ -83,10 +78,7 @@
 ;; ── Startup server registration ───────────────────────────────────────────────
 
 ;;; Passive: registers already-installed servers only, no subprocess, no
-;;; network. Runs at plugin load, lazy activation, and after servers.scm's
-;;; install/uninstall mutate disk; also exposed as `lsp-rescan-servers`. The
-;;; *only* registrar for managed servers — see README's "Server install and
-;;; registration" and "Caveat".
+;;; network. The *only* registrar for managed servers — see docs/servers.md.
 (define (lsp/register-installed-servers!)
   (let ((sdir (lsp/servers-dir)))
     (when (path-exists? sdir)

@@ -1,5 +1,4 @@
-;;; core:git-diff — plugin.scm (see manifest.scm and README.md "Usage" and
-;;; "File layout").
+;;; core:git-diff — plugin.scm. See docs/architecture.md.
 
 (require "state.scm")
 (require "diff.scm")
@@ -16,13 +15,11 @@
 (define git-diff/inline-default (call! "stdlib/config-boolean" "core:git-diff" git-diff/cfg "inline" #f))
 (define git-diff/ref (call! "stdlib/config-string" "core:git-diff" git-diff/cfg "ref" "HEAD"))
 
-;;; A runtime override (`state.scm`'s "ref" field) wins over the config
-;;; default; an untracked buffer falls through to it.
+;;; See docs/architecture.md's "Ref handling".
 (define (git-diff/buffer-ref bid)
   (let ([entry (git-diff/buffer-entry bid)])
     (or (and entry (hash-ref entry "ref")) git-diff/ref)))
 
-;;; `'()` for an untracked buffer.
 (define (git-diff/buffer-hunks bid)
   (let ([entry (git-diff/buffer-entry bid)])
     (if entry (hash-ref entry "hunks") '())))
@@ -37,11 +34,8 @@
 (register-hook! 'on-buffer-enter
   (lambda (bid) (git-diff/schedule-branch-refresh! bid)))
 
-;;; The branch fetch is gated on `"steel:git-branch"` being placed
-;;; (`branch.scm`'s `branch-element-placed?`) — this is what drives it in
-;;; the moment a user places it, rather than waiting for the next focus
-;;; change or save. Both `configure-statusline!` and `:set global
-;;; statusline=…` funnel through this one `on-option-change` raise site.
+;;; Drives the branch fetch in the moment `"steel:git-branch"` is placed —
+;;; see docs/pipeline.md's "Branch tracking".
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "statusline")
@@ -65,8 +59,8 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; Shared body for both toggles below — see README's "Ref handling" for
-;;; the ref-argument contract.
+;;; Shared body for both toggles below — see docs/architecture.md's "Ref
+;;; handling" for the ref-argument contract.
 (define (git-diff/run-toggle! bid key label arg)
   (let ([enabled?
          (if (string? arg)

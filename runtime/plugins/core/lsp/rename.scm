@@ -1,5 +1,4 @@
-;;; core:lsp/rename.scm — textDocument/rename (see README.md "How it works"
-;;; → "Formatting and rename").
+;;; core:lsp/rename.scm — textDocument/rename. See docs/features.md.
 
 (require "lib.scm")
 

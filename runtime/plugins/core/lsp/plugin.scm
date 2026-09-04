@@ -1,4 +1,4 @@
-;;; core:lsp — plugin.scm (see README.md "File layout").
+;;; core:lsp — plugin.scm (see docs/architecture.md).
 
 (require "lib.scm")
 (require "registration.scm")
@@ -20,7 +20,7 @@
 
 (lsp/register-installed-servers!)
 
-;; Default keybindings — see README.md "How it works" → "Key layout".
+;; Default keybindings — see docs/architecture.md.
 (bind-key! 'normal "g d" "lsp-goto-definition")
 (bind-key! 'normal "g D" "lsp-goto-declaration")
 (bind-key! 'normal "g y" "lsp-goto-type-definition")

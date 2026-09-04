@@ -1,7 +1,6 @@
 ;;; core:plum/grammars.scm — grammar INSTALL pipeline only. The source
 ;;; catalog, path helpers, and startup registration of already-compiled
-;;; grammars live in core (runtime/scheme/grammars.scm) — this file only
-;;; runs when the user explicitly asks PLUM to install/manage a grammar.
+;;; grammars live in core (runtime/scheme/grammars.scm) — see README.md.
 
 (require "lib.scm")
 
@@ -9,19 +8,13 @@
 (define *plum-helix-pin*
   (call-with-input-file (path-join (runtime-dir) "scheme" "helix-pin.scm") read))
 
-;;; URL for the Helix-pinned query file `filename` (e.g. "highlights.scm",
-;;; "injections.scm") for `name`.
 (define (plum/helix-query-url name filename)
   (string-append "https://raw.githubusercontent.com/helix-editor/helix/"
                  *plum-helix-pin* "/runtime/queries/" name "/" filename))
 
 ;; ── Query inheritance resolution ──────────────────────────────────────────────
-;; A query file can declare `; inherits: dep,dep,...` instead of writing its
-;; own patterns; tree-sitter has no notion of this, so `plum/resolve-query`
-;; recursively fetches and prepends each named dependency's copy before
-;; anything reaches tree-sitter. No deduplication — see README.
+;; See README.md.
 
-;;; #t if `line`, trimmed, is an `; inherits: a,b,c` directive.
 (define (plum/inherits-line? line)
   (starts-with? (trim line) "; inherits:"))
 
@@ -30,22 +23,13 @@
   (let ((trimmed (trim line)))
     (map trim (split-many (trim (substring trimmed 11 (string-length trimmed))) ","))))
 
-;;; Fetch `name`'s `filename` query to a scratch file and return its raw
-;;; content. `curl` is deliberately NOT wrapped in a `with-handler`: this
-;;; runs inside `plum/resolve-query`'s tolerant handler, and re-raising a
+;;; `curl` is deliberately NOT wrapped in a `with-handler` — re-raising a
 ;;; native-builtin error from an inner handler into an outer one corrupts
-;;; Steel 0.8.2's continuation stack (pinned by `steel_stdlib_availability`).
-;;; Cost: a failed curl may leave a stale `tmp` — overwritten next attempt.
+;;; Steel 0.8.2's continuation stack. See README.md.
 (define (plum/fetch-raw-query name filename)
-  ;; `plum/safe-segment?` (lib.scm) guards this scratch-file path against a
-  ;; dependency name parsed from a downloaded query file's `; inherits:`
-  ;; line — untrusted content, unlike the top-level grammar name (which
-  ;; always comes from the fixed catalog).
+  ;; `name` may come from an untrusted `; inherits:` line, unlike the
+  ;; top-level grammar name — guard the scratch-file path.
   (unless (plum/safe-segment? name)
-    ;; `plum/resolve-query`'s tolerant handler (used for every dependency
-    ;; below the top level) swallows this raise the same as an ordinary
-    ;; 404 — log it here so a real path-traversal attempt still leaves a
-    ;; trace instead of silently resolving to "no query for this dependency".
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))
@@ -56,14 +40,8 @@
       (call! "stdlib/delete-file" tmp)
       content)))
 
-;;; Fetch `name`'s `filename` query and fully resolve any `; inherits:` chain
-;;; into a single string with no dangling directives. When `tolerant?` is
-;;; true, a missing file at this level resolves to `""` instead of raising —
-;;; a dependency need not ship every query kind its inheritor asks for (e.g.
-;;; a dependency named only in `tsx`'s injections.scm inherits line may have
-;;; no injections.scm of its own). The top-level call is never tolerant — a
-;;; genuinely missing query for the grammar itself should still raise, so
-;;; callers like `plum/try-fetch-injections!` can tell the difference.
+;;; Fully resolves any `; inherits:` chain into one string. `tolerant?`:
+;;; a missing file resolves to `""` instead of raising — see README.md.
 (define (plum/resolve-query name filename tolerant?)
   (let ((content (if tolerant?
                       (with-handler (lambda (err) #f) (plum/fetch-raw-query name filename))
@@ -81,14 +59,13 @@
                 "\n")
               content)))))
 
-;;; Fetch and fully resolve `name`'s `filename` query, writing the result to
-;;; `dest`. Raises on a 404 for the grammar's own query.
 (define (plum/fetch-query! name filename dest)
   (call! "stdlib/write-file" dest (plum/resolve-query name filename #f)))
 
 ;; ── Injection dependencies ────────────────────────────────────────────────────
+;; See README.md.
 
-;;; Hash: name → (dep-name ...). See README.md § grammar dependencies.
+;;; Hash: name → (dep-name ...).
 (define *plum-grammar-deps*
   (hash "markdown" (list "markdown.inline")))
 
@@ -97,7 +74,6 @@
       (hash-ref *plum-grammar-deps* name)
       '()))
 
-;;; Install any not-yet-compiled dependency grammars for `name` first.
 (define (plum/install-grammar-deps! name)
   (for-each
     (lambda (dep)
@@ -106,11 +82,8 @@
         (plum/install-grammar dep)))
     (plum/grammar-deps name)))
 
-;;; Fetch `name`'s `filename` query to the path `path-fn` computes for it,
-;;; tolerating a missing file (most grammars have no injections or no
-;;; textobjects query) — a 404 makes `plum/fetch-query!` raise, which would
-;;; otherwise abort the whole grammar install for no reason. Returns the
-;;; path on success, `#f` if there is no such query to fetch.
+;;; Tolerates a missing file — see README.md. Returns the path on success,
+;;; `#f` if there's no such query to fetch.
 (define (plum/try-fetch-query! name filename path-fn)
   (let ((path (path-fn name)))
     (with-handler
@@ -129,22 +102,18 @@
 
 ;; ── Grammar discovery ─────────────────────────────────────────────────────────
 
-;;; #t if `name` has no compiled grammar on disk yet.
 (define (plum/not-installed? name)
   (not (grammar-installed? name)))
 
-;;; Declared grammar names not yet compiled.
 (define (plum/missing-grammars)
   (filter plum/not-installed? (grammar-source-names)))
 
-;;; Compiled grammar files whose names are not in the declared source registry.
 (define (plum/orphan-grammars)
   (filter (lambda (name) (not (grammar-source-known? name)))
           (installed-grammars)))
 
-;;; Resolve the target grammar for a `:` grammar command: a string argument
-;;; wins; otherwise fall back to the current buffer's language. Returns the
-;;; name, or #f after reporting a status message.
+;;; A string argument wins; otherwise falls back to the current buffer's
+;;; language. Returns the name, or #f after reporting a status message.
 (define (plum/resolve-grammar-arg cmd arg)
   (let ((name (call! "stdlib/resolve-lang-arg" cmd arg)))
     (cond ((not name) #f)
@@ -155,9 +124,8 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;;; Install a single grammar from its declared source, always from a clean
-;;; slate — this doubles as the repair path for a grammar left in a failed
-;;; state. See README "Grammar install pipeline" for the numbered steps.
+;;; Always from a clean slate — doubles as the repair path. See README.md
+;;; for the numbered steps.
 (define (plum/install-grammar name)
   (let* ((url     (grammar-source-url name))
          (rev     (grammar-source-rev name))

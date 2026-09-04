@@ -12,22 +12,18 @@
 
 ;; ── Installed plugin discovery ────────────────────────────────────────────────
 
-;;; "user/repo" for every <data>/plugins/<user>/<repo>/ leaf containing a
-;;; plugin.scm file.
 (define (plum/installed-plugins)
   (plum/two-level-repos (plum/plugins-dir) "plugin.scm"))
 
 ;; ── Set operations ────────────────────────────────────────────────────────────
 
-;;; Third-party plugins declared in init.scm that are not yet on disk.
-;;; core:* plugins are excluded — they're bundled, never installed by PLUM.
+;;; core:* plugins excluded — they're bundled, never installed by PLUM.
 (define (plum/missing-plugins)
   (let ((installed (plum/installed-plugins)))
     (filter (lambda (name) (and (not (starts-with? name "core:"))
                                  (not (member name installed))))
             (declared-plugins))))
 
-;;; Plugins on disk that are not (or no longer) declared in init.scm.
 (define (plum/orphan-plugins)
   (let ((declared (declared-plugins)))
     (filter (lambda (name) (not (member name declared)))

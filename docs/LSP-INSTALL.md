@@ -192,7 +192,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 - **Seeded catalog delivers its config correctly**: `runtime/scheme/lsp-servers.scm`'s
   `config` field is delivered as **both** `#:init-options` and `#:settings` by
   `core:lsp/registration.scm`, matching Helix's own delivery of the same blob — see
-  `runtime/plugins/core/lsp/README.md`'s "Server config delivery" section.
+  `runtime/plugins/core/lsp/docs/servers.md`.
 - **Per-server config audit** (all 17 seeded servers carrying a `config` blob, verified
   against each server's own source): 15 work correctly as delivered. Two —
   `actions-language-server` and `pony-lsp` — need a correction, in both cases tracing to a
@@ -264,8 +264,8 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
   installed mid-session attaches immediately, without a restart. `core:lsp` also exposes
   the rescan directly as `:lsp-rescan-servers`, for servers installed out-of-band (not
   through `:lsp-install`).
-  **Caveat for a lazily-declared `core:lsp`** (see `runtime/plugins/core/lsp/README.md`'s
-  own copy for the short version): a manifest keyed only on `#:events '(on-lsp-attach)`
+  **Caveat for a lazily-declared `core:lsp`** (see `runtime/plugins/core/lsp/README.md`
+  for the short version): a manifest keyed only on `#:events '(on-lsp-attach)`
   can never activate on its own — nothing is registered yet, so nothing attaches, so the
   event that would trigger activation never fires. Load `core:lsp` eagerly, declare it with
   `#:languages` (activation triggered by opening a matching file), or declare it with

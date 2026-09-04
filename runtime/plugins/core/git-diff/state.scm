@@ -1,5 +1,4 @@
-;;; core:git-diff — state.scm (see README.md "File layout" and "How it
-;;; works" → "State").
+;;; core:git-diff — state.scm. See docs/architecture.md.
 
 (provide git-diff/init-buffer! git-diff/remove-buffer!
          git-diff/buffer-entry git-diff/entry-set! git-diff/ensure-entry!
@@ -24,7 +23,7 @@
 (define (git-diff/remove-buffer! bid)
   (set-box! git-diff/*buffers* (hash-remove (unbox git-diff/*buffers*) bid)))
 
-;;; No-op when `bid` has no tracked entry — see README's "State" for why.
+;;; No-op when `bid` has no tracked entry — see docs/architecture.md.
 (define (git-diff/entry-set! bid key value)
   (let ([entry (git-diff/buffer-entry bid)])
     (when entry
@@ -32,7 +31,7 @@
                 (hash-insert (unbox git-diff/*buffers*) bid (hash-insert entry key value))))))
 
 ;;; Unlike `entry-set!`, resurrects a missing entry rather than no-opping —
-;;; see README's "State" for why.
+;;; see docs/architecture.md.
 (define (git-diff/ensure-entry! bid)
   (unless (git-diff/buffer-entry bid)
     (set-box! git-diff/*buffers*
@@ -45,10 +44,8 @@
     (git-diff/entry-set! bid key new?)
     new?))
 
-;;; Cancels any in-flight `spawn-async!` job stored under `key` (one of
-;;; "job"/"branch-job") for `bid`, without firing its callback. Shared by
-;;; `diff.scm`'s and `branch.scm`'s otherwise-identical cancel functions —
-;;; only the slot key differs between them.
+;;; Shared by `diff.scm`'s and `branch.scm`'s cancel functions — see
+;;; docs/architecture.md.
 (define (git-diff/cancel-job! bid key)
   (let ([entry (git-diff/buffer-entry bid)])
     (when entry

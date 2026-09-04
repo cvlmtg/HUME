@@ -69,11 +69,22 @@ PLUM bundles three independent subsystems:
 - `lib.scm` — shared utilities: `plum/read-file`, `plum/run!` (a `core:stdlib`
   `stdlib/run` wrapper that raises instead of returning a status), `plum/batch-run`
   (batch installs), `plum/safe-segment?` (validates one untrusted filesystem path
-  segment), and `plum/two-level-repos` (the `<root>/<user>/<repo>/` discovery walk shared
-  by plugin and theme-repo discovery) — used by `plugins.scm`, `grammars.scm`, and
-  `themes.scm` as needed. Directory listing, filesystem cleanup, and list search live in
-  `core:stdlib` (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`,
-  `stdlib/delete-dir`, `stdlib/delete-file`) — reached via `call!`, not local wrappers.
+  segment — see "Path safety" below), and `plum/two-level-repos` (the
+  `<root>/<user>/<repo>/` discovery walk shared by plugin and theme-repo discovery) —
+  used by `plugins.scm`, `grammars.scm`, and `themes.scm` as needed. Directory listing,
+  filesystem cleanup, and list search live in `core:stdlib` (`stdlib/list-subdirs`,
+  `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`) —
+  reached via `call!`, not local wrappers.
+
+#### Path safety
+
+`plum/safe-segment?` rejects `.`/`..`, a path separator, and `:`/`"` for any name that
+reaches `path-join`/a subprocess arg but did not come from a fixed catalog — either half
+of a GitHub `user/repo` slug typed by the user, or a dependency name parsed out of
+downloaded content. The `:` rejection matters on Windows specifically: a segment like
+`c:evil` after a single path component makes `PathBuf::push` treat it as a
+drive-relative root, replacing the sandboxed base path entirely instead of joining onto
+it (mirrors `hume_platform::path::is_safe_segment`'s rule on the Rust side).
 
 ### Plugin discovery
 
@@ -169,6 +180,13 @@ completer already read (both only ever glob `*.toml` files there, non-recursivel
 `:theme <name>` picks up an installed theme immediately — no `:reload-config`, unlike a
 plugin, since theme lookup hits the filesystem at load time and the completer re-scans
 on every `Tab`.
+
+A user-typed slug that isn't shaped like `"user/repo"` at all (`plum/parse-slug`) is an
+ordinary usage mistake — routed the same way `plum/resolve-grammar-arg` routes a bad
+grammar argument: a status-line-only `log! 'info`, not a `:messages` entry. A slug that
+*is* shaped right but has a segment `plum/safe-segment?` (see "Path safety" above)
+rejects is different in kind: it would otherwise reach `path-join` and `git clone`, so
+it raises and stays in `:messages` instead.
 
 The clone itself is kept, at `<data>/themes/sources/<user>/<repo>/` — the direct analog
 of `<data>/grammars/sources/<name>/`. A `sources/` *directory* has no extension, so it

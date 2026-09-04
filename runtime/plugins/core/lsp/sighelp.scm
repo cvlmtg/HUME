@@ -1,26 +1,19 @@
-;;; core:lsp/sighelp.scm — textDocument/signatureHelp. See README.md "How it
-;;; works" → "Signature help". Dismiss on mode change is handled by
-;;; lib.scm's shared `on-mode-change` popup registration.
+;;; core:lsp/sighelp.scm — textDocument/signatureHelp. See docs/features.md.
+;;; Dismiss on mode change is handled by lib.scm's shared `on-mode-change`
+;;; popup registration.
 
 (require "lib.scm")
 
-;;; A `SignatureHelp.parameters[].label` is a plain string, or an offset
-;;; pair the host slices — see README's "Signature help" for the encoding
-;;; contract. `#f` back means no attached server to name that encoding.
+;;; `#f` back means no attached server to name the label-offset encoding.
 (define (lsp/param-text bid sig-label param)
   (let ((param-label (hash-ref param "label")))
     (if (string? param-label)
         param-label
         (lsp-label-offsets->text bid sig-label param-label))))
 
-;;; Clamp a server-sent index into `[0, (length lst) - 1]` rather than
-;;; trusting it verbatim.
 (define (lsp/clamp-index idx lst)
   (max 0 (min idx (- (length lst) 1))))
 
-;;; The chosen signature's label, plus the active parameter's own text
-;;; marked with `⟨…⟩` on a second line (no styling API in `show-popup!`
-;;; v1).
 (define (lsp/sighelp-text bid sig active-idx)
   (let* ((label (hash-ref sig "label"))
          (params (if (hash-contains? sig "parameters") (hash-ref sig "parameters") (list))))
@@ -30,8 +23,6 @@
                (text (lsp/param-text bid label (list-ref params idx))))
           (if text (string-append label "\n⟨" text "⟩") label)))))
 
-;;; `res`: a `SignatureHelp` — `signatures: []` is spec-valid ("nothing to
-;;; show"), same as a null/void response at the call site.
 (define (lsp/show-sighelp bid res)
   (let ((sigs (hash-ref res "signatures")))
     (if (null? sigs)
@@ -52,14 +43,11 @@
             ((void? res) (close-popup!))
             (else (lsp/show-sighelp bid res))))))))
 
-;;; ")" is a dismiss trigger, not a request trigger — still needs
-;;; registering or it never reaches Insert-mode text.
+;;; ")" is a dismiss trigger, not a request trigger.
 (lsp/setup-trigger-chars! "signatureHelpProvider" "lsp-sighelp" (list ")")
   (lambda (bid ch)
     (if (equal? ch ")")
         (close-popup!)
-        ;; Guarded so a stale trigger char left registered past detach
-        ;; skips politely instead of hitting lsp-request's server-
-        ;; resolution failure on every matching keystroke.
+        ;; Guards against a stale trigger char left registered past detach.
         (lsp/guard-capability "signatureHelpProvider"
           (lambda () (lsp/sighelp-request bid))))))

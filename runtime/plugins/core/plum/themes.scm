@@ -1,7 +1,5 @@
-;;; core:plum/themes.scm — third-party THEME install pipeline. Clones a
-;;; GitHub repo's `themes/*.toml` into `<data>/themes/`, the data-dir search
-;;; tier `hume-editor`'s theme loader and `:theme <Tab>` completer already
-;;; read (see README's "Theme install" section for the full design).
+;;; core:plum/themes.scm — third-party THEME install pipeline. See
+;;; README.md.
 
 (require "lib.scm")
 
@@ -10,9 +8,7 @@
 (define (plum/themes-dir)
   (path-join (data-dir) "themes"))
 
-;;; Clones live under a `sources/` subdirectory of `<data>/themes/` — never
-;;; matched by the `*.toml` glob either consumer runs. See README's "Theme
-;;; install" section for why that removes the need for a separate state file.
+;;; Clones live under a `sources/` subdirectory — see README.md for why.
 (define (plum/theme-sources-dir)
   (path-join (plum/themes-dir) "sources"))
 
@@ -21,14 +17,8 @@
 
 ;; ── Slug validation ────────────────────────────────────────────────────────────
 
-;;; Resolve a user-typed "user/repo" GitHub slug for `cmd`. Returns the slug,
-;;; or #f after reporting a status message for a missing or malformed one —
-;;; the shape (and the statusline-only routing) `plum/resolve-grammar-arg`
-;;; (grammars.scm) uses for a bad grammar argument. A slug whose shape is
-;;; right but whose segments are not safe path components is different in
-;;; kind: it reaches `path-join` and `git clone`, so it raises and stays in
-;;; `:messages` — the same class of untrusted input `plum/safe-segment?`
-;;; (lib.scm) exists to guard.
+;;; Returns the slug, or #f after reporting a status message — see
+;;; README.md for the malformed-vs-unsafe error-routing distinction.
 (define (plum/parse-slug cmd slug)
   (let ((parts (if (string? slug) (split-many slug "/") '())))
     (cond
@@ -45,8 +35,7 @@
 
 ;; ── Theme-file discovery and sync ─────────────────────────────────────────────
 
-;;; Sorted `.toml` stems in `dir`, or '() if `dir` doesn't exist. A file
-;;; literally named `.toml` is skipped — its stem would be empty.
+;;; Sorted `.toml` stems in `dir`, or '() if `dir` doesn't exist.
 (define (plum/toml-stems dir)
   (if (not (path-exists? dir))
       '()
@@ -58,17 +47,11 @@
                            (map file-name (read-dir dir))))
               string<?))))
 
-;;; `.toml` stems in the installed clone's `themes/` directory for `slug`, or
-;;; '() if that directory doesn't exist (repo not yet installed, or it lost
-;;; the directory upstream).
 (define (plum/repo-theme-names slug)
   (plum/toml-stems (path-join (plum/theme-src-dir slug) "themes")))
 
-;;; Copy `slug`'s current `themes/*.toml` into `<data>/themes/`, pruning any
-;;; `old-names` no longer present. The single sync step shared by install
-;;; and update. Raises if the repo has no `themes/*.toml` at all — silently
-;;; succeeding would install nothing while still reporting success. Returns
-;;; the new name list.
+;;; The sync step shared by install and update. Raises if the repo has no
+;;; `themes/*.toml` at all. Returns the new name list.
 (define (plum/sync-theme-files! slug old-names)
   (let ((names (plum/repo-theme-names slug)))
     (when (null? names)
@@ -86,8 +69,6 @@
       names)
     names))
 
-;;; "user/repo" for every <data>/themes/sources/<user>/<repo>/ leaf holding
-;;; a themes/ directory.
 (define (plum/installed-theme-repos)
   (plum/two-level-repos (plum/theme-sources-dir) "themes"))
 
@@ -101,10 +82,9 @@
         (let* ((src-dir (plum/theme-src-dir slug))
                (old-names (plum/repo-theme-names slug)))
           (log! 'info (string-append "PLUM: installing theme repo " slug))
-          ;; git clone refuses a non-empty dest — clear any stale clone
-          ;; first; it doubles as the repair path when a later step raises
-          ;; (see `plum/fetch-raw-query` in grammars.scm for why there's no
-          ;; catch-and-cleanup here instead).
+          ;; Clear any stale clone first — doubles as the repair path when a
+          ;; later step raises. See README.md for why there's no
+          ;; catch-and-cleanup here instead.
           (call! "stdlib/delete-dir" src-dir)
           (plum/run! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") src-dir))
           (let ((names (plum/sync-theme-files! slug old-names)))

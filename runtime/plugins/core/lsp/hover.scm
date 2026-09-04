@@ -1,12 +1,11 @@
-;;; core:lsp/hover.scm — textDocument/hover. See README.md "How it works" →
-;;; "Hover".
+;;; core:lsp/hover.scm — textDocument/hover. See docs/features.md.
 
 (require "lib.scm")
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
 
-;;; A `MarkedString` is a bare string or `{language, value}`; a
-;;; `MarkupContent` is `{kind, value}` — told apart by key.
+;;; `MarkedString` (bare string or `{language, value}`) vs `MarkupContent`
+;;; (`{kind, value}`) — told apart by key.
 (define (lsp/marked-string->text ms)
   (cond
     ((string? ms) ms)
@@ -14,16 +13,13 @@
      (string-append "```" (hash-ref ms "language") "\n" (hash-ref ms "value") "\n```"))
     (else (hash-ref ms "value"))))
 
-;;; `contents` is a `MarkupContent`, a `MarkedString`, or `MarkedString[]` —
-;;; decoded to raw text.
 (define (lsp/hover-contents->text contents)
   (cond
     ((string? contents) contents)
     ((list? contents) (string-join (map lsp/marked-string->text contents) "\n\n"))
     (else (lsp/marked-string->text contents))))
 
-;;; The grammar name to highlight `contents` through, or `#f` for plain
-;;; text — see README's "Hover" for the plaintext-opt-out rule.
+;;; Grammar name to highlight through, or `#f` for plain text.
 (define (lsp/hover-lang contents)
   (if (and (hash? contents)
            (hash-contains? contents "kind")
@@ -33,8 +29,6 @@
 
 ;; ── Popup: cursor or docked ──────────────────────────────────────────────────
 
-;;; Threshold = ⅓ of the last-known viewport height, falling back to 15
-;;; lines before the first on-viewport-change event.
 (define (lsp/show-hover text lang)
   (let* ((bid (current-buffer))
          (visible (lsp/visible-lines bid))

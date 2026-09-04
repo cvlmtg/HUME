@@ -1,16 +1,13 @@
-;;; core:lsp/completion.scm — textDocument/completion. See README.md "How it
-;;; works" → "Completion". Stale responses are auto-cancelled/dropped —
-;;; never pass #:allow-stale here (unlike hover).
+;;; core:lsp/completion.scm — textDocument/completion. See docs/features.md.
+;;; Never pass #:allow-stale here (unlike hover) — stale responses are
+;;; auto-cancelled/dropped.
 
 (require "lib.scm")
 
 ;; ── Response decoding ───────────────────────────────────────────────────────
-;; Snippet stripping happens in Rust at the store ingress — items arriving
-;; here already have plain `insertText`/`textEdit.newText`.
 
 ;;; `res`: a bare `CompletionItem[]` (incomplete implicitly `#f`) or a
-;;; `CompletionList` hashmap `{isIncomplete, items}`. Returns `(list items
-;;; incomplete)`.
+;;; `CompletionList` hashmap `{isIncomplete, items}`.
 (define (lsp/completion-response->items res)
   (if (list? res)
       (list res #f)
@@ -30,13 +27,9 @@
                  (items (car decoded))
                  (incomplete (cadr decoded)))
             (completion-begin! bid items #:incomplete incomplete)))))
-    ;; Per-keystroke refiltering can re-issue this before the prior response
-    ;; lands — supersede rather than race two sessions.
     #:supersede "completion"))
 
 ;; ── Trigger entry points ─────────────────────────────────────────────────────
-;; Two entry points reach the same request: Ctrl+Space (bound to this exact
-;; command name in plugin.scm) and a registered server trigger character.
 
 (define-command! "lsp-completion-trigger" "Trigger LSP completion at the cursor."
   (lambda ()
@@ -49,13 +42,11 @@
       (lambda () (lsp/request-and-begin-completions bid)))))
 
 ;; ── isIncomplete re-request ──────────────────────────────────────────────────
-;; Fires only while the open session's isIncomplete flag is set — capability
-;; was already confirmed to start that session, no re-guard here.
 
 (register-hook! 'on-completion-refilter
   (lambda (bid filter-text)
     (lsp/request-and-begin-completions bid)))
 
 ;; ── Accept ────────────────────────────────────────────────────────────────────
-;; No `on-completion-accept` handler here, deliberately — see README.
+;; No `on-completion-accept` handler here, deliberately — see docs/features.md.
 

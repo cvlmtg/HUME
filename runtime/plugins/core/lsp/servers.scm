@@ -1,8 +1,6 @@
 ;;; core:lsp/servers.scm — LSP server install pipeline: download, verify,
-;;; unpack, receipt, uninstall, catalog listing. Registration (turning a
-;;; receipt into a live `register-lsp-server!` call) lives in
-;;; registration.scm, required below for its catalog/receipt/path helpers.
-;;; See README.md "How it works".
+;;; unpack, receipt, uninstall, catalog listing. Registration lives in
+;;; registration.scm, required below. See docs/servers.md.
 
 (require "registration.scm")
 
@@ -12,7 +10,6 @@
 ;;; lsp-sources.scm: (kind . k) (version . v) plus kind-specific fields.
 (define *lsp-sources* (hash))
 
-;;; Register one lsp-sources.scm entry: `(name field...)`.
 (define (lsp/declare-source! entry)
   (set! *lsp-sources* (hash-insert *lsp-sources* (car entry) (cdr entry))))
 
@@ -22,8 +19,8 @@
     read))
 
 ;;; Hash: language → server name, derived from the shared servers catalog.
-;;; See README's "Catalog and sources" for the disjointness guarantee that
-;;; makes this hash-insert loop safe.
+;;; See docs/servers.md for the disjointness guarantee that makes this
+;;; hash-insert loop safe.
 (define *lsp-lang->server* (hash))
 
 (for-each
@@ -42,10 +39,7 @@
 
 ;; ── Server name validation ───────────────────────────────────────────────────
 
-;;; Reject a server name unsafe to join as a path segment (non-empty, not
-;;; "."/"..", no path separators) — `:lsp-uninstall` takes a user-typed name
-;;; straight into `lsp/server-dir`; `lsp-install` never needs this since its
-;;; name always comes from the seeded `*lsp-lang->server*` hash.
+;;; Safe to join as a path segment — see docs/servers.md.
 (define (lsp/valid-server-name? name)
   (and (string? name)
        (> (string-length name) 0)
@@ -59,24 +53,21 @@
                (else (loop (+ i 1)))))))
 
 ;; ── Receipts (write side) ────────────────────────────────────────────────────
-;; receipt.scm is the install commit point, written LAST by
-;; `lsp/install-server!`. Read side lives in registration.scm, required above.
+;; receipt.scm is the install commit point, written LAST. Read side lives in
+;; registration.scm, required above.
 
-;;; Escape `s` as a double-quoted Scheme string literal (mirrors
-;;; scripts/sync_common.py's scheme_str).
+;;; Mirrors scripts/sync_common.py's scheme_str — see docs/servers.md.
 (define (lsp/scheme-quote s)
   (string-append "\"" (string-replace (string-replace s "\\" "\\\\") "\"" "\\\"") "\""))
 
-;;; Write `name`'s receipt — the install commit point.
 (define (lsp/write-receipt! name version bin)
   (call! "stdlib/write-file" (lsp/receipt-path name)
     (string-append "((name . " (lsp/scheme-quote name) ")"
                    " (version . " (lsp/scheme-quote version) ")"
                    " (bin . " (lsp/scheme-quote bin) "))")))
 
-;;; Verify `path`'s sha256 digest matches `expected` (either the seeded
-;;; data-file literal `"sha256:<hex>"` or bare hex). On mismatch, deletes
-;;; `path` and raises naming both digests.
+;;; `expected`: the seeded data-file literal `"sha256:<hex>"` or bare hex.
+;;; On mismatch, deletes `path` and raises naming both digests.
 (define (lsp/verify-sha256! path expected)
   (let* ((expected-hex (string-downcase
                           (if (starts-with? expected "sha256:")
@@ -90,23 +81,21 @@
 
 ;; ── Asset format + installability ─────────────────────────────────────────────
 
-;;; 'gz, 'zip, or #f (unsupported — .tar.*, .tgz, or a bare binary) for a
-;;; github asset filename. Single source for the installability check, the
-;;; tool preflight, and the install-path dispatch.
+;;; 'gz, 'zip, or #f (unsupported — .tar.*, .tgz, or a bare binary). Single
+;;; source for the installability check, the tool preflight, and the
+;;; install-path dispatch.
 (define (lsp/asset-format asset-file)
   (cond ((ends-with? asset-file ".zip") 'zip)
         ((and (ends-with? asset-file ".gz") (not (ends-with? asset-file ".tar.gz"))) 'gz)
         (else #f)))
 
-;;; The target tuple `(hume-target asset-file sha256 bin-path)` matching the
+;;; The `(hume-target asset-file sha256 bin-path)` tuple matching the
 ;;; current platform, or `#f` if `name`'s github source has none.
 (define (lsp/find-target targets)
   (let ((want (string->symbol (hume-target))))
     (call! "stdlib/find" (lambda (t) (equal? (list-ref t 0) want)) targets)))
 
-;;; #f when `name` is installable on this platform, else a human-readable
-;;; reason — single source for :lsp-install's error, :lsp-servers's
-;;; annotation, and the discovery hint's gate.
+;;; #f when installable, else a human-readable reason — see docs/servers.md.
 (define (lsp/install-blocker name)
   (cond
     ((not (hume-target)) "unsupported platform")
@@ -131,8 +120,8 @@
 
 ;; ── Install pipeline ──────────────────────────────────────────────────────────
 
-;;; External tool `name`'s install needs, given its blocker is already known
-;;; to be #f.
+;;; External tool `name`'s install needs; caller has already confirmed its
+;;; blocker is #f.
 (define (lsp/required-tool name)
   (let* ((fields (hash-ref *lsp-sources* name))
          (kind   (cdr (lsp/field fields 'kind))))
@@ -158,8 +147,7 @@
       (error (string-append "lsp/install-server!: " name
                             " requires 'curl' on $PATH, which was not found")))))
 
-;;; Download, verify, and unpack a github-kind release asset. Returns the
-;;; bin path relative to `dir`.
+;;; Returns the bin path relative to `dir`.
 (define (lsp/install-github! name fields dir)
   (let* ((repo    (cdr (lsp/field fields 'repo)))
          (version (cdr (lsp/field fields 'version)))
@@ -171,8 +159,8 @@
          (archive (path-join dir asset))
          (url     (string-append "https://github.com/" repo "/releases/download/"
                                  version "/" asset)))
-    ;; `dir` was only ever purged by `stdlib/delete-dir` above, never
-    ;; recreated — `curl` needs the parent directory to already exist.
+    ;; `dir` was purged by `stdlib/delete-dir` above, never recreated —
+    ;; `curl` needs the parent directory to already exist.
     (create-directory! dir)
     (run-inline-output! "curl" (list "-fsSL" "-o" archive "--" url))
     (lsp/verify-sha256! archive sha)
@@ -185,9 +173,7 @@
                             ": expected binary not found after unpack: " bin)))
     bin))
 
-;;; Run `npm install` for an npm-kind package. Returns the bin path relative
-;;; to `dir` (a `.cmd` shim on Windows — HUME's LSP transport wraps
-;;; `.cmd`/`.bat` commands in `cmd /C`, cfg-gated).
+;;; Returns the bin path relative to `dir` (a `.cmd` shim on Windows).
 (define (lsp/install-npm! name fields dir)
   (let* ((packages (cdr (lsp/field fields 'packages)))
          (bin      (cdr (lsp/field fields 'bin)))
@@ -200,10 +186,7 @@
                             ": expected binary not found after npm install: " bin-rel)))
     bin-rel))
 
-;;; Run `cargo install` for a cargo-kind crate, rooted in the server dir.
-;;; Returns the bin path relative to `dir`. `--locked` — the closest cargo
-;;; analog to the sha256 pin github assets get — builds with upstream's
-;;; published Cargo.lock.
+;;; Returns the bin path relative to `dir`. `--locked` — see docs/servers.md.
 (define (lsp/install-cargo! name fields dir)
   (let* ((crate    (cdr (lsp/field fields 'crate)))
          (version  (cdr (lsp/field fields 'version)))
@@ -219,8 +202,8 @@
     bin-rel))
 
 ;;; Install (or reinstall) `name` from its declared source, always from a
-;;; clean slate — see README's "Server install and registration" for the
-;;; pipeline steps. Registration is the caller's job, `lsp/lsp-install-or-report!`.
+;;; clean slate — see docs/servers.md for the pipeline steps. Registration
+;;; is the caller's job, `lsp/lsp-install-or-report!`.
 (define (lsp/install-server! name)
   (let ((blocker (lsp/install-blocker name)))
     (when blocker
@@ -245,9 +228,7 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
-;;; Runs `thunk` under the cross-process install lock. See README's
-;;; "Install lock" for the lock path, the re-raise hazard this avoids, and
-;;; the return-value contract.
+;;; Runs `thunk` under the cross-process install lock — see docs/servers.md.
 (define (lsp/with-install-lock! what thunk)
   (let ((acquired?
           (with-handler
@@ -263,8 +244,7 @@
 
 ;;; Install `name` if not already at the seeded version, reporting a
 ;;; guided-retry hint on failure when a prior install dir existed. Runs
-;;; *outside* `lsp/with-install-lock!`, after that combinator already
-;;; released the lock — see README's "Install lock".
+;;; *outside* `lsp/with-install-lock!` — see docs/servers.md.
 (define (lsp/lsp-install-or-report! name)
   (let* ((receipt (lsp/read-receipt name))
          (source  (if (hash-contains? *lsp-sources* name)
@@ -303,25 +283,19 @@
     (cond
       ((not (string? arg))
        (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
-      ;; Stays 'warn, not 'info: this also rejects a path-traversal name
-      ;; (e.g. "../plugins") — a security-relevant refusal worth a
-      ;; persistent :messages record, not an ordinary usage typo. Same
-      ;; reasoning as plum/fetch-raw-query's grammar-name rejection.
+      ;; Stays 'warn, not 'info — see docs/servers.md.
       ((not (lsp/valid-server-name? arg))
        (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
       (else
         (let* ((name arg)
                (dir  (lsp/server-dir name)))
-          ;; Idempotent no-op when unseeded/never-registered — matches
-          ;; unregister-lsp-server!'s own idempotency. Orphan (dir exists,
-          ;; no seeded entry): skip this and only remove the directory below.
+          ;; Orphan (dir exists, no seeded entry): skip unregister, remove
+          ;; the directory only.
           (when (hash-contains? (lsp/servers-catalog) name)
             (for-each (lambda (lang-entry) (unregister-lsp-server! (car lang-entry)))
                       (cdr (lsp/field (hash-ref (lsp/servers-catalog) name) 'languages))))
-          ;; The delete itself is cross-process-lock-guarded, same as
-          ;; install. Deferred to `after 0` so the unregister above has
-          ;; already shut down any running client; the lock is acquired
-          ;; there, right before the delete, not any earlier.
+          ;; Deferred to `after 0` so the unregister above has already shut
+          ;; down any running client before the lock is acquired.
           (if (path-exists? dir)
               (begin
                 (log! 'info (string-append "LSP: shutting down and removing " name "..."))
@@ -359,8 +333,8 @@
   #:inline-output #t)
 
 ;; ── Discovery hint ────────────────────────────────────────────────────────────
+;; Once per language per session — see docs/servers.md.
 
-;;; Once per language per session — see README's "Discovery hint".
 (register-hook! 'on-language-set
   (lambda (bid lang)
     (when (and (string? lang) (not (hash-contains? *lsp-hinted-languages* lang)))

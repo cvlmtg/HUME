@@ -1,6 +1,5 @@
 ;;; core:lsp/goto.scm — goto definition family; references (reuses the same
-;;; worker with context.includeDeclaration added). See README.md "How it
-;;; works" → "Goto and references".
+;;; worker with context.includeDeclaration added). See docs/features.md.
 
 (require "lib.scm")
 

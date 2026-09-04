@@ -1,7 +1,6 @@
 ;;; core:lsp/format.scm — textDocument/formatting / rangeFormatting /
-;;; rangesFormatting. Format-on-save is NOT wired by default — v1 is manual
-;;; `:lsp-fmt` only. To opt in, uncomment:
-;; (register-hook! 'on-buffer-save (lambda (bid) (call! "lsp-fmt")))
+;;; rangesFormatting. See docs/features.md, including the format-on-save
+;;; opt-in snippet.
 
 (require "lib.scm")
 
@@ -65,20 +64,11 @@
                                  ") — nothing formatted")))
           (else (lsp/format-fan-out! bid gen td ranges)))))))
 
-;;; Shared body behind `lsp-fmt` (editor command — bind a key, or call it from
-;;; a hook like `on-buffer-save`) and `:format-source` (typed command — the
-;;; `:` line entry point): format the buffer via LSP — the selected lines
-;;; when every selection spans one or more complete lines, the whole buffer
-;;; otherwise, or nothing (with a status message) for a mix of the two.
+;;; Shared body behind `lsp-fmt` and `:format-source` — see docs/features.md.
 (define (lsp/format-source!)
   (let* ((bid (current-buffer))
          (rp (lsp-linewise-ranges-params bid)))
     (if (not rp)
-        ;; No path or no attached server (the third reason `rp` can be #f
-        ;; — `bid` shown in no pane — can't happen for `(current-buffer)`)
-        ;; — `lsp-server-for-buffer` distinguishes the two, since a
-        ;; capability guard can't: without a server there's no
-        ;; `lsp-capabilities` to check in the first place.
         (log! 'info (if (lsp-server-for-buffer bid)
                          "buffer has no path — nothing to format"
                          "no LSP server attached to this buffer"))
