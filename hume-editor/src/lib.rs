@@ -143,7 +143,6 @@ pub fn run(
     editor.attach_terminate_flag(terminate.clone());
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
-    editor.attach_terminal(shared.clone());
     // Must run before `init_scripting`, same as `set_kitty_support` above —
     // the override is read once config resolution starts.
     if let Some(path) = config_path {
@@ -175,7 +174,7 @@ pub fn run(
         editor.state.settings.mouse_select,
         kitty_enabled,
     )?;
-    let result = editor.run(&mut term);
+    let result = editor.run(&shared, &mut term);
     // Restore the terminal (cursor shape/colour, leave alt-screen, cooked
     // mode) before the LSP grace window below, not after: `lsp_shutdown_all`
     // can take up to `SHUTDOWN_GRACE` per server, and every millisecond of

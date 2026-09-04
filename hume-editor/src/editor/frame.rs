@@ -168,7 +168,7 @@ impl Editor {
         if desired == self.applied_mouse_mode {
             return;
         }
-        if let Some(term) = &self.terminal {
+        if let Some(term) = self.tui.terminal() {
             let _ = hume_platform::terminal::set_mouse_mode(term, desired.0, desired.1);
         }
         self.applied_mouse_mode = desired;
@@ -463,9 +463,9 @@ impl Editor {
     /// How many times `ensure_inline_output_screen` has actually entered the
     /// inline-output terminal bracket (alt-screen toggle + "press any key")
     /// on this `Editor`. Off the event loop this must stay `0` for every
-    /// `#:inline-output #t` command dispatched, output or not — see
-    /// `tui_active` on `Editor`. Also lets a test pin an exact count through
-    /// nested `call!`s (a re-entry bug shows up as `2`, not just "entered").
+    /// `#:inline-output #t` command dispatched, output or not — see `tui` on
+    /// `Editor`. Also lets a test pin an exact count through nested `call!`s
+    /// (a re-entry bug shows up as `2`, not just "entered").
     #[cfg(test)]
     pub(crate) fn inline_output_enter_count(&self) -> usize {
         self.state.inline_output.enter_count()

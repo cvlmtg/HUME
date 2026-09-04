@@ -1778,11 +1778,11 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
     use hume_scripting::ScriptingHost;
 
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    // No real terminal in this harness — a frame pushed with `tui_active`
+    // No real terminal in this harness — a frame pushed with the TUI active
     // is what makes `run_steel_command` queue `OnFocusGained` at all; only
     // actually entering the alt-screen (which this command's body never
     // reaches, since it only logs) needs a real terminal.
-    ed.tui_active = true;
+    ed.tui = crate::editor::tui::Tui::OnHeadless;
 
     let mut host = ScriptingHost::new();
     {

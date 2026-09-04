@@ -21,8 +21,7 @@ impl Editor {
             let mut ih = EditorHostImpl::init(
                 &mut self.state,
                 &mut self.view,
-                self.terminal.as_ref(),
-                self.tui_active,
+                self.tui.clone(),
                 self.kitty_enabled,
             );
             host.activate_plugin_inline(plugin, init_budget, &mut ih, &self.builtin_cmd_names)

@@ -13,6 +13,7 @@
 
 use super::*;
 use crate::editor::keymap::BindMode;
+use crate::editor::tui::Tui;
 
 /// Bind `cmd` to `\` in Normal mode — the one key every test here uses, so a
 /// bound command's body can be reached with a single `feed_event`.
@@ -35,12 +36,16 @@ fn logged(ed: &Editor, needle: &str) -> bool {
 /// Build an editor over `"-[a]>bcdef\n"`, define `source`'s commands, bind
 /// `cmd` to `\` in Normal mode, and dispatch it — the setup+dispatch shape
 /// every `call!`-nesting test below needs, differing only in `source`/`cmd`,
-/// whether the dispatch runs with a live `tui_active`, and what each asserts
+/// whether the dispatch runs with a live TUI, and what each asserts
 /// afterward.
-fn dispatch_backslash(source: &str, cmd: &str, tui_active: bool) -> Editor {
+fn dispatch_backslash(source: &str, cmd: &str, with_live_tui: bool) -> Editor {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    ed.tui_active = tui_active;
+    ed.tui = if with_live_tui {
+        Tui::OnHeadless
+    } else {
+        Tui::Off
+    };
     run(&mut ed, tmp.path(), source);
     bind_backslash(&mut ed, cmd);
     ed.feed_event(key('\\'));
@@ -266,13 +271,11 @@ fn timer_call_bang_to_inline_output_command_opens_the_gate() {
 
 // ── Nesting: the alt-screen enters at most once per dispatch ─────────────────
 //
-// `ed.tui_active = true` with no real terminal attached — see
-// `disk_change.rs`'s `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
-// for the same pattern: entering the alt-screen (and so `close_inline_output_bracket`'s
-// physical-teardown branch) only happens when `tui_active` is true, and
-// `ensure_inline_output_screen`/`close_inline_output_bracket` skip the real
-// I/O when there's no terminal to receive it, so this drives the state
-// machine without a real TTY.
+// `Tui::OnHeadless` drives the whole state machine (entering the alt-screen,
+// `close_inline_output_bracket`'s physical-teardown branch) without a real
+// TTY — see `ActiveTui`'s doc, and `disk_change.rs`'s
+// `inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm`
+// for the same pattern.
 
 /// An outer `#:inline-output` command already past its first print (so the
 /// alt-screen has already been entered) that `call!`s a second declared
@@ -346,7 +349,7 @@ fn nested_call_bang_before_outer_prints_does_not_reenter_the_alt_screen() {
 #[test]
 fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.tui_active = true;
+    ed.tui = Tui::OnHeadless;
     // Drain `editor_with_file`'s own `OnBufferEnter` disk check before the
     // external rewrite below, so it can't produce a `confirm` of its own —
     // see `hook_call_bang_…`'s identical drain.
@@ -382,7 +385,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     );
     assert!(
         ed.state.config.confirm.is_some(),
-        "raiser2 still ran with the real terminal (tui_active), so the reload \
+        "raiser2 still ran with the TUI active, so the reload \
          confirm its subprocess caused must still open even though its error \
          was caught"
     );
@@ -411,7 +414,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
 #[test]
 fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.tui_active = true;
+    ed.tui = Tui::OnHeadless;
     ed.settle();
     assert!(
         ed.state.config.confirm.is_none(),
@@ -438,7 +441,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 
     assert!(
         ed.state.config.confirm.is_some(),
-        "hook-inner-probe ran with the real terminal (tui_active), so the \
+        "hook-inner-probe ran with the TUI active, so the \
          hook path's close must queue the reload confirm its subprocess \
          caused, the same way direct dispatch's close does"
     );
@@ -448,19 +451,19 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
 
 /// `EditorHostImpl::init` — the constructor behind every init/activation
 /// call site, including `Editor::activate_and_register`'s runtime
-/// lazy-plugin activation (`mappings/lazy.rs`) — must arm `tui_active`-aware
+/// lazy-plugin activation (`mappings/lazy.rs`) — must arm `Tui`-aware
 /// rather than hardcoding it, since unlike `init.scm`'s own evals, a runtime
 /// activation can run with `Editor::run` already owning the terminal.
 ///
 /// Drives the host `EditorHostImpl::init` builds directly (bypassing the
-/// declare/activate plugin ceremony, which is orthogonal to this) with
-/// `tui_active` both `false` and `true`, asserting the alt-screen enters only
-/// in the latter case.
+/// declare/activate plugin ceremony, which is orthogonal to this) with `Tui`
+/// both `Off` and active, asserting the alt-screen enters only in the latter
+/// case.
 ///
-/// Fail oracle: hardcode `EditorHostImpl::init`'s `tui_active` parameter to
-/// `false` → `enter_count` stays `0` after the `tui_active: true` block too.
+/// Fail oracle: hardcode `EditorHostImpl::init`'s `tui` parameter to
+/// `Tui::Off` → `enter_count` stays `0` after the active block too.
 #[test]
-fn editor_host_impl_init_threads_live_tui_active_into_arm() {
+fn editor_host_impl_init_threads_live_tui_into_arm() {
     use hume_scripting::host::EditorHost;
 
     let tmp = safe_tempdir();
@@ -471,16 +474,15 @@ fn editor_host_impl_init_threads_live_tui_active_into_arm() {
         r#"(define-command! "init-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
     );
 
-    // Off the event loop (`tui_active: false`) — the shape `init_scripting`'s
-    // own two evals always run in — arms a frame the gate opens for, but
+    // Off the event loop (`Tui::Off`) — the shape `init_scripting`'s own two
+    // evals always run in — arms a frame the gate opens for, but
     // `ensure_inline_output_screen` must never enter the (nonexistent)
     // alt-screen for it.
     {
         let mut host = crate::editor::host_impl::EditorHostImpl::init(
             &mut ed.state,
             &mut ed.view,
-            None,
-            false,
+            Tui::Off,
             false,
         );
         let output = host
@@ -497,18 +499,17 @@ fn editor_host_impl_init_threads_live_tui_active_into_arm() {
     assert_eq!(
         ed.inline_output_enter_count(),
         0,
-        "tui_active: false must never enter the alt-screen"
+        "Tui::Off must never enter the alt-screen"
     );
 
-    // Live `Editor::run` (`tui_active: true`) — the shape a runtime lazy
-    // plugin activation can be in: a `call!`-armed nested command's raw
-    // stdout writes must hit the bracket, not a live alt-screen directly.
+    // Live `Editor::run` — the shape a runtime lazy plugin activation can be
+    // in: a `call!`-armed nested command's raw stdout writes must hit the
+    // bracket, not a live alt-screen directly.
     {
         let mut host = crate::editor::host_impl::EditorHostImpl::init(
             &mut ed.state,
             &mut ed.view,
-            None,
-            true,
+            Tui::OnHeadless,
             false,
         );
         let output = host
@@ -519,13 +520,111 @@ fn editor_host_impl_init_threads_live_tui_active_into_arm() {
             .expect("declared #:inline-output");
         output
             .ensure_inline_output_screen()
-            .expect("terminal: None skips the real I/O");
+            .expect("Tui::OnHeadless skips the real I/O");
         output.truncate_inline_output(depth);
     }
     assert_eq!(
         ed.inline_output_enter_count(),
         1,
-        "tui_active: true must enter the alt-screen exactly once"
+        "an active Tui must enter the alt-screen exactly once"
+    );
+}
+
+/// `EditorHostImpl::new` — the convenience constructor for callers with no
+/// terminal/`OutputHost` need — must have no inline-output authority at all,
+/// regardless of whether `Editor::run`'s loop happens to be live. Unlike
+/// `init`'s `Tui::Off`, which legitimately means "not in the loop right now"
+/// and still runs the bracket's state machine, `new` has nothing to say about
+/// the terminal either way: a frame it can't push is a frame it can't
+/// mistakenly enter later against whatever `tui` the *next* host it's rebuilt
+/// with happens to carry.
+///
+/// Fail oracle: give `new` `Some(Tui::Off)` instead of `None` → `declared`
+/// still matches, `arm_inline_output` returns `Some(0)` instead of `None`.
+#[test]
+fn new_host_has_no_inline_output_authority() {
+    use hume_scripting::host::EditorHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "new-host-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+    );
+
+    let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let output = host
+        .output()
+        .expect("EditorHostImpl always implements OutputHost");
+    assert!(
+        output.arm_inline_output("new-host-probe").is_none(),
+        "a `new` host has no tui to arm a frame against"
+    );
+    output
+        .ensure_inline_output_screen()
+        .expect("nothing to enter without an armed frame");
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        0,
+        "a `new` host must never enter the alt-screen"
+    );
+}
+
+/// A frame armed by a real host must be completed correctly by *any* later
+/// host that reaches it — including one with no inline-output authority of
+/// its own (`EditorHostImpl::new`) — because entry is a property of what the
+/// frame itself captured (`Tui::as_active`'s result, at push time), not of
+/// whichever host happens to be asking. A guard that instead checks the
+/// *asking* host's own `tui` (as `EditorHostImpl::new`'s lack of authority
+/// might tempt one to write) would incorrectly skip a frame that really is
+/// active — this pins the deeper, correct behavior instead.
+///
+/// Fail oracle: gate `ensure_inline_output_screen` on `self.tui.as_ref()`
+/// again (returning early when it's `None`) instead of reading the frame's
+/// own captured `tui` from `needs_enter()` → `enter_count` stays `0`.
+#[test]
+fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
+    use hume_scripting::host::EditorHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "relay-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
+    );
+
+    // A real host arms the frame — the same shape a top-level dispatch or a
+    // `call!`-armed nested command would leave behind.
+    {
+        let mut host = crate::editor::host_impl::EditorHostImpl::init(
+            &mut ed.state,
+            &mut ed.view,
+            Tui::OnHeadless,
+            false,
+        );
+        host.output()
+            .expect("EditorHostImpl always implements OutputHost")
+            .arm_inline_output("relay-probe")
+            .expect("declared #:inline-output");
+    }
+
+    // A different host, with no inline-output authority at all, is the one
+    // that ends up completing the entry — e.g. a hook fire built its own
+    // `EditorHostImpl` between the arm and the first print.
+    {
+        let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
+        host.output()
+            .expect("EditorHostImpl always implements OutputHost")
+            .ensure_inline_output_screen()
+            .expect("ActiveTui::Headless skips the real I/O");
+    }
+    assert_eq!(
+        ed.inline_output_enter_count(),
+        1,
+        "the frame's own captured tui must drive entry, regardless of which \
+         host asks"
     );
 }
 

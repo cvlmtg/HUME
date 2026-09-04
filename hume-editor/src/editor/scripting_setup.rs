@@ -480,8 +480,7 @@ impl Editor {
                 &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
-                self.terminal.as_ref(),
-                self.tui_active,
+                self.tui.clone(),
                 self.kitty_enabled,
             );
             host_scr.fire_hook(name, &args, pid, bid, &mut impl_host)
@@ -510,8 +509,7 @@ impl Editor {
                 &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
-                self.terminal.as_ref(),
-                self.tui_active,
+                self.tui.clone(),
                 self.kitty_enabled,
             );
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
@@ -618,8 +616,7 @@ impl Editor {
                 let mut ih = EditorHostImpl::init(
                     &mut self.state,
                     &mut self.view,
-                    self.terminal.as_ref(),
-                    self.tui_active,
+                    self.tui.clone(),
                     self.kitty_enabled,
                 );
                 host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
@@ -784,8 +781,7 @@ impl Editor {
             let mut ih = EditorHostImpl::init(
                 &mut self.state,
                 &mut self.view,
-                self.terminal.as_ref(),
-                self.tui_active,
+                self.tui.clone(),
                 self.kitty_enabled,
             );
             host.eval_init(&path, init_budget, &mut ih, builtin_names)

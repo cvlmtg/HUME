@@ -330,22 +330,20 @@ fn editor_with_file(initial_state: &str, file_content: &str) -> (Editor, tempfil
 }
 
 /// Build a live `EditorHostImpl` borrowing `$ed`'s state/view, for direct
-/// command dispatch — bypasses the keymap entirely. Mirrors the construction
-/// in `execute.rs` so the host has the same shape as in production dispatch.
+/// command dispatch — bypasses the keymap entirely. Calls `EditorHostImpl::
+/// full`, the same constructor production dispatch uses, so the host has the
+/// same shape as in production.
 macro_rules! live_host {
     ($ed:ident) => {{
-        crate::editor::host_impl::EditorHostImpl {
-            state: &mut $ed.state,
-            view: &mut $ed.view,
-            lsp: Some(&mut $ed.lsp),
-            timers: Some(crate::editor::timer_bridge::TimerHandle {
-                wheel: &mut $ed.timer_wheel,
-                payloads: &mut $ed.timer_payloads,
-            }),
-            terminal: $ed.terminal.as_ref(),
-            tui_active: $ed.tui_active,
-            kitty_enabled: $ed.kitty_enabled,
-        }
+        crate::editor::host_impl::EditorHostImpl::full(
+            &mut $ed.state,
+            &mut $ed.view,
+            &mut $ed.lsp,
+            &mut $ed.timer_wheel,
+            &mut $ed.timer_payloads,
+            $ed.tui.clone(),
+            $ed.kitty_enabled,
+        )
     }};
 }
 // Used via `live_host!()` through submodules' `use super::*;` — the
@@ -356,15 +354,13 @@ pub(crate) use live_host;
 /// [`live_host!`]'s twin for the three init/activation call sites
 /// (`EditorHostImpl::init`, no LSP/timer access) — the test-harness mirror
 /// of `init_scripting`'s own construction, so a test driving `eval_init`
-/// directly gets the same `terminal`/`tui_active`/`kitty_enabled` shape
-/// production init does.
+/// directly gets the same `tui`/`kitty_enabled` shape production init does.
 macro_rules! init_host {
     ($ed:ident) => {{
         crate::editor::host_impl::EditorHostImpl::init(
             &mut $ed.state,
             &mut $ed.view,
-            $ed.terminal.as_ref(),
-            $ed.tui_active,
+            $ed.tui.clone(),
             $ed.kitty_enabled,
         )
     }};
@@ -451,8 +447,7 @@ impl Editor {
             last_viewport_key: rustc_hash::FxHashMap::default(),
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_inline(),
-            tui_active: false,
-            terminal: None,
+            tui: super::tui::Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
             startup_positions: Vec::new(),
         }

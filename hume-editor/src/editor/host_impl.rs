@@ -32,6 +32,7 @@ use hume_scripting::host::{
     PickerSourceOpts, PopupKind, RegisterHost, SettingsHost, TimerHost, UiHost, WordDiffHunk,
 };
 
+use super::tui::Tui;
 use super::{EditorState, Severity};
 
 pub(crate) struct EditorHostImpl<'a> {
@@ -49,24 +50,22 @@ pub(crate) struct EditorHostImpl<'a> {
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
     pub(crate) timers: Option<TimerHandle<'a>>,
-    /// `Some` at the six call sites built via [`Self::init`]/[`Self::full`]
-    /// (init/activation, command dispatch, hook fire, queued-call drain) —
-    /// `None` only for [`Self::new`]'s test/no-terminal callers.
-    /// [`OutputHost::ensure_inline_output_screen`] reads it when actually
-    /// entering the alt-screen; a live `terminal` here doesn't by itself mean
-    /// `tui_active` — see that field's own doc.
-    pub(crate) terminal: Option<&'a hume_platform::terminal::SharedTerm>,
-    /// Whether `Editor::run`'s event loop currently owns the terminal —
-    /// threaded in here so `arm_inline_output` can push a frame carrying the
-    /// right terminal-ownership fact for a `call!`-armed nested command, the
-    /// same fact top-level dispatch's own push carries. Deliberately its own
-    /// field rather than inferred from `terminal.is_some()`: `attach_terminal`
-    /// runs before the event loop starts, so a live `terminal` handle does
-    /// not by itself mean the alt-screen is up.
-    pub(crate) tui_active: bool,
+    /// This host's inline-output authority: `None` for [`Self::new`]'s
+    /// callers, which have no business touching the bracket at all — not
+    /// `Some(Tui::Off)`, which means something different (a `full`/`init`
+    /// host legitimately running outside `Editor::run`'s loop, still
+    /// expected to drive the frame stack's state machine correctly). `Some`
+    /// is a clone of `Editor::tui`, not a borrow; see [`Tui`]'s own doc for
+    /// why. Read only by `arm_inline_output`, to decide what a *new* frame
+    /// captures — [`OutputHost::ensure_inline_output_screen`] never reads
+    /// this field; it reads the already-armed frame's own captured
+    /// [`super::tui::ActiveTui`] instead (see that type's doc), so it works
+    /// correctly even on a host built after the frame it's completing was
+    /// pushed by a different one.
+    pub(crate) tui: Option<Tui>,
     /// Whether the kitty keyboard protocol is active — read by
     /// `ensure_inline_output_screen` when entering the alt-screen.
-    /// Meaningless (and unread) when `tui_active` is `false`.
+    /// Meaningless (and unread) when `tui` has no active handle.
     pub(crate) kitty_enabled: bool,
 }
 
@@ -80,17 +79,38 @@ impl<'a> EditorHostImpl<'a> {
     /// activation's body may itself later call a real command via `call!`,
     /// which re-enters through `full`, not this path).
     ///
-    /// Takes `terminal`/`tui_active`/`kitty_enabled` explicitly rather than
-    /// hardcoding them — unlike init.scm's own two evals (never a live
-    /// alt-screen), runtime lazy activation can run with `Editor::run`
-    /// already owning the terminal (see `arm_inline_output`'s doc), so a
-    /// hardcoded `tui_active: false` here would silently let a `call!`-armed
-    /// nested command corrupt a live screen.
+    /// Takes `tui`/`kitty_enabled` explicitly rather than hardcoding them —
+    /// unlike init.scm's own two evals (never a live alt-screen), runtime
+    /// lazy activation can run with `Editor::run` already owning the
+    /// terminal, so a hardcoded `Tui::Off` here would silently let a
+    /// `call!`-armed nested command corrupt a live screen.
     pub(crate) fn init(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
-        terminal: Option<&'a hume_platform::terminal::SharedTerm>,
-        tui_active: bool,
+        tui: Tui,
+        kitty_enabled: bool,
+    ) -> Self {
+        Self::with_tui(state, view, Some(tui), kitty_enabled)
+    }
+
+    /// Convenience constructor for callers with no terminal/`OutputHost`
+    /// needs — a Rust-side helper reaching for an unrelated capability
+    /// (`DecorationHost`, say) via `EditorHostImpl`, and most of the test
+    /// suite. `tui: None` gives this host no inline-output authority, so it
+    /// can be built at any point — including inside a live `Editor::run`
+    /// loop — with no risk of it entering or mis-reading a bracket armed by
+    /// whichever host actually owns the current dispatch.
+    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
+        Self::with_tui(state, view, None, false)
+    }
+
+    /// Shared body for [`Self::init`] and [`Self::new`] — the only
+    /// difference between them is whether this host has inline-output
+    /// authority at all (see the `tui` field's own doc).
+    fn with_tui(
+        state: &'a mut EditorState,
+        view: &'a mut EngineView,
+        tui: Option<Tui>,
         kitty_enabled: bool,
     ) -> Self {
         Self {
@@ -98,29 +118,16 @@ impl<'a> EditorHostImpl<'a> {
             view,
             lsp: None,
             timers: None,
-            terminal,
-            tui_active,
+            tui,
             kitty_enabled,
         }
-    }
-
-    /// Convenience constructor for callers with no terminal/`OutputHost`
-    /// needs — a Rust-side helper reaching for an unrelated capability
-    /// (`DecorationHost`, say) via `EditorHostImpl`, and most of the test
-    /// suite. Every caller that can reach an `#:inline-output` command
-    /// (init/activation, dispatch/hook/call-batch) goes through `init` or
-    /// `full` instead.
-    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
-        Self::init(state, view, None, false, false)
     }
 
     /// Constructor for the three call sites that thread every capability:
     /// command dispatch, hook fire, and queued-call drain. Takes the fields
     /// already split out (rather than `&mut Editor`) because each call site
     /// holds a simultaneous disjoint borrow of `self.scripting` — passing
-    /// `self` as a whole would conflict with that borrow. `tui_active`/
-    /// `kitty_enabled` can't be inferred from `terminal.is_some()` — see
-    /// `arm_inline_output`'s doc.
+    /// `self` as a whole would conflict with that borrow.
     pub(in crate::editor) fn full(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
@@ -130,8 +137,7 @@ impl<'a> EditorHostImpl<'a> {
             super::timers::TimerId,
             super::timer_bridge::TimerPayload,
         >,
-        terminal: Option<&'a hume_platform::terminal::SharedTerm>,
-        tui_active: bool,
+        tui: Tui,
         kitty_enabled: bool,
     ) -> Self {
         Self {
@@ -142,8 +148,7 @@ impl<'a> EditorHostImpl<'a> {
                 wheel: timer_wheel,
                 payloads: timer_payloads,
             }),
-            terminal,
-            tui_active,
+            tui: Some(tui),
             kitty_enabled,
         }
     }
@@ -849,38 +854,35 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
     }
 
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        let Some(name) = self.state.inline_output.needs_enter() else {
+        // Reads the frame's own captured `tui`, not `self.tui` — this must
+        // work correctly even on a host with no inline-output authority
+        // (`EditorHostImpl::new`) completing a bracket a *different*, real
+        // host armed; see `ActiveTui`'s own doc.
+        let Some((name, tui)) = self.state.inline_output.needs_enter() else {
             return Ok(());
         };
         let name = name.to_string();
+        let tui = tui.clone();
         let kitty = self.kitty_enabled;
         let mouse = self.state.settings.mouse_enabled;
         let mouse_select = self.state.settings.mouse_select;
-        // `terminal` is `None` in tests that drive `tui_active: true` with no
-        // real terminal attached (see `arm_inline_output`'s doc) — state
-        // still transitions to entered so the gate/close logic is exercised,
-        // just without the real I/O there's no terminal to receive it. In
-        // production `attach_terminal` always runs before `tui_active` can go
-        // true (`lib.rs`, ahead of `Editor::run`), so `needs_enter()` firing
-        // (which only happens for a frame pushed with `tui_active`) implies a
-        // live terminal — a real break here would otherwise corrupt the TUI
-        // silently instead of loudly.
-        debug_assert!(
-            self.terminal.is_some() || cfg!(test),
-            "needs_enter() fired for a tui_active frame with no terminal attached"
-        );
-        if let Some(term) = self.terminal {
+        // `None` only for the test-only headless shape.
+        if let Some(term) = tui.terminal() {
             hume_platform::terminal::enter_inline_output(term, kitty, mouse)
                 .map_err(|e| format!("inline-output enter failed: {e}"))?;
             hume_platform::terminal::print_running_banner(&name);
         }
         self.state
             .inline_output
-            .mark_entered(kitty, mouse, mouse_select);
+            .mark_entered(kitty, mouse, mouse_select, tui);
         Ok(())
     }
 
     fn arm_inline_output(&mut self, name: &str) -> Option<usize> {
+        // No inline-output authority at all (`EditorHostImpl::new`) — checked
+        // first so a `declared` match never pushes a frame this host has no
+        // standing to decide the captured device for.
+        let tui = self.tui.as_ref()?;
         // Mappable only: `%dispatch-command` (`call!`'s expansion) reaches
         // `command_table`/`get_mappable`, never `typed_command_table` — a
         // typed command is not `call!`-reachable, so matching one here would
@@ -895,7 +897,7 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         if !declared {
             return None;
         }
-        Some(self.state.inline_output.push(name, self.tui_active))
+        Some(self.state.inline_output.push(name, tui.as_active()))
     }
 
     fn truncate_inline_output(&mut self, depth: usize) {

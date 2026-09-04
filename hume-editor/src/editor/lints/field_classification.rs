@@ -175,8 +175,11 @@ const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
          resetting this map directly",
     ),
     ("lsp", "config: LspState::reset_config()"),
-    ("tui_active", "preserved"),
-    ("terminal", "preserved"),
+    (
+        "tui",
+        "preserved: Editor::run sets it On on entry and Off on exit, and a \
+         :reload-config can only run from inside that loop",
+    ),
     (
         "applied_mouse_mode",
         "preserved: prepare_frame reconciles it lazily against \

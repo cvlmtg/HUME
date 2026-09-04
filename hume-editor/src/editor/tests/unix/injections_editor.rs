@@ -369,7 +369,8 @@ fn plum_install_grammar_arg_overrides_buffer_language() {
 /// never calls `run`), that bracket must be skipped entirely: otherwise
 /// dispatch blocks forever on a keypress that never comes whenever stdin
 /// happens to be a real TTY (e.g. `cargo test` run interactively), which is
-/// exactly what stalled the suite before `tui_active` was introduced.
+/// exactly what stalled the suite before the TUI-ownership check was
+/// introduced.
 ///
 /// This particular command errors out via `log!` only (no `displayln`), so
 /// under the lazy-entry design it never even reaches

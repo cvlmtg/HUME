@@ -315,7 +315,7 @@ impl Editor {
         // otherwise drain it — an earlier push, before this guard, leaked a
         // frame on the no-scripting-host early return below.
         if inline_output {
-            self.state.inline_output.push(name, self.tui_active);
+            self.state.inline_output.push(name, self.tui.as_active());
         }
 
         let result = {
@@ -325,8 +325,7 @@ impl Editor {
                 &mut self.lsp,
                 &mut self.timer_wheel,
                 &mut self.timer_payloads,
-                self.terminal.as_ref(),
-                self.tui_active,
+                self.tui.clone(),
                 self.kitty_enabled,
             );
             scripting.call_steel_cmd(
@@ -378,8 +377,8 @@ impl Editor {
     /// drained — every Steel session's own tail
     /// (`hume_scripting::activation::run_steel_session`) does that
     /// unconditionally, including for the top-level dispatch's own frame,
-    /// which nothing else ever pops. Truncated to zero again here regardless,
-    /// as the backstop for the one caller
+    /// which nothing else ever truncates. Truncated to zero again here
+    /// regardless, as the backstop for the one caller
     /// ([`Self::call_steel_command_body`]) that can reach this without ever
     /// running a session at all — `call_steel_cmd`'s own registry/
     /// `command_table` desync check fails before `run_steel_session` starts.
@@ -389,17 +388,11 @@ impl Editor {
         self.state.inline_output.truncate(0);
         let ran = self.state.inline_output.take_ran();
         if let Some(entered) = self.state.inline_output.take_entered() {
-            // `terminal` is `None` in tests that drive `tui_active: true`
-            // with no real terminal attached — the state transition still
-            // happened (see `ensure_inline_output_screen`), just with no
-            // terminal to receive the physical close. See that function's
-            // own `debug_assert!` for why a live `entered` with no terminal
-            // in a real (non-test) build would mean the invariant broke.
-            debug_assert!(
-                self.terminal.is_some() || cfg!(test),
-                "entered implies tui_active was true implies terminal attached"
-            );
-            if let Some(term) = self.terminal.as_ref() {
+            // `entered.tui` is the same `ActiveTui` `ensure_inline_output_screen`
+            // captured on entry — read here, not `self.tui` again, so this
+            // always restores the terminal it actually left. `None` only
+            // for the test-only headless shape.
+            if let Some(term) = entered.tui.terminal() {
                 hume_platform::terminal::print_return_prompt();
                 hume_platform::terminal::wait_for_keypress(term);
                 let _ = hume_platform::terminal::leave_inline_output(

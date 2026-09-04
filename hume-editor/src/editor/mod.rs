@@ -33,6 +33,7 @@ mod lifecycle;
 mod overlay_sync;
 mod reload;
 mod scripting_setup;
+mod tui;
 
 pub(crate) mod buffer;
 mod clipboard;
@@ -89,6 +90,7 @@ pub(crate) use message_log::Severity;
 pub(crate) use hume_engine::types::EditorMode as Mode;
 
 use self::inline_output::InlineOutput;
+use self::tui::Tui;
 
 // ── ConfigState ───────────────────────────────────────────────────────────────
 
@@ -331,7 +333,7 @@ pub(crate) struct EditorState {
     /// Set by the inline-output dispatch arm to trigger a full repaint.
     pub(crate) force_full_redraw: bool,
     /// State of the `#:inline-output` bracket for the Steel command(s)
-    /// currently on the call stack — pushed/popped by `OutputHost::
+    /// currently on the call stack — pushed/truncated by `OutputHost::
     /// arm_inline_output`/`truncate_inline_output`, read and driven by
     /// `EditorHostImpl::ensure_inline_output_screen`/`is_inline_output_command`
     /// so `SteelCtx` (and the gated print shims) know it's safe to write to
@@ -740,22 +742,16 @@ pub(crate) struct Editor {
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,
-    /// `true` once [`Editor::run`] has taken ownership of the terminal (the
-    /// interactive event loop). Tests and headless `run_keys` dispatch
-    /// commands directly and never enter `run`, so this stays `false` there —
-    /// dispatch uses it to skip the inline-output terminal bracket (alt-screen
-    /// toggle + "press any key to return" block) when there is no TUI to
-    /// suspend and no interactive user to press a key.
-    tui_active: bool,
-    /// The shared terminal handle `run` reads/writes and the inline-output
-    /// bracket (`host_impl.rs`, `dispatch.rs`) borrows to leave/re-enter the
-    /// alt-screen. `Some` once [`Editor::attach_terminal`] has been called
-    /// (always paired with entering `run`); `None` from `for_testing` and
-    /// headless `run_keys` — those dispatch directly and never enter `run`,
-    /// so there is no terminal to attach.
-    terminal: Option<hume_platform::terminal::SharedTerm>,
-    /// `(mouse_enabled, mouse_select)` as last applied to `terminal`'s mouse
-    /// tracking mode. `prepare_frame` compares this against the live
+    /// Whether [`Editor::run`]'s event loop owns the terminal, and the
+    /// handle to drive it when it does — see [`Tui`]'s own module doc for
+    /// why these are one field. Tests and headless `run_keys` dispatch
+    /// commands directly and never enter `run`, so this stays `Off` there —
+    /// dispatch reads it to skip the inline-output terminal bracket
+    /// (alt-screen toggle + "press any key to return" block) when there is
+    /// no TUI to suspend and no interactive user to press a key.
+    tui: Tui,
+    /// `(mouse_enabled, mouse_select)` as last applied to the terminal's
+    /// mouse tracking mode. `prepare_frame` compares this against the live
     /// `state.settings` values every frame and re-applies the terminal mode
     /// when they differ, so `:set global mouse-enabled=…`/`mouse-select=…`
     /// take effect immediately instead of only at the next restart — see

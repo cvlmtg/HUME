@@ -14,6 +14,7 @@ use hume_platform::terminal::SharedTerm;
 
 use super::Editor;
 use super::event::EditorEvent;
+use super::tui::Tui;
 
 impl Editor {
     // ── Kitty keybinds ──────────────────────────────────────────────────────────
@@ -196,8 +197,7 @@ impl Editor {
             last_viewport_key: rustc_hash::FxHashMap::default(),
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
-            tui_active: false,
-            terminal: None,
+            tui: Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
             startup_positions: Vec::new(),
         };
@@ -210,12 +210,6 @@ impl Editor {
         // `init_scripting` has registered every hook handler.
         super::buffer::lifecycle::queue_open_announcement(&mut editor.state, buffer_id);
         Ok(editor)
-    }
-
-    /// Attach the shared terminal handle `run` will read/write and the
-    /// inline-output bracket will borrow. Call once, before entering `run`.
-    pub(crate) fn attach_terminal(&mut self, term: SharedTerm) {
-        self.terminal = Some(term);
     }
 
     /// Share the atomic the platform terminator thread stores the exit code
@@ -355,18 +349,22 @@ impl Editor {
     /// plus `tests/events.rs`' `:wq`-fires-`OnBufferSave` regression test,
     /// which covers the drain but not the loop ordering — recorded here
     /// rather than faked with a shape-assertion test.
-    pub(crate) fn run(&mut self, screen: &mut Screen) -> io::Result<()> {
-        // Marks that this Editor now owns the terminal — dispatch's
-        // inline-output bracket (mod.rs) checks this to skip alt-screen
-        // toggling and the "press any key" block outside the event loop.
-        self.tui_active = true;
-        // Cloned once up front (cheap: Arc + EventReader clone) so the loop
-        // below can call `&mut self` methods freely while still holding a
-        // terminal handle — `self.terminal` itself is never borrowed across
-        // the loop body.
-        let shared = self.terminal.clone().ok_or_else(|| {
-            io::Error::other("event loop requires an Editor with attach_terminal called")
-        })?;
+    pub(crate) fn run(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
+        // Marks that this Editor owns the terminal for the whole of
+        // `run_loop` — dispatch's inline-output bracket (mod.rs) reads it to
+        // skip alt-screen toggling and the "press any key" block outside the
+        // event loop. A wrapper rather than an inline reset at the end:
+        // `run_loop` has several `?`-propagated exits, and this is the one
+        // point all of them pass through.
+        self.tui = Tui::On(term.clone());
+        let result = self.run_loop(screen, term);
+        self.tui = Tui::Off;
+        result
+    }
+
+    /// The loop itself, described by [`Self::run`]'s doc — split out so
+    /// `run` owns the `Tui::On`/`Tui::Off` bracket around every exit.
+    fn run_loop(&mut self, screen: &mut Screen, shared: &SharedTerm) -> io::Result<()> {
         let reader = shared.event_reader();
         // Render context lives here — allocated once, reused every frame.
         // It must be outside `self` so `render_into` can borrow `self`
@@ -465,7 +463,7 @@ impl Editor {
             // display until after every byte of this frame has been written.
             // Terminals that don't support DEC 2026 silently ignore the
             // sequence — hence `let _ =` rather than `?`.
-            let _ = hume_platform::terminal::begin_synchronized_update(&shared);
+            let _ = hume_platform::terminal::begin_synchronized_update(shared);
             let grid = screen.frame(term_width, term_height);
             self.render_into(Rect::new(0, 0, term_width, term_height), grid, &mut ctx);
             screen.present(cursor_screen)?;
@@ -475,19 +473,19 @@ impl Editor {
             // terminal sees before we block — the show-cursor sequence closing
             // a frame can otherwise reset the shape on some terminals.
             let _ = hume_platform::terminal::set_cursor_shape(
-                &shared,
+                shared,
                 self.state.mode().cursor_is_bar(),
             );
             if last_cursor_color_mode != Some(self.state.mode()) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.
                 let black = matches!(self.state.mode(), EditorMode::Command | EditorMode::Search);
-                let _ = hume_platform::terminal::set_cursor_color(&shared, black);
+                let _ = hume_platform::terminal::set_cursor_color(shared, black);
                 last_cursor_color_mode = Some(self.state.mode());
             }
             // Close the synchronized-output envelope: the terminal now atomically
             // paints the complete frame — clear + cells + cursor shape in one shot.
-            let _ = hume_platform::terminal::end_synchronized_update(&shared);
+            let _ = hume_platform::terminal::end_synchronized_update(shared);
 
             // ── 3. Terminal event ─────────────────────────────────────────────
             // Blocks until a matching event is available, a wake from a
