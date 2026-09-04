@@ -55,6 +55,24 @@ fn cursor_on_a_close_bracket_only_shortcuts_that_type() {
 }
 
 #[test]
+fn on_open_shortcut_still_scans_right_when_no_other_type_would() {
+    // Only `()` is present — no other type's normal (non-shortcut)
+    // resolution can incidentally start the rightward scan on its behalf.
+    // The on-open shortcut must mark this type as needing its close found
+    // just like the normal path does, or the rightward scan never starts
+    // and `)` at 5 is never found.
+    assert_eq!(resolve("(a, b)\n", 0), Some((0, 5)));
+}
+
+#[test]
+fn on_close_shortcut_needs_no_further_scan_when_no_other_type_would() {
+    // Mirror of the above: only `()` is present, cursor on `)`. The
+    // on-close shortcut resolves the pair the moment the leftward scan
+    // finds `(`, with no rightward scan needed at all.
+    assert_eq!(resolve("(a, b)\n", 5), Some((0, 5)));
+}
+
+#[test]
 fn smallest_span_can_resolve_after_a_larger_candidate_already_did() {
     // `}` at 6 resolves `{}` = (0, 6) span 6 first, but `()` = (4, 9) span 5
     // resolves later scanning the same rightward pass and wins. A resolver
