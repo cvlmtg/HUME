@@ -1,0 +1,12 @@
+---
+source: hume-editor/src/editor/tests/wrap.rs
+expression: snap
+---
+<fg=#808080,bg=#1a1a1a>   1 </><fg=#d0d0d0,bg=#1a1a1a>line5 with enough t</>
+<fg=#808080,bg=#1a1a1a>     </><fg=#d0d0d0,bg=#1a1a1a>ext to wrap several</>
+<fg=#808080,bg=#1a1a1a>     </><fg=#d0d0d0,bg=#1a1a1a> times</>
+<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a> 7 </><fg=#000000,bg=#ffffff>l</><fg=#d0d0d0,bg=#3a3a3a>ine6 with enough t</>
+<fg=#808080,bg=#3a3a3a>     </><fg=#d0d0d0,bg=#3a3a3a>ext to wrap several</>
+<fg=#808080,bg=#3a3a3a>     </><fg=#d0d0d0,bg=#3a3a3a> times</>
+<fg=#808080,bg=#1a1a1a>   1 </><fg=#d0d0d0,bg=#1a1a1a>line7 with enough t</>
+<fg=#000000,bg=#ffffff>     7:1 *scr… [+]</><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>

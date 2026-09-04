@@ -23,16 +23,6 @@ fn view_test_editor() -> Editor {
     ed
 }
 
-/// Move the primary selection head to the start of buffer line `line`. Avoids
-/// depending on a specific motion command.
-fn seek_to_line(ed: &mut Editor, line: usize) {
-    use hume_editing::selection::{Selection, SelectionSet};
-    let head = ed.doc().text().rope().line_to_char(line);
-    let pid = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::collapsed(head));
-}
-
 // ── Unwrapped mode ────────────────────────────────────────────────────────────
 
 #[test]

@@ -41,7 +41,7 @@ pub enum LayoutTree {
     Split {
         direction: Direction,
         /// Fraction (0.0–1.0) allocated to the first child. Derived by
-        /// `equalize` from the two children's [`Self::slots_along`] counts —
+        /// `equalize` from the two children's `slots_along` counts —
         /// not chosen by whatever split produced this node — so every pane
         /// sharing a split axis stays equal-sized regardless of split order.
         /// Kept as stored (not derived-on-read) state because `LayoutTree`
@@ -180,7 +180,7 @@ impl LayoutTree {
 
     /// Replace `Leaf(target)` with a `Split` of `(Leaf(target), Leaf(new_pane))`,
     /// then re-derive every split ratio in the tree so panes sharing a split
-    /// axis stay equal-sized (see [`Self::equalize`]). Returns whether
+    /// axis stay equal-sized (see `equalize`). Returns whether
     /// `target` was found.
     pub fn split_leaf(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
         let found = self.insert_split(target, new_pane, direction);
@@ -294,7 +294,7 @@ impl LayoutTree {
 
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
     /// then re-derive every split ratio so the survivors stay equal-sized
-    /// (see [`Self::equalize`]). Returns the leftmost leaf of the promoted
+    /// (see `equalize`). Returns the leftmost leaf of the promoted
     /// sibling (the new focus target), or `None` if `target` wasn't found or
     /// `self` is the sole leaf.
     pub fn remove_leaf(&mut self, target: PaneId) -> Option<PaneId> {

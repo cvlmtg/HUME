@@ -1,7 +1,7 @@
 use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 /// The `Custom` element does not implement [`super::StatuslineElement`]:
@@ -12,7 +12,7 @@ use crate::ui::theme::EditorColors;
 /// statusline-text! name bid text)`), or empty if nothing has been pushed
 /// yet — same "absent = empty" convention as every other element.
 pub(in crate::ui::statusline) fn render(
-    editor: &Editor,
+    editor: &HumeStatusline<'_>,
     name: &str,
     colors: &EditorColors,
 ) -> (Cow<'static, str>, ResolvedStyle) {

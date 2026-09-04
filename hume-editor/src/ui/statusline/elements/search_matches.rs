@@ -2,7 +2,7 @@ use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
 use super::StatuslineElement;
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 pub(in crate::ui::statusline) struct SearchMatchesElement;
@@ -11,7 +11,7 @@ impl StatuslineElement for SearchMatchesElement {
     /// `(current, total)` 1-based match position, and whether search wrapped.
     type Data = (Option<(usize, usize)>, bool);
 
-    fn read(editor: &Editor) -> Self::Data {
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         let cursor = editor.current_search_cursor();
         (cursor.match_count, cursor.wrapped)
     }

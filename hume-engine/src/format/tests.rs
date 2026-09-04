@@ -10,7 +10,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
     let rope = Rope::from_str(text);
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
@@ -313,7 +313,7 @@ fn grapheme_display_cols_are_correct() {
 fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Grapheme>, String) {
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
@@ -704,7 +704,7 @@ fn do_format_windowed(
     let rope = Rope::from_str(text);
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
         format_buffer_line(
             &rope,
@@ -783,7 +783,7 @@ fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
             scope: crate::types::ScopeId(0),
         },
     ];
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -825,7 +825,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
         text,
         scope: crate::types::ScopeId(0),
     }];
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -853,15 +853,15 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
 }
 
 /// Format `line` of a one-line buffer with a single insert at `byte_offset`,
-/// returning the scratch so a test can read cells and resolve arena text.
-fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> FormatScratch {
+/// returning the format so a test can read cells and resolve arena text.
+fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat {
     let rope = Rope::from_str(line);
     let inserts = vec![InlineInsert {
         byte_offset,
         text: text.into(),
         scope: crate::types::ScopeId(0),
     }];
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -944,7 +944,7 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
     // which character it is — a bidi override rendered as a space is the
     // Trojan Source attack.
     let rope = Rope::from_str("a\u{200B}b");
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -984,7 +984,7 @@ fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
     // `CellContent::Grapheme` and been written to the terminal verbatim —
     // letting the contents of an opened file drive the editor's own display.
     let rope = Rope::from_str("a\u{1b}b");
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -1019,7 +1019,7 @@ fn a_bidi_override_is_distinguishable_from_a_zero_width_space() {
     // a stray invisible space identically.
     let placeholder_for = |text: &str| {
         let rope = Rope::from_str(text);
-        let mut scratch = FormatScratch::new();
+        let mut scratch = LineFormat::new();
         format_buffer_line(
             &rope,
             0,
@@ -1111,7 +1111,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
         text: "hello".into(),
         scope: crate::types::ScopeId(0),
     }];
-    let mut scratch = FormatScratch::new();
+    let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
         0,
@@ -1162,4 +1162,48 @@ fn wrapping_modes_unaffected_by_h_window_none() {
     let (rows, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
     let row0 = &graphemes[rows[0].graphemes.clone()];
     assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
+}
+
+/// A virtual row far wider than any ordinary one — a provider emitting a
+/// pathological string — must not pin its capacity in the pane's scratch for
+/// the rest of the session. The frame boundary is where that is given back;
+/// `clear` alone (run before laying out *each* row, and followed immediately
+/// by filling it again) deliberately does not shrink.
+#[test]
+fn clear_and_shrink_reclaims_an_oversized_virtual_row() {
+    let mut vrow = VirtualRowScratch::new();
+    vrow.texts.push_str(&"x".repeat(50_000));
+    let grown = vrow.texts.capacity();
+    assert!(grown >= 50_000, "sanity: the push must have grown it");
+
+    vrow.clear();
+    assert_eq!(
+        vrow.texts.capacity(),
+        grown,
+        "clear runs mid-frame before an immediate refill — shrinking there \
+         would only force a re-grow"
+    );
+
+    vrow.clear_and_shrink();
+    assert!(
+        vrow.texts.capacity() < grown,
+        "the frame boundary must hand back a pathologically grown buffer"
+    );
+}
+
+/// Below the ceiling, the scratch keeps its capacity across frames — the
+/// whole point of holding one per pane rather than allocating per row.
+#[test]
+fn clear_and_shrink_keeps_an_ordinary_virtual_row() {
+    let mut vrow = VirtualRowScratch::new();
+    vrow.texts.push_str(&"x".repeat(200));
+    let grown = vrow.texts.capacity();
+
+    vrow.clear_and_shrink();
+
+    assert_eq!(
+        vrow.texts.capacity(),
+        grown,
+        "an ordinary virtual row's capacity must survive the frame boundary"
+    );
 }

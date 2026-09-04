@@ -1162,7 +1162,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         text: "H".into(),
         scope: hint_scope,
     }];
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,
@@ -1228,7 +1228,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     let rope = ropey::Rope::from_str("a\u{202E}b");
     let mut registry = crate::theme::ScopeRegistry::new();
     registry.intern("ui.virtual.invisible");
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,
@@ -1295,7 +1295,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
         tab: crate::pane::WhitespaceRender::All,
         ..crate::pane::WhitespaceConfig::default()
     };
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,
@@ -1362,7 +1362,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
         tab: crate::pane::WhitespaceRender::None,
         ..crate::pane::WhitespaceConfig::default()
     };
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,
@@ -1429,7 +1429,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         text: "XY".into(),
         scope: insert_scope,
     }];
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,
@@ -1505,7 +1505,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         text: "Z".into(),
         scope: insert_scope,
     }];
-    let mut fmt = crate::format::FormatScratch::new();
+    let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
         0,

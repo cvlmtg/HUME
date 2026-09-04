@@ -599,3 +599,40 @@ release before assuming either still applies.
 
 **Files:** `hume-editor/src/editor/tests/unix/scripting_grammar.rs`
 (all affected call sites), `runtime/scheme/prelude.scm` (`register-grammar!`).
+
+---
+
+## L13 — A subagent's *placement* proposal was carried into a plan unchecked (2026-09-05)
+
+**Root cause:** Two `LineStore`s had to be merged into one, and the question
+"where does the survivor live" was answered by a research subagent. It reasoned
+from the borrow graph — the between-frame consumers can reach `EditorState` and
+nothing else — and landed on `EditorState`. That is a correct answer to *which
+struct is reachable*, which is not the same question as *which domain owns this
+fact*. It was carried into a plan and put to the user as the recommended option
+without ever being checked against the project's own ownership rule.
+
+The rule it violated was not obscure: "check `hume-engine`'s `Pane` before
+defaulting to an `Editor` field — `Pane` is a full-fat view object, and a
+per-pane transient belongs there." It even had a near-identical precedent, a
+`PaneViewportCache { HashMap<(PaneId, BufferId), _> }` on `Editor` that moved to
+`Pane.viewport_memory` for exactly the reason that applied again here: a
+`PaneId`-keyed map needs a prune-on-close sweep every future pane-close path has
+to remember, while a field on `Pane` dies with the pane.
+
+**Concrete instance:** the user caught it in one line — "why linestore on
+editorstate? wasn't this refactoring limited to the engine?" Re-deriving the
+answer put `PaneLineStore` on `Pane`, which additionally deleted `struct
+LineStore`, `LineStore::retain_panes`, and both `prune_closed_pane_caches`
+store sweeps. The rejected placement would have kept all four.
+
+**Prevention rule:** A subagent's finding about *what the code does* can be
+taken as research. A subagent's recommendation about *where state should live*
+is a design decision and must be re-derived against the project's ownership
+rules before it enters a plan — an agent optimising for the smallest diff will
+propose whatever struct the current borrow graph already reaches, and the
+borrow graph is a consequence of past decisions, not a source of authority over
+new ones. Ask the three-part question explicitly (SSOT, separation of concerns,
+would an engine-layer change be more elegant?) for any new field, including one
+that is only *moving*. A move is a placement decision made fresh, not a
+carry-over that inherits its old justification.

@@ -2,8 +2,8 @@ use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
 use super::StatuslineElement;
-use crate::editor::Editor;
 use crate::editor::lsp::introspect::LspActivity;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 const DIAGNOSTICS_ERROR_GLYPH: &str = "✘";
@@ -27,7 +27,7 @@ impl StatuslineElement for DiagnosticsElement {
     /// plugins, not the render path).
     type Data = (LspActivity, usize, usize, usize);
 
-    fn read(editor: &Editor) -> Self::Data {
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         let bid = editor.focused_buffer_id();
         let (errors, warnings) = editor.diagnostic_counts(bid);
         (

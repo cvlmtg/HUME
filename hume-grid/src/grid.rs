@@ -80,7 +80,7 @@ impl Grid {
         &self.cells[start..start + self.width as usize]
     }
 
-    /// Runs of cells that differ from `prev` — see [`crate::diff`].
+    /// Runs of cells that differ from `prev` — see `crate::diff`.
     pub fn diff_runs<'a>(&'a self, prev: &'a Grid, max_gap: u16) -> DiffRuns<'a> {
         DiffRuns::new(self, prev, max_gap)
     }

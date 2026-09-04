@@ -340,8 +340,6 @@ pub(crate) struct EditorState {
     /// the real stdout, and so the screen is only entered lazily, on the
     /// first byte of actual output. See [`InlineOutput`].
     pub(crate) inline_output: InlineOutput,
-    /// Reusable scratch buffer for format operations in visual-line movement.
-    pub(super) motion_format_scratch: hume_engine::format::FormatScratch,
     /// Reusable sticky-column buffer for vertical motion — shared by all
     /// three units `apply_visual_vertical` handles (row-domain `j`/`k`,
     /// scroll/wheel, and buffer-line `9j`/`9k`).
@@ -542,7 +540,6 @@ impl Default for EditorState {
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,
             inline_output: InlineOutput::default(),
-            motion_format_scratch: hume_engine::format::FormatScratch::new(),
             visual_move_target_display_cols: Vec::new(),
             last_repeatable_action: None,
             selection_recipe: Vec::new(),
@@ -581,6 +578,42 @@ impl EditorState {
 
     pub(crate) fn mode(&self) -> Mode {
         self.mode
+    }
+
+    /// Everything about a buffer that changes how its lines format, in the
+    /// form `hume_engine::rows::line_store`'s scope key carries it: which
+    /// buffer, at which content generation, with which decorations.
+    ///
+    /// The three travel side by side rather than hashed together — the key
+    /// compares them and nothing more, so an exact comparison is available
+    /// for free and a fold would only introduce collisions.
+    ///
+    /// `text_gen`, not `revision_id()`: a grouped edit (an open insert or
+    /// paste session) mutates the rope through `set_text` on every keystroke
+    /// without recording a revision — `commit_edit_group` is what moves
+    /// `history.current_id()`, and that only runs at session end. And
+    /// `set_view_content` (the `:messages`/`:ls` refresh path) rebuilds
+    /// `History` wholesale, so `revision_id()` returns to its root value on
+    /// every refresh regardless of how the content changed. `text_gen` bumps
+    /// on every actual rope mutation and nothing else, which is the property
+    /// this tag needs.
+    ///
+    /// The engine cannot derive this — it depends on neither `hume-editing`
+    /// (for the generation) nor this crate (for the decoration store), which
+    /// is exactly why that key takes a caller-supplied tag.
+    pub(crate) fn buffer_tag(
+        &self,
+        bid: hume_engine::pipeline::BufferId,
+    ) -> hume_engine::rows::line_store::BufferTag {
+        [
+            // Not `{:?}`-formatted: this is a value to compare, not one to
+            // show, and `as_ffi` folds the key's index and version — the two
+            // things that distinguish a reused slot from the buffer that held
+            // it before — into exactly that.
+            slotmap::Key::data(&bid).as_ffi(),
+            self.buffers.get(bid).text_gen,
+            self.config.decorations.generation(bid),
+        ]
     }
 
     // ── Quit ──────────────────────────────────────────────────────────────────
@@ -803,7 +836,7 @@ impl Editor {
 
     /// The focused pane's selections for the current buffer.
     pub(super) fn current_selections(&self) -> &SelectionSet {
-        &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].selections
+        commands::current_selections(&self.state, &self.view)
     }
 
     /// Replace the focused pane's selections for the current buffer.

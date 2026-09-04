@@ -128,11 +128,15 @@ for each buffer line in the visible range:
 fill remaining rows with empty filler (tilde rows, or blank)
 ```
 
-Processing one buffer line at a time keeps peak memory proportional to the
-width of one line, not the height of the viewport. The scratch buffers that hold
-display rows, grapheme entries, and style values are reused across frames —
-they grow to their steady-state size after a few frames and then cause no
-further allocation.
+Work is measured and remembered one buffer line at a time, so what a frame
+holds is proportional to what is on screen rather than to the size of the
+file. The editor measures a line before it draws it — that is how it decides
+where the viewport lands — and keeps the result, so the drawing step finds the
+work already done instead of repeating it. A line it only measured and never
+drew costs almost nothing, and the memory behind a line it did draw is reused
+by the next frame rather than asked for again. Only a line far wider than
+anything ordinary is handed back at the end of the frame, so one runaway line
+cannot hold on to its memory for the rest of the session.
 
 ## Scope-based theming
 

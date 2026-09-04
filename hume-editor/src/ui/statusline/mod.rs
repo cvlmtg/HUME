@@ -6,9 +6,10 @@ use std::str::FromStr;
 
 use hume_engine::render::Canvas;
 
-use crate::editor::Editor;
+use crate::editor::EditorState;
 use crate::ui::theme::EditorColors;
 use crate::ui::width::text_width;
+use hume_engine::pipeline::BufferId;
 
 mod elements;
 use elements::{
@@ -324,18 +325,71 @@ fn draw_section(
 
 // ── Engine integration ────────────────────────────────────────────────────────
 
-/// Short-lived statusline provider that borrows `&Editor` directly.
+/// Short-lived statusline provider holding exactly the `Editor` fields the
+/// statusline reads, rather than `&Editor`.
 ///
-/// Created each frame in `Editor::run()` and passed to `EngineView::render()`.
-/// No snapshot, no Arc, no Mutex — the provider reads editor state on demand
-/// during the render call.
+/// Created each frame and passed to `EngineView::render()`. No snapshot, no
+/// Arc, no Mutex — it reads editor state on demand during the render call.
+///
+/// Narrow on purpose: `EngineView::render` takes `&mut self`, so a provider
+/// holding `&Editor` would keep the whole editor — `view` included — borrowed
+/// across it. The one thing here that comes from `view` is the focused pane's
+/// buffer, read out once up front as a `Copy` id.
 pub(crate) struct HumeStatusline<'a> {
-    pub(crate) editor: &'a Editor,
+    pub(crate) state: &'a EditorState,
+    pub(crate) lsp: &'a crate::editor::lsp::LspState,
+    pub(crate) kitty_enabled: bool,
+    pub(crate) focused_bid: BufferId,
+}
+
+impl HumeStatusline<'_> {
+    /// The elements' accessors, mirroring the `Editor` methods of the same
+    /// names so each element body reads identically either way.
+    pub(in crate::ui::statusline) fn focused_buffer_id(&self) -> BufferId {
+        self.focused_bid
+    }
+
+    pub(in crate::ui::statusline) fn doc(&self) -> &crate::editor::buffer::Buffer {
+        self.state.buffers.get(self.focused_bid)
+    }
+
+    pub(in crate::ui::statusline) fn current_selections(
+        &self,
+    ) -> &hume_editing::selection::SelectionSet {
+        &self
+            .state
+            .focused_buffer_state_or_panic(self.focused_bid)
+            .selections
+    }
+
+    pub(in crate::ui::statusline) fn current_search_cursor(
+        &self,
+    ) -> &crate::editor::search::SearchCursor {
+        &self
+            .state
+            .focused_buffer_state_or_panic(self.focused_bid)
+            .search_cursor
+    }
+
+    pub(in crate::ui::statusline) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+        crate::editor::lsp::introspect::diagnostic_counts(self.lsp, bid)
+    }
+
+    pub(in crate::ui::statusline) fn lsp_activity(
+        &self,
+        bid: BufferId,
+    ) -> crate::editor::lsp::introspect::LspActivity {
+        crate::editor::lsp::introspect::activity(self.state, self.lsp, bid)
+    }
+
+    pub(in crate::ui::statusline) fn lsp_spinner_frame(&self) -> usize {
+        crate::editor::lsp::introspect::spinner_frame(self.lsp)
+    }
 }
 
 impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
     fn render(&self, area: Rect, theme: &hume_engine::theme::Theme, canvas: &mut Canvas) {
-        let editor = self.editor;
+        let editor = self;
         let mode = editor
             .state
             .settings
@@ -392,7 +446,7 @@ fn fill_row_colors(canvas: &mut Canvas, colors: &EditorColors, area: Rect, y: u1
 
 fn render_statusline(
     canvas: &mut Canvas,
-    editor: &Editor,
+    editor: &HumeStatusline<'_>,
     colors: &EditorColors,
     area: Rect,
     y: u16,
@@ -497,7 +551,7 @@ fn render_statusline(
 
 pub(crate) fn render_element(
     seg: &StatusElement,
-    editor: &Editor,
+    editor: &HumeStatusline<'_>,
     colors: &EditorColors,
     // Pre-computed text for the FilePath element. "" = render as empty (measure
     // pass); any other string = use verbatim (already shortened by caller).
@@ -525,7 +579,7 @@ pub(crate) fn render_element(
 
 fn render_section(
     elements: &[StatusElement],
-    editor: &Editor,
+    editor: &HumeStatusline<'_>,
     colors: &EditorColors,
     filepath_text: &str,
 ) -> Vec<(Cow<'static, str>, ResolvedStyle)> {

@@ -367,8 +367,8 @@ impl Editor {
     fn run_loop(&mut self, term: &SharedTerm, screen: &mut Screen) -> io::Result<()> {
         let reader = term.event_reader();
         // Render context lives here — allocated once, reused every frame.
-        // It must be outside `self` so `render_into` can borrow `self`
-        // immutably while `ctx` is borrowed mutably alongside it.
+        // Outside `self` so it can be borrowed mutably alongside the `&mut
+        // self` that `prepare_frame`/`render_into` each take.
         let mut ctx = RenderContext::new();
         let mut last_cursor_color_mode: Option<EditorMode> = None;
         loop {

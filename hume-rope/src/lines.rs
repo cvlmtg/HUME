@@ -107,7 +107,7 @@ pub fn line_end_exclusive(rope: &Rope, line: usize) -> usize {
 
 /// Char offset of the `\n` that terminates `line` — the inclusive
 /// counterpart to [`line_end_exclusive`], and the content-domain face of
-/// [`line_terminator_start`].
+/// `line_terminator_start`.
 ///
 /// Content domain: `line` must be a real content line, which is exactly the
 /// condition under which a terminator exists. The phantom trailing line has

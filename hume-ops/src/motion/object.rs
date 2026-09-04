@@ -15,7 +15,7 @@ use hume_editing::text::BufferText;
 /// Apply structural navigation to every selection in the set, repeated
 /// `count` times.
 ///
-/// Unlike [`super::apply_motion`], which maps a search origin to a new head
+/// Unlike `apply_motion`, which maps a search origin to a new head
 /// position, `finder` maps an origin to a whole object span. `backward`
 /// selects which edge of the current selection each step searches from in
 /// `Move` mode, and which edge of the found span becomes the new head in
@@ -32,7 +32,7 @@ use hume_editing::text::BufferText;
 /// viewport lands on the object's signature and a following `w` walks into
 /// its body.
 ///
-/// **Extend**: origin is always `current.head()`, as in [`super::apply_motion`]
+/// **Extend**: origin is always `current.head()`, as in `apply_motion`
 /// and `apply_word_select_extend` — never the far edge Move reads. A Move
 /// result's anchor sits at the object's end and head at its start (reversed
 /// from the usual anchor-at-start shape), so searching from the anchor would

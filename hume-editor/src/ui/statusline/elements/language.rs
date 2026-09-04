@@ -2,7 +2,7 @@ use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
 use super::StatuslineElement;
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 pub(in crate::ui::statusline) struct LanguageElement;
@@ -10,7 +10,7 @@ pub(in crate::ui::statusline) struct LanguageElement;
 impl StatuslineElement for LanguageElement {
     type Data = Option<String>;
 
-    fn read(editor: &Editor) -> Self::Data {
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         editor
             .doc()
             .language

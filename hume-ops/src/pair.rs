@@ -367,7 +367,7 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(usize, char, ch
 /// a bracket the cursor is visibly beside.
 ///
 /// This is the resolver `%`-style matching needs ("which pair is this
-/// delimiter part of, and where's the other end") that [`find_bracket_pair`]
+/// delimiter part of, and where's the other end") that `find_bracket_pair`
 /// doesn't provide on its own, since that function is only ever called with
 /// one already-known pair. Also the single resolver for the bracket-match
 /// cursor highlight (`hume-editor`'s `decoration_providers`) — both need the

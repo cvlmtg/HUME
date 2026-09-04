@@ -233,6 +233,23 @@ impl super::EditorState {
         self.panes.buffer_state(self.focused_pane_id, bid)
     }
 
+    /// [`focused_buffer_state`](Self::focused_buffer_state) for the buffer the
+    /// focused pane is currently *showing*, where absence is a violated
+    /// invariant rather than a case to handle: opening or switching to a
+    /// buffer seeds its state in that pane, so an unseeded focused buffer
+    /// means a pane and its state map disagree.
+    ///
+    /// The one lookup behind every "the cursor/search state right now" reader
+    /// — `commands::current_selections`, the statusline's own accessors —
+    /// which would otherwise each index `panes.state[..][..]` and each panic
+    /// with slotmap's own message instead of naming what actually broke.
+    pub(crate) fn focused_buffer_state_or_panic(&self, bid: BufferId) -> &PaneBufferState {
+        self.focused_buffer_state(bid).expect(
+            "focused pane has no seeded state for the buffer it is showing — \
+             pane.buffer_id and panes.state are out of sync",
+        )
+    }
+
     /// The pane currently showing `bid`: the focused pane if it shows `bid`,
     /// else the first pane (by `SlotMap` iteration order) that does, else
     /// `None` if `bid` isn't open in any pane (a background buffer).

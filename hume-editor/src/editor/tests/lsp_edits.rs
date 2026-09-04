@@ -652,11 +652,12 @@ fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
 
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.focused_buffer_id();
+    let tag = ed.state.buffer_tag(bid);
     let (mut rm, viewport) = crate::editor::commands::pane_row_map_mut(
         ed.state.buffers.get(bid),
         &ed.state.settings,
         &mut ed.view.panes[pid],
-        &mut ed.state.motion_format_scratch,
+        tag,
     );
     let top = crate::editor::scroll::top_pos(viewport);
     let cursor_pos = rm.locate_row(cursor_char);

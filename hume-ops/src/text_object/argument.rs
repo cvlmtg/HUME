@@ -199,7 +199,7 @@ pub fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
 /// **Preceding separator first**: if the blank run immediately before
 /// `start` is bounded by a comma, this argument is not first — the comma
 /// and everything back to it becomes the new start, and `end` extends
-/// forward over its own trailing blank run (newline-inclusive, [`is_blank`]
+/// forward over its own trailing blank run (newline-inclusive, `is_blank`
 /// — a no-op for every argument but the last, which has none to eat *except*
 /// the newline before a multi-line list's closing delimiter, which this
 /// branch does consume; matches the lexical scan's pre-existing behavior,
@@ -208,7 +208,7 @@ pub fn inner_argument(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
 /// over blanks — reaching the opening delimiter, never a comma, since the
 /// first rule would have fired otherwise — and `end` extends through the
 /// comma plus its inline blank run only (space/tab, no newline, see
-/// [`is_inline_blank`]) — a line break there belongs to the *next*
+/// `is_inline_blank`) — a line break there belongs to the *next*
 /// argument's indentation. An only argument matches neither rule and is
 /// returned unchanged.
 pub fn around_from_inner(text: &BufferText, (start, end): (usize, usize)) -> (usize, usize) {

@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use hume_editing::text::LineEnding as TextLineEnding;
 
 use super::StatuslineElement;
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 pub(in crate::ui::statusline) struct LineEndingElement;
@@ -12,7 +12,7 @@ pub(in crate::ui::statusline) struct LineEndingElement;
 impl StatuslineElement for LineEndingElement {
     type Data = TextLineEnding;
 
-    fn read(editor: &Editor) -> Self::Data {
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         editor.doc().text().line_ending()
     }
 

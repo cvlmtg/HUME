@@ -439,7 +439,7 @@ impl Editor {
     /// clone or scope resolution runs, same as the sign/line-bg bridges
     /// above, so the per-frame cost is one entry per *visible* EOL line, not
     /// per EOL line in the whole buffer. Both write into a pane's
-    /// `inline_decorations` providers, which `RowMap::format_line` reads, so
+    /// `inline_decorations` providers, which `RowMap::ensure_formatted` reads, so
     /// this feeds wrap row counts and columns exactly like inlay hints do —
     /// called from `prepare_frame`'s step 3, against the pre-scroll snapshot
     /// (see [`Self::decorated_panes`]).

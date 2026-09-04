@@ -1,19 +1,17 @@
 use super::*;
-use hume_engine::format::FormatScratch;
+use crate::editor::tests::doubles::{VirtualRows, no_providers};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
-use hume_engine::providers::ProviderSet;
+use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
+use hume_engine::rows::line_store::{PaneLineStore, StoreScope};
 use ropey::Rope;
 
-fn no_providers() -> ProviderSet {
-    ProviderSet::new()
-}
 const SCROLL_LINES: usize = 3; // default from EditorSettings
 
 fn map<'a>(
     rope: &'a Rope,
     wrap: WrapMode,
     providers: &'a ProviderSet,
-    scratch: &'a mut FormatScratch,
+    store: &'a mut PaneLineStore,
 ) -> RowMap<'a> {
     RowMap::new(
         rope,
@@ -22,7 +20,10 @@ fn map<'a>(
         WhitespaceConfig::default(),
         providers,
         80,
-        scratch,
+        StoreScope {
+            store,
+            buffer_tag: [0; 3],
+        },
     )
 }
 
@@ -51,7 +52,7 @@ fn down_no_wrap_clamps_at_last_real_line() {
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 0;
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     // Scroll far enough to hit the cap.
     for _ in 0..20 {
@@ -77,7 +78,7 @@ fn down_no_wrap_file_fits_no_movement() {
     let rope = rope_with_lines(3);
     let mut vp = ViewportState::new(80, 10);
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_down(
         &mut vp,
@@ -92,7 +93,7 @@ fn down_no_wrap_advances_by_scroll_lines() {
     let rope = rope_with_lines(20);
     let mut vp = ViewportState::new(80, 5);
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_down(
         &mut vp,
@@ -113,7 +114,7 @@ fn up_no_wrap_clamps_at_zero() {
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 1; // only 1 above top
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_up(
         &mut vp,
@@ -129,7 +130,7 @@ fn up_no_wrap_decrements_by_scroll_lines() {
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 10;
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_up(
         &mut vp,
@@ -145,7 +146,7 @@ fn up_at_top_is_no_op() {
     let mut vp = ViewportState::new(80, 5);
     vp.top_line = 0;
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_up(
         &mut vp,
@@ -165,7 +166,7 @@ fn down_wrap_file_fits_no_movement() {
     let mut vp = ViewportState::new(80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = no_providers();
-    let mut scratch = FormatScratch::new();
+    let mut scratch = PaneLineStore::new();
 
     scroll_viewport_down(
         &mut vp,
@@ -178,34 +179,6 @@ fn down_wrap_file_fits_no_movement() {
 
 // ── EOF virtual block reachability (both wrap modes) ────────────────────
 
-/// Emits `self.1` distinct `After(self.0)` rows, texted "1".."9".
-struct MultiAfterLine(usize, usize);
-
-impl hume_engine::providers::DecorationSource for MultiAfterLine {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            for i in 0..self.1 {
-                out.push(hume_engine::providers::Decoration::VirtualLine(
-                    hume_engine::providers::VirtualLine {
-                        anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
-                        provider_id: 0,
-                        text: (i + 1).to_string(),
-                        segments: Vec::new(),
-                        base_scope: None,
-                    },
-                ));
-            }
-        }
-    }
-}
-
 /// A 3-row `After(last_line)` block must be reachable one row at a time by
 /// repeated single-row wheel notches, in either wrap mode: `top_row_offset`
 /// walks 0 → 1 → 2 → 3 (the block's last row) as `top_line` settles on the
@@ -216,8 +189,11 @@ impl hume_engine::providers::DecorationSource for MultiAfterLine {
 fn down_reaches_every_row_of_an_after_last_line_block() {
     let rope = rope_with_lines(2); // last real line = index 1
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
-    let mut scratch = FormatScratch::new();
+    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+        VirtualLineAnchor::After(1),
+        3,
+    )));
+    let mut scratch = PaneLineStore::new();
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut vp = ViewportState::new(80, 2); // shorter than the 5-row total content
@@ -250,8 +226,11 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
 fn down_overshoot_past_after_last_line_clamps_not_resets() {
     let rope = rope_with_lines(2);
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
-    let mut scratch = FormatScratch::new();
+    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+        VirtualLineAnchor::After(1),
+        3,
+    )));
+    let mut scratch = PaneLineStore::new();
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut vp = ViewportState::new(80, 2);

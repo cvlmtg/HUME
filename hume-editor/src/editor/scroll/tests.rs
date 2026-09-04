@@ -1,7 +1,10 @@
 use super::*;
-use hume_engine::format::FormatScratch;
+use crate::editor::tests::doubles::{
+    FormatProbe, VirtualRows, no_providers, providers_with_before_line,
+};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
-use hume_engine::providers::ProviderSet;
+use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
+use hume_engine::rows::line_store::{PaneLineStore, StoreScope};
 use ropey::Rope;
 
 use crate::editor::cursor;
@@ -21,7 +24,7 @@ fn map<'a>(
     wrap: WrapMode,
     providers: &'a ProviderSet,
     content_width: u16,
-    scratch: &'a mut FormatScratch,
+    store: &'a mut PaneLineStore,
 ) -> RowMap<'a> {
     RowMap::new(
         rope,
@@ -30,15 +33,11 @@ fn map<'a>(
         WhitespaceConfig::default(),
         providers,
         content_width,
-        scratch,
+        StoreScope {
+            store,
+            buffer_tag: [0; 3],
+        },
     )
-}
-
-/// No decoration source registered — every line's block reduces to its
-/// content rows, matching every test's virtual-line-unaware expectations
-/// exactly.
-fn no_providers() -> ProviderSet {
-    ProviderSet::new()
 }
 
 // ── ensure_cursor_visible (no-wrap) ──────────────────────────────────────
@@ -48,7 +47,7 @@ fn no_wrap_cursor_visible_no_scroll_needed() {
     let r = rope("a\nb\nc\nd\ne\n");
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -63,7 +62,7 @@ fn no_wrap_cursor_below_viewport_scrolls_down() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -80,7 +79,7 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(5, 5, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -106,7 +105,7 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     let providers = no_providers();
     let cursor_pos = RowPos::new(20, 0);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -115,7 +114,7 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     );
     let top_after_first = v.top_line;
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -136,7 +135,7 @@ fn cursor_sub_row_no_wrap() {
     // With a WrapMode::None, the whole line is one row, sub-row 0.
     let r = rope("hello world\n");
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let sub = rm.locate(5).0.row;
     assert_eq!(sub, 0);
@@ -147,7 +146,7 @@ fn cursor_sub_row_wrapped() {
     // "abcdefgh" with Soft { width: 4 } → 2 rows: "abcd" / "efgh".
     let r = rope("abcdefgh\n");
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 4 }, &providers, 80, &mut s);
     // Cursor at char 0 → sub-row 0.
     assert_eq!(rm.locate(0).0.row, 0);
@@ -175,7 +174,7 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(3);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
@@ -191,7 +190,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(7);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
@@ -216,7 +215,7 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
     let providers = no_providers();
 
     // 1) view-top: target_row = 0 → top_line = cursor_line.
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     scroll_cursor_to_row(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -226,7 +225,7 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
     assert_eq!(v.top_line, 25, "view-top places top at cursor line");
 
     // 2) Per-frame correction: scrolloff = 3 trims cursor inward by 3 rows.
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -244,7 +243,7 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
     let cursor_char = r.line_to_char(25);
     let providers = no_providers();
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     scroll_cursor_to_row(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -253,7 +252,7 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
     );
     assert_eq!(v.top_line, 2, "view-bottom places cursor on display row 23");
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -266,67 +265,6 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
 }
 
 // ── Virtual-line-aware scrolling (synthetic provider) ───────────────
-
-/// A `DecorationSource` double that emits exactly one `Before(line)`
-/// virtual row when queried for `line`, and nothing for any other line.
-struct OneBeforeLine(usize);
-
-impl hume_engine::providers::DecorationSource for OneBeforeLine {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            out.push(hume_engine::providers::Decoration::VirtualLine(
-                hume_engine::providers::VirtualLine {
-                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                    provider_id: 0,
-                    text: "V".to_string(),
-                    segments: Vec::new(),
-                    base_scope: None,
-                },
-            ));
-        }
-    }
-}
-
-fn providers_with_before_line(line: usize) -> ProviderSet {
-    let mut p = ProviderSet::new();
-    p.add_decoration_source(Box::new(OneBeforeLine(line)));
-    p
-}
-
-/// Emits `self.1` distinct `Before(self.0)` rows, texted "1".."9".
-struct MultiBeforeLine(usize, usize);
-
-impl hume_engine::providers::DecorationSource for MultiBeforeLine {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            for i in 0..self.1 {
-                out.push(hume_engine::providers::Decoration::VirtualLine(
-                    hume_engine::providers::VirtualLine {
-                        anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                        provider_id: 0,
-                        text: (i + 1).to_string(),
-                        segments: Vec::new(),
-                        base_scope: None,
-                    },
-                ));
-            }
-        }
-    }
-}
 
 /// A virtual row anchored between the viewport's top and the cursor
 /// "steals" a row from the lines below it — `ensure_cursor_visible` must
@@ -346,12 +284,12 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row() {
     let providers = providers_with_before_line(2);
     let cursor_char = r.line_to_char(3);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, wrap, &providers, 80, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let pos = cursor::content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
@@ -371,12 +309,12 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
     let providers = providers_with_before_line(2);
     let cursor_char = r.line_to_char(3);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, wrap, &providers, 80, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 0);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let pos = cursor::content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
     let (_, row) = pos.expect("cursor must be visible after ensure_cursor_visible");
     assert!(
@@ -402,7 +340,10 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_row_no_wrap() {
 fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let r = rope("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(MultiBeforeLine(0, 3)));
+    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+        VirtualLineAnchor::Before(0),
+        3,
+    )));
     let cursor_char = r.line_to_char(2);
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
@@ -411,7 +352,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
         // height alone to stay "far larger" than the 5-row walk back to
         // line 0's Before block, regardless of the `v_margin` passed below.
         let mut v = viewport(2, 20, 80);
-        let mut s = FormatScratch::new();
+        let mut s = PaneLineStore::new();
         let mut rm = map(&r, wrap, &providers, 80, &mut s);
         let cursor_pos = rm.locate_row(cursor_char);
         ensure_cursor_visible(
@@ -440,7 +381,7 @@ fn clamp_top_row_offset_shrinks_stale_offset() {
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut v = viewport(0, 5, 80);
         v.top_row_offset = 200; // wildly stale — e.g. a resize shrank the block since it was set
-        let mut s = FormatScratch::new();
+        let mut s = PaneLineStore::new();
         clamp_viewport_top(&mut v, &mut map(&r, wrap, &providers, 80, &mut s));
         assert_eq!(
             v.top_row_offset, 1,
@@ -456,7 +397,7 @@ fn clamp_top_row_offset_is_a_noop_when_already_valid() {
     let providers = providers_with_before_line(0);
     let mut v = viewport(0, 5, 80);
     v.top_row_offset = 1;
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     clamp_viewport_top(&mut v, &mut map(&r, WrapMode::None, &providers, 80, &mut s));
     assert_eq!(v.top_row_offset, 1);
 }
@@ -475,7 +416,7 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     let r = rope(&("a".repeat(100) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let cursor_char = 70;
 
     let mut rm = map(&r, WrapMode::None, &providers, 72, &mut s);
@@ -496,7 +437,7 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let r = rope(&("a".repeat(100) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let cursor_char = 70;
 
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -516,7 +457,7 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     let r = rope(&("a".repeat(70_000) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let cursor_char = 69_999; // last 'a', column 69_999 — past u16::MAX (65_535)
 
     // The column is resolved through `locate`, not passed in as a literal:
@@ -543,27 +484,6 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
 // tests below cover the halves of that claim: the row it reports is the row a
 // forward walk finds, and resolving it costs one format.
 
-/// Counts formats of `line`: `RowMap::format_line` queries every registered
-/// INLINE-kind `DecorationSource` exactly once per format and nowhere else,
-/// so this counts `format_buffer_line` runs without depending on anything
-/// the row map reports about itself.
-struct CountFormatsOf(usize, std::rc::Rc<std::cell::Cell<usize>>);
-
-impl hume_engine::providers::DecorationSource for CountFormatsOf {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::INLINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        _out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            self.1.set(self.1.get() + 1);
-        }
-    }
-}
-
 /// `ensure_cursor_visible` reports the cursor's screen row from the rows
 /// `scroll_back_from` stepped *backward* (or, in its stable arm, from the
 /// distance it already measured). `content_pos` derives the same row by walking
@@ -575,7 +495,10 @@ impl hume_engine::providers::DecorationSource for CountFormatsOf {
 fn reported_screen_row_agrees_with_a_forward_walk() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(MultiBeforeLine(3, 2)));
+    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+        VirtualLineAnchor::Before(3),
+        2,
+    )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         for height in [1u16, 2, 5, 8] {
@@ -584,13 +507,13 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                     let cursor_char = r.line_to_char(line);
                     let mut v = viewport(top, height, 80);
 
-                    let mut s = FormatScratch::new();
+                    let mut s = PaneLineStore::new();
                     let mut rm = map(&r, wrap, &providers, 80, &mut s);
                     clamp_viewport_top(&mut v, &mut rm);
                     let cursor_pos = rm.locate_row(cursor_char);
                     let reported = ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
 
-                    let mut s = FormatScratch::new();
+                    let mut s = PaneLineStore::new();
                     let walked = cursor::content_pos(
                         &v,
                         &mut map(&r, wrap, &providers, 80, &mut s),
@@ -618,11 +541,11 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     let r = rope(&("a".repeat(5_000) + "\n"));
     let formats = std::rc::Rc::new(std::cell::Cell::new(0));
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(CountFormatsOf(0, std::rc::Rc::clone(&formats))));
+    providers.add_decoration_source(Box::new(FormatProbe::new(0, std::rc::Rc::clone(&formats))));
     let mut v = viewport(0, 10, 80);
     let cursor_char = 4_000;
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::None, &providers, 80, &mut s);
     clamp_viewport_top(&mut v, &mut rm);
     let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
@@ -640,7 +563,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
     // compute, so nothing is traded away by sharing it. Runs after the count
     // above: re-deriving is exactly the second format being ruled out, so it
     // has to stay on this side of the assertion.
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let walked = cursor::content_pos(
         &v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
@@ -671,7 +594,7 @@ fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
     let margin = 2usize;
     let cursor_line = 100;
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
     let row = ensure_cursor_visible(&mut v, &mut rm, RowPos::new(cursor_line, 0), margin);
 
@@ -692,10 +615,10 @@ fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
     let r = rope(&text);
     let formats = std::rc::Rc::new(std::cell::Cell::new(0));
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(CountFormatsOf(9, std::rc::Rc::clone(&formats))));
+    providers.add_decoration_source(Box::new(FormatProbe::new(9, std::rc::Rc::clone(&formats))));
     let mut v = viewport(0, 10, 80);
 
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
     ensure_cursor_visible(&mut v, &mut rm, RowPos::new(100, 0), 2);
 
@@ -704,5 +627,33 @@ fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
         0,
         "line 9 sits past the tightened cap (height - margin - 1 = 7) but \
          inside the old cap (height = 10) — the forward walk must not reach it"
+    );
+}
+
+// ── `distance`'s line-delta short-circuit ────────────────────────────────
+
+/// A target this far away is unreachable within `cap` steps before a single
+/// row is stepped — every line's block occupies at least one row (`RowMap`'s
+/// `content_rows` asserts it), so crossing 1000 lines costs at least 1000
+/// steps, far past `cap = 5`. The walk must never format a single line to
+/// discover that; it's provable from the line numbers alone.
+#[test]
+fn distance_line_delta_short_circuit_never_formats_when_unreachable() {
+    let text: String = (0..1200).map(|i| format!("line{i}\n")).collect();
+    let r = rope(&text);
+    let formats = std::rc::Rc::new(std::cell::Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(FormatProbe::new(0, std::rc::Rc::clone(&formats))));
+
+    let mut s = PaneLineStore::new();
+    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
+    let result = rm.distance(RowPos::new(0, 0), RowPos::new(1000, 0), 5);
+
+    assert_eq!(result, None);
+    assert_eq!(
+        formats.get(),
+        0,
+        "a target 1000 lines away with cap 5 is provably unreachable — the \
+         walk must never format line 0 to discover that"
     );
 }

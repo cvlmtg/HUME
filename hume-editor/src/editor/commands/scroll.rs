@@ -63,12 +63,14 @@ pub(crate) fn cmd_half_page_up(
 
 fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target_row: usize) {
     let cursor_char = current_selections(state, view).primary().head();
+    let pid = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
+    let buffer_tag = state.buffer_tag(buf_id);
     let (mut rm, viewport) = pane_row_map_mut(
         state.buffers.get(buf_id),
         &state.settings,
-        &mut view.panes[state.focused_pane_id],
-        &mut state.motion_format_scratch,
+        &mut view.panes[pid],
+        buffer_tag,
     );
     super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
 }

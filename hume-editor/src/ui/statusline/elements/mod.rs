@@ -1,27 +1,30 @@
 use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 /// Shared shape for a statusline element: gather data from the editor, then
 /// turn that data into display text + style. Splitting `read` from `format`
 /// lets `format` be unit-tested against a synthetic `Data` value with no
-/// `Editor` fixture. `render` is the single call dispatch sites use.
+/// editor fixture at all. `render` is the single call dispatch sites use.
 ///
 /// `FilePath` and `Custom` don't implement this trait — `FilePath`'s content
-/// isn't read from `Editor` at all, but injected by `render_statusline`'s
+/// isn't read from the editor at all, but injected by `render_statusline`'s
 /// two-pass sizing pass (see `file_path.rs`); `Custom` needs its own `name`
-/// alongside `Editor`, which `read`'s single-argument signature has no room
-/// for (see `custom.rs`).
+/// alongside the provider, which `read`'s single-argument signature has no
+/// room for (see `custom.rs`).
 pub(super) trait StatuslineElement {
     type Data;
 
-    fn read(editor: &Editor) -> Self::Data;
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data;
 
     fn format(data: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle);
 
-    fn render(editor: &Editor, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+    fn render(
+        editor: &HumeStatusline<'_>,
+        colors: &EditorColors,
+    ) -> (Cow<'static, str>, ResolvedStyle) {
         Self::format(Self::read(editor), colors)
     }
 }

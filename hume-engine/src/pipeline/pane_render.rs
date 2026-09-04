@@ -29,18 +29,31 @@ const H_WINDOW_SLACK: u16 = 4;
 ///
 /// Per-line work (formatting, highlight intervals) happens on the row that
 /// first enters a line and is reused by its remaining rows, so a wrapped line
-/// is formatted once however many of its rows are on screen.
+/// is formatted once however many of its rows are on screen — and, since
+/// `store` is the pane's own and every other walk of it shares that, not
+/// reformatted at all if the scroll step (or a `z`-scroll since the last
+/// frame) already visited the line.
 ///
-/// Peak scratch memory is O(max_graphemes_per_line) rather than
-/// O(total_visible_graphemes), a ~16× reduction on a 200×50 terminal.
-pub(crate) fn render_pane(pane_ctx: &PaneRenderCtx, scratch: &mut FrameScratch, grid: &mut Grid) {
+/// Peak scratch memory is one retained [`crate::rows::line_store::LineEntry`]
+/// per line any walk of this pane visited this frame —
+/// O(total_visible_graphemes), not O(max_graphemes_per_line), and only lines
+/// something formatted contribute to it at all.
+/// [`crate::format::LineFormat::reset_and_shrink`] is what keeps one
+/// pathologically wide line (a minified-JS file's single line) from pinning
+/// that peak for the rest of the session: the frame boundary hands it back.
+pub(crate) fn render_pane(
+    pane_ctx: &PaneRenderCtx,
+    scratch: &mut FrameScratch,
+    store: &mut crate::rows::line_store::PaneLineStore,
+    grid: &mut Grid,
+) {
     use crate::layout;
 
     // ── Stage 1: Geometry ─────────────────────────────────────────────────
     let visible = layout::compute_viewport(
         pane_ctx.rope,
-        &pane_ctx.pane.viewport,
-        pane_ctx.pane.providers.gutter_columns(),
+        pane_ctx.viewport,
+        pane_ctx.providers.gutter_columns(),
     );
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
@@ -48,22 +61,26 @@ pub(crate) fn render_pane(pane_ctx: &PaneRenderCtx, scratch: &mut FrameScratch, 
     // Selections arrive pre-sorted from the editor; copy once, reuse every row.
     scratch
         .style
-        .populate_sorted_sels(&pane_ctx.pane.selections, pane_ctx.pane.primary_idx);
+        .populate_sorted_sels(pane_ctx.selections, pane_ctx.primary_idx);
 
     // Gutter lane widths: constant for the entire frame.
     scratch.lane_widths.clear();
     scratch.lane_widths.extend(layout::lane_widths(
-        pane_ctx.pane.providers.gutter_columns(),
+        pane_ctx.providers.gutter_columns(),
         visible.last_line_idx,
     ));
 
     // Bundle per-frame constants so compose_row call sites stay concise.
     let compose_ctx = ComposeCtx {
-        gutter_columns: &pane_ctx.pane.providers.gutter_columns,
+        gutter_columns: &pane_ctx.providers.gutter_columns,
         visible: &visible,
-        viewport: &pane_ctx.pane.viewport,
+        viewport: pane_ctx.viewport,
         mode: pane_ctx.settings.mode,
-        primary_head_line: pane_ctx.pane.primary_head_line(pane_ctx.rope),
+        primary_head_line: crate::pane::primary_head_line(
+            pane_ctx.selections,
+            pane_ctx.primary_idx,
+            pane_ctx.rope,
+        ),
         tab_width: pane_ctx.settings.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
@@ -80,36 +97,37 @@ pub(crate) fn render_pane(pane_ctx: &PaneRenderCtx, scratch: &mut FrameScratch, 
     // real case), so scanning past the right edge would cost O(line_length)
     // per frame. Wrapping modes are already bounded by `wrap_width`.
     let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
-        let h_offset = pane_ctx.pane.viewport.horizontal_offset;
+        let h_offset = pane_ctx.viewport.horizontal_offset;
         let end = h_offset
             .saturating_add(visible.content_width as u32)
             .saturating_add(H_WINDOW_SLACK as u32);
         h_offset..end
     });
 
-    // The row map borrows the format scratch for the whole pass; style and
-    // gutter-width scratch are disjoint fields it never touches.
+    // Style and gutter-width scratch are disjoint fields the row map never
+    // touches; its own storage is the pane's line store, which already holds
+    // whatever the scroll step formatted for this pane this frame.
     let FrameScratch {
-        format,
-        style,
-        lane_widths,
-        ..
+        style, lane_widths, ..
     } = scratch;
     let mut rows = RowMap::new(
         pane_ctx.rope,
         pane_ctx.settings.wrap_mode,
         pane_ctx.settings.tab_width,
         pane_ctx.settings.whitespace,
-        &pane_ctx.pane.providers,
+        pane_ctx.providers,
         visible.content_width,
-        format,
+        crate::rows::line_store::StoreScope {
+            store,
+            buffer_tag: pane_ctx.settings.buffer_tag,
+        },
     )
     .with_h_window(h_window);
     let last_content_line = rows.last_line();
 
     // ── Row walk ──────────────────────────────────────────────────────────
     let height = visible.content_height.min(pane_ctx.rect.height);
-    let viewport = &pane_ctx.pane.viewport;
+    let viewport = pane_ctx.viewport;
     let mut pos = rows.clamp(RowPos::new(
         viewport.top_line,
         viewport.top_row_offset as usize,
@@ -251,7 +269,7 @@ impl LineStyle {
         let tint = crate::style::rebuild_line_decorations(
             line_idx,
             pane_ctx.syntax,
-            &pane_ctx.pane.providers,
+            pane_ctx.providers,
             pane_ctx.rope,
             style,
         );

@@ -1,3 +1,4 @@
+use super::doubles::VirtualRows;
 use super::*;
 use hume_grid::Rect;
 
@@ -499,37 +500,15 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_f
 /// mode) and clamp_viewport_top would find nothing to repair.
 #[test]
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
-    struct ThreeBeforeLine0;
-    impl hume_engine::providers::DecorationSource for ThreeBeforeLine0 {
-        fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-            hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-        }
-        fn decorations_for_line(
-            &self,
-            line_idx: usize,
-            out: &mut Vec<hume_engine::providers::Decoration>,
-        ) {
-            if line_idx == 0 {
-                for _ in 0..3 {
-                    out.push(hume_engine::providers::Decoration::VirtualLine(
-                        hume_engine::providers::VirtualLine {
-                            anchor: hume_engine::providers::VirtualLineAnchor::Before(0),
-                            provider_id: 0,
-                            text: "V".to_string(),
-                            segments: Vec::new(),
-                            base_scope: None,
-                        },
-                    ));
-                }
-            }
-        }
-    }
-
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     ed.view.panes[ed.state.focused_pane_id]
         .providers
-        .add_decoration_source(Box::new(ThreeBeforeLine0));
+        .add_decoration_source(Box::new(VirtualRows::uniform(
+            hume_engine::providers::VirtualLineAnchor::Before(0),
+            3,
+            "V",
+        )));
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
         pane.viewport.top_line = 0;
@@ -685,4 +664,40 @@ fn closing_a_buffer_drops_its_wrap_override() {
         !ed.view.panes[pid].wraps.contains_key(bid_first),
         "the closed buffer's wrap override is dropped, not leaked in the map forever"
     );
+}
+
+/// A soft-wrapped buffer scrolled off its first line — the one shape the
+/// snapshot suite had no coverage of, and the shape the scroll and render
+/// passes must agree on: both walk the same wrapped rows from the same
+/// viewport top, and the frame's shared line-format cache hands the second
+/// pass what the first formatted. A disagreement between them shows up here
+/// as rows drawn from the wrong line.
+#[test]
+fn wrapped_and_scrolled_frame_pins_the_rendered_rows() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    type_cmd(&mut ed, ":set global wrap-mode=soft");
+    // Ten lines that each wrap into several rows at this width, typed in one
+    // go so the cursor finishes on the last line and the viewport has to
+    // scroll to follow it.
+    let text: String = (0..10)
+        .map(|i| format!("line{i} with enough text to wrap several times\n"))
+        .collect();
+    type_text(&mut ed, &text);
+    // Back up into the middle of the buffer so the frame shows several
+    // distinct wrapped lines rather than parking on the last one — the
+    // handoff between the two passes has to hold across all of them.
+    for _ in 0..4 {
+        ed.feed_key(key('k'));
+    }
+
+    frame(&mut ed, 24, 8);
+
+    assert!(
+        focused_pane(&ed).viewport.top_line > 0,
+        "the fixture must actually be scrolled, or it pins the wrong thing"
+    );
+
+    let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 24, 8));
+    insta::assert_snapshot!(snap);
 }

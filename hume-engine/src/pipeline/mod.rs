@@ -1,9 +1,8 @@
 use hume_grid::{Grid, Position, Rect, Rgb};
 use rustc_hash::FxHashMap;
 
-use slotmap::{SlotMap, new_key_type};
+use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use crate::format::FormatScratch;
 use crate::pane::{Pane, WhitespaceConfig, WrapMode};
 use crate::providers::{
     BottomBandProvider, DEFAULT_GUTTER_SCOPE, StatuslineProvider, SyntaxSpans, TabBarProvider,
@@ -35,12 +34,15 @@ new_key_type! {
 // Frame scratch buffers
 // ---------------------------------------------------------------------------
 
-/// Per-frame scratch storage reused across all pipeline stages.
+/// Per-frame scratch storage for the Style and gutter-layout stages.
 /// Cleared at the start of each pane render. After a few frames, all `Vec`s
 /// have stabilised capacity and no more heap allocations occur.
+///
+/// The Format stage's buffers are not here — they live on each
+/// [`Pane`], one [`crate::format::LineFormat`] per line
+/// visited, since sharing them between every walk of a pane is the whole
+/// point of that store (see `rows::line_store`'s module doc).
 pub struct FrameScratch {
-    /// Buffers for the Format stage (Stage 2).
-    pub format: FormatScratch,
     /// Buffers for the Style stage (Stage 3).
     pub style: StyleScratch,
     /// Pre-computed gutter lane widths used by the render stage.
@@ -50,7 +52,6 @@ pub struct FrameScratch {
 impl FrameScratch {
     pub fn new() -> Self {
         Self {
-            format: FormatScratch::new(),
             style: StyleScratch::new(),
             lane_widths: Vec::new(),
         }
@@ -58,7 +59,6 @@ impl FrameScratch {
 
     /// Reset all buffers to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
-        self.format.clear();
         self.style.clear();
         self.lane_widths.clear();
     }
@@ -77,12 +77,22 @@ impl Default for FrameScratch {
 /// All scratch buffers needed for one render pass.
 ///
 /// Create once with `RenderContext::new()` and pass `&mut ctx` to
-/// `EngineView::render()` and `cursor::content_pos()` each frame. After a few
-/// frames all internal `Vec`s have stabilised capacity and no further heap
-/// allocations occur.
+/// `EngineView::render()` and `cursor::content_pos()` each frame; its buffers
+/// stabilise their capacity within a few frames.
 pub struct RenderContext {
-    /// Engine pipeline scratch (format, style, gutter lane widths).
+    /// Engine pipeline scratch (style, gutter lane widths).
     pub(crate) frame: FrameScratch,
+    /// Per-pane render settings for the frame about to be drawn, filled by
+    /// the caller through [`RenderContext::set_pane_settings`].
+    ///
+    /// Resolved ahead of [`EngineView::render`] rather than through a closure
+    /// like its `get_rope`/`get_syntax`: resolving a pane's settings reads the
+    /// pane itself, and the pane loop holds `&mut self.panes`, so a closure
+    /// doing that lookup could not run while the loop is borrowing. It lives
+    /// here rather than arriving as a parameter so its map is reused across
+    /// frames instead of reallocated per frame — the same reason `pane_rects`
+    /// and `seams` are here.
+    pub(crate) pane_settings: SecondaryMap<PaneId, PaneRenderSettings>,
     /// Pane rects computed by the layout stage.
     pub(crate) pane_rects: Vec<(PaneId, Rect)>,
     /// Seam dividers computed alongside `pane_rects` each render — reused
@@ -92,10 +102,6 @@ pub struct RenderContext {
     /// render so junction glyphs (`┬ ┴ ├ ┤ ┼`) can be drawn where seams
     /// cross. Reused scratch storage, same rationale as `seams`.
     pub(crate) seam_arms: FxHashMap<(u16, u16), u8>,
-    /// Scratch for cursor-position computation (`cursor::content_pos` and scroll).
-    /// Distinct from `frame.format` — used outside the render pipeline, where
-    /// borrowing `frame` simultaneously would conflict.
-    pub cursor_format: FormatScratch,
     /// Where the focused pane's cursor landed within the pane's content area
     /// (pane-relative, *before* the gutter and pane origin are added — not a
     /// terminal-absolute screen cell), resolved by the scroll step that
@@ -111,12 +117,25 @@ impl RenderContext {
     pub fn new() -> Self {
         Self {
             frame: FrameScratch::new(),
+            pane_settings: SecondaryMap::new(),
             pane_rects: Vec::new(),
             seams: Vec::new(),
             seam_arms: FxHashMap::default(),
-            cursor_format: FormatScratch::new(),
             cursor_content_pos: None,
         }
+    }
+
+    /// Replace the settings [`EngineView::render`] will draw this frame's
+    /// panes with. Every pane the next `render` call reaches must be in
+    /// `settings`, which is why this replaces wholesale rather than merging:
+    /// a pane left over from the last frame would otherwise be drawn with
+    /// stale settings instead of failing.
+    pub fn set_pane_settings(
+        &mut self,
+        settings: impl IntoIterator<Item = (PaneId, PaneRenderSettings)>,
+    ) {
+        self.pane_settings.clear();
+        self.pane_settings.extend(settings);
     }
 }
 
@@ -221,6 +240,19 @@ impl EngineView {
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
 
+    /// Drop every pane's line-store entries, keeping the allocations behind
+    /// them.
+    ///
+    /// Once per frame, and a correctness requirement rather than hygiene: see
+    /// `rows::line_store`'s module doc. A pane created since the last frame
+    /// starts empty, which is what a rewind would produce anyway, so there is
+    /// no ordering hazard against `:split`.
+    pub fn begin_frame(&mut self) {
+        for pane in self.panes.values_mut() {
+            pane.line_store.rewind();
+        }
+    }
+
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
     /// the top (if `self.tabbar` is set), the bottom chrome bands directly
     /// above the statusline (`self.bottom_bands`), and a statusline row at
@@ -260,6 +292,9 @@ impl EngineView {
     /// Layout: the tab bar (if present) occupies the top row, the statusline
     /// always occupies the bottom row. Panes fill the remaining area.
     ///
+    /// `ctx`'s [`pane_settings`](RenderContext::set_pane_settings) must carry
+    /// an entry for every pane this call will draw.
+    ///
     /// `focused_pane_id` drives seam-accent styling and non-focused dimming.
     /// `draw_dividers` mirrors the `pane-dividers` setting: `true` reserves
     /// and paints a 1-cell seam between sibling panes; `false` tiles panes
@@ -268,18 +303,18 @@ impl EngineView {
     /// cosmetic choice.
     #[allow(clippy::too_many_arguments)]
     pub fn render<'rope>(
-        &self,
+        &mut self,
         area: Rect,
         grid: &mut Grid,
         get_rope: impl Fn(BufferId) -> Option<&'rope ropey::Rope>,
         get_syntax: impl Fn(BufferId) -> Option<&'rope dyn SyntaxSpans>,
-        get_pane_settings: impl Fn(PaneId) -> PaneRenderSettings,
         statusline: &dyn StatuslineProvider,
         focused_pane_id: PaneId,
         draw_dividers: bool,
         ctx: &mut RenderContext,
     ) {
         let scratch = &mut ctx.frame;
+        let pane_settings = &ctx.pane_settings;
         let pane_rects = &mut ctx.pane_rects;
         let pane_area = self.pane_area(area);
 
@@ -347,26 +382,50 @@ impl EngineView {
 
         // ── Render panes ──────────────────────────────────────────────────────
         for (pane_id, rect) in pane_rects.iter().copied() {
-            let Some(pane) = self.panes.get(pane_id) else {
+            let Some(pane) = self.panes.get_mut(pane_id) else {
                 continue;
             };
-            if self.buffers.get(pane.buffer_id).is_none() {
+            let buffer_id = pane.buffer_id;
+            if self.buffers.get(buffer_id).is_none() {
                 continue;
             }
             // Resolve the rope from the caller — zero-copy, no clone needed.
-            let Some(rope) = get_rope(pane.buffer_id) else {
+            let Some(rope) = get_rope(buffer_id) else {
                 continue;
             };
+            // Unlike the three skips above — a pane, buffer or rope that
+            // genuinely may be gone by the time the frame draws — a missing
+            // entry here is the caller having resolved settings for a
+            // different set of panes than it is now asking to draw. Drawing
+            // the pane with stale settings, or skipping it and leaving its
+            // rect blank, would both hide that.
+            let settings = pane_settings.get(pane_id).expect(
+                "no render settings for a live pane — see RenderContext::set_pane_settings",
+            );
 
             scratch.clear();
 
+            // The one place that can say these are disjoint parts of one pane:
+            // the render pass reads four of its fields while writing a fifth.
+            let Pane {
+                viewport,
+                providers,
+                selections,
+                primary_idx,
+                line_store,
+                ..
+            } = pane;
+
             let pane_ctx = PaneRenderCtx {
-                pane,
+                viewport,
+                providers,
+                selections,
+                primary_idx: *primary_idx,
                 rope,
-                syntax: get_syntax(pane.buffer_id),
+                syntax: get_syntax(buffer_id),
                 theme: &self.theme,
                 rect,
-                settings: get_pane_settings(pane_id),
+                settings,
                 // Dim non-focused panes so the active one reads clearly at a
                 // glance — independent of `draw_dividers`, which only controls
                 // the seam glyph. Skipped when `ui.background` has no explicit
@@ -378,7 +437,7 @@ impl EngineView {
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            render_pane(&pane_ctx, scratch, grid);
+            render_pane(&pane_ctx, scratch, line_store, grid);
         }
 
         // ── Render seam dividers between panes ────────────────────────────────
@@ -471,19 +530,33 @@ impl EngineView {
 /// it to the live editor mode only for the focused pane (whose fake cursor
 /// must yield to the real terminal cursor in bar-cursor modes) and to a
 /// block-cursor mode for every other pane.
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
     pub wrap_mode: WrapMode,
     pub tab_width: u8,
     pub whitespace: WhitespaceConfig,
     pub show_indent_guides: bool,
+    /// The caller's identification of everything about the buffer that
+    /// changes how its lines format — identity, revision, decoration
+    /// generation. Feeds `rows::line_store`'s scope key; this crate depends on
+    /// neither the editing nor the editor crate, so it cannot derive it
+    /// itself.
+    pub buffer_tag: crate::rows::line_store::BufferTag,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a
 /// dozen separate parameters through the call stack.
 pub(crate) struct PaneRenderCtx<'a> {
-    pub pane: &'a Pane,
+    /// The pane's own fields rather than `&Pane`, so the render loop can hand
+    /// `render_pane` a `&mut` on that same pane's line store alongside this —
+    /// one `&mut Pane` split into disjoint field borrows, which only the loop
+    /// that owns the pane can say is sound.
+    pub viewport: &'a crate::pane::ViewportState,
+    pub providers: &'a crate::providers::ProviderSet,
+    /// Head-sorted, as `populate_sorted_sels` asserts.
+    pub selections: &'a [crate::types::Selection],
+    pub primary_idx: usize,
     /// Rope borrowed from the caller's `Document` for this frame only.
     pub rope: &'a ropey::Rope,
     /// Syntax highlight span source borrowed from the caller via
@@ -491,7 +564,9 @@ pub(crate) struct PaneRenderCtx<'a> {
     pub syntax: Option<&'a dyn SyntaxSpans>,
     pub theme: &'a Theme,
     pub rect: Rect,
-    pub settings: PaneRenderSettings,
+    /// Borrowed from the caller's `RenderContext`, which owns the map these
+    /// come out of for the whole frame.
+    pub settings: &'a PaneRenderSettings,
     /// `Some` for non-focused panes — blend every written cell's fg/bg toward
     /// this target by `factor`. `None` for the focused pane.
     pub dim: Option<(Rgb, f32)>,

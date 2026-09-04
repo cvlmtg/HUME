@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use hume_platform::path::is_path_sep;
 
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 use crate::ui::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text};
 
@@ -23,7 +23,7 @@ pub(in crate::ui::statusline) fn render(
 /// Returns the display path for the `FilePath` element: the buffer's
 /// display-ready path string, printed verbatim, falling back to the buffer's
 /// display name (label, or `*scratch*`) for scratch and synthetic buffers.
-pub(in crate::ui::statusline) fn statusline_display_path(editor: &Editor) -> String {
+pub(in crate::ui::statusline) fn statusline_display_path(editor: &HumeStatusline<'_>) -> String {
     let doc = editor.doc();
     doc.display_path()
         .map(str::to_owned)

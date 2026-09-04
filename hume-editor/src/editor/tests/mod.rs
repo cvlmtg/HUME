@@ -111,7 +111,7 @@ fn custom_text(ed: &Editor, name: &str) -> String {
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = crate::ui::statusline::render_element(
         &crate::ui::statusline::StatusElement::Custom(name.into()),
-        ed,
+        &ed.statusline(),
         &colors,
         "",
     );
@@ -276,6 +276,22 @@ fn frame(ed: &mut Editor, width: u16, height: u16) {
 /// step.
 fn render(ed: &mut Editor) {
     frame(ed, 80, 25);
+}
+
+/// The text drawn at one grid cell. A wide glyph's continuation cell holds
+/// no text of its own, so this reads it as the blank it visually is.
+fn cell(buf: &hume_grid::Grid, x: u16, y: u16) -> String {
+    buf.cell(x, y).unwrap().text().to_string()
+}
+
+/// Move the primary selection head to the start of buffer line `line`.
+/// Avoids depending on a specific motion command.
+fn seek_to_line(ed: &mut Editor, line: usize) {
+    use hume_editing::selection::Selection;
+    let head = ed.doc().text().rope().line_to_char(line);
+    let pid = ed.state.focused_pane_id;
+    let bid = ed.focused_buffer_id();
+    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::collapsed(head));
 }
 
 /// `name`'s already-interned `ScopeId` — panics if a setter hasn't interned
@@ -950,7 +966,10 @@ mod copy_selection;
 mod count_prefix;
 mod diff_steel;
 mod disk_change;
+// `pub(crate)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
+// ::tests` subtrees register the same doubles and reach them through here.
 mod dot_repeat;
+pub(crate) mod doubles;
 mod events;
 mod file_io;
 mod find;
@@ -960,6 +979,7 @@ mod inline_output;
 mod jump_list;
 mod kitty;
 mod language;
+mod line_store;
 mod list_buffers;
 mod lsp;
 mod lsp_bridge;

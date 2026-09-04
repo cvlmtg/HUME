@@ -61,7 +61,7 @@ impl Editor {
     /// `(anchor, pane_rect, max_width, max_height)`; `None` when the pane
     /// has no rect yet or `anchor_char` isn't currently visible.
     fn popup_anchor_and_bounds(
-        &self,
+        &mut self,
         ctx: &mut RenderContext,
         anchor_char: usize,
     ) -> Option<((u16, u16), Rect, u16, u16)> {
@@ -78,13 +78,18 @@ impl Editor {
         let (content_x, row) = match ctx.cursor_content_pos {
             Some(cell) if anchor_char == self.focused_cursor_char() => cell,
             _ => {
-                let vp = &self.view.panes[focused].viewport;
-                let buf = self.state.buffers.get(self.focused_buffer_id());
-                let mut rm = super::commands::pane_row_map(
-                    buf,
-                    &self.state.settings,
-                    &self.view.panes[focused],
-                    &mut ctx.cursor_format,
+                // Every read of `self` the map needs resolves before the pane
+                // is borrowed mutably; the viewport comes back out of
+                // `pane_row_map_mut`'s own split rather than being held
+                // across it.
+                let bid = self.focused_buffer_id();
+                let buffer_tag = self.state.buffer_tag(bid);
+                let Editor { state, view, .. } = self;
+                let (mut rm, vp) = super::commands::pane_row_map_mut(
+                    state.buffers.get(bid),
+                    &state.settings,
+                    &mut view.panes[focused],
+                    buffer_tag,
                 );
                 super::cursor::content_pos(vp, &mut rm, anchor_char)?
             }
@@ -251,14 +256,20 @@ impl Editor {
     /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
-    pub(super) fn sync_menu_view(&self, ctx: &mut RenderContext) {
-        if self.state.config.menu.is_none() && self.state.menu_view.read_or_panic().is_none() {
+    pub(super) fn sync_menu_view(&mut self, ctx: &mut RenderContext) {
+        if self.state.config.menu.is_none() {
+            *self.state.menu_view.write_or_panic() = None;
             return;
         }
 
-        let resolved = self.state.config.menu.as_ref().and_then(|model| {
-            let (anchor, pane_rect, _max_width, _max_height) =
-                self.popup_anchor_and_bounds(ctx, self.focused_cursor_char())?;
+        // Hoisted out of the `and_then` below: resolving the anchor takes
+        // `&mut self` (it may walk the pane's row map), which cannot overlap
+        // the `&self.state.config.menu` that closure's receiver holds.
+        let anchor_char = self.focused_cursor_char();
+        let bounds = self.popup_anchor_and_bounds(ctx, anchor_char);
+
+        let resolved = bounds.and_then(|(anchor, pane_rect, _max_width, _max_height)| {
+            let model = self.state.config.menu.as_ref()?;
             let lines: Vec<String> = model.items.clone();
             let (outer_w, outer_h) =
                 crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
@@ -306,10 +317,10 @@ impl Editor {
         // `popup_anchor_and_bounds`) has no way to tell a stale offset from
         // a live one, so check both here.
         //
-        // Two sequential immutable-then-mutable borrows of `self`, not one
-        // closure over `self.lsp.completion`: `popup_anchor_and_bounds`
-        // needs `&self` as a whole (pane/viewport/cursor state), which
-        // can't overlap the `&mut` `menu_labels_and_width` needs below.
+        // Sequential borrows rather than one closure over
+        // `self.lsp.completion`: the session's shared borrow has to end
+        // before `popup_anchor_and_bounds` and `menu_labels_and_width` each
+        // take `&mut self`.
         let resolved = (|| -> Option<crate::ui::popup::PopupState> {
             let session = self.lsp.completion.as_ref()?;
             if session.bid() != self.focused_buffer_id() {

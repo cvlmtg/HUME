@@ -145,8 +145,12 @@ impl Editor {
     }
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
+    #[cfg(test)]
     pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
-        &self.state.panes.state[self.state.focused_pane_id][self.focused_buffer_id()].search_cursor
+        &self
+            .state
+            .focused_buffer_state_or_panic(self.focused_buffer_id())
+            .search_cursor
     }
 
     /// Recompute the match list and pane search cursor for the focused buffer,

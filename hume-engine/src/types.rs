@@ -86,7 +86,7 @@ pub struct Grapheme {
 /// What a grapheme cell displays.
 ///
 /// `Whitespace`, `Placeholder`, and `Virtual` reference a range in a per-frame text arena in
-/// `FormatScratch` (`virtual_texts` for a content line's inline decorations,
+/// `LineFormat` (`virtual_texts` for a content line's inline decorations,
 /// `virtual_row.texts` for a provider's virtual row — see
 /// `rows::RenderRow::virtual_texts`) rather than borrowing a string directly
 /// — their source text (Steel-configured whitespace glyphs, LSP inlay hints,
@@ -139,7 +139,7 @@ pub enum CellContent {
 pub struct DisplayRow {
     /// What kind of content this row represents.
     pub kind: RowKind,
-    /// Index range into the frame's `FrameScratch::graphemes` buffer.
+    /// Index range into its `LineFormat::graphemes` buffer.
     pub graphemes: Range<usize>,
 }
 

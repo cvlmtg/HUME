@@ -65,8 +65,7 @@ impl Editor {
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx);
         let wrap_mode = super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
             .resolve(pane.content_width(last_line_idx));
-        let tab_width = doc.overrides.tab_width(&self.state.settings);
-        let whitespace = doc.overrides.whitespace(&self.state.settings);
+        let (tab_width, whitespace) = super::commands::format_overrides(doc, &self.state.settings);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let mode = if pid == self.state.focused_pane_id {
             self.state.mode()
@@ -80,34 +79,76 @@ impl Editor {
                 tab_width,
                 whitespace,
                 show_indent_guides,
+                buffer_tag: self.state.buffer_tag(pane.buffer_id),
             },
             gutter_w,
         )
     }
 
-    /// Render one frame into `grid`. Single home for the rope / syntax /
-    /// pane-settings closures shared by the event loop and `render_to_buf`.
-    pub(super) fn render_into(&self, area: Rect, grid: &mut Grid, ctx: &mut RenderContext) {
-        // The statusline provider borrows `self` immutably; it's built here so
-        // its lifetime is tied to this call, not stored across the draw closure.
-        let statusline = crate::ui::statusline::HumeStatusline { editor: self };
-        self.view.render(
+    /// Render one frame into `grid`. Single home for the rope and syntax
+    /// lookups shared by the event loop and `render_to_buf`.
+    pub(super) fn render_into(&mut self, area: Rect, grid: &mut Grid, ctx: &mut RenderContext) {
+        // Resolved for every live pane up front: `resolve_pane_settings` reads
+        // the pane it is asked about, and `render`'s pane loop borrows
+        // `self.view.panes` mutably, so it cannot run from inside that loop.
+        // Lazily, into the context's own map — nothing is collected on the
+        // way, so a steady-state frame allocates nothing here.
+        ctx.set_pane_settings(
+            self.view
+                .panes
+                .keys()
+                .map(|pid| (pid, self.resolve_pane_settings(pid).0)),
+        );
+        let focused_pane_id = self.state.focused_pane_id;
+        let draw_dividers = self.state.settings.pane_dividers;
+        let focused_bid = self.focused_buffer_id();
+
+        // Split explicitly rather than leaning on closure-capture precision:
+        // `view` is borrowed mutably below, so everything else the call needs
+        // has to come from a provably disjoint field.
+        let Editor {
+            state,
+            view,
+            lsp,
+            kitty_enabled,
+            ..
+        } = self;
+        let statusline = crate::ui::statusline::HumeStatusline {
+            state,
+            lsp,
+            kitty_enabled: *kitty_enabled,
+            focused_bid,
+        };
+        let buffers = &state.buffers;
+        view.render(
             area,
             grid,
-            |bid| self.state.buffers.try_get(bid).map(|b| b.text().rope()),
+            |bid| buffers.try_get(bid).map(|b| b.text().rope()),
             |bid| {
-                self.state
-                    .buffers
+                buffers
                     .try_get(bid)
                     .and_then(|b| b.syntax.as_ref())
                     .map(|s| s as &dyn hume_engine::providers::SyntaxSpans)
             },
-            |pid| self.resolve_pane_settings(pid).0,
             &statusline,
-            self.state.focused_pane_id,
-            self.state.settings.pane_dividers,
+            focused_pane_id,
+            draw_dividers,
             ctx,
         );
+    }
+
+    /// The statusline provider over this editor — the fixture the element
+    /// tests need, since `HumeStatusline`'s fields are assembled from
+    /// disjoint borrows that a test holding a whole `&Editor` doesn't have to
+    /// bother splitting.
+    #[cfg(test)]
+    pub(crate) fn statusline(&self) -> crate::ui::statusline::HumeStatusline<'_> {
+        crate::ui::statusline::HumeStatusline {
+            state: &self.state,
+            lsp: &self.lsp,
+            kitty_enabled: self.kitty_enabled,
+            focused_bid: self.focused_buffer_id(),
+        }
     }
 
     /// Render the current frame into a [`Grid`] without a live terminal.
@@ -130,8 +171,11 @@ impl Editor {
     /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
     /// entries whose pane no longer exists in `self.view.panes`. A pending
     /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
-    /// `queue_viewport_change`'s own liveness check anyway, but there is
-    /// no reason to let it sit in the wheel until it fires).
+    /// `queue_viewport_change`'s own liveness check anyway, but there is no
+    /// reason to let it sit in the wheel until it fires).
+    ///
+    /// A pane's line store needs no entry here — it lives on the pane and
+    /// dies with it.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
         self.last_viewport_key
@@ -235,18 +279,20 @@ impl Editor {
     /// buffer, which can be out of bounds for that rope, or leave the new
     /// buffer's cursor unvalidated against the viewport for a frame.
     /// Highlight and statusline shared buffers are also written here,
-    /// immediately before every `render()` call. Mode and display settings
-    /// are resolved lazily via the `get_pane_settings` closure passed to
-    /// `render()`.
+    /// immediately before every `render()` call. Mode and display settings are
+    /// resolved by `render_into`, which runs after this.
     pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) {
         // A `RenderContext` is allocated once and reused for every frame, so
         // last frame's cursor cell would otherwise be indistinguishable from
         // one step 4 resolved this frame. Cleared here, filled there.
         ctx.cursor_content_pos = None;
+        // Load-bearing rather than tidiness, and for a reason step 3 below is
+        // what creates — see `EngineView::begin_frame`.
+        self.view.begin_frame();
 
-        // Reclaim viewport-debounce/scroll-key/virtual-line-sync cache
-        // entries for panes closed since the last frame. These three live on
-        // `Editor` rather than `EditorState.panes` (unlike `jumps`/`render`/
+        // Reclaim viewport-debounce/scroll-key/virtual-line-sync entries
+        // for panes closed since the last frame. These live on `Editor`
+        // rather than `EditorState.panes` (unlike `jumps`/`render`/
         // `transient`/`state`, which `drop_pane_state` clears directly), so
         // this per-frame sweep is where they get reclaimed instead.
         self.prune_closed_pane_caches();
@@ -338,7 +384,7 @@ impl Editor {
         //      3b/3c/3d. inlay hints / virtual lines / EOL text — each a
         //          `RowMap` provider
         //          (`inline_decorations` or `virtual_lines`) that
-        //          `RowMap::format_line`/`block` reads, so they change wrap
+        //          `RowMap::ensure_formatted`/`block` reads, so they change wrap
         //          row counts and columns the moment they appear.
         //    All four read this one `decorated_panes()` snapshot (see its
         //    doc), taken here rather than after step 4 — so a same-frame
@@ -371,12 +417,13 @@ impl Editor {
                 .selections
                 .primary()
                 .head();
+            let buffer_tag = self.state.buffer_tag(buf_id);
             let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &self.state.settings,
                 &mut self.view.panes[pid],
                 cursor_char,
-                &mut ctx.cursor_format,
+                buffer_tag,
                 scrolloff,
             );
             if pid == self.state.focused_pane_id {
@@ -491,11 +538,13 @@ fn scroll_into_view(
     settings: &EditorSettings,
     pane: &mut Pane,
     cursor_char: usize,
-    scratch: &mut hume_engine::format::FormatScratch,
+    buffer_tag: hume_engine::rows::line_store::BufferTag,
     scrolloff: usize,
 ) -> Option<(u16, u16)> {
     use super::scroll;
-    let (mut rm, viewport) = super::commands::pane_row_map_mut(doc, settings, pane, scratch);
+    // Whatever this pass formats deciding where to scroll, the render pass
+    // finds already done — both work through this pane's one store.
+    let (mut rm, viewport) = super::commands::pane_row_map_mut(doc, settings, pane, buffer_tag);
     // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
     // logic below reads it — see `clamp_viewport_top`'s doc.

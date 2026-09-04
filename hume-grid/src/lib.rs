@@ -23,7 +23,7 @@
 //! *continuation* holding no text, advancing no columns, and carrying the
 //! head's style. [`Grid`]'s write primitives guarantee the two always come in
 //! well-formed pairs — no continuation without its head, no head without its
-//! continuations — which is what lets [`diff`] compare cells one at a time
+//! continuations — which is what lets `diff` compare cells one at a time
 //! with `==` and still never emit half a glyph. See [`Grid::set_glyph`].
 
 pub mod box_glyphs;

@@ -143,8 +143,8 @@ pub(super) fn apply_visual_vertical(
 
     let buf_id = focused_buffer_id(state, view);
     // A latch this path wrote is tagged by whether wrapping was on at the
-    // time — see `DisplayColOrigin`. Resolved once per call, before the row
-    // map borrows the pane, since neither borrow is mutable.
+    // time — see `DisplayColOrigin`. Resolved once per call, and before the
+    // row map takes the pane mutably.
     let wrapping = effective_wrap_mode(
         state.buffers.get(buf_id),
         &state.settings,
@@ -157,13 +157,14 @@ pub(super) fn apply_visual_vertical(
         DisplayColOrigin::BufferLine
     };
     let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
+    let buffer_tag = state.buffer_tag(buf_id);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
     let mut rm = pane_row_map(
         state.buffers.get(buf_id),
         &state.settings,
-        &view.panes[focused],
-        &mut state.motion_format_scratch,
+        &mut view.panes[focused],
+        buffer_tag,
     );
 
     // Not `apply_focused_motion`: the closure also captures the row map and the
@@ -367,11 +368,12 @@ fn copy_selection_on_line(
 ) {
     let focused = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
+    let buffer_tag = state.buffer_tag(buf_id);
     let mut rm = pane_row_map(
         state.buffers.get(buf_id),
         &state.settings,
-        &view.panes[focused],
-        &mut state.motion_format_scratch,
+        &mut view.panes[focused],
+        buffer_tag,
     );
 
     doc_ops::apply_doc_motion(
@@ -490,11 +492,12 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     }
 
     let focused = state.focused_pane_id;
+    let buffer_tag = state.buffer_tag(buf_id);
     let mut rm = pane_row_map(
         state.buffers.get(buf_id),
         &state.settings,
-        &view.panes[focused],
-        &mut state.motion_format_scratch,
+        &mut view.panes[focused],
+        buffer_tag,
     );
 
     // Not `apply_focused_motion`: the closure also captures the row map.

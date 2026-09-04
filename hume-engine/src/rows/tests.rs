@@ -4,7 +4,7 @@ use std::rc::Rc;
 use ropey::Rope;
 
 use super::*;
-use crate::providers::DecorationSource;
+use crate::providers::{DecorationSource, VirtualLine};
 use crate::types::ScopeId;
 
 // ---------------------------------------------------------------------------
@@ -19,9 +19,37 @@ fn map<'a>(
     rope: &'a Rope,
     wrap: WrapMode,
     providers: &'a ProviderSet,
-    scratch: &'a mut FormatScratch,
+    store: &'a mut PaneLineStore,
 ) -> RowMap<'a> {
-    RowMap::new(rope, wrap, 4, ws(), providers, 80, scratch)
+    RowMap::new(
+        rope,
+        wrap,
+        4,
+        ws(),
+        providers,
+        80,
+        StoreScope {
+            store,
+            buffer_tag: [0; 3],
+        },
+    )
+}
+
+/// How many graphemes the formatter actually emitted for `line` — an oracle
+/// over `format.rs`'s output, read from the store after the map that filled
+/// it is gone.
+fn stored_graphemes(store: &PaneLineStore, line: usize) -> usize {
+    store
+        .find(line)
+        .map_or(0, |i| store.entry(i).format.graphemes.len())
+}
+
+/// Whether `line` has an entry that was never formatted — the state a no-wrap
+/// line sits in when only its block shape was ever asked for.
+fn is_unformatted(store: &PaneLineStore, line: usize) -> bool {
+    store
+        .find(line)
+        .is_some_and(|i| store.entry(i).format.extent.is_none())
 }
 
 /// Emits `count` identical rows at one fixed anchor. Self-reports
@@ -30,15 +58,29 @@ struct FixedAnchor {
     anchor: VirtualLineAnchor,
     count: usize,
     text: &'static str,
+    calls: Option<Rc<Cell<usize>>>,
 }
 
 impl FixedAnchor {
     fn new(anchor: VirtualLineAnchor, count: usize) -> Self {
+        Self::texted(anchor, count, "V")
+    }
+
+    fn texted(anchor: VirtualLineAnchor, count: usize, text: &'static str) -> Self {
         Self {
             anchor,
             count,
-            text: "V",
+            text,
+            calls: None,
         }
+    }
+
+    /// Count *every* `decorations_for_line` call, whatever line it asks about
+    /// — the only observable proxy for whether `block_entry` treated a line as
+    /// already known rather than re-querying providers for it.
+    fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
+        self.calls = Some(calls);
+        self
     }
 }
 
@@ -47,6 +89,9 @@ impl DecorationSource for FixedAnchor {
         DecorationKinds::VIRTUAL_LINE
     }
     fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+        if let Some(calls) = &self.calls {
+            calls.set(calls.get() + 1);
+        }
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
@@ -75,8 +120,19 @@ impl DecorationSource for NoRows {
     fn decorations_for_line(&self, _line_idx: usize, _out: &mut Vec<Decoration>) {}
 }
 
+/// A call-counting source emitting one `Before(0)` row, so the entry whose
+/// re-query the counter is watching has a non-trivial block shape.
+fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
+    let calls = Rc::new(Cell::new(0));
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(
+        FixedAnchor::new(VirtualLineAnchor::Before(0), 1).counting(Rc::clone(&calls)),
+    ));
+    (providers, calls)
+}
+
 /// A LINE_BG-kind source that counts every `decorations_for_line` call —
-/// used to prove the layout stage (`block`/`format_line`) never queries a
+/// used to prove the layout stage (`block`/`ensure_formatted`) never queries a
 /// kind it has no use for, even when the same line is both counted and
 /// formatted.
 struct CountingLineBg(Rc<Cell<usize>>);
@@ -170,7 +226,7 @@ fn walk_forward(rm: &mut RowMap<'_>) -> Vec<RowPos> {
 fn block_without_providers_is_content_only() {
     let rope = Rope::from_str("hello\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -190,7 +246,7 @@ fn block_counts_one_content_row_per_wrap_row() {
     // onto a third row rather than landing past the pane's edge.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.block(0).content, 3);
@@ -204,7 +260,7 @@ fn block_counts_before_and_after_virtual_rows() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(5), 2)));
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(5), 1)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let block = rm.block(5);
@@ -224,7 +280,7 @@ fn block_ignores_virtual_rows_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(2), 3)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.block(5).before, 0);
@@ -234,13 +290,13 @@ fn block_ignores_virtual_rows_anchored_to_other_lines() {
 #[test]
 fn layout_stage_never_queries_a_paint_only_kind() {
     // block() drives both the VIRTUAL_LINE query and, under wrapping,
-    // format_line()'s INLINE query — a LINE_BG-kind source (paint-only)
+    // ensure_formatted()'s INLINE query — a LINE_BG-kind source (paint-only)
     // must be invisible to both.
     let calls = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(CountingLineBg(Rc::clone(&calls))));
     let rope = Rope::from_str("abcdef\n");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     rm.block(0);
@@ -263,7 +319,7 @@ fn block_counts_inline_inserts_toward_wrapping() {
     let wrap = WrapMode::Soft { width: 8 };
 
     let bare = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     assert_eq!(
         map(&rope, wrap, &bare, &mut s).block(0).content,
         1,
@@ -271,7 +327,7 @@ fn block_counts_inline_inserts_toward_wrapping() {
     );
 
     let (providers, _calls) = with_counting_insert(0, 0, "hint");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     assert_eq!(
         map(&rope, wrap, &providers, &mut s).block(0).content,
         2,
@@ -287,7 +343,7 @@ fn no_wrap_block_counts_without_running_the_formatter() {
     // does first, so a zero call count is the observable proxy.
     let rope = Rope::from_str("abcdef\n");
     let (providers, calls) = with_counting_insert(0, 0, "hint");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
     assert_eq!(rm.block(0).content, 1);
@@ -295,7 +351,7 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 
     // The same query while wrapping has to format, because the row count
     // genuinely depends on the content.
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
     rm.block(0);
     assert!(calls.get() > 0, "wrapping must format to count rows");
@@ -321,7 +377,7 @@ fn slot_classifies_every_row_of_a_mixed_block() {
     // row of its own (see `content_row_char_bounds_scopes_to_one_wrap_row`).
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.block(0).total(), 6);
@@ -343,7 +399,7 @@ fn slot_classifies_every_row_of_a_mixed_block() {
 fn clamp_pulls_line_and_row_into_the_document() {
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
@@ -370,7 +426,7 @@ fn last_line_excludes_the_phantom_trailing_line() {
     // count it as a real line.
     let rope = Rope::from_str("a\nb\nc\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.last_line(), 2);
@@ -384,7 +440,7 @@ fn clamp_reaches_the_documents_very_last_row() {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -427,7 +483,7 @@ fn three_line_doc() -> (Rope, ProviderSet, Vec<RowPos>) {
 #[test]
 fn next_walks_the_documents_rows_in_order() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(walk_forward(&mut rm), expected);
@@ -436,7 +492,7 @@ fn next_walks_the_documents_rows_in_order() {
 #[test]
 fn prev_is_the_inverse_of_next() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let mut backward = vec![*expected.last().expect("non-empty")];
@@ -450,7 +506,7 @@ fn prev_is_the_inverse_of_next() {
 #[test]
 fn next_and_prev_stop_exactly_at_the_documents_edges() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let first = expected[0];
@@ -470,7 +526,7 @@ fn next_and_prev_stop_exactly_at_the_documents_edges() {
 #[test]
 fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for (i, &from) in expected.iter().enumerate() {
@@ -493,7 +549,7 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
 #[test]
 fn advance_counted_reports_how_far_it_actually_stepped() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     // In bounds: the count matches the requested delta exactly.
@@ -537,7 +593,7 @@ fn advance_counted_reports_how_far_it_actually_stepped() {
 #[test]
 fn distance_counts_rows_forward_and_rejects_backward_or_distant() {
     let (rope, providers, expected) = three_line_doc();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for (i, &from) in expected.iter().enumerate() {
@@ -572,7 +628,7 @@ fn fits_in_counts_virtual_rows_toward_the_height() {
     // The hand-written list above is 6 rows: 3 content + 3 virtual.
     let (rope, providers, expected) = three_line_doc();
     assert_eq!(expected.len(), 6);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert!(rm.fits_in(6), "6 rows fit in 6");
@@ -590,7 +646,7 @@ fn fits_in_zero_height_never_fits() {
     // document is.
     let rope = Rope::from_str("x\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert!(!rm.fits_in(0));
@@ -602,7 +658,7 @@ fn degenerate_single_empty_line_document() {
     // real (empty) line plus the structural trailing newline.
     let rope = Rope::from_str("\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.last_line(), 0);
@@ -624,8 +680,19 @@ fn degenerate_single_empty_line_document() {
 fn new_panics_on_zero_content_width() {
     let rope = Rope::from_str("x\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
-    RowMap::new(&rope, WrapMode::None, 4, ws(), &providers, 0, &mut s);
+    let mut s = PaneLineStore::new();
+    RowMap::new(
+        &rope,
+        WrapMode::None,
+        4,
+        ws(),
+        &providers,
+        0,
+        StoreScope {
+            store: &mut s,
+            buffer_tag: [0; 3],
+        },
+    );
 }
 
 #[test]
@@ -635,7 +702,7 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
     // sentinel always wraps onto a row of its own here.
     let rope = Rope::from_str("abcd\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = RowMap::new(
         &rope,
         WrapMode::Soft { width: 1 },
@@ -643,7 +710,10 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
         ws(),
         &providers,
         80,
-        &mut s,
+        StoreScope {
+            store: &mut s,
+            buffer_tag: [0; 3],
+        },
     );
 
     let breakdown = rm.block(0);
@@ -659,7 +729,7 @@ fn locate_returns_the_wrap_row_and_column_of_a_char() {
     // "abcdefgh\n" at width 4: row 0 holds chars 0..3, row 1 holds 4..7.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
@@ -691,7 +761,7 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.locate(5), (RowPos::new(0, 3), 1));
@@ -706,7 +776,7 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     // `style::resolve_grapheme_display_col` already guarantees for selection styling.
     let rope = Rope::from_str("ab\n");
     let (providers, _calls) = with_counting_insert(0, 1, "XY");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.locate(1), (RowPos::new(0, 0), 3));
@@ -720,7 +790,7 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
     // there rather than back on 'i'.
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.char_at(RowPos::new(0, 0), 99, DisplayColTarget::Cell), 2);
@@ -732,7 +802,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
     // the text resolves to the last real character, never the '\n'.
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -750,7 +820,7 @@ fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
     // land the cursor on the seam past the pane's right edge).
     let rope = Rope::from_str("abcde\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
 
     assert_eq!(rm.locate(5), (RowPos::new(0, 1), 0));
@@ -766,10 +836,21 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     // ineligible for a blanket exclusion.
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut whitespace = ws();
     whitespace.newline = true;
-    let mut rm = RowMap::new(&rope, WrapMode::None, 4, whitespace, &providers, 80, &mut s);
+    let mut rm = RowMap::new(
+        &rope,
+        WrapMode::None,
+        4,
+        whitespace,
+        &providers,
+        80,
+        StoreScope {
+            store: &mut s,
+            buffer_tag: [0; 3],
+        },
+    );
 
     assert_eq!(
         rm.char_at(RowPos::new(0, 0), 99, DisplayColTarget::NearestContent),
@@ -788,7 +869,7 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
     // would prefer the insert's own trailing cell, being visually closer).
     let rope = Rope::from_str("hi\n");
     let (providers, _calls) = with_counting_insert(0, 2, "ZZZ");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -803,7 +884,7 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
     // An empty line's only cell *is* the sentinel, so it has to answer.
     let rope = Rope::from_str("\nx\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -818,7 +899,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
     // 4. Column 3 is inside the tab's expanse.
     let rope = Rope::from_str("\tx\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -842,7 +923,7 @@ fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
     // the WidthContinuation entry or fall through to 'x'.
     let rope = Rope::from_str("中x\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -861,7 +942,7 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
     // multi-column cell.
     let rope = Rope::from_str("a\u{200b}b\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -882,7 +963,7 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
     // wide grapheme.
     let rope = Rope::from_str("中x\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -900,7 +981,7 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 1)));
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::After(2), 1)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -927,7 +1008,7 @@ fn content_row_char_bounds_scopes_to_one_wrap_row() {
     // of being folded into row 1's bounds.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(rm.content_row_char_bounds(RowPos::new(0, 0)), Some((0, 4)));
@@ -944,7 +1025,7 @@ fn content_row_char_bounds_rejects_a_virtual_row() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
@@ -967,7 +1048,7 @@ fn content_row_char_bounds_rejects_a_virtual_row() {
 fn render_row_yields_a_content_lines_wrap_rows() {
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     let row0 = rm.render_row(RowPos::new(0, 0));
@@ -995,12 +1076,12 @@ fn render_row_segments_a_virtual_rows_text() {
     // Consume id 0 so the emitting provider's real id is 1 — it self-reports
     // 0, which must be overwritten.
     providers.add_decoration_source(Box::new(NoRows));
-    providers.add_decoration_source(Box::new(FixedAnchor {
-        anchor: VirtualLineAnchor::Before(0),
-        count: 1,
-        text: "deleted line",
-    }));
-    let mut s = FormatScratch::new();
+    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+        VirtualLineAnchor::Before(0),
+        1,
+        "deleted line",
+    )));
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let virtual_row = rm.render_row(RowPos::new(0, 0));
@@ -1024,12 +1105,12 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoRows));
-    providers.add_decoration_source(Box::new(FixedAnchor {
-        anchor: VirtualLineAnchor::Before(0),
-        count: 1,
-        text: "\tx",
-    }));
-    let mut s = FormatScratch::new();
+    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+        VirtualLineAnchor::Before(0),
+        1,
+        "\tx",
+    )));
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
 
     let virtual_row = rm.render_row(RowPos::new(0, 0));
@@ -1059,12 +1140,12 @@ fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoRows));
-    providers.add_decoration_source(Box::new(FixedAnchor {
-        anchor: VirtualLineAnchor::Before(0),
-        count: 1,
-        text: "\u{6F22}\tx",
-    }));
-    let mut s = FormatScratch::new();
+    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+        VirtualLineAnchor::Before(0),
+        1,
+        "\u{6F22}\tx",
+    )));
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
 
     let virtual_row = rm.render_row(RowPos::new(0, 0));
@@ -1091,7 +1172,7 @@ fn h_window_clips_an_unwrapped_rows_graphemes_without_changing_its_row_count() {
     // window's columns are emitted, but the line is still one row.
     let rope = Rope::from_str("abcdefghij\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s).with_h_window(Some(2..5));
 
     assert_eq!(rm.block(0).content, 1, "clipping never adds or drops rows");
@@ -1107,7 +1188,7 @@ fn render_row_formats_a_line_once_however_many_rows_are_drawn() {
     // Both wrap rows of one line come from a single format pass.
     let rope = Rope::from_str("abcdef\n");
     let (providers, calls) = with_counting_insert(0, 0, "hint");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
 
     assert_eq!(rm.block(0).content, 2);
@@ -1129,7 +1210,7 @@ fn render_row_does_not_reformat_a_line_because_of_its_virtual_rows() {
     let rope = Rope::from_str("abcdef\n");
     let (mut providers, calls) = with_counting_insert(0, 0, "hint");
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 1)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
 
     assert_eq!(rm.block(0).content, 2);
@@ -1150,12 +1231,12 @@ fn render_row_yields_correct_content_rows_after_a_virtual_row() {
     // it in the same block: they must still come back correct.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor {
-        anchor: VirtualLineAnchor::Before(0),
-        count: 1,
-        text: "V",
-    }));
-    let mut s = FormatScratch::new();
+    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+        VirtualLineAnchor::Before(0),
+        1,
+        "V",
+    )));
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(row_text(&rm.render_row(RowPos::new(0, 0))), "V");
@@ -1177,17 +1258,17 @@ fn long_unwrapped_line() -> Rope {
 fn locate_formats_only_as_far_as_the_target_offset() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.locate(5).1, 5, "pure ASCII: column equals char offset");
 
-    // Dropping the map releases its borrow of the scratch, letting the test
+    // Dropping the map releases its borrow of the store, letting the test
     // read what the formatter actually emitted — an oracle over `format.rs`'s
     // output rather than anything `RowMap` reports about itself.
     drop(rm);
     assert_eq!(
-        s.graphemes.len(),
+        stored_graphemes(&s, 0),
         6,
         "the target grapheme and the five before it, not all 70k"
     );
@@ -1197,14 +1278,14 @@ fn locate_formats_only_as_far_as_the_target_offset() {
 fn char_at_formats_only_as_far_as_the_target_column() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.char_at(RowPos::new(0, 0), 5, DisplayColTarget::Cell), 5);
 
     drop(rm);
     assert_eq!(
-        s.graphemes.len(),
+        stored_graphemes(&s, 0),
         7,
         "through the first cell past column 5, not all 70k"
     );
@@ -1216,7 +1297,7 @@ fn a_wider_offset_on_a_cached_line_reformats() {
     // cached extent must not be treated as answering the wider one.
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.locate(3).1, 3);
@@ -1229,7 +1310,7 @@ fn a_column_query_after_an_offset_query_reformats() {
     // the two bound kinds can never satisfy each other.
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let (pos, _) = rm.locate(3);
@@ -1241,7 +1322,7 @@ fn locate_row_answers_without_formatting_in_no_wrap() {
     let rope = long_unwrapped_line();
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(0), 2)));
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -1250,11 +1331,11 @@ fn locate_row_answers_without_formatting_in_no_wrap() {
         "the line's own row sits after the two Before rows above it"
     );
 
-    // `format_buffer_line` pushes its first row before it scans anything, so
-    // an empty `display_rows` proves the formatter never ran at all.
+    // The entry exists — `block` built its shape — but carries no format at
+    // all, which is exactly the claim: the row came from the breakdown.
     drop(rm);
     assert!(
-        s.display_rows.is_empty(),
+        is_unformatted(&s, 0),
         "a no-wrap row comes from the block breakdown, with no formatting"
     );
 }
@@ -1272,7 +1353,7 @@ fn locate_row_agrees_with_locate_in_both_wrap_modes() {
     providers.add_decoration_source(Box::new(FixedAnchor::new(VirtualLineAnchor::Before(1), 2)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
-        let mut s = FormatScratch::new();
+        let mut s = PaneLineStore::new();
         let mut rm = map(&rope, wrap, &providers, &mut s);
         // Inclusive upper bound is defensive — the buffer invariant keeps a
         // cursor at `head < len_chars()`.
@@ -1299,7 +1380,7 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
     // the `locate_*` tests above.
     let rope = Rope::from_str("hello\tworld\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for offset in 0..=rope.len_chars() {
@@ -1316,7 +1397,7 @@ fn line_display_col_accumulates_across_a_wrap_row() {
     // wrap point, which this asserts crosses the row boundary (offsets 2, 3).
     let rope = Rope::from_str("永永永永\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     // Sanity: the row boundary actually falls where the arithmetic assumes.
@@ -1342,7 +1423,7 @@ fn line_display_col_excludes_wrap_indent() {
     // the line wraps.
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() {
@@ -1379,7 +1460,7 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     // `RowMap` formats through.
     let rope = Rope::from_str("ab\n");
     let (providers, _calls) = with_counting_insert(0, 1, "XY");
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(rm.line_display_col(0), 0, "'a' precedes the insert");
@@ -1399,7 +1480,7 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
     // returning 9 — not a round trip to test.
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() - 1 {
@@ -1421,7 +1502,7 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
     // by hand).
     let rope = Rope::from_str("hello\nab\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -1436,7 +1517,7 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
     // An empty line's only cell *is* the sentinel, so it has to answer.
     let rope = Rope::from_str("\nx\n");
     let providers = ProviderSet::new();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
@@ -1469,7 +1550,7 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
         for line in hume_rope::lines::content_lines_range(rope) {
             for target in [DisplayColTarget::Cell, DisplayColTarget::NearestContent] {
                 for col in 0..12u32 {
-                    let mut s = FormatScratch::new();
+                    let mut s = PaneLineStore::new();
                     let mut rm = map(rope, WrapMode::None, &providers, &mut s);
                     let expected = rm.char_at(RowPos::new(line, 0), col, target);
                     assert_eq!(
@@ -1481,4 +1562,312 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Shared line store
+// ---------------------------------------------------------------------------
+
+/// The frame's two passes over one pane — the editor's scroll step and the
+/// render pass — each build their own `RowMap`, but over the same store. Under
+/// a wrapping mode each formats the lines it walks, so sharing the store must
+/// collapse that to one format per line: `CountingInsert` counts INLINE
+/// queries, which happen once per format and nowhere else.
+#[test]
+fn two_passes_over_one_pane_format_each_line_once() {
+    let r = Rope::from_str("alpha\nbravo\ncharlie\ndelta\necho\n");
+    let (providers, calls) = with_counting_insert(0, 0, "x");
+    let mut store = PaneLineStore::new();
+    let lines = 0..5;
+
+    // Pass 1 (stands in for the scroll step).
+    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
+    for line in lines.clone() {
+        rm.block(line);
+    }
+    drop(rm);
+    let after_first = calls.get();
+    assert_eq!(after_first, 5, "the first pass formats each line once");
+
+    // Pass 2 (stands in for the render pass): a cold `RowMap`, same store.
+    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
+    for line in lines {
+        rm.block(line);
+    }
+
+    assert_eq!(
+        calls.get(),
+        after_first,
+        "the second pass must reuse every line the first formatted"
+    );
+}
+
+/// A line read back from the store must produce the row list the formatter
+/// would have. The line carries a tab and an inline insert so both the
+/// `line_texts` slices (`Grapheme::byte_range`) and the `virtual_texts` arena
+/// (`CellContent`'s `(start, len)`) are exercised — those offsets are
+/// line-local, which is what makes an entry readable on its own.
+#[test]
+fn a_stored_format_reproduces_the_rows_it_replaced() {
+    let r = Rope::from_str("ab\tcdefghij\n");
+    let (providers, _) = with_counting_insert(0, 4, "HINT");
+    let wrap = WrapMode::Soft { width: 6 };
+
+    let rows_of = |rm: &mut RowMap<'_>| -> Vec<(crate::types::RowKind, String)> {
+        let total = rm.block(0).total();
+        (0..total)
+            .map(|row| {
+                let rendered = rm.render_row(RowPos::new(0, row));
+                (rendered.row.kind, row_text(&rendered))
+            })
+            .collect()
+    };
+
+    // A store that has never seen the line: the formatter runs.
+    let mut fresh = PaneLineStore::new();
+    let expected = rows_of(&mut map(&r, wrap, &providers, &mut fresh));
+
+    // A store one pass already filled: the second reads it back.
+    let mut shared = PaneLineStore::new();
+    let mut warm = map(&r, wrap, &providers, &mut shared);
+    warm.block(0);
+    drop(warm);
+    let actual = rows_of(&mut map(&r, wrap, &providers, &mut shared));
+
+    assert!(expected.len() > 1, "the fixture must actually wrap");
+    assert_eq!(actual, expected);
+}
+
+/// A horizontally clipped format is not interchangeable with an unclipped
+/// one — it *drops* the graphemes left of its window rather than truncating,
+/// so it cannot stand in for a scan that kept them. `LineFormat::covers`
+/// checks the recorded window against the querying map's own, so the two
+/// never meet; this is what stops the frame's two passes sharing a *format*
+/// in `WrapMode::None`, where only the render pass clips (they still share
+/// the entry's block shape — see `an_h_window_change_keeps_the_block_shape`).
+#[test]
+fn an_h_window_map_does_not_read_an_unclipped_format() {
+    let r = Rope::from_str("alpha bravo charlie delta\n");
+    let (providers, calls) = with_counting_insert(0, 0, "x");
+    let mut store = PaneLineStore::new();
+
+    let mut unclipped = map(&r, WrapMode::None, &providers, &mut store);
+    unclipped.render_row(RowPos::new(0, 0));
+    drop(unclipped);
+    let after_first = calls.get();
+    assert_eq!(after_first, 1, "no-wrap formats on render, not on block");
+
+    let mut clipped = map(&r, WrapMode::None, &providers, &mut store).with_h_window(Some(6..20));
+    clipped.render_row(RowPos::new(0, 0));
+
+    assert_eq!(
+        calls.get(),
+        after_first + 1,
+        "a windowed map must format for itself, not read the unclipped entry"
+    );
+}
+
+/// Block shape (virtual rows, `before`/`after`) does not depend on the
+/// horizontal window a `WrapMode::None` render clips to — only the formatted
+/// rows do. An `h_window` change must not force `block_entry` to re-query
+/// providers for a line the store already has.
+#[test]
+fn an_h_window_change_keeps_the_block_shape() {
+    let r = Rope::from_str("alpha\n");
+    let (providers, calls) = with_counting_anchor();
+    let mut store = PaneLineStore::new();
+
+    map(&r, WrapMode::None, &providers, &mut store).block(0);
+    let after_first = calls.get();
+
+    map(&r, WrapMode::None, &providers, &mut store)
+        .with_h_window(Some(0..5))
+        .block(0);
+
+    assert_eq!(
+        calls.get(),
+        after_first,
+        "an h_window change must reuse the entry's block shape, not rebuild it"
+    );
+}
+
+/// The scope key covers every formatting input, so a buffer that changed
+/// under the same pane invalidates what was stored for it — those entries
+/// describe a format the new inputs would not produce.
+#[test]
+fn a_changed_key_drops_the_scope() {
+    let r = Rope::from_str("alpha\nbravo\n");
+    let (providers, calls) = with_counting_insert(0, 0, "x");
+    let mut store = PaneLineStore::new();
+    let wrap = WrapMode::Soft { width: 80 };
+
+    RowMap::new(
+        &r,
+        wrap,
+        4,
+        ws(),
+        &providers,
+        80,
+        StoreScope {
+            store: &mut store,
+            buffer_tag: [1; 3],
+        },
+    )
+    .block(0);
+    let after_first = calls.get();
+
+    // Same store, same line, different buffer tag.
+    RowMap::new(
+        &r,
+        wrap,
+        4,
+        ws(),
+        &providers,
+        80,
+        StoreScope {
+            store: &mut store,
+            buffer_tag: [2; 3],
+        },
+    )
+    .block(0);
+
+    assert_eq!(
+        calls.get(),
+        after_first + 1,
+        "entries built under the old key must not be served under the new one"
+    );
+}
+
+/// Entries must not outlive the frame that produced them: the per-pane
+/// inline-insert mirrors are rebuilt each frame filtered to that frame's
+/// viewport, without bumping anything the key can see. `rewind` is what
+/// `EngineView::begin_frame` calls on every pane's store to enforce that.
+#[test]
+fn rewind_drops_the_previous_frames_entries() {
+    let r = Rope::from_str("alpha\nbravo\n");
+    let (providers, calls) = with_counting_insert(0, 0, "x");
+    let mut store = PaneLineStore::new();
+    let wrap = WrapMode::Soft { width: 80 };
+
+    map(&r, wrap, &providers, &mut store).block(0);
+    let after_first = calls.get();
+
+    store.rewind();
+
+    map(&r, wrap, &providers, &mut store).block(0);
+
+    assert_eq!(
+        calls.get(),
+        after_first + 1,
+        "a new frame must re-format rather than read last frame's entry"
+    );
+}
+
+/// A line whose *block shape* is all anyone asked for must not pay for format
+/// buffers it never fills. Under `WrapMode::None` — the default — `content_rows`
+/// answers 1 without running the formatter, so a walk that only asks for shape
+/// (a half-page motion stepping row by row, once per selection) touches many
+/// lines and formats none of them. Their entries have to cost bookkeeping
+/// rather than a buffer apiece.
+#[test]
+fn a_shape_only_entry_allocates_no_format_buffers() {
+    let r = Rope::from_str("hello world\nsecond line\n");
+    let providers = ProviderSet::new();
+    let mut store = PaneLineStore::new();
+
+    let breakdown = RowMap::new(
+        &r,
+        WrapMode::None,
+        4,
+        ws(),
+        &providers,
+        80,
+        StoreScope {
+            store: &mut store,
+            buffer_tag: [1; 3],
+        },
+    )
+    .block(0);
+    assert_eq!(
+        breakdown.content, 1,
+        "sanity: no-wrap block shape must resolve without formatting"
+    );
+
+    let format = &store.entry(store.find(0).unwrap()).format;
+    assert_eq!(
+        format.graphemes.capacity(),
+        0,
+        "a walked-but-unformatted entry must hold no grapheme buffer"
+    );
+    assert_eq!(
+        format.line_texts.capacity(),
+        0,
+        "a walked-but-unformatted entry must hold no line-text buffer"
+    );
+}
+
+/// A line pathologically wider than any ordinary source line (a minified-JS
+/// file's single line, megabytes wide) must not pin its whole grapheme/text
+/// capacity once the frame that formatted it has passed — that would reverse
+/// the free list's own memory bound.
+///
+/// The frame boundary is the only moment that can be relied on to give it
+/// back. Reusing the slot cannot: a slot is rebound only by a later frame
+/// that walks at least that many lines, and a pane showing one wide line and
+/// then a handful of short ones never walks far enough to reach it again.
+#[test]
+fn rewind_shrinks_an_oversized_entry() {
+    let (before, after) = grapheme_capacity_across_rewind(50_000);
+    assert!(
+        before > 50_000,
+        "sanity: formatting the huge line must have grown its capacity"
+    );
+    assert!(
+        after < before,
+        "the frame boundary must hand back a pathologically grown entry \
+         rather than wait for a later frame to rebind its slot"
+    );
+}
+
+/// Below the shrink ceiling, an entry keeps its capacity across the frame
+/// boundary — the free list's whole point, which a naive "always shrink on
+/// rewind" implementation would defeat for every ordinary line.
+#[test]
+fn rewind_does_not_shrink_an_ordinary_entry() {
+    let (before, after) = grapheme_capacity_across_rewind(2_000);
+    assert_eq!(
+        after, before,
+        "an ordinary-sized line's capacity must survive the frame boundary"
+    );
+}
+
+/// Format a `width`-grapheme line into a store's single entry, then rewind
+/// the store, reporting that entry's grapheme capacity on each side of the
+/// rewind.
+///
+/// Reads the entry back by slot rather than by line: `rewind` clears the line
+/// index, and a slot nothing later rebinds is exactly the case this pins.
+fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
+    let r = Rope::from_str(&format!("{}\n", "x".repeat(width)));
+    let providers = ProviderSet::new();
+    let mut store = PaneLineStore::new();
+
+    RowMap::new(
+        &r,
+        WrapMode::None,
+        4,
+        ws(),
+        &providers,
+        80,
+        StoreScope {
+            store: &mut store,
+            buffer_tag: [1; 3],
+        },
+    )
+    .render_row(RowPos::new(0, 0));
+    let before = store.entry(0).format.graphemes.capacity();
+
+    store.rewind();
+
+    (before, store.entry(0).format.graphemes.capacity())
 }

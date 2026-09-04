@@ -1,8 +1,9 @@
 use super::*;
-use hume_engine::format::FormatScratch;
+use crate::editor::tests::doubles::{VirtualRows, no_providers, providers_with_before_line};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
-use hume_engine::providers::ProviderSet;
+use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
 use hume_engine::rows::RowMap;
+use hume_engine::rows::line_store::{PaneLineStore, StoreScope};
 use ropey::Rope;
 
 fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
@@ -20,16 +21,20 @@ fn map<'a>(
     wrap: WrapMode,
     providers: &'a ProviderSet,
     content_width: u16,
-    scratch: &'a mut FormatScratch,
+    store: &'a mut PaneLineStore,
 ) -> RowMap<'a> {
-    RowMap::new(rope, wrap, 4, ws(), providers, content_width, scratch)
-}
-
-/// No decoration source registered — every line's block reduces to its
-/// content rows, matching every test below's virtual-line-unaware expectations
-/// exactly.
-fn no_providers() -> ProviderSet {
-    ProviderSet::new()
+    RowMap::new(
+        rope,
+        wrap,
+        4,
+        ws(),
+        providers,
+        content_width,
+        StoreScope {
+            store,
+            buffer_tag: [0; 3],
+        },
+    )
 }
 
 // ── screen_to_char_offset (no-wrap) ──────────────────────────────────────
@@ -41,7 +46,7 @@ fn nowrap_click_first_char() {
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(
         0,
         0,
@@ -58,7 +63,7 @@ fn nowrap_click_mid_first_line() {
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(
         2,
         0,
@@ -75,7 +80,7 @@ fn nowrap_click_second_line() {
     let rope = Rope::from_str("abc\ndef\n");
     let v = vp(0, 80, 10);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(
         0,
         1,
@@ -92,7 +97,7 @@ fn nowrap_gutter_click_returns_none() {
     let rope = Rope::from_str("abc\n");
     let v = vp(0, 80, 10);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     // gutter_w = 4; click at column 2 is inside the gutter.
     let got = screen_to_char_offset(
         2,
@@ -113,7 +118,7 @@ fn nowrap_click_past_line_end() {
     let rope = Rope::from_str("hi\n");
     let v = vp(0, 80, 10);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     // Click at column 99, way past "hi" — lands at '\n' (char 2), the eol marker.
     let got = screen_to_char_offset(
         99,
@@ -132,7 +137,7 @@ fn nowrap_viewport_scrolled() {
     let rope = Rope::from_str("a\nb\nc\nd\n");
     let v = vp(2, 80, 10); // top_line = 2
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     // Line 2 starts at char 4 ('c'). Screen row 0, col 0 → char 4.
     let got = screen_to_char_offset(
         0,
@@ -152,7 +157,7 @@ fn nowrap_horizontal_scroll() {
     let mut v = vp(0, 80, 10);
     v.horizontal_offset = 2;
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(
         0,
         0,
@@ -174,7 +179,7 @@ fn wrap_click_first_and_second_visual_row() {
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let row0 = screen_to_char_offset(0, 0, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
     assert_eq!(row0, Some(0));
@@ -190,7 +195,7 @@ fn wrap_click_mid_second_row() {
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let got = screen_to_char_offset(2, 1, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
     assert_eq!(got, Some(6)); // 'g' is char 6
@@ -203,46 +208,13 @@ fn wrap_click_below_last_line_clamped() {
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 40 };
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     // Screen row 99 is past the end — should return something in line 0.
     let got = screen_to_char_offset(0, 99, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert!(got.is_some());
 }
 
 // ── Virtual-line-aware row counting (synthetic provider) ────────────
-
-/// A `DecorationSource` double that emits exactly one `Before(line)`
-/// virtual row when queried for `line`, and nothing for any other line.
-struct OneBeforeLine(usize);
-
-impl hume_engine::providers::DecorationSource for OneBeforeLine {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            out.push(hume_engine::providers::Decoration::VirtualLine(
-                hume_engine::providers::VirtualLine {
-                    anchor: hume_engine::providers::VirtualLineAnchor::Before(self.0),
-                    provider_id: 0,
-                    text: "V".to_string(),
-                    segments: Vec::new(),
-                    base_scope: None,
-                },
-            ));
-        }
-    }
-}
-
-fn providers_with_before_line(line: usize) -> ProviderSet {
-    let mut p = ProviderSet::new();
-    p.add_decoration_source(Box::new(OneBeforeLine(line)));
-    p
-}
 
 /// `content_pos` must count a virtual-`Before` row anchored to the
 /// cursor's own line as occupying a screen row above it — the cursor
@@ -258,7 +230,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let cursor_char = rope.line_to_char(1);
 
     let bare = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let with_none = content_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
@@ -267,7 +239,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     );
 
     let providers = providers_with_before_line(1);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
         &v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
@@ -296,7 +268,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(1);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     // Row layout: 0 = line 0 ('a'), 1 = virtual-before(line 1),
     // 2 = line 1's own content ('b'), 3 = line 2 ('c').
@@ -336,7 +308,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let cursor_char = rope.line_to_char(1);
 
     let bare = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let with_none = content_pos(&v, &mut map(&rope, wrap, &bare, 80, &mut s), cursor_char);
     assert_eq!(
         with_none,
@@ -345,7 +317,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     );
 
     let providers = providers_with_before_line(1);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let with_virtual = content_pos(
         &v,
         &mut map(&rope, wrap, &providers, 80, &mut s),
@@ -365,7 +337,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(1);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let on_virtual_row =
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
@@ -394,35 +366,6 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
 
 // ── Buffer-edge virtual blocks: Before(0) and After(last_line) ──────────
 
-/// A `DecorationSource` double that emits `self.1` distinct `After(line)`
-/// rows, texted "1".."9", when queried for `line`.
-struct MultiAfterLine(usize, usize);
-
-impl hume_engine::providers::DecorationSource for MultiAfterLine {
-    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
-        hume_engine::providers::DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(
-        &self,
-        line_idx: usize,
-        out: &mut Vec<hume_engine::providers::Decoration>,
-    ) {
-        if line_idx == self.0 {
-            for i in 0..self.1 {
-                out.push(hume_engine::providers::Decoration::VirtualLine(
-                    hume_engine::providers::VirtualLine {
-                        anchor: hume_engine::providers::VirtualLineAnchor::After(self.0),
-                        provider_id: 0,
-                        text: (i + 1).to_string(),
-                        segments: Vec::new(),
-                        base_scope: None,
-                    },
-                ));
-            }
-        }
-    }
-}
-
 /// `content_pos` for a cursor on buffer line 0 must count a `Before(0)`
 /// block above it exactly like any other line's `before` block — no
 /// special-casing at the very top of the buffer, in either wrap mode.
@@ -432,10 +375,14 @@ fn content_pos_accounts_for_before_line_0() {
     let v = vp(0, 80, 10);
     let cursor_char = 0; // start of line 0
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(OneBeforeLine(0)));
+    providers.add_decoration_source(Box::new(VirtualRows::uniform(
+        VirtualLineAnchor::Before(0),
+        1,
+        "V",
+    )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
-        let mut s = FormatScratch::new();
+        let mut s = PaneLineStore::new();
         let pos = content_pos(
             &v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
@@ -458,11 +405,14 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
     let cursor_char = rope.line_to_char(1); // start of the last real line
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(MultiAfterLine(1, 3)));
+    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+        VirtualLineAnchor::After(1),
+        3,
+    )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let v = vp(0, 80, 10);
-        let mut s = FormatScratch::new();
+        let mut s = PaneLineStore::new();
         let pos = content_pos(
             &v,
             &mut map(&rope, wrap, &providers, 80, &mut s),
@@ -498,7 +448,7 @@ fn content_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
     v.top_row_offset = 2; // past line 0's 2-row block (before=1, content=1)
     let cursor_char = 0; // 'a' — line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let pos = content_pos(
         &v,
@@ -519,7 +469,7 @@ fn content_pos_zero_height_returns_none() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 0);
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
 
     let pos = content_pos(
         &v,
@@ -537,7 +487,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let v = vp(0, 80, 2); // only rows for lines 0-1 are visible
     let providers = no_providers();
-    let mut s = FormatScratch::new();
+    let mut s = PaneLineStore::new();
     let cursor_char = rope.line_to_char(5); // 'f' — 5 rows below the top
 
     let pos = content_pos(

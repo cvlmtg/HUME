@@ -2,7 +2,7 @@ use hume_engine::types::ResolvedStyle;
 use std::borrow::Cow;
 
 use super::StatuslineElement;
-use crate::editor::Editor;
+use crate::ui::statusline::HumeStatusline;
 use crate::ui::theme::EditorColors;
 
 pub(in crate::ui::statusline) struct MiniBufElement;
@@ -11,7 +11,7 @@ impl StatuslineElement for MiniBufElement {
     /// `(prompt, input)`, present only while the minibuffer is active.
     type Data = Option<(String, String)>;
 
-    fn read(editor: &Editor) -> Self::Data {
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         editor
             .state
             .minibuf

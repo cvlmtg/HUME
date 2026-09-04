@@ -496,6 +496,7 @@ impl Editor {
     /// statusline's `Diagnostics` element reads this directly (never through
     /// Steel; `self.lsp` is private to `editor` and its descendants, so
     /// callers outside it, like `ui::statusline`, go through this).
+    #[cfg(test)]
     pub(crate) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         introspect::diagnostic_counts(&self.lsp, bid)
     }
@@ -504,12 +505,8 @@ impl Editor {
     /// `Diagnostics` element reads this to decide whether to show the
     /// loading spinner instead of counts. Same access rationale as
     /// `diagnostic_counts` above.
+    #[cfg(test)]
     pub(crate) fn lsp_activity(&self, bid: BufferId) -> introspect::LspActivity {
         introspect::activity(&self.state, &self.lsp, bid)
-    }
-
-    /// Current animation frame for the statusline loading spinner.
-    pub(crate) fn lsp_spinner_frame(&self) -> usize {
-        self.lsp.spinner.frame
     }
 }

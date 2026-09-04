@@ -44,8 +44,8 @@ pub struct FileArg {
 /// `:<line>` or `:<line>:<col>` peeled off (a lone trailing `:` is
 /// tolerated: `foo.rs:12:` behaves like `foo.rs:12`). Both numbers are
 /// 1-based; `0` in either position is an error naming both the offending
-/// argument and which number was rejected — [`LINE_NUMBERS_START_AT_1`]
-/// (matching `:goto`'s own contract) or [`GRAPHEME_COL_NUMBERS_START_AT_1`].
+/// argument and which number was rejected — `LINE_NUMBERS_START_AT_1`
+/// (matching `:goto`'s own contract) or `GRAPHEME_COL_NUMBERS_START_AT_1`.
 pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
     let literal = || FileArg {
         path: raw.to_path_buf(),

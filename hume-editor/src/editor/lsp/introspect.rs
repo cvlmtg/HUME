@@ -392,6 +392,14 @@ pub(crate) fn diagnostic_counts(lsp: &LspState, bid: BufferId) -> (usize, usize)
     lsp.diagnostics.counts(bid)
 }
 
+/// Current animation frame for the statusline loading spinner.
+///
+/// Here rather than on `Editor` because `LspState::spinner` is private to
+/// `mod lsp`, and the statusline reads this holding only an `&LspState`.
+pub(crate) fn spinner_frame(lsp: &LspState) -> usize {
+    lsp.spinner.frame
+}
+
 /// `line`/`character` clamped into `text`'s addressable range and converted
 /// to a grapheme column — `None` when `line` names no real content, rather
 /// than silently reporting a column under a `line` that doesn't match it.

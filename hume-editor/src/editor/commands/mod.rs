@@ -19,10 +19,10 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
-use hume_engine::format::FormatScratch;
 use hume_engine::pane::{Pane, ViewportState, WhitespaceConfig};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::rows::RowMap;
+use hume_engine::rows::line_store::StoreScope;
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -173,7 +173,7 @@ pub(super) fn current_selections<'a>(
     view: &EngineView,
 ) -> &'a SelectionSet {
     let bid = focused_buffer_id(state, view);
-    &state.panes.state[state.focused_pane_id][bid].selections
+    &state.focused_buffer_state_or_panic(bid).selections
 }
 
 /// The most-recently-focused buffer other than the current one.
@@ -217,7 +217,13 @@ pub(super) fn viewport<'a>(
 
 /// The doc-level format settings a row map needs, resolving buffer overrides
 /// against the global settings. The one place that precedence is applied.
-fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceConfig) {
+///
+/// Load-bearing that both row-map paths read it here: these two values are
+/// part of the line store's scope key, so the frame's scroll pass and its
+/// render pass (`frame.rs`'s `resolve_pane_settings`) resolving them
+/// differently would silently rescope the store between the two and cost
+/// every shared line a second format, with nothing failing.
+pub(super) fn format_overrides(doc: &Buffer, settings: &EditorSettings) -> (u8, WhitespaceConfig) {
     (
         doc.overrides.tab_width(settings),
         doc.overrides.whitespace(settings),
@@ -276,53 +282,57 @@ pub(super) fn effective_wrap_mode(
 }
 
 /// A [`RowMap`] over `pane`'s view of `doc` — the display-row list every
-/// scroll, cursor and movement consumer reads instead of walking rows itself.
+/// scroll, cursor and movement consumer reads instead of walking rows itself
+/// — together with the pane's viewport, for the scroll consumers that write
+/// it while reading the map.
 ///
-/// Borrows come in already split so a caller can keep a `&mut` on a disjoint
-/// field while holding the map: `visual_move` rewrites `state.panes`
-/// selections, and [`pane_row_map_mut`] hands back the pane's viewport.
-pub(super) fn pane_row_map<'a>(
-    doc: &'a Buffer,
-    settings: &'a EditorSettings,
-    pane: &'a Pane,
-    scratch: &'a mut FormatScratch,
-) -> RowMap<'a> {
-    let (tab_width, whitespace) = format_overrides(doc, settings);
-    RowMap::new(
-        doc.text().rope(),
-        effective_wrap_mode(doc, settings, pane),
-        tab_width,
-        whitespace,
-        &pane.providers,
-        pane.content_width(doc.text().last_ropey_line()),
-        scratch,
-    )
-}
-
-/// [`pane_row_map`] plus the pane's viewport, for the scroll consumers that
-/// write the viewport while reading the map. The two are disjoint fields of
-/// `pane`, which a caller holding only `&mut Pane` cannot split apart itself
-/// without also re-deriving the map's inputs.
+/// Takes the pane mutably and splits it here: `providers`, `line_store` and
+/// `viewport` are disjoint fields, which only a function holding the whole
+/// pane can say, and which a caller holding just `&mut Pane` could not split
+/// apart itself without also re-deriving the map's inputs. Callers keep their
+/// own `&mut` on `state` fields meanwhile (`visual_move` rewrites
+/// `state.panes` selections), which is why the pane arrives separately rather
+/// than through `&mut Editor`.
 pub(super) fn pane_row_map_mut<'a>(
     doc: &'a Buffer,
     settings: &'a EditorSettings,
     pane: &'a mut Pane,
-    scratch: &'a mut FormatScratch,
+    buffer_tag: hume_engine::rows::line_store::BufferTag,
 ) -> (RowMap<'a>, &'a mut ViewportState) {
     let (tab_width, whitespace) = format_overrides(doc, settings);
     // Both need the whole pane, so they are read before it is split.
     let wrap_mode = effective_wrap_mode(doc, settings, pane);
     let content_width = pane.content_width(doc.text().last_ropey_line());
+    let Pane {
+        providers,
+        line_store,
+        viewport,
+        ..
+    } = pane;
     let rm = RowMap::new(
         doc.text().rope(),
         wrap_mode,
         tab_width,
         whitespace,
-        &pane.providers,
+        providers,
         content_width,
-        scratch,
+        StoreScope {
+            store: line_store,
+            buffer_tag,
+        },
     );
-    (rm, &mut pane.viewport)
+    (rm, viewport)
+}
+
+/// [`pane_row_map_mut`] for the movement consumers with no viewport to write
+/// — they read the row list and rewrite selections instead.
+pub(super) fn pane_row_map<'a>(
+    doc: &'a Buffer,
+    settings: &'a EditorSettings,
+    pane: &'a mut Pane,
+    buffer_tag: hume_engine::rows::line_store::BufferTag,
+) -> RowMap<'a> {
+    pane_row_map_mut(doc, settings, pane, buffer_tag).0
 }
 
 /// Snapshot the focused pane's current cursor as a `JumpEntry`.

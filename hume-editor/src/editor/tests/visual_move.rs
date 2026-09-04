@@ -1,7 +1,6 @@
+use super::doubles::InlineHint;
 use super::*;
 use hume_editing::selection::{DisplayColOrigin, StickyDisplayCol};
-use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, InlineInsert};
-use hume_engine::types::ScopeId;
 use pretty_assertions::assert_eq;
 
 /// A `DisplayRow`-tagged latch — what `j`/`k` write while wrapping, which is
@@ -857,28 +856,6 @@ fn visual_move_per_selection_sticky_col() {
 // authority `j`/`k` and page/wheel scroll already use) whenever an inline
 // decoration (an inlay hint, say) sits on a line a buffer-line move touches.
 
-/// Emits one inline insert (an inlay hint, say) at a fixed line/byte offset.
-struct FixedInlineHint {
-    line: usize,
-    byte_offset: usize,
-    text: &'static str,
-}
-
-impl DecorationSource for FixedInlineHint {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::INLINE
-    }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == self.line {
-            out.push(Decoration::Inline(InlineInsert {
-                byte_offset: self.byte_offset,
-                text: self.text.to_string(),
-                scope: ScopeId(0),
-            }));
-        }
-    }
-}
-
 /// `9j`/`9k` pressed with no prior latch resolves its column by re-deriving
 /// from `head` — the path the rope-only mirror used to own. A 3-column hint
 /// sitting before the cursor on its own line shifts the on-screen column by
@@ -898,11 +875,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     });
     ed.view.panes[ed.state.focused_pane_id]
         .providers
-        .add_decoration_source(Box::new(FixedInlineHint {
-            line: 0,
-            byte_offset: 0,
-            text: "HHH",
-        }));
+        .add_decoration_source(Box::new(InlineHint::new(0, 0, "HHH")));
 
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
@@ -937,11 +910,7 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     });
     ed.view.panes[ed.state.focused_pane_id]
         .providers
-        .add_decoration_source(Box::new(FixedInlineHint {
-            line: 1,
-            byte_offset: 0,
-            text: "HHH",
-        }));
+        .add_decoration_source(Box::new(InlineHint::new(1, 0, "HHH")));
 
     ed.handle_key(key('j')); // bare j: col 0 target, clamps onto 'a' (virtual hint cells excluded)
     assert_eq!(ed.current_selections().primary().head(), 4, "lands on 'a'");

@@ -12,8 +12,10 @@
 //! [`RowMap`] is that one implementation. It bundles everything the row list
 //! depends on — rope, resolved wrap mode, tab width, whitespace config,
 //! providers, content width — so consumers hold one `&mut RowMap` instead of
-//! threading eight-to-eleven parameters through every walk, and it caches the
-//! line it last looked at so stepping within one line's block is free.
+//! threading eight-to-eleven parameters through every walk. What it learns
+//! about each line it visits goes in the pane's own
+//! [`line_store::PaneLineStore`], which every walk of that pane shares so
+//! none repeats another's work.
 //!
 //! Addresses are [`RowPos`]: a buffer line plus a row index into that line's
 //! *visual block*, which runs `before`-virtuals, then content/wrap rows, then
@@ -24,12 +26,14 @@ use std::ops::Range;
 
 use ropey::Rope;
 
-use crate::format::{FormatBound, FormatScratch, format_buffer_line};
+use crate::format::{FormatBound, LineFormat, format_buffer_line};
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{
-    Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLine, VirtualLineAnchor,
-};
+use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayRow, Grapheme, ScopeId};
+
+pub mod line_store;
+
+use line_store::{LineEntry, PaneLineStore, StoreScope};
 
 // ---------------------------------------------------------------------------
 // Addresses
@@ -110,22 +114,6 @@ pub enum DisplayColTarget {
 // Row map
 // ---------------------------------------------------------------------------
 
-/// The line [`RowMap`] last resolved, with whatever it learned about it.
-struct CachedLine {
-    line: usize,
-    breakdown: RowsBreakdown,
-    /// This line's virtual rows, `Before` ones first — the order
-    /// [`VirtualLineAnchor::sort_key`] imposes, so the `i`th `After` row is at
-    /// index `before + i`.
-    virtual_lines: Vec<VirtualLine>,
-    /// How much of this line the scratch's `display_rows`/`graphemes`/
-    /// `line_texts`/`virtual_texts` currently hold. `None` until it is
-    /// formatted at all; otherwise the bound the scan was run to, which is a
-    /// *lower* bound on what is really there (a bounded scan that never hit
-    /// its stop walked the whole line).
-    extent: Option<FormatBound>,
-}
-
 /// Everything the render stage needs to style and compose one display row.
 pub struct RenderRow<'m> {
     pub row: &'m DisplayRow,
@@ -155,7 +143,18 @@ pub struct RowMap<'a> {
     providers: &'a ProviderSet,
     content_width: u16,
     h_window: Option<Range<u32>>,
-    scratch: &'a mut FormatScratch,
+    /// Everything this map knows about the lines it has visited — the
+    /// pane's own store, so every other walk of that pane this frame shares
+    /// what this one formats. See [`line_store`]'s module doc.
+    store: &'a mut PaneLineStore,
+    /// The caller's identification of buffer, content generation and
+    /// decorations — part of the store's scope key, so entries built for one
+    /// buffer state are never served for another.
+    buffer_tag: line_store::BufferTag,
+    /// The entry the last block/format call resolved. The read accessors
+    /// (`locate_in_line`, `resolve_in_row`, `row_shape`) work on it rather
+    /// than re-finding it by line.
+    current: Option<usize>,
     /// Inline inserts for the line currently being formatted. Reused across
     /// the lines one map visits.
     inline_inserts: Vec<InlineInsert>,
@@ -164,7 +163,6 @@ pub struct RowMap<'a> {
     /// after, so this stays empty between calls. Reused across providers and
     /// lines to avoid a per-call allocation.
     decorations: Vec<Decoration>,
-    cached: Option<CachedLine>,
 }
 
 impl<'a> RowMap<'a> {
@@ -175,7 +173,7 @@ impl<'a> RowMap<'a> {
         whitespace: WhitespaceConfig,
         providers: &'a ProviderSet,
         content_width: u16,
-        scratch: &'a mut FormatScratch,
+        scope: StoreScope<'a>,
     ) -> Self {
         debug_assert!(
             hume_rope::lines::ends_with_newline(rope),
@@ -190,7 +188,7 @@ impl<'a> RowMap<'a> {
              wrap_width() then panics far from this call site. Callers pass \
              pane_width.max(1) (see Pane::content_width)."
         );
-        Self {
+        let map = Self {
             rope,
             wrap_mode: wrap_mode.resolve(content_width),
             tab_width,
@@ -198,10 +196,61 @@ impl<'a> RowMap<'a> {
             providers,
             content_width,
             h_window: None,
-            scratch,
+            store: scope.store,
+            buffer_tag: scope.buffer_tag,
+            current: None,
             inline_inserts: Vec::new(),
             decorations: Vec::new(),
-            cached: None,
+        };
+        let key = map.store_key();
+        map.store.scope(key);
+        map
+    }
+
+    /// The entry the last block/format call resolved.
+    ///
+    /// Only the virtual-row path uses this: `slot` resolves a line's block and
+    /// the caller then asks about a row *within* that block, so there is no
+    /// index to hand over. Everything that reads a line's *format* takes the
+    /// entry [`RowMap::ensure_formatted`] returned instead — see
+    /// [`RowMap::format_at`].
+    fn current_entry(&self) -> &LineEntry {
+        let idx = self
+            .current
+            .expect("a read accessor ran before any line was resolved");
+        self.store.entry(idx)
+    }
+
+    /// The format of a named entry.
+    ///
+    /// Every format read goes through here on an index its caller was handed
+    /// by [`RowMap::ensure_formatted`], so "the caller ensured this line" is
+    /// carried by a value rather than by the two calls happening in order.
+    fn format_at(&self, idx: usize) -> &LineFormat {
+        &self.store.entry(idx).format
+    }
+
+    /// What the store's entries are valid under. Built from the map's own
+    /// already-resolved fields, so a caller cannot describe the format
+    /// differently from how it will actually run.
+    ///
+    /// Deliberately excludes `h_window`: a windowed format answers a
+    /// different question from an unclipped one over the same line (see
+    /// [`LineFormat::h_window`](crate::format::LineFormat::h_window)), but
+    /// the *block shape* — this key's real purpose — does not depend on the
+    /// window, so re-scoping the whole store over a window change would
+    /// evict entries a window change can't actually invalidate.
+    ///
+    /// `content_width` is absent for a related reason: `wrap_mode` is stored
+    /// already resolved against it, so a width that changes the layout is
+    /// already in the key through the mode, and one that doesn't would only
+    /// evict entries a resize left valid.
+    fn store_key(&self) -> line_store::StoreKey {
+        line_store::StoreKey {
+            buffer_tag: self.buffer_tag,
+            wrap_mode: self.wrap_mode,
+            tab_width: self.tab_width,
+            whitespace: self.whitespace,
         }
     }
 
@@ -211,11 +260,18 @@ impl<'a> RowMap<'a> {
     /// Row counts are unaffected (no-wrap is one content row however wide the
     /// line is), so this changes only which graphemes the render accessors
     /// emit. Editor-side consumers want whole lines and leave it `None`.
+    ///
+    /// Does not re-scope the store: `h_window` is not part of [`line_store::StoreKey`],
+    /// only recorded on the [`LineFormat`] a later `ensure_format_at` produces,
+    /// so an entry's block shape and virtual rows survive this call and only
+    /// its format is subject to being recut. That is also what keeps the
+    /// frame's two passes from sharing a *format* in `WrapMode::None`, where
+    /// only the render pass clips — they still share the block shape.
     pub fn with_h_window(mut self, h_window: Option<Range<u32>>) -> Self {
         debug_assert!(
             h_window.is_none() || !self.wrap_mode.is_wrapping(),
             "with_h_window is a WrapMode::None-only clip — a wrapping RowMap \
-             would silently under-count content rows, since format_line \
+             would silently under-count content rows, since ensure_format_at \
              passes h_window through to the formatter even while wrapping"
         );
         self.h_window = h_window;
@@ -251,22 +307,37 @@ impl<'a> RowMap<'a> {
 
     /// The display-row breakdown of `line`'s visual block.
     pub fn block(&mut self, line: usize) -> RowsBreakdown {
-        if let Some(c) = &self.cached
-            && c.line == line
-        {
-            return c.breakdown;
+        let idx = self.block_entry(line);
+        let content = self.content_rows(idx);
+        let entry = self.store.entry(idx);
+        RowsBreakdown {
+            before: entry.before,
+            content,
+            after: entry.after(),
+        }
+    }
+
+    /// The store entry for `line`, building its block shape if this is the
+    /// first time this store has seen it. Leaves it as [`RowMap::current`].
+    ///
+    /// Only the *shape* — the format arrives separately, from whoever first
+    /// needs the line's rows. Under `WrapMode::None` that may be much later,
+    /// or never.
+    fn block_entry(&mut self, line: usize) -> usize {
+        if let Some(idx) = self.store.find(line) {
+            self.current = Some(idx);
+            return idx;
         }
 
-        // Recycle the previous line's buffer instead of allocating per line.
-        let mut virtual_lines = match self.cached.take() {
-            Some(c) => {
-                let mut v = c.virtual_lines;
-                v.clear();
-                v
-            }
-            None => Vec::new(),
-        };
-
+        let idx = self.store.insert(line);
+        // `insert`'s `rebind` already cleared this entry's `virtual_lines`,
+        // keeping its allocation — taken out as scratch rather than building
+        // a separate `Vec` and overwriting it on return, which would throw
+        // that allocation away. Taken rather than borrowed because the
+        // provider intake below needs `&mut self` for `self.decorations`,
+        // which rules out holding a borrow of the store across it; put back
+        // once the intake is done.
+        let mut virtual_lines = std::mem::take(&mut self.store.entry_mut(idx).virtual_lines);
         self.decorations.clear();
         for (id, provider) in self
             .providers
@@ -308,36 +379,36 @@ impl<'a> RowMap<'a> {
             .iter()
             .filter(|vl| matches!(vl.anchor, VirtualLineAnchor::Before(_)))
             .count();
-        let after = virtual_lines.len() - before;
 
-        // `WrapMode::None` is always exactly one content row, and formatting
-        // cannot return another answer there — so counting never runs the
-        // formatter. That is the difference between O(1) and O(line length)
-        // per query on a minified line megabytes wide.
-        let content = if self.wrap_mode.is_wrapping() {
-            // `Full`: the row count *is* the output, so nothing may be clipped.
-            self.format_line(line, FormatBound::Full);
-            self.scratch.display_rows.len()
-        } else {
-            1
-        };
+        let entry = self.store.entry_mut(idx);
+        entry.virtual_lines = virtual_lines;
+        entry.before = before;
+        self.current = Some(idx);
+        idx
+    }
+
+    /// How many content rows `line`'s block occupies.
+    ///
+    /// `WrapMode::None` is always exactly one, and formatting cannot return
+    /// another answer there — so counting never runs the formatter. That is
+    /// the difference between O(1) and O(line length) per query on a minified
+    /// line megabytes wide. Under a wrapping mode the count *is* the
+    /// formatter's output, so the line gets formatted here if it wasn't
+    /// already.
+    fn content_rows(&mut self, idx: usize) -> usize {
+        if !self.wrap_mode.is_wrapping() {
+            return 1;
+        }
+        // `Full`: the row count is the output, so nothing may be clipped.
+        self.ensure_format_at(idx, FormatBound::Full);
+        let entry = self.store.entry(idx);
+        let content = entry.format.display_rows.len();
         debug_assert!(
             content >= 1,
-            "line {line} counted zero content rows; every line occupies at least one"
+            "line {} counted zero content rows; every line occupies at least one",
+            entry.line
         );
-
-        let breakdown = RowsBreakdown {
-            before,
-            content,
-            after,
-        };
-        self.cached = Some(CachedLine {
-            line,
-            breakdown,
-            virtual_lines,
-            extent: self.wrap_mode.is_wrapping().then_some(FormatBound::Full),
-        });
-        breakdown
+        content
     }
 
     /// Index of the last buffer line a cursor can occupy.
@@ -437,6 +508,14 @@ impl<'a> RowMap<'a> {
         if to < from {
             return None;
         }
+        // Every line's block occupies at least one row (`block`'s own
+        // `content >= 1` assert), so crossing `to.line - from.line` lines
+        // costs at least that many steps — a line delta beyond `cap` already
+        // proves the walk below would return `None`, without formatting a
+        // single line under wrap to find out.
+        if to.line.saturating_sub(from.line) > cap {
+            return None;
+        }
         let mut cur = from;
         for rows in 0..=cap {
             if cur == to {
@@ -489,17 +568,20 @@ impl<'a> RowMap<'a> {
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
-        self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, display_col) = self.locate_in_line(line, target_byte, char_offset);
+        let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
+        let (sub, display_col) = self.locate_in_line(idx, target_byte, char_offset);
         (RowPos::new(line, before + sub), display_col)
     }
 
-    /// Which content sub-row of `line` holds `target_byte` (line-relative,
-    /// resolved by the caller), and at what column. Requires `line` to be
-    /// formatted into the scratch at least as far as `ToByte(target_byte)`.
-    fn locate_in_line(&self, line: usize, target_byte: usize, char_offset: usize) -> (usize, u32) {
-        let rows = &self.scratch.display_rows;
-        let graphemes = &self.scratch.graphemes;
+    /// Which content sub-row of `idx`'s line holds `target_byte`
+    /// (line-relative, resolved by the caller), and at what column. `idx` must
+    /// come from an [`RowMap::ensure_formatted`] bounded at least as far as
+    /// `ToByte(target_byte)`.
+    fn locate_in_line(&self, idx: usize, target_byte: usize, char_offset: usize) -> (usize, u32) {
+        let entry = self.store.entry(idx);
+        let format = &entry.format;
+        let rows = &format.display_rows;
+        let graphemes = &format.graphemes;
 
         for (i, row) in rows.iter().enumerate() {
             if row.graphemes.is_empty() {
@@ -539,9 +621,10 @@ impl<'a> RowMap<'a> {
         // rather than a normal input.
         debug_assert!(
             !rows.is_empty(),
-            "locate_in_line: line {line}, char_offset {char_offset} matched \
+            "locate_in_line: line {}, char_offset {char_offset} matched \
              no row — every content row should claim some byte range of the \
-             line"
+             line",
+            entry.line
         );
         let last_row = rows.len().saturating_sub(1);
         let display_col = rows
@@ -596,26 +679,29 @@ impl<'a> RowMap<'a> {
             .min(b.content.saturating_sub(1));
         // Only up to the target column: no cell further right can be the one
         // this column resolves to, under either policy.
-        self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
-        self.resolve_in_row(pos.line, sub, target_display_col, target)
+        let idx = self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
+        self.resolve_in_row(idx, sub, target_display_col, target)
     }
 
     /// Shared core of [`RowMap::char_at`] and [`RowMap::char_at_line_display_col`]:
-    /// which char offset on content row `sub` of `line` resolves to
-    /// `target_display_col`, under `target`'s policy. Requires `line` to be
-    /// formatted into the scratch at least up to `target_display_col`.
+    /// which char offset on content row `sub` of `idx`'s line resolves to
+    /// `target_display_col`, under `target`'s policy. `idx` must come from an
+    /// [`RowMap::ensure_formatted`] bounded at least up to
+    /// `target_display_col`.
     fn resolve_in_row(
         &self,
-        line: usize,
+        idx: usize,
         sub: usize,
         target_display_col: u32,
         target: DisplayColTarget,
     ) -> usize {
-        let line_start = self.rope.line_to_char(line);
-        let Some(row) = self.scratch.display_rows.get(sub) else {
+        let entry = self.store.entry(idx);
+        let line_start = self.rope.line_to_char(entry.line);
+        let format = &entry.format;
+        let Some(row) = format.display_rows.get(sub) else {
             return line_start;
         };
-        let graphemes = &self.scratch.graphemes[row.graphemes.clone()];
+        let graphemes = &format.graphemes[row.graphemes.clone()];
         if graphemes.is_empty() {
             return line_start;
         }
@@ -688,19 +774,20 @@ impl<'a> RowMap<'a> {
         }
     }
 
-    /// `(indent, span)` for content row `sub` of the line currently in the
-    /// scratch. `indent` is the display column the row's first cell starts
+    /// `(indent, span)` for content row `sub` of `idx`'s line.
+    /// `indent` is the display column the row's first cell starts
     /// at — 0 on a line's own first row, `indent_display_cols` on a wrap
     /// continuation row (see [`crate::types::Grapheme::display_col`]).
     /// `span` is the row's own content width with that indent excluded, so
     /// summing `span` across every row before `sub`, plus the indent-excluded
     /// offset within `sub`, converts a row-relative column into one relative
     /// to the whole buffer line.
-    fn row_shape(&self, sub: usize) -> (u32, u32) {
-        let Some(row) = self.scratch.display_rows.get(sub) else {
+    fn row_shape(&self, idx: usize, sub: usize) -> (u32, u32) {
+        let format = self.format_at(idx);
+        let Some(row) = format.display_rows.get(sub) else {
             return (0, 0);
         };
-        let graphemes = &self.scratch.graphemes[row.graphemes.clone()];
+        let graphemes = &format.graphemes[row.graphemes.clone()];
         let Some(first) = graphemes.first() else {
             return (0, 0);
         };
@@ -729,10 +816,10 @@ impl<'a> RowMap<'a> {
             self.rope.len_chars()
         );
         let (line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
-        self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, row_display_col) = self.locate_in_line(line, target_byte, char_offset);
-        let (row_indent, _) = self.row_shape(sub);
-        let preceding: u32 = (0..sub).map(|j| self.row_shape(j).1).sum();
+        let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
+        let (sub, row_display_col) = self.locate_in_line(idx, target_byte, char_offset);
+        let (row_indent, _) = self.row_shape(idx, sub);
+        let preceding: u32 = (0..sub).map(|j| self.row_shape(idx, j).1).sum();
         preceding + row_display_col.saturating_sub(row_indent)
     }
 
@@ -756,12 +843,12 @@ impl<'a> RowMap<'a> {
         // promotes this to `Full` regardless (a row-relative bound can't
         // usefully clip a line-relative target), and without wrapping
         // `content_rows == 1` so the two columns coincide.
-        self.ensure_formatted(line, FormatBound::ToDisplayCol(target_line_display_col));
+        let idx = self.ensure_formatted(line, FormatBound::ToDisplayCol(target_line_display_col));
         let mut remaining = target_line_display_col;
         let mut sub = 0;
         let mut row_indent = 0;
         for j in 0..content_rows {
-            let (indent, span) = self.row_shape(j);
+            let (indent, span) = self.row_shape(idx, j);
             sub = j;
             row_indent = indent;
             if j + 1 == content_rows || remaining < span {
@@ -769,7 +856,7 @@ impl<'a> RowMap<'a> {
             }
             remaining -= span;
         }
-        self.resolve_in_row(line, sub, remaining + row_indent, target)
+        self.resolve_in_row(idx, sub, remaining + row_indent, target)
     }
 
     /// The char range one content row covers, as `(start, end_exclusive)`.
@@ -785,10 +872,11 @@ impl<'a> RowMap<'a> {
         }
         // `Full`: this reads the *next* row's first char to bound the current
         // one, so it needs every row the line produces.
-        self.ensure_formatted(pos.line, FormatBound::Full);
+        let idx = self.ensure_formatted(pos.line, FormatBound::Full);
 
-        let rows = &self.scratch.display_rows;
-        let graphemes = &self.scratch.graphemes;
+        let format = self.format_at(idx);
+        let rows = &format.display_rows;
+        let graphemes = &format.graphemes;
         let first_char_of = |row: &DisplayRow| {
             graphemes[row.graphemes.clone()]
                 .iter()
@@ -819,50 +907,44 @@ impl<'a> RowMap<'a> {
             BlockSlot::Content(sub) => {
                 // `Full`: the render stage emits whole rows, and its own
                 // clipping is the map's `h_window`, applied inside the format.
-                self.ensure_formatted(pos.line, FormatBound::Full);
+                let idx = self.ensure_formatted(pos.line, FormatBound::Full);
+                let format = self.format_at(idx);
                 RenderRow {
-                    row: &self.scratch.display_rows[sub],
-                    graphemes: &self.scratch.graphemes,
-                    line_text: &self.scratch.line_texts,
-                    virtual_texts: &self.scratch.virtual_texts,
+                    row: &format.display_rows[sub],
+                    graphemes: &format.graphemes,
+                    line_text: &format.line_texts,
+                    virtual_texts: &format.virtual_texts,
                     base_scope: None,
                 }
             }
-            BlockSlot::Before(i) => self.segment_virtual_row(pos.line, i),
+            BlockSlot::Before(i) => self.segment_virtual_row(i),
+            // `slot` resolved this line's block, so its `before` count is on
+            // the current entry — no need to walk the block again for it.
             BlockSlot::After(i) => {
-                let before = self.block(pos.line).before;
-                self.segment_virtual_row(pos.line, before + i)
+                let before = self.current_entry().before;
+                self.segment_virtual_row(before + i)
             }
         }
     }
 
     /// Lay one virtual row out into its own scratch and borrow it back.
     ///
-    /// Uses `FormatScratch::virtual_row`, not the content-line buffers: a
-    /// `Before` row renders ahead of its line's content rows, which may
-    /// already be formatted and cached (`block` runs the formatter in
-    /// wrapping mode to count wrap rows) — clobbering the shared buffers
-    /// here would destroy that cached format and force a redundant reformat
-    /// of the content rows that follow.
-    fn segment_virtual_row(&mut self, line: usize, vl_idx: usize) -> RenderRow<'_> {
-        let cached = self
-            .cached
-            .as_ref()
-            .expect("slot() resolved this line's block");
-        // `slot()`'s only callers (`render_row`'s `Before`/`After` arms) call
-        // `block(line)` immediately before reaching here, which guarantees
-        // `cached.line == line` — see `ensure_formatted`'s matching assert
-        // for why a future line-spanning cache on `block` must preserve that.
-        debug_assert_eq!(
-            cached.line, line,
-            "segment_virtual_row({line}, ..) called with a stale cache entry for line {}",
-            cached.line
-        );
-        let vl = &cached.virtual_lines[vl_idx];
+    /// Uses the store's `virtual_row`, not the line's own format: a `Before`
+    /// row renders ahead of its line's content rows, which are very likely
+    /// already formatted (`block` runs the formatter in wrapping mode to
+    /// count wrap rows) — laying the virtual row out over them would destroy
+    /// that and force a reformat of the content rows that follow.
+    fn segment_virtual_row(&mut self, vl_idx: usize) -> RenderRow<'_> {
+        let idx = self.current.expect("slot() resolved this line's block");
+        let tab_width = self.tab_width;
+        // The entry's virtual rows and the scratch they lay out into are
+        // disjoint parts of the store, borrowed together so the row's text
+        // can be read while its cells are written.
+        let (entry, vrow) = self.store.entry_and_virtual_row(idx);
+        let vl = &entry.virtual_lines[vl_idx];
+        let anchor_line = entry.line;
         let provider_id = vl.provider_id;
         let base_scope = vl.base_scope;
-        let tab_width = self.tab_width;
-        let vrow = &mut self.scratch.virtual_row;
         vrow.clear();
 
         // `vl.segments` was sorted by `block()` at intake, and
@@ -888,7 +970,7 @@ impl<'a> RowMap<'a> {
         let row = vrow.row.insert(DisplayRow {
             kind: crate::types::RowKind::Virtual {
                 provider_id,
-                anchor_line: line,
+                anchor_line,
             },
             graphemes: 0..vrow.graphemes.len(),
         });
@@ -908,14 +990,27 @@ impl<'a> RowMap<'a> {
 
     // ── Formatting ───────────────────────────────────────────────────────
 
-    /// Guarantee the scratch holds `line`'s content rows, formatted at least
-    /// as far as `bound` reaches.
-    fn ensure_formatted(&mut self, line: usize, bound: FormatBound) {
+    /// Guarantee `line`'s entry holds its content rows, formatted at least
+    /// as far as `bound` reaches, and leave it as [`RowMap::current`].
+    /// Returns the entry it resolved, so a read accessor can be handed the
+    /// line by value instead of trusting `current` to still point at it.
+    fn ensure_formatted(&mut self, line: usize, bound: FormatBound) -> usize {
+        let idx = self.block_entry(line);
+        self.ensure_format_at(idx, bound);
+        idx
+    }
+
+    /// [`RowMap::ensure_formatted`] for an entry already in hand.
+    ///
+    /// Split out so [`RowMap::content_rows`] can format while counting
+    /// without re-finding the entry it is already holding.
+    fn ensure_format_at(&mut self, idx: usize, bound: FormatBound) {
         debug_assert!(
             self.h_window.is_none() || matches!(bound, FormatBound::Full),
             "a bounded query on an h_window map would clip twice — the render \
              path bounds its own formats by window and never asks for one"
         );
+        let line = self.store.entry(idx).line;
         // Any wrapping mode needs the whole line: a clipped scan would emit
         // fewer rows than the count `block` already committed to. Applied
         // before the check *and* the record below, so a wrapping query never
@@ -925,45 +1020,23 @@ impl<'a> RowMap<'a> {
         } else {
             bound
         };
-        // After `block`, which either confirms the cache or replaces it —
-        // `block` guarantees `cached.line == line` on return by construction
-        // (it either hits an already-matching entry or repopulates one), so
-        // the check below trusts that rather than re-comparing `line` itself.
-        // That guarantee is the one thing a future line-spanning cache on
-        // `block` must preserve: an early return that skips populating
-        // `cached` would make this check silently pass a stale entry through.
-        let breakdown = self.block(line);
-        debug_assert_eq!(
-            self.cached.as_ref().map(|c| c.line),
-            Some(line),
-            "block({line}) must leave the cache pointed at the line it was asked for"
-        );
+        self.current = Some(idx);
+        // Already formatted far enough, cut to the same window — by an
+        // earlier query on this map, or by the frame's other pass over this
+        // pane.
         if self
-            .cached
-            .as_ref()
-            .is_some_and(|c| c.extent.is_some_and(|e| e.covers(bound)))
+            .store
+            .entry(idx)
+            .format
+            .covers(bound, self.h_window.as_ref())
         {
             return;
         }
-        self.format_line(line, bound);
-        debug_assert_eq!(
-            self.scratch.display_rows.len(),
-            breakdown.content,
-            "line {line} formatted to a different row count than it was counted at"
-        );
-        self.cached
-            .as_mut()
-            .expect("block() above populated the cache")
-            .extent = Some(bound);
-    }
 
-    /// Format `line`'s content rows into the scratch.
-    ///
-    /// Inline inserts are queried and passed here, not just at render time:
-    /// they participate in wrapping, so counting rows without them makes the
-    /// row list disagree with what the renderer emits the moment an inlay hint
-    /// pushes a line past the wrap column.
-    fn format_line(&mut self, line: usize, bound: FormatBound) {
+        // Inline inserts are queried here, not just at render time: they
+        // participate in wrapping, so counting rows without them makes the row
+        // list disagree with what the renderer emits the moment an inlay hint
+        // pushes a line past the wrap column.
         self.inline_inserts.clear();
         self.decorations.clear();
         for (_, provider) in self.providers.decoration_sources(DecorationKinds::INLINE) {
@@ -978,8 +1051,8 @@ impl<'a> RowMap<'a> {
             }));
         self.inline_inserts.sort_by_key(|i| i.byte_offset);
 
-        self.scratch.clear_line_bufs();
-        self.scratch.line_texts.clear();
+        let format = &mut self.store.entry_mut(idx).format;
+        format.reset();
         format_buffer_line(
             self.rope,
             line,
@@ -989,8 +1062,10 @@ impl<'a> RowMap<'a> {
             self.h_window.clone(),
             bound,
             &self.inline_inserts,
-            &mut *self.scratch,
+            format,
         );
+        format.extent = Some(bound);
+        format.h_window = self.h_window.clone();
     }
 }
 

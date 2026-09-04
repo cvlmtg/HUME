@@ -14,7 +14,6 @@ use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_engine::format::FormatScratch;
 use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
@@ -707,9 +706,16 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         ed.view.panes[pid].providers.gutter_columns(),
         buf.text().last_ropey_line(),
     );
-    let mut scratch = FormatScratch::new();
-    let mut rm = commands::pane_row_map(buf, &ed.state.settings, &ed.view.panes[pid], &mut scratch);
-    let vp = &ed.view.panes[pid].viewport;
+    let tag = ed.state.buffer_tag(bid);
+    // `_mut` for the viewport: the pane is borrowed mutably for the map, so
+    // its viewport has to come back out of the same split.
+    let Editor { state, view, .. } = &mut ed;
+    let (mut rm, vp) = commands::pane_row_map_mut(
+        state.buffers.get(bid),
+        &state.settings,
+        &mut view.panes[pid],
+        tag,
+    );
     let (content_x, row) =
         cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
     let expected_x = content_x + gutter_w + pane_rect.x;

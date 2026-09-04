@@ -18,6 +18,56 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     }
 }
 
+/// Draw `pane`'s view of `rope` into a grid the size of `pane_rect`.
+///
+/// The render tests below vary only these six things; everything else a
+/// `PaneRenderCtx` carries is fixed (no syntax, no dimming, 4-column tabs, no
+/// whitespace indicators, indent guides on), so it is spelled once here
+/// rather than at each call.
+///
+/// The line store is built per call and so is always cold. These tests assert
+/// on drawn cells, and a store shared between them would make one test's
+/// output depend on which ran first — the sharing itself is covered in
+/// `rows::tests`, against the store directly.
+fn render_test_pane(
+    pane: &Pane,
+    rope: &ropey::Rope,
+    theme: &Theme,
+    pane_rect: Rect,
+    wrap_mode: WrapMode,
+    default_gutter_scope: ScopeId,
+) -> Grid {
+    let settings = PaneRenderSettings {
+        mode: EditorMode::Normal,
+        wrap_mode,
+        tab_width: 4,
+        whitespace: WhitespaceConfig::default(),
+        show_indent_guides: true,
+        buffer_tag: [0; 3],
+    };
+    let pane_ctx = PaneRenderCtx {
+        viewport: &pane.viewport,
+        providers: &pane.providers,
+        selections: &pane.selections,
+        primary_idx: pane.primary_idx,
+        rope,
+        syntax: None,
+        theme,
+        rect: pane_rect,
+        settings: &settings,
+        dim: None,
+        default_gutter_scope,
+    };
+    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
+    render_pane(
+        &pane_ctx,
+        &mut FrameScratch::new(),
+        &mut crate::rows::line_store::PaneLineStore::new(),
+        &mut buf,
+    );
+    buf
+}
+
 // ── Virtual-row scope styling ────────────────────────────────────────
 
 /// Emits one `Before(0)` row whose first grapheme carries `scope` and whose
@@ -78,25 +128,14 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
         .add_decoration_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
 
     let pane_rect = rect(0, 0, 20, 5);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::None,
+        crate::types::ScopeId(0),
+    );
 
     let scoped_cell = buf.cell(0, 0).unwrap();
     assert_eq!(
@@ -178,25 +217,14 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
         .add_decoration_source(Box::new(UnsortedScopedVirtualLine { scopes }));
 
     let pane_rect = rect(0, 0, 20, 5);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::None,
+        crate::types::ScopeId(0),
+    );
 
     for (x, color) in colors.into_iter().enumerate() {
         let cell = buf.cell(x as u16, 0).unwrap();
@@ -255,25 +283,14 @@ fn render_wrapped_pane_with_virtual_line(top_row_offset: u16, anchor: VirtualLin
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Soft { width: 4 },
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::Soft { width: 4 },
+        crate::types::ScopeId(0),
+    );
     buf
 }
 
@@ -409,25 +426,14 @@ fn render_pane_with_n_before_lines(top_row_offset: u16, n: usize, height: u16) -
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, height);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Soft { width: 10 },
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::Soft { width: 10 },
+        crate::types::ScopeId(0),
+    );
     buf
 }
 
@@ -526,25 +532,14 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let mut theme = Theme::default();
     theme.bake(&registry);
     let pane_rect = rect(0, 0, 10, 3);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::None,
         default_gutter_scope,
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    );
 
     // Gutter width 5 -> usable 4 columns; a small real_id fits comfortably.
     let gutter_text: String = (0..4).map(|x| cell_symbol(&buf, x, 0)).collect();
@@ -577,25 +572,14 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 4);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::Soft { width: 20 },
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::Soft { width: 20 },
+        crate::types::ScopeId(0),
+    );
 
     let expected = ["中", "中", " ", "中"];
     for y in 0..4u16 {
@@ -623,25 +607,14 @@ fn scrolled_pane_renders_from_top_line_onward() {
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 5);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
-        default_gutter_scope: crate::types::ScopeId(0),
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::None,
+        crate::types::ScopeId(0),
+    );
 
     assert_eq!(cell_symbol(&buf, 0, 0), "c");
     assert_eq!(cell_symbol(&buf, 1, 0), "d");
@@ -694,25 +667,14 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     let mut theme = Theme::default();
     theme.bake(&registry);
     let pane_rect = rect(0, 0, 20, 3);
-    let pane_ctx = PaneRenderCtx {
-        pane: &pane,
-        rope: &rope,
-        syntax: None,
-        theme: &theme,
-        rect: pane_rect,
-        settings: PaneRenderSettings {
-            mode: EditorMode::Normal,
-            wrap_mode: WrapMode::None,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-            show_indent_guides: true,
-        },
-        dim: None,
+    let buf = render_test_pane(
+        &pane,
+        &rope,
+        &theme,
+        pane_rect,
+        WrapMode::None,
         default_gutter_scope,
-    };
-    let mut scratch = FrameScratch::new();
-    let mut buf = Grid::new(pane_rect.width, pane_rect.height);
-    render_pane(&pane_ctx, &mut scratch, &mut buf);
+    );
 
     // Row 1 is a Filler row (past the single real line) — its gutter
     // must show the column's own Filler rendering ("~g"), not blank.
@@ -1512,18 +1474,10 @@ fn pane_area_sums_multiple_bottom_bands() {
 fn frame_scratch_clear_retains_capacity() {
     let mut s = FrameScratch::new();
     for _ in 0..100 {
-        s.format.graphemes.push(crate::types::Grapheme {
-            byte_range: 0..1,
-            char_offset: 0,
-            display_col: 0,
-            width: 1,
-            content: crate::types::CellContent::Empty,
-            indent_depth: 0,
-            scope: None,
-        });
+        s.style.styles.push(hume_grid::ResolvedStyle::default());
     }
-    let cap_before = s.format.graphemes.capacity();
+    let cap_before = s.style.styles.capacity();
     s.clear();
-    assert_eq!(s.format.graphemes.len(), 0);
-    assert!(s.format.graphemes.capacity() >= cap_before);
+    assert_eq!(s.style.styles.len(), 0);
+    assert!(s.style.styles.capacity() >= cap_before);
 }

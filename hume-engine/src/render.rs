@@ -486,7 +486,7 @@ fn compose_gutter(
 ///
 /// `virtual_texts` is the per-frame arena backing this row's
 /// `CellContent::Whitespace`/`Placeholder`/`Virtual` ranges
-/// (`FormatScratch::virtual_texts` for a content row, `virtual_row.texts`
+/// (`LineFormat::virtual_texts` for a content row, `virtual_row.texts`
 /// for a provider's virtual row) — same lifetime/borrow rationale as
 /// `line_str`.
 ///

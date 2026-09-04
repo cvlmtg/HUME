@@ -8,70 +8,150 @@ use crate::providers::InlineInsert;
 use crate::types::{CellContent, DisplayRow, Grapheme, RowKind, ScopeId};
 
 // ---------------------------------------------------------------------------
-// Scratch storage
+// Formatted output
 // ---------------------------------------------------------------------------
 
-/// Reusable scratch buffers for the Format stage (Stage 2).
+/// One buffer line's formatted display rows.
 ///
-/// Owned by [`crate::pipeline::FrameScratch`] so capacity is retained across
-/// frames — no heap allocation after the first frame warms up the `Vec`s.
-pub struct FormatScratch {
-    /// `DisplayRow`s produced for the current buffer line. Cleared per line
-    /// by [`FormatScratch::clear_line_bufs`].
+/// Every index inside is line-local — `DisplayRow::graphemes` indexes
+/// `graphemes`, `Grapheme::byte_range` indexes `line_texts` from 0, and
+/// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`. That is
+/// what lets one of these be held alongside others, or handed between the
+/// passes that walk a line, without rebasing anything.
+///
+/// Lives in a [`crate::rows::line_store::PaneLineStore`], which owns them for as
+/// long as the lines they describe are being walked and reuses their
+/// allocations afterwards — so a line formatted on one frame costs the
+/// allocator nothing on the next.
+pub struct LineFormat {
+    /// `DisplayRow`s produced for this buffer line.
     pub display_rows: Vec<DisplayRow>,
-    /// `Grapheme`s for the current buffer line; rows index into this.
+    /// `Grapheme`s for this line; rows index into this.
     pub graphemes: Vec<Grapheme>,
-    /// Pre-materialised text for the current buffer line. Written by
-    /// `format_buffer_line`; read by `rows::RowMap`'s render accessors as
+    /// Pre-materialised text for this line. Written by
+    /// [`format_buffer_line`]; read by `rows::RowMap`'s render accessors as
     /// `RenderRow::line_text`.
     pub line_texts: String,
-    /// Per-frame arena backing the content line's `CellContent::Virtual`
-    /// (inline inserts) and `Whitespace` (indicator glyphs) text ranges,
-    /// none of which can be `&'static str` (LSP hints, Steel-configured
-    /// icons). `TabFill` needs no arena entry — its text is always a single
-    /// space. Cleared per buffer line in
-    /// [`FormatScratch::clear_line_bufs`], mirroring `line_texts` — compose
-    /// for that line always runs before the clear.
+    /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
+    /// `Whitespace` (indicator glyphs) text ranges, none of which can be
+    /// `&'static str` (LSP hints, Steel-configured icons). `TabFill` needs no
+    /// arena entry — its text is always a single space.
     pub virtual_texts: String,
-    /// Scratch for the virtual row currently being laid out by
-    /// `rows::RowMap::segment_virtual_row` — separate from the fields above
-    /// so laying out a provider's virtual row never disturbs the content
-    /// line's already-formatted rows/graphemes/arena.
-    pub virtual_row: VirtualRowScratch,
+    /// How much of the line the buffers above actually cover, or `None` when
+    /// nothing has been formatted into them yet — the state a line sits in
+    /// while only its virtual rows and block shape are known.
+    ///
+    /// A bounded scan stops early, so a later query wanting more has to
+    /// reformat; see [`FormatBound::covers`].
+    pub extent: Option<FormatBound>,
+    /// The horizontal clip this format was cut to, if any — `RowMap`'s own
+    /// `h_window` at the moment this ran. Not a formatting input in the sense
+    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::rows::line_store::StoreKey`
+    /// and invalidate the whole entry on change): a windowed format *drops*
+    /// leading graphemes rather than truncating, so it answers a different
+    /// question from an unclipped one over the same line. Recording it here
+    /// instead lets the entry's window-independent fields (block shape,
+    /// virtual rows) survive a window change; only [`LineFormat::covers`]
+    /// needs to tell the two formats apart.
+    pub h_window: Option<Range<u32>>,
 }
 
-impl FormatScratch {
+/// How large each buffer may stay across a frame boundary — past this,
+/// [`LineFormat::reset_and_shrink`] reclaims it down to exactly this size.
+///
+/// Ceilings only, not starting sizes: a `LineFormat` begins empty and grows to
+/// whatever its line actually needs. These sit far above an ordinary source
+/// line (which vary by an order of magnitude among themselves) because they
+/// only need to catch the genuinely pathological case — a minified-JS file's
+/// single line, megabytes wide — that would otherwise pin that much capacity
+/// for the pane's whole life, reversing the free list's own memory bound,
+/// since retained allocations are exactly what the free list keeps to avoid
+/// reallocating.
+const DISPLAY_ROWS_CEILING: usize = 256;
+const GRAPHEMES_CEILING: usize = 8192;
+const LINE_TEXTS_CEILING: usize = 8192;
+const VIRTUAL_TEXTS_CEILING: usize = 4096;
+
+impl LineFormat {
+    /// Empty, with nothing allocated yet.
+    ///
+    /// One of these exists per buffer line a pass *walks*, not per line it
+    /// formats — and under `WrapMode::None` block shape is known without
+    /// formatting, so most of them never fill. Reserving up front would charge
+    /// every walked line for buffers only a rendered one uses; the free list
+    /// (see [`crate::rows::line_store::PaneLineStore`]) is what makes growing
+    /// on demand free after the first frame anyway.
     pub fn new() -> Self {
         Self {
-            display_rows: Vec::with_capacity(16),
-            graphemes: Vec::with_capacity(512),
-            line_texts: String::with_capacity(512),
-            virtual_texts: String::with_capacity(256),
-            virtual_row: VirtualRowScratch::new(),
+            display_rows: Vec::new(),
+            graphemes: Vec::new(),
+            line_texts: String::new(),
+            virtual_texts: String::new(),
+            extent: None,
+            h_window: None,
         }
     }
 
-    /// Reset all buffers to empty, retaining allocated capacity.
-    pub fn clear(&mut self) {
-        self.clear_line_bufs();
-        self.line_texts.clear();
-        self.virtual_row.clear();
-    }
-
-    /// Reset the per-buffer-line fields (`display_rows`, `graphemes`,
-    /// `virtual_texts`).
-    ///
-    /// Excludes `line_texts`: the fused render pipeline clears it at its own
-    /// point (right before appending that line's text), decoupled from this
-    /// method's cadence — see `line_texts`'s field doc.
-    pub fn clear_line_bufs(&mut self) {
+    /// Empty every buffer, retaining allocated capacity, ready to be
+    /// formatted into again.
+    pub fn reset(&mut self) {
         self.display_rows.clear();
         self.graphemes.clear();
+        self.line_texts.clear();
         self.virtual_texts.clear();
+        self.extent = None;
+        self.h_window = None;
+    }
+
+    /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling —
+    /// the frame-boundary counterpart to `reset`, and the exact shape
+    /// [`VirtualRowScratch::clear_and_shrink`] takes for the same reason.
+    ///
+    /// `reset` alone runs when the same line is about to be reformatted,
+    /// where shrinking would only force an immediate re-grow. This one runs
+    /// from `PaneLineStore::rewind`, where the buffer's next user may be a
+    /// different line or no line at all — the point where an outsized
+    /// allocation is worth paying to give back.
+    ///
+    /// Resetting first is what lets the shrink take effect at all:
+    /// [`shrink_to`](Vec::shrink_to) never drops capacity below the length
+    /// still in the buffer.
+    pub fn reset_and_shrink(&mut self) {
+        self.reset();
+        self.shrink_oversized();
+    }
+
+    /// Shrink any buffer that has grown past its ceiling back down to it.
+    ///
+    /// Buffers below their ceiling are untouched: keeping their capacity
+    /// across reuse is the free list's whole point.
+    fn shrink_oversized(&mut self) {
+        // A macro rather than a helper fn: `Vec` and `String` share no trait
+        // carrying `capacity`/`shrink_to`. Four one-liners naming their own
+        // ceiling, so a field paired with the wrong constant reads as wrong
+        // on the line it happens.
+        macro_rules! shrink {
+            ($buf:expr, $ceiling:expr) => {
+                if $buf.capacity() > $ceiling {
+                    $buf.shrink_to($ceiling);
+                }
+            };
+        }
+        shrink!(self.display_rows, DISPLAY_ROWS_CEILING);
+        shrink!(self.graphemes, GRAPHEMES_CEILING);
+        shrink!(self.line_texts, LINE_TEXTS_CEILING);
+        shrink!(self.virtual_texts, VIRTUAL_TEXTS_CEILING);
+    }
+
+    /// Whether this format already answers a query bounded by `bound`, cut to
+    /// the same `h_window` the querying map is using. A windowed format never
+    /// answers for an unwindowed query or vice versa — see the field doc.
+    pub fn covers(&self, bound: FormatBound, h_window: Option<&Range<u32>>) -> bool {
+        self.extent.is_some_and(|e| e.covers(bound)) && self.h_window.as_ref() == h_window
     }
 }
 
-impl Default for FormatScratch {
+impl Default for LineFormat {
     fn default() -> Self {
         Self::new()
     }
@@ -79,7 +159,7 @@ impl Default for FormatScratch {
 
 /// Scratch for laying out one virtual (non-buffer) display row.
 ///
-/// A dedicated buffer, not a reuse of `FormatScratch`'s content-line fields:
+/// A dedicated buffer, not a reuse of `LineFormat`'s content-line fields:
 /// a `Before` virtual row renders ahead of its line's content rows, and
 /// those may already be formatted and cached (`rows::RowMap::block` runs the
 /// formatter in wrapping mode to count wrap rows) — clobbering the shared
@@ -92,17 +172,33 @@ pub struct VirtualRowScratch {
     pub graphemes: Vec<Grapheme>,
     /// Arena backing this row's `CellContent::Virtual` text ranges —
     /// entirely the provider's `VirtualLine::text`, unlike
-    /// `FormatScratch::virtual_texts` which backs a content line's inline
+    /// `LineFormat::virtual_texts` which backs a content line's inline
     /// decorations.
     pub texts: String,
 }
 
+/// Ceilings for [`VirtualRowScratch`], in the same sense as
+/// [`GRAPHEMES_CEILING`] and friends: a size a scratch may keep between
+/// frames, not one it starts at.
+///
+/// Lower than the content-line ceilings because a virtual row's text is a
+/// display string a provider *built* (an inlay hint, a blame line, a
+/// diagnostic), not a line read off disk — the megabytes-wide minified-JS
+/// case that sets the content-line ceilings has no counterpart here.
+const VIRTUAL_ROW_GRAPHEMES_CEILING: usize = 2048;
+const VIRTUAL_ROW_TEXTS_CEILING: usize = 2048;
+
 impl VirtualRowScratch {
+    /// Empty, with nothing allocated yet.
+    ///
+    /// One of these exists per pane whether or not that pane has any virtual
+    /// rows at all, so it grows on first use rather than charging every pane
+    /// up front — the same reasoning as [`LineFormat::new`].
     pub fn new() -> Self {
         Self {
             row: None,
-            graphemes: Vec::with_capacity(128),
-            texts: String::with_capacity(128),
+            graphemes: Vec::new(),
+            texts: String::new(),
         }
     }
 
@@ -111,6 +207,25 @@ impl VirtualRowScratch {
         self.row = None;
         self.graphemes.clear();
         self.texts.clear();
+    }
+
+    /// [`Self::clear`] plus reclaiming a buffer grown past its ceiling.
+    ///
+    /// Split from `clear` on the same line `LineFormat` draws between
+    /// [`LineFormat::reset`] and [`LineFormat::reset_and_shrink`]: `clear`
+    /// runs before laying out each virtual row and is followed immediately by
+    /// filling it again, where shrinking would only force a re-grow. This one
+    /// runs at the frame boundary, when the next user may be a different row
+    /// or no row at all — the point where an outsized allocation is worth
+    /// paying to give back.
+    pub fn clear_and_shrink(&mut self) {
+        self.clear();
+        if self.graphemes.capacity() > VIRTUAL_ROW_GRAPHEMES_CEILING {
+            self.graphemes.shrink_to(VIRTUAL_ROW_GRAPHEMES_CEILING);
+        }
+        if self.texts.capacity() > VIRTUAL_ROW_TEXTS_CEILING {
+            self.texts.shrink_to(VIRTUAL_ROW_TEXTS_CEILING);
+        }
     }
 }
 
@@ -217,22 +332,27 @@ pub fn format_buffer_line(
     h_window: Option<Range<u32>>,
     bound: FormatBound,
     inline_inserts: &[InlineInsert],
-    scratch: &mut FormatScratch,
+    out: &mut LineFormat,
 ) {
-    // The caller (`rows::RowMap::format_line`) clears `line_texts` right
-    // before this call, so `text_start` is always 0 — kept as a variable
-    // (not assumed) so `line_str` below stays correct if that contract ever
+    // The caller (`rows::RowMap::ensure_formatted`) resets `out` right before
+    // this call, so `text_start` is always 0 — kept as a variable (not
+    // assumed) so `line_str` below stays correct if that contract ever
     // changes. Rope chunks are valid UTF-8.
-    let text_start = scratch.line_texts.len();
+    let text_start = out.line_texts.len();
     let line_slice = rope.line(line_idx);
+    // The one buffer whose final size is known before writing it. Reserving
+    // turns the chunk loop into a single allocation instead of a doubling
+    // chain, which matters because `LineFormat::new` deliberately hands over
+    // an empty buffer.
+    out.line_texts.reserve(line_slice.len_bytes());
     for chunk in line_slice.chunks() {
-        scratch.line_texts.push_str(chunk);
+        out.line_texts.push_str(chunk);
     }
     // Strip the trailing `\n` ropey includes for every non-final line — the
     // EOL sentinel below is emitted only for a line that actually had one.
-    let had_newline = hume_rope::lines::truncate_line_break(&mut scratch.line_texts);
+    let had_newline = hume_rope::lines::truncate_line_break(&mut out.line_texts);
 
-    let line_str = &scratch.line_texts[text_start..];
+    let line_str = &out.line_texts[text_start..];
 
     // Byte offset where trailing whitespace begins. A ws grapheme is
     // "trailing" iff its byte offset is at/after this point — this excludes
@@ -256,11 +376,11 @@ pub fn format_buffer_line(
     let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
 
     // ── Row / column state ────────────────────────────────────────────────
-    // Aliases into the scratch buffers so the rest of the function can use
+    // Aliases into the output buffers so the rest of the function can use
     // the original `rows_out` / `graphemes_out` names without further changes.
-    let rows_out = &mut scratch.display_rows;
-    let graphemes_out = &mut scratch.graphemes;
-    let virtual_texts_out = &mut scratch.virtual_texts;
+    let rows_out = &mut out.display_rows;
+    let graphemes_out = &mut out.graphemes;
+    let virtual_texts_out = &mut out.virtual_texts;
 
     let mut insert_idx = 0usize;
     let mut wrap = WrapState {
@@ -764,7 +884,7 @@ fn grapheme_display(
     }
 }
 
-/// Push `text` into a per-frame text arena (`FormatScratch::virtual_texts`
+/// Push `text` into a per-frame text arena (`LineFormat::virtual_texts`
 /// or `VirtualRowScratch::texts`), returning a `(start, len)` range cheap
 /// enough to store in a `Copy` `CellContent`. A single line's pushed text
 /// realistically never approaches the `u32`/`u16` bounds; `debug_assert`

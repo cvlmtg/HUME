@@ -143,12 +143,14 @@ impl Editor {
             (vp.top_line, vp.top_row_offset)
         };
         {
+            let pid = self.state.focused_pane_id;
             let buf_id = self.focused_buffer_id();
+            let buffer_tag = self.state.buffer_tag(buf_id);
             let (mut rm, viewport) = pane_row_map_mut(
                 self.state.buffers.get(buf_id),
                 &self.state.settings,
-                &mut self.view.panes[self.state.focused_pane_id],
-                &mut self.state.motion_format_scratch,
+                &mut self.view.panes[pid],
+                buffer_tag,
             );
             if down {
                 scroll_viewport_down(viewport, &mut rm, scroll_lines);
@@ -201,11 +203,12 @@ impl Editor {
                 self.state.buffers.get(buf_id).text().last_ropey_line(),
             )
         };
+        let buffer_tag = self.state.buffer_tag(buf_id);
         let (mut rm, viewport) = pane_row_map_mut(
             self.state.buffers.get(buf_id),
             &self.state.settings,
             &mut self.view.panes[pid],
-            &mut self.state.motion_format_scratch,
+            buffer_tag,
         );
         cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut rm)
     }

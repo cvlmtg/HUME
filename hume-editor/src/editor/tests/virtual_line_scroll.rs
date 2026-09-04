@@ -14,35 +14,13 @@
 // from the Steel bridge (that path is exercised separately in
 // `lsp_virtual_lines.rs`).
 
+use super::doubles::{InlineHint, VirtualRows};
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
-use hume_engine::providers::{
-    Decoration, DecorationKinds, DecorationSource, InlineInsert, VirtualLine, VirtualLineAnchor,
-};
-use hume_engine::types::ScopeId;
-use hume_grid::{Grid, Rect};
-
-/// Emits one `Before(0)` virtual row, texted "V".
-struct OneBeforeLine;
-
-impl DecorationSource for OneBeforeLine {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == 0 {
-            out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: VirtualLineAnchor::Before(0),
-                provider_id: 0,
-                text: "V".to_string(),
-                segments: Vec::new(),
-                base_scope: None,
-            }));
-        }
-    }
-}
+use hume_engine::providers::VirtualLineAnchor;
+use hume_grid::Rect;
 
 /// Two-line buffer ("x\ny\n"), wrapping on, a `Before(0)` block registered
 /// directly on the pane, cursor at line 0's start.
@@ -57,12 +35,12 @@ fn editor_with_before_line() -> Editor {
     });
     ed.view.panes[pid]
         .providers
-        .add_decoration_source(Box::new(OneBeforeLine));
+        .add_decoration_source(Box::new(VirtualRows::uniform(
+            VirtualLineAnchor::Before(0),
+            1,
+            "V",
+        )));
     ed
-}
-
-fn cell(buf: &Grid, x: u16, y: u16) -> String {
-    buf.cell(x, y).unwrap().text().to_string()
 }
 
 #[test]
@@ -91,12 +69,14 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let pid = ed.state.focused_pane_id;
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
-    let mut scratch = hume_engine::format::FormatScratch::new();
+    let bid = ed.view.panes[pid].buffer_id;
+    let tag = ed.state.buffer_tag(bid);
+    let Editor { state, view, .. } = &mut ed;
     let mut rm = crate::editor::commands::pane_row_map(
-        ed.doc(),
-        &ed.state.settings,
-        &ed.view.panes[pid],
-        &mut scratch,
+        state.buffers.get(bid),
+        &state.settings,
+        &mut view.panes[pid],
+        tag,
     );
 
     let pos = crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char);
@@ -144,28 +124,6 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
 
-/// Emits `self.1` distinct `After(self.0)` rows.
-struct MultiAfterLine(usize, usize);
-
-impl DecorationSource for MultiAfterLine {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == self.0 {
-            for i in 0..self.1 {
-                out.push(Decoration::VirtualLine(VirtualLine {
-                    anchor: VirtualLineAnchor::After(self.0),
-                    provider_id: 0,
-                    text: (i + 1).to_string(),
-                    segments: Vec::new(),
-                    base_scope: None,
-                }));
-            }
-        }
-    }
-}
-
 /// Screen-relative cursor-follow (`VerticalUnit::ScreenRow` — mouse wheel,
 /// page/half-page scroll) must count virtual rows toward its display-row
 /// budget: moving "5 display rows" down through a 3-row `After(1)` block
@@ -191,7 +149,10 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
         });
         ed.view.panes[pid]
             .providers
-            .add_decoration_source(Box::new(MultiAfterLine(1, 3)));
+            .add_decoration_source(Box::new(VirtualRows::numbered(
+                VirtualLineAnchor::After(1),
+                3,
+            )));
 
         apply_visual_vertical(
             &mut ed.state,
@@ -221,25 +182,6 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
 // reports one row where the renderer draws two, and everything below the
 // hint lands one row off.
 
-/// Emits one 6-column inline insert at the head of line 0. Holds an
-/// already-interned scope, the same contract real providers follow.
-struct HintOnLine0(ScopeId);
-
-impl DecorationSource for HintOnLine0 {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::INLINE
-    }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == 0 {
-            out.push(Decoration::Inline(InlineInsert {
-                byte_offset: 0,
-                text: "HHHHHH".to_string(),
-                scope: self.0,
-            }));
-        }
-    }
-}
-
 #[test]
 fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
@@ -261,7 +203,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     let scope = ed.view.registry.intern("ui.virtual_text");
     ed.view.panes[pid]
         .providers
-        .add_decoration_source(Box::new(HintOnLine0(scope)));
+        .add_decoration_source(Box::new(InlineHint::new(0, 0, "HHHHHH").with_scope(scope)));
 
     // Height 4 leaves 3 content rows once the statusline takes one.
     let rendered = ed.render_to_buf(Rect::new(0, 0, 10, 4));
@@ -275,12 +217,14 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
 
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
-    let mut scratch = hume_engine::format::FormatScratch::new();
+    let bid = ed.view.panes[pid].buffer_id;
+    let tag = ed.state.buffer_tag(bid);
+    let Editor { state, view, .. } = &mut ed;
     let mut rm = crate::editor::commands::pane_row_map(
-        ed.doc(),
-        &ed.state.settings,
-        &ed.view.panes[pid],
-        &mut scratch,
+        state.buffers.get(bid),
+        &state.settings,
+        &mut view.panes[pid],
+        tag,
     );
     assert_eq!(
         crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),

@@ -273,7 +273,7 @@ impl DecorationKinds {
     /// — render-only, never consulted by layout. The layout stage has no
     /// analogous combined constant: `rows::RowMap` queries `VIRTUAL_LINE` and
     /// `INLINE` separately, at different points in the row walk (`block()`
-    /// for virtual lines, `format_line()` for inline inserts), so a `LAYOUT`
+    /// for virtual lines, `ensure_formatted()` for inline inserts), so a `LAYOUT`
     /// union would have no correct caller.
     pub const PAINT: Self = Self::HIGHLIGHT.union(Self::LINE_BG);
 }

@@ -287,7 +287,11 @@ impl std::fmt::Display for WhitespaceRender {
 }
 
 /// Configuration for whitespace indicator rendering.
-#[derive(Copy, Clone, Debug)]
+///
+/// `PartialEq`/`Eq` so it can sit in `rows::line_store`'s scope key — a
+/// whitespace change alters how a line formats, so a cached format from
+/// before the change must not be served after it.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct WhitespaceConfig {
     pub space: WhitespaceRender,
     pub tab: WhitespaceRender,
@@ -349,6 +353,21 @@ pub struct Pane {
     /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
     /// rather than directly, mirroring `saved_scrolls`/`remember_scroll`.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
+    /// What every walk of this pane's display rows has learned about the
+    /// lines it visited — see [`crate::rows::line_store`].
+    ///
+    /// Per pane rather than one shared store, because two panes can show the
+    /// same buffer at the same width and resolve a bit-identical
+    /// [`StoreKey`](crate::rows::line_store::StoreKey): with nothing naming
+    /// the pane in that key, one pane's cache hit would skip querying the
+    /// other's providers entirely. And *every* pane's scroll step runs before
+    /// *any* pane's render pass, so a single store would hold only the last
+    /// pane's lines by the time the first one drew.
+    ///
+    /// On the pane rather than beside it in a `PaneId`-keyed map so its
+    /// lifetime *is* the pane's: closing a pane drops its entries, with no
+    /// sweep for a future pane-close path to remember.
+    pub line_store: crate::rows::line_store::PaneLineStore,
 }
 
 impl Pane {
@@ -366,6 +385,7 @@ impl Pane {
             primary_idx: 0,
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
+            line_store: crate::rows::line_store::PaneLineStore::new(),
         }
     }
 
@@ -383,6 +403,8 @@ impl Pane {
             primary_idx: _, // ditto
             providers: _,   // allocated per pane in build_pane
             wraps,
+            line_store: _, // per-frame scratch; a new pane starts empty and
+                           // `EngineView::begin_frame` rewinds it every frame anyway
         } = src;
         self.viewport = viewport.clone();
         self.saved_scrolls = saved_scrolls.clone();
@@ -446,25 +468,34 @@ impl Pane {
 
     /// Line index of the primary selection head, resolved via the rope.
     ///
-    /// Called once per frame from the pipeline — O(log n) rope lookup.
-    /// Panics (debug and release) if `selections` is empty or `primary_idx`
-    /// is out of range — both are violated invariants, not recoverable
-    /// cases, so this fails loudly rather than defaulting to char 0 and
-    /// hiding the bug.
+    /// See [`primary_head_line`] — this is the whole-pane spelling, for
+    /// callers that hold a `&Pane` rather than its split-out fields.
     pub fn primary_head_line(&self, rope: &Rope) -> usize {
-        let head_char = self
-            .selections
-            .get(self.primary_idx)
-            .expect("pane selections empty or primary_idx out of range")
-            .head;
-        debug_assert!(
-            head_char <= rope.len_chars(),
-            "stale selection mirror: head {head_char} beyond rope len {} — \
-             pane.selections is out of sync with pane.buffer_id",
-            rope.len_chars()
-        );
-        rope.char_to_line(head_char)
+        primary_head_line(&self.selections, self.primary_idx, rope)
     }
+}
+
+/// Line index of the primary selection head, resolved via the rope.
+///
+/// Called once per frame from the pipeline — O(log n) rope lookup. Takes the
+/// two fields rather than `&Pane` so the render pass can call it while holding
+/// a `&mut` on a *different* field of the same pane (its line store).
+///
+/// Panics (debug and release) if `selections` is empty or `primary_idx` is out
+/// of range — both are violated invariants, not recoverable cases, so this
+/// fails loudly rather than defaulting to char 0 and hiding the bug.
+pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Rope) -> usize {
+    let head_char = selections
+        .get(primary_idx)
+        .expect("pane selections empty or primary_idx out of range")
+        .head;
+    debug_assert!(
+        head_char <= rope.len_chars(),
+        "stale selection mirror: head {head_char} beyond rope len {} — \
+         pane.selections is out of sync with pane.buffer_id",
+        rope.len_chars()
+    );
+    rope.char_to_line(head_char)
 }
 
 // ---------------------------------------------------------------------------

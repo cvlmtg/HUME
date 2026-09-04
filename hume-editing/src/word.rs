@@ -116,7 +116,7 @@ impl<'a> WordChars<'a> {
         Ok(())
     }
 
-    /// [`classify_char`], with this buffer's extra word characters folded
+    /// `classify_char`, with this buffer's extra word characters folded
     /// in. Only the `Punctuation` arm does a lookup, so the common path
     /// (letters, digits, space, newline) is exactly as fast as
     /// `classify_char` alone.
