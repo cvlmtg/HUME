@@ -129,6 +129,37 @@ pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
     Some((k as usize, is_open))
 }
 
+/// Feeds one scanned char into a bracket type's depth counter, resolving
+/// `slots[k]` — `opens` when `seek_open` (scanning left for an unmatched
+/// open), `closes` when scanning right for an unmatched close — the first
+/// time depth returns to zero on the side being sought. Returns the type
+/// index just resolved, if any.
+///
+/// Shared by both scan directions in [`find_tightest_bracket_pair`]: the two
+/// differ only in which side they're seeking and which array they fill, so
+/// one function serves both, called with `depths`/`slots` swapped.
+fn step_bracket(
+    (i, c): (usize, char),
+    seek_open: bool,
+    depths: &mut [usize; BRACKET_PAIRS.len()],
+    slots: &mut [Option<usize>; BRACKET_PAIRS.len()],
+) -> Option<usize> {
+    let (k, is_open) = bracket_role(c)?;
+    if slots[k].is_some() {
+        return None;
+    }
+    if is_open != seek_open {
+        depths[k] += 1;
+        return None;
+    }
+    if depths[k] > 0 {
+        depths[k] -= 1;
+        return None;
+    }
+    slots[k] = Some(i);
+    Some(k)
+}
+
 /// Find the tightest (innermost, smallest-span) of the three `BRACKET_PAIRS`
 /// pairs that encloses `pos`.
 ///
@@ -137,93 +168,129 @@ pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
 /// cursor on `b`, `(` at index 1 is the nearest unmatched open, but its
 /// partner `)` at 10 gives `()` a span of 9, while `{}` resolves to `(0, 5)`
 /// — span 5 — and wins. A single depth counter shared across bracket types
-/// would return the `()` span instead; three counters, tracked in lockstep
-/// and combined only at the end, are load-bearing.
+/// would return the `()` span instead; three counters per direction, tracked
+/// in lockstep, are load-bearing.
 ///
 /// Each type still gets `find_bracket_pair`'s own on-open/on-close shortcut:
 /// if `pos` sits on that type's open or close char, that side costs no scan.
-/// A type that doesn't own the char at `pos` can't have its depth changed by
-/// it, so every type's rightward scan starts at `pos + 1` regardless of
-/// whether that type took the shortcut — which is what lets one pass serve
-/// all three.
 ///
-/// The two passes each stop once every type still needing an answer has
-/// one — not once *any* type resolves, which the `{(abc}    )` example above
-/// would break, since `()` resolves before `{}` but loses. Ties (crossed
-/// nesting can produce genuine equal spans, e.g. `({a)}`) break in
-/// `BRACKET_PAIRS` order — `min_by_key` keeps the first of equal minima.
+/// **Bounded by the best complete span found so far.** The leftward and
+/// rightward scans run interleaved, one char at a time, tracking how far
+/// each has walked from `pos` (`dl`, `dr`). Once some type fully resolves
+/// (both its open and close known), no type still missing its open can beat
+/// that span once `dl` reaches it: a still-missing open lies more than `dl`
+/// chars back, or it would already be found, and its close (never `pos`
+/// itself — only the one type `role` names as a close can have that, and it
+/// resolves on the spot the moment its open does, see below) lies at
+/// `pos + 1` or later, so the span it could still achieve is `> dl`. The
+/// mirror argument bounds the rightward scan by `dr`. This makes the common
+/// case — one type (`[]`, almost always) never resolving — cost O(winning
+/// span) instead of O(buffer), the unconditional cost every type paid
+/// before this bound existed.
+///
+/// Two things the bound alone doesn't give for free: a side stops as soon as
+/// it has nothing left to find, regardless of the bound
+/// (`opens_missing`/`right_pending` hitting zero) — otherwise a side whose
+/// types all resolved early would keep walking just because the bound
+/// hasn't caught up yet. And the rightward scan for a given type only
+/// starts once that type's open is known — a type dropped for lack of an
+/// open (buffer-edge exhaustion on the left) never gets its close scanned,
+/// matching `find_bracket_pair`'s per-type shortcut of never scanning the
+/// side its missing half rules out. A type's close *can* still resolve
+/// before its own open, though: the rightward scan tracks every type's
+/// depth as soon as it's running at all (started by whichever type first
+/// needs it), so a slower-to-resolve type's close may already be sitting in
+/// `closes` by the time its open turns up on the left — handled inline
+/// where each side discovers the other already has an answer.
+///
+/// Ties (crossed nesting can produce genuine equal spans, e.g. `({a)}`)
+/// break in `BRACKET_PAIRS` order — `min_by_key` keeps the first of equal
+/// minima.
 pub(crate) fn find_tightest_bracket_pair(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let ch = text.char_at(pos)?;
     let role = bracket_role(ch);
 
-    // Leftward pass: each type's own first unmatched open, or the cursor
-    // itself if `pos` is on that type's open char. `ch` can be at most one
-    // type's open char, so at most one slot is seeded here — `pending`
-    // always starts at 2 or 3, never 0.
     let mut opens: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
-    let mut pending = BRACKET_PAIRS.len();
+    let mut closes: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
+    let mut depths_left = [0usize; BRACKET_PAIRS.len()];
+    let mut depths_right = [0usize; BRACKET_PAIRS.len()];
+
+    // `ch` can be at most one type's open char, so at most one slot is
+    // seeded here — `opens_missing` always starts at 2 or 3, never 0.
+    let mut opens_missing = BRACKET_PAIRS.len();
+    // Types with a known open and unknown close — what the rightward scan
+    // is still live for. Excludes a type whose close is already known (the
+    // on-close shortcut just below, or the "resolved out of order" case
+    // documented above) the moment its open is found, since neither needs
+    // any further scanning.
+    let mut right_pending = 0usize;
     if let Some((k, true)) = role {
         opens[k] = Some(pos);
-        pending -= 1;
-    }
-    {
-        let mut depths = [0usize; BRACKET_PAIRS.len()];
-        let mut cursor = text.chars_at(pos);
-        while let Some((i, c)) = cursor.prev() {
-            let Some((k, is_open)) = bracket_role(c) else {
-                continue;
-            };
-            if opens[k].is_some() {
-                continue;
-            }
-            if !is_open {
-                depths[k] += 1;
-            } else if depths[k] == 0 {
-                opens[k] = Some(i);
-                pending -= 1;
-                if pending == 0 {
-                    break;
-                }
-            } else {
-                depths[k] -= 1;
-            }
-        }
+        opens_missing -= 1;
+        right_pending += 1;
     }
 
-    // Rightward pass: only for types that resolved an open above — a type
-    // with no unmatched open leftward is already out of the candidate set.
-    // Unlike the leftward pass, `pending` can legitimately start at 0 here
-    // (no type resolved leftward, or the sole survivor took the on-close
-    // shortcut below), so this guard — unlike the leftward one — stays.
-    let mut closes: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
-    let mut pending = opens.iter().flatten().count();
-    if let Some((k, false)) = role
-        && opens[k].is_some()
-    {
-        closes[k] = Some(pos);
-        pending -= 1;
-    }
-    if pending > 0 {
-        let mut depths = [0usize; BRACKET_PAIRS.len()];
-        // `pos + 1` cannot panic: `text.char_at(pos)` above already proved
-        // `pos < text.len_chars()`.
-        for (i, c) in text.chars_at(pos + 1) {
-            let Some((k, is_open)) = bracket_role(c) else {
-                continue;
-            };
-            if opens[k].is_none() || closes[k].is_some() {
-                continue;
-            }
-            if is_open {
-                depths[k] += 1;
-            } else if depths[k] == 0 {
-                closes[k] = Some(i);
-                pending -= 1;
-                if pending == 0 {
-                    break;
+    let mut best_span: Option<usize> = None;
+    let within_bound = |best: Option<usize>, d: usize| best.is_none_or(|s| d < s);
+
+    let mut left_cursor = text.chars_at(pos);
+    // `pos + 1` cannot panic: `text.char_at(pos)` above already proved
+    // `pos < text.len_chars()`.
+    let mut right_cursor = text.chars_at(pos + 1);
+    let (mut dl, mut dr) = (0usize, 0usize);
+    let (mut left_exhausted, mut right_exhausted) = (false, false);
+
+    loop {
+        let left_live = !left_exhausted && opens_missing > 0 && within_bound(best_span, dl);
+        let right_live = !right_exhausted && right_pending > 0 && within_bound(best_span, dr);
+        if !left_live && !right_live {
+            break;
+        }
+
+        if left_live {
+            match left_cursor.prev() {
+                Some(hit) => {
+                    dl += 1;
+                    if let Some(k) = step_bracket(hit, true, &mut depths_left, &mut opens) {
+                        opens_missing -= 1;
+                        let open_pos = hit.0;
+                        if role == Some((k, false)) {
+                            // On-close shortcut: `pos` itself is this
+                            // type's close.
+                            closes[k] = Some(pos);
+                            best_span =
+                                Some(best_span.map_or(pos - open_pos, |s| s.min(pos - open_pos)));
+                        } else if let Some(close_pos) = closes[k] {
+                            // Rightward scan already found this type's
+                            // close before its open resolved here.
+                            best_span = Some(
+                                best_span
+                                    .map_or(close_pos - open_pos, |s| s.min(close_pos - open_pos)),
+                            );
+                        } else {
+                            right_pending += 1;
+                        }
+                    }
                 }
-            } else {
-                depths[k] -= 1;
+                None => left_exhausted = true,
+            }
+        }
+
+        if right_live {
+            match right_cursor.next() {
+                Some(hit) => {
+                    dr += 1;
+                    if let Some(k) = step_bracket(hit, false, &mut depths_right, &mut closes)
+                        && let Some(open_pos) = opens[k]
+                    {
+                        right_pending -= 1;
+                        let close_pos = hit.0;
+                        best_span = Some(
+                            best_span.map_or(close_pos - open_pos, |s| s.min(close_pos - open_pos)),
+                        );
+                    }
+                }
+                None => right_exhausted = true,
             }
         }
     }
