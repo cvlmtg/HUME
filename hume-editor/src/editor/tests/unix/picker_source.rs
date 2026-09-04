@@ -57,13 +57,14 @@ fn end_to_end_drain_streams_lines_into_the_store() {
     attach_sh(&mut ed, "printf 'a\\nb\\nc\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
+        let total_len = ed
+            .state
             .config
             .picker
             .as_ref()
             .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 3
+            .unwrap_or(0);
+        total_len == 3 && source_detached(ed)
     });
 
     let picker = ed.state.config.picker.as_ref().expect("picker still open");
