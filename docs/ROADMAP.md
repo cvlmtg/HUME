@@ -27,7 +27,6 @@
 
 - [ ] Byte-string parsing in settings — `"10MB"` / `"512KB"` strings; companion to the size-threshold setting.
 - [ ] Native directory-walker fallback for the file picker — for bare directories without `fd`; build only if the fallback posture proves inadequate in practice (see `docs/FUZZY-FINDERS.md`).
-- [ ] `RowMap::block`'s provider queries are one line at a time — `DecorationSource::decorations_for_line` takes a single `line_idx`, so each cache miss pays a per-provider lock+lookup+clone per line. Batching would need a range-taking query variant plus the render path querying its whole visible range up front.
 - [ ] `:sort --lexicographic` override — for when numeric auto-detection guesses wrong (e.g. `1.10` vs `1.9`). Not worth shipping until it actually bites.
 - [ ] Non-`file:` LSP location URIs (jdtls's `jdt://`, deno's `deno:`) — `goto-location!`/`lsp-locations->display-parts` reject them outright (`hume_lsp::uri::uri_to_path` only understands `file:`); a server sending one is conforming, HUME just has no reader for it yet. The error now names the URI and the unsupported scheme rather than printing `UriError`'s `Debug` form, but the destination is still unreachable.
 
