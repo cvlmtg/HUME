@@ -1285,7 +1285,8 @@ pub trait OutputHost {
     /// caught error in a nested `call!` that left its own frame unpaired
     /// can't be mistaken for this call's frame when the truncate runs.
     /// `None` — no state touched, no restore to pair — for a native,
-    /// unknown, or un-activated `Lazy` command.
+    /// unknown, or un-activated `Lazy` command, or a host with no
+    /// inline-output authority at all.
     fn arm_inline_output(&mut self, name: &str) -> Option<usize>;
 
     /// Truncate the bracket's frame stack back to `depth` — the value

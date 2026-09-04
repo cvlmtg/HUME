@@ -36,20 +36,20 @@ use super::tui::Tui;
 use super::{EditorState, Severity};
 
 pub(crate) struct EditorHostImpl<'a> {
-    pub(crate) state: &'a mut EditorState,
-    pub(crate) view: &'a mut EngineView,
+    state: &'a mut EditorState,
+    view: &'a mut EngineView,
     /// `Some` only at the three call sites that can reach an introspection
     /// builtin (command dispatch, hook fire, queued-call drain) — `None`
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
     /// `&mut` (not `&`) because the LSP completion session lives on
     /// `LspState` — the completion builtins need to write it.
-    pub(crate) lsp: Option<&'a mut LspState>,
+    lsp: Option<&'a mut LspState>,
     /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
     /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s
     /// shared-borrow shape doesn't fit; `TimerHandle` bundles the two
     /// `&mut` pieces this needs.
-    pub(crate) timers: Option<TimerHandle<'a>>,
+    timers: Option<TimerHandle<'a>>,
     /// This host's inline-output authority: `None` for [`Self::new`]'s
     /// callers, which have no business touching the bracket at all — not
     /// `Some(Tui::Off)`, which means something different (a `full`/`init`
@@ -62,11 +62,13 @@ pub(crate) struct EditorHostImpl<'a> {
     /// [`super::tui::ActiveTui`] instead (see that type's doc), so it works
     /// correctly even on a host built after the frame it's completing was
     /// pushed by a different one.
-    pub(crate) tui: Option<Tui>,
+    tui: Option<Tui>,
     /// Whether the kitty keyboard protocol is active — read by
-    /// `ensure_inline_output_screen` when entering the alt-screen.
-    /// Meaningless (and unread) when `tui` has no active handle.
-    pub(crate) kitty_enabled: bool,
+    /// `arm_inline_output`, alongside `tui`, to decide what a *new* frame
+    /// captures. Like `tui`, [`OutputHost::ensure_inline_output_screen`]
+    /// never reads this field directly; it reads the already-armed frame's
+    /// own captured kitty state instead, for the same cross-host reason.
+    kitty_enabled: bool,
 }
 
 impl<'a> EditorHostImpl<'a> {
@@ -94,12 +96,15 @@ impl<'a> EditorHostImpl<'a> {
     }
 
     /// Convenience constructor for callers with no terminal/`OutputHost`
-    /// needs — a Rust-side helper reaching for an unrelated capability
-    /// (`DecorationHost`, say) via `EditorHostImpl`, and most of the test
-    /// suite. `tui: None` gives this host no inline-output authority, so it
-    /// can be built at any point — including inside a live `Editor::run`
-    /// loop — with no risk of it entering or mis-reading a bracket armed by
-    /// whichever host actually owns the current dispatch.
+    /// needs — general-purpose in shape (a Rust-side helper reaching for an
+    /// unrelated capability such as `DecorationHost` via `EditorHostImpl`
+    /// would use it too), though today every caller is the test suite,
+    /// driving a host through some other trait directly (bypassing the
+    /// declare/activate plugin ceremony `init`/`full` sit behind). `tui:
+    /// None` gives this host no inline-output authority, so it can be built
+    /// at any point — including inside a live `Editor::run` loop — with no
+    /// risk of it entering or mis-reading a bracket armed by whichever host
+    /// actually owns the current dispatch.
     pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
         Self::with_tui(state, view, None, false)
     }
@@ -854,16 +859,16 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
     }
 
     fn ensure_inline_output_screen(&mut self) -> Result<(), String> {
-        // Reads the frame's own captured `tui`, not `self.tui` — this must
-        // work correctly even on a host with no inline-output authority
-        // (`EditorHostImpl::new`) completing a bracket a *different*, real
-        // host armed; see `ActiveTui`'s own doc.
-        let Some((name, tui)) = self.state.inline_output.needs_enter() else {
+        // Reads the frame's own captured `tui`/`kitty`, not `self.tui`/
+        // `self.kitty_enabled` — this must work correctly even on a host
+        // with no inline-output authority (`EditorHostImpl::new`) completing
+        // a bracket a *different*, real host armed; see `ActiveTui`'s own
+        // doc.
+        let Some((name, tui, kitty)) = self.state.inline_output.needs_enter() else {
             return Ok(());
         };
         let name = name.to_string();
         let tui = tui.clone();
-        let kitty = self.kitty_enabled;
         let mouse = self.state.settings.mouse_enabled;
         let mouse_select = self.state.settings.mouse_select;
         // `None` only for the test-only headless shape.
@@ -881,8 +886,11 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
     fn arm_inline_output(&mut self, name: &str) -> Option<usize> {
         // No inline-output authority at all (`EditorHostImpl::new`) — checked
         // first so a `declared` match never pushes a frame this host has no
-        // standing to decide the captured device for.
-        let tui = self.tui.as_ref()?;
+        // standing to decide the captured device for. Computed as
+        // `ActiveTui` up front (rather than keeping a `&Tui` borrow of
+        // `self.tui` alive) so the `self.state`/`self.kitty_enabled` reads
+        // below aren't fighting it for `self`.
+        let active_tui = self.tui.as_ref()?.as_active();
         // Mappable only: `%dispatch-command` (`call!`'s expansion) reaches
         // `command_table`/`get_mappable`, never `typed_command_table` — a
         // typed command is not `call!`-reachable, so matching one here would
@@ -897,7 +905,11 @@ impl<'a> OutputHost for EditorHostImpl<'a> {
         if !declared {
             return None;
         }
-        Some(self.state.inline_output.push(name, tui.as_active()))
+        Some(
+            self.state
+                .inline_output
+                .push(name, active_tui, self.kitty_enabled),
+        )
     }
 
     fn truncate_inline_output(&mut self, depth: usize) {

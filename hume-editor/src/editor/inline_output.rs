@@ -42,6 +42,12 @@ struct Frame {
     /// frame — a different `Editor`/`EditorHostImpl`'s current `tui` may
     /// disagree — still sees what was true when it was armed.
     tui: Option<ActiveTui>,
+    /// `Editor::kitty_enabled` at push time, captured for the same reason as
+    /// `tui`: a host completing the entry later (a different
+    /// `Editor`/`EditorHostImpl`, or one with no inline-output authority at
+    /// all, whose own `kitty_enabled` is meaningless) must still enter under
+    /// the kitty state that was actually true when the bracket was armed.
+    kitty: bool,
 }
 
 /// Terminal state captured when the alt-screen was actually left, so
@@ -76,11 +82,11 @@ pub(crate) struct InlineOutput {
 
 impl InlineOutput {
     /// Push a frame for `name`, currently executing with active handle
-    /// `tui` (`Tui::as_active`'s result). Marks `ran` when `tui` is `Some` —
-    /// see the module doc. Returns the depth to [`Self::truncate`] back to
-    /// at the matching restore — the frame count before this push, i.e.
-    /// this frame's own index.
-    pub(crate) fn push(&mut self, name: &str, tui: Option<ActiveTui>) -> usize {
+    /// `tui` (`Tui::as_active`'s result) and kitty state `kitty`. Marks `ran`
+    /// when `tui` is `Some` — see the module doc. Returns the depth to
+    /// [`Self::truncate`] back to at the matching restore — the frame count
+    /// before this push, i.e. this frame's own index.
+    pub(crate) fn push(&mut self, name: &str, tui: Option<ActiveTui>, kitty: bool) -> usize {
         let depth = self.frames.len();
         if tui.is_some() {
             self.ran = true;
@@ -88,6 +94,7 @@ impl InlineOutput {
         self.frames.push(Frame {
             name: name.to_string(),
             tui,
+            kitty,
         });
         depth
     }
@@ -115,16 +122,17 @@ impl InlineOutput {
         !self.frames.is_empty()
     }
 
-    /// The innermost frame's name and captured active handle if it owns the
-    /// terminal and the alt-screen hasn't already been left this session —
-    /// `None` otherwise, including once `entered` is already set, so nesting
-    /// deeper after the first real print can never re-enter.
-    pub(crate) fn needs_enter(&self) -> Option<(&str, &ActiveTui)> {
+    /// The innermost frame's name, captured active handle, and captured
+    /// kitty state if it owns the terminal and the alt-screen hasn't already
+    /// been left this session — `None` otherwise, including once `entered`
+    /// is already set, so nesting deeper after the first real print can
+    /// never re-enter.
+    pub(crate) fn needs_enter(&self) -> Option<(&str, &ActiveTui, bool)> {
         if self.entered.is_some() {
             return None;
         }
         let frame = self.frames.last()?;
-        Some((frame.name.as_str(), frame.tui.as_ref()?))
+        Some((frame.name.as_str(), frame.tui.as_ref()?, frame.kitty))
     }
 
     /// Record that the alt-screen was actually left, for this session, with
@@ -184,9 +192,9 @@ mod tests {
     fn is_open_tracks_frame_count_through_nesting() {
         let mut io = InlineOutput::default();
         assert!(!io.is_open());
-        io.push("outer", Some(ActiveTui::Headless));
+        io.push("outer", Some(ActiveTui::Headless), false);
         assert!(io.is_open());
-        let depth_inner = io.push("inner", Some(ActiveTui::Headless));
+        let depth_inner = io.push("inner", Some(ActiveTui::Headless), false);
         assert!(io.is_open());
         io.truncate(depth_inner);
         assert!(io.is_open(), "outer frame must still be on the stack");
@@ -206,9 +214,9 @@ mod tests {
     #[test]
     fn truncate_drops_a_leaked_descendant_frame_above_its_own() {
         let mut io = InlineOutput::default();
-        io.push("outer", Some(ActiveTui::Headless));
-        let depth_middle = io.push("middle", Some(ActiveTui::Headless));
-        io.push("inner-leak", Some(ActiveTui::Headless)); // raised and was caught; never truncated
+        io.push("outer", Some(ActiveTui::Headless), false);
+        let depth_middle = io.push("middle", Some(ActiveTui::Headless), false);
+        io.push("inner-leak", Some(ActiveTui::Headless), false); // raised and was caught; never truncated
         io.truncate(depth_middle);
         assert_eq!(
             io.frame_count(),
@@ -221,27 +229,41 @@ mod tests {
     #[test]
     fn needs_enter_fires_once_per_session_regardless_of_nesting() {
         let mut io = InlineOutput::default();
-        io.push("outer", Some(ActiveTui::Headless));
-        assert_eq!(io.needs_enter().map(|(name, _)| name), Some("outer"));
+        io.push("outer", Some(ActiveTui::Headless), false);
+        assert_eq!(io.needs_enter().map(|(name, _, _)| name), Some("outer"));
         io.mark_entered(false, false, false, ActiveTui::Headless);
         assert!(io.needs_enter().is_none());
         // A nested call! after the outer already entered must not re-enter.
-        io.push("inner", Some(ActiveTui::Headless));
+        io.push("inner", Some(ActiveTui::Headless), false);
         assert!(io.needs_enter().is_none(), "already entered this session");
     }
 
     #[test]
     fn needs_enter_skips_a_frame_with_no_active_tui() {
         let mut io = InlineOutput::default();
-        io.push("cmd", None);
+        io.push("cmd", None, false);
         assert!(io.is_open(), "gate still opens off the event loop");
         assert!(io.needs_enter().is_none());
+    }
+
+    /// `needs_enter` must return the pushing frame's own captured `kitty`,
+    /// not some ambient default — the whole reason `Frame` captures it
+    /// rather than a caller re-reading `Editor::kitty_enabled` later (a
+    /// different, or differently-configured, host may disagree).
+    ///
+    /// Fail oracle: have `push` ignore its `kitty` argument (always store
+    /// `false`) → this returns `false` instead of `true`.
+    #[test]
+    fn needs_enter_returns_the_frame_s_own_captured_kitty() {
+        let mut io = InlineOutput::default();
+        io.push("cmd", Some(ActiveTui::Headless), true);
+        assert_eq!(io.needs_enter().map(|(_, _, kitty)| kitty), Some(true));
     }
 
     #[test]
     fn truncate_to_zero_preserves_entered_and_ran() {
         let mut io = InlineOutput::default();
-        io.push("cmd", Some(ActiveTui::Headless));
+        io.push("cmd", Some(ActiveTui::Headless), false);
         io.mark_entered(true, true, false, ActiveTui::Headless);
         io.truncate(0);
         assert!(!io.is_open());
@@ -255,7 +277,7 @@ mod tests {
     #[test]
     fn take_entered_and_take_ran_clear_after_reading() {
         let mut io = InlineOutput::default();
-        io.push("cmd", Some(ActiveTui::Headless));
+        io.push("cmd", Some(ActiveTui::Headless), false);
         io.mark_entered(false, false, false, ActiveTui::Headless);
         assert!(io.take_entered().is_some());
         assert!(io.take_ran());

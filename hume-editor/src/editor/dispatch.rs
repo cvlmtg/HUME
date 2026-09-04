@@ -315,7 +315,9 @@ impl Editor {
         // otherwise drain it — an earlier push, before this guard, leaked a
         // frame on the no-scripting-host early return below.
         if inline_output {
-            self.state.inline_output.push(name, self.tui.as_active());
+            self.state
+                .inline_output
+                .push(name, self.tui.as_active(), self.kitty_enabled);
         }
 
         let result = {

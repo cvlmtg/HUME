@@ -574,15 +574,22 @@ fn new_host_has_no_inline_output_authority() {
 /// A frame armed by a real host must be completed correctly by *any* later
 /// host that reaches it — including one with no inline-output authority of
 /// its own (`EditorHostImpl::new`) — because entry is a property of what the
-/// frame itself captured (`Tui::as_active`'s result, at push time), not of
-/// whichever host happens to be asking. A guard that instead checks the
-/// *asking* host's own `tui` (as `EditorHostImpl::new`'s lack of authority
-/// might tempt one to write) would incorrectly skip a frame that really is
-/// active — this pins the deeper, correct behavior instead.
+/// frame itself captured (`Tui::as_active`'s result, and `kitty_enabled`, both
+/// at push time), not of whichever host happens to be asking. A guard that
+/// instead checks the *asking* host's own `tui`/`kitty_enabled` (as
+/// `EditorHostImpl::new`'s lack of authority, and its hardcoded
+/// `kitty_enabled: false`, might tempt one to write) would incorrectly skip a
+/// frame that really is active, or enter it under the wrong kitty state —
+/// this pins the deeper, correct behavior instead.
 ///
-/// Fail oracle: gate `ensure_inline_output_screen` on `self.tui.as_ref()`
+/// Fail oracle (tui): gate `ensure_inline_output_screen` on `self.tui.as_ref()`
 /// again (returning early when it's `None`) instead of reading the frame's
 /// own captured `tui` from `needs_enter()` → `enter_count` stays `0`.
+///
+/// Fail oracle (kitty): read `self.kitty_enabled` in
+/// `ensure_inline_output_screen` instead of the frame's own captured value →
+/// `Entered::kitty` reports `false`, the completing host's own value, instead
+/// of `true`, the arming host's.
 #[test]
 fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_one() {
     use hume_scripting::host::EditorHost;
@@ -595,14 +602,15 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
         r#"(define-command! "relay-probe" "" (lambda () (%stdout-gate!)) #:inline-output #t)"#,
     );
 
-    // A real host arms the frame — the same shape a top-level dispatch or a
-    // `call!`-armed nested command would leave behind.
+    // A real host, with kitty active, arms the frame — the same shape a
+    // top-level dispatch or a `call!`-armed nested command would leave
+    // behind.
     {
         let mut host = crate::editor::host_impl::EditorHostImpl::init(
             &mut ed.state,
             &mut ed.view,
             Tui::OnHeadless,
-            false,
+            true,
         );
         host.output()
             .expect("EditorHostImpl always implements OutputHost")
@@ -610,9 +618,11 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
             .expect("declared #:inline-output");
     }
 
-    // A different host, with no inline-output authority at all, is the one
-    // that ends up completing the entry — e.g. a hook fire built its own
-    // `EditorHostImpl` between the arm and the first print.
+    // A different host, with no inline-output authority at all and kitty
+    // hardcoded `false`, is the one that ends up completing the entry — e.g.
+    // a hook fire built its own `EditorHostImpl` between the arm and the
+    // first print. The bracket must still open under the kitty state the
+    // arming host captured, not this host's own (stale) `kitty_enabled`.
     {
         let mut host = crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view);
         host.output()
@@ -625,6 +635,15 @@ fn a_later_host_with_no_authority_still_completes_a_frame_armed_by_an_earlier_on
         1,
         "the frame's own captured tui must drive entry, regardless of which \
          host asks"
+    );
+    assert!(
+        ed.state
+            .inline_output
+            .take_entered()
+            .expect("entered")
+            .kitty,
+        "the frame's own captured kitty must drive entry, not the \
+         completing host's own (possibly stale) kitty_enabled"
     );
 }
 

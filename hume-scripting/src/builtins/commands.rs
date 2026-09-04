@@ -269,8 +269,9 @@ pub(crate) fn call_command_primitive(
 /// Steel command declared `#:inline-output #t`. Returns the depth to
 /// truncate back to at the matching `%restore-inline-output!`, so the
 /// Scheme caller knows whether to pair a restore and, if so, with what — a
-/// `#f` name (native, unknown, un-activated `Lazy`) touches no state and
-/// needs no restore.
+/// `#f` result (a native, unknown, or un-activated `Lazy` `name`, or a host
+/// with no inline-output authority at all) touches no state and needs no
+/// restore.
 pub(crate) fn arm_inline_output(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let depth = ctx
         .host
