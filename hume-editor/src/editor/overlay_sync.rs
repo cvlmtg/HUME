@@ -256,6 +256,11 @@ impl Editor {
     /// `selected` marks the highlighted row.
     pub(super) fn sync_menu_view(&mut self, ctx: &mut RenderContext) {
         if self.state.config.menu.is_none() {
+            // Skip the write-lock when both sides are already None — common
+            // case while no menu is open.
+            if self.state.menu_view.read_or_panic().is_none() {
+                return;
+            }
             *self.state.menu_view.write_or_panic() = None;
             return;
         }
