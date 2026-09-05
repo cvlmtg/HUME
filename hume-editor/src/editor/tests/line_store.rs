@@ -29,8 +29,7 @@ fn many_lines_editor() -> Editor {
         .buffers
         .get_mut(bid)
         .set_view_content(BufferText::from("a\n".repeat(50).as_str()));
-    let pid = ed.state.focused_pane_id;
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::collapsed(0));
+    set_cursor(&mut ed, 0);
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::None;
     ed
 }

@@ -1477,8 +1477,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
 
     // Move A's cursor and scroll well away from the top of the file.
     let cursor_pos = ed.doc().text().line_to_char(150);
-    ed.state.panes.state[pid_a][bid].selections =
-        SelectionSet::single(Selection::collapsed(cursor_pos));
+    set_cursor(&mut ed, cursor_pos);
     ed.view.panes[pid_a].viewport.top_line = 140;
 
     ed.execute_typed("vsplit", None).unwrap();

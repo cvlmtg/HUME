@@ -284,14 +284,17 @@ fn cell(buf: &hume_grid::Grid, x: u16, y: u16) -> String {
     buf.cell(x, y).unwrap().text().to_string()
 }
 
-/// Move the primary selection head to the start of buffer line `line`.
+/// Move the focused pane's primary cursor to char offset `head`.
+fn set_cursor(ed: &mut Editor, head: usize) {
+    use hume_editing::selection::Selection;
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
+}
+
+/// Move the focused pane's primary cursor to the start of buffer line `line`.
 /// Avoids depending on a specific motion command.
 fn seek_to_line(ed: &mut Editor, line: usize) {
-    use hume_editing::selection::Selection;
     let head = ed.doc().text().rope().line_to_char(line);
-    let pid = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::collapsed(head));
+    set_cursor(ed, head);
 }
 
 /// `name`'s already-interned `ScopeId` — panics if a setter hasn't interned

@@ -194,14 +194,11 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
 /// source pane's (unrelated) cursor position.
 #[test]
 fn split_path_arg_does_not_inherit_source_panes_view() {
-    use hume_editing::selection::Selection;
-
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focused_pane_id;
-    ed.state.panes.state[pid_a][bid_a].selections = SelectionSet::single(Selection::collapsed(2));
+    set_cursor(&mut ed, 2);
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();

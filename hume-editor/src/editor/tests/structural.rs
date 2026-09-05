@@ -432,10 +432,8 @@ fn dot_repeat_of_around_function_deletes_the_function_under_the_new_cursor() {
     assert_eq!(after_first, "\n\nfn del_two() {\n    2;\n}\n");
 
     // Move the cursor into del_two's body, then replay `m a f` + `d`.
-    let pid = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
     let pos = after_first.find('2').expect("del_two's body");
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::collapsed(pos));
+    set_cursor(&mut ed, pos);
     ed.feed_key(key('.'));
     assert_eq!(ed.doc().text().to_string(), "\n\n\n");
 }

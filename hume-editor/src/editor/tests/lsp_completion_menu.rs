@@ -933,14 +933,16 @@ fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() 
     // was actually typed at the primary.
     let mut ed = editor_from("-[foo]> -[bar]>\n");
     ed.feed_key(key('c'));
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
     // Force the second (higher-offset) cursor to be primary.
-    {
-        let sels = &mut ed.state.panes.state[pid][bid].selections;
-        let heads: Vec<usize> = sels.iter_sorted().map(|s| s.head()).collect();
-        *sels = SelectionSet::from_vec(heads.iter().map(|&h| Selection::collapsed(h)).collect(), 1);
-    }
+    let heads: Vec<usize> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(|s| s.head())
+        .collect();
+    ed.set_current_selections(SelectionSet::from_vec(
+        heads.iter().map(|&h| Selection::collapsed(h)).collect(),
+        1,
+    ));
     begin_session(&mut ed, &[("candidate", None)]);
     for ch in "st".chars() {
         ed.feed_key(key(ch));

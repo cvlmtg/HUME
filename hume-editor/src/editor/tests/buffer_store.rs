@@ -408,8 +408,6 @@ fn p6_reload_clamps_char_col_to_line_end() {
 /// cluster back to the cluster's start.
 #[test]
 fn p6_reload_snaps_char_col_to_grapheme_boundary() {
-    use hume_editing::selection::Selection;
-
     // "caf" + é (U+0065 U+0301, two chars) + "\n" → len_chars=6.
     // Grapheme boundaries: 0,1,2,3,5,6 — é occupies chars 3..5.
     let content = "caf\u{0065}\u{0301}\n";
@@ -418,11 +416,10 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
         SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
 
     // Place cursor mid-cluster at char 4 (the combining acute U+0301).
     // Normal motions won't do this; set directly.
-    ed.state.panes.state[focused][bid].selections = SelectionSet::single(Selection::collapsed(4));
+    set_cursor(&mut ed, 4);
 
     // Reload with identical content — col=4 is mid-cluster.
     let replacement = Buffer::new(BufferText::from(content), SelectionSet::default());
@@ -448,13 +445,12 @@ fn p6_reload_collapses_multi_selection_to_primary() {
         SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
 
     // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
-    ed.state.panes.state[focused][bid].selections = SelectionSet::from_vec(
+    ed.set_current_selections(SelectionSet::from_vec(
         vec![Selection::collapsed(6), Selection::collapsed(12)],
         0, // primary index
-    );
+    ));
     assert_eq!(
         ed.current_selections().len(),
         2,
@@ -540,20 +536,5 @@ fn find_by_path_leaves_verbatim_unc_paths_alone() {
     assert_eq!(
         found, None,
         "a verbatim UNC path must not match its plain-UNC form"
-    );
-}
-
-/// Move the focused pane's primary cursor to `head` for the focused buffer.
-#[cfg(unix)]
-pub(super) fn set_cursor(ed: &mut Editor, head: usize) {
-    use hume_editing::selection::Selection;
-    let focused = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
-    doc_ops::apply_doc_motion(
-        &ed.state.buffers,
-        &mut ed.state.panes.state,
-        focused,
-        bid,
-        |_, _| SelectionSet::single(Selection::collapsed(head)),
     );
 }

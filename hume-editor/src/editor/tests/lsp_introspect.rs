@@ -509,9 +509,7 @@ fn lsp_primary_range_params_end_lands_on_a_grapheme_boundary_not_mid_cluster() {
         .set_path(Some(tmp.path().join("fake-lsp-range-grapheme.rs")));
     attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
 
-    let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections = SelectionSet::single(Selection::new(0, 3));
+    ed.set_current_selections(SelectionSet::single(Selection::new(0, 3)));
 
     let fired = run_probe(
         &mut ed,

@@ -61,21 +61,6 @@ fn run(ed: &mut Editor, cmd: &str) {
     ed.settle();
 }
 
-fn set_cursor(ed: &mut Editor, char_offset: usize) {
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(char_offset),
-    );
-}
-
 const DIAG_A: DiagFixture = ((1, 0), (1, 2), 1, "problem A");
 const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 

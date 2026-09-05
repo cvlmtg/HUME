@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use super::*;
 use crate::editor::lsp::LspState;
-use hume_editing::selection::{Selection, SelectionSet};
 use hume_engine::pipeline::RenderContext;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
@@ -108,17 +107,10 @@ fn setup_with_capabilities(
     (ed, guard, requests)
 }
 
+/// Char 3 of the fixture's "foo\n" is the trailing newline — a collapsed
+/// selection there puts Insert mode's cursor right after "foo".
 fn position_after_foo(ed: &mut Editor) {
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.selections = SelectionSet::single(Selection::collapsed(3));
+    set_cursor(ed, 3);
 }
 
 fn type_char_and_settle(ed: &mut Editor, ch: char) {

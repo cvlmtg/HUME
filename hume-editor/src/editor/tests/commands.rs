@@ -309,9 +309,7 @@ fn mii_extend_mode_merges_overlapping_current_selection() {
     ed.handle_key(key_esc());
     // buffer is now "hihello"; the insertion span covers indices [0,1] ("hi").
     // Set the current selection to genuinely overlap it: indices [1,3] ("ihe").
-    let pid = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(1, 3));
+    ed.set_current_selections(SelectionSet::single(Selection::new(1, 3)));
     assert_eq!(state(&ed), "h-[ihe]>llo\n");
 
     ed.state.mode = Mode::Extend;
@@ -336,9 +334,7 @@ fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
     // Move the current selection onto a disjoint word ("world"), independent
     // of the stashed insertion span. Set directly rather than via a motion
     // command, so this test doesn't couple to unrelated motion mechanics.
-    let pid = ed.state.focused_pane_id;
-    let bid = ed.focused_buffer_id();
-    ed.state.panes.state[pid][bid].selections = SelectionSet::single(Selection::new(8, 12));
+    ed.set_current_selections(SelectionSet::single(Selection::new(8, 12)));
     assert_eq!(state(&ed), "hXYello -[world]>\n");
 
     ed.state.mode = Mode::Extend;

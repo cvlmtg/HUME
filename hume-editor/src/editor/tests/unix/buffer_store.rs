@@ -1,4 +1,3 @@
-use super::super::buffer_store::set_cursor;
 use super::*;
 
 /// `:e path` opens a new buffer when the file is not already open.
@@ -209,7 +208,6 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
     );
 
     // The reload revision survives as a reachable sibling (tree-monotonicity).
-    let bid = ed.focused_buffer_id();
     let mut sels = ed.current_selections().clone();
     ed.doc_mut().goto_revision(&mut sels, r_reload);
     assert_eq!(
@@ -218,8 +216,7 @@ fn p6_e_bang_undo_then_edit_branches_off_old_tree() {
         "old reload branch is still reachable via goto_revision",
     );
     // Restore pane selections so the editor state is consistent post-test.
-    let focused = ed.state.focused_pane_id;
-    ed.state.panes.state[focused][bid].selections = sels;
+    ed.set_current_selections(sels);
 }
 
 /// The reload inverse `ChangeSet` is fine-grained, not a coarse delete-all +
