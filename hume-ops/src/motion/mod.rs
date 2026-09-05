@@ -78,8 +78,8 @@ pub use word::{
     cmd_select_prev_word,
 };
 mod paragraph;
+pub(crate) use paragraph::paragraph_at;
 pub use paragraph::{cmd_goto_next_paragraph, cmd_goto_prev_paragraph};
-pub(crate) use paragraph::{current_paragraph_start, paragraph_span};
 mod line_select;
 pub use line_select::{cmd_select_line, cmd_select_line_backward};
 mod find;

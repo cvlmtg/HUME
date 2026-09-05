@@ -133,6 +133,38 @@ fn line_tokens_at_starts_at_the_requested_line() {
 }
 
 #[test]
+fn line_tokens_back_from_starts_at_the_requested_line_itself() {
+    let text = BufferText::from("a\nb\nc\n");
+    let tokens: Vec<_> = text.line_tokens_back_from(2).collect();
+    assert_eq!(tokens, vec!["c\n", "b\n", "a\n"]);
+}
+
+#[test]
+fn line_tokens_back_from_zero_yields_only_that_line() {
+    let text = BufferText::from("a\nb\n");
+    let tokens: Vec<_> = text.line_tokens_back_from(0).collect();
+    assert_eq!(tokens, vec!["a\n"]);
+}
+
+#[test]
+fn line_tokens_back_from_walks_backward_across_a_chunk_boundary() {
+    // ropey's leaf nodes are a few hundred bytes (`MAX_BYTES`/`MIN_BYTES`);
+    // 300 short lines guarantee several chunks, so a full backward walk from
+    // the last line must step from one chunk into the previous one, not just
+    // seek within a single leaf.
+    let source: String = (0..300).map(|i| format!("line {i}\n")).collect();
+    let text = BufferText::from(source.as_str());
+    let last = text.last_content_line();
+    let tokens: Vec<_> = text.line_tokens_back_from(last).collect();
+    assert_eq!(tokens.len(), text.content_line_count());
+    // Independent oracle: line `n`'s own content, not derived from
+    // `line_tokens_back_from` itself.
+    for (steps_back, token) in tokens.iter().enumerate() {
+        assert_eq!(token.to_string(), format!("line {}\n", last - steps_back));
+    }
+}
+
+#[test]
 fn content_line_count_excludes_the_phantom_trailing_line() {
     assert_eq!(BufferText::from("\n").content_line_count(), 1);
     assert_eq!(BufferText::from("a\nb\nc\n").content_line_count(), 3);

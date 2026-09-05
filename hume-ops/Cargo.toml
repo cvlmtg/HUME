@@ -13,6 +13,7 @@ test-util = []
 [dependencies]
 hume-editing = { path = "../hume-editing" }
 hume-rope = { path = "../hume-rope" }
+ropey.workspace = true
 regex-cursor = "0.1.5"
 regex-syntax = "0.8"
 unicode-segmentation.workspace = true

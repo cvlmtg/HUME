@@ -294,3 +294,46 @@ fn goto_prev_paragraph_multi_cursor() {
         "<[hello\n\n]-<[world\n\n]-foo\n"
     );
 }
+
+// ── Rope chunk boundaries ────────────────────────────────────────────────────
+//
+// One unbroken 300-line paragraph — several times larger than a rope leaf
+// (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each) — so a scan that
+// walks the whole paragraph must step from one chunk to the next, not just
+// seek within a single leaf. The cursor sits at one end of that paragraph so
+// the *scan itself* (not just the O(log n) seek to reach it) crosses chunks.
+
+fn chunk_boundary_padding() -> String {
+    (0..300).map(|i| format!("padding line {i}\n")).collect()
+}
+
+#[test]
+fn goto_next_paragraph_crosses_rope_chunk_boundaries() {
+    // Cursor on the paragraph's first line: `}`'s skip-current-paragraph
+    // phase must walk all 300 lines forward, across every chunk boundary, to
+    // find this paragraph's own end before it can land on `foo`.
+    let padding = chunk_boundary_padding();
+    let (first, rest) = padding.split_at(1);
+    let initial = format!("-[{first}]>{rest}\n\nfoo\n");
+    let expected = format!("{padding}\n\n<[foo]-\n");
+    assert_state!(
+        initial.as_str(),
+        |(text, sels)| cmd_goto_next_paragraph(&text, sels, 1, MotionMode::Move),
+        expected.as_str()
+    );
+}
+
+#[test]
+fn goto_prev_paragraph_crosses_rope_chunk_boundaries() {
+    // Cursor in the short paragraph after the padding: `{`'s backward cursor
+    // must walk from the padding's last line to its first, across every
+    // chunk boundary, to find where the target paragraph begins.
+    let padding = chunk_boundary_padding();
+    let initial = format!("{padding}\n\n-[f]>oo\n");
+    let expected = format!("<[{padding}\n\n]-foo\n");
+    assert_state!(
+        initial.as_str(),
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        expected.as_str()
+    );
+}

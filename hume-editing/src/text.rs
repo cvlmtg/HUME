@@ -246,38 +246,39 @@ impl BufferText {
         hume_rope::lines::content_lines_range(&self.rope)
     }
 
-    /// Line tokens, each keeping its trailing line-break character(s) — the
-    /// tokenization line diffing needs so an `Equal` hunk stays
-    /// byte-comparable across the trailing-empty-line boundary (a bare split
-    /// on `\n` would misalign a 0-char trailing line against a 1-char
-    /// internal `"\n"` line by exactly one char). Borrows via
-    /// `RopeSlice::as_str()` where a line sits in a single rope chunk (the
-    /// common case); owns only when it straddles a chunk boundary.
-    ///
-    /// Backed by `Rope::lines()`, which splits on `\n` alone under this
-    /// workspace's ropey config (see [`hume_rope::lines::strip_line_break`]),
-    /// so every token but the last is `\n`-terminated.
-    ///
-    /// One rope traversal (`Rope::lines()`), not one `O(log n)` descent per
-    /// line.
-    pub fn line_tokens(&self) -> impl Iterator<Item = Cow<'_, str>> {
+    /// All line tokens from the buffer start. See
+    /// [`BufferText::line_tokens_at`].
+    pub fn line_tokens(&self) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
         self.line_tokens_at(0)
     }
 
-    /// Same as [`BufferText::line_tokens`], starting at `line_idx` — an `O(log n)`
-    /// seek to `line_idx` followed by one traversal of the remaining lines,
-    /// instead of tokenizing (and discarding) every line before it.
+    /// Line tokens from `line_idx` forward, each keeping its trailing line
+    /// break — see [`hume_rope::lines::line_tokens_at`] for why.
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).
-    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = Cow<'_, str>> {
-        self.rope.lines_at(line_idx).map(Cow::from)
+    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
+        hume_rope::lines::line_tokens_at(&self.rope, line_idx)
     }
 
-    /// Returns the char offset of the first character on `line_idx` (0-based).
+    /// Same tokens as [`BufferText::line_tokens_at`], walking backward from
+    /// `line_idx` itself — see [`hume_rope::lines::line_tokens_back_from`]
+    /// for the mirror-shape rationale.
     ///
     /// # Panics
     /// Panics if `line_idx >= self.ropey_line_count()`.
+    pub fn line_tokens_back_from(
+        &self,
+        line_idx: usize,
+    ) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
+        hume_rope::lines::line_tokens_back_from(&self.rope, line_idx)
+    }
+
+    /// Returns the char offset of the first character on `line_idx` (0-based).
+    /// `line_idx` may be one past the last line, yielding `len_chars()`.
+    ///
+    /// # Panics
+    /// Panics if `line_idx > self.ropey_line_count()`.
     pub fn line_to_char(&self, line_idx: usize) -> usize {
         self.rope.line_to_char(line_idx)
     }

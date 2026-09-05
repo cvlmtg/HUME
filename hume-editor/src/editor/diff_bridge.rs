@@ -13,12 +13,13 @@
 //! **Word diff** does no such normalization and no re-slicing — see
 //! [`word_hunks`]'s doc.
 
-use std::borrow::Cow;
 use std::ops::Range;
+
+use ropey::RopeSlice;
 
 use hume_editing::diff::{LineHunk, LineHunkKind, WordDiff, WordHunkKind, diff_lines, diff_words};
 use hume_editing::text::BufferText;
-use hume_rope::lines::strip_line_break;
+use hume_rope::lines::line_token_content;
 
 use hume_scripting::host::{DiffHunk, WordDiffHunk};
 
@@ -38,8 +39,8 @@ pub(crate) fn line_hunks_against_buffer(ref_text: &str, buffer: &BufferText) -> 
 /// from the tokenized input — `LineHunkKind` carries no payload to split
 /// (`hume-editing/src/diff.rs`).
 fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
-    let old_tokens: Vec<Cow<'_, str>> = old.line_tokens().collect();
-    let new_tokens: Vec<Cow<'_, str>> = new.line_tokens().collect();
+    let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
+    let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
 
     diff_lines(&old_tokens, &new_tokens)
         .hunks
@@ -58,13 +59,15 @@ fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
 }
 
 /// Slices `tokens[range]` into owned lines with each token's trailing line
-/// break stripped (via [`strip_line_break`]) — a [`DiffHunk`]'s line
+/// break stripped (via [`line_token_content`]) — a [`DiffHunk`]'s line
 /// payloads never carry one, since a plugin may feed one straight into
-/// `set-virtual-lines!`'s row text.
-fn strip_newlines(tokens: &[Cow<'_, str>], range: Range<usize>) -> Vec<String> {
+/// `set-virtual-lines!`'s row text. Only these surviving (non-`Equal`) lines
+/// are ever materialized.
+fn strip_newlines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> {
     tokens[range]
         .iter()
-        .map(|line| strip_line_break(line).to_string())
+        .copied()
+        .map(line_token_content)
         .collect()
 }
 

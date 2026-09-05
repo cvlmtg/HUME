@@ -10,20 +10,20 @@
 //! Memory cost of the *stored* inverse ≈ size of the changed lines only, not
 //! the full buffer — this is what lets `:e!` reload record a normal undo step
 //! without a coarse delete-all + insert-all that doubles buffer memory.
-//! [`BufferText::line_tokens`] borrows its tokens from the rope (owning only where
-//! a line straddles a chunk boundary), so building the diff no longer pays a
-//! full-buffer `String` copy on either side; changed lines still get
-//! materialized once, when [`build_changesets`] re-slices them from
-//! `old`/`new` — `LineHunkKind` carries no payload of its own, only the
-//! line-index ranges. None of this affects what survives in the history tree
-//! afterwards, which is just the changed lines.
+//! [`BufferText::line_tokens`] yields borrowed `RopeSlice`s, and the diff
+//! only ever compares and counts them, so changed lines get materialized
+//! once, when [`build_changesets`] re-slices them from `old`/`new` —
+//! `LineHunkKind` carries no payload of its own, only the line-index ranges.
+//! None of this affects what survives in the history tree afterwards, which
+//! is just the changed lines.
 //!
 //! The helper takes `&BufferText` on both sides and returns the two `ChangeSet`s; it
 //! does not mutate either buffer. The caller still owns the text swap.
 
-use std::borrow::Cow;
 use std::ops::Range;
 use std::time::Duration;
+
+use ropey::RopeSlice;
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
 use crate::text::BufferText;
@@ -138,13 +138,13 @@ fn build_changesets(
 /// `text.len_chars()`. `build_changesets` needs both — the tokens to diff,
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
-fn tokens_with_offsets(text: &BufferText) -> (Vec<Cow<'_, str>>, Vec<usize>) {
+fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<usize>) {
     let mut tokens = Vec::with_capacity(text.ropey_line_count());
     let mut offsets = Vec::with_capacity(text.ropey_line_count() + 1);
     offsets.push(0);
     let mut char_acc = 0usize;
     for token in text.line_tokens() {
-        char_acc += token.chars().count();
+        char_acc += token.len_chars();
         offsets.push(char_acc);
         tokens.push(token);
     }

@@ -1,4 +1,4 @@
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 use std::ops::Range;
 
 /// True if `rope` satisfies the trailing-newline invariant every HUME
@@ -77,6 +77,39 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
     0..content_line_count(rope)
 }
 
+/// Line tokens from `line_idx` forward, each keeping its trailing line-break
+/// character(s) — the tokenization line diffing needs so an `Equal` hunk
+/// stays byte-comparable across the trailing-empty-line boundary (a bare
+/// split on `\n` would misalign a 0-char trailing line against a 1-char
+/// internal `"\n"` line by exactly one char). A slice is a view, never an
+/// allocation — a caller that only inspects a token (e.g.
+/// [`is_empty_line_token`]) pays nothing for one that straddles a rope
+/// chunk; owned text is a conversion ([`line_token_content`]) at the
+/// caller's own call site, where the copy becomes visible.
+///
+/// Backed by `Rope::lines()`, which splits on `\n` alone under this crate's
+/// ropey config (see [`strip_line_break`]), so every token but the last is
+/// `\n`-terminated. An `O(log n)` seek to `line_idx` followed by one
+/// traversal of the remaining lines, instead of tokenizing (and discarding)
+/// every line before it.
+///
+/// # Panics
+/// Panics if `line_idx > ropey_line_count(rope)` (matches `Rope::line_to_char`).
+pub fn line_tokens_at(rope: &Rope, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
+    rope.lines_at(line_idx)
+}
+
+/// Same tokens as [`line_tokens_at`], walking backward from `line_idx`
+/// itself: the first item is line `line_idx`, then `line_idx - 1`, down to
+/// line 0 — the exact mirror of `line_tokens_at`'s forward-from-`line_idx`
+/// shape, so neither needs a call-site `+ 1`/`- 1` correction to align them.
+///
+/// # Panics
+/// Panics if `line_idx >= ropey_line_count(rope)`.
+pub fn line_tokens_back_from(rope: &Rope, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
+    rope.lines_at(line_idx + 1).reversed()
+}
+
 /// Strips the trailing line break from a line-tokenization token. `'\n'` is
 /// the only break there is to strip — see the crate doc's "LF is the only
 /// line break" section.
@@ -93,6 +126,16 @@ pub fn truncate_line_break(buf: &mut String) -> bool {
     let had_break = stripped_len != buf.len();
     buf.truncate(stripped_len);
     had_break
+}
+
+/// Owned content of a line-tokenization token (as `Rope::lines` yields it),
+/// its trailing line break stripped — one allocation, not the two a
+/// `Cow::from(token)` followed by a second owned copy through
+/// [`strip_line_break`] would cost on a token that straddles a rope chunk.
+pub fn line_token_content(token: RopeSlice<'_>) -> String {
+    let mut s = String::from(token);
+    truncate_line_break(&mut s);
+    s
 }
 
 /// Exclusive end of `line`: char offset of the first char on the *next*
@@ -212,11 +255,26 @@ pub(crate) fn line_terminator_start(rope: &Rope, line: usize) -> usize {
     }
 }
 
+/// A line token — the line including its trailing `\n`, as `Rope::lines`
+/// yields it — is empty when it has no content char before that terminator.
+/// Whitespace-only lines are NOT empty (matching Helix semantics).
+///
+/// Takes the slice rather than a `&str` so a caller scanning many lines never
+/// materializes one: `Cow::from(RopeSlice)` copies the whole line whenever it
+/// straddles a rope leaf, which is the common case for long lines.
+pub fn is_empty_line_token(token: RopeSlice<'_>) -> bool {
+    match token.len_chars() {
+        0 => true, // phantom trailing line
+        1 => token.char(0) == '\n',
+        _ => false,
+    }
+}
+
 /// Returns `true` if `line` is an empty line — zero content chars before its
 /// terminating `\n`. Whitespace-only lines are NOT empty (matching Helix
 /// semantics).
 pub fn is_empty_line(rope: &Rope, line: usize) -> bool {
-    line_terminator_start(rope, line) == rope.line_to_char(line)
+    is_empty_line_token(rope.line(line))
 }
 
 /// The last char offset a cursor can land on for `line`.
