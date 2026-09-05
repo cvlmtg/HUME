@@ -15,6 +15,10 @@ Add a `declare-plugin` or `load-plugin` call to your [`init.scm`](configuration.
 (load-plugin "cvlmtg/grep.hume")
 ```
 
+::: info
+[cvlmtg/grep.hume](https://github.com/cvlmtg/grep.hume) adds one `g /` keybind to open a picker with a live `rg` (or `grep`) search behind it, re-running the search as you type.
+:::
+
 `core:stdlib` is grep.hume's own dependency, not something every plugin needs — check each
 plugin's docs for what it requires. Then run `:plum-install-plugins` to clone it from GitHub. PLUM never installs anything on its own, so nothing is fetched behind your back at startup; once the plugin is on disk, its commands and key bindings are available from the next launch.
 
@@ -28,10 +32,6 @@ If a plugin supports configuration, pass it with `#:config`:
 ```
 
 See [Configuring a plugin](#configuring-a-plugin) for what a plugin does with this value, and the plugin's own docs for which keys it understands.
-
-::: info
-[cvlmtg/grep.hume](https://github.com/cvlmtg/grep.hume) is the first official third-party plugin. It adds one `g /` keybind to open a picker with a live `rg` (or `grep`) search behind it, re-running the search as you type.
-:::
 
 ## Plugin status
 

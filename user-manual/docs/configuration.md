@@ -162,13 +162,23 @@ To see which themes are available, type `:theme ` and press `Tab`.
 
 Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
 
+### Installing themes
+
 To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)) — for example:
 
 ```
 :plum-install-theme cvlmtg/everforest.hume
 ```
 
+::: info
+[cvlmtg/everforest.hume](https://github.com/cvlmtg/everforest.hume) is Everforest, ported from Helix — a green-based, low-contrast color scheme designed to feel warm and comfortable on the eyes, inspired by forest colors in fall.
+:::
+
 `:theme <Tab>` picks it up right away, no restart needed.
+
+A theme editor is available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
+
+### Theme scopes
 
 HUME reads these Helix statusline scopes:
 
@@ -214,8 +224,6 @@ the note under Buffer options above. It does not currently read Helix's
 `ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`, or the
 per-kind `ui.virtual.inlay-hint.parameter`/`ui.virtual.inlay-hint.type`;
 declaring any of those in a theme has no effect yet.
-
-A theme editor is available online — a single-file HTML tool you download and open in a browser to edit themes visually and export them as TOML: https://raw.githubusercontent.com/cvlmtg/HUME/main/tools/theme-editor/index.html
 
 ## Key bindings
 
