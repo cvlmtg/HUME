@@ -2,7 +2,7 @@ use super::*;
 use crate::editor::tests::doubles::{VirtualRows, no_providers};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
-use hume_engine::rows::line_store::{PaneLineStore, StoreScope};
+use hume_engine::rows::line_store::{FormatKey, PaneLineStore};
 use ropey::Rope;
 
 const SCROLL_LINES: usize = 3; // default from EditorSettings
@@ -15,15 +15,15 @@ fn map<'a>(
 ) -> RowMap<'a> {
     RowMap::new(
         rope,
-        wrap,
-        4,
-        WhitespaceConfig::default(),
         providers,
         80,
-        StoreScope {
-            store,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         },
+        store,
     )
 }
 

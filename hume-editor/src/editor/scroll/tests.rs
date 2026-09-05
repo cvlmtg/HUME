@@ -4,7 +4,7 @@ use crate::editor::tests::doubles::{
 };
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
-use hume_engine::rows::line_store::{PaneLineStore, StoreScope};
+use hume_engine::rows::line_store::{FormatKey, PaneLineStore};
 use ropey::Rope;
 
 use crate::editor::cursor;
@@ -28,15 +28,15 @@ fn map<'a>(
 ) -> RowMap<'a> {
     RowMap::new(
         rope,
-        wrap,
-        4,
-        WhitespaceConfig::default(),
         providers,
         content_width,
-        StoreScope {
-            store,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
         },
+        store,
     )
 }
 

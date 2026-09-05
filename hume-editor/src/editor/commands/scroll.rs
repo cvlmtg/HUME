@@ -3,7 +3,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::visual_move::{VerticalUnit, apply_visual_vertical};
-use super::{current_selections, focused_buffer_id, pane_row_map_mut, viewport};
+use super::{current_selections, focused_buffer_id, pane_row_map, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -65,13 +65,8 @@ fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target
     let cursor_char = current_selections(state, view).primary().head();
     let pid = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
-    let buffer_tag = state.buffer_tag(buf_id);
-    let (mut rm, viewport) = pane_row_map_mut(
-        state.buffers.get(buf_id),
-        &state.settings,
-        &mut view.panes[pid],
-        buffer_tag,
-    );
+    let key = state.format_key(&view.panes[pid]);
+    let (mut rm, viewport) = pane_row_map(state.buffers.get(buf_id), &mut view.panes[pid], key);
     super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
 }
 

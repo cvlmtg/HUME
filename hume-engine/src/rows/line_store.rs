@@ -20,7 +20,7 @@
 //!
 //! Ownership by the pane is what makes that sharing safe to state: two panes
 //! can show the same buffer at the same width and resolve a bit-identical
-//! [`StoreKey`], which names no pane — so a store reachable from both would
+//! [`FormatKey`], which names no pane — so a store reachable from both would
 //! serve one pane's block shapes for the other.
 //!
 //! # Two-phase entries
@@ -36,7 +36,7 @@
 //! # Scope key
 //!
 //! Entries describe a line's *block shape* under one set of formatting
-//! inputs. [`StoreKey`] carries all of them, and a store whose key changes
+//! inputs. [`FormatKey`] carries all of them, and a store whose key changes
 //! drops what it holds. That is what keeps the two passes honest about
 //! sharing:
 //!
@@ -46,7 +46,7 @@
 //!   truncating, so a windowed and an unwindowed format are not
 //!   interchangeable — but block shape (virtual rows, `before`/`after`) does
 //!   not depend on the window, so both passes still share *that*. `h_window`
-//!   is recorded on [`LineFormat`] instead of on `StoreKey`, and
+//!   is recorded on [`LineFormat`] instead of on `FormatKey`, and
 //!   [`LineFormat::covers`](crate::format::LineFormat::covers) is what keeps
 //!   a windowed and an unwindowed format from answering for each other,
 //!   without evicting the shape they agree on.
@@ -66,7 +66,7 @@
 //! frame shows*, without bumping the decoration store's generation — so a
 //! line scrolling into view can gain inline inserts that change its wrap-row
 //! count while both the buffer's content generation and the decoration
-//! generation stay put. Nothing in [`StoreKey`] can see that, and nothing
+//! generation stay put. Nothing in [`FormatKey`] can see that, and nothing
 //! needs to while entries never outlive the frame that made them. Reusing
 //! them across frames would need the visible window in the key.
 
@@ -95,27 +95,40 @@ pub type BufferTag = [u64; 3];
 /// key" section.
 ///
 /// Also excludes the pane's content width, which reaches formatting through
-/// `wrap_mode` and nowhere else: the mode is stored already resolved, so a
-/// width that matters is already in this key, and one that doesn't (a resize
-/// under `WrapMode::None`, or under a wrap mode with an explicit column)
-/// would only rewind a store whose entries stayed valid.
+/// `wrap_mode` and nowhere else: the mode is stored already resolved (see
+/// [`FormatKey::resolve`]), so a width that matters is already in this key,
+/// and one that doesn't (a resize under `WrapMode::None`, or under a wrap
+/// mode with an explicit column) would only rewind a store whose entries
+/// stayed valid.
+///
+/// One value rather than four loose ones, built once by the caller
+/// (`hume-editor`'s `EditorState::format_key`) and threaded unchanged through
+/// `RowMap::new`: the frame's scroll pass and render pass each resolve this
+/// from a different composition (`commands::pane_row_map` vs.
+/// `frame.rs::resolve_pane_settings`), and their sharing this pane's store
+/// depends entirely on the two agreeing bit for bit — a single constructor is
+/// what makes disagreement a compile-time impossibility rather than a
+/// property four independently-resolved fields have to earn by convention.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub struct StoreKey {
+pub struct FormatKey {
     pub buffer_tag: BufferTag,
     pub wrap_mode: WrapMode,
     pub tab_width: u8,
     pub whitespace: WhitespaceConfig,
 }
 
-/// A pane's store together with the buffer tag its entries are keyed under.
-///
-/// One argument rather than two because the pairing is not a caller's to
-/// vary: a store handed a tag other than the one its entries were built for
-/// would serve one buffer state's block shapes for another, and every caller
-/// reads both out of the same editor state anyway.
-pub struct StoreScope<'a> {
-    pub store: &'a mut PaneLineStore,
-    pub buffer_tag: BufferTag,
+impl FormatKey {
+    /// Replace `wrap_mode`'s `width: 0` sentinel with `content_width` —
+    /// [`WrapMode::resolve`]'s own contract. Applied once, by [`RowMap::new`](super::RowMap::new),
+    /// so every other holder of a `FormatKey` (the store's own `scope`, a
+    /// caller comparing two keys) sees one already resolved against the
+    /// pane geometry it was built for.
+    pub fn resolve(self, content_width: u16) -> Self {
+        Self {
+            wrap_mode: self.wrap_mode.resolve(content_width),
+            ..self
+        }
+    }
 }
 
 /// One line's block shape, and its formatted rows once it has them.
@@ -152,15 +165,21 @@ impl LineEntry {
 
     /// Reuse this entry for `line`, keeping the allocations behind it.
     ///
-    /// Only re-points an entry at a new line — reclaiming an oversized buffer
-    /// is [`PaneLineStore::rewind`]'s job, since a spare slot is reached again
-    /// only if some later frame walks at least that many lines, which is not
-    /// something any frame can be relied on to do.
+    /// `format` needs no resetting here: the only way an entry becomes a
+    /// spare is through [`PaneLineStore::rewind`], which already reset (and,
+    /// past its ceiling, shrank) it. `virtual_lines` is different —
+    /// `rewind` deliberately leaves it alone (nothing there needs shrinking,
+    /// so touching it would only cost a pass over every spare for no
+    /// reason), so a slot can still be holding the *previous* line's rows
+    /// from the last time it was live. [`super::RowMap::block_entry`]'s
+    /// intake takes this field as scratch and pushes the new line's rows
+    /// onto whatever is already in it — clearing here is what makes that
+    /// start from empty rather than appending onto a stale block. `before`
+    /// gets no such treatment: `block_entry` overwrites it unconditionally
+    /// right after this call returns, before anything reads it.
     fn rebind(&mut self, line: usize) {
         self.line = line;
         self.virtual_lines.clear();
-        self.before = 0;
-        self.format.reset();
     }
 }
 
@@ -175,7 +194,7 @@ impl LineEntry {
 /// block shape alone carries none.
 #[derive(Default)]
 pub struct PaneLineStore {
-    key: Option<StoreKey>,
+    key: Option<FormatKey>,
     entries: Vec<LineEntry>,
     /// `entries[..live]` describe lines; the rest are spares.
     live: usize,
@@ -194,7 +213,7 @@ impl PaneLineStore {
 
     /// Point this store at `key`, dropping what it holds if that differs from
     /// what its entries were built under.
-    pub(super) fn scope(&mut self, key: StoreKey) {
+    pub(super) fn scope(&mut self, key: FormatKey) {
         if self.key.as_ref() != Some(&key) {
             self.key = Some(key);
             self.rewind();

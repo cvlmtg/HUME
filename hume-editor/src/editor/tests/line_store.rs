@@ -85,7 +85,7 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
 }
 
 /// Two panes viewing the same buffer at the same width resolve a
-/// bit-identical `StoreKey` — `:split` stacks panes, so both keep the full
+/// bit-identical `FormatKey` — `:split` stacks panes, so both keep the full
 /// terminal width (only height changes, and height isn't part of the key).
 /// Nothing in that key names the pane, so a single shared store would serve
 /// one pane's entry for a line to the other and skip querying that pane's
@@ -200,7 +200,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 /// mirror, which is rebuilt every frame filtered to the viewport it shows
 /// *without* bumping the decoration generation (see `line_store`'s module
 /// doc). So a hint appearing or disappearing between two frames is a change
-/// `StoreKey` cannot see; only the per-frame rewind catches it — what
+/// `FormatKey` cannot see; only the per-frame rewind catches it — what
 /// `line_store`'s module doc calls "a correctness requirement rather than
 /// hygiene". `render_to_buf` allocates a fresh `RenderContext` per call, so
 /// every other render test in this crate starts cold and would stay green
@@ -258,14 +258,16 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 /// render pass walk the same visible lines, and the second must find what the
 /// first formatted.
 ///
-/// Both passes reach the engine through their own `RowMap` over their own
-/// resolved settings — the scroll step through `commands::pane_row_map_mut`,
-/// the render pass through `frame.rs`'s `resolve_pane_settings` — and the two
-/// share an entry only while those settings agree bit for bit. Nothing else
-/// checks that they do: a `tab_width` or `whitespace` resolved differently on
-/// one side would rescope the store between the passes and quietly restore
-/// the double formatting this store exists to remove, with every other test
-/// still green.
+/// Both passes reach the engine through their own `RowMap`, each built from
+/// `EditorState::format_key` on the same pane — the scroll step through
+/// `commands::pane_row_map`, the render pass through `frame.rs`'s
+/// `resolve_pane_settings` — so the two share an entry by construction: one
+/// composition, called twice, cannot itself disagree with itself. This test
+/// still pins the outcome rather than the mechanism, so a future call site
+/// that builds a `FormatKey` some other way (bypassing `format_key`) still
+/// gets caught: any divergence rescopes the store between the passes and
+/// quietly restores the double formatting this store exists to remove, with
+/// every other test still green.
 ///
 /// Wrapping, because that is where the cost is: under `WrapMode::None` the
 /// scroll pass counts rows without formatting at all.

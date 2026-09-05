@@ -3,7 +3,7 @@ use rustc_hash::FxHashMap;
 
 use slotmap::{SecondaryMap, SlotMap, new_key_type};
 
-use crate::pane::{Pane, WhitespaceConfig, WrapMode};
+use crate::pane::Pane;
 use crate::providers::{
     BottomBandProvider, DEFAULT_GUTTER_SCOPE, StatuslineProvider, SyntaxSpans, TabBarProvider,
 };
@@ -516,33 +516,28 @@ impl EngineView {
 
 /// Per-pane render settings supplied by the editor at render time.
 ///
-/// `tab_width` and `whitespace` are document facts — resolved from per-buffer
+/// `format` bundles everything the render pass's `RowMap` resolves a line's
+/// layout from — wrap mode, tab width, whitespace config, buffer identity —
+/// as one [`FormatKey`](crate::rows::line_store::FormatKey), unresolved (the
+/// pane's own `content_width` resolves it, inside `RowMap::new`). `tab_width`
+/// and `whitespace` inside it are document facts — resolved from per-buffer
 /// overrides against global settings, identical for every pane viewing the
-/// same buffer. Caching them on the engine `Pane` would duplicate state and
-/// require frame-by-frame sync, so the editor resolves them fresh each frame
-/// and passes them via this bundle. `wrap_mode` is genuinely per-pane (two
-/// panes on the same buffer may wrap differently, once `:wrap`/`:set pane
-/// wrap-mode=…` pins one) — the editor resolves pane override → buffer
-/// override → global default (see `commands::effective_wrap_mode`) and
-/// copies the result through here alongside the document facts so the
-/// render pipeline has one bundle to read. `mode` is a per-focus fact, not a
-/// document fact: the editor resolves
-/// it to the live editor mode only for the focused pane (whose fake cursor
-/// must yield to the real terminal cursor in bar-cursor modes) and to a
-/// block-cursor mode for every other pane.
+/// same buffer — while `wrap_mode` is genuinely per-pane (two panes on the
+/// same buffer may wrap differently, once `:wrap`/`:set pane wrap-mode=…`
+/// pins one); the editor resolves pane override → buffer override → global
+/// default (see `commands::effective_wrap_mode`) and folds the result into
+/// the same key alongside the document facts, since the render pass's
+/// `RowMap` and the scroll pass's must resolve a bit-identical key to share
+/// this pane's line store — see `FormatKey`'s own doc. `mode` is a per-focus
+/// fact, not a document fact: the editor resolves it to the live editor mode
+/// only for the focused pane (whose fake cursor must yield to the real
+/// terminal cursor in bar-cursor modes) and to a block-cursor mode for every
+/// other pane.
 #[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
-    pub wrap_mode: WrapMode,
-    pub tab_width: u8,
-    pub whitespace: WhitespaceConfig,
+    pub format: crate::rows::line_store::FormatKey,
     pub show_indent_guides: bool,
-    /// The caller's identification of everything about the buffer that
-    /// changes how its lines format — identity, revision, decoration
-    /// generation. Feeds `rows::line_store`'s scope key; this crate depends on
-    /// neither the editing nor the editor crate, so it cannot derive it
-    /// itself.
-    pub buffer_tag: crate::rows::line_store::BufferTag,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a

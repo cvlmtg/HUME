@@ -358,7 +358,7 @@ pub struct Pane {
     ///
     /// Per pane rather than one shared store, because two panes can show the
     /// same buffer at the same width and resolve a bit-identical
-    /// [`StoreKey`](crate::rows::line_store::StoreKey): with nothing naming
+    /// [`FormatKey`](crate::rows::line_store::FormatKey): with nothing naming
     /// the pane in that key, one pane's cache hit would skip querying the
     /// other's providers entirely. And *every* pane's scroll step runs before
     /// *any* pane's render pass, so a single store would hold only the last

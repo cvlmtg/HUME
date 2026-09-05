@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use super::*;
 
 use super::layout::split_rect;
+use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
 };
@@ -39,11 +40,13 @@ fn render_test_pane(
 ) -> Grid {
     let settings = PaneRenderSettings {
         mode: EditorMode::Normal,
-        wrap_mode,
-        tab_width: 4,
-        whitespace: WhitespaceConfig::default(),
+        format: crate::rows::line_store::FormatKey {
+            buffer_tag: [0; 3],
+            wrap_mode,
+            tab_width: 4,
+            whitespace: WhitespaceConfig::default(),
+        },
         show_indent_guides: true,
-        buffer_tag: [0; 3],
     };
     let pane_ctx = PaneRenderCtx {
         viewport: &pane.viewport,

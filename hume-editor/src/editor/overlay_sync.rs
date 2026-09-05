@@ -80,16 +80,14 @@ impl Editor {
             _ => {
                 // Every read of `self` the map needs resolves before the pane
                 // is borrowed mutably; the viewport comes back out of
-                // `pane_row_map_mut`'s own split rather than being held
-                // across it.
+                // `pane_row_map`'s own split rather than being held across it.
                 let bid = self.focused_buffer_id();
-                let buffer_tag = self.state.buffer_tag(bid);
+                let key = self.state.format_key(&self.view.panes[focused]);
                 let Editor { state, view, .. } = self;
-                let (mut rm, vp) = super::commands::pane_row_map_mut(
+                let (mut rm, vp) = super::commands::pane_row_map(
                     state.buffers.get(bid),
-                    &state.settings,
                     &mut view.panes[focused],
-                    buffer_tag,
+                    key,
                 );
                 super::cursor::content_pos(vp, &mut rm, anchor_char)?
             }

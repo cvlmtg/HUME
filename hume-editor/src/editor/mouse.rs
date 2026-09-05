@@ -26,7 +26,7 @@ use hume_engine::rows::RowMap;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
-use super::commands::pane_row_map_mut;
+use super::commands::pane_row_map;
 use super::cursor;
 use super::scroll;
 use super::visual_move::{VerticalUnit, apply_visual_vertical};
@@ -145,12 +145,11 @@ impl Editor {
         {
             let pid = self.state.focused_pane_id;
             let buf_id = self.focused_buffer_id();
-            let buffer_tag = self.state.buffer_tag(buf_id);
-            let (mut rm, viewport) = pane_row_map_mut(
+            let key = self.state.format_key(&self.view.panes[pid]);
+            let (mut rm, viewport) = pane_row_map(
                 self.state.buffers.get(buf_id),
-                &self.state.settings,
                 &mut self.view.panes[pid],
-                buffer_tag,
+                key,
             );
             if down {
                 scroll_viewport_down(viewport, &mut rm, scroll_lines);
@@ -203,12 +202,11 @@ impl Editor {
                 self.state.buffers.get(buf_id).text().last_ropey_line(),
             )
         };
-        let buffer_tag = self.state.buffer_tag(buf_id);
-        let (mut rm, viewport) = pane_row_map_mut(
+        let key = self.state.format_key(&self.view.panes[pid]);
+        let (mut rm, viewport) = pane_row_map(
             self.state.buffers.get(buf_id),
-            &self.state.settings,
             &mut self.view.panes[pid],
-            buffer_tag,
+            key,
         );
         cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut rm)
     }

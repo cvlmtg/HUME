@@ -1,8 +1,8 @@
 use hume_grid::Grid;
 
 use crate::render::{self, ComposeCtx};
-use crate::rows::{BlockSlot, RowMap, RowPos};
-use crate::types::ResolvedStyle;
+use crate::rows::{RowMap, RowPos};
+use crate::types::{ResolvedStyle, RowKind};
 
 use super::{FrameScratch, PaneRenderCtx};
 
@@ -81,7 +81,7 @@ pub(crate) fn render_pane(
             pane_ctx.primary_idx,
             pane_ctx.rope,
         ),
-        tab_width: pane_ctx.settings.tab_width,
+        tab_width: pane_ctx.settings.format.tab_width,
         tilde_style: pane_ctx.theme.ui.virtual_text,
         indent_guide_style: pane_ctx.theme.ui.indent_guide,
         show_indent_guides: pane_ctx.settings.show_indent_guides,
@@ -96,7 +96,7 @@ pub(crate) fn render_pane(
     // single unwrapped line can be arbitrarily long (a minified JS file is a
     // real case), so scanning past the right edge would cost O(line_length)
     // per frame. Wrapping modes are already bounded by `wrap_width`.
-    let h_window = (!pane_ctx.settings.wrap_mode.is_wrapping()).then(|| {
+    let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
         let h_offset = pane_ctx.viewport.horizontal_offset;
         let end = h_offset
             .saturating_add(visible.content_width as u32)
@@ -112,15 +112,10 @@ pub(crate) fn render_pane(
     } = scratch;
     let mut rows = RowMap::new(
         pane_ctx.rope,
-        pane_ctx.settings.wrap_mode,
-        pane_ctx.settings.tab_width,
-        pane_ctx.settings.whitespace,
         pane_ctx.providers,
         visible.content_width,
-        crate::rows::line_store::StoreScope {
-            store,
-            buffer_tag: pane_ctx.settings.buffer_tag,
-        },
+        pane_ctx.settings.format,
+        store,
     )
     .with_h_window(h_window);
     let last_content_line = rows.last_line();
@@ -138,48 +133,13 @@ pub(crate) fn render_pane(
     let mut screen_row = 0u16;
 
     while screen_row < height {
-        match rows.slot(pos) {
-            BlockSlot::Content(_) => {
-                let line = line.get_or_insert_with(|| {
-                    LineStyle::enter(pos.line, last_content_line, pane_ctx, style)
-                });
-                let row = rows.render_row(pos);
-                style
-                    .styles
-                    .resize(row.graphemes.len(), ResolvedStyle::default());
-                crate::style::style_row(
-                    row.row,
-                    row.graphemes,
-                    line.start_char,
-                    line.end_char,
-                    line.is_head_line,
-                    line.tint,
-                    pane_ctx.settings.mode,
-                    pane_ctx.theme,
-                    style,
-                );
-                // Cursorline wins over the tint — a theme whose cursorline
-                // has no `bg` falls through to the tint automatically.
-                let row_bg = line
-                    .is_head_line
-                    .then_some(pane_ctx.theme.ui.cursorline.bg)
-                    .flatten()
-                    .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
-                render::compose_row(
-                    row.row,
-                    row.graphemes,
-                    &style.styles,
-                    row.line_text,
-                    row.virtual_texts,
-                    screen_row,
-                    lane_widths,
-                    &compose_ctx,
-                    &mut canvas,
-                    row_bg,
-                );
-            }
-            BlockSlot::Before(_) | BlockSlot::After(_) => {
-                let row = rows.render_row(pos);
+        // One resolve per row, not two: `render_row` already walks this
+        // line's block to answer, so branching on the row it hands back
+        // (rather than calling `rows.slot(pos)` first to decide which arm to
+        // take) is what keeps this a single walk.
+        let row = rows.render_row(pos);
+        match row.row.kind {
+            RowKind::Virtual { .. } => {
                 // Virtual rows are skipped by the style stage (no highlight
                 // tiers, no cursor/selection), but each grapheme can still
                 // carry its own `scope` from the provider that produced it
@@ -209,6 +169,44 @@ pub(crate) fn render_pane(
                     row.graphemes,
                     &style.styles,
                     "",
+                    row.virtual_texts,
+                    screen_row,
+                    lane_widths,
+                    &compose_ctx,
+                    &mut canvas,
+                    row_bg,
+                );
+            }
+            _ => {
+                let line = line.get_or_insert_with(|| {
+                    LineStyle::enter(pos.line, last_content_line, pane_ctx, style)
+                });
+                style
+                    .styles
+                    .resize(row.graphemes.len(), ResolvedStyle::default());
+                crate::style::style_row(
+                    row.row,
+                    row.graphemes,
+                    line.start_char,
+                    line.end_char,
+                    line.is_head_line,
+                    line.tint,
+                    pane_ctx.settings.mode,
+                    pane_ctx.theme,
+                    style,
+                );
+                // Cursorline wins over the tint — a theme whose cursorline
+                // has no `bg` falls through to the tint automatically.
+                let row_bg = line
+                    .is_head_line
+                    .then_some(pane_ctx.theme.ui.cursorline.bg)
+                    .flatten()
+                    .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
+                render::compose_row(
+                    row.row,
+                    row.graphemes,
+                    &style.styles,
+                    row.line_text,
                     row.virtual_texts,
                     screen_row,
                     lane_widths,

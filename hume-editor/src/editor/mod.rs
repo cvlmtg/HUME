@@ -616,6 +616,34 @@ impl EditorState {
         ]
     }
 
+    /// Every input `pane`'s line formats depend on, as one
+    /// `hume_engine::rows::line_store::FormatKey`: [`Self::buffer_tag`] for
+    /// the buffer it currently views, plus that buffer's effective wrap
+    /// mode, tab width and whitespace config — each resolved through the
+    /// same override chain (`commands::effective_wrap_mode`,
+    /// `BufferOverrides::tab_width`/`whitespace`) every other reader of
+    /// these settings goes through.
+    ///
+    /// The single composition every `RowMap` in this crate is built from.
+    /// The frame's scroll pass (`commands::pane_row_map`) and its render
+    /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
+    /// current state, and their sharing that pane's line store depends
+    /// entirely on the two resolving a bit-identical key — one function
+    /// rather than two independently-maintained call sites is what makes
+    /// that true by construction instead of by convention.
+    pub(crate) fn format_key(
+        &self,
+        pane: &hume_engine::pane::Pane,
+    ) -> hume_engine::rows::line_store::FormatKey {
+        let doc = self.buffers.get(pane.buffer_id);
+        hume_engine::rows::line_store::FormatKey {
+            buffer_tag: self.buffer_tag(pane.buffer_id),
+            wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
+            tab_width: doc.overrides.tab_width(&self.settings),
+            whitespace: doc.overrides.whitespace(&self.settings),
+        }
+    }
+
     // ── Quit ──────────────────────────────────────────────────────────────────
 
     /// Unconditional quit-the-whole-editor. Used by `:qa!`'s force path —

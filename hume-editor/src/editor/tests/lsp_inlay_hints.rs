@@ -110,14 +110,10 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
-    let tag = ed.state.buffer_tag(bid);
     let Editor { state, view, .. } = &mut ed;
-    let mut rm = crate::editor::commands::pane_row_map(
-        state.buffers.get(bid),
-        &state.settings,
-        &mut view.panes[pid],
-        tag,
-    );
+    let key = state.format_key(&view.panes[pid]);
+    let (mut rm, _) =
+        crate::editor::commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
     assert_eq!(
         crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char),
         Some((0, 2)),

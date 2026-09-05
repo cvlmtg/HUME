@@ -706,16 +706,11 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         ed.view.panes[pid].providers.gutter_columns(),
         buf.text().last_ropey_line(),
     );
-    let tag = ed.state.buffer_tag(bid);
-    // `_mut` for the viewport: the pane is borrowed mutably for the map, so
-    // its viewport has to come back out of the same split.
+    // The pane is borrowed mutably for the map, so its viewport has to come
+    // back out of the same split.
     let Editor { state, view, .. } = &mut ed;
-    let (mut rm, vp) = commands::pane_row_map_mut(
-        state.buffers.get(bid),
-        &state.settings,
-        &mut view.panes[pid],
-        tag,
-    );
+    let key = state.format_key(&view.panes[pid]);
+    let (mut rm, vp) = commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
     let (content_x, row) =
         cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
     let expected_x = content_x + gutter_w + pane_rect.x;

@@ -157,15 +157,10 @@ pub(super) fn apply_visual_vertical(
         DisplayColOrigin::BufferLine
     };
     let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
-    let buffer_tag = state.buffer_tag(buf_id);
+    let key = state.format_key(&view.panes[focused]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let mut rm = pane_row_map(
-        state.buffers.get(buf_id),
-        &state.settings,
-        &mut view.panes[focused],
-        buffer_tag,
-    );
+    let (mut rm, _) = pane_row_map(state.buffers.get(buf_id), &mut view.panes[focused], key);
 
     // Not `apply_focused_motion`: the closure also captures the row map and the
     // sticky-column buffer, disjoint fields of `state` that must be borrowed
@@ -368,13 +363,8 @@ fn copy_selection_on_line(
 ) {
     let focused = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
-    let buffer_tag = state.buffer_tag(buf_id);
-    let mut rm = pane_row_map(
-        state.buffers.get(buf_id),
-        &state.settings,
-        &mut view.panes[focused],
-        buffer_tag,
-    );
+    let key = state.format_key(&view.panes[focused]);
+    let (mut rm, _) = pane_row_map(state.buffers.get(buf_id), &mut view.panes[focused], key);
 
     doc_ops::apply_doc_motion(
         &state.buffers,
@@ -492,13 +482,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
     }
 
     let focused = state.focused_pane_id;
-    let buffer_tag = state.buffer_tag(buf_id);
-    let mut rm = pane_row_map(
-        state.buffers.get(buf_id),
-        &state.settings,
-        &mut view.panes[focused],
-        buffer_tag,
-    );
+    let key = state.format_key(&view.panes[focused]);
+    let (mut rm, _) = pane_row_map(state.buffers.get(buf_id), &mut view.panes[focused], key);
 
     // Not `apply_focused_motion`: the closure also captures the row map.
     doc_ops::apply_doc_motion(

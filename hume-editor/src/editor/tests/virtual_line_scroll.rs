@@ -70,14 +70,10 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
-    let tag = ed.state.buffer_tag(bid);
     let Editor { state, view, .. } = &mut ed;
-    let mut rm = crate::editor::commands::pane_row_map(
-        state.buffers.get(bid),
-        &state.settings,
-        &mut view.panes[pid],
-        tag,
-    );
+    let key = state.format_key(&view.panes[pid]);
+    let (mut rm, _) =
+        crate::editor::commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
 
     let pos = crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char);
     assert_eq!(
@@ -218,14 +214,10 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
-    let tag = ed.state.buffer_tag(bid);
     let Editor { state, view, .. } = &mut ed;
-    let mut rm = crate::editor::commands::pane_row_map(
-        state.buffers.get(bid),
-        &state.settings,
-        &mut view.panes[pid],
-        tag,
-    );
+    let key = state.format_key(&view.panes[pid]);
+    let (mut rm, _) =
+        crate::editor::commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
     assert_eq!(
         crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),
         Some(2),

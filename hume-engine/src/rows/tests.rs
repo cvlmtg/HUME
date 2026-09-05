@@ -4,6 +4,7 @@ use std::rc::Rc;
 use ropey::Rope;
 
 use super::*;
+use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{DecorationSource, VirtualLine};
 use crate::types::ScopeId;
 
@@ -23,15 +24,15 @@ fn map<'a>(
 ) -> RowMap<'a> {
     RowMap::new(
         rope,
-        wrap,
-        4,
-        ws(),
         providers,
         80,
-        StoreScope {
-            store,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        store,
     )
 }
 
@@ -683,15 +684,15 @@ fn new_panics_on_zero_content_width() {
     let mut s = PaneLineStore::new();
     RowMap::new(
         &rope,
-        WrapMode::None,
-        4,
-        ws(),
         &providers,
         0,
-        StoreScope {
-            store: &mut s,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut s,
     );
 }
 
@@ -705,15 +706,15 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
     let mut s = PaneLineStore::new();
     let mut rm = RowMap::new(
         &rope,
-        WrapMode::Soft { width: 1 },
-        4,
-        ws(),
         &providers,
         80,
-        StoreScope {
-            store: &mut s,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: WrapMode::Soft { width: 1 },
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut s,
     );
 
     let breakdown = rm.block(0);
@@ -841,15 +842,15 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     whitespace.newline = true;
     let mut rm = RowMap::new(
         &rope,
-        WrapMode::None,
-        4,
-        whitespace,
         &providers,
         80,
-        StoreScope {
-            store: &mut s,
+        FormatKey {
             buffer_tag: [0; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace,
         },
+        &mut s,
     );
 
     assert_eq!(
@@ -1703,15 +1704,15 @@ fn a_changed_key_drops_the_scope() {
 
     RowMap::new(
         &r,
-        wrap,
-        4,
-        ws(),
         &providers,
         80,
-        StoreScope {
-            store: &mut store,
+        FormatKey {
             buffer_tag: [1; 3],
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut store,
     )
     .block(0);
     let after_first = calls.get();
@@ -1719,15 +1720,15 @@ fn a_changed_key_drops_the_scope() {
     // Same store, same line, different buffer tag.
     RowMap::new(
         &r,
-        wrap,
-        4,
-        ws(),
         &providers,
         80,
-        StoreScope {
-            store: &mut store,
+        FormatKey {
             buffer_tag: [2; 3],
+            wrap_mode: wrap,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut store,
     )
     .block(0);
 
@@ -1777,15 +1778,15 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
 
     let breakdown = RowMap::new(
         &r,
-        WrapMode::None,
-        4,
-        ws(),
         &providers,
         80,
-        StoreScope {
-            store: &mut store,
+        FormatKey {
             buffer_tag: [1; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut store,
     )
     .block(0);
     assert_eq!(
@@ -1854,15 +1855,15 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
 
     RowMap::new(
         &r,
-        WrapMode::None,
-        4,
-        ws(),
         &providers,
         80,
-        StoreScope {
-            store: &mut store,
+        FormatKey {
             buffer_tag: [1; 3],
+            wrap_mode: WrapMode::None,
+            tab_width: 4,
+            whitespace: ws(),
         },
+        &mut store,
     )
     .render_row(RowPos::new(0, 0));
     let before = store.entry(0).format.graphemes.capacity();

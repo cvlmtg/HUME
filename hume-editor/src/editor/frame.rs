@@ -13,7 +13,6 @@ use hume_engine::types::EditorMode;
 
 use super::Editor;
 use super::buffer::Buffer;
-use crate::settings::EditorSettings;
 
 /// Project a `SelectionSet` into an engine pane's head-sorted selection mirror.
 ///
@@ -47,14 +46,12 @@ pub(super) fn write_pane_mirror(
 impl Editor {
     /// Resolve any pane's render settings and gutter width.
     ///
-    /// Returns `(PaneRenderSettings, gutter_w)`. Single source of truth for
-    /// wrap_mode / tab_width / whitespace settings across all render paths.
-    /// `tab_width`, `whitespace`, and `wrap_mode` all resolve from that
-    /// pane's buffer overrides against the global settings — `wrap_mode`
-    /// additionally checks the pane's own override first (see
-    /// `commands::effective_wrap_mode`), since two panes on the same buffer
-    /// may wrap differently once `:wrap`/`:set pane wrap-mode=…` pins one.
-    /// `mode` is a per-focus fact: only the focused pane owns the real
+    /// Returns `(PaneRenderSettings, gutter_w)`. `format` is
+    /// [`EditorState::format_key`](super::EditorState::format_key) — the
+    /// single source of truth for wrap_mode / tab_width / whitespace across
+    /// all render paths, so this and the scroll pass
+    /// (`commands::pane_row_map`) resolve a bit-identical key for the same
+    /// pane. `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes
     /// are forced to a block-cursor mode so their fake cursor stays visible
     /// instead of turning transparent.
@@ -63,9 +60,6 @@ impl Editor {
         let doc = self.state.buffers.get(pane.buffer_id);
         let last_line_idx = doc.text().last_ropey_line();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx);
-        let wrap_mode = super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
-            .resolve(pane.content_width(last_line_idx));
-        let (tab_width, whitespace) = super::commands::format_overrides(doc, &self.state.settings);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let mode = if pid == self.state.focused_pane_id {
             self.state.mode()
@@ -75,11 +69,8 @@ impl Editor {
         (
             PaneRenderSettings {
                 mode,
-                wrap_mode,
-                tab_width,
-                whitespace,
+                format: self.state.format_key(pane),
                 show_indent_guides,
-                buffer_tag: self.state.buffer_tag(pane.buffer_id),
             },
             gutter_w,
         )
@@ -417,13 +408,12 @@ impl Editor {
                 .selections
                 .primary()
                 .head();
-            let buffer_tag = self.state.buffer_tag(buf_id);
+            let format_key = self.state.format_key(&self.view.panes[pid]);
             let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
-                &self.state.settings,
                 &mut self.view.panes[pid],
                 cursor_char,
-                buffer_tag,
+                format_key,
                 scrolloff,
             );
             if pid == self.state.focused_pane_id {
@@ -535,16 +525,15 @@ impl Editor {
 /// no viewport, so no arm below can change what `locate` already answered.
 fn scroll_into_view(
     doc: &Buffer,
-    settings: &EditorSettings,
     pane: &mut Pane,
     cursor_char: usize,
-    buffer_tag: hume_engine::rows::line_store::BufferTag,
+    format_key: hume_engine::rows::line_store::FormatKey,
     scrolloff: usize,
 ) -> Option<(u16, u16)> {
     use super::scroll;
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done — both work through this pane's one store.
-    let (mut rm, viewport) = super::commands::pane_row_map_mut(doc, settings, pane, buffer_tag);
+    let (mut rm, viewport) = super::commands::pane_row_map(doc, pane, format_key);
     // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
     // logic below reads it — see `clamp_viewport_top`'s doc.
