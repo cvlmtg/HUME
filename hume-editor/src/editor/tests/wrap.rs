@@ -2,14 +2,9 @@ use super::doubles::VirtualRows;
 use super::*;
 use hume_grid::Rect;
 
-use crate::editor::error::CommandError;
 use hume_engine::pane::WrapMode;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), CommandError> {
-    crate::editor::commands::typed_set(ed, Some(cmd), false)
-}
 
 fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
     &ed.view.panes[ed.state.focused_pane_id]

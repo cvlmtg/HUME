@@ -70,14 +70,29 @@ fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target
     super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
 }
 
+/// Center the head in the viewport, like `z z`. Infallible core shared by
+/// [`cmd_view_center`] (the registered `z z` command) and any other caller
+/// that wants the same effect without going through an `EditorCmdFn`'s
+/// `Result` — `lifecycle.rs`'s post-file-load placement, LSP goto-definition
+/// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
+pub(crate) fn view_center(state: &mut EditorState, view: &mut EngineView) {
+    let target = (viewport(state, view).height as usize) / 2;
+    cmd_view_scroll_to_row(state, view, target);
+}
+
+/// Pin the head at the viewport's top row, like `z k`. Infallible core
+/// shared by [`cmd_view_top`] and `step_align_view`'s `Top` arm.
+pub(crate) fn view_top(state: &mut EditorState, view: &mut EngineView) {
+    cmd_view_scroll_to_row(state, view, 0);
+}
+
 pub(crate) fn cmd_view_center(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = (viewport(state, view).height as usize) / 2;
-    cmd_view_scroll_to_row(state, view, target);
+    view_center(state, view);
     Ok(())
 }
 
@@ -87,7 +102,7 @@ pub(crate) fn cmd_view_top(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    cmd_view_scroll_to_row(state, view, 0);
+    view_top(state, view);
     Ok(())
 }
 

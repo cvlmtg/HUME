@@ -110,9 +110,10 @@ impl Editor {
         if repeatable || self.state.selection_recipe_writes == pre_writes {
             self.state.selection_recipe.clear();
         }
-        // Outer Steel commands skip step_record_jump and step_clear_extend: their meta
-        // hardcodes is_jump = clears_extend = false. An inner native (call! …) still
-        // fires both — it routes through run_dispatch_pipeline with its own meta.
+        // Outer Steel commands skip step_record_jump, step_clear_extend, and
+        // step_align_view: their meta hardcodes is_jump = clears_extend =
+        // aligns_view = false. An inner native (call! …) still fires all three
+        // — it routes through run_dispatch_pipeline with its own meta.
     }
 
     /// Activate `plugin` (a `Lazy` stub's owner), reporting the standard

@@ -190,14 +190,14 @@ impl FromStr for SignColumnConfig {
 /// Exists because those motions land the selection head at the *start* of
 /// the object just found (`hume_ops::motion::object::apply_object_motion`'s
 /// `Selection::new(end, start)`, deliberately, so a following `w` walks into
-/// the object's body) — which for a forward jump is also the object's far
-/// edge from the cursor's approach, so the default per-frame scroll parks it
-/// at `scrolloff` rows from the *bottom*, hiding the very body the head-first
-/// convention was chosen to show. The backward motions (`{`) don't have this
-/// problem: their head also lands at the object's start, but that start is
-/// already the near edge coming from below, so the default scroll already
-/// surfaces the body. Hence only the forward motions read this setting — see
-/// `CmdMeta::aligns_view` in `editor::registry::command`.
+/// the object's body) — and the body then extends *below* that head. A
+/// forward jump scrolls downward, so the default per-frame scroll parks the
+/// head at `scrolloff` rows from the *bottom*, hiding the very body the
+/// head-first convention was chosen to show. The backward motions (`{`)
+/// don't have this problem: their head lands at the object's start too, but
+/// an upward scroll parks it at `scrolloff` rows from the *top*, so the body
+/// below it is already on screen. Hence only the forward motions read this
+/// setting — see `CmdMeta::aligns_view` in `editor::registry::command`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ObjectJumpAlign {
     /// Pin the head at the viewport's top row — subject to `scrolloff` on

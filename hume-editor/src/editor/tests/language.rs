@@ -1,6 +1,5 @@
 use super::*;
 
-use crate::editor::error::CommandError;
 use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
 
@@ -176,15 +175,11 @@ fn open_buffer_then_set_buffer_language_in_one_eval_keeps_the_explicit_value() {
 
 // ── :set buffer language= intercept ──────────────────────────────────────────
 
-fn run_cmd(ed: &mut Editor, cmd: &str) -> Result<(), CommandError> {
-    crate::editor::commands::typed_set(ed, Some(cmd), false)
-}
-
 #[test]
 fn typed_set_language_global_scope_errors() {
     let mut ed = editor_from("-[a]>b\n");
     attach_host(&mut ed, "");
-    let result = run_cmd(&mut ed, "global language=rust");
+    let result = run_set(&mut ed, "global language=rust");
     assert!(result.is_err(), "global language must be an error");
     let msg = result.unwrap_err().message().to_owned();
     assert!(
@@ -199,7 +194,7 @@ fn typed_set_language_buffer_scope_sets_language() {
     attach_host(&mut ed, "");
     register_rust(&mut ed, "rust", &["rs"]);
     let bid = ed.focused_buffer_id();
-    run_cmd(&mut ed, "buffer language=rust").expect(":set buffer language=rust failed");
+    run_set(&mut ed, "buffer language=rust").expect(":set buffer language=rust failed");
     assert_eq!(
         ed.state.buffers.get(bid).language,
         ed.state.config.languages.id_of("rust")
@@ -213,7 +208,7 @@ fn typed_set_language_empty_value_clears_language() {
     let bid = ed.focused_buffer_id();
     let lang = ed.state.config.languages.intern("rust");
     ed.set_buffer_language(bid, Some(lang));
-    run_cmd(&mut ed, "buffer language=").expect(":set buffer language= failed");
+    run_set(&mut ed, "buffer language=").expect(":set buffer language= failed");
     assert!(ed.state.buffers.get(bid).language.is_none());
 }
 
@@ -223,7 +218,7 @@ fn typed_set_language_unknown_warns_but_sets() {
     attach_host(&mut ed, "");
     let bid = ed.focused_buffer_id();
     // "unknown-lang" is not registered — should warn but still set.
-    let result = run_cmd(&mut ed, "buffer language=unknown-lang");
+    let result = run_set(&mut ed, "buffer language=unknown-lang");
     assert!(
         result.is_ok(),
         "unknown language must not error, got: {result:?}"

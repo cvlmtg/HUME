@@ -18,6 +18,17 @@ mod typed;
 // an explicit `$reg` argument rather than a bare `self` for the same reason:
 // a literal `self` in the macro body has no receiver to bind to here.
 macro_rules! motion {
+    // Forward object-jump family (`}`, `goto-next-<kind>`) — see
+    // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump, aligns_view) => {
+        $reg.register(MappableCommand::Motion {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: SelectionBody::Plain($fun),
+            jump: true,
+            aligns_view: true,
+        })
+    };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump) => {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),

@@ -7,7 +7,6 @@ use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId, RenderContext};
 use hume_engine::types::EditorMode;
-use hume_ops::MotionMode;
 
 use hume_platform::screen::Screen;
 use hume_platform::terminal::SharedTerm;
@@ -269,8 +268,7 @@ impl Editor {
             center_focused |= bid == focused_bid;
         }
         if center_focused {
-            super::commands::cmd_view_center(&mut self.state, &mut self.view, 1, MotionMode::Move)
-                .expect("cmd_view_center takes no path that can fail");
+            super::commands::view_center(&mut self.state, &mut self.view);
         }
     }
 

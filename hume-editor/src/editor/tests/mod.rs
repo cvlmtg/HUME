@@ -232,6 +232,14 @@ fn type_cmd_event(ed: &mut Editor, cmd: &str) {
     ed.feed_event(key_enter());
 }
 
+/// Run a `:set` argument string directly through `typed_set`, bypassing the
+/// keymap dispatcher. Use when a test only needs the setting write's own
+/// success/error result, not the end-to-end minibuffer path `type_cmd`
+/// exercises.
+fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), crate::editor::error::CommandError> {
+    crate::editor::commands::typed_set(ed, Some(cmd), false)
+}
+
 /// Enters Insert mode, types `text` (translating `\n` to Enter, same as a
 /// user pressing it), and returns to Normal mode.
 fn type_text(ed: &mut Editor, text: &str) {
@@ -924,8 +932,8 @@ impl Editor {
 /// Captures the entire funnel-owned side-effect cluster in one shot so a test
 /// can assert all bookkeeping in one `assert_eq!` without missing a field.
 ///
-/// Scope: the five effects that `run_dispatch_pipeline` is exclusively responsible
-/// for. Register routing (caller-armed) and handle_key-tail concerns
+/// Scope: five of the six effects that `run_dispatch_pipeline` is exclusively
+/// responsible for. Register routing (caller-armed) and handle_key-tail concerns
 /// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
 /// seeding-dependent, the latter has dedicated tests.
 ///
@@ -935,6 +943,11 @@ impl Editor {
 /// nothing natively at all or the outer command is repeatable — divergence
 /// from the native path is intentional per command, not a parity bug, so it
 /// legitimately diverges and cannot be a parity field.
+///
+/// Deliberate exclusion — the sixth effect, `step_align_view`'s viewport
+/// write: parity holds trivially (`aligns_view` is hardcoded `false` for
+/// `SteelBacked`/`Lazy`, so the Steel branch never runs it at all), and this
+/// snapshot has no viewport field to compare it against.
 #[derive(Debug, PartialEq)]
 pub(super) struct BookkeepingSnapshot {
     /// `ed.state.last_repeatable_action` — (command, count, char_arg) if set.

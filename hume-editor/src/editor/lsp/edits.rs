@@ -538,8 +538,7 @@ pub(crate) fn goto_location(
 
     // Center by display row, the same way `zz` does — not by buffer line,
     // which only agrees with it when nothing wraps.
-    crate::editor::commands::cmd_view_center(state, view, 1, hume_ops::MotionMode::Move)
-        .expect("cmd_view_center takes no path that can fail");
+    crate::editor::commands::view_center(state, view);
 
     Ok(())
 }

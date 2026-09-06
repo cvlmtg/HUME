@@ -211,10 +211,7 @@ fn visual_preferred_display_col_reset_on_horizontal_motion() {
 fn visual_move_no_wrap_content_row_is_a_buffer_line() {
     let mut ed = visual_test_editor(0);
     // Pin off, overriding `visual_test_editor`'s indent-wrap pin.
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
 
     ed.handle_key(key('j'));
     assert_eq!(
@@ -369,10 +366,7 @@ fn explicit_count_move_down_multi_cursor_merge() {
     let text = BufferText::from("hello\nab\n");
     let sels = SelectionSet::from_vec(vec![Selection::collapsed(2), Selection::collapsed(4)], 0);
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     let sels = ed.current_selections().clone();
@@ -484,10 +478,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(text.clone(), seeded));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -509,10 +500,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(text, ignored));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -599,10 +587,7 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed.handle_key(key('3'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -635,10 +620,7 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     let text = BufferText::from(content);
     let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
 
     ed.handle_key(key('j')); // bare j: row-domain path, latches BufferLine(4)
     assert_eq!(
@@ -719,10 +701,7 @@ fn no_wrap_bare_j_and_screen_row_scroll_agree_on_display_column() {
         let text = BufferText::from(content);
         let sels = SelectionSet::single(Selection::collapsed(1)); // 'f', display col 4
         let mut ed = Editor::for_testing(Buffer::new(text, sels));
-        ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-            mode: Some(hume_engine::pane::WrapMode::None),
-            saved: None,
-        });
+        pin_no_wrap(&mut ed);
         ed
     };
 
@@ -855,10 +834,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
         hume_editing::selection::Selection::collapsed(2),
     );
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed.view.panes[ed.state.focused_pane_id]
         .providers
         .add_decoration_source(Box::new(InlineHint::new(0, 0, "HHH")));

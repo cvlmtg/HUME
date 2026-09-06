@@ -3,7 +3,6 @@
 // (`hume-editor/src/settings.rs`) for why only the forward motions read it.
 
 use super::*;
-use crate::editor::error::CommandError;
 
 /// `n` one-line paragraphs, each followed by a blank line — paragraph `i`
 /// starts at buffer line `2 * i`. Unwrapped, so a display row is a buffer
@@ -19,10 +18,6 @@ fn key_count(ed: &mut Editor, count: usize, ch: char) {
         ed.handle_key(key(digit));
     }
     ed.handle_key(key(ch));
-}
-
-fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), CommandError> {
-    crate::editor::commands::typed_set(ed, Some(cmd), false)
 }
 
 #[test]
@@ -45,6 +40,47 @@ fn goto_next_paragraph_centers_view_by_default() {
 }
 
 #[test]
+fn goto_next_paragraph_centers_view_in_extend_mode() {
+    // `aligns_view` doesn't gate on `MotionMode` — Extend mode re-centers
+    // too. Unlike Move mode (which lands the head on each found paragraph's
+    // *start*), Extend unions each step's span into the growing selection
+    // and lands the head on the *end* of the last one reached — 15 steps
+    // from paragraph 0 lands one char before paragraph 16 begins, at the
+    // end of paragraph 15's own block (its trailing gap included).
+    let mut ed = paragraph_editor(20);
+    ed.execute_keymap_command("goto-next-paragraph".into(), Some(15), true);
+
+    let head = ed.current_selections().primary().head();
+    assert_eq!(
+        head,
+        ed.doc().text().rope().line_to_char(32) - 1,
+        "sanity: head lands one char before paragraph 16 begins"
+    );
+    // head's line is 31 (paragraph 15's own gap line); height=24,
+    // target=height/2=12 → top_line = 31 - 12 = 19.
+    assert_eq!(ed.viewport().top_line, 19);
+}
+
+#[test]
+fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
+    // 20 paragraphs (last one's content line is 2*19 = 38); a count of 50
+    // exhausts the forward jumps after the 19th — `apply_object_motion`
+    // breaks out of its loop on the first `None` — landing on the last
+    // paragraph rather than erroring or overshooting past it.
+    let mut ed = paragraph_editor(20);
+    ed.execute_keymap_command("goto-next-paragraph".into(), Some(50), false);
+
+    let head = ed.current_selections().primary().head();
+    assert_eq!(
+        head,
+        ed.doc().text().rope().line_to_char(38),
+        "sanity: a count past the last paragraph clamps to it"
+    );
+    // height=24, target=height/2=12 → top_line = 38 - 12 = 26.
+    assert_eq!(ed.viewport().top_line, 26);
+}
+
+#[test]
 fn goto_prev_paragraph_never_aligns_view() {
     let mut ed = paragraph_editor(20);
     seek_to_line(&mut ed, 30);
@@ -64,11 +100,15 @@ fn goto_prev_paragraph_never_aligns_view() {
 
 #[test]
 fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
-    // A single paragraph: `}` from inside it has nowhere to go.
-    let mut ed = paragraph_editor(1);
+    let mut ed = paragraph_editor(20);
+    // Land on the last paragraph (line 38) — this jump centers.
+    key_count(&mut ed, 19, '}');
+    // Push the viewport somewhere centering would visibly undo, so a missing
+    // `moved` guard has something to disagree with.
+    ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
     let top_before = ed.viewport().top_line;
 
-    ed.handle_key(key('}'));
+    ed.handle_key(key('}')); // no paragraph below — a true no-op
 
     assert_eq!(
         ed.viewport().top_line,
@@ -126,6 +166,10 @@ fn goto_next_function_centers_view_by_default() {
     let filler: String = "// filler\n".repeat(20);
     let src = format!("-[/]>/ x\n{filler}fn target() {{}}\n");
     let mut ed = super::structural::rust_editor(&src);
+    // Every line here is short enough that the global wrap default wouldn't
+    // actually wrap it, but pin explicitly so the `top_line` assertion below
+    // doesn't silently start depending on that coincidence.
+    pin_no_wrap(&mut ed);
 
     ed.execute_keymap_command("goto-next-function".into(), None, false);
 
