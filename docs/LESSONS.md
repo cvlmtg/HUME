@@ -2,6 +2,45 @@
 
 Patterns that bit us; rules to prevent recurrence.
 
+## Rule index
+
+Scan this at session start; read a lesson body only when its rule fires.
+
+- **L1** — A forked dispatch path needs a parity test on the whole bookkeeping
+  cluster, plus a single-funnel lint. Two identical `match cmd` arms is an SSOT bug.
+- **L2** — When A/B pairing can't be enforced by types, make B idempotent and
+  self-triggering at the one place the state is read — never at N write sites.
+  Merge B into A instead when A has no external callers.
+- **L3** — A plan item marked "ask user" is a blocking action, not a footnote.
+- **L4** — Enforce invariants at the chokepoint, not by caller convention.
+  Modal-flow tests must keep interacting past the terminal action.
+- **L5** — Self-review may *flag* a claim; it may never *rewrite* one on
+  inference. Read the implementing function first.
+- **L15** — Platform-scoped tests belong in a platform-scoped module, gated once.
+  Never a per-test `#[cfg(not(windows))]`.
+- **L16** — Gate a terminal protocol on *decode* capability, not on terminal
+  capability — enabling an output protocol changes the input encoding.
+- **L6** — Bound every test that blocks on a real wait primitive. CI needs
+  `timeout-minutes`. Sabotage runs must be disposable. A long-running unfamiliar
+  process is a "read before you act" moment, not proof of a live bug.
+- **L7** — Test globals take one reentrant, claim-tracked lock; no bare
+  `tempdir()` or raw `set_var` anywhere in the test tree.
+- **L8** — A baseline diff only cancels state the baseline *shares*. Regenerate
+  twice before trusting a generated file as deterministic.
+- **L9** — The Nth call site is a design smell proportional to N; at N≥3 ask
+  whether the repeated thing should be a first-class concept. A derived-join
+  value needs an observation-point diff, not a setter hook.
+- **L10** — Check a claim about a Unicode construct against how the pipeline
+  actually segments text before stating it as fact.
+- **L11** — A lock guarding process-global state binds implicit *readers* too;
+  a subprocess spawned by unqualified name reads `PATH`.
+- **L12** — Steel 0.8.2 miscompiles nested keyword-arg calls. Prefer a positional
+  `define-syntax` macro for any form users call inside `define-command!`.
+- **L13** — A subagent's *placement* recommendation is a design decision, not
+  research — re-derive it against the project's ownership rules.
+- **L14** — Check a crate's latest release before writing, and especially before
+  *extending*, a workaround for its bug.
+
 ---
 
 ## L1 — Side-effect cluster regression (2026-06)
@@ -206,7 +245,9 @@ extra force when editing something already verified earlier in the session:
 changing a previously-checked line needs *more* evidence than writing it
 did, not less.
 
-## Platform-gated tests: structure over attributes (2026-07-20)
+---
+
+## L15 — Platform-gated tests: structure over attributes (2026-07-20)
 
 **Mistake pattern:** Unix-only tests accumulated as per-test
 `#[cfg(not(windows))]` attributes inside otherwise-portable test files.
@@ -230,7 +271,9 @@ mixes portable and unix-only tests gets a nested `#[cfg(unix)] mod unix`
 holding the unix-only tests, itself gated once, with no per-test
 attributes (`hume-lsp/src/transport.rs`).
 
-## Terminal protocol enabling: gate on decode capability, not terminal capability (2026-07-20)
+---
+
+## L16 — Terminal protocol enabling: gate on decode capability, not terminal capability (2026-07-20)
 
 **Mistake pattern:** The kitty keyboard probe asked the *terminal* "do you
 support kitty?" and enabled the protocol on a yes — on every platform. On
@@ -454,6 +497,13 @@ path, so they waited for the next keystroke — forever, on an idle editor.
    are genuinely needed, write the test that proves work queued by either is
    drained on every path.
 
+**Files:** `hume-editor/src/editor/commands/typed_buffer.rs`
+(`check_all_disk_state`), `hume-editor/src/editor/scripting_setup.rs`
+(`check_all_disk_state`), `hume-editor/src/editor/tests/disk_change.rs`
+(`enter_buffer_with_jump`), `hume-scripting/src/lib.rs` (`focused_buffer_id`).
+
+---
+
 ## L10 — A "bug" claim about combining marks was never checked against grapheme segmentation (2026-08-22)
 
 **Root cause:** Diagnosing a display-width bug (git-diff's tab-stop math
@@ -483,6 +533,11 @@ paths compute width differently" is not itself evidence that a *specific*
 input reaches the diverging branch; each path's actual input shape (one
 cluster vs. one codepoint) has to be traced, not assumed from the
 surrounding code's structure.
+
+**Files:** `hume-scripting/src/builtins/decorations.rs`
+(`segment_virtual_row`) — `push_insert_cells` no longer resolves anywhere in
+the tree; [symbol renamed or removed since, the width-clamp divergence this
+lesson describes needs re-verification against current code].
 
 ---
 
@@ -526,6 +581,8 @@ doc now names it) so it doesn't need re-discovering at each new spawn site.
 `hume-editor/src/editor/tests/unix/picker_source.rs`,
 `hume-editor/src/editor/tests/unix/async_job_steel.rs`,
 `hume-editor/src/editor/tests/unix/picker_source_steel.rs`.
+
+---
 
 ## L12 — Steel 0.8.2 miscompiles a keyword-arg call nested inside another keyword-arg call (2026-09-02)
 
@@ -639,6 +696,10 @@ new ones. Ask the three-part question explicitly (SSOT, separation of concerns,
 would an engine-layer change be more elegant?) for any new field, including one
 that is only *moving*. A move is a placement decision made fresh, not a
 carry-over that inherits its old justification.
+
+**Files:** `hume-editor/src/editor/frame.rs` (`prune_closed_pane_caches`),
+`hume-editor/src/editor/scroll/`, `cursor/`, `mouse/` (`PaneLineStore`
+consumers).
 
 ---
 
