@@ -36,10 +36,20 @@ fn blank_run<'a>(tokens: &mut Peekable<impl Iterator<Item = RopeSlice<'a>>>) -> 
 /// Tokens from `line` forward, stopping before the phantom trailing line —
 /// the content-domain bound every forward scan below needs. Its token is
 /// empty, so left unbounded it would read as part of a trailing gap.
+///
+/// # Panics
+/// Debug-panics if `line > content_line_count()` — every caller derives
+/// `line` from `char_to_line` on a position within `head < len_chars()`,
+/// which never reaches the phantom line itself.
 fn content_tokens_at(
     text: &BufferText,
     line: usize,
 ) -> Peekable<impl Iterator<Item = RopeSlice<'_>>> {
+    debug_assert!(
+        line <= text.content_line_count(),
+        "content_tokens_at: line {line} is past the buffer's {} content lines",
+        text.content_line_count()
+    );
     text.line_tokens_at(line)
         .take(text.content_line_count() - line)
         .peekable()
@@ -81,7 +91,7 @@ pub(crate) fn paragraph_at(
 
     // Continue forward from `line`'s own successor — `first..=line` is
     // already known to be content, so there's nothing left to scan there.
-    let mut fwd = content_tokens_at(text, line + 1).peekable();
+    let mut fwd = content_tokens_at(text, line + 1);
     let mut last = line + content_run(&mut fwd);
     if include_gap {
         last += blank_run(&mut fwd);
@@ -126,7 +136,7 @@ pub fn cmd_goto_prev_paragraph(
 fn next_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let total = text.content_line_count();
     let line = text.char_to_line(pos);
-    let mut tokens = content_tokens_at(text, line).peekable();
+    let mut tokens = content_tokens_at(text, line);
 
     let mut target = line + content_run(&mut tokens);
     target += blank_run(&mut tokens);
@@ -161,7 +171,7 @@ fn prev_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let up = content_run(&mut back);
     let first = target_last + 1 - up;
 
-    let mut fwd = content_tokens_at(text, target_last + 1).peekable();
+    let mut fwd = content_tokens_at(text, target_last + 1);
     let last = target_last + blank_run(&mut fwd);
 
     Some(line_span(text, first, last))

@@ -397,6 +397,58 @@ fn snap_to_grapheme_boundary_mid_cluster_snaps_back() {
     assert_eq!(snap_to_grapheme_boundary(&buf, 0, 1), 0);
 }
 
+// ── line_token_content ──────────────────────────────────────────────────────
+
+#[test]
+fn line_token_content_strips_the_trailing_break() {
+    let buf = rope("hello\n");
+    assert_eq!(line_token_content(buf.line(0)), "hello");
+}
+
+#[test]
+fn line_token_content_phantom_trailing_line_has_no_break_to_strip() {
+    // The phantom trailing line's token is 0 chars — nothing to strip, and
+    // the result must not be conjured out of thin air.
+    let buf = rope("a\n");
+    let phantom = last_ropey_line(&buf);
+    assert_eq!(line_token_content(buf.line(phantom)), "");
+}
+
+#[test]
+fn line_token_content_across_a_rope_chunk_boundary() {
+    // ropey's leaf nodes are a few hundred bytes (`MAX_BYTES`/`MIN_BYTES`);
+    // 300 short lines guarantee several chunks, so the last real line's token
+    // straddles one rather than sitting wholly inside a single leaf.
+    let source: String = (0..300).map(|i| format!("line {i}\n")).collect();
+    let buf = rope(source.as_str());
+    let last_content_line = last_ropey_line(&buf) - 1;
+    assert_eq!(line_token_content(buf.line(last_content_line)), "line 299");
+}
+
+// ── is_empty_line_token ──────────────────────────────────────────────────────
+
+#[test]
+fn is_empty_line_token_true_for_the_phantom_trailing_line() {
+    // The phantom trailing line's token has zero chars — every real content
+    // line has at least the bare `\n`, so this arm is reached only through
+    // the phantom line's own (0-char) token.
+    let buf = rope("a\n");
+    let phantom = last_ropey_line(&buf);
+    assert!(is_empty_line_token(buf.line(phantom)));
+}
+
+#[test]
+fn is_empty_line_token_true_for_bare_newline() {
+    let buf = rope("a\n\nb\n");
+    assert!(is_empty_line_token(buf.line(1)));
+}
+
+#[test]
+fn is_empty_line_token_false_for_content_line() {
+    let buf = rope("hello\n");
+    assert!(!is_empty_line_token(buf.line(0)));
+}
+
 // ── is_empty_line ─────────────────────────────────────────────────────────
 
 #[test]

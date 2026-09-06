@@ -164,14 +164,16 @@ fn inner_paragraph_multiline_backward_climb_crosses_chunk_boundaries() {
     // leaf (`MAX_BYTES`/`MIN_BYTES` are a few hundred bytes each) — with the
     // cursor on its last line. `paragraph_at`'s backward climb to the
     // paragraph's first line must cross every chunk boundary between them.
-    let lines: Vec<String> = (0..300).map(|i| format!("padding line {i}\n")).collect();
-    let (last, before_last) = lines.split_last().expect("300 padding lines");
-    let before_last = before_last.concat();
+    const LAST: usize = 299;
+    let padding: String = (0..=LAST).map(|i| format!("padding line {i}\n")).collect();
     // The marker excludes the selected span's own trailing `\n`, matching
     // every other multi-line `-[...]>` case in this file.
-    let padding_no_trailing_nl =
-        format!("{before_last}{}", hume_rope::lines::strip_line_break(last));
-    let initial = format!("{before_last}padding line -[2]>99\n\nafter\n");
+    let padding_no_trailing_nl = padding.strip_suffix('\n').expect("padding ends in \\n");
+    let last_line = format!("padding line {LAST}\n");
+    let before_last = padding
+        .strip_suffix(&last_line)
+        .expect("last line is the suffix");
+    let initial = format!("{before_last}padding line -[{LAST}]>\n\nafter\n");
     let expected = format!("-[{padding_no_trailing_nl}]>\n\nafter\n");
     assert_state!(
         initial.as_str(),

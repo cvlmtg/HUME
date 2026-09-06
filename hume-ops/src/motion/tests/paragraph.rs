@@ -192,6 +192,18 @@ fn goto_prev_paragraph_from_gap_selects_nearest_not_the_one_before_it() {
 }
 
 #[test]
+fn goto_prev_paragraph_from_gap_includes_blank_lines_below_the_cursor() {
+    // The backward walk only counts the blanks at or above the cursor; the
+    // target paragraph's gap continues past it, so the span must still reach
+    // the last blank line.
+    assert_state!(
+        "hello\n-[\n]>\nworld\n",
+        |(text, sels)| cmd_goto_prev_paragraph(&text, sels, 1, MotionMode::Move),
+        "<[hello\n\n\n]-world\n"
+    );
+}
+
+#[test]
 fn goto_prev_paragraph_from_leading_gap_is_noop() {
     // Nothing precedes the gap itself — no previous paragraph exists.
     assert_state!(
@@ -313,8 +325,8 @@ fn goto_next_paragraph_crosses_rope_chunk_boundaries() {
     // phase must walk all 300 lines forward, across every chunk boundary, to
     // find this paragraph's own end before it can land on `foo`.
     let padding = chunk_boundary_padding();
-    let (first, rest) = padding.split_at(1);
-    let initial = format!("-[{first}]>{rest}\n\nfoo\n");
+    let (first_byte, rest) = padding.split_at(1);
+    let initial = format!("-[{first_byte}]>{rest}\n\nfoo\n");
     let expected = format!("{padding}\n\n<[foo]-\n");
     assert_state!(
         initial.as_str(),

@@ -1,5 +1,5 @@
 use hume_rope::cursor::CharCursor;
-use ropey::Rope;
+use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
 use std::ops::Range;
 
@@ -248,7 +248,7 @@ impl BufferText {
 
     /// All line tokens from the buffer start. See
     /// [`BufferText::line_tokens_at`].
-    pub fn line_tokens(&self) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
+    pub fn line_tokens(&self) -> impl Iterator<Item = RopeSlice<'_>> {
         self.line_tokens_at(0)
     }
 
@@ -257,7 +257,7 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).
-    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
+    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
         hume_rope::lines::line_tokens_at(&self.rope, line_idx)
     }
 
@@ -267,10 +267,7 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx >= self.ropey_line_count()`.
-    pub fn line_tokens_back_from(
-        &self,
-        line_idx: usize,
-    ) -> impl Iterator<Item = ropey::RopeSlice<'_>> {
+    pub fn line_tokens_back_from(&self, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
         hume_rope::lines::line_tokens_back_from(&self.rope, line_idx)
     }
 
