@@ -636,3 +636,45 @@ new ones. Ask the three-part question explicitly (SSOT, separation of concerns,
 would an engine-layer change be more elegant?) for any new field, including one
 that is only *moving*. A move is a placement decision made fresh, not a
 carry-over that inherits its old justification.
+
+---
+
+## L14 — Extended a crate workaround instead of checking for a newer release (2026-09-06)
+
+**Root cause:** `hume-platform`'s terminator carried a ~700-line subsystem
+(`Watched::Hangup`, `hangup_status`, `confirm_hangup`, `is_tty_gone`,
+`fionread_outcome`, `quit_acknowledged` ack-gating, the `Terminator` RAII
+handle) built entirely to work around termina 0.3.3's `UnixEventSource::
+try_read` mapping a controlling terminal's tty EOF to `Ok(None)` instead of
+an error. `f14a65cf` went further and *patched a bug inside that workaround
+itself* (the tty watch stopped during the quit-grace window, letting a
+hangup racing a signal go undetected) — real effort spent hardening
+mitigation code, with nobody checking whether termina had already fixed the
+underlying bug upstream. It had: termina 0.4.0's `try_read` now returns
+`Err(io::ErrorKind::UnexpectedEof)` on that same read, at the source. The
+entire subsystem, including the fix just built on top of it, was deletable
+the moment the dependency was bumped.
+
+**Concrete instance:** `f14a65cf` ("cut quit grace short on a stalled tty
+hangup") extended the pre-existing tty-hangup watcher rather than pausing to
+check `termina`'s releases. The next session's very next task was "termina
+0.4.0 has been released, check if it fixes the bugs we worked around" — it
+did, and the fix plus the entire workaround it extended were squashed into
+one commit (`68a6226d`) that nets *negative* lines against the pre-workaround
+baseline (`unix.rs` 1472 → 598 lines, `rustix` dependency dropped entirely).
+
+**Prevention rule:** Before writing code to work around a third-party crate's
+bug or shortcoming — and *especially* before extending or hardening an
+existing workaround — check the crate's latest released version and
+changelog for a fix first. If one exists, upgrade and delete the workaround
+instead of building on it. This applies with extra force the second time: a
+workaround already in the tree is a standing invitation to keep patching it
+locally rather than to ask whether it's still needed, and every hour spent
+hardening one that's since been fixed upstream is doubly wasted. Cf. L12's
+closing note ("re-check both findings against a newer `steel-core` release
+before assuming either still applies") — same rule, this time missed at the
+point of *extending* a workaround rather than merely writing one.
+
+**Files:** `hume-platform/src/unix.rs`, `hume-platform/src/lib.rs`,
+`hume-editor/src/lib.rs`, `hume-platform/Cargo.toml` (and the other three
+crates' `termina` deps).
