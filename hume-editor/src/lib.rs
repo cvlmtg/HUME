@@ -98,6 +98,14 @@ pub fn run_keys(
 /// at the end covers the clean-return and `?`-propagated-error paths. Both
 /// are safe to run even if `init` was never reached — every escape sequence
 /// `restore` emits is a documented no-op for a mode that was never entered.
+///
+/// Below, `restore_err` and `editor.run`'s own `result` are both checked
+/// against [`hume_platform::hangup_exit_code`] before being propagated as
+/// real errors — sound only because every fallible step inside `editor.run`'s
+/// loop (`hume-editor/src/editor/lifecycle.rs`) is terminal I/O: `screen`
+/// geometry/present and the event reader's `poll`/`read`. A future `?` on a
+/// non-terminal error inside that loop (file I/O, say) would need its own
+/// exclusion here — `hangup_exit_code` has no source tag to distinguish it.
 pub fn run(
     files: Vec<cli::FileArg>,
     config_path: Option<std::path::PathBuf>,
@@ -128,14 +136,12 @@ pub fn run(
             wake();
         }
     };
-    hume_platform::spawn_terminator(shared.clone(), request_quit)
-        .inspect_err(|e| {
-            // Non-fatal: Ctrl+C/SIGTERM/SIGHUP will leak terminal
-            // state or spin the event loop instead of exiting, but the editor
-            // still works correctly for normal exit.
-            eprintln!("hume: failed to start terminator: {e}");
-        })
-        .ok();
+    if let Err(e) = hume_platform::spawn_terminator(shared.clone(), request_quit) {
+        // Non-fatal: Ctrl+C/SIGTERM/SIGHUP will leak terminal
+        // state or spin the event loop instead of exiting, but the editor
+        // still works correctly for normal exit.
+        eprintln!("hume: failed to start terminator: {e}");
+    }
 
     let (first, rest) = files
         .split_first()

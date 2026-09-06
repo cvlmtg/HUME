@@ -193,7 +193,7 @@ pub(super) fn spawn_terminator(
                 let _ = mask.thread_unblock();
 
                 let _guard = OrphanGuard(orphaned);
-                match run_terminator_blocking(sig_read.as_fd()) {
+                match watch(sig_read.as_fd(), None) {
                     Ok(Watched::Signal) => {
                         let code = exit_code_for_signal(signal_flag.load(Ordering::Acquire));
                         request_quit(code);
@@ -206,11 +206,11 @@ pub(super) fn spawn_terminator(
                         crate::force_exit(&term, code);
                     }
                     // An unbounded watch has no deadline to end on, so `Ended`
-                    // is unreachable here — see `run_terminator_blocking`'s
-                    // own doc. Folded into the same arm as a real I/O
-                    // failure: either way, termination coverage is lost;
-                    // exit this thread quietly and let `OrphanGuard`'s
-                    // fallback cover future signals instead.
+                    // is unreachable here — see `watch`'s own doc. Folded into
+                    // the same arm as a real I/O failure: either way,
+                    // termination coverage is lost; exit this thread quietly
+                    // and let `OrphanGuard`'s fallback cover future signals
+                    // instead.
                     Ok(Watched::Ended) | Err(_) => {}
                 }
             }
@@ -248,19 +248,6 @@ pub(super) fn spawn_terminator(
     drop(sig_write);
 
     Ok(())
-}
-
-/// Blocks until one of [`SIGNALS`] fires, then returns [`Watched::Signal`]
-/// — never [`Watched::Ended`], since an unbounded wait has no deadline to
-/// end on (see [`watch`]'s own doc for why that variant needs a deadline to
-/// be reachable at all). Returns `Err` only when the signal pipe itself is
-/// permanently gone (every write end closed) or the initial wait on it
-/// fails. Never touches the process — kept separate from
-/// [`spawn_terminator`] so it can be driven directly in tests. A thin
-/// wrapper over [`watch`] — see there for the shared logic with
-/// [`grace_window_exit_code`]'s bounded wait.
-fn run_terminator_blocking(sig_fd: BorrowedFd<'_>) -> io::Result<Watched> {
-    watch(sig_fd, None)
 }
 
 /// Outcome of draining the signal pipe.
@@ -306,24 +293,33 @@ enum Watched {
     /// `deadline` elapsed with nothing new. Only ever returned when a
     /// deadline was given — with `deadline: None` a permanently closed
     /// signal pipe (nothing else left to watch for) is an `Err` instead, per
-    /// [`run_terminator_blocking`]'s contract.
+    /// [`watch`]'s own contract.
     Ended,
 }
 
 /// Blocks on the registered-signal pipe `sig_fd` until a signal fires or
-/// `deadline` elapses. [`run_terminator_blocking`] and
-/// [`grace_window_exit_code`] are both thin wrappers over this: the former
-/// is the very first, unbounded wait before any trigger has fired; the
-/// latter is the bounded wait afterward, racing a second signal against the
+/// `deadline` elapses. Never touches the process — kept separate from
+/// [`spawn_terminator`] so it can be driven directly in tests. Two callers,
+/// each passing a different `deadline`: `spawn_terminator`'s own thread body
+/// calls it with `None` for the very first, unbounded wait before any
+/// trigger has fired (never returns [`Watched::Ended`], since an unbounded
+/// wait has no deadline to end on); [`grace_window_exit_code`] calls it with
+/// `Some` for the bounded wait afterward, racing a second signal against the
 /// grace window running out.
 ///
 /// `deadline: None` blocks indefinitely. A permanently closed `sig_fd` is a
-/// hard failure only when `deadline` is `None`
-/// (`run_terminator_blocking`'s contract, matched by its own
+/// hard failure only when `deadline` is `None` (matched by this module's own
 /// `terminator_exits_instead_of_spinning_when_the_pipe_closes` test); with a
 /// deadline, the caller has already committed to acting once it elapses
 /// regardless, so this sleeps out the rest of the window instead of
-/// returning early on that same closure.
+/// returning early on that same closure —
+/// `grace_window_exit_code_waits_out_the_window_on_a_closed_pipe` covers the
+/// `Drained::Closed` case of this. A `wait_readable` `Err` gets the same
+/// treatment when a deadline is given: the predecessor this function replaced
+/// (`wait_for_second_signal`) returned `None` immediately on that same
+/// `select` fault instead; sleeping it out here trades a faster force-exit
+/// for never cutting the main thread's graceful LSP shutdown short on a
+/// transient error.
 fn watch(sig_fd: BorrowedFd<'_>, deadline: Option<Instant>) -> io::Result<Watched> {
     loop {
         let remaining = match deadline {
@@ -393,10 +389,11 @@ fn grace_window_exit_code(
     fallback_code: i32,
     grace: Duration,
 ) -> i32 {
-    // `watch` never errors with a deadline given — see its own doc.
-    let outcome = watch(sig_fd, Some(Instant::now() + grace))
-        .expect("watch never errors when deadline is Some");
-    match outcome {
+    // `watch` never errors with a deadline given (see its own doc) — but if
+    // it somehow did, the grace window is over either way, which is exactly
+    // what `Ended` means, so this falls back rather than panicking on a
+    // documented-but-not-type-enforced invariant.
+    match watch(sig_fd, Some(Instant::now() + grace)).unwrap_or(Watched::Ended) {
         Watched::Signal => exit_code_for_signal(signal_flag.load(Ordering::Acquire)),
         Watched::Ended => fallback_code,
     }
@@ -439,11 +436,11 @@ mod terminator_tests {
 
     use super::*;
 
-    // `UnixStream::pair()` reproduces the primitives `run_terminator_blocking`
-    // observes without needing a real signal: writing a byte to one end
-    // stands in for a `signal_hook` self-pipe write, since we're only
-    // testing this module's own signal-pipe logic, not signal-hook's
-    // (separately tested, upstream) job of relaying a real signal to a fd.
+    // `UnixStream::pair()` reproduces the primitives `watch` observes without
+    // needing a real signal: writing a byte to one end stands in for a
+    // `signal_hook` self-pipe write, since we're only testing this module's
+    // own signal-pipe logic, not signal-hook's (separately tested, upstream)
+    // job of relaying a real signal to a fd.
 
     /// An inert stand-in for the signal self-pipe: never written to, so it
     /// never reports readable. Keeps both ends alive so it can't spuriously
@@ -457,31 +454,31 @@ mod terminator_tests {
     }
 
     /// A regression to the drain-less spin `terminator_exits_instead_of_spinning_when_the_pipe_closes`
-    /// guards against — a `run_terminator_blocking` call that never returns —
-    /// is a real failure mode for this module (observed directly: a sabotage
-    /// run of this module's own signal-detection test sat at 100% CPU for
-    /// three days before being mistaken for a live bug). A direct call on
-    /// the test thread would hang `cargo test` forever on that regression
-    /// instead of failing it. This runs the call on its own thread and fails
-    /// the test if it hasn't returned within `bound`, so a spin becomes a
-    /// fast, visible test failure. Takes `sig_read` by value — it must
-    /// outlive the spawned thread — while each test keeps its own writer
-    /// handle so it can still act on the connection after the call starts.
+    /// guards against — an unbounded `watch` call that never returns — is a
+    /// real failure mode for this module (observed directly: a sabotage run
+    /// of this module's own signal-detection test sat at 100% CPU for three
+    /// days before being mistaken for a live bug). A direct call on the test
+    /// thread would hang `cargo test` forever on that regression instead of
+    /// failing it. This runs the call on its own thread and fails the test if
+    /// it hasn't returned within `bound`, so a spin becomes a fast, visible
+    /// test failure. Takes `sig_read` by value — it must outlive the spawned
+    /// thread — while each test keeps its own writer handle so it can still
+    /// act on the connection after the call starts.
     fn run_bounded(sig_read: UnixStream, bound: Duration) -> Watched {
-        let handle = std::thread::spawn(move || run_terminator_blocking(sig_read.as_fd()));
+        let handle = std::thread::spawn(move || watch(sig_read.as_fd(), None));
         let deadline = Instant::now() + bound;
         while !handle.is_finished() {
             assert!(
                 Instant::now() < deadline,
-                "run_terminator_blocking did not return within {bound:?} — \
-                 regression to the drain-less spin this module was built to avoid"
+                "watch did not return within {bound:?} — regression to the \
+                 drain-less spin this module was built to avoid"
             );
             std::thread::sleep(Duration::from_millis(5));
         }
         handle
             .join()
             .expect("terminator thread panicked")
-            .expect("run_terminator_blocking returned an error")
+            .expect("watch returned an error")
     }
 
     /// Hang-detector bound for [`run_bounded`] — generous on purpose since it
@@ -510,7 +507,7 @@ mod terminator_tests {
         let (sig_read, sig_write) = idle_sig_pipe();
         drop(sig_write);
 
-        let handle = std::thread::spawn(move || run_terminator_blocking(sig_read.as_fd()));
+        let handle = std::thread::spawn(move || watch(sig_read.as_fd(), None));
         std::thread::sleep(Duration::from_millis(50));
         assert!(
             handle.is_finished(),
@@ -519,6 +516,77 @@ mod terminator_tests {
         assert!(
             handle.join().expect("thread panicked").is_err(),
             "a permanently closed signal pipe is a real failure, not a trigger"
+        );
+    }
+
+    // ── grace_window_exit_code ───────────────────────────────────────────
+
+    #[test]
+    fn grace_window_exit_code_falls_back_when_nothing_arrives() {
+        let (sig_read, _sig_write) = idle_sig_pipe();
+        let flag = AtomicUsize::new(0);
+        let grace = Duration::from_millis(30);
+
+        let start = Instant::now();
+        assert_eq!(
+            grace_window_exit_code(sig_read.as_fd(), &flag, 42, grace),
+            42,
+            "no second signal arrived — must fall back to the caller's code"
+        );
+        assert!(
+            start.elapsed() >= grace,
+            "must wait out the full grace window before giving up"
+        );
+    }
+
+    #[test]
+    fn grace_window_exit_code_returns_the_second_signals_own_code() {
+        let (sig_read, mut sig_write) = idle_sig_pipe();
+        let flag = AtomicUsize::new(0);
+        // Stands in for signal-hook's own action pair for a real second
+        // signal: the flag is set, then the pipe byte written — same order
+        // `spawn_terminator` registers them in.
+        flag.store(SIGTERM as usize, Ordering::Release);
+        let writer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(10));
+            sig_write.write_all(b"x").expect("write");
+        });
+
+        let start = Instant::now();
+        assert_eq!(
+            grace_window_exit_code(sig_read.as_fd(), &flag, 0, Duration::from_secs(5)),
+            143,
+            "a second signal inside the window must win with its own mapped code"
+        );
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "must return as soon as the second signal arrives, not wait out the full grace window"
+        );
+        writer.join().expect("writer thread panicked");
+    }
+
+    /// Covers `watch`'s `Drained::Closed`-with-deadline arm: every write end
+    /// of the signal pipe going away mid-grace-window must not be mistaken
+    /// for a second signal, and — unlike the `deadline: None` case tested by
+    /// `terminator_exits_instead_of_spinning_when_the_pipe_closes` — must not
+    /// return early either, since the caller has already committed to acting
+    /// once the window elapses regardless.
+    #[test]
+    fn grace_window_exit_code_waits_out_the_window_on_a_closed_pipe() {
+        let (sig_read, sig_write) = idle_sig_pipe();
+        drop(sig_write);
+        let flag = AtomicUsize::new(0);
+        let grace = Duration::from_millis(30);
+
+        let start = Instant::now();
+        assert_eq!(
+            grace_window_exit_code(sig_read.as_fd(), &flag, 42, grace),
+            42,
+            "a closed pipe mid-window is not a signal — must fall back to the caller's code"
+        );
+        assert!(
+            start.elapsed() >= grace,
+            "must sleep out the rest of the window rather than returning early on the closure"
         );
     }
 
@@ -556,8 +624,8 @@ mod terminator_tests {
 
     /// The three-state split this test exists to cover: closing every write
     /// end must be classified distinctly from "nothing queued right now" —
-    /// `run_terminator_blocking` treats the two very differently (permanent
-    /// failure vs. keep waiting).
+    /// `watch` treats the two very differently (permanent failure vs. keep
+    /// waiting).
     #[test]
     fn drain_signal_pipe_reports_closed_when_every_writer_is_gone() {
         let (fd, peer) = UnixStream::pair().expect("socketpair");

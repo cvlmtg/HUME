@@ -4,12 +4,12 @@
 //! `std::process::exit` (`crate::force_exit`'s last step) runs no
 //! destructors — the `Drop` impls that normally kill `hume-lsp`'s LSP
 //! servers and the picker's line-source children (`spawn_line_source`)
-//! never fire on a signal/hangup force-exit. Every long-lived child
-//! registers itself here via [`TrackedChild::new`](crate::process::tracked::TrackedChild::new)
-//! at spawn time; `kill_tracked_children` is called from `force_exit` immediately before
-//! tearing the terminal down and exiting, as a fail-safe alongside each
-//! type's own `Drop` (which still runs, and still owns cleanup, on every
-//! normal exit).
+//! never fire on a signal force-exit. Every long-lived child registers itself
+//! here via [`TrackedChild::new`](crate::process::tracked::TrackedChild::new)
+//! at spawn time; `kill_tracked_children` is called from `force_exit` as a
+//! fail-safe alongside each type's own `Drop` (which still runs, and still
+//! owns cleanup, on every normal exit) — see `force_exit`'s own doc for where
+//! in its sequence the reap runs and why.
 //!
 //! A process-global table is the only way to reach this from `force_exit`:
 //! the terminator thread's closure captures only a `SharedTerm` and a

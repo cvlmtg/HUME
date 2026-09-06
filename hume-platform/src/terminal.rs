@@ -575,6 +575,10 @@ pub fn print_return_prompt() {
 /// Block until the user presses a key, ignoring resize, mouse, and key-release
 /// events. Holds subprocess output on screen until the user is ready to return
 /// to the TUI.
+///
+/// Verified by structure only, not by a unit test: the `Interrupted`-resumes
+/// behavior below needs a live `SharedTerm` with a real `PlatformWaker` to
+/// exercise, which this crate's test suite has no fixture for.
 pub fn wait_for_keypress(term: &SharedTerm) {
     let mut term = term.clone();
     let _ = term.enter_raw_mode();

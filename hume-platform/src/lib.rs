@@ -100,9 +100,9 @@ pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
 
 /// Restores the terminal, then kills every still-registered
 /// [`process::tracked::TrackedChild`], then exits with `code`. Shared by
-/// every force-exit path — [`unix::spawn_terminator`]'s signal and hangup
-/// arms, and the Windows arm below — so there is one reap-restore-exit
-/// sequence rather than each platform repeating it.
+/// every force-exit path — [`unix::spawn_terminator`]'s signal arm and the
+/// Windows arm below — so there is one restore-reap-exit sequence rather than
+/// each platform repeating it.
 ///
 /// The reap runs *after* [`restore_for_exit`]'s claim, not before: a caller
 /// that loses that race parks forever without ever reaching `process::exit`,
@@ -133,6 +133,14 @@ const HANGUP_EXIT_CODE: i32 = 130;
 /// `Some(`[`HANGUP_EXIT_CODE`]`)` when `err` means the controlling terminal
 /// itself went away rather than a genuine, reportable failure — `None` for
 /// every other error, which the caller should propagate and print as-is.
+///
+/// Sound only against an error channel that carries terminal I/O and nothing
+/// else: `UnexpectedEof`/`EIO`/`ENXIO` are recognized unconditionally, with
+/// no source tag, so calling this on an error from any other channel (a file
+/// read, say) risks misreporting a real failure as a silent hangup exit.
+/// `hume_editor::run` — the only caller — is sound today because every `?`
+/// its own error paths route through here is terminal I/O exclusively; that
+/// must stay true for this function to stay safe to call there.
 ///
 /// Two signals of the same event, one per platform's read primitive:
 /// - `UnexpectedEof` — termina's own error (≥0.4.0) for a zero-byte read on

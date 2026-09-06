@@ -287,6 +287,9 @@ instantly without draining — precisely the failure mode
 `terminator_exits_instead_of_spinning_when_the_pipe_closes`
 (`hume-platform/src/unix.rs`) exists to catch. The terminator module itself
 landed in `92c96c07` on `2026-07-28`, three days after the process started.
+(`68a6226d` later renamed the first two symbols to `detects_signal` and
+`wait_readable` respectively — named here as `sample` actually reported them
+at the time.)
 
 **Prevention rules:**
 
@@ -642,7 +645,7 @@ carry-over that inherits its old justification.
 ## L14 — Extended a crate workaround instead of checking for a newer release (2026-09-06)
 
 **Root cause:** `hume-platform`'s terminator carried a ~700-line subsystem
-(`Watched::Hangup`, `hangup_status`, `confirm_hangup`, `is_tty_gone`,
+(`Trigger::Hangup`, `hangup_status`, `confirm_hangup`, `is_tty_gone`,
 `fionread_outcome`, `quit_acknowledged` ack-gating, the `Terminator` RAII
 handle) built entirely to work around termina 0.3.3's `UnixEventSource::
 try_read` mapping a controlling terminal's tty EOF to `Ok(None)` instead of
