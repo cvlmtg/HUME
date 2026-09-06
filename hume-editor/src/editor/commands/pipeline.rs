@@ -11,9 +11,12 @@ use hume_engine::pipeline::{BufferId, EngineView};
 use crate::editor::dispatch::CmdCtx;
 use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
-use crate::editor::registry::{CmdMeta, MappableCommand, SelectionBody, SelectionTracking};
+use crate::editor::registry::{
+    CmdMeta, EditorCmdFn, MappableCommand, SelectionBody, SelectionTracking,
+};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
 use crate::editor::{EditorState, Mode};
+use crate::settings::ObjectJumpAlign;
 use hume_ops::{MotionMode, WordCtx};
 
 use crate::editor::syntax::ensure_syntax_current;
@@ -240,11 +243,10 @@ pub(super) fn step_record_jump(
 ///
 /// `Top`/`Center` delegate to `cmd_view_top`/`cmd_view_center` verbatim —
 /// the same primitives `z k`/`z z` call — so there is exactly one
-/// implementation of "put the head at this viewport row"; `Off` is the
-/// pre-existing per-frame `scrolloff` scroll everyone already had, so it
-/// does nothing here. `moved` is `step_record_jump`'s result: a `}` press
-/// already on the last paragraph is a no-op on the selection and must not
-/// yank the viewport around on every repeated press.
+/// implementation of "put the head at this viewport row". `moved` is
+/// `step_record_jump`'s result: a `}` press already on the last paragraph is
+/// a no-op on the selection and must not yank the viewport around on every
+/// repeated press.
 pub(super) fn step_align_view(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -254,16 +256,13 @@ pub(super) fn step_align_view(
     if !aligns_view || !moved {
         return;
     }
-    let result = match state.settings.object_jump_align {
-        crate::settings::ObjectJumpAlign::Off => return,
-        crate::settings::ObjectJumpAlign::Top => {
-            super::cmd_view_top(state, view, 1, MotionMode::Move)
-        }
-        crate::settings::ObjectJumpAlign::Center => {
-            super::cmd_view_center(state, view, 1, MotionMode::Move)
-        }
+    let align: EditorCmdFn = match state.settings.object_jump_align {
+        ObjectJumpAlign::Off => return,
+        ObjectJumpAlign::Top => super::cmd_view_top,
+        ObjectJumpAlign::Center => super::cmd_view_center,
     };
-    result.expect("cmd_view_top/cmd_view_center take no path that can fail");
+    align(state, view, 1, MotionMode::Move)
+        .expect("cmd_view_top/cmd_view_center take no path that can fail");
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body

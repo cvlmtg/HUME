@@ -45,6 +45,27 @@ fn editor_from_kitty(input: &str) -> Editor {
     ed
 }
 
+/// Pin the focused pane to `WrapMode::None`, so a display row is a buffer
+/// line regardless of the global default, which wraps (`DEFAULT_WRAP_STYLE`,
+/// `hume-engine/src/pane.rs`). Shared by every test that reasons about
+/// buffer-line columns or viewport rows rather than display-row wrapping.
+fn pin_no_wrap(ed: &mut Editor) {
+    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+        mode: Some(hume_engine::pane::WrapMode::None),
+        saved: None,
+    });
+}
+
+/// `editor_from`'s twin for tests that supply raw content plus a cursor
+/// offset rather than the marker DSL, with wrapping pinned off.
+fn unwrapped_editor(content: &str, head: usize) -> Editor {
+    let text = BufferText::from(content);
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(head));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    pin_no_wrap(&mut ed);
+    ed
+}
+
 /// Attach `name`'s compiled grammar fixture to `ed`, with its own
 /// `highlights.scm` and no other query.
 ///
@@ -1011,7 +1032,7 @@ mod macros;
 mod messages;
 mod mouse;
 mod multi_pane;
-mod object_jump_center;
+mod object_jump_align;
 mod page_scroll;
 mod pane_focus;
 mod pane_sync;

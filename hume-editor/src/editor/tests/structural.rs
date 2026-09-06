@@ -18,10 +18,7 @@ use hume_treesitter::registry::QueryPaths;
 
 /// Require this file's grammar fixture — see
 /// `hume_test_fixtures::require_grammars`/`require_fixture_file`.
-///
-/// `pub(super)`, unlike its siblings below: `object_jump_center.rs` reuses
-/// this fixture trio too, for its own `goto-next-function` coverage.
-pub(super) fn require_fixtures() {
+fn require_fixtures() {
     require_grammars(&["rust"]);
     require_fixture_file(
         &helix_textobjects_path_unchecked("rust"),
@@ -33,7 +30,7 @@ pub(super) fn require_fixtures() {
 /// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
 /// actually fetches) attached, but the initial parse *not yet* drained —
 /// the window `ensure_syntax_current`'s no-committed-tree gate covers.
-pub(super) fn rust_editor_undrained(source: &str) -> Editor {
+fn rust_editor_undrained(source: &str) -> Editor {
     require_fixtures();
     let to_path = helix_textobjects_path("rust")
         .expect("rust helix-textobjects.scm fixture — run scripts/fetch-test-grammars.sh");
@@ -57,6 +54,9 @@ pub(super) fn rust_editor_undrained(source: &str) -> Editor {
 /// Build an editor from the marker DSL with the `rust` grammar (plus its
 /// real Helix-maintained `textobjects.scm` — what `:plum-install-grammar`
 /// actually fetches) attached and the initial parse drained.
+///
+/// `pub(super)`: `object_jump_align.rs` reuses this for its own
+/// `goto-next-function` coverage.
 pub(super) fn rust_editor(source: &str) -> Editor {
     let mut ed = rust_editor_undrained(source);
     ed.reparse_stale_buffers(); // drains the initial full parse

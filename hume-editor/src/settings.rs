@@ -196,10 +196,8 @@ impl FromStr for SignColumnConfig {
 /// convention was chosen to show. The backward motions (`{`) don't have this
 /// problem: their head also lands at the object's start, but that start is
 /// already the near edge coming from below, so the default scroll already
-/// surfaces the body. Hence only the forward motions read this setting (see
-/// `CmdMeta::aligns_view` in `editor::registry::command`) and only
-/// `Top`/`Center` are new behavior — `Off` is the pre-existing per-frame
-/// scroll everyone already had.
+/// surfaces the body. Hence only the forward motions read this setting — see
+/// `CmdMeta::aligns_view` in `editor::registry::command`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ObjectJumpAlign {
     /// Pin the head at the viewport's top row — subject to `scrolloff` on
@@ -689,8 +687,6 @@ define_settings! {
         "scrolloff" => scrolloff: usize = 3,
             scope: [Scope::Global],
             parser: usize;
-        // See `ObjectJumpAlign`'s own doc for why only the forward object
-        // motions (`}`, `goto-next-<kind>`) read this.
         "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
             scope: [Scope::Global],
             parser: from_str;

@@ -13,15 +13,11 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-/// `editor_from` plus `WrapMode::None` — mirrors `visual_move.rs`'s
-/// `buffer_line_editor` for the same reason: `9j`/`9k`-style buffer-line
-/// placement, not a display-row walk.
+/// `editor_from` plus `pin_no_wrap` — `9j`/`9k`-style buffer-line placement,
+/// not a display-row walk.
 fn copy_test_editor(initial: &str) -> Editor {
     let mut ed = editor_from(initial);
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
+    pin_no_wrap(&mut ed);
     ed
 }
 

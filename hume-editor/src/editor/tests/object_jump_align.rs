@@ -3,23 +3,14 @@
 // (`hume-editor/src/settings.rs`) for why only the forward motions read it.
 
 use super::*;
-use hume_editing::selection::{Selection, SelectionSet};
-use hume_editing::text::BufferText;
-use hume_engine::pane::{WrapMode, WrapOverride};
+use crate::editor::error::CommandError;
 
 /// `n` one-line paragraphs, each followed by a blank line — paragraph `i`
 /// starts at buffer line `2 * i`. Unwrapped, so a display row is a buffer
 /// line and `viewport.top_line` is directly comparable to it.
 fn paragraph_editor(n: usize) -> Editor {
     let content: String = (0..n).map(|i| format!("para{i}\n\n")).collect();
-    let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(WrapOverride {
-        mode: Some(WrapMode::None),
-        saved: None,
-    });
-    ed
+    unwrapped_editor(&content, 0)
 }
 
 /// Types a decimal `count` as individual digit keys, then `ch`.
@@ -28,6 +19,10 @@ fn key_count(ed: &mut Editor, count: usize, ch: char) {
         ed.handle_key(key(digit));
     }
     ed.handle_key(key(ch));
+}
+
+fn run_set(ed: &mut Editor, cmd: &str) -> Result<(), CommandError> {
+    crate::editor::commands::typed_set(ed, Some(cmd), false)
 }
 
 #[test]
@@ -86,7 +81,7 @@ fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
 #[test]
 fn object_jump_align_top_setting() {
     let mut ed = paragraph_editor(20);
-    ed.execute_typed("set", Some("global object-jump-align=top"))
+    run_set(&mut ed, "global object-jump-align=top")
         .expect("object-jump-align=top must be accepted");
 
     key_count(&mut ed, 15, '}');
@@ -99,17 +94,14 @@ fn object_jump_align_top_setting() {
     // The next frame's per-pane scroll (`scrolloff`) pulls the cursor back
     // down from row 0 to row `scrolloff`, exactly as `z k` already settles
     // — `Top` is not a stable resting point the way `Center` is.
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 24);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 80, 24);
     assert_eq!(ed.viewport().top_line, 30 - ed.state.settings.scrolloff);
 }
 
 #[test]
 fn object_jump_align_off_setting_restores_old_behavior() {
     let mut ed = paragraph_editor(20);
-    ed.execute_typed("set", Some("global object-jump-align=off"))
+    run_set(&mut ed, "global object-jump-align=off")
         .expect("object-jump-align=off must be accepted");
 
     key_count(&mut ed, 15, '}');
@@ -120,10 +112,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
 
     // The old (pre-feature) per-frame `scrolloff` scroll still runs and
     // still parks the cursor at `height - scrolloff - 1` rows from the top.
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(80, 24);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 80, 24);
     let scrolloff = ed.state.settings.scrolloff;
     let height = ed.viewport().height as usize;
     assert_eq!(ed.viewport().top_line, 30 - (height - scrolloff - 1));
@@ -153,8 +142,7 @@ fn goto_next_function_centers_view_by_default() {
 #[test]
 fn object_jump_align_rejects_invalid_value() {
     let mut ed = paragraph_editor(1);
-    let result =
-        crate::editor::commands::typed_set(&mut ed, Some("global object-jump-align=middle"), false);
+    let result = run_set(&mut ed, "global object-jump-align=middle");
     assert!(
         result.is_err(),
         "an unrecognized alignment must be rejected"

@@ -228,11 +228,8 @@ pub(crate) enum MappableCommand {
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
-        /// Whether this motion's landing spot should be re-aligned in the
-        /// viewport per `EditorSettings::object_jump_align`, after the body
-        /// runs. `true` only for the forward object-jump family (`}`,
-        /// `goto-next-<kind>`) — see [`crate::settings::ObjectJumpAlign`]'s
-        /// doc for why the backward twins don't need it.
+        /// Whether this motion's landing spot is re-aligned after the body
+        /// runs. See [`CmdMeta::aligns_view`] for the full rationale.
         aligns_view: bool,
     },
     /// Selection or text-object operation (accepts count).

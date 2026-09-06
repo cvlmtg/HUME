@@ -297,23 +297,9 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 // buffer-line column model itself, not its interaction with wrapping (that's
 // the "family switch" suite below).
 
-fn buffer_line_editor(content: &str, head: usize) -> Editor {
-    use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::BufferText;
-
-    let text = BufferText::from(content);
-    let sels = SelectionSet::single(Selection::collapsed(head));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
-    ed
-}
-
 #[test]
 fn explicit_count_move_down_basic() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 0); // 'h'
+    let mut ed = unwrapped_editor("hello\nworld\n", 0); // 'h'
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(ed.current_selections().primary().head(), 6, "lands on 'w'");
@@ -321,7 +307,7 @@ fn explicit_count_move_down_basic() {
 
 #[test]
 fn explicit_count_move_down_preserves_display_column() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 2); // 'l', col 2
+    let mut ed = unwrapped_editor("hello\nworld\n", 2); // 'l', col 2
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -333,7 +319,7 @@ fn explicit_count_move_down_preserves_display_column() {
 
 #[test]
 fn explicit_count_move_down_clamps_to_shorter_line() {
-    let mut ed = buffer_line_editor("hello\nab\n", 2); // 'l', col 2
+    let mut ed = unwrapped_editor("hello\nab\n", 2); // 'l', col 2
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(ed.current_selections().primary().head(), 7, "clamps to 'b'");
@@ -341,7 +327,7 @@ fn explicit_count_move_down_clamps_to_shorter_line() {
 
 #[test]
 fn explicit_count_move_down_clamp_at_document_edge() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 6); // already on the last line
+    let mut ed = unwrapped_editor("hello\nworld\n", 6); // already on the last line
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -353,7 +339,7 @@ fn explicit_count_move_down_clamp_at_document_edge() {
 
 #[test]
 fn explicit_count_move_up_clamp_at_document_edge() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 0); // already on the first line
+    let mut ed = unwrapped_editor("hello\nworld\n", 0); // already on the first line
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(ed.current_selections().primary().head(), 0);
@@ -361,7 +347,7 @@ fn explicit_count_move_up_clamp_at_document_edge() {
 
 #[test]
 fn explicit_count_move_down_to_empty_line() {
-    let mut ed = buffer_line_editor("hello\n\nworld\n", 0); // 'h'
+    let mut ed = unwrapped_editor("hello\n\nworld\n", 0); // 'h'
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -400,7 +386,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_tab() {
     // expands to 4, 'w' is 1 more). Landing must use display column 5 on the
     // target line — 'f' (char offset 5 of "abcdefgh") — not char-offset
     // column 2, which would be 'c'.
-    let mut ed = buffer_line_editor("\tworld\nabcdefgh\n", 2); // 'o'
+    let mut ed = unwrapped_editor("\tworld\nabcdefgh\n", 2); // 'o'
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(ed.current_selections().primary().head(), 12, "lands on 'f'");
@@ -411,7 +397,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char() {
     // 漢 (East Asian Wide) is 2 display columns but 1 char, so 'b' (char 1)
     // sits at display column 2. Landing must use display column 2 — 'c' —
     // not char-offset column 1, which would be 'b'.
-    let mut ed = buffer_line_editor("\u{6F22}bc\nabcdefgh\n", 1); // 'b'
+    let mut ed = unwrapped_editor("\u{6F22}bc\nabcdefgh\n", 1); // 'b'
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(ed.current_selections().primary().head(), 6, "lands on 'c'");
@@ -419,7 +405,7 @@ fn explicit_count_move_down_preserves_display_column_across_a_wide_cjk_char() {
 
 #[test]
 fn explicit_count_move_up_basic() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 6); // 'w'
+    let mut ed = unwrapped_editor("hello\nworld\n", 6); // 'w'
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(ed.current_selections().primary().head(), 0, "lands on 'h'");
@@ -427,7 +413,7 @@ fn explicit_count_move_up_basic() {
 
 #[test]
 fn explicit_count_move_up_preserves_display_column() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 9); // 'l' of "world", col 3
+    let mut ed = unwrapped_editor("hello\nworld\n", 9); // 'l' of "world", col 3
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(
@@ -439,7 +425,7 @@ fn explicit_count_move_up_preserves_display_column() {
 
 #[test]
 fn explicit_count_move_up_clamps_to_shorter_line() {
-    let mut ed = buffer_line_editor("ab\nhello\n", 6); // 'l' of "hello", col 3
+    let mut ed = unwrapped_editor("ab\nhello\n", 6); // 'l' of "hello", col 3
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(ed.current_selections().primary().head(), 1, "clamps to 'b'");
@@ -457,7 +443,7 @@ fn explicit_count_move_up_clamps_to_shorter_line() {
 
 #[test]
 fn explicit_count_move_down_holds_display_column_through_a_short_line() {
-    let mut ed = buffer_line_editor("abcdef\nx\nabcdef\n", 3); // 'd', col 3
+    let mut ed = unwrapped_editor("abcdef\nx\nabcdef\n", 3); // 'd', col 3
     ed.handle_key(key('2'));
     ed.handle_key(key('j'));
     assert_eq!(
@@ -469,7 +455,7 @@ fn explicit_count_move_down_holds_display_column_through_a_short_line() {
 
 #[test]
 fn explicit_count_move_up_holds_display_column_through_a_short_line() {
-    let mut ed = buffer_line_editor("abcdef\nx\nabcdef\n", 12); // 'd' of line 2, col 3
+    let mut ed = unwrapped_editor("abcdef\nx\nabcdef\n", 12); // 'd' of line 2, col 3
     ed.handle_key(key('2'));
     ed.handle_key(key('k'));
     assert_eq!(
@@ -579,7 +565,7 @@ fn resize_invalidates_a_display_row_latch_measured_at_the_old_wrap_width() {
 
 #[test]
 fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
-    let mut ed = buffer_line_editor("hello\nworld\n", 2); // 'l', col 2
+    let mut ed = unwrapped_editor("hello\nworld\n", 2); // 'l', col 2
     ed.handle_key(key('1'));
     ed.handle_key(key('j'));
     assert_eq!(

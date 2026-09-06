@@ -10,17 +10,8 @@ use pretty_assertions::assert_eq;
 // content is 100 chars and char 2*N is the start of line N.
 
 fn view_test_editor() -> Editor {
-    use hume_editing::selection::{Selection, SelectionSet};
-    use hume_editing::text::BufferText;
     let content = "a\n".repeat(50);
-    let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(0));
-    let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::None),
-        saved: None,
-    });
-    ed
+    unwrapped_editor(&content, 0)
 }
 
 // ── Unwrapped mode ────────────────────────────────────────────────────────────

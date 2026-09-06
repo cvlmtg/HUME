@@ -134,13 +134,15 @@ impl CommandRegistry {
         // object — the `finder` is a lexical scan (`hume_ops::motion::paragraph`)
         // rather than a tree-sitter one, so this stays a `Plain` body here
         // instead of moving to `structural.rs`.
-        super::motion!(
-            self,
-            "goto-next-paragraph",
-            "Select the next paragraph.",
-            cmd_goto_next_paragraph,
-            jump aligns
-        );
+        // Forward object-jump family — see `CmdMeta::aligns_view`'s doc for
+        // why only this direction opts in.
+        self.register(MappableCommand::Motion {
+            name: Cow::Borrowed("goto-next-paragraph"),
+            doc: Cow::Borrowed("Select the next paragraph."),
+            fun: SelectionBody::Plain(cmd_goto_next_paragraph),
+            jump: true,
+            aligns_view: true,
+        });
         super::motion!(
             self,
             "goto-prev-paragraph",
