@@ -12,7 +12,7 @@ hume-engine = { path = "../hume-engine" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
 steel-core = { version = "0.8.2", features = ["custom-hash"] }
-termina = "0.3.3"
+termina = "0.4.0"
 slotmap = "1"
 serde_json.workspace = true
 num-bigint.workspace = true

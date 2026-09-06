@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 hume-grid = { path = "../hume-grid" }
-termina = "0.3.3"
+termina = "0.4.0"
 tempfile = "3"
 
 [features]
@@ -14,11 +14,7 @@ tempfile = "3"
 test-util = []
 
 [target.'cfg(unix)'.dependencies]
-# `nix`'s only FIONREAD access is `ioctl_read_bad!`, which expands to an
-# `unsafe fn` — forbidden by this project's no-`unsafe` rule. `rustix::io::
-# ioctl_fionread` is a safe wrapper over the same ioctl, hence both crates.
 nix = { version = "0.31", default-features = false, features = ["poll", "user", "fs", "signal", "process"] }
-rustix = "1"
 # unix.rs uses only `consts::signal`, `flag::{register_conditional_shutdown,
 # register_usize}`, and `low_level::pipe::register` — the default `channel`/
 # `iterator` front-ends are dead code here.

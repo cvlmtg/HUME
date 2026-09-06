@@ -19,6 +19,43 @@ fn exit_claim_is_granted_exactly_once() {
     assert!(!claim_exit(), "nor a third");
 }
 
+// ── hangup_exit_code ──────────────────────────────────────────────────────
+
+#[test]
+fn hangup_exit_code_recognizes_unexpected_eof() {
+    let err = io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        "terminal input reached end-of-file",
+    );
+    assert_eq!(super::hangup_exit_code(&err), Some(130));
+}
+
+#[cfg(unix)]
+#[test]
+fn hangup_exit_code_recognizes_raw_eio_and_enxio() {
+    let eio = io::Error::from_raw_os_error(nix::errno::Errno::EIO as i32);
+    assert_eq!(super::hangup_exit_code(&eio), Some(130));
+    let enxio = io::Error::from_raw_os_error(nix::errno::Errno::ENXIO as i32);
+    assert_eq!(super::hangup_exit_code(&enxio), Some(130));
+}
+
+#[test]
+fn hangup_exit_code_is_none_for_unrelated_errors() {
+    assert_eq!(
+        super::hangup_exit_code(&io::Error::from(io::ErrorKind::PermissionDenied)),
+        None
+    );
+}
+
+// `EBADF` means the fd itself is invalid, never that the terminal hung up —
+// must not be mistaken for a hangup even though it's a raw Unix errno too.
+#[cfg(unix)]
+#[test]
+fn hangup_exit_code_rejects_ebadf() {
+    let err = io::Error::from_raw_os_error(nix::errno::Errno::EBADF as i32);
+    assert_eq!(super::hangup_exit_code(&err), None);
+}
+
 // ── has_kitty_response ────────────────────────────────────────────────────
 
 #[test]

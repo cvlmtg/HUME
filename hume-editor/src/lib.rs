@@ -116,8 +116,8 @@ pub fn run(
     // polled at the top of `Editor::run`'s loop and re-read below after it
     // returns; shared with `editor.attach_terminate_flag` so both sides
     // observe the same atomic. `0` means "no termination requested" — never
-    // a valid signal-termination exit code. A pty hangup does not go through
-    // this — see `hume_platform::spawn_terminator`'s doc comment.
+    // a valid signal-termination exit code. A bare pty hangup with no signal
+    // does not go through this — see `hume_platform::hangup_exit_code`'s doc.
     let terminate = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
     let request_quit = {
         let (terminate, wake) = (terminate.clone(), wake.clone());
@@ -128,12 +128,14 @@ pub fn run(
             wake();
         }
     };
-    if let Err(e) = hume_platform::spawn_terminator(shared.clone(), request_quit) {
-        // Non-fatal: Ctrl+C/SIGTERM/SIGHUP/pty-hangup will leak terminal
-        // state or spin the event loop instead of exiting, but the editor
-        // still works correctly for normal exit.
-        eprintln!("hume: failed to start terminator: {e}");
-    }
+    hume_platform::spawn_terminator(shared.clone(), request_quit)
+        .inspect_err(|e| {
+            // Non-fatal: Ctrl+C/SIGTERM/SIGHUP will leak terminal
+            // state or spin the event loop instead of exiting, but the editor
+            // still works correctly for normal exit.
+            eprintln!("hume: failed to start terminator: {e}");
+        })
+        .ok();
 
     let (first, rest) = files
         .split_first()
@@ -193,11 +195,11 @@ pub fn run(
     // second copy of that sequence into this one's. Calling it first, while
     // there's the most of `QUIT_GRACE` left, also minimizes how often this
     // thread is the one that loses that race and parks here instead of
-    // returning: if it does, the terminator thread's `force_exit` already
-    // reaped every tracked child (including attached LSP servers) via
-    // `kill_tracked_children` before ever attempting its own claim, so the
-    // graceful shutdown below would have found nothing left to shut down
-    // gracefully regardless.
+    // returning: if it does, the terminator thread's `force_exit` has
+    // already won the claim ahead of it (the only way this thread's own
+    // claim attempt loses) and goes on to `kill_tracked_children` —
+    // including every attached LSP server — right after, so the graceful
+    // shutdown below would never run regardless.
     let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
     let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
     if let Err(e) = hume_platform::restore_for_exit(&shared) {
@@ -225,9 +227,30 @@ pub fn run(
         std::process::exit(code);
     }
 
-    // Not a signal exit — an `EIO` here is a real, reportable failure.
+    // Not a signal exit. A bare hangup — the controlling terminal went away
+    // with no signal delivered at all — surfaces here instead: `editor.run`'s
+    // reader returns `UnexpectedEof`/`EIO` once the pty master closes rather
+    // than spinning (see `hume_platform::hangup_exit_code`'s doc for exactly
+    // which errors this recognizes). Every teardown write above fails the
+    // same way against a dead pty, so `restore_err` — checked first, same as
+    // the signal branch above — needs the same recognition as `result`, or a
+    // hangup here would be misreported as a real teardown failure instead of
+    // exiting with the conventional code.
+    if let Some(code) = restore_err
+        .as_ref()
+        .and_then(hume_platform::hangup_exit_code)
+    {
+        std::process::exit(code);
+    }
     if let Some(e) = restore_err {
         return Err(e.into());
+    }
+    if let Some(code) = result
+        .as_ref()
+        .err()
+        .and_then(hume_platform::hangup_exit_code)
+    {
+        std::process::exit(code);
     }
     Ok(result?)
 }

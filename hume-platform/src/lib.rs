@@ -98,52 +98,97 @@ pub fn restore_for_exit(term: &terminal::SharedTerm) -> std::io::Result<()> {
     terminal::restore(term)
 }
 
-/// Kills every still-registered [`process::tracked::TrackedChild`], restores
-/// the terminal, and exits with `code`. Shared by every force-exit path —
-/// [`unix::spawn_terminator`]'s signal and hangup arms, and the Windows arm
-/// below — so there is one reap-restore-exit sequence rather than each
-/// platform repeating it.
+/// Restores the terminal, then kills every still-registered
+/// [`process::tracked::TrackedChild`], then exits with `code`. Shared by
+/// every force-exit path — [`unix::spawn_terminator`]'s signal and hangup
+/// arms, and the Windows arm below — so there is one reap-restore-exit
+/// sequence rather than each platform repeating it.
+///
+/// The reap runs *after* [`restore_for_exit`]'s claim, not before: a caller
+/// that loses that race parks forever without ever reaching `process::exit`,
+/// so killing children ahead of the claim would perform the destructive half
+/// of this function for a call that goes on to do nothing else — reaping
+/// every LSP server out from under whichever thread *did* win the claim and
+/// is mid graceful shutdown, for no exit that ever happens.
 ///
 /// `process::exit` runs no destructors, so this is the only place LSP
 /// servers and other long-lived children (normally reaped by their own
 /// `Drop`) get killed on this path — see `process::tracked`'s module doc.
 #[cfg_attr(not(any(unix, windows)), allow(dead_code))]
 fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
-    process::tracked::kill_tracked_children();
     let _ = restore_for_exit(term);
+    process::tracked::kill_tracked_children();
     std::process::exit(code);
 }
 
+/// Exit code for a bare terminal hangup with no signal delivered at all —
+/// conventionally the same value as `SIGINT`'s (`128 + 2`, see
+/// `unix::CONVENTIONAL_EXIT_CODE`), but a hangup is not a signal and has no
+/// `signo` of its own to derive one from. Kept as its own constant rather
+/// than reused across modules, following this file's existing convention
+/// (see [`WINDOWS_SIGNAL_EXIT_CODE`]) that an incidentally-equal exit code
+/// with a different rationale is not the same constant.
+const HANGUP_EXIT_CODE: i32 = 130;
+
+/// `Some(`[`HANGUP_EXIT_CODE`]`)` when `err` means the controlling terminal
+/// itself went away rather than a genuine, reportable failure — `None` for
+/// every other error, which the caller should propagate and print as-is.
+///
+/// Two signals of the same event, one per platform's read primitive:
+/// - `UnexpectedEof` — termina's own error (≥0.4.0) for a zero-byte read on
+///   a blocking tty fd `poll` reported ready
+///   (`UnixEventSource::try_read`, upstream commit `309350ba54`): what a pty
+///   slave read produces on macOS/BSD once the master closes.
+/// - Raw `EIO`/`ENXIO` on Unix — what a Linux pty slave surfaces directly.
+///   `EIO` is the documented case; `ENXIO` covers losing the device out from
+///   under the fd on platforms that don't surface `EIO` the same way. Any
+///   other raw errno (`EBADF`, `ENOTTY`, ...) means something is wrong with
+///   the fd itself, not that the terminal hung up, and falls through to
+///   `None`.
+pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
+    if err.kind() == std::io::ErrorKind::UnexpectedEof {
+        return Some(HANGUP_EXIT_CODE);
+    }
+    #[cfg(unix)]
+    {
+        use nix::errno::Errno;
+        if matches!(
+            err.raw_os_error().map(Errno::from_raw),
+            Some(Errno::EIO) | Some(Errno::ENXIO)
+        ) {
+            return Some(HANGUP_EXIT_CODE);
+        }
+    }
+    None
+}
+
 /// Spawn a background watcher that terminates the process on: Ctrl+C, `kill
-/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, Ctrl+Break and
-/// console-close on Windows, and — Unix only — the controlling terminal
-/// hanging up with no signal delivered at all. Not a plain signal handler:
-/// hume is rarely the session leader of its tty, so a pty teardown (e.g. a
-/// recording tool closing after capture) doesn't reliably deliver SIGHUP,
-/// and without an independent watch the event reader's idle wait spins at
-/// 100% CPU forever instead of returning (the read primitive maps EOF to
-/// "no event", not an error). See `unix::spawn_terminator` for how Unix
-/// multiplexes both wake sources on one thread.
+/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl+Break and
+/// console-close on Windows. See `unix::spawn_terminator` for the Unix
+/// implementation.
 ///
 /// `request_quit` is called with the exit code the process should use —
 /// `128 + signo` on Unix, 130 on Windows (`ctrlc` doesn't expose which
 /// control event fired) — and routes through the editor's normal quit path
 /// (graceful LSP `shutdown`) rather than tearing the terminal down here.
 /// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
-/// its own before force-restoring and exiting with that code anyway. A pty
-/// hangup can't take this route: the main loop's event reader is pinned at
-/// tty EOF and never wakes, so this thread force-exits with 130 immediately.
+/// its own before force-restoring and exiting with that code anyway, or with
+/// a second trigger's code if one arrives inside the window (Unix only —
+/// `ctrlc` gives no shared wait primitive to interrupt, so this window is
+/// not interruptible on Windows). A bare terminal hangup with no signal at
+/// all does not go through this function at all — see
+/// [`hangup_exit_code`]'s doc.
 ///
 /// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
-/// cleared), so on Unix this primarily covers `kill <pid>` and pty teardown
-/// — SIGINT stays registered for the rare case something re-enables ISIG.
+/// cleared), so on Unix this primarily covers `kill <pid>` — SIGINT stays
+/// registered for the rare case something re-enables ISIG.
 pub fn spawn_terminator(
     term: terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
 ) -> std::io::Result<()> {
     #[cfg(unix)]
     {
-        unix::spawn_terminator(term, request_quit)
+        unix::spawn_terminator(term, request_quit)?;
     }
     #[cfg(windows)]
     {
@@ -153,7 +198,7 @@ pub fn spawn_terminator(
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
-            // Unlike Unix's `wait_for_second_signal`, this sleep isn't
+            // Unlike Unix's `grace_window_exit_code`, this sleep isn't
             // interruptible by a second control event: `ctrlc` gives no
             // shared wait primitive to interrupt, and every event already
             // maps to the same `WINDOWS_SIGNAL_EXIT_CODE`, so there's no
@@ -165,13 +210,13 @@ pub fn spawn_terminator(
             // process itself — force it down.
             force_exit(&term, WINDOWS_SIGNAL_EXIT_CODE);
         })
-        .map_err(std::io::Error::other)
+        .map_err(std::io::Error::other)?;
     }
     #[cfg(not(any(unix, windows)))]
     {
         let _ = (term, request_quit);
-        Ok(())
     }
+    Ok(())
 }
 
 /// Probe the terminal for kitty keyboard protocol support.

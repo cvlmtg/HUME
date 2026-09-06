@@ -45,39 +45,39 @@ impl super::ProbeChannel for TtyChannel {
     fn wait_until(&mut self, deadline: Instant) -> io::Result<bool> {
         // `select(2)`, not `poll(2)`: macOS's `poll` does not report readiness
         // on `/dev/tty` — the same reason termina's own event source
-        // (`event/source/unix.rs`) and this module's `wait_readable_pair`
-        // both use `select` for terminal fds. EINTR retry and the
-        // deadline-vs-remaining-budget recompute live in `wait_readable_pair`.
+        // (`event/source/unix.rs`) and this module's `wait_readable` both use
+        // `select` for terminal fds. EINTR retry and the
+        // deadline-vs-remaining-budget recompute live in `wait_readable`.
         let remaining = deadline.saturating_duration_since(Instant::now());
         wait_readable(self.file.as_fd(), Some(remaining))
     }
 }
 
-// ── Terminator: signals + terminal hangup ─────────────────────────────────
+// ── Terminator: process-termination signals ───────────────────────────────
 //
-// Two independent reasons the process should tear down the terminal and
-// exit, unified onto one thread:
+// SIGINT/SIGTERM/SIGHUP/SIGQUIT, delivered via a `signal_hook` self-pipe —
+// the same technique `termina` uses internally for SIGWINCH
+// (`event/source/unix.rs`): the signal handler just writes one byte to a
+// pipe, and this thread's `select` treats that pipe like any other fd.
+// `request_quit` asks the main loop to quit gracefully (its event reader is
+// alive and will see the wake); this thread then waits up to `QUIT_GRACE`
+// for it to exit on its own before force-exiting with that code anyway, or
+// with a second signal's code if one arrives inside the window.
 //
-// - SIGINT/SIGTERM/SIGHUP/SIGQUIT, delivered via a `signal_hook` self-pipe
-//   — the same technique `termina` uses internally for SIGWINCH
-//   (`event/source/unix.rs`): the signal handler just writes one byte to a
-//   pipe, and this thread's `select` treats that pipe like any other fd.
-// - A pty teardown (e.g. `vhs` closing the master after a recording) isn't
-//   guaranteed to deliver SIGHUP — hume is rarely the session leader of its
-//   tty. Undetected, the tty read fd sits at permanent EOF, which termina
-//   maps to `Ok(None)` rather than an error, so `EventReader::poll`'s idle
-//   wait spins forever without returning to the run loop. This thread
-//   watches `/dev/tty` directly on its own fd (when one is available) to
-//   catch that case from outside the stuck loop.
-//
-// Whichever fires first wins; the two paths diverge after that — a signal
-// can still ask the main loop to quit gracefully (its reader is alive),
-// while a hangup force-exits immediately (the reader is pinned at tty EOF
-// and will never wake). See `Trigger`. Once a signal fires, the thread stops
-// watching the tty for the rest of the grace window: a hangup landing in
-// that window goes unobserved and the main loop just spins until the grace
-// deadline force-exits it. Bounded and rare enough to leave as-is rather
-// than plumb through as a third state.
+// This module used to also watch `/dev/tty` directly, on its own fd
+// independent of the main loop's reader, because a pty teardown (e.g. `vhs`
+// closing the master after a recording) isn't guaranteed to deliver SIGHUP
+// — hume is rarely the session leader of its tty — and termina 0.3.3's
+// `UnixEventSource::try_read` mapped the resulting tty EOF to `Ok(None)`
+// rather than an error, so the main loop's event wait spun forever without
+// ever returning. termina ≥0.4.0 fixes this at the source (`try_read` now
+// returns `Err(io::ErrorKind::UnexpectedEof)` on that same zero-byte read;
+// upstream commit `309350ba54`), so the main loop's own reader now surfaces
+// a hangup as an ordinary error and returns on its own — see
+// `hume_platform::hangup_exit_code` for how the exit code that used to come
+// from this thread's tty watch is now derived from that error instead. Do
+// not re-add a tty watch here; the failure mode it existed for no longer
+// exists upstream.
 //
 // Setup order enforces one invariant: a replaced signal disposition must
 // exist only while something can act on it. `signal_hook` has no way to
@@ -88,50 +88,17 @@ impl super::ProbeChannel for TtyChannel {
 // cover it instead: the draining thread spawns *before* any disposition is
 // replaced, so a spawn failure leaves kernel defaults untouched; and a
 // `register_conditional_shutdown` fallback, armed the instant the thread
-// stops draining (return or panic), covers the thread-dies-later case. The
-// tty watch itself is best-effort throughout — every failure on it degrades
-// to "no hangup watch" rather than touching signal handling, since a
-// process with no controlling terminal has nothing to lose there but must
-// still be killable.
+// stops draining (return or panic), covers the thread-dies-later case.
 
 /// Signals that ask the process to terminate. SIGQUIT is included so `kill
 /// -QUIT` restores the terminal (raw mode, alt screen) before exiting,
 /// trading away the default core dump — nothing here relies on one.
 const SIGNALS: [i32; 4] = [SIGINT, SIGTERM, SIGHUP, SIGQUIT];
 
-/// How long to sleep after observing real pending input on the tty before
-/// re-checking hangup status. Long enough that we don't spin while a
-/// keystroke sits in the shared tty queue waiting for the main loop to read
-/// it; short enough that a hangup right after a keystroke is still caught
-/// quickly.
-const INPUT_THROTTLE: Duration = Duration::from_millis(100);
-
-/// Consecutive zero-timeout confirmations required before a
-/// readable-with-zero-bytes tty fd is treated as a genuine hangup rather
-/// than a transient drain race with termina's own reader on the same tty
-/// queue.
-const CONFIRMATIONS: u32 = 3;
-
-/// Delay between confirmation checks.
-const CONFIRMATION_DELAY: Duration = Duration::from_millis(20);
-
-/// Which of the terminator's two wake sources fired.
-#[derive(Debug, PartialEq, Eq)]
-enum Trigger {
-    /// One of [`SIGNALS`] arrived. The main loop can still be asked to quit
-    /// gracefully — its event reader is alive and will see the wake.
-    Signal,
-    /// The controlling terminal hung up. The main loop's event reader is
-    /// pinned at tty EOF and will never observe a wake, so there is no
-    /// graceful route: the caller must force-exit directly.
-    Hangup,
-}
-
 /// This crate's exit code before any of the exit-fidelity tracking here
 /// existed — a fixed 130 (`SIGINT`'s own `128 + signo`), used today as the
 /// fallback when there's no real signal number to derive one from: the
-/// zero/unknown-signal case in [`exit_code_for_signal`], and the pty-hangup
-/// case (a hangup is not a signal at all, so it has no `signo` to map).
+/// zero/unknown-signal case in [`exit_code_for_signal`].
 const CONVENTIONAL_EXIT_CODE: i32 = 130;
 
 /// Maps a signal number to the conventional "killed by signal" exit code
@@ -162,42 +129,27 @@ impl Drop for OrphanGuard {
     }
 }
 
-/// Spawn a detached thread that terminates the process on one of [`SIGNALS`],
-/// or on the controlling terminal hanging up with no signal delivered at all.
-///
-/// Opens its own `/dev/tty` fd — independent of the
-/// [`SharedTerm`](crate::terminal::SharedTerm) event reader used by the main
-/// loop — so hangup detection never consumes a byte of real input (same
-/// independence as [`probe_kitty_support`]'s side channel). The open is
-/// best-effort: a process with no controlling terminal (a `setsid` wrapper,
-/// some CI/pty harnesses, containers) gets signal handling with no hangup
-/// watch rather than losing both.
+/// Spawn a detached thread that terminates the process on one of [`SIGNALS`].
 ///
 /// `request_quit` is called with the exit code the process should use —
-/// `128 + signo` for whichever of [`SIGNALS`] fired. The thread then waits up
-/// to [`crate::QUIT_GRACE`] for the main loop to exit the process on its own
-/// (graceful LSP shutdown) before force-exiting with the same code — or with
-/// a second signal's code, if one arrives inside the window. A hangup
-/// force-exits with `130` immediately — see [`Trigger::Hangup`]. If the
-/// thread itself is lost (spawn failure, or a later permanent I/O error), a
+/// `128 + signo` — and routes through the editor's normal quit path
+/// (graceful LSP `shutdown`) rather than tearing the terminal down here.
+/// This thread then waits up to `QUIT_GRACE` for the main loop to exit on
+/// its own before force-restoring and exiting with that code anyway, or with
+/// a second signal's code if one arrives inside the window. If the thread
+/// itself is lost (spawn failure, or a later permanent I/O error), a
 /// `register_conditional_shutdown` fallback still terminates the process on
 /// the next signal, without a graceful LSP shutdown or terminal restore —
-/// see the module-level comment above for why this is the best available
-/// fallback under `signal_hook`'s no-`unsafe` API.
+/// see the module-level comment for why this is the best available fallback
+/// under `signal_hook`'s no-`unsafe` API.
+///
+/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
+/// cleared), so this primarily covers `kill <pid>` — SIGINT stays registered
+/// for the rare case something re-enables ISIG.
 pub(super) fn spawn_terminator(
     term: crate::terminal::SharedTerm,
     request_quit: impl Fn(i32) + Send + 'static,
 ) -> io::Result<()> {
-    // A process with no controlling terminal cannot receive a pty hangup, so
-    // there is nothing here to lose — but it can still be signalled, and
-    // that must keep working regardless. Never let this failure cost us
-    // signal handling (see the module-level comment above).
-    let tty = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open("/dev/tty")
-        .ok();
-
     // Self-pipe: the actual signal handlers (installed by `register`,
     // async-signal-safe) only write a byte here; all the real work — acting
     // on it, or not, exactly once — happens on the thread below, under no
@@ -241,30 +193,25 @@ pub(super) fn spawn_terminator(
                 let _ = mask.thread_unblock();
 
                 let _guard = OrphanGuard(orphaned);
-                match run_terminator_blocking(
-                    tty.as_ref().map(std::fs::File::as_fd),
-                    sig_read.as_fd(),
-                    INPUT_THROTTLE,
-                ) {
-                    Ok(Trigger::Signal) => {
+                match run_terminator_blocking(sig_read.as_fd()) {
+                    Ok(Watched::Signal) => {
                         let code = exit_code_for_signal(signal_flag.load(Ordering::Acquire));
                         request_quit(code);
-                        // A second signal during the grace window cuts the wait
-                        // short instead of forcing the user to wait it out, and its
-                        // own code (if different) wins.
-                        let code = wait_for_second_signal(
+                        let code = grace_window_exit_code(
                             sig_read.as_fd(),
                             &signal_flag,
+                            code,
                             crate::QUIT_GRACE,
-                        )
-                        .unwrap_or(code);
+                        );
                         crate::force_exit(&term, code);
                     }
-                    Ok(Trigger::Hangup) => crate::force_exit(&term, CONVENTIONAL_EXIT_CODE),
-                    // A permanent I/O failure means termination coverage is
-                    // lost; exit this thread quietly and let `OrphanGuard`'s
+                    // An unbounded watch has no deadline to end on, so `Ended`
+                    // is unreachable here — see `run_terminator_blocking`'s
+                    // own doc. Folded into the same arm as a real I/O
+                    // failure: either way, termination coverage is lost;
+                    // exit this thread quietly and let `OrphanGuard`'s
                     // fallback cover future signals instead.
-                    Err(_) => {}
+                    Ok(Watched::Ended) | Err(_) => {}
                 }
             }
         })?;
@@ -303,77 +250,17 @@ pub(super) fn spawn_terminator(
     Ok(())
 }
 
-/// Blocks until either a registered signal fires or the terminal at
-/// `tty_fd` hangs up, then returns which one. `tty_fd` is `None` when no
-/// controlling terminal was available to watch (see [`spawn_terminator`]) —
-/// signals alone are served in that case. Returns `Err` only when the signal
-/// pipe itself is permanently gone (every write end closed) or the initial
-/// wait on it fails; a broken `tty_fd` degrades to `None` instead of
-/// failing, since losing the hangup watch must never cost signal service.
-/// Never touches the process — kept separate from [`spawn_terminator`] so it
-/// can be driven directly in tests. `input_throttle` is [`INPUT_THROTTLE`] in
-/// production; tests that assert on how fast a signal interrupts it inject a
-/// much larger value instead, so their pass/fail margin isn't pinned to the
-/// same constant the timing assertion is checking.
-fn run_terminator_blocking(
-    mut tty_fd: Option<BorrowedFd<'_>>,
-    sig_fd: BorrowedFd<'_>,
-    input_throttle: Duration,
-) -> io::Result<Trigger> {
-    loop {
-        let (tty_ready, sig_ready) = match tty_fd {
-            Some(tty) => match wait_readable_pair(tty, sig_fd, None) {
-                Ok(pair) => pair,
-                // `select` reports one errno for the whole set and can't say
-                // which fd caused it. The tty is the fd that can genuinely
-                // go away underneath us; drop it and keep serving signals —
-                // a repeat failure on the signal-only wait below is a real
-                // permanent failure.
-                Err(_) => {
-                    tty_fd = None;
-                    continue;
-                }
-            },
-            None => (false, wait_readable(sig_fd, None)?),
-        };
-        if sig_ready {
-            // `select` reporting readable doesn't guarantee bytes are still
-            // there to read by the time we get to it (a concurrent read, or
-            // a spurious wakeup, could have emptied it first) — only an
-            // actual drained byte counts as a real signal; otherwise loop
-            // back and keep waiting, the same "don't trust readable alone"
-            // posture `hangup_status` takes on the tty fd below.
-            match drain_signal_pipe(sig_fd) {
-                Drained::Signal => return Ok(Trigger::Signal),
-                Drained::Empty => continue,
-                // Every write end is gone — no handler can ever wake this
-                // thread again. A permanent failure, not a spin: the caller
-                // exits and `OrphanGuard`'s fallback takes over.
-                Drained::Closed => return Err(io::Error::from(io::ErrorKind::BrokenPipe)),
-            }
-        }
-        if let Some(tty) = tty_fd
-            && tty_ready
-        {
-            match hangup_status(tty) {
-                // A plain sleep here would blind the signal fd for the
-                // whole throttle window — while the user types continuously
-                // that's a chain of blind windows, delaying every signal.
-                // Wait on `sig_fd` instead: a signal arriving mid-throttle
-                // wakes us immediately and loops back to the `sig_ready`
-                // drain above; the throttle still elapses before we look at
-                // the tty again either way.
-                Ok(Status::Input) => {
-                    let _ = wait_readable(sig_fd, Some(input_throttle));
-                }
-                Ok(Status::Live) => {}
-                Ok(Status::Hangup) => return Ok(Trigger::Hangup),
-                // A broken watcher fd is not a hangup — drop it and keep
-                // serving signals.
-                Err(_) => tty_fd = None,
-            }
-        }
-    }
+/// Blocks until one of [`SIGNALS`] fires, then returns [`Watched::Signal`]
+/// — never [`Watched::Ended`], since an unbounded wait has no deadline to
+/// end on (see [`watch`]'s own doc for why that variant needs a deadline to
+/// be reachable at all). Returns `Err` only when the signal pipe itself is
+/// permanently gone (every write end closed) or the initial wait on it
+/// fails. Never touches the process — kept separate from
+/// [`spawn_terminator`] so it can be driven directly in tests. A thin
+/// wrapper over [`watch`] — see there for the shared logic with
+/// [`grace_window_exit_code`]'s bounded wait.
+fn run_terminator_blocking(sig_fd: BorrowedFd<'_>) -> io::Result<Watched> {
+    watch(sig_fd, None)
 }
 
 /// Outcome of draining the signal pipe.
@@ -411,165 +298,121 @@ fn drain_signal_pipe(fd: BorrowedFd<'_>) -> Drained {
     }
 }
 
-/// Waits out the remainder of `grace` for a second signal to arrive on
-/// `sig_fd`, returning the exit code mapped from whichever signal `flag`
-/// then holds, or `None` if the window elapses first with nothing new.
-fn wait_for_second_signal(
-    sig_fd: BorrowedFd<'_>,
-    flag: &AtomicUsize,
-    grace: Duration,
-) -> Option<i32> {
-    let deadline = Instant::now() + grace;
+/// What ended a [`watch`] call.
+#[derive(Debug, PartialEq, Eq)]
+enum Watched {
+    /// One of [`SIGNALS`] arrived on `sig_fd`.
+    Signal,
+    /// `deadline` elapsed with nothing new. Only ever returned when a
+    /// deadline was given — with `deadline: None` a permanently closed
+    /// signal pipe (nothing else left to watch for) is an `Err` instead, per
+    /// [`run_terminator_blocking`]'s contract.
+    Ended,
+}
+
+/// Blocks on the registered-signal pipe `sig_fd` until a signal fires or
+/// `deadline` elapses. [`run_terminator_blocking`] and
+/// [`grace_window_exit_code`] are both thin wrappers over this: the former
+/// is the very first, unbounded wait before any trigger has fired; the
+/// latter is the bounded wait afterward, racing a second signal against the
+/// grace window running out.
+///
+/// `deadline: None` blocks indefinitely. A permanently closed `sig_fd` is a
+/// hard failure only when `deadline` is `None`
+/// (`run_terminator_blocking`'s contract, matched by its own
+/// `terminator_exits_instead_of_spinning_when_the_pipe_closes` test); with a
+/// deadline, the caller has already committed to acting once it elapses
+/// regardless, so this sleeps out the rest of the window instead of
+/// returning early on that same closure.
+fn watch(sig_fd: BorrowedFd<'_>, deadline: Option<Instant>) -> io::Result<Watched> {
     loop {
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            return None;
-        }
-        match wait_readable(sig_fd, Some(remaining)) {
-            Ok(true) => match drain_signal_pipe(sig_fd) {
-                Drained::Signal => {
-                    return Some(exit_code_for_signal(flag.load(Ordering::Acquire)));
+        let remaining = match deadline {
+            Some(dl) => {
+                let remaining = dl.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Ok(Watched::Ended);
                 }
-                // A readable report with nothing actually drained is a
-                // spurious wakeup, same reasoning as
-                // `run_terminator_blocking`'s sig_ready branch — loop back
-                // and recompute the remaining budget.
-                Drained::Empty => continue,
-                // A closed pipe reads ready forever; sleep out the rest of
-                // the window instead of busy-selecting against it.
-                Drained::Closed => {
-                    std::thread::sleep(remaining);
-                    return None;
+                Some(remaining)
+            }
+            None => None,
+        };
+
+        let sig_ready = match wait_readable(sig_fd, remaining) {
+            Ok(ready) => ready,
+            Err(e) => match remaining {
+                // A deadline means the caller has already committed to
+                // acting once it elapses regardless — sleep out the rest
+                // rather than collapsing the window to zero on a fault
+                // that isn't proof there's nothing left to wait for.
+                Some(r) => {
+                    std::thread::sleep(r);
+                    return Ok(Watched::Ended);
                 }
+                None => return Err(e),
             },
-            Ok(false) => continue,
-            Err(_) => return None,
+        };
+
+        if sig_ready {
+            // `select` reporting readable doesn't guarantee bytes are still
+            // there to read by the time we get to it (a concurrent read, or
+            // a spurious wakeup, could have emptied it first) — only an
+            // actual drained byte counts as a real signal; otherwise loop
+            // back and keep waiting.
+            match drain_signal_pipe(sig_fd) {
+                Drained::Signal => return Ok(Watched::Signal),
+                Drained::Empty => continue,
+                Drained::Closed => {
+                    if deadline.is_none() {
+                        // No wake source left with no deadline to wait out
+                        // either — a real permanent failure, not a spin: the
+                        // caller exits and `OrphanGuard`'s fallback takes
+                        // over.
+                        return Err(io::Error::from(io::ErrorKind::BrokenPipe));
+                    }
+                    if let Some(remaining) = remaining {
+                        std::thread::sleep(remaining);
+                    }
+                    return Ok(Watched::Ended);
+                }
+            }
         }
     }
 }
 
-/// What a readable `fd` turned out to mean.
-#[derive(Debug, PartialEq, Eq)]
-enum Status {
-    /// Real bytes are waiting — not a hangup.
-    Input,
-    /// Momentarily readable-with-zero-bytes because termina's own reader
-    /// drained the shared tty queue between our `select` and our
-    /// `FIONREAD` — not a hangup.
-    Live,
-    /// Confirmed: the terminal hung up.
-    Hangup,
-}
-
-/// Whether `err` genuinely means the controlling terminal itself is gone, as
-/// opposed to a fault in this watcher's own descriptor. `EIO` is the
-/// documented signal a Linux pty slave surfaces after its master closes;
-/// `ENXIO` covers losing the device out from under the fd on platforms that
-/// don't surface `EIO` the same way. `EBADF` is deliberately excluded: it
-/// means *this* fd is invalid — a double-close or fd-stealing bug in this
-/// process, never evidence the terminal hung up — so it takes the `Err` path
-/// below and drops the tty watch instead of force-exiting on a fault that
-/// isn't the terminal's. Anything else (`ENOTTY`, `EAGAIN`, ...) is the same:
-/// something is wrong with this fd, not that the terminal hung up.
-fn is_tty_gone(err: rustix::io::Errno) -> bool {
-    use rustix::io::Errno as TtyErrno;
-    matches!(err, TtyErrno::IO | TtyErrno::NXIO)
-}
-
-/// Outcome of one `FIONREAD` probe on `fd`: empty (nothing queued), has data
-/// waiting, or a confirmed hangup per [`is_tty_gone`]. Shared by
-/// [`hangup_status`] and [`confirm_hangup`] — the one place that classifies
-/// a `retry_on_intr`/`ioctl_fionread` result, so the two callers can never
-/// disagree on what a given errno means.
-fn fionread_outcome(fd: BorrowedFd<'_>) -> io::Result<FionreadOutcome> {
-    match rustix::io::retry_on_intr(|| rustix::io::ioctl_fionread(fd)) {
-        Ok(0) => Ok(FionreadOutcome::Empty),
-        Ok(_) => Ok(FionreadOutcome::HasData),
-        Err(e) if is_tty_gone(e) => Ok(FionreadOutcome::Gone),
-        Err(e) => Err(e.into()),
+/// Waits out the remainder of `grace` after a terminate trigger fired,
+/// racing a second signal against the grace window running out, then maps
+/// the outcome to the exit code [`force_exit`](crate::force_exit) should
+/// use: the second signal's own mapped code if one arrives first, or
+/// `fallback_code` for a plain timeout. `grace` is [`crate::QUIT_GRACE`] in
+/// production; a parameter (rather than reading the constant directly) so
+/// tests can bound their own runtime instead of waiting out the real
+/// multi-second window.
+fn grace_window_exit_code(
+    sig_fd: BorrowedFd<'_>,
+    signal_flag: &AtomicUsize,
+    fallback_code: i32,
+    grace: Duration,
+) -> i32 {
+    // `watch` never errors with a deadline given — see its own doc.
+    let outcome = watch(sig_fd, Some(Instant::now() + grace))
+        .expect("watch never errors when deadline is Some");
+    match outcome {
+        Watched::Signal => exit_code_for_signal(signal_flag.load(Ordering::Acquire)),
+        Watched::Ended => fallback_code,
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum FionreadOutcome {
-    Empty,
-    HasData,
-    Gone,
-}
-
-/// Classifies a readable `fd`.
-///
-/// `EINTR` — plausible here, since four signal handlers plus termina's own
-/// `SIGWINCH` handler are live in this process — is retried rather than
-/// misread as a hangup (inside [`fionread_outcome`]'s `retry_on_intr`). Only
-/// a confirmed [`FionreadOutcome::Gone`] is treated as a hangup; anything
-/// else propagates as `Err` so the caller (this watcher's own wait loop)
-/// drops the tty from its wait set and keeps serving signals, instead of
-/// force-exiting on a transient fault that was never proof the terminal went
-/// away.
-fn hangup_status(fd: BorrowedFd<'_>) -> io::Result<Status> {
-    match fionread_outcome(fd)? {
-        FionreadOutcome::Empty => Ok(if confirm_hangup(fd)? {
-            Status::Hangup
-        } else {
-            Status::Live
-        }),
-        FionreadOutcome::HasData => Ok(Status::Input),
-        FionreadOutcome::Gone => Ok(Status::Hangup),
-    }
-}
-
-/// Distinguishes a genuine hangup from a momentary drain race.
-///
-/// The watcher's fd and termina's input fd share one kernel tty queue, so a
-/// single readable-with-zero-bytes observation is ambiguous: it's what a
-/// hangup looks like, but it's also what a live fd looks like for the
-/// instant between termina consuming a byte and our `FIONREAD` call. Only a
-/// hangup stays that way; re-check a few times with a zero timeout and treat
-/// any check that finds the fd not-readable, or newly non-empty, as proof it
-/// was a drain.
-fn confirm_hangup(fd: BorrowedFd<'_>) -> io::Result<bool> {
-    for _ in 0..CONFIRMATIONS {
-        std::thread::sleep(CONFIRMATION_DELAY);
-        if !wait_readable(fd, Some(Duration::ZERO))? {
-            return Ok(false);
-        }
-        match fionread_outcome(fd)? {
-            FionreadOutcome::Empty => {}
-            FionreadOutcome::HasData => return Ok(false),
-            FionreadOutcome::Gone => return Ok(true),
-        }
-    }
-    Ok(true)
-}
-
-/// `select(2)`-based readiness wait for a single `fd`. A thin wrapper over
-/// [`wait_readable_pair`] (passing `fd` as both members — `BorrowedFd` is
-/// `Copy`, and inserting the same fd twice into an `FdSet` is harmless) so
-/// there's one retry/rebuild loop for both the single- and dual-fd cases.
+/// `select(2)`-based readiness wait for a single `fd`. `select`, not
+/// `poll(2)` — macOS's `poll` does not report readiness on `/dev/tty`, which
+/// is why termina itself (`event/source/unix.rs`) uses `select` for the
+/// terminal's main input fd; this matches that choice for the same fd
+/// family. `timeout: None` blocks indefinitely.
 fn wait_readable(fd: BorrowedFd<'_>, timeout: Option<Duration>) -> io::Result<bool> {
-    wait_readable_pair(fd, fd, timeout).map(|(ready, _)| ready)
-}
-
-/// `select(2)`-based readiness wait for two fds at once — the terminator
-/// thread's core primitive, so a signal is never delayed behind an idle tty
-/// wait. `select`, not `poll(2)` — macOS's `poll` does not report readiness
-/// on `/dev/tty`, which is why termina itself (`event/source/unix.rs`) uses
-/// `select` for the terminal's main input fd, and why [`TtyChannel`] above
-/// goes through [`wait_readable`] instead of calling `poll` directly; this
-/// matches that choice for the same fd family. `timeout:
-/// None` blocks indefinitely. Returns which of `a`/`b` are readable.
-fn wait_readable_pair(
-    a: BorrowedFd<'_>,
-    b: BorrowedFd<'_>,
-    timeout: Option<Duration>,
-) -> io::Result<(bool, bool)> {
     // Deadline computed once, up front, from the caller's relative budget.
     let deadline = timeout.map(|d| Instant::now() + d);
     loop {
         let mut set = FdSet::new();
-        set.insert(a);
-        set.insert(b);
+        set.insert(fd);
         // Recomputed against `deadline` on every pass, including after
         // `EINTR` — reusing the original relative `timeout` on each retry
         // would let a burst of signals (e.g. repeated SIGWINCH) stretch the
@@ -582,7 +425,7 @@ fn wait_readable_pair(
             TimeVal::milliseconds(dl.saturating_duration_since(Instant::now()).as_millis() as i64)
         });
         match select(None, &mut set, None, None, timeout.as_mut()) {
-            Ok(_) => return Ok((set.contains(a), set.contains(b))),
+            Ok(_) => return Ok(set.contains(fd)),
             Err(Errno::EINTR) => continue,
             Err(e) => return Err(io::Error::from(e)),
         }
@@ -597,16 +440,14 @@ mod terminator_tests {
     use super::*;
 
     // `UnixStream::pair()` reproduces the primitives `run_terminator_blocking`
-    // observes without needing a real pty or a real signal: dropping one end
-    // makes the peer select-readable with `FIONREAD == 0` — the same shape a
-    // master-closed tty presents to `select`/`FIONREAD` — and writing a byte
-    // to one end stands in for a `signal_hook` self-pipe write, since we're
-    // only testing this module's own multiplexing logic, not signal-hook's
+    // observes without needing a real signal: writing a byte to one end
+    // stands in for a `signal_hook` self-pipe write, since we're only
+    // testing this module's own signal-pipe logic, not signal-hook's
     // (separately tested, upstream) job of relaying a real signal to a fd.
 
     /// An inert stand-in for the signal self-pipe: never written to, so it
     /// never reports readable. Keeps both ends alive so it can't spuriously
-    /// look hung-up either. The read end is non-blocking, matching
+    /// look closed either. The read end is non-blocking, matching
     /// `spawn_terminator`'s real `sig_read` — `drain_signal_pipe` reads it to
     /// `WouldBlock`, which would hang forever on a blocking fd once emptied.
     fn idle_sig_pipe() -> (UnixStream, UnixStream) {
@@ -618,27 +459,16 @@ mod terminator_tests {
     /// A regression to the drain-less spin `terminator_exits_instead_of_spinning_when_the_pipe_closes`
     /// guards against — a `run_terminator_blocking` call that never returns —
     /// is a real failure mode for this module (observed directly: a sabotage
-    /// run of `detects_signal_with_tty_idle` sat at 100% CPU for three days
-    /// before being mistaken for a live bug). A direct call on the test
-    /// thread would hang `cargo test` forever on that regression instead of
-    /// failing it. This runs the call on its own thread and fails the test if
-    /// it hasn't returned within `bound`, so a spin becomes a fast, visible
-    /// test failure. Takes the fds by value — they must outlive the spawned
-    /// thread — while each test keeps its own peer/writer handle so it can
-    /// still act on the connection after the call starts.
-    fn run_bounded(
-        tty: Option<UnixStream>,
-        sig_read: UnixStream,
-        input_throttle: Duration,
-        bound: Duration,
-    ) -> Trigger {
-        let handle = std::thread::spawn(move || {
-            run_terminator_blocking(
-                tty.as_ref().map(UnixStream::as_fd),
-                sig_read.as_fd(),
-                input_throttle,
-            )
-        });
+    /// run of this module's own signal-detection test sat at 100% CPU for
+    /// three days before being mistaken for a live bug). A direct call on
+    /// the test thread would hang `cargo test` forever on that regression
+    /// instead of failing it. This runs the call on its own thread and fails
+    /// the test if it hasn't returned within `bound`, so a spin becomes a
+    /// fast, visible test failure. Takes `sig_read` by value — it must
+    /// outlive the spawned thread — while each test keeps its own writer
+    /// handle so it can still act on the connection after the call starts.
+    fn run_bounded(sig_read: UnixStream, bound: Duration) -> Watched {
+        let handle = std::thread::spawn(move || run_terminator_blocking(sig_read.as_fd()));
         let deadline = Instant::now() + bound;
         while !handle.is_finished() {
             assert!(
@@ -655,46 +485,17 @@ mod terminator_tests {
     }
 
     /// Hang-detector bound for [`run_bounded`] — generous on purpose since it
-    /// only needs to catch a genuine spin, not assert on latency; the timing
-    /// assertions in this module (e.g. `INPUT_THROTTLE`, `CONFIRMATIONS *
-    /// CONFIRMATION_DELAY`) already cover how fast a success must be.
+    /// only needs to catch a genuine spin, not assert on latency.
     const SPIN_BOUND: Duration = Duration::from_secs(2);
 
     #[test]
-    fn detects_hangup_when_peer_closes() {
-        let (fd, peer) = UnixStream::pair().expect("socketpair");
-        drop(peer);
-        let (sig_read, _sig_write) = idle_sig_pipe();
-        assert_eq!(
-            run_bounded(Some(fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
-            Trigger::Hangup,
-            "hangup must be detected once peer closes"
-        );
-    }
-
-    #[test]
-    fn detects_signal_with_tty_idle() {
-        let (tty_fd, _tty_peer) = UnixStream::pair().expect("socketpair");
+    fn detects_signal() {
         let (sig_read, mut sig_write) = idle_sig_pipe();
         sig_write.write_all(b"x").expect("write");
         assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
-            Trigger::Signal,
-            "signal must be detected while the tty is idle and still open"
-        );
-    }
-
-    /// With no controlling terminal at all (`tty_fd` `None`, matching
-    /// `spawn_terminator`'s `/dev/tty` open failing and degrading instead of
-    /// propagating), a signal must still be served.
-    #[test]
-    fn terminator_serves_signals_without_a_tty() {
-        let (sig_read, mut sig_write) = idle_sig_pipe();
-        sig_write.write_all(b"x").expect("write");
-        assert_eq!(
-            run_bounded(None, sig_read, INPUT_THROTTLE, SPIN_BOUND),
-            Trigger::Signal,
-            "signal must be detected with no tty to watch"
+            run_bounded(sig_read, SPIN_BOUND),
+            Watched::Signal,
+            "signal must be detected"
         );
     }
 
@@ -706,13 +507,10 @@ mod terminator_tests {
     /// the test rather than hanging the suite.
     #[test]
     fn terminator_exits_instead_of_spinning_when_the_pipe_closes() {
-        let (tty_fd, _tty_peer) = UnixStream::pair().expect("socketpair");
         let (sig_read, sig_write) = idle_sig_pipe();
         drop(sig_write);
 
-        let handle = std::thread::spawn(move || {
-            run_terminator_blocking(Some(tty_fd.as_fd()), sig_read.as_fd(), INPUT_THROTTLE)
-        });
+        let handle = std::thread::spawn(move || run_terminator_blocking(sig_read.as_fd()));
         std::thread::sleep(Duration::from_millis(50));
         assert!(
             handle.is_finished(),
@@ -722,199 +520,6 @@ mod terminator_tests {
             handle.join().expect("thread panicked").is_err(),
             "a permanently closed signal pipe is a real failure, not a trigger"
         );
-    }
-
-    /// Validity check: with the peer still open, hangup must not be
-    /// detected. Without this, `detects_hangup_when_peer_closes` above could
-    /// pass even if `run_terminator_blocking` returned `Ok(Trigger::Hangup)`
-    /// unconditionally.
-    #[test]
-    fn does_not_report_hangup_while_peer_is_open() {
-        let (fd, _peer) = UnixStream::pair().expect("socketpair");
-        assert!(
-            !wait_readable(fd.as_fd(), Some(Duration::ZERO)).expect("select"),
-            "an idle, still-open pair must never be readable"
-        );
-        assert!(!confirm_hangup(fd.as_fd()).expect("fionread"));
-    }
-
-    #[test]
-    fn pending_input_is_not_mistaken_for_hangup() {
-        let (fd, mut peer) = UnixStream::pair().expect("socketpair");
-        peer.write_all(b"x").expect("write");
-
-        assert!(wait_readable(fd.as_fd(), Some(Duration::ZERO)).expect("select"));
-        assert_eq!(hangup_status(fd.as_fd()).expect("status"), Status::Input);
-    }
-
-    #[test]
-    fn hangup_status_classifies_input_and_hangup() {
-        // Input: unread byte present, peer still open.
-        let (fd, mut peer) = UnixStream::pair().expect("socketpair");
-        peer.write_all(b"x").expect("write");
-        assert_eq!(hangup_status(fd.as_fd()).expect("status"), Status::Input);
-
-        // Hangup: peer closed, nothing unread.
-        let (fd2, peer2) = UnixStream::pair().expect("socketpair");
-        drop(peer2);
-        assert_eq!(hangup_status(fd2.as_fd()).expect("status"), Status::Hangup);
-    }
-
-    /// `is_tty_gone` is the only place that decides which `FIONREAD` errnos
-    /// mean a real hangup; a real `ENXIO` can't be produced from safe code
-    /// (no dangling `BorrowedFd` without `unsafe`), so this is the direct
-    /// test for that decision. Independent oracle: each assertion is keyed
-    /// to the documented hangup set (`EIO`/`ENXIO`) rather than to whatever
-    /// the implementation currently does, so a version that over- or
-    /// under-classifies fails it either way. `EBADF` asserts `false`
-    /// deliberately: it means this fd is invalid, never that the terminal
-    /// hung up, so it must take the `Err` path instead of force-exiting.
-    #[test]
-    fn is_tty_gone_classifies_the_documented_errnos() {
-        use rustix::io::Errno;
-        assert!(is_tty_gone(Errno::IO));
-        assert!(is_tty_gone(Errno::NXIO));
-        assert!(!is_tty_gone(Errno::BADF));
-        assert!(!is_tty_gone(Errno::INTR));
-        assert!(!is_tty_gone(Errno::AGAIN));
-        assert!(!is_tty_gone(Errno::NOTTY));
-    }
-
-    /// Reproduces the actual race `confirm_hangup` guards against: our fd and
-    /// a second fd over the *same* socket (standing in for termina's own
-    /// reader on the shared tty queue) both wake on the same byte; the
-    /// background thread races to drain it first. If it wins, our `select`
-    /// can still observe readable-with-zero-bytes for an instant — but the
-    /// peer never closes, so `hangup_status` must never call that `Hangup`.
-    ///
-    /// Exercises `hangup_status` directly (not `confirm_hangup` in
-    /// isolation) so it proves the guard is wired into the real decision
-    /// path: a version of `hangup_status` that skipped confirmation (`Ok(0)
-    /// => Ok(Status::Hangup)` unconditionally) fails this test.
-    #[test]
-    fn concurrent_drain_is_never_mistaken_for_hangup() {
-        let (fd, mut peer) = UnixStream::pair().expect("socketpair");
-        let drainer_fd = fd.try_clone().expect("clone");
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop_flag = stop.clone();
-        let drainer = std::thread::spawn(move || {
-            let mut buf = [0u8; 1];
-            while !stop_flag.load(Ordering::Relaxed) {
-                if wait_readable(drainer_fd.as_fd(), Some(Duration::from_millis(2)))
-                    .unwrap_or(false)
-                {
-                    let _ = (&drainer_fd).read(&mut buf);
-                }
-            }
-        });
-
-        for _ in 0..100 {
-            peer.write_all(b"x").expect("write");
-            if wait_readable(fd.as_fd(), Some(Duration::from_millis(5))).unwrap_or(false) {
-                let status = hangup_status(fd.as_fd()).expect("status");
-                assert_ne!(
-                    status,
-                    Status::Hangup,
-                    "peer is still open — a race with the concurrent drainer must never be reported as hangup"
-                );
-            }
-        }
-
-        stop.store(true, Ordering::Relaxed);
-        drop(peer); // unblocks the drainer's final wait_readable via EOF
-        drainer.join().expect("drainer thread panicked");
-    }
-
-    #[test]
-    fn wait_readable_pair_classifies_neither_either_and_both() {
-        let (a, mut a_peer) = UnixStream::pair().expect("socketpair");
-        let (b, mut b_peer) = UnixStream::pair().expect("socketpair");
-
-        assert_eq!(
-            wait_readable_pair(a.as_fd(), b.as_fd(), Some(Duration::ZERO)).expect("select"),
-            (false, false),
-        );
-
-        a_peer.write_all(b"x").expect("write");
-        assert_eq!(
-            wait_readable_pair(a.as_fd(), b.as_fd(), Some(Duration::ZERO)).expect("select"),
-            (true, false),
-        );
-
-        b_peer.write_all(b"y").expect("write");
-        assert_eq!(
-            wait_readable_pair(a.as_fd(), b.as_fd(), Some(Duration::ZERO)).expect("select"),
-            (true, true),
-        );
-    }
-
-    /// The signal path must win immediately, without paying the tty-hangup
-    /// path's `CONFIRMATIONS * CONFIRMATION_DELAY` confirmation cost — a
-    /// version that ran hangup-style confirmation on the signal fd too would
-    /// still pass `detects_signal_with_tty_idle` (just slower), so this
-    /// bounds the time.
-    #[test]
-    fn signal_is_detected_without_hangup_confirmation_delay() {
-        let (tty_fd, _tty_peer) = UnixStream::pair().expect("socketpair");
-        let (sig_read, mut sig_write) = idle_sig_pipe();
-        sig_write.write_all(b"x").expect("write");
-
-        let start = std::time::Instant::now();
-        assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, INPUT_THROTTLE, SPIN_BOUND),
-            Trigger::Signal,
-            "signal detected"
-        );
-        let confirmation_cost = CONFIRMATION_DELAY * CONFIRMATIONS;
-        assert!(
-            start.elapsed() < confirmation_cost,
-            "signal detection took {:?}, as long as paying the hangup path's confirmation delay ({:?}) — it should return immediately",
-            start.elapsed(),
-            confirmation_cost
-        );
-    }
-
-    /// A signal arriving while the tty is continuously readable (real
-    /// typing) must not wait out the throttle — the `Status::Input` arm must
-    /// stay watching `sig_fd`, not blind-sleep. A plain
-    /// `thread::sleep(input_throttle)` there would still pass every other
-    /// test in this module (none keep the tty readable across the wait) but
-    /// fails this one on timing.
-    ///
-    /// Injects a throttle far larger than production's `INPUT_THROTTLE`
-    /// instead of using it directly: a blind-sleep regression then takes
-    /// seconds, not ~100ms, so the elapsed-time assertion below can use a
-    /// wide margin without losing the ability to catch it — a margin pinned
-    /// to `INPUT_THROTTLE` itself left only ~90ms of slack for scheduling
-    /// jitter on a loaded CI runner, which one run ate through.
-    #[test]
-    fn signal_during_continuous_tty_input_is_not_delayed_by_the_throttle() {
-        const TEST_THROTTLE: Duration = Duration::from_secs(1);
-
-        let (tty_fd, mut tty_peer) = UnixStream::pair().expect("socketpair");
-        // Keep the tty permanently readable: write and never drain, so
-        // every `hangup_status` call sees `Status::Input` again.
-        tty_peer.write_all(b"x").expect("write");
-        let (sig_read, mut sig_write) = idle_sig_pipe();
-
-        let writer = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(10));
-            sig_write.write_all(b"x").expect("write");
-        });
-
-        let start = Instant::now();
-        assert_eq!(
-            run_bounded(Some(tty_fd), sig_read, TEST_THROTTLE, SPIN_BOUND),
-            Trigger::Signal,
-            "signal detected despite continuous tty input"
-        );
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed < TEST_THROTTLE / 2,
-            "signal took {elapsed:?}, at least half the injected throttle ({TEST_THROTTLE:?}) — \
-             the throttle wait must be interruptible by a signal, not a blind sleep",
-        );
-        writer.join().expect("writer thread panicked");
     }
 
     #[test]
@@ -988,44 +593,5 @@ mod terminator_tests {
             flag.load(Ordering::SeqCst),
             "must arm when unwound by a panic"
         );
-    }
-
-    #[test]
-    fn wait_for_second_signal_times_out_when_nothing_arrives() {
-        let (sig_read, _sig_write) = idle_sig_pipe();
-        let flag = AtomicUsize::new(0);
-        let grace = Duration::from_millis(30);
-
-        let start = Instant::now();
-        assert_eq!(wait_for_second_signal(sig_read.as_fd(), &flag, grace), None);
-        assert!(
-            start.elapsed() >= grace,
-            "must wait out the full grace window before giving up"
-        );
-    }
-
-    #[test]
-    fn wait_for_second_signal_returns_the_mapped_code_of_whichever_arrives() {
-        let (sig_read, mut sig_write) = idle_sig_pipe();
-        let flag = AtomicUsize::new(0);
-        // Stands in for signal-hook's own action pair for a real second
-        // signal: the flag is set, then the pipe byte written — same order
-        // `spawn_terminator` registers them in.
-        flag.store(SIGTERM as usize, Ordering::Release);
-        let writer = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(10));
-            sig_write.write_all(b"x").expect("write");
-        });
-
-        let start = Instant::now();
-        assert_eq!(
-            wait_for_second_signal(sig_read.as_fd(), &flag, Duration::from_secs(5)),
-            Some(143)
-        );
-        assert!(
-            start.elapsed() < Duration::from_secs(1),
-            "must return as soon as the second signal arrives, not wait out the full grace window"
-        );
-        writer.join().expect("writer thread panicked");
     }
 }

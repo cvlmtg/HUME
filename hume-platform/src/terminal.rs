@@ -581,6 +581,12 @@ pub fn wait_for_keypress(term: &SharedTerm) {
     let reader = term.event_reader();
     loop {
         match reader.read(|_| true) {
+            // A background thread (LSP transport, parse worker) can hold this
+            // reader's `PlatformWaker` while the editor is suspended here for a
+            // subprocess; since termina 0.4.0 its wake surfaces as `Interrupted`
+            // instead of being silently absorbed, so it must not be mistaken for
+            // "return to editor" and must resume the wait instead.
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Ok(Event::Key(k)) if k.kind != KeyEventKind::Release => break,
             Ok(_) => continue,
             Err(_) => break,
