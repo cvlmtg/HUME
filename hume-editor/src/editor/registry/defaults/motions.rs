@@ -139,7 +139,7 @@ impl CommandRegistry {
             "goto-next-paragraph",
             "Select the next paragraph.",
             cmd_goto_next_paragraph,
-            jump
+            jump aligns
         );
         super::motion!(
             self,

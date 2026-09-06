@@ -183,6 +183,68 @@ impl FromStr for SignColumnConfig {
     }
 }
 
+// ── ObjectJumpAlign ──────────────────────────────────────────────────────────
+
+/// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
+///
+/// Exists because those motions land the selection head at the *start* of
+/// the object just found (`hume_ops::motion::object::apply_object_motion`'s
+/// `Selection::new(end, start)`, deliberately, so a following `w` walks into
+/// the object's body) — which for a forward jump is also the object's far
+/// edge from the cursor's approach, so the default per-frame scroll parks it
+/// at `scrolloff` rows from the *bottom*, hiding the very body the head-first
+/// convention was chosen to show. The backward motions (`{`) don't have this
+/// problem: their head also lands at the object's start, but that start is
+/// already the near edge coming from below, so the default scroll already
+/// surfaces the body. Hence only the forward motions read this setting (see
+/// `CmdMeta::aligns_view` in `editor::registry::command`) and only
+/// `Top`/`Center` are new behavior — `Off` is the pre-existing per-frame
+/// scroll everyone already had.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ObjectJumpAlign {
+    /// Pin the head at the viewport's top row — subject to `scrolloff` on
+    /// the next frame, exactly like `z k`.
+    Top,
+    /// Center the head in the viewport, like `z z`.
+    #[default]
+    Center,
+    /// No extra alignment — the pre-existing per-frame `scrolloff` scroll is
+    /// all that runs.
+    Off,
+}
+
+impl ObjectJumpAlign {
+    /// The wire-format strings `FromStr` accepts — the single source `:set
+    /// global object-jump-align=<Tab>` completion mirrors, so the two can
+    /// never drift out of sync.
+    pub const VALUES: &'static [&'static str] = &["top", "center", "off"];
+}
+
+impl FromStr for ObjectJumpAlign {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "top" => Ok(Self::Top),
+            "center" => Ok(Self::Center),
+            "off" => Ok(Self::Off),
+            _ => Err(format!(
+                "invalid object-jump-align '{s}': expected top, center, or off"
+            )),
+        }
+    }
+}
+
+impl fmt::Display for ObjectJumpAlign {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Top => "top",
+            Self::Center => "center",
+            Self::Off => "off",
+        })
+    }
+}
+
 // ── Scope ─────────────────────────────────────────────────────────────────────
 
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
@@ -627,6 +689,11 @@ define_settings! {
         "scrolloff" => scrolloff: usize = 3,
             scope: [Scope::Global],
             parser: usize;
+        // See `ObjectJumpAlign`'s own doc for why only the forward object
+        // motions (`}`, `goto-next-<kind>`) read this.
+        "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
+            scope: [Scope::Global],
+            parser: from_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,
             scope: [Scope::Global],
             parser: usize;

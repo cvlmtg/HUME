@@ -79,6 +79,12 @@
   letter as each kind's text object — lowercase forward, uppercase backward: `g f`/`g F`, `g t`/`g T`,
   `g a`/`g A`, `g c`/`g C`, `g u`/`g U`, `g v`/`g V`. Also run from the command line, e.g.
   `:goto-next-function`.
+- `}` and the forward `goto-next-<kind>` commands now recentre the view on the object they just
+  selected — previously the object landed at the very bottom of the screen (its own start, the
+  cursor's landing spot, is also its far edge coming from above), often leaving the object's body
+  scrolled out of view entirely. New setting `object-jump-align` (`top`/`center`/`off`, default
+  `center`) controls this; `{`/`goto-prev-<kind>` are unaffected, since their own landing spot is
+  already the near edge.
 - Case transforms moved from `gu`/`gU`/`gC` to `G L`/`G U`/`G C` — `G` is a dedicated prefix for
   commands Vim files under `g` that aren't gotos, freeing `g` for goto motions and the structural
   navigation above.

@@ -1011,6 +1011,7 @@ mod macros;
 mod messages;
 mod mouse;
 mod multi_pane;
+mod object_jump_center;
 mod page_scroll;
 mod pane_focus;
 mod pane_sync;

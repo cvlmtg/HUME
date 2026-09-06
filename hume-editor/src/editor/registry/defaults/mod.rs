@@ -24,6 +24,18 @@ macro_rules! motion {
             doc: Cow::Borrowed($doc),
             fun: SelectionBody::Plain($fun),
             jump: true,
+            aligns_view: false,
+        })
+    };
+    // The forward object-jump family (`goto-next-paragraph`) — see
+    // `CmdMeta::aligns_view`'s doc for why only these opt in.
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump aligns) => {
+        $reg.register(MappableCommand::Motion {
+            name: Cow::Borrowed($name),
+            doc: Cow::Borrowed($doc),
+            fun: SelectionBody::Plain($fun),
+            jump: true,
+            aligns_view: true,
         })
     };
     // Word-family motions (`w`/`W`/`b`/`B`) — see [`SelectionBody::Word`].
@@ -33,6 +45,7 @@ macro_rules! motion {
             doc: Cow::Borrowed($doc),
             fun: SelectionBody::Word($fun),
             jump: false,
+            aligns_view: false,
         })
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr) => {
@@ -41,6 +54,7 @@ macro_rules! motion {
             doc: Cow::Borrowed($doc),
             fun: SelectionBody::Plain($fun),
             jump: false,
+            aligns_view: false,
         })
     };
 }

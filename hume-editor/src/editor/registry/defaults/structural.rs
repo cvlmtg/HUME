@@ -181,6 +181,9 @@ impl CommandRegistry {
                     dir: Direction::Forward,
                 }),
                 jump: true,
+                // Same forward-object-jump problem as `}` — see
+                // `CmdMeta::aligns_view`'s doc.
+                aligns_view: true,
             });
             self.register(MappableCommand::Motion {
                 name: Cow::Borrowed(obj.prev),
@@ -190,6 +193,7 @@ impl CommandRegistry {
                     dir: Direction::Backward,
                 }),
                 jump: true,
+                aligns_view: false,
             });
         }
     }

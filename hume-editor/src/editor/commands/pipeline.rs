@@ -199,7 +199,10 @@ pub(super) fn step_snapshot_recipe(
 // ── AFTER (native steps) ────────────────────────────────────────────────────
 
 /// Record jump list entry if the command is a jump or the cursor moved
-/// past the threshold.
+/// past the threshold. Returns whether the cursor actually moved — `false`
+/// for a command with no pre-jump snapshot at all (`step_capture_pre_jump`
+/// returned `None`, i.e. `meta.moves_cursor()` was false) as well as for a
+/// snapshotted one that turned out to be a no-op.
 ///
 /// `moved` guards both branches: `JumpList::push` truncates forward history
 /// unconditionally, so a `jump: true` command that happens to be a no-op on
@@ -208,23 +211,59 @@ pub(super) fn step_snapshot_recipe(
 /// whole `Selection`, not just `head` — the entry being guarded stores the
 /// whole thing (anchor included), and `select-all` from the buffer's own
 /// last char moves only the anchor, leaving `head` unchanged.
+///
+/// `step_align_view` reuses this same `moved` rather than recomputing
+/// `jump_position` a second time.
 pub(super) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
     pre_jump: Option<(Selection, usize, BufferId)>,
     is_jump: bool,
-) {
-    if let Some((pre_primary, pre_line, pre_bid)) = pre_jump {
-        let (post_primary, post_line, post_bid) = jump_position(state, view);
-        let moved = post_bid != pre_bid || post_primary != pre_primary;
-        if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
-            state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
-                pre_primary,
-                pre_line,
-                pre_bid,
-            ));
-        }
+) -> bool {
+    let Some((pre_primary, pre_line, pre_bid)) = pre_jump else {
+        return false;
+    };
+    let (post_primary, post_line, post_bid) = jump_position(state, view);
+    let moved = post_bid != pre_bid || post_primary != pre_primary;
+    if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
+        state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
+            pre_primary,
+            pre_line,
+            pre_bid,
+        ));
     }
+    moved
+}
+
+/// Re-align the viewport after a forward object jump (`}`,
+/// `goto-next-<kind>`), per `EditorSettings::object_jump_align`.
+///
+/// `Top`/`Center` delegate to `cmd_view_top`/`cmd_view_center` verbatim —
+/// the same primitives `z k`/`z z` call — so there is exactly one
+/// implementation of "put the head at this viewport row"; `Off` is the
+/// pre-existing per-frame `scrolloff` scroll everyone already had, so it
+/// does nothing here. `moved` is `step_record_jump`'s result: a `}` press
+/// already on the last paragraph is a no-op on the selection and must not
+/// yank the viewport around on every repeated press.
+pub(super) fn step_align_view(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    aligns_view: bool,
+    moved: bool,
+) {
+    if !aligns_view || !moved {
+        return;
+    }
+    let result = match state.settings.object_jump_align {
+        crate::settings::ObjectJumpAlign::Off => return,
+        crate::settings::ObjectJumpAlign::Top => {
+            super::cmd_view_top(state, view, 1, MotionMode::Move)
+        }
+        crate::settings::ObjectJumpAlign::Center => {
+            super::cmd_view_center(state, view, 1, MotionMode::Move)
+        }
+    };
+    result.expect("cmd_view_top/cmd_view_center take no path that can fail");
 }
 
 /// Record last_repeatable_action for dot-repeat from the pre-body
@@ -361,7 +400,8 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     run_native_body(state, view, cmd, ctx.count, ctx.extend);
 
     // AFTER
-    step_record_jump(state, view, pre_jump, meta.is_jump);
+    let moved = step_record_jump(state, view, pre_jump, meta.is_jump);
+    step_align_view(state, view, meta.aligns_view, moved);
     // A refused/errored body has nothing new to repeat — see
     // `EditorState::command_refused`. `pre_recipe` is simply dropped, not
     // restored into `state.selection_recipe`: every repeatable command is

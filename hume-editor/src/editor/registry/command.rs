@@ -117,6 +117,11 @@ pub(crate) struct CmdMeta {
     /// selection commands. Mirrors Vim visual-mode: any operator on a visual
     /// selection returns to normal. Read by the dispatch pipeline's AFTER step.
     pub clears_extend: bool,
+    /// Whether this command's landing spot should be re-aligned in the
+    /// viewport per `EditorSettings::object_jump_align`, after it runs.
+    /// `true` only for `Motion`'s forward object-jump family (`}`,
+    /// `goto-next-<kind>`).
+    pub aligns_view: bool,
 }
 
 impl CmdMeta {
@@ -223,6 +228,12 @@ pub(crate) enum MappableCommand {
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
+        /// Whether this motion's landing spot should be re-aligned in the
+        /// viewport per `EditorSettings::object_jump_align`, after the body
+        /// runs. `true` only for the forward object-jump family (`}`,
+        /// `goto-next-<kind>`) — see [`crate::settings::ObjectJumpAlign`]'s
+        /// doc for why the backward twins don't need it.
+        aligns_view: bool,
     },
     /// Selection or text-object operation (accepts count).
     ///
@@ -388,7 +399,9 @@ impl MappableCommand {
     /// string sets to decide what bookkeeping to run.
     pub(crate) fn meta(&self) -> CmdMeta {
         match self {
-            Self::Motion { jump, .. } => CmdMeta {
+            Self::Motion {
+                jump, aligns_view, ..
+            } => CmdMeta {
                 selection_tracking: SelectionTracking::Extends,
                 is_motion: true,
                 defers_paste_commit: false,
@@ -396,6 +409,7 @@ impl MappableCommand {
                 is_visual_move: false,
                 repeatable: false,
                 clears_extend: false,
+                aligns_view: *aligns_view,
             },
             Self::Selection {
                 jump,
@@ -409,6 +423,7 @@ impl MappableCommand {
                 is_visual_move: false,
                 repeatable: false,
                 clears_extend: false,
+                aligns_view: false,
             },
             Self::Edit { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -418,6 +433,7 @@ impl MappableCommand {
                 is_visual_move: false,
                 repeatable: *repeatable,
                 clears_extend: false,
+                aligns_view: false,
             },
             Self::EditorCmd {
                 defers_paste_commit,
@@ -435,6 +451,7 @@ impl MappableCommand {
                 is_visual_move: *visual_move,
                 repeatable: *repeatable,
                 clears_extend: *clears_extend,
+                aligns_view: false,
             },
             Self::SteelBacked { repeatable, .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -444,6 +461,7 @@ impl MappableCommand {
                 is_visual_move: false,
                 repeatable: *repeatable,
                 clears_extend: false,
+                aligns_view: false,
             },
             Self::Lazy { .. } => CmdMeta {
                 selection_tracking: SelectionTracking::Untracked,
@@ -453,6 +471,7 @@ impl MappableCommand {
                 is_visual_move: false,
                 repeatable: false,
                 clears_extend: false,
+                aligns_view: false,
             },
         }
     }
