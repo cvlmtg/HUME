@@ -243,8 +243,8 @@ fn signs_pure_addition_marks_one_plus_per_line() {
     assert_eq!(
         signs(&ed, bid),
         vec![
-            (1, "+".to_string(), "diff.plus.gutter".to_string()),
-            (2, "+".to_string(), "diff.plus.gutter".to_string()),
+            (1, "+".to_string(), "diff.plus".to_string()),
+            (2, "+".to_string(), "diff.plus".to_string()),
         ],
         "a 20-line paste should show one + per line, not one per hunk"
     );
@@ -272,7 +272,7 @@ fn signs_change_marks_tilde_per_line() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())]
+        vec![(1, "~".to_string(), "diff.delta".to_string())]
     );
 }
 
@@ -298,7 +298,7 @@ fn signs_pure_deletion_marks_line_above_gap() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus.gutter".to_string())],
+        vec![(1, "-".to_string(), "diff.minus".to_string())],
         "deleting 'c' must mark line 1 ('b'), the line above the gap"
     );
 }
@@ -325,7 +325,7 @@ fn signs_deletion_at_start_clamps_to_line_zero() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(0, "-".to_string(), "diff.minus.gutter".to_string())],
+        vec![(0, "-".to_string(), "diff.minus".to_string())],
         "deleting the first line must clamp to line 0, never go negative"
     );
 }
@@ -352,7 +352,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus.gutter".to_string())],
+        vec![(1, "-".to_string(), "diff.minus".to_string())],
         "deleting the last line ('c') must mark line 1 ('b') without an \
          out-of-range set-signs! call — new-start (2) equals the buffer's \
          content line count"
@@ -396,7 +396,7 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
             0,
             false,
             "foo bar baz".to_string(),
-            Some("diff.minus".to_string()),
+            Some("diff.minus.line".to_string()),
             vec![(4, 7, "diff.minus.word".to_string())],
         )],
         "the removed ref line anchors after line 0, carries the whole old \
@@ -407,10 +407,10 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
         vec![(8, 11, "diff.plus.word".to_string(), "QUX".to_string())],
         "the new-side span must cover the live buffer's replacement word"
     );
-    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta".to_string())]);
+    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta.line".to_string())]);
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())]
+        vec![(1, "~".to_string(), "diff.delta".to_string())]
     );
 }
 
@@ -442,7 +442,7 @@ fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_ri
             0,
             false,
             "\ttabbed line".to_string(),
-            Some("diff.minus".to_string()),
+            Some("diff.minus.line".to_string()),
             Vec::new(),
         )],
         "set-virtual-lines! now accepts a literal tab in 'text and no longer \
@@ -494,7 +494,7 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
             0,
             false,
             "\u{6F22}\ttabbed".to_string(),
-            Some("diff.minus".to_string()),
+            Some("diff.minus.line".to_string()),
             Vec::new(),
         )],
         "the stored text is the line verbatim — no plugin-side expansion"
@@ -532,7 +532,7 @@ fn inline_pure_addition_has_no_virtual_line_only_tint() {
         Vec::new(),
         "nothing was removed, so a pure addition contributes no virtual row"
     );
-    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.plus".to_string())]);
+    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.plus.line".to_string())]);
 }
 
 // ── Commands and shared state ────────────────────────────────────────────────
@@ -610,10 +610,10 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
         vec![(0, false, "two".to_string())],
         "must diff against HEAD~1 ('two'), not the config default HEAD"
     );
-    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta".to_string())]);
+    assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta.line".to_string())]);
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "~".to_string(), "diff.delta.gutter".to_string())],
+        vec![(1, "~".to_string(), "diff.delta".to_string())],
         "signs stayed enabled the whole time — setting the ref from the \
          inline command must re-render it too, not just inline"
     );
@@ -1038,7 +1038,7 @@ fn config_flips_default_signs_and_inline() {
     );
     assert_eq!(
         line_bgs(&ed, bid),
-        vec![(1, "diff.delta".to_string())],
+        vec![(1, "diff.delta.line".to_string())],
         "inline must start on when #:config sets \"inline\" #t"
     );
 }

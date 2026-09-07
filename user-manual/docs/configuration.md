@@ -214,8 +214,13 @@ These have no Helix equivalent:
   `s` regex-filter prompt)
 - `ui.virtual.invisible` — the `<200b>`-style stand-in for a character the terminal must
   not be shown as itself (see the note under Buffer options above)
+- `diff.plus.line` / `diff.minus.line` / `diff.delta.line` — the whole-line background tint
+  `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
+  colors the ghost text of a deleted line, since nothing is left in the buffer to color).
+  Falls back to nothing if left undefined — an unmodified Helix theme colors the gutter
+  marker (below) but paints no row tint, which is the deliberate trade-off rather than a bug
 - `diff.plus.word` / `diff.minus.word` — word-level highlight inside a changed line
-  (`core:git-diff`'s inline diff), inside the row-level `diff.plus`/`diff.minus` tint
+  (`core:git-diff`'s inline diff), inside the row-level `.line` tint above
 - `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
   their `.message-text` counterparts — the `:messages` log's severity badge and body text,
   a HUME-only feature
@@ -264,13 +269,6 @@ listed alternative is where to put the color instead:
 - `ui.background.separator` — HUME's prompt line has no separator rule beneath it
 
 #### Scopes HUME reads differently
-
-`diff.plus`, `diff.minus` and `diff.delta` tint the whole changed line in HUME, so it reads
-their **background**. Helix colors a marker in the gutter with them and reads their
-foreground. Most Helix themes therefore set only an `fg` on these, which leaves HUME with
-no row tint to paint. Give each one a `bg` to get the tint, and put the gutter color on
-`diff.plus.gutter`, `diff.minus.gutter` and `diff.delta.gutter`, which HUME reads for the
-sign column.
 
 `ui.window` is the seam between split panes. HUME draws the divider glyph itself, so it
 reads that scope's foreground; a theme that sets only a background leaves the seam

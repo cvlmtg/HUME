@@ -4,19 +4,15 @@
 #
 # Source: https://github.com/helix-editor/helix/blob/master/runtime/themes/gruvbox.toml
 # Everything up to the "HUME additions" marker below is the upstream file,
-# byte-for-byte, except at three places, each marked with its own comment
+# byte-for-byte, except at two places, each marked with its own comment
 # where it appears: `ui.window` gained an `fg` (HUME paints the seam divider
-# glyph in it, not just its background); the four `diagnostic.<severity>`
-# scopes gained an `fg`; and `diff.plus`/`diff.minus`/`diff.delta` had their
-# `fg` replaced and a `bg` added (HUME's git-diff plugin tints whole lines
-# with these scopes via `set-line-backgrounds!`, rather than fg-coloring a
-# gutter marker the way Helix's own diff view does — upstream's fg values
-# moved to the `diff.*.gutter` scopes below). Helix scopes HUME
-# doesn't read yet (`ui.bufferline*`, `ui.virtual.ruler`/`.wrap`/
-# `.jump-label`, `ui.picker.header.column*`, `ui.help`, `ui.text.directory`,
-# `definition`, `annotation`) are kept as-is so a future re-sync stays a
-# clean diff — see user-manual/docs/configuration.md's Themes section for
-# the full list HUME reads that Helix doesn't define.
+# glyph in it, not just its background); and the four `diagnostic.<severity>`
+# scopes gained an `fg`. Helix scopes HUME doesn't read yet (`ui.bufferline*`,
+# `ui.virtual.ruler`/`.wrap`/`.jump-label`, `ui.picker.header.column*`,
+# `ui.help`, `ui.text.directory`, `definition`, `annotation`) are kept as-is
+# so a future re-sync stays a clean diff — see
+# user-manual/docs/configuration.md's Themes section for the full list of
+# scopes HUME adds, doesn't read, or reads differently from Helix.
 
 "annotation" = { fg = "fg1" }
 
@@ -48,12 +44,9 @@
 "info" = { fg = "aqua1" }
 "warning" = { fg = "yellow1" }
 
-# `bg` added and `fg` replaced (upstream colors the gutter marker with these):
-# HUME tints the whole changed line, and upstream's fg values live on the
-# `diff.*.gutter` scopes further down.
-"diff.delta" = { fg = "fg1", bg = "diff_delta_bg" }
-"diff.minus" = { fg = "fg1", bg = "diff_minus_bg" }
-"diff.plus" = { fg = "fg1", bg = "diff_plus_bg" }
+"diff.delta" = { fg = "yellow1" }
+"diff.minus" = { fg = "red1" }
+"diff.plus" = { fg = "green1" }
 
 "function" = { fg = "green1" }
 "function.builtin" = { fg = "yellow1" }
@@ -192,13 +185,12 @@
 "diagnostic.info.message-text" = { fg = "aqua1" }
 "diagnostic.hint.message-text" = { fg = "blue1" }
 
-# Gutter counterparts of `diff.plus`/`diff.minus`/`diff.delta` above (sign
-# column reads these; the editing-area scopes carry the row-tint bg instead).
-"diff.plus.gutter" = { fg = "green1" }
-"diff.minus.gutter" = { fg = "red1" }
-"diff.delta.gutter" = { fg = "yellow1" }
+# Whole-line diff tint (see the manual's Themes section for the details).
+"diff.plus.line" = { bg = "diff_plus_bg" }
+"diff.minus.line" = { fg = "fg1", bg = "diff_minus_bg" }
+"diff.delta.line" = { bg = "diff_delta_bg" }
 # Word-level segments mark the exact changed span inside a
-# `diff.plus`/`diff.minus`-tinted row.
+# `diff.plus.line`/`diff.minus.line`-tinted row.
 "diff.plus.word" = { fg = "fg1", bg = "diff_plus_word_bg", modifiers = ["bold"] }
 "diff.minus.word" = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
@@ -243,7 +235,7 @@ aqua1 = "#8ec07c"
 orange0 = "#d65d0e"
 orange1 = "#fe8019"
 
-# HUME additions — diff row backgrounds (`diff.*` and `diff.*.word` above).
+# HUME additions — diff row backgrounds (`diff.*.line` and `diff.*.word` above).
 diff_plus_bg       = "#424228"
 diff_plus_word_bg  = "#5F6027"
 diff_minus_bg      = "#4E2E2A"

@@ -62,12 +62,13 @@
 "warning" = { fg = "sand" }
 "info" = { fg = "blue" }
 "hint" = { fg = "green" }
-"diff.plus" = { fg = "fg", bg = "diff_plus_bg" }
-"diff.minus" = { fg = "fg", bg = "diff_minus_bg" }
-"diff.delta" = { fg = "fg", bg = "diff_delta_bg" }
-"diff.plus.gutter" = { fg = "green" }
-"diff.minus.gutter" = { fg = "red" }
-"diff.delta.gutter" = { fg = "blue" }
+"diff.plus" = { fg = "green" }
+"diff.minus" = { fg = "red" }
+"diff.delta" = { fg = "blue" }
+# HUME's own whole-line diff tint.
+"diff.plus.line" = { bg = "diff_plus_bg" }
+"diff.minus.line" = { fg = "fg", bg = "diff_minus_bg" }
+"diff.delta.line" = { bg = "diff_delta_bg" }
 "diff.plus.word" = { fg = "fg", bg = "diff_plus_word_bg", modifiers = [ "bold" ] }
 "diff.minus.word" = { fg = "fg", bg = "diff_minus_word_bg", modifiers = [ "bold", "crossed_out" ] }
 "markup.heading" = { fg = "sand", modifiers = [ "bold" ] }

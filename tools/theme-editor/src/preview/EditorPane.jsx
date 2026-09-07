@@ -150,10 +150,10 @@ function renderToken(tok, i, tag, sc, pal, fallbackFg, editorBg) {
 }
 
 // The diff buffer: a git-diff-shaped view. Each changed row gets a full-row
-// `diff.plus`/`.minus`/`.delta` background and a sign-column glyph from the
-// matching `.gutter` scope; the row's own word-level change is a nested
-// `diff.plus.word`/`.minus.word` span — same layering as
-// `runtime/plugins/core/git-diff/render.scm`.
+// `.line`-suffixed background (HUME's own addition) and a sign-column glyph
+// from the matching bare scope (Helix's own gutter-marker name); the row's
+// own word-level change is a nested `diff.plus.word`/`.minus.word` span —
+// same layering as `runtime/plugins/core/git-diff/render.scm`.
 function DiffRows({ sc, pal, BG, FG, lnr, tagStyle }) {
   return DIFF_SAMPLE.rows.map(row => {
     const rowBg = row.rowScope ? bgc(row.rowScope, sc, pal, BG) : BG;

@@ -117,15 +117,17 @@ export const MARKDOWN_SAMPLE = {
 
 // The diff buffer, laid out the way HUME's own git-diff plugin renders one
 // (`runtime/plugins/core/git-diff/render.scm`): a sign-column glyph per
-// changed line, a row-wide `diff.plus`/`.minus`/`.delta` background, and
+// changed line from the bare `diff.plus`/`.minus`/`.delta` scope (Helix's own
+// gutter-marker names), a row-wide `diff.plus.line`/`.minus.line`/`.delta.line`
+// background (HUME's own addition — Helix reads no background for these), and
 // `diff.plus.word`/`.minus.word` spans for the word-level change within it.
 export const DIFF_SAMPLE = {
   name: "theme.rs (diff)",
   rows: [
     { n: 1, sign: null, rowScope: null, t: [["pub struct Theme {", ""]] },
-    { n: 2, sign: { glyph: "-", scope: "diff.minus.gutter" }, rowScope: "diff.minus", t: [["    name: ", ""], ["C", "diff.minus.word", "sel2"], ["ow<str>", "diff.minus.word"], [",", ""]] },
-    { n: 3, sign: { glyph: "+", scope: "diff.plus.gutter" }, rowScope: "diff.plus", t: [["    name: ", ""], ["S", "diff.plus.word", "cursor"], ["tring", "diff.plus.word"], [",", ""]] },
-    { n: 4, sign: { glyph: "~", scope: "diff.delta.gutter" }, rowScope: "diff.delta", t: [["    colors: HashMap<String, ", ""], ["Rgb", "diff.minus.word"], [">,", ""]] },
+    { n: 2, sign: { glyph: "-", scope: "diff.minus" }, rowScope: "diff.minus.line", t: [["    name: ", ""], ["C", "diff.minus.word", "sel2"], ["ow<str>", "diff.minus.word"], [",", ""]] },
+    { n: 3, sign: { glyph: "+", scope: "diff.plus" }, rowScope: "diff.plus.line", t: [["    name: ", ""], ["S", "diff.plus.word", "cursor"], ["tring", "diff.plus.word"], [",", ""]] },
+    { n: 4, sign: { glyph: "~", scope: "diff.delta" }, rowScope: "diff.delta.line", t: [["    colors: HashMap<String, ", ""], ["Rgb", "diff.minus.word"], [">,", ""]] },
     { n: 5, sign: null, rowScope: null, t: [["}", ""]] },
   ],
 };

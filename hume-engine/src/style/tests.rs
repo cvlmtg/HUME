@@ -122,10 +122,10 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     let mut scratch = StyleScratch::new();
 
     let mut registry = crate::theme::ScopeRegistry::new();
-    let tint_scope = registry.intern("diff.plus");
+    let tint_scope = registry.intern("diff.plus.line");
     let mut styles_map = HashMap::new();
     styles_map.insert(
-        "diff.plus",
+        "diff.plus.line",
         ResolvedStyle {
             fg: Some(Rgb(255, 0, 0)),
             bg: Some(Rgb(0, 255, 0)),

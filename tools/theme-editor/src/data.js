@@ -57,7 +57,7 @@ export const SCOPES = [
     "markup.list", "markup.list.checked", "markup.list.unchecked",
   ]],
   ["Diff", ["diff.plus", "diff.minus", "diff.delta",
-            "diff.plus.gutter", "diff.minus.gutter", "diff.delta.gutter",
+            "diff.plus.line", "diff.minus.line", "diff.delta.line",
             "diff.plus.word", "diff.minus.word"]],
   // HUME reads these; ui.virtual.ruler/.wrap/.jump-label and the per-kind
   // ui.virtual.inlay-hint.parameter/.type are Helix scopes HUME doesn't
@@ -176,7 +176,8 @@ export const DEFAULT_SC = {
   "markup.raw": "magenta", "markup.raw.block": "white", "markup.raw.inline": "magenta",
   "markup.list": "red", "markup.list.checked": "green", "markup.list.unchecked": "gray",
   "diff.plus": "green", "diff.minus": "red", "diff.delta": "yellow",
-  "diff.plus.gutter": "green", "diff.minus.gutter": "red", "diff.delta.gutter": "cyan",
+  "diff.plus.line": { bg: "green" }, "diff.minus.line": { fg: "white", bg: "red" },
+  "diff.delta.line": { bg: "yellow" },
   "diff.plus.word": { fg: "white", bg: "green", modifiers: ["bold"] },
   "diff.minus.word": { fg: "white", bg: "red", modifiers: ["bold", "crossed_out"] },
   "diagnostic.error": "red", "diagnostic.warning": "yellow",

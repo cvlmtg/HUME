@@ -312,7 +312,7 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
         &tmp,
         r#"(define-typed-command! "arm" "" (lambda ()
              (register-sign-source! "git-diff" (current-buffer) 0)
-             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus.gutter")))))"#,
+             (set-signs! "git-diff" (current-buffer) (list (list 0 "+" "diff.plus")))))"#,
     );
     type_cmd(&mut ed, ":arm");
 

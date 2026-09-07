@@ -5,12 +5,8 @@
 ### Breaking changes
 - Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally; nothing to do unless you write your own plugins.
 - `:format-source` (renamed from `:lsp-fmt`) can now format several selected line ranges at once instead of falling back to the whole buffer when a server supports it.
-- The search-match highlight now falls back to the bracket-match color instead of the selection color, so it's easier to tell apart from a real selection. A custom theme setting `ui.selection.search` should rename that key to `ui.cursor.match.search`.
-- Extend mode's and Select mode's statusline colors were swapped to match how Helix themes expect them. A custom theme should rename `ui.statusline.extend` to `ui.statusline.select`, and its old `ui.statusline.select` to `ui.statusline.filter`.
 - `goto-alternate-file` is renamed `goto-alternate-buffer`.
 - A handful of commands (LSP install/status, PLUM plugin/grammar management, git-diff sign toggles, `:lsp-fmt` → `:format-source`) can no longer be typed at the `:` prompt by their old bindable name — bind them to a key instead, or use their new typed command name.
-- A theme's `inherits` now merges colors with its parent before resolving them, matching Helix. Most custom themes using `inherits` will look the same or better; one that relied on the old behavior may render differently.
-- Themes no longer accept HUME's own `solid`/`wavy`/`undercurl` underline names or `strikethrough` modifier — only Helix's own `line`/`curl`/`crossed_out`, which HUME already accepted alongside them. A custom theme using the old names should rename `solid` to `line`, `wavy` or `undercurl` to `curl`, and `strikethrough` to `crossed_out`.
 
 ### Editing
 - `}`/`{` now select the whole paragraph (plus its trailing blank line) instead of just moving the cursor, consistent with other structural motions. New `mip`/`map` text objects select just the paragraph when a plain selection is wanted.
@@ -33,19 +29,13 @@
 
 ### Appearance
 - New `cursor-shape-insert` setting (`block`/`bar`/`underline`, default `bar`) picks the real terminal cursor's shape in Insert mode.
-- Fixed the primary cursor in Insert mode picking up a theme's secondary-cursor color (`ui.cursor.insert`) instead of its own primary color, or the plain block color, when the theme didn't define a primary-specific one — most visible with themes that color `ui.cursor.insert` but not `ui.cursor.primary.insert`, where both cursors used to look identical during multi-cursor editing.
-- Extend mode now honors a theme's own selection cursor color instead of ignoring it; Normal mode gets a matching option.
-- A second, simultaneous cursor during multi-cursor Insert-mode editing now falls back to a theme's `ui.cursor` color when it has no `ui.cursor.insert` of its own, instead of rendering with no color at all.
 - Curly, dotted, dashed, and now double-line underlines render correctly on terminals that support them.
-- A theme color can now be one of the sixteen bare terminal color names Helix themes use (`red`, `light-gray`, and so on), resolved to a fixed value from the standard terminal palette.
 - Whitespace indicator glyphs (spaces, tabs, newlines) are now themable.
 - Themes can now also be installed to the data directory (see `:plum-install-theme` below) alongside hand-authored ones.
 - Inline diagnostic messages now use their own theme color instead of always matching the underlined squiggle.
 - Replaced the bundled `dark`/`light`/`gruvbox` themes with faithful ports of Helix's `gruvbox` and `gruvbox_light`. Bundled themes are now `sand`, `gruvbox`, `gruvbox_light`.
 - Themes can now use TOML section headers as well as HUME's flat dotted-key format.
-- A theme with a malformed entry — a bad color, an unsupported scope shape — now loads with that one entry left unstyled and a warning explaining why, instead of failing the whole theme or silently rendering it unstyled. A theme that's fundamentally broken (invalid TOML, a missing inherited theme) still fails to load with a clear error.
-- A theme-loading error now names the file it actually came from, even one inherited from a parent theme.
-- The bundled `sand` theme now gives Normal, Insert, and Extend mode their own cursor color instead of two colors shared across all three.
+- The theme loader is more Helix-compliant in several places (search-match highlighting, statusline mode colors, underline/modifier names, git-diff's gutter and line colors) — HUME's bundled themes already reflect this.
 
 ### Configuration & options
 - New `--config <FILE>` flag loads a config file other than the default `init.scm`; `:reload-config` re-evaluates the same file.

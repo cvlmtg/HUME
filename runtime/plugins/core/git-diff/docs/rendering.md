@@ -77,10 +77,17 @@ into two renderers to keep one setter each would call `diff-words` twice for no 
 
 ## Row background tint
 
-One hunk becomes `(line scope)` entries, one per new-side line: pure add → `diff.plus`,
-change → `diff.delta`. A pure delete contributes nothing — `render-inline!`'s virtual
-rows already cover the removed content. No priority field on this setter (unlike
-`set-signs!`) — this plugin is the only tint producer for its own scopes.
+One hunk becomes `(line scope)` entries, one per new-side line: pure add → `diff.plus.line`,
+change → `diff.delta.line`. A pure delete contributes nothing — `render-inline!`'s virtual
+rows already cover the removed content, tinted via `diff.minus.line` on the virtual line's
+own `base_scope` instead. No priority field on this setter (unlike `set-signs!`) — this
+plugin is the only tint producer for its own scopes.
+
+The `.line` suffix on all three matters: bare `diff.plus`/`diff.minus`/`diff.delta` (used
+above by `hunk->signs`, and above that by `virtual-line-hash`'s `base_scope`) are Helix's own
+scope names, read as `fg` for the gutter marker's color — HUME's own row/virtual-line tint is
+a Helix-incompatible extension of that name, so it gets its own suffix rather than shadowing
+what a Helix theme means by the bare name.
 
 ## Flag → renderer dispatch
 

@@ -25,9 +25,9 @@
          [new-count (list-ref hunk 3)])
     (cond
       [(= new-count 0)
-       (list (list (max 0 (- new-start 1)) "-" "diff.minus.gutter"))]
-      [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus.gutter")]
-      [else (git-diff/line-signs new-start new-count "~" "diff.delta.gutter")])))
+       (list (list (max 0 (- new-start 1)) "-" "diff.minus"))]
+      [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus")]
+      [else (git-diff/line-signs new-start new-count "~" "diff.delta")])))
 
 ;;; Registers first regardless of `hunks` — a config-off buffer's first
 ;;; `:toggle-git-signs` needs its slot claimed before `set-signs!` accepts
@@ -48,7 +48,7 @@
 ;;; Symbol keys, not strings — `set-virtual-lines!` looks each field up as
 ;;; `(SteelVal::SymbolV k)`.
 (define (git-diff/virtual-line-hash text anchor segments)
-  (let ([base (hash 'line (cdr anchor) 'text text 'anchor (car anchor) 'scope "diff.minus")])
+  (let ([base (hash 'line (cdr anchor) 'text text 'anchor (car anchor) 'scope "diff.minus.line")])
     (if (null? segments) base (hash-insert base 'segments segments))))
 
 (define (git-diff/plain-virtual-line old-line anchor)
@@ -141,7 +141,7 @@
          [new-count (list-ref hunk 3)])
     (if (= new-count 0)
         '()
-        (let ([scope (if (= old-count 0) "diff.plus" "diff.delta")])
+        (let ([scope (if (= old-count 0) "diff.plus.line" "diff.delta.line")])
           (map (lambda (line) (list line scope)) (range new-start (+ new-start new-count)))))))
 
 (define (git-diff/render-line-bgs! bid hunks)
