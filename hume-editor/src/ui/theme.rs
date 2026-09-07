@@ -98,6 +98,7 @@ const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml
 pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
     hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
         .expect("embedded sand.toml must parse — file is compile-time embedded")
+        .theme
 }
 
 /// `dark.toml`, embedded for renderer snapshot tests that assert exact
@@ -112,6 +113,7 @@ const DARK_THEME_TOML_FOR_SNAPSHOT_TESTS: &str = include_str!("../../../runtime/
 pub(crate) fn build_dark_theme_for_snapshot_tests() -> hume_engine::theme::Theme {
     hume_engine::theme::loader::parse_theme(DARK_THEME_TOML_FOR_SNAPSHOT_TESTS)
         .expect("embedded dark.toml must parse — file is compile-time embedded")
+        .theme
 }
 
 // ---------------------------------------------------------------------------

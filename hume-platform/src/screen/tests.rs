@@ -90,6 +90,7 @@ fn underline_shapes_reach_the_wire() {
     assert_eq!(shape(UnderlineStyle::Wavy), "\x1b[4:3m");
     assert_eq!(shape(UnderlineStyle::Dotted), "\x1b[4:4m");
     assert_eq!(shape(UnderlineStyle::Dashed), "\x1b[4:5m");
+    assert_eq!(shape(UnderlineStyle::Double), "\x1b[21m");
 }
 
 #[test]

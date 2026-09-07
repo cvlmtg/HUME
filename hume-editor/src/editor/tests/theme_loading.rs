@@ -16,7 +16,8 @@ fn load_bundled_themes() -> Vec<(&'static str, hume_engine::theme::Theme)> {
         .into_iter()
         .map(|name| {
             let theme = hume_engine::theme::loader::load_theme(name, &paths)
-                .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
+                .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"))
+                .theme;
             (name, theme)
         })
         .collect()

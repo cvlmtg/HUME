@@ -316,6 +316,7 @@ fn modifier_delta(from: &ResolvedStyle, to: &ResolvedStyle) -> SgrModifiers {
             UnderlineStyle::Wavy => SgrModifiers::UNDERLINE_CURLY,
             UnderlineStyle::Dotted => SgrModifiers::UNDERLINE_DOTTED,
             UnderlineStyle::Dashed => SgrModifiers::UNDERLINE_DASHED,
+            UnderlineStyle::Double => SgrModifiers::UNDERLINE_DOUBLE,
         };
     }
 

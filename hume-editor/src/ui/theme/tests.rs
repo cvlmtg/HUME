@@ -44,7 +44,8 @@ fn embedded_default_matches_sand_toml_on_disk() {
     let mut embedded = build_default_theme();
     let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
     let mut from_disk = hume_engine::theme::loader::load_theme("sand", &[themes_dir])
-        .expect("runtime/themes/sand.toml must load via the production theme loader");
+        .expect("runtime/themes/sand.toml must load via the production theme loader")
+        .theme;
 
     let registry = ScopeRegistry::new();
     embedded.bake(&registry);

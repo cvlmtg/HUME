@@ -286,10 +286,14 @@ fn reset_reverts_theme_to_compiled_in_default() {
     let mut ed = editor_from("-[a]>b\n");
     let default_style = ed.view.theme.resolve_by_name(Scope("ui.statusline"));
 
+    // Scope key before the `[palette]` header: everything after that header
+    // belongs to the palette table, so the other order would make this scope a
+    // palette entry and leave the synthetic theme with no scopes at all.
     let synthetic = hume_engine::theme::loader::parse_theme(
-        "[palette]\ncustom = \"#123456\"\n\n\"ui.statusline\" = { fg = \"custom\" }\n",
+        "\"ui.statusline\" = { fg = \"custom\" }\n\n[palette]\ncustom = \"#123456\"\n",
     )
-    .expect("synthetic theme must parse");
+    .expect("synthetic theme must parse")
+    .theme;
     ed.view.theme = synthetic;
     ed.state.settings.theme = "synthetic".to_string();
 

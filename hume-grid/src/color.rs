@@ -2,11 +2,13 @@
 ///
 /// There is deliberately no palette-index or named-colour variant. HUME
 /// requires true-colour terminals (see the project's terminal-compatibility
-/// rule) and its theme loader only ever produces hex values, so a second
-/// variant would exist purely to be unreachable — and it would cost
-/// something real: with one variant [`Rgb::lerp`] is total, where a blend
-/// over a colour enum has to pass non-RGB values through unchanged and so
-/// silently skips the effect it was asked for.
+/// rule), and its theme loader resolves a Helix-style ANSI colour name
+/// (`"red"`, `"light-gray"`) to a fixed `Rgb` at load time rather than
+/// carrying the name through — so a second variant here would exist purely
+/// to be unreachable, and it would cost something real: with one variant
+/// [`Rgb::lerp`] is total, where a blend over a colour enum has to pass
+/// non-RGB values through unchanged and so silently skips the effect it was
+/// asked for.
 ///
 /// "No colour" is spelled `Option<Rgb>` rather than a variant of this type,
 /// so the same `None` reads as "inherit" in a style cascade and "the

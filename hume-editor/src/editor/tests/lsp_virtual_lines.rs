@@ -256,6 +256,7 @@ fn theme_with_tinted_ui_virtual() -> hume_engine::theme::Theme {
         "##,
     )
     .expect("inline test theme must parse")
+    .theme
 }
 
 #[test]

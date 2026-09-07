@@ -96,11 +96,47 @@ fn data_dir_theme_shadows_bundled_theme_of_same_name() {
         "sand",
         &crate::editor::scripting_setup::theme_search_paths(),
     )
-    .expect("sand theme should load from the data dir");
+    .expect("sand theme should load from the data dir")
+    .theme;
     let style = theme.resolve_by_name(hume_engine::types::Scope("ui.cursor.primary"));
     assert_eq!(
         style.fg,
         Some(hume_grid::Rgb(0xff, 0x00, 0xff)),
         "expected the data-dir theme to shadow the runtime-dir one"
     );
+}
+
+/// A theme with one malformed key still loads — this is the whole point of
+/// warning instead of failing: the user isn't left on their old theme over
+/// one bad line, and the warning still reaches them.
+#[test]
+fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
+    let fixture = ThemeDirsFixture::new();
+    let runtime_themes = fixture.runtime_dir.join("themes");
+    std::fs::create_dir_all(&runtime_themes).unwrap();
+    std::fs::write(
+        runtime_themes.join("flawed.toml"),
+        br##""ui.text" = { fg = "#123456" }
+"keyword" = "nonexistent_color"
+"##,
+    )
+    .unwrap();
+
+    let mut ed = editor_from("-[a]>b\n");
+    let ok = crate::editor::theme::load_theme_by_name(
+        &mut ed.view,
+        &mut ed.state.message_log,
+        &mut ed.state.status_msg,
+        "flawed",
+    );
+    assert!(ok, "a theme with a malformed key still loads");
+    assert!(
+        ed.state.message_log.has_unseen(),
+        "the malformed key's warning must reach the message log"
+    );
+    let text = ed
+        .view
+        .theme
+        .resolve_by_name(hume_engine::types::Scope("ui.text"));
+    assert_eq!(text.fg, Some(hume_grid::Rgb(0x12, 0x34, 0x56)));
 }
