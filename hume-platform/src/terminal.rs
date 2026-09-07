@@ -29,8 +29,13 @@ use termina::escape::csi::{
 };
 use termina::escape::osc::{ColorOrQuery, DynamicColorNumber, Osc};
 use termina::event::KeyEventKind;
-use termina::style::{CursorStyle, RgbColor};
+use termina::style::RgbColor;
 use termina::{Event, EventReader, PlatformHandle, PlatformTerminal, WindowSize};
+
+/// Re-exported so callers choosing a shape (`hume-editor`'s
+/// `cursor-shape-insert` setting) don't need their own `termina` import just
+/// to name the value they're passing to [`set_cursor_shape`].
+pub use termina::style::CursorStyle;
 
 // ── SharedTerm ────────────────────────────────────────────────────────────────
 
@@ -429,14 +434,11 @@ pub fn set_cursor_color(term: &SharedTerm, black: bool) -> io::Result<()> {
 
 /// Emit a DECSCUSR escape for the cursor shape.
 ///
-/// When `bar` is `true`, emits `SteadyBar` (used for Insert/Command/Search/Select).
-/// When `bar` is `false`, emits `SteadyBlock` (used for Normal/Extend).
-pub fn set_cursor_shape(term: &SharedTerm, bar: bool) -> io::Result<()> {
-    let style = if bar {
-        CursorStyle::SteadyBar
-    } else {
-        CursorStyle::SteadyBlock
-    };
+/// Takes the `termina` style directly rather than HUME's own `CursorShape`
+/// setting enum — that enum lives in `hume-editor` (a settings concept this
+/// crate has no business depending on), so the `CursorShape` → `CursorStyle`
+/// mapping is the caller's job.
+pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()> {
     let mut term = term.clone();
     write!(term, "{}", Csi::Cursor(Cursor::CursorStyle(style)))?;
     term.flush()

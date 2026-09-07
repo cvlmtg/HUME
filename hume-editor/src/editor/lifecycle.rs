@@ -428,33 +428,40 @@ impl Editor {
             // split-borrow conflicts: pane borrows and rope borrows must end
             // before `&mut self.view` is captured by the closure.
             let cursor_screen = if let Some(mb) = &self.state.minibuf {
-                // Minibuf active (Command / Search): place the terminal cursor
-                // in the statusline at the minibuf edit position.
+                // Minibuf active (Command / Search / Select): place the terminal
+                // cursor in the statusline at the minibuf edit position. Always a
+                // bar — HUME's prompt modes have no cursor-shape option of their
+                // own, unlike the document's own Insert-mode cursor below.
                 let statusline_row = term_height.saturating_sub(1);
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
-            } else if self.state.mode().cursor_is_bar() {
-                // Insert / Select: place the terminal cursor at the document
-                // head, where `prepare_frame`'s scroll step already resolved it
-                // — the row map that decided *where to scroll* had to answer
-                // this question anyway, so re-deriving it here would walk the
-                // same rows a second time.
-                let (_, gutter_w) = self.resolve_pane_settings(self.state.focused_pane_id);
-                // `prepare_frame` ran earlier this iteration and stored the
-                // terminal area; recompute the focused pane's origin from it
-                // so the bar cursor lands inside the pane, not at the
-                // origin. The focused pane is always a live layout leaf (see
-                // `close_focused_pane`/`split_pane_onto`), so this can't miss.
-                let pane_rect = self
-                    .view
-                    .pane_rect(self.state.focused_pane_id)
-                    .expect("focused pane must have a rect after prepare_frame");
-                ctx.cursor_content_pos.map(|(content_x, row)| {
-                    let (x, y) =
-                        super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
-                    Position::new(x, y)
-                })
             } else {
-                None
+                let (settings, gutter_w) = self.resolve_pane_settings(self.state.focused_pane_id);
+                if settings.primary_cursor_is_block {
+                    None
+                } else {
+                    // Non-block shape (only Insert can be, via
+                    // `cursor-shape-insert`): place the terminal cursor at the
+                    // document head, where `prepare_frame`'s scroll step already
+                    // resolved it — the row map that decided *where to scroll*
+                    // had to answer this question anyway, so re-deriving it here
+                    // would walk the same rows a second time.
+                    //
+                    // `prepare_frame` ran earlier this iteration and stored the
+                    // terminal area; recompute the focused pane's origin from it
+                    // so the cursor lands inside the pane, not at the origin. The
+                    // focused pane is always a live layout leaf (see
+                    // `close_focused_pane`/`split_pane_onto`), so this can't miss.
+                    let pane_rect = self
+                        .view
+                        .pane_rect(self.state.focused_pane_id)
+                        .expect("focused pane must have a rect after prepare_frame");
+                    ctx.cursor_content_pos.map(|(content_x, row)| {
+                        let (x, y) = super::mouse::content_pos_to_screen(
+                            content_x, row, gutter_w, pane_rect,
+                        );
+                        Position::new(x, y)
+                    })
+                }
             };
 
             // Open the synchronized-output envelope so the terminal defers
@@ -470,8 +477,30 @@ impl Editor {
             // Emitted *after* the frame so it's the last escape sequence the
             // terminal sees before we block — the show-cursor sequence closing
             // a frame can otherwise reset the shape on some terminals.
-            let _ =
-                hume_platform::terminal::set_cursor_shape(term, self.state.mode().cursor_is_bar());
+            //
+            // Minibuf active forces a bar unconditionally, same as the position
+            // branch above — HUME's prompt modes have no shape option of their
+            // own. Otherwise the live mode's resolved shape
+            // (`EditorState::cursor_shape`) is the single source both this and
+            // `resolve_pane_settings`' `primary_cursor_is_block` read, so the
+            // real terminal cursor and the grid's painted primary head can
+            // never disagree about which shape is in effect.
+            let cursor_style = if self.state.minibuf.is_some() {
+                hume_platform::terminal::CursorStyle::SteadyBar
+            } else {
+                match self.state.cursor_shape() {
+                    crate::settings::CursorShape::Block => {
+                        hume_platform::terminal::CursorStyle::SteadyBlock
+                    }
+                    crate::settings::CursorShape::Bar => {
+                        hume_platform::terminal::CursorStyle::SteadyBar
+                    }
+                    crate::settings::CursorShape::Underline => {
+                        hume_platform::terminal::CursorStyle::SteadyUnderline
+                    }
+                }
+            };
+            let _ = hume_platform::terminal::set_cursor_shape(term, cursor_style);
             if last_cursor_color_mode != Some(self.state.mode()) {
                 // Command/Search place the cursor on a white statusline background;
                 // use black so it remains visible. All other modes reset to default.

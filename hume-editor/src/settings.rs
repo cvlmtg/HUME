@@ -243,6 +243,62 @@ impl fmt::Display for ObjectJumpAlign {
     }
 }
 
+// ── CursorShape ──────────────────────────────────────────────────────────────
+
+/// The real terminal cursor's shape while the primary selection head is in
+/// Insert mode — Helix's `editor.cursor-shape.insert`, minus the `hidden`
+/// variant Helix offers mainly for IME positioning.
+///
+/// Only the primary head can ever take this shape: a terminal has exactly one
+/// hardware cursor, so a secondary head is always rendered as a themed block
+/// via `ui.cursor.insert` regardless of this setting — see
+/// `hume_engine::style::head_style`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorShape {
+    /// The primary head is painted from `ui.cursor.primary.insert` (falling
+    /// back through the usual ladder) like any other themed cell; the real
+    /// terminal cursor is hidden.
+    Block,
+    /// The primary head is left unpainted; the real terminal cursor shows as
+    /// a thin bar. This is HUME's long-standing default.
+    #[default]
+    Bar,
+    /// Same as `Bar`, but the real terminal cursor shows as an underline.
+    Underline,
+}
+
+impl CursorShape {
+    /// The wire-format strings `FromStr` accepts — the single source `:set
+    /// global cursor-shape-insert=<Tab>` completion mirrors, so the two can
+    /// never drift out of sync.
+    pub const VALUES: &'static [&'static str] = &["block", "bar", "underline"];
+}
+
+impl FromStr for CursorShape {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "block" => Ok(Self::Block),
+            "bar" => Ok(Self::Bar),
+            "underline" => Ok(Self::Underline),
+            _ => Err(format!(
+                "invalid cursor-shape-insert '{s}': expected block, bar, or underline"
+            )),
+        }
+    }
+}
+
+impl fmt::Display for CursorShape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Block => "block",
+            Self::Bar => "bar",
+            Self::Underline => "underline",
+        })
+    }
+}
+
 // ── Scope ─────────────────────────────────────────────────────────────────────
 
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
@@ -688,6 +744,9 @@ define_settings! {
             scope: [Scope::Global],
             parser: usize;
         "object-jump-align" => object_jump_align: ObjectJumpAlign = ObjectJumpAlign::Center,
+            scope: [Scope::Global],
+            parser: from_str;
+        "cursor-shape-insert" => cursor_shape_insert: CursorShape = CursorShape::Bar,
             scope: [Scope::Global],
             parser: from_str;
         "mouse-scroll-lines" => mouse_scroll_lines: usize = 3,

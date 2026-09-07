@@ -359,13 +359,14 @@ fn cursor_primary_select_uses_its_own_entry_when_set() {
 }
 
 /// A theme that colours Extend mode but never declares a `.primary` variant
-/// must still get the mode's own colour on the primary head. Plain
-/// dot-notation can't express this: trimming `ui.cursor.primary.select`
-/// yields `ui.cursor.primary`, then `ui.cursor` — it never visits
-/// `ui.cursor.select`, so the primary head would land on the plain block
-/// colour while every secondary head shows the select colour.
+/// gives the primary head the plain block colour, not the select colour —
+/// matching Helix's own `base_primary_cursor_scope`, which prefix-walks
+/// `ui.cursor.primary` → `ui.cursor` → `ui` and never consults
+/// `ui.cursor.select`. Only `ui.cursor.primary.select` itself (an exact
+/// lookup) can put the select colour on the primary head; see
+/// `cursor_primary_select_uses_its_own_entry_when_set`.
 #[test]
-fn cursor_primary_select_falls_back_to_the_secondary_select_scope() {
+fn cursor_primary_select_never_visits_the_secondary_select_scope() {
     let mut styles = HashMap::new();
     styles.insert(
         "ui.cursor",
@@ -382,7 +383,7 @@ fn cursor_primary_select_falls_back_to_the_secondary_select_scope() {
         },
     );
     let theme = Theme::new(styles, ResolvedStyle::default());
-    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(4, 5, 6)));
+    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
 // ── ui.cursor.normal / ui.cursor.primary.normal: Normal-mode cursor ──
@@ -478,11 +479,12 @@ fn cursor_primary_normal_uses_its_own_entry_when_set() {
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(3, 3, 3)));
 }
 
-/// Normal-mode twin of `cursor_primary_select_falls_back_to_the_secondary_select_scope`:
-/// `ui.cursor.normal` sits on the chain between `ui.cursor.primary` and the
-/// bare `ui.cursor`, which dot-notation trimming skips entirely.
+/// Normal-mode twin of `cursor_primary_select_never_visits_the_secondary_select_scope`:
+/// `ui.cursor.normal` is never consulted while resolving `cursor_primary` —
+/// only `ui.cursor.primary.normal` (exact) or `ui.cursor.primary`/`ui.cursor`
+/// can.
 #[test]
-fn cursor_primary_falls_back_to_the_secondary_normal_scope() {
+fn cursor_primary_never_visits_the_secondary_normal_scope() {
     let mut styles = HashMap::new();
     styles.insert(
         "ui.cursor",
@@ -499,7 +501,50 @@ fn cursor_primary_falls_back_to_the_secondary_normal_scope() {
         },
     );
     let theme = Theme::new(styles, ResolvedStyle::default());
-    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(10, 11, 12)));
+    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
+}
+
+/// Everforest's own regression: `ui.cursor.insert` (secondary) and
+/// `ui.cursor.primary` (plain block) are both defined, but
+/// `ui.cursor.primary.insert` is not. The primary Insert-mode head must land
+/// on the block colour, never on the secondary Insert colour — the bug this
+/// ladder replaced gave both heads the same `ui.cursor.insert` colour.
+#[test]
+fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
+    let mut styles = HashMap::new();
+    styles.insert(
+        "ui.cursor.insert",
+        ResolvedStyle {
+            fg: Some(Rgb(4, 5, 6)),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.cursor.primary",
+        ResolvedStyle {
+            fg: Some(Rgb(7, 8, 9)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles, ResolvedStyle::default());
+    assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(7, 8, 9)));
+}
+
+/// With no block scope defined at all, the primary Insert ladder now reaches
+/// past `ui.cursor`/`ui` all the way to `ui.selection` — the tail Helix's own
+/// `base_cursor_scope` falls to when `ui.cursor` is undefined.
+#[test]
+fn cursor_insert_primary_falls_back_to_selection_when_nothing_else_is_set() {
+    let mut styles = HashMap::new();
+    styles.insert(
+        "ui.selection",
+        ResolvedStyle {
+            fg: Some(Rgb(1, 2, 3)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles, ResolvedStyle::default());
+    assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(1, 2, 3)));
 }
 
 // ── ScopeRegistry ────────────────────────────────────────────────────

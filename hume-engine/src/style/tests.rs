@@ -15,6 +15,7 @@ fn apply_styles(
     graphemes: &[Grapheme],
     selections: &[Selection],
     mode: EditorMode,
+    primary_cursor_is_block: bool,
     theme: &Theme,
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
@@ -47,6 +48,7 @@ fn apply_styles(
             is_head_line,
             tint,
             mode,
+            primary_cursor_is_block,
             theme,
             scratch,
         );
@@ -89,6 +91,7 @@ fn no_selections_yields_default_style() {
         &graphemes,
         &[],
         EditorMode::Normal,
+        true,
         &default_theme(),
         &rope,
         &mut scratch,
@@ -145,6 +148,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
         false, // not the cursor line — isolates the tint's own contribution
         Some(tint_scope),
         EditorMode::Normal,
+        true,
         &theme,
         &mut scratch,
     );
@@ -190,6 +194,7 @@ fn selection_head_overrides_default() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -253,6 +258,7 @@ fn selection_head_on_newline_is_visible() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -296,6 +302,7 @@ fn selection_range_highlighted() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -352,6 +359,7 @@ fn backward_selection_anchor_cell_highlighted() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -402,6 +410,7 @@ fn insert_mode_collapsed_selection_not_highlighted() {
         &graphemes,
         &selections,
         EditorMode::Insert,
+        false,
         &theme,
         &rope,
         &mut scratch,
@@ -496,6 +505,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -516,7 +526,65 @@ fn cursorline_background_applied_to_cursor_line_only() {
 }
 
 #[test]
-fn insert_mode_uses_insert_cursor_scope() {
+fn insert_mode_secondary_head_uses_its_own_insert_scope_when_set() {
+    // A secondary head is always cursor-painted, regardless of shape — it has
+    // no real terminal cursor to fall back on. It must use its own mode scope
+    // (`ui.cursor.insert`), not the generic `ui.cursor`.
+    let rope = ropey::Rope::from_str("abcde");
+    let graphemes = make_graphemes(5);
+    let rows = vec![make_row(0..5)];
+    let selections = vec![
+        Selection { anchor: 0, head: 0 }, // primary
+        Selection { anchor: 2, head: 2 }, // secondary
+    ];
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.cursor.insert",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 255, 0)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 0, 0)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Insert,
+        false,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    assert_eq!(
+        scratch.styles[2].fg,
+        Some(Rgb(0, 255, 0)),
+        "secondary insert head uses its own ui.cursor.insert scope"
+    );
+    assert_eq!(
+        scratch.styles[0].fg, None,
+        "primary insert head unpainted under the default Bar shape"
+    );
+}
+
+/// Regression: everforest defines `ui.cursor.insert` (the secondary scope)
+/// and `ui.cursor` (the plain block scope), but no `ui.cursor.primary.insert`
+/// or `ui.cursor.primary`. A block-shape primary head must land on the plain
+/// `ui.cursor` colour — the bug this ladder replaced gave it the *secondary*
+/// insert colour instead, making both heads identical.
+#[test]
+fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = make_graphemes(2);
     let rows = vec![make_row(0..2)];
@@ -545,6 +613,7 @@ fn insert_mode_uses_insert_cursor_scope() {
         &graphemes,
         &selections,
         EditorMode::Insert,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -552,8 +621,8 @@ fn insert_mode_uses_insert_cursor_scope() {
 
     assert_eq!(
         scratch.styles[0].fg,
-        Some(Rgb(0, 255, 0)),
-        "Insert uses ui.cursor.insert scope"
+        Some(Rgb(255, 0, 0)),
+        "block-shape primary head uses ui.cursor, never the secondary ui.cursor.insert scope"
     );
 }
 
@@ -561,11 +630,11 @@ fn insert_mode_uses_insert_cursor_scope() {
 fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
     // Theme defines ui.cursor with a block bg but NOT ui.cursor.insert.
     //
-    // The primary head must NOT inherit the block bg: Helix's own gate
+    // The primary head must NOT inherit the block bg under the default Bar
+    // shape (`primary_cursor_is_block: false`): Helix's own gate
     // (`doc_selection_highlights`) only paints the primary cursor's cell
-    // when the configured shape is Block, never for Bar/Underline — and
-    // HUME's insert cursor is always a bar, so the real terminal cursor
-    // shows through unmodified here, matching that Bar-shape behaviour.
+    // when the configured shape is Block — for Bar/Underline the real
+    // terminal cursor is the sole indicator.
     //
     // The secondary head DOES inherit ui.cursor: Helix paints every
     // secondary cursor unconditionally, regardless of shape, because a
@@ -597,6 +666,7 @@ fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
         &graphemes,
         &selections,
         EditorMode::Insert,
+        false,
         &theme,
         &rope,
         &mut scratch,
@@ -683,6 +753,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -756,6 +827,7 @@ fn virtual_rows_keep_default_style() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -802,6 +874,7 @@ fn primary_head_gets_primary_style() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -854,6 +927,7 @@ fn primary_selection_gets_primary_style() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -881,11 +955,15 @@ fn primary_selection_gets_primary_style() {
         Some(Rgb(0, 0, 255)),
         "display_col 4 in secondary selection"
     );
-    // Col 2 is the head of the primary selection — included in the span, so it gets primary bg.
+    // Col 2 is the head of the primary selection, painted (Block shape) from
+    // the cursor ladder rather than the selection tier. With no ui.cursor*
+    // scope defined at all, that ladder's tail is the bare `ui.selection`,
+    // not `ui.selection.primary` — matching Helix's own `base_cursor_scope`,
+    // which only ever falls to `ui.selection`, never the `.primary` variant.
     assert_eq!(
         scratch.styles[2].bg,
-        Some(Rgb(0, 255, 255)),
-        "display_col 2 is primary head — must have primary selection bg"
+        Some(Rgb(0, 0, 255)),
+        "display_col 2 is the primary head — falls to the bare ui.selection, not .primary"
     );
 }
 
@@ -939,6 +1017,7 @@ fn extend_mode_uses_select_cursor_scope() {
         &graphemes,
         &selections,
         EditorMode::Extend,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -956,10 +1035,9 @@ fn extend_mode_uses_select_cursor_scope() {
     );
 }
 
-/// Insert-mode twin of the Extend test above. Two heads with distinct primary
-/// and secondary insert colours: with one selection the primary would resolve
-/// to the same colour either way, since `cursor_insert_primary` falls back to
-/// `ui.cursor.insert`, so only a second head can tell them apart.
+/// Insert-mode twin of the Extend test above. Both heads get their own
+/// distinct exact-match colour, with the primary painted (`Block` shape) so
+/// its own colour is observable at all.
 #[test]
 fn insert_mode_distinguishes_primary_from_secondary_head() {
     let rope = ropey::Rope::from_str("abcde");
@@ -993,6 +1071,7 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
         &graphemes,
         &selections,
         EditorMode::Insert,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1007,6 +1086,117 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
         scratch.styles[2].fg,
         Some(Rgb(0, 0, 255)),
         "secondary head in Insert mode gets ui.cursor.insert"
+    );
+}
+
+/// HUME's Command/Search/Select prompt modes have no Helix equivalent — Helix
+/// keeps the underlying document mode while a prompt is open, and these
+/// prompts have no cursor-shape option of their own — so document heads use
+/// the plain Normal ladder, never the Insert one.
+#[test]
+fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
+    let rope = ropey::Rope::from_str("ab");
+    let graphemes = make_graphemes(2);
+    let rows = vec![make_row(0..2)];
+    let selections = vec![Selection { anchor: 0, head: 0 }];
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.cursor.primary",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 0, 0)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.primary.insert",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    for mode in [EditorMode::Command, EditorMode::Search, EditorMode::Select] {
+        let mut scratch = StyleScratch::new();
+        apply_styles(
+            &rows,
+            &graphemes,
+            &selections,
+            mode,
+            true,
+            &theme,
+            &rope,
+            &mut scratch,
+        );
+        assert_eq!(
+            scratch.styles[0].fg,
+            Some(Rgb(255, 0, 0)),
+            "{mode:?} document head uses ui.cursor.primary, never the insert scope"
+        );
+    }
+}
+
+/// Helix's own carve-out for a non-block primary head with a real selection:
+/// a forward selection leaves the head cell bare (the real terminal cursor is
+/// the sole indicator there), but a reverse one (head before anchor) keeps
+/// the selection tier on the head cell.
+#[test]
+fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
+    let rope = ropey::Rope::from_str("abcde");
+    let graphemes = make_graphemes(5);
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.selection.primary",
+        ResolvedStyle {
+            bg: Some(Rgb(255, 0, 255)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    // Forward: anchor 0, head 3 — head cell (col 3) is left bare.
+    let rows = vec![make_row(0..5)];
+    let selections = vec![Selection { anchor: 0, head: 3 }];
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Insert,
+        false,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+    assert_eq!(
+        scratch.styles[2].bg,
+        Some(Rgb(255, 0, 255)),
+        "forward: col 2 (inside the span, not the head) keeps the selection bg"
+    );
+    assert_eq!(
+        scratch.styles[3].bg, None,
+        "forward: col 3 (the head) is left bare under a non-block shape"
+    );
+
+    // Reverse: anchor 3, head 0 — head cell (col 0) keeps the selection bg.
+    let selections = vec![Selection { anchor: 3, head: 0 }];
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Insert,
+        false,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+    assert_eq!(
+        scratch.styles[0].bg,
+        Some(Rgb(255, 0, 255)),
+        "reverse: col 0 (the head) keeps the selection bg"
     );
 }
 
@@ -1042,6 +1232,7 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1081,6 +1272,7 @@ fn primary_head_falls_back_when_no_primary_scope() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1185,6 +1377,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1291,6 +1484,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         &graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1369,6 +1563,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1435,6 +1630,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1502,6 +1698,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1569,6 +1766,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1636,6 +1834,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         &fmt.graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,
@@ -1712,6 +1911,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         &fmt.graphemes,
         &selections,
         EditorMode::Normal,
+        true,
         &theme,
         &rope,
         &mut scratch,

@@ -253,6 +253,34 @@ fn tab_style_values_round_trip_through_from_str() {
     }
 }
 
+// ── CursorShape parsing ──────────────────────────────────────────────────
+
+#[test]
+fn cursor_shape_parses_case_insensitive() {
+    assert_eq!("block".parse::<CursorShape>().unwrap(), CursorShape::Block);
+    assert_eq!("BLOCK".parse::<CursorShape>().unwrap(), CursorShape::Block);
+    assert_eq!("bar".parse::<CursorShape>().unwrap(), CursorShape::Bar);
+    assert_eq!(
+        "underline".parse::<CursorShape>().unwrap(),
+        CursorShape::Underline
+    );
+}
+
+#[test]
+fn cursor_shape_rejects_unknown() {
+    assert!("bogus".parse::<CursorShape>().is_err());
+}
+
+#[test]
+fn cursor_shape_values_round_trip_through_from_str() {
+    for v in CursorShape::VALUES {
+        assert!(
+            v.parse::<CursorShape>().is_ok(),
+            "'{v}' should parse as CursorShape"
+        );
+    }
+}
+
 // ── Auto-pairs resolution ─────────────────────────────────────────────────
 
 #[test]
@@ -434,6 +462,21 @@ fn set_global_tab_style() {
 #[test]
 fn set_global_tab_style_invalid_errors() {
     assert!(global("tab-style", "bogus").is_err());
+}
+
+#[test]
+fn set_global_cursor_shape_insert() {
+    assert_eq!(
+        global("cursor-shape-insert", "block")
+            .unwrap()
+            .cursor_shape_insert,
+        CursorShape::Block
+    );
+}
+
+#[test]
+fn set_global_cursor_shape_insert_invalid_errors() {
+    assert!(global("cursor-shape-insert", "bogus").is_err());
 }
 
 #[test]

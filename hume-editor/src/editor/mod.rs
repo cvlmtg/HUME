@@ -580,6 +580,30 @@ impl EditorState {
         self.mode
     }
 
+    /// The document-mode cursor shape for the live mode — how the primary
+    /// selection head is painted, and (outside a prompt) the real terminal
+    /// cursor's shape.
+    ///
+    /// Only Insert is configurable (`cursor-shape-insert`): a terminal has one
+    /// hardware cursor, so HUME offers no shape choice for Normal/Extend
+    /// (always `Block`, matching Helix's own default), and Command/Search/
+    /// Select also resolve to `Block` here — their document heads render like
+    /// Normal mode while a prompt is open — but their *real* terminal cursor
+    /// never reflects this value: it lives in the minibuf, placed by a
+    /// separate branch in `Editor::run`'s `cursor_screen` that is
+    /// unconditionally a bar regardless of what this method returns. This is
+    /// the single source both that branch's sibling (the non-minibuf case)
+    /// and `resolve_pane_settings`' `primary_cursor_is_block` read, so the
+    /// real terminal cursor and the grid's painted primary head can never
+    /// disagree about which shape is in effect outside a prompt.
+    pub(crate) fn cursor_shape(&self) -> crate::settings::CursorShape {
+        if self.mode == Mode::Insert {
+            self.settings.cursor_shape_insert
+        } else {
+            crate::settings::CursorShape::Block
+        }
+    }
+
     /// Everything about a buffer that changes how its lines format, in the
     /// form `hume_engine::rows::line_store`'s scope key carries it: which
     /// buffer, at which content generation, with which decorations.

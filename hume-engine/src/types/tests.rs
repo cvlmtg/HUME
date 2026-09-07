@@ -47,13 +47,3 @@ fn selection_is_collapsed() {
     assert!(Selection { anchor: 0, head: 0 }.is_collapsed());
     assert!(!Selection { anchor: 0, head: 1 }.is_collapsed());
 }
-
-#[test]
-fn editor_mode_cursor_is_bar() {
-    assert!(!EditorMode::Normal.cursor_is_bar());
-    assert!(!EditorMode::Extend.cursor_is_bar());
-    assert!(EditorMode::Insert.cursor_is_bar());
-    assert!(EditorMode::Command.cursor_is_bar());
-    assert!(EditorMode::Search.cursor_is_bar());
-    assert!(EditorMode::Select.cursor_is_bar());
-}

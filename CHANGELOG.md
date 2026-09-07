@@ -32,6 +32,8 @@
 - New `goto-next-buffer`/`goto-prev-buffer` commands, for binding to a key.
 
 ### Appearance
+- New `cursor-shape-insert` setting (`block`/`bar`/`underline`, default `bar`) picks the real terminal cursor's shape in Insert mode.
+- Fixed the primary cursor in Insert mode picking up a theme's secondary-cursor color (`ui.cursor.insert`) instead of its own primary color, or the plain block color, when the theme didn't define a primary-specific one — most visible with themes that color `ui.cursor.insert` but not `ui.cursor.primary.insert`, where both cursors used to look identical during multi-cursor editing.
 - Extend mode now honors a theme's own selection cursor color instead of ignoring it; Normal mode gets a matching option.
 - A second, simultaneous cursor during multi-cursor Insert-mode editing now falls back to a theme's `ui.cursor` color when it has no `ui.cursor.insert` of its own, instead of rendering with no color at all.
 - Curly, dotted, dashed, and now double-line underlines render correctly on terminals that support them.

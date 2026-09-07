@@ -2,7 +2,7 @@
 source: hume-editor/src/editor/tests/multi_pane.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
-<fg=#32302f,bg=#736b5e>a</><fg=#8a826d,bg=#32302f>bc </><bg=#32302f>     </><fg=#fabd2f,bg=#282828>│</><fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#83a598>a</><fg=#ebdbb2,bg=#3c3836>bc</>
+<fg=#32302f,bg=#736b5e>a</><fg=#8a826d,bg=#32302f>bc </><bg=#32302f>     </><fg=#fabd2f,bg=#282828>│</><fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>abc</>
 <fg=#5d564e,bg=#282828>~</><bg=#282828>        </><fg=#fabd2f,bg=#282828>│</><fg=#928374,bg=#282828>~</>
 <fg=#5d564e,bg=#282828>~</><bg=#282828>        </><fg=#fabd2f,bg=#282828>│</><fg=#928374,bg=#282828>~</>
 <fg=#3c3836,bg=#83a598,bold>     1:1 *scr…</><fg=#665c54,bg=#83a598>│</><fg=#3c3836,bg=#83a598,bold> INS</>

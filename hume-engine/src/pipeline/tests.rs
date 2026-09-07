@@ -47,6 +47,7 @@ fn render_test_pane(
             whitespace: WhitespaceConfig::default(),
         },
         show_indent_guides: true,
+        primary_cursor_is_block: true,
     };
     let pane_ctx = PaneRenderCtx {
         viewport: &pane.viewport,

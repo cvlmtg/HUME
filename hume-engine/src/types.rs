@@ -227,17 +227,6 @@ pub enum EditorMode {
     Search,
 }
 
-impl EditorMode {
-    /// Whether the cursor should render as a bar (Insert/Command/Search/Select)
-    /// or a block (Normal/Extend).
-    pub fn cursor_is_bar(self) -> bool {
-        matches!(
-            self,
-            EditorMode::Insert | EditorMode::Command | EditorMode::Search | EditorMode::Select
-        )
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
         "tab-style" => TabStyle::VALUES,
         "line-number-style" => LineNumberStyle::VALUES,
         "object-jump-align" => crate::settings::ObjectJumpAlign::VALUES,
+        "cursor-shape-insert" => crate::settings::CursorShape::VALUES,
         WRAP_MODE_KEY => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,

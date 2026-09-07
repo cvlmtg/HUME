@@ -61,16 +61,20 @@ impl Editor {
         let last_line_idx = doc.text().last_ropey_line();
         let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
-        let mode = if pid == self.state.focused_pane_id {
+        let is_focused = pid == self.state.focused_pane_id;
+        let mode = if is_focused {
             self.state.mode()
         } else {
             EditorMode::Normal
         };
+        let primary_cursor_is_block =
+            !is_focused || self.state.cursor_shape() == crate::settings::CursorShape::Block;
         (
             PaneRenderSettings {
                 mode,
                 format: self.state.format_key(pane),
                 show_indent_guides,
+                primary_cursor_is_block,
             },
             gutter_w,
         )

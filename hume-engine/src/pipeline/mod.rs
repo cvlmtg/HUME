@@ -532,12 +532,19 @@ impl EngineView {
 /// fact, not a document fact: the editor resolves it to the live editor mode
 /// only for the focused pane (whose fake cursor must yield to the real
 /// terminal cursor in bar-cursor modes) and to a block-cursor mode for every
-/// other pane.
+/// other pane. `primary_cursor_is_block` is the same per-focus resolution for
+/// shape rather than mode: `true` for every unfocused pane, and for the
+/// focused pane whenever the resolved cursor shape for its live mode is
+/// `Block` — only Insert varies (`cursor-shape-insert`); every other mode is
+/// hardwired block. Gates whether [`style::head_style`](crate::style)'s Tier
+/// 0 paints the primary selection head at all, matching Helix's own
+/// `cursor_is_block` gate in `doc_selection_highlights`.
 #[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
     pub format: crate::rows::line_store::FormatKey,
     pub show_indent_guides: bool,
+    pub primary_cursor_is_block: bool,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a

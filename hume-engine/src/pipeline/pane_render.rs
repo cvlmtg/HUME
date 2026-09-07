@@ -192,6 +192,7 @@ pub(crate) fn render_pane(
                     line.is_head_line,
                     line.tint,
                     pane_ctx.settings.mode,
+                    pane_ctx.settings.primary_cursor_is_block,
                     pane_ctx.theme,
                     style,
                 );

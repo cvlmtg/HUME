@@ -120,10 +120,18 @@ pub(crate) fn style_row(
     is_head_line: bool,
     line_tint: Option<ScopeId>,
     mode: EditorMode,
+    primary_cursor_is_block: bool,
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
     let primary_idx = scratch.primary_idx_in_sorted;
+    // Whether the primary selection runs backward (head before anchor) — the
+    // one piece of per-row context the unpainted-primary-head carve-out below
+    // needs. A property of the selection itself, not of this row, so it's
+    // computed once here rather than per grapheme.
+    let primary_is_reverse = primary_idx
+        .map(|idx| scratch.sorted_sels[idx].head < scratch.sorted_sels[idx].anchor)
+        .unwrap_or(false);
     collect_selection_spans(
         line_start_char,
         line_end_char,
@@ -221,11 +229,36 @@ pub(crate) fn style_row(
             style = style.layer(theme.resolve(id));
         }
 
-        // Tier 1: selection (primary wins over secondary for style; both are highlighted)
-        let in_primary_sel = scratch
+        // Tiers 1 and 0: selection and selection-head, as mutually exclusive
+        // spans — matching Helix's own non-overlapping selection/cursor spans
+        // in `doc_selection_highlights` rather than layering a (possibly
+        // partial) head style over a selection style underneath it. A
+        // secondary head is always cursor-painted (a terminal has one
+        // hardware cursor, so a second simultaneous insertion point has no
+        // native indicator to fall back on); the primary head is painted only
+        // when the resolved cursor shape for the live mode is `Block` — for
+        // Bar/Underline the real terminal cursor is the sole indicator, and
+        // this cell keeps its selection styling only for a reverse selection
+        // (head before anchor), Helix's own carve-out for that case. A
+        // forward or collapsed selection under a non-block primary leaves the
+        // cell bare.
+        let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
+        if is_primary_head {
+            if primary_cursor_is_block {
+                style = style.layer(head_style(theme, mode, true));
+            } else if primary_is_reverse
+                && scratch
+                    .primary_sel_span
+                    .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e)
+            {
+                style = style.layer(theme.ui.selection_primary);
+            }
+        } else if scratch.head_display_cols.contains(&g.display_col) {
+            style = style.layer(head_style(theme, mode, false));
+        } else if scratch
             .primary_sel_span
-            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e);
-        if in_primary_sel {
+            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e)
+        {
             style = style.layer(theme.ui.selection_primary);
         } else if scratch
             .sel_spans
@@ -235,34 +268,25 @@ pub(crate) fn style_row(
             style = style.layer(theme.ui.selection);
         }
 
-        // Tier 0: selection head (highest priority).
-        // The grapheme at each selection's head gets `ui.cursor*` styling so it
-        // visually looks like a cursor. In bar-cursor modes (Insert, Command, …)
-        // the terminal cursor overlaps this cell; in block modes it is the sole
-        // visual indicator.
-        let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
-        if is_primary_head {
-            style = style.layer(head_style(theme, mode, true));
-        } else if scratch.head_display_cols.contains(&g.display_col) {
-            style = style.layer(head_style(theme, mode, false));
-        }
-
         scratch.styles[g_idx] = style;
     }
 }
 
 /// Pick the Tier-0 cursor style for a selection head, by mode and primary-ness.
 ///
-/// Bar-cursor modes (Insert, Command, Search, HUME's own Select prompt) use the
-/// insert chain; Extend — HUME's name for Helix's Select mode — uses the select
-/// chain; every other (block) mode uses the plain chain.
+/// `Insert` uses the insert chain; `Extend` — HUME's name for Helix's Select
+/// mode — uses the select chain; every other mode, including HUME's own
+/// Command/Search/Select prompt modes (which have no Helix equivalent — Helix
+/// keeps the underlying document mode while a prompt is open, and HUME's
+/// prompts have no cursor-shape option of their own), uses the plain Normal
+/// chain.
 fn head_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> ResolvedStyle {
-    let (primary, secondary) = if mode.cursor_is_bar() {
-        (theme.ui.cursor_insert_primary, theme.ui.cursor_insert)
-    } else if mode == EditorMode::Extend {
-        (theme.ui.cursor_select_primary, theme.ui.cursor_select)
-    } else {
-        (theme.ui.cursor_primary, theme.ui.cursor)
+    let (primary, secondary) = match mode {
+        EditorMode::Insert => (theme.ui.cursor_insert_primary, theme.ui.cursor_insert),
+        EditorMode::Extend => (theme.ui.cursor_select_primary, theme.ui.cursor_select),
+        EditorMode::Normal | EditorMode::Command | EditorMode::Search | EditorMode::Select => {
+            (theme.ui.cursor_primary, theme.ui.cursor)
+        }
     };
     if is_primary { primary } else { secondary }
 }
