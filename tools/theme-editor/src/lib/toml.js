@@ -1,3 +1,5 @@
+import { STYLE_KEYS } from './theme.js';
+
 // Shared string-aware scanner. Yields { i, c, inStr } for every character;
 // inStr=true while inside a "..." or '...' literal (delimiters and escapes included).
 // Handles: single-quoted strings, escaped backslashes in double-quoted strings,
@@ -185,12 +187,6 @@ export function formatVal(v) {
   return String(v);
 }
 
-// Mirrors STYLE_KEYS in hume-engine/src/theme/loader.rs — a key here is part
-// of a scope's style, anything else is a child scope. `style` belongs to the
-// `underline = { color, style }` table, which is kept verbatim as part of the
-// def below, so it is not a style field in its own right.
-const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline"];
-
 function isTable(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -202,14 +198,14 @@ function isTable(v) {
 // into (or is empty, e.g. `"ui.cursor.insert" = {}`) — deeper keys keep recursing.
 function walkScopes(ns, obj, prefix) {
   const keys = Object.keys(obj);
-  const styleKeys = keys.filter(k => SCOPE_KEYS.includes(k));
+  const styleKeys = keys.filter(k => STYLE_KEYS.includes(k));
   if (prefix && (keys.length === 0 || styleKeys.length > 0)) {
     const def = {};
     for (const k of styleKeys) def[k] = obj[k];
     ns[prefix] = def;
   }
   for (const k of keys) {
-    if (SCOPE_KEYS.includes(k)) continue;
+    if (STYLE_KEYS.includes(k)) continue;
     if (!prefix && (k === "palette" || k === "inherits")) continue;
     const v = obj[k];
     const path = prefix ? prefix + "." + k : k;

@@ -9,6 +9,14 @@ const ANSI_COLORS = {
   "light-blue": "#5c5cff", "light-magenta": "#ff00ff", "light-cyan": "#00ffff", white: "#ffffff",
 };
 
+// Mirrors STYLE_KEYS in hume-engine/src/theme/loader.rs — a key here is part
+// of a scope's style, anything else is a child scope. The single copy other
+// modules import, rather than each hand-typing their own (as toml.js's
+// `SCOPE_KEYS` and ScopeRow.jsx's own `STYLE_KEYS` used to). `underline`'s
+// nested `style` key belongs to that sub-table, not this list, so it stays
+// out even though it's an underline-related word.
+export const STYLE_KEYS = ["fg", "bg", "underline", "modifiers"];
+
 export function resolveColor(c, pal) {
   if (!c || typeof c !== "string") return null;
   return c.startsWith("#") ? c : (pal[c] || ANSI_COLORS[c] || c);
@@ -71,6 +79,15 @@ function normalizeStyle(v, pal) {
 export function fullStyle(id, sc, pal) {
   const v = lookupRaw(id, sc);
   return v == null ? null : normalizeStyle(v, pal);
+}
+
+// The text-span squiggle a diagnostic of severity `sev` draws — HUME's
+// `diagnostic.<sev>` scope, distinct from the bare gutter dot (`error` etc.)
+// and the end-of-line summary (`<sev>.diagnostic.inline`) the preview also
+// shows. A thin wrapper over `fullStyle` so the scope-name string lives in
+// one place and the resolution is unit-testable without importing JSX.
+export function diagnosticStyle(sev, sc, pal) {
+  return fullStyle("diagnostic." + sev, sc, pal);
 }
 
 // Resolve the first key in `ids` that has an explicit scope entry — no

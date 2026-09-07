@@ -206,7 +206,11 @@ pub fn run(
     // claim attempt loses) and goes on to `kill_tracked_children` —
     // including every attached LSP server — right after, so the graceful
     // shutdown below would never run regardless.
-    let mut restore_err = hume_platform::terminal::reset_cursor_shape(&shared).err();
+    let mut restore_err = hume_platform::terminal::set_cursor_shape(
+        &shared,
+        hume_platform::terminal::CursorStyle::Default,
+    )
+    .err();
     let _ = hume_platform::terminal::set_cursor_color(&shared, false); // emits reset sequence
     if let Err(e) = hume_platform::restore_for_exit(&shared) {
         restore_err.get_or_insert(e);

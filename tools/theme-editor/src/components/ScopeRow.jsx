@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, INPUT, MONO } from '../ui.js';
-import { resolve } from '../lib/theme.js';
+import { resolve, STYLE_KEYS } from '../lib/theme.js';
 import Swatch from './Swatch.jsx';
 
 // The loader's accepted modifier vocabulary (hume-engine/src/theme/loader.rs's
@@ -10,7 +10,6 @@ import Swatch from './Swatch.jsx';
 // rejects on load.
 const MODIFIERS = ["bold", "italic", "dim", "reversed", "hidden", "crossed_out", "slow_blink", "rapid_blink", "underlined"];
 const UNDERLINE_STYLES = ["line", "curl", "dotted", "dashed", "double_line"];
-const STYLE_KEYS = ["fg", "bg", "modifiers", "underline"];
 
 export default function ScopeRow({ id, value, palette, onChange }) {
   const isObj = typeof value === "object" && value !== null;

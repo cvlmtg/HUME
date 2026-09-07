@@ -435,7 +435,7 @@ impl Editor {
                 let statusline_row = term_height.saturating_sub(1);
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else {
-                let (settings, gutter_w) = self.resolve_pane_settings(self.state.focused_pane_id);
+                let settings = self.resolve_pane_settings(self.state.focused_pane_id);
                 if settings.primary_cursor_is_block {
                     None
                 } else {
@@ -451,6 +451,7 @@ impl Editor {
                     // so the cursor lands inside the pane, not at the origin. The
                     // focused pane is always a live layout leaf (see
                     // `close_focused_pane`/`split_pane_onto`), so this can't miss.
+                    let gutter_w = self.pane_gutter_width(self.state.focused_pane_id);
                     let pane_rect = self
                         .view
                         .pane_rect(self.state.focused_pane_id)

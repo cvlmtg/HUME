@@ -67,7 +67,7 @@ impl Editor {
     ) -> Option<((u16, u16), Rect, u16, u16)> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
-        let (_, gutter_w) = self.resolve_pane_settings(focused);
+        let gutter_w = self.pane_gutter_width(focused);
         let content_width = pane_rect.width.saturating_sub(gutter_w);
         // Step 6 (`scroll_into_view`) already resolved the focused cursor's
         // screen cell this frame, via the same locate/distance walk

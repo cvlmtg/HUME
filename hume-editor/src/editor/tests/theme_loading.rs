@@ -196,6 +196,30 @@ fn bundled_theme_cursor_scopes_are_pairwise_distinct() {
     }
 }
 
+/// `:theme-debug`'s cursor rows must name a real rung chain — the theme's
+/// bundled `sand` sets `ui.cursor.normal` directly, so that row's chain must
+/// say so, not print the placeholder word the pre-fix implementation used in
+/// place of every cursor row's chain.
+#[test]
+fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    let text = ed
+        .state
+        .status_msg
+        .as_ref()
+        .expect(":theme-debug reports Info, which lands in status_msg");
+    assert!(
+        text.contains("cursor (normal): chain=ui.cursor.normal"),
+        "expected the normal cursor row to name its defined rung, got: {text}"
+    );
+    assert!(
+        !text.contains("resolved"),
+        "cursor rows must not print the literal placeholder word, got: {text}"
+    );
+}
+
 /// `load_theme_by_name` reports failure via the message log and returns `false`;
 /// the theme stays unchanged.
 #[test]

@@ -553,7 +553,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
     // Global default (Indent) wraps; only a buffer override can produce None.
     run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
     let pid = ed.state.focused_pane_id;
-    let (settings, _gutter_w) = ed.resolve_pane_settings(pid);
+    let settings = ed.resolve_pane_settings(pid);
     assert_eq!(
         settings.format.wrap_mode,
         WrapMode::None,

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, MONO } from '../ui.js';
-import { fgc, bgc, fullStyle, cursorColors, tokenStyle } from '../lib/theme.js';
+import { fgc, bgc, fullStyle, cursorColors, diagnosticStyle, tokenStyle } from '../lib/theme.js';
 import { BUFFERS, DIFF_SAMPLE, MODES, OVERLAYS, PICKER_ROWS, DRAWER_ROWS, NEIGHBOR_TOP, NEIGHBOR_BOTTOM } from './samples.js';
 
 // Floor under the pane's content height so an overlay (the picker's centered
@@ -263,7 +263,9 @@ export default function EditorPane({ pal, sc }) {
   // to layer" — `tokenStyle`'s `tag?.fg ?? s?.fg ?? fallbackFg` already
   // resolves that exactly like `ResolvedStyle::layer` does: an unset field
   // inherits what's underneath rather than being overridden.
-  function tagStyle(tag) {
+  // `d` (the current line's own diagnostic, when it has one) is only ever
+  // needed for the "diag" tag — every other caller omits it.
+  function tagStyle(tag, d) {
     if (!tag) return null;
     if (tag === "cursor" || tag === "cursor2") {
       const primary = tag === "cursor";
@@ -282,6 +284,7 @@ export default function EditorPane({ pal, sc }) {
     if (tag === "sel2") return fullStyle("ui.selection", sc, pal);
     if (tag === "match") return fullStyle("ui.cursor.match", sc, pal);
     if (tag === "search") return fullStyle("ui.cursor.match.search", sc, pal);
+    if (tag === "diag") return d ? diagnosticStyle(d.sev, sc, pal) : null;
     return null;
   }
 
@@ -322,7 +325,7 @@ export default function EditorPane({ pal, sc }) {
                       <span style={{ display: "inline-block", width: 36, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
                       <span style={{ whiteSpace: "pre" }}>
                         {line.t.length === 0 && <span>{" "}</span>}
-                        {line.t.map((tok, i) => renderToken(tok, i, tagStyle(tok[2]), sc, pal, FG, BG))}
+                        {line.t.map((tok, i) => renderToken(tok, i, tagStyle(tok[2], d), sc, pal, FG, BG))}
                       </span>
                       {d && (
                         <span style={{ marginLeft: 12, whiteSpace: "pre", ...tokenStyle(d.sev + ".diagnostic.inline", sc, pal, "#888", BG, null) }}>

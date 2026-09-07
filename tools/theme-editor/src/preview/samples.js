@@ -2,8 +2,12 @@
 // scope reference without importing JSX. Each buffer sample is a list of
 // lines; each line is `{ n, t }` where `t` is a list of tokens.
 // A token is `[text, scope]` (scope "" means unstyled) or
-// `[text, scope, tag]`, where `tag` overlays a cursor/selection/match
-// highlight on top of the token's own scope — see `EditorPane.jsx`.
+// `[text, scope, tag]`, where `tag` overlays a cursor/selection/match/diag
+// highlight on top of the token's own scope — see `EditorPane.jsx`. `"diag"`
+// marks the specific span a line's own diagnostic (below) targets, styled
+// with its `diagnostic.<sev>` scope — the squiggle a real diagnostic draws
+// under the offending code, distinct from the gutter dot and the
+// end-of-line summary this pane also shows.
 
 export const RUST_SAMPLE = {
   name: "theme.rs",
@@ -28,7 +32,7 @@ export const RUST_SAMPLE = {
     { n: 13, t: [] },
     { n: 14, t: [["impl", "keyword"], ["<", "punctuation.bracket"], ["T", "type.parameter"], [">", "punctuation.bracket"], [" Theme", "type", "search"], ["<", "punctuation.bracket"], ["T", "type.parameter"], [">", "punctuation.bracket"], [" {", "punctuation.bracket"]] },
     { n: 15, t: [["    pub ", "keyword.storage.modifier"], ["fn ", "keyword.function"], ["new", "function", "match"], ["(", "punctuation.bracket", "match"], ["name", "variable.parameter"], [": ", "punctuation.delimiter"], ["&", "operator"], ["str", "type.builtin"], [")", "punctuation.bracket", "match"], [" -> ", "operator"], ["Self", "constructor"], [" {", "punctuation.bracket"]] },
-    { n: 16, t: [["        let ", "keyword"], ["mut ", "keyword.storage.modifier"], ["count", "variable"], [": u32", "ui.virtual.inlay-hint"], [" = ", "operator"], ["0x2A", "constant.numeric.integer"], [";", "punctuation.delimiter"]] },
+    { n: 16, t: [["        let ", "keyword"], ["mut ", "keyword.storage.modifier"], ["count", "variable", "diag"], [": u32", "ui.virtual.inlay-hint"], [" = ", "operator"], ["0x2A", "constant.numeric.integer"], [";", "punctuation.delimiter"]] },
     { n: 17, t: [["        let ", "keyword"], ["ratio", "variable"], [" = ", "operator"], ["4.2", "constant.numeric.float"], [";", "punctuation.delimiter"]] },
     { n: 18, t: [["        let ", "keyword"], ["found", "variable"], [" = ", "operator"], ["true", "constant.builtin.boolean"], [";", "punctuation.delimiter"]] },
     { n: 19, t: [["        let ", "keyword"], ["esc", "variable"], [" = ", "operator"], ["'", "string"], ["\\n", "constant.character.escape"], ["'", "string"], [";", "punctuation.delimiter"]] },
@@ -41,7 +45,7 @@ export const RUST_SAMPLE = {
     { n: 26, t: [["                println!", "function.macro"], ["(", "punctuation.bracket"], ['"{c:?}"', "string"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
     { n: 27, t: [["            }", "punctuation.bracket"]] },
     { n: 28, t: [["        } else if ", "keyword.control.conditional"], ["let ", "keyword"], ["Err", "variable.builtin"], ["(", "punctuation.bracket"], ["e", "variable"], [")", "punctuation.bracket"], [" = ", "operator"], ["load", "function"], ["()", "punctuation.bracket"], [" {", "punctuation.bracket"]] },
-    { n: 29, t: [["            return ", "keyword.control.return"], ["Err", "variable.builtin"], ["(", "punctuation.bracket"], ["e", "variable"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
+    { n: 29, t: [["            return ", "keyword.control.return"], ["Err", "variable.builtin"], ["(", "punctuation.bracket"], ["e", "variable", "diag"], [")", "punctuation.bracket"], [";", "punctuation.delimiter"]] },
     { n: 30, t: [["        }", "punctuation.bracket"]] },
     { n: 31, t: [["        ", ""], ["Self", "constructor", "sel2"], [" { ", "punctuation.bracket"], ["name", "variable.parameter", "sel2"], [": ", "punctuation.delimiter"], ["name", "variable.parameter"], [".", "punctuation.delimiter"], ["to_string", "function.method"], ["()", "punctuation.bracket"], [", ", "punctuation.delimiter"], ["colors", "variable.other.member"], [" }", "punctuation.bracket"]] },
     { n: 32, t: [["    }", "punctuation.bracket"]] },

@@ -108,7 +108,6 @@
 "ui.cursor.primary.normal" = { fg = "bg1", bg = "fg3" }
 "ui.cursor.primary.select" = { fg = "bg1", bg = "orange1" }
 
-"ui.cursorline" = { bg = "bg0_s" }
 "ui.cursorline.primary" = { bg = "bg1" }
 
 "ui.help" = { bg = "bg1", fg = "fg1" }

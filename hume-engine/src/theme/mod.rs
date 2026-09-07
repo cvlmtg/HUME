@@ -115,6 +115,29 @@ pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
 }
 
+/// The (secondary, primary) rung lists [`Theme::cursor_ladder`] resolves, for
+/// one mode's own scope names — see that method's doc for the ladder shape.
+///
+/// Exposed as a shared function rather than left private so `:theme-debug`
+/// can report which rung actually matched, without hand-copying the list: a
+/// second copy would silently drift past the exact order and skip-rules
+/// `hume-engine/src/theme/tests.rs` pins for it.
+pub fn cursor_ladder_ids(
+    mode_scope: &'static str,
+    primary_mode_scope: &'static str,
+) -> ([&'static str; 3], [&'static str; 5]) {
+    (
+        [mode_scope, "ui.cursor", "ui.selection"],
+        [
+            primary_mode_scope,
+            "ui.cursor.primary",
+            "ui.cursor",
+            "ui",
+            "ui.selection",
+        ],
+    )
+}
+
 // ---------------------------------------------------------------------------
 // UiScopes
 // ---------------------------------------------------------------------------
@@ -382,18 +405,14 @@ impl Theme {
     /// str` literal with no runtime formatting.
     fn cursor_ladder(
         &self,
-        mode_scope: &str,
-        primary_mode_scope: &str,
+        mode_scope: &'static str,
+        primary_mode_scope: &'static str,
     ) -> (ResolvedStyle, ResolvedStyle) {
-        let secondary = self.resolve_cursor_chain(&[mode_scope, "ui.cursor", "ui.selection"]);
-        let primary = self.resolve_cursor_chain(&[
-            primary_mode_scope,
-            "ui.cursor.primary",
-            "ui.cursor",
-            "ui",
-            "ui.selection",
-        ]);
-        (secondary, primary)
+        let (secondary_ids, primary_ids) = cursor_ladder_ids(mode_scope, primary_mode_scope);
+        (
+            self.resolve_cursor_chain(&secondary_ids),
+            self.resolve_cursor_chain(&primary_ids),
+        )
     }
 
     /// Resolve a cursor scope from an explicit, ordered key list — first key with

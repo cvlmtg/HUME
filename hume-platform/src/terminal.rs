@@ -444,19 +444,6 @@ pub fn set_cursor_shape(term: &SharedTerm, style: CursorStyle) -> io::Result<()>
     term.flush()
 }
 
-/// Restore whatever cursor shape the user's terminal is configured to
-/// display. Call before returning to the shell so the user's preferred
-/// cursor is restored.
-pub fn reset_cursor_shape(term: &SharedTerm) -> io::Result<()> {
-    let mut term = term.clone();
-    write!(
-        term,
-        "{}",
-        Csi::Cursor(Cursor::CursorStyle(CursorStyle::Default))
-    )?;
-    term.flush()
-}
-
 /// Ask the terminal to defer display updates until [`end_synchronized_update`]
 /// is called.
 ///

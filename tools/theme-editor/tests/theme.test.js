@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveColor, cursorColors } from '../src/lib/theme.js';
+import { resolveColor, cursorColors, diagnosticStyle } from '../src/lib/theme.js';
 
 test('resolveColor resolves a bare ANSI name to its fixed hex value', () => {
   assert.equal(resolveColor('red', {}), '#cd0000');
@@ -50,4 +50,21 @@ test('cursorColors primary chain reaches the bare "ui" rung the secondary chain 
 test('cursorColors always returns a normalized style, never null', () => {
   assert.deepEqual(cursorColors('insert', true, {}, {}), { fg: null, bg: null, mods: [], underline: null });
   assert.deepEqual(cursorColors('select', false, {}, {}), { fg: null, bg: null, mods: [], underline: null });
+});
+
+// ── diagnosticStyle — the diagnostic.<sev> text-span squiggle ──────────────
+
+test('diagnosticStyle resolves the diagnostic.<sev> scope, distinct per severity', () => {
+  const sc = {
+    'diagnostic.error': { fg: '#ff0000', modifiers: ['underlined'] },
+    'diagnostic.warning': '#ffff00',
+  };
+  const err = diagnosticStyle('error', sc, {});
+  assert.equal(err.fg, '#ff0000');
+  assert.deepEqual(err.mods, ['underlined']);
+  assert.equal(diagnosticStyle('warning', sc, {}).fg, '#ffff00');
+});
+
+test('diagnosticStyle returns null for a severity the theme leaves unset', () => {
+  assert.equal(diagnosticStyle('hint', {}, {}), null);
 });

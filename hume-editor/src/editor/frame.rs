@@ -44,22 +44,24 @@ pub(super) fn write_pane_mirror(
 }
 
 impl Editor {
-    /// Resolve any pane's render settings and gutter width.
+    /// Resolve any pane's render settings.
     ///
-    /// Returns `(PaneRenderSettings, gutter_w)`. `format` is
-    /// [`EditorState::format_key`](super::EditorState::format_key) — the
-    /// single source of truth for wrap_mode / tab_width / whitespace across
-    /// all render paths, so this and the scroll pass
+    /// `format` is [`EditorState::format_key`](super::EditorState::format_key)
+    /// — the single source of truth for wrap_mode / tab_width / whitespace
+    /// across all render paths, so this and the scroll pass
     /// (`commands::pane_row_map`) resolve a bit-identical key for the same
     /// pane. `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes
     /// are forced to a block-cursor mode so their fake cursor stays visible
     /// instead of turning transparent.
-    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> (PaneRenderSettings, u16) {
+    ///
+    /// Split from gutter width ([`Self::pane_gutter_width`]) because every
+    /// caller wants one or the other, never reliably both — bundling them
+    /// meant two of three call sites computed a gutter width just to throw
+    /// it away.
+    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
-        let last_line_idx = doc.text().last_ropey_line();
-        let gutter_w = super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let is_focused = pid == self.state.focused_pane_id;
         let mode = if is_focused {
@@ -69,15 +71,23 @@ impl Editor {
         };
         let primary_cursor_is_block =
             !is_focused || self.state.cursor_shape() == crate::settings::CursorShape::Block;
-        (
-            PaneRenderSettings {
-                mode,
-                format: self.state.format_key(pane),
-                show_indent_guides,
-                primary_cursor_is_block,
-            },
-            gutter_w,
-        )
+        PaneRenderSettings {
+            mode,
+            format: self.state.format_key(pane),
+            show_indent_guides,
+            primary_cursor_is_block,
+        }
+    }
+
+    /// The gutter width a pane's own providers currently occupy — used to
+    /// offset the terminal cursor column past line numbers and other gutter
+    /// providers. See [`Self::resolve_pane_settings`] for why this is split
+    /// out rather than returned alongside it.
+    pub(super) fn pane_gutter_width(&self, pid: PaneId) -> u16 {
+        let pane = &self.view.panes[pid];
+        let doc = self.state.buffers.get(pane.buffer_id);
+        let last_line_idx = doc.text().last_ropey_line();
+        super::cursor::gutter_width(pane.providers.gutter_columns(), last_line_idx)
     }
 
     /// Render one frame into `grid`. Single home for the rope and syntax
@@ -92,7 +102,7 @@ impl Editor {
             self.view
                 .panes
                 .keys()
-                .map(|pid| (pid, self.resolve_pane_settings(pid).0)),
+                .map(|pid| (pid, self.resolve_pane_settings(pid))),
         );
         let focused_pane_id = self.state.focused_pane_id;
         let draw_dividers = self.state.settings.pane_dividers;

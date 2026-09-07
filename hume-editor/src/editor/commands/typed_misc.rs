@@ -247,6 +247,25 @@ pub(crate) fn typed_theme_debug(
         }
     }
 
+    /// Every name on an explicit cursor-ladder rung list (`ids`, from
+    /// [`hume_engine::theme::cursor_ladder_ids`]) the theme actually defines,
+    /// in ladder order. Not `defined_ancestors`'s dot-notation walk: a cursor
+    /// ladder skips rungs dot-trimming would visit — `ui.cursor.primary.insert`
+    /// never trims down to `ui.cursor.insert` — so showing the real rung list
+    /// is the only way this names colors that actually render.
+    fn defined_rungs(theme: &hume_engine::theme::Theme, ids: &[&str]) -> String {
+        let chain: Vec<&str> = ids
+            .iter()
+            .copied()
+            .filter(|k| theme.raw_contains(k))
+            .collect();
+        if chain.is_empty() {
+            "default".to_owned()
+        } else {
+            chain.join(" → ")
+        }
+    }
+
     fn style_line(label: &str, chain: &str, style: hume_engine::types::ResolvedStyle) -> String {
         format!(
             "  {label}: {chain} fg={} bg={}{}",
@@ -271,20 +290,42 @@ pub(crate) fn typed_theme_debug(
 
     // Cursor rows report the style the renderer will actually layer, taken
     // from the same pre-resolved `ui` fields it reads. Their chains aren't
-    // plain dot-notation — the primary insert cursor deliberately stops
-    // short of `ui.cursor`, the primary normal/extend ones reach a key
-    // dot-trimming skips — so showing a dot-notation walk here would name
-    // colors that never render.
+    // plain dot-notation — a primary ladder reaches a key dot-trimming
+    // skips (`ui.cursor.primary.insert` never trims to `ui.cursor.insert`)
+    // — so each row's chain comes from the explicit rung list
+    // `cursor_ladder_ids` builds, the same one the renderer resolves against.
     let ui = &theme.ui;
-    for (label, style) in [
-        ("cursor (normal)", ui.cursor),
-        ("cursor (insert)", ui.cursor_insert),
-        ("cursor (extend)", ui.cursor_select),
-        ("cursor primary (normal)", ui.cursor_primary),
-        ("cursor primary (insert)", ui.cursor_insert_primary),
-        ("cursor primary (extend)", ui.cursor_select_primary),
+    let (normal_ids, normal_primary_ids) =
+        hume_engine::theme::cursor_ladder_ids("ui.cursor.normal", "ui.cursor.primary.normal");
+    let (insert_ids, insert_primary_ids) =
+        hume_engine::theme::cursor_ladder_ids("ui.cursor.insert", "ui.cursor.primary.insert");
+    let (select_ids, select_primary_ids) =
+        hume_engine::theme::cursor_ladder_ids("ui.cursor.select", "ui.cursor.primary.select");
+    for (label, ids, style) in [
+        ("cursor (normal)", &normal_ids[..], ui.cursor),
+        ("cursor (insert)", &insert_ids[..], ui.cursor_insert),
+        ("cursor (extend)", &select_ids[..], ui.cursor_select),
+        (
+            "cursor primary (normal)",
+            &normal_primary_ids[..],
+            ui.cursor_primary,
+        ),
+        (
+            "cursor primary (insert)",
+            &insert_primary_ids[..],
+            ui.cursor_insert_primary,
+        ),
+        (
+            "cursor primary (extend)",
+            &select_primary_ids[..],
+            ui.cursor_select_primary,
+        ),
     ] {
-        lines.push(style_line(label, "resolved", style));
+        lines.push(style_line(
+            label,
+            &format!("chain={}", defined_rungs(theme, ids)),
+            style,
+        ));
     }
 
     // Ordinary dot-notation scopes: the chain is the whole story.
