@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::ProviderId;
+use crate::test_support::{fg, theme_with};
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 use crate::types::ResolvedStyle;
@@ -317,15 +318,7 @@ fn sign_scope_resolves_via_baked_theme() {
     let mut registry = ScopeRegistry::new();
     let scope_id = registry.intern("diagnostic.error");
     let blank_scope = registry.intern("ui.linenr");
-    let mut styles_map = std::collections::HashMap::new();
-    styles_map.insert(
-        "diagnostic.error",
-        crate::types::ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, crate::types::ResolvedStyle::default());
+    let mut theme = theme_with([("diagnostic.error", fg(Rgb(255, 0, 0)))]);
     theme.bake(&registry);
 
     let source = FixedSign {

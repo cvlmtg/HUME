@@ -1,5 +1,6 @@
 use super::*;
 use crate::providers::ProviderSet;
+use crate::test_support::{bg, fg, theme_with};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use hume_grid::Rgb;
@@ -76,10 +77,6 @@ fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     }
 }
 
-fn default_theme() -> Theme {
-    Theme::default()
-}
-
 #[test]
 fn no_selections_yields_default_style() {
     let rope = ropey::Rope::from_str("abc");
@@ -92,7 +89,7 @@ fn no_selections_yields_default_style() {
         &[],
         EditorMode::Normal,
         true,
-        &default_theme(),
+        &Theme::default(),
         &rope,
         &mut scratch,
     );
@@ -178,15 +175,7 @@ fn selection_head_overrides_default() {
     let selections = vec![Selection { anchor: 2, head: 2 }];
 
     // Theme with a cursor style so we can detect the override.
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -240,15 +229,7 @@ fn selection_head_on_newline_is_visible() {
     let graphemes = make_graphemes_with_sentinel();
     let rows = vec![make_row(0..6)]; // all 6 graphemes in one row
 
-    let mut styles_map = std::collections::HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
     // Line selection: anchor=0, head=5 (the '\n').
     let selections = vec![Selection { anchor: 0, head: 5 }];
@@ -286,15 +267,7 @@ fn selection_range_highlighted() {
     let rows = vec![make_row(0..3)];
     let selections = vec![Selection { anchor: 1, head: 3 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.selection", bg(Rgb(255, 0, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -336,22 +309,10 @@ fn backward_selection_anchor_cell_highlighted() {
     let rows = vec![make_row(0..3)];
     let selections = vec![Selection { anchor: 2, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.selection", bg(Rgb(0, 0, 255))),
+        ("ui.cursor", fg(Rgb(255, 255, 255))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -394,15 +355,7 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     // Collapsed selection: head == anchor == char 1 (the 'o').
     let selections = vec![Selection { anchor: 1, head: 1 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -489,15 +442,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     ];
     let selections = vec![Selection { anchor: 0, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursorline",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursorline", bg(Rgb(0, 255, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -538,22 +483,10 @@ fn insert_mode_secondary_head_uses_its_own_insert_scope_when_set() {
         Selection { anchor: 2, head: 2 }, // secondary
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.insert", fg(Rgb(0, 255, 0))),
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -590,22 +523,10 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     let rows = vec![make_row(0..2)];
     let selections = vec![Selection { anchor: 0, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.insert", fg(Rgb(0, 255, 0))),
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -650,15 +571,7 @@ fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
         Selection { anchor: 2, head: 2 },
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            bg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", bg(Rgb(255, 0, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -737,15 +650,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Selection { anchor: 4, head: 4 },
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursorline",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -811,15 +716,7 @@ fn virtual_rows_keep_default_style() {
     ];
     let selections = vec![Selection { anchor: 0, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursorline",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -851,22 +748,10 @@ fn primary_head_gets_primary_style() {
         Selection { anchor: 2, head: 2 }, // secondary (display_col 2)
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.primary", fg(Rgb(255, 255, 0))),
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -904,22 +789,10 @@ fn primary_selection_gets_primary_style() {
         Selection { anchor: 3, head: 5 }, // secondary
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection.primary",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 255, 255)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.selection.primary", bg(Rgb(0, 255, 255))),
+        ("ui.selection", bg(Rgb(0, 0, 255))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -980,36 +853,12 @@ fn extend_mode_uses_select_cursor_scope() {
         Selection { anchor: 2, head: 2 }, // secondary
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.select",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.primary.select",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+        ("ui.cursor.primary", fg(Rgb(0, 255, 0))),
+        ("ui.cursor.select", fg(Rgb(0, 0, 255))),
+        ("ui.cursor.primary.select", fg(Rgb(255, 255, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1048,22 +897,10 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
         Selection { anchor: 2, head: 2 }, // secondary
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.primary.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.insert", fg(Rgb(0, 0, 255))),
+        ("ui.cursor.primary.insert", fg(Rgb(255, 255, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1100,22 +937,10 @@ fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
     let rows = vec![make_row(0..2)];
     let selections = vec![Selection { anchor: 0, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.primary.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.primary", fg(Rgb(255, 0, 0))),
+        ("ui.cursor.primary.insert", fg(Rgb(255, 255, 0))),
+    ]);
 
     for mode in [EditorMode::Command, EditorMode::Search, EditorMode::Select] {
         let mut scratch = StyleScratch::new();
@@ -1146,15 +971,7 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection.primary",
-        ResolvedStyle {
-            bg: Some(Rgb(255, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.selection.primary", bg(Rgb(255, 0, 255)))]);
 
     // Forward: anchor 0, head 3 — head cell (col 3) is left bare.
     let rows = vec![make_row(0..5)];
@@ -1209,22 +1026,10 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
     let rows = vec![make_row(0..5)];
     let selections = vec![Selection { anchor: 0, head: 0 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.cursor.primary.select",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.primary", fg(Rgb(0, 255, 0))),
+        ("ui.cursor.primary.select", fg(Rgb(255, 255, 0))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1256,15 +1061,7 @@ fn primary_head_falls_back_when_no_primary_scope() {
         Selection { anchor: 2, head: 2 }, // secondary
     ];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1361,15 +1158,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
     ];
     let selections = vec![Selection { anchor: 1, head: 1 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1468,15 +1257,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     ];
     let selections = vec![Selection { anchor: 0, head: 2 }];
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles_map, ResolvedStyle::default());
+    let theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -1546,15 +1327,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "hint",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("hint", fg(Rgb(255, 0, 0)))]);
     theme.bake(&registry);
 
     let mut scratch = StyleScratch::new();
@@ -1613,15 +1386,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.virtual.invisible",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("ui.virtual.invisible", fg(Rgb(255, 0, 0)))]);
     theme.bake(&registry);
 
     let mut scratch = StyleScratch::new();
@@ -1681,15 +1446,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.virtual.whitespace",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("ui.virtual.whitespace", fg(Rgb(0, 255, 0)))]);
     theme.bake(&crate::theme::ScopeRegistry::new());
 
     let mut scratch = StyleScratch::new();
@@ -1749,15 +1506,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.virtual.whitespace",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("ui.virtual.whitespace", fg(Rgb(0, 255, 0)))]);
     theme.bake(&crate::theme::ScopeRegistry::new());
 
     let mut scratch = StyleScratch::new();
@@ -1817,15 +1566,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
     theme.bake(&registry);
     let selections = vec![Selection { anchor: 2, head: 2 }];
     let mut scratch = StyleScratch::new();
@@ -1894,15 +1635,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         &mut fmt,
     );
 
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "ui.selection",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
     theme.bake(&registry);
     let selections = vec![Selection { anchor: 0, head: 1 }]; // 'a' and 'b'
     let mut scratch = StyleScratch::new();

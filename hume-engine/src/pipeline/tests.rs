@@ -1,6 +1,8 @@
 use hume_grid::{Grid, Position, Rect, Rgb};
 use std::collections::HashMap;
 
+use crate::test_support::{fg, theme_with};
+
 use super::*;
 
 use super::layout::split_rect;
@@ -105,22 +107,10 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     // scope's fg), one carries no scope (must fall back to ui.virtual_text).
     let mut registry = ScopeRegistry::new();
     let hint_scope = registry.intern("hint");
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
-        "hint",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 0, 0)),
-            ..Default::default()
-        },
-    );
-    styles_map.insert(
-        "ui.virtual",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    let mut theme = theme_with([
+        ("hint", fg(Rgb(255, 0, 0))),
+        ("ui.virtual", fg(Rgb(0, 0, 255))),
+    ]);
     theme.bake(&registry);
 
     let rope = ropey::Rope::from_str("z\n");

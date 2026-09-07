@@ -1,23 +1,12 @@
 use super::*;
+use crate::test_support::{bg, fg, theme_with};
 use hume_grid::Rgb;
 
 fn make_theme() -> Theme {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "keyword",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "keyword.operator",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 255)),
-            ..Default::default()
-        },
-    );
-    Theme::new(styles, ResolvedStyle::default())
+    theme_with([
+        ("keyword", fg(Rgb(0, 0, 255))),
+        ("keyword.operator", fg(Rgb(0, 255, 255))),
+    ])
 }
 
 // ── Theme::resolve (baked path) ──────────────────────────────────────
@@ -93,15 +82,7 @@ fn bake_if_stale_rebakes_scopes_interned_after_bake() {
 
 #[test]
 fn multi_level_fallback() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "a.b",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 255, 0)),
-            ..Default::default()
-        },
-    );
-    let mut theme = Theme::new(styles, ResolvedStyle::default());
+    let mut theme = theme_with([("a.b", fg(Rgb(0, 255, 0)))]);
 
     let mut reg = ScopeRegistry::new();
     let abc = reg.intern("a.b.c");
@@ -153,53 +134,25 @@ fn resolve_by_name_default() {
 
 #[test]
 fn ui_scopes_available_before_bake() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursorline",
-        ResolvedStyle {
-            bg: Some(Rgb(0, 0, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
     // theme.bake() NOT called — ui.cursorline must still be correct.
     assert_eq!(theme.ui.cursorline.bg, Some(Rgb(0, 0, 255)));
 }
 
 #[test]
 fn window_focused_falls_back_to_window_when_unset() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.window",
-        ResolvedStyle {
-            fg: Some(Rgb(0x80, 0x80, 0x80)),
-            ..Default::default()
-        },
-    );
     // No "ui.window.focused" entry — dot-notation must fall back to "ui.window".
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.window", fg(Rgb(0x80, 0x80, 0x80)))]);
     assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0x80, 0x80, 0x80)));
     assert_eq!(theme.ui.window_focused, theme.ui.window);
 }
 
 #[test]
 fn window_focused_uses_its_own_entry_when_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.window",
-        ResolvedStyle {
-            fg: Some(Rgb(0x80, 0x80, 0x80)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.window.focused",
-        ResolvedStyle {
-            fg: Some(Rgb(0xff, 0x80, 0x00)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.window", fg(Rgb(0x80, 0x80, 0x80))),
+        ("ui.window.focused", fg(Rgb(0xff, 0x80, 0x00))),
+    ]);
     assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0xff, 0x80, 0x00)));
     assert_ne!(theme.ui.window_focused, theme.ui.window);
 }
@@ -210,15 +163,7 @@ fn window_focused_uses_its_own_entry_when_set() {
 fn search_match_falls_back_to_bracket_match() {
     // Theme defines ui.cursor.match but not ui.cursor.match.search — the
     // everforest case. Search matches must inherit the bracket-match style.
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor.match",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 128, 0)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor.match", fg(Rgb(255, 128, 0)))]);
     assert_eq!(
         theme.resolve_by_name(Scope("ui.cursor.match.search")).fg,
         Some(Rgb(255, 128, 0)),
@@ -229,22 +174,10 @@ fn search_match_falls_back_to_bracket_match() {
 fn search_match_uses_its_own_entry_when_set() {
     // A theme that defines both must keep them distinct — no bundled theme
     // regresses to sharing bracket-match's color.
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor.match",
-        ResolvedStyle {
-            fg: Some(Rgb(255, 128, 0)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.match.search",
-        ResolvedStyle {
-            fg: Some(Rgb(0, 128, 255)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.match", fg(Rgb(255, 128, 0))),
+        ("ui.cursor.match.search", fg(Rgb(0, 128, 255))),
+    ]);
     assert_eq!(
         theme.resolve_by_name(Scope("ui.cursor.match.search")).fg,
         Some(Rgb(0, 128, 255)),
@@ -253,15 +186,7 @@ fn search_match_uses_its_own_entry_when_set() {
 
 #[test]
 fn search_match_falls_back_to_cursor_when_no_bracket_match_either() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(10, 20, 30)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(10, 20, 30)))]);
     assert_eq!(
         theme.resolve_by_name(Scope("ui.cursor.match.search")).fg,
         Some(Rgb(10, 20, 30)),
@@ -272,89 +197,37 @@ fn search_match_falls_back_to_cursor_when_no_bracket_match_either() {
 
 #[test]
 fn cursor_select_falls_back_to_cursor() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 2, 3)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(1, 2, 3)))]);
     assert_eq!(theme.ui.cursor_select.fg, Some(Rgb(1, 2, 3)));
 }
 
 #[test]
 fn cursor_select_uses_its_own_entry_when_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 2, 3)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.select",
-        ResolvedStyle {
-            fg: Some(Rgb(4, 5, 6)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(1, 2, 3))),
+        ("ui.cursor.select", fg(Rgb(4, 5, 6))),
+    ]);
     assert_eq!(theme.ui.cursor_select.fg, Some(Rgb(4, 5, 6)));
 }
 
 #[test]
 fn cursor_primary_select_falls_back_through_cursor_primary_then_cursor() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(1, 1, 1)))]);
     assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
 
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(2, 2, 2)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(1, 1, 1))),
+        ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
+    ]);
     assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(2, 2, 2)));
 }
 
 #[test]
 fn cursor_primary_select_uses_its_own_entry_when_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(2, 2, 2)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.primary.select",
-        ResolvedStyle {
-            fg: Some(Rgb(3, 3, 3)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
+        ("ui.cursor.primary.select", fg(Rgb(3, 3, 3))),
+    ]);
     assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(3, 3, 3)));
 }
 
@@ -367,22 +240,10 @@ fn cursor_primary_select_uses_its_own_entry_when_set() {
 /// `cursor_primary_select_uses_its_own_entry_when_set`.
 #[test]
 fn cursor_primary_select_never_visits_the_secondary_select_scope() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.select",
-        ResolvedStyle {
-            fg: Some(Rgb(4, 5, 6)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(1, 1, 1))),
+        ("ui.cursor.select", fg(Rgb(4, 5, 6))),
+    ]);
     assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
@@ -391,91 +252,39 @@ fn cursor_primary_select_never_visits_the_secondary_select_scope() {
 
 #[test]
 fn cursor_falls_back_to_bare_cursor_when_no_normal_entry() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(7, 8, 9)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(7, 8, 9)))]);
     assert_eq!(theme.ui.cursor.fg, Some(Rgb(7, 8, 9)));
 }
 
 #[test]
 fn cursor_uses_normal_entry_when_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(7, 8, 9)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.normal",
-        ResolvedStyle {
-            fg: Some(Rgb(10, 11, 12)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(7, 8, 9))),
+        ("ui.cursor.normal", fg(Rgb(10, 11, 12))),
+    ]);
     assert_eq!(theme.ui.cursor.fg, Some(Rgb(10, 11, 12)));
 }
 
 #[test]
 fn cursor_primary_falls_back_through_primary_then_cursor() {
     // No ui.cursor.primary.normal, no ui.cursor.primary — falls all the way to ui.cursor.
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.cursor", fg(Rgb(1, 1, 1)))]);
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
 
     // ui.cursor.primary set, no .normal variant — falls back to ui.cursor.primary.
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(2, 2, 2)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(1, 1, 1))),
+        ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
+    ]);
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(2, 2, 2)));
 }
 
 #[test]
 fn cursor_primary_normal_uses_its_own_entry_when_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(2, 2, 2)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.primary.normal",
-        ResolvedStyle {
-            fg: Some(Rgb(3, 3, 3)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
+        ("ui.cursor.primary.normal", fg(Rgb(3, 3, 3))),
+    ]);
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(3, 3, 3)));
 }
 
@@ -485,22 +294,10 @@ fn cursor_primary_normal_uses_its_own_entry_when_set() {
 /// can.
 #[test]
 fn cursor_primary_never_visits_the_secondary_normal_scope() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 1, 1)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.normal",
-        ResolvedStyle {
-            fg: Some(Rgb(10, 11, 12)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor", fg(Rgb(1, 1, 1))),
+        ("ui.cursor.normal", fg(Rgb(10, 11, 12))),
+    ]);
     assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
@@ -511,22 +308,10 @@ fn cursor_primary_never_visits_the_secondary_normal_scope() {
 /// ladder replaced gave both heads the same `ui.cursor.insert` colour.
 #[test]
 fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.cursor.insert",
-        ResolvedStyle {
-            fg: Some(Rgb(4, 5, 6)),
-            ..Default::default()
-        },
-    );
-    styles.insert(
-        "ui.cursor.primary",
-        ResolvedStyle {
-            fg: Some(Rgb(7, 8, 9)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([
+        ("ui.cursor.insert", fg(Rgb(4, 5, 6))),
+        ("ui.cursor.primary", fg(Rgb(7, 8, 9))),
+    ]);
     assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(7, 8, 9)));
 }
 
@@ -535,15 +320,7 @@ fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
 /// `base_cursor_scope` falls to when `ui.cursor` is undefined.
 #[test]
 fn cursor_insert_primary_falls_back_to_selection_when_nothing_else_is_set() {
-    let mut styles = HashMap::new();
-    styles.insert(
-        "ui.selection",
-        ResolvedStyle {
-            fg: Some(Rgb(1, 2, 3)),
-            ..Default::default()
-        },
-    );
-    let theme = Theme::new(styles, ResolvedStyle::default());
+    let theme = theme_with([("ui.selection", fg(Rgb(1, 2, 3)))]);
     assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(1, 2, 3)));
 }
 

@@ -8,5 +8,7 @@ pub mod providers;
 pub mod render;
 pub mod rows;
 pub mod style;
+#[cfg(test)]
+mod test_support;
 pub mod theme;
 pub mod types;
