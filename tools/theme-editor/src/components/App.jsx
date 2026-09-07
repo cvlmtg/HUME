@@ -2,11 +2,11 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { C, MONO, INPUT, COLOR_PICKER } from '../ui.js';
 import { adjustPalette } from '../lib/color.js';
 import { parseTOML, extractScopes, exportTOML } from '../lib/toml.js';
-import { fgc, bgc, tokenStyle } from '../lib/theme.js';
 import { SCOPES, ALL_SCOPES, DEFAULT_PAL, DEFAULT_SC } from '../data.js';
 import Acc from './Acc.jsx';
 import ScopeRow from './ScopeRow.jsx';
-import Preview from './Preview.jsx';
+import EditorPane from '../preview/EditorPane.jsx';
+import MessagesPane from '../preview/MessagesPane.jsx';
 
 export default function HelixThemeEditor() {
   const [palette, setPalette] = useState(() => ({...DEFAULT_PAL}));
@@ -119,7 +119,11 @@ export default function HelixThemeEditor() {
   }, [loadedThemeName, pendingChildren, inheritBanner]);
 
   const handleExport = useCallback(() => {
-    const toml = exportTOML(adjPalette, scopes);
+    // A pending parent banner means `scopes`/`adjPalette` hold only the
+    // child's own overrides — keep `inherits` in the export so the file
+    // round-trips faithfully instead of shipping a flattened-looking stub
+    // that silently drops everything the parent provided.
+    const toml = exportTOML(adjPalette, scopes, inheritBanner?.parent);
     const blob = new Blob([toml], { type: "application/toml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -127,7 +131,7 @@ export default function HelixThemeEditor() {
     a.download = "theme.toml";
     a.click();
     URL.revokeObjectURL(url);
-  }, [adjPalette, scopes]);
+  }, [adjPalette, scopes, inheritBanner]);
 
   const addColor = () => {
     if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
@@ -146,8 +150,6 @@ export default function HelixThemeEditor() {
     }
     return !filter || id.toLowerCase().includes(filter.toLowerCase());
   }), [filter, catFilter]);
-
-  const markupBg = bgc("ui.background", scopes, adjPalette, "#1a1b26");
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: MONO, display: "flex", flexDirection: "column" }}>
@@ -186,40 +188,8 @@ export default function HelixThemeEditor() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         <div style={{ flex: 1, padding: 24, overflowY: "auto", display: "flex", flexDirection: "column", gap: 20 }}>
-          <Preview pal={adjPalette} sc={scopes} />
-
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {["diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint"].map(d => {
-              const c = fgc(d, scopes, adjPalette, "#888");
-              return (
-                <div key={d} style={{ padding: "6px 14px", borderRadius: 6, background: c + "18", borderLeft: "3px solid " + c, color: c, fontSize: 11, fontFamily: MONO }}>
-                  {d.split(".")[1]}
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12 }}>
-            <div style={{ padding: "4px 12px", background: C.bgChrome, color: C.textDimmer, fontSize: 10, borderBottom: "1px solid " + C.border }}>diff preview</div>
-            {[["diff.plus", "+ added line"], ["diff.minus", "- removed line"], ["diff.delta", "~ changed line"]].map(([scope, label]) => {
-              const c = fgc(scope, scopes, adjPalette, "#888");
-              return <div key={scope} style={{ padding: "4px 12px", background: c + "15", color: c }}>{label}</div>;
-            })}
-          </div>
-
-          <div style={{ borderRadius: 6, padding: "12px 16px", background: markupBg, border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12, lineHeight: "22px" }}>
-            <div style={{ ...tokenStyle("markup.heading", scopes, adjPalette, "#7aa2f7", markupBg), fontSize: 14, marginBottom: 4 }}>{"# Markup Preview"}</div>
-            <div style={{ color: fgc("ui.foreground", scopes, adjPalette, "#c0caf5") }}>
-              {"Normal text with "}
-              <span style={tokenStyle("markup.bold", scopes, adjPalette, "#ff9e64", markupBg)}>{"**bold**"}</span>
-              {" and "}
-              <span style={tokenStyle("markup.italic", scopes, adjPalette, "#bb9af7", markupBg)}>{"_italic_"}</span>
-              {" and "}
-              <span style={tokenStyle("markup.link", scopes, adjPalette, "#7dcfff", markupBg)}>{"[link](url)"}</span>
-            </div>
-            <div style={tokenStyle("markup.list", scopes, adjPalette, "#f7768e", markupBg)}>{"- list item"}</div>
-            <span style={{ ...tokenStyle("markup.raw", scopes, adjPalette, "#9ece6a", markupBg), background: fgc("markup.raw", scopes, adjPalette, "#9ece6a") + "15", padding: "1px 5px", borderRadius: 3 }}>{"`code`"}</span>
-          </div>
+          <EditorPane pal={adjPalette} sc={scopes} />
+          <MessagesPane pal={adjPalette} sc={scopes} />
         </div>
 
         <div style={{ width: 340, flexShrink: 0, background: C.bgPanel, borderLeft: "1px solid " + C.border, overflowY: "auto", display: "flex", flexDirection: "column" }}>

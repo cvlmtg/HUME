@@ -17,8 +17,15 @@ test('adjustColor preserves the alpha byte of an 8-digit hex across a shift', ()
 
 test('adjustColor leaves a non-hex or too-short value untouched', () => {
   assert.equal(adjustColor('', 10, 0, 0), '');
-  assert.equal(adjustColor('#fff', 10, 0, 0), '#fff');
+  assert.equal(adjustColor('#ff', 10, 0, 0), '#ff');
   assert.equal(adjustColor('not-a-color', 10, 0, 0), 'not-a-color');
+});
+
+// The loader expands `#rgb` to `#rrggbb`, so a palette entry written that way
+// loads fine in HUME; the H/S/L sliders must not silently no-op on it.
+test('adjustColor shifts a #rgb shorthand the same as its expanded form', () => {
+  assert.equal(adjustColor('#f00', 0, 0, 0), '#ff0000');
+  assert.equal(adjustColor('#f00', 120, 0, 0), adjustColor('#ff0000', 120, 0, 0));
 });
 
 test('hexToHSL/hslToHex round-trip a primary color', () => {

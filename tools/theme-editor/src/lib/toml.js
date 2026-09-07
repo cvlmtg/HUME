@@ -185,7 +185,11 @@ export function formatVal(v) {
   return String(v);
 }
 
-const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline", "style"];
+// Mirrors STYLE_KEYS in hume-engine/src/theme/loader.rs — a key here is part
+// of a scope's style, anything else is a child scope. `style` belongs to the
+// `underline = { color, style }` table, which is kept verbatim as part of the
+// def below, so it is not a style field in its own right.
+const SCOPE_KEYS = ["fg", "bg", "modifiers", "underline"];
 
 function isTable(v) {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -209,8 +213,11 @@ function walkScopes(ns, obj, prefix) {
     if (!prefix && (k === "palette" || k === "inherits")) continue;
     const v = obj[k];
     const path = prefix ? prefix + "." + k : k;
-    if (typeof v === "string") ns[path] = v;
-    else if (isTable(v)) walkScopes(ns, v, path);
+    // Any non-table value is kept as-is, not just a string: a number, bool or
+    // array here is a malformed scope HUME's loader rejects outright, and
+    // dropping it silently would lose it on the next export instead.
+    if (isTable(v)) walkScopes(ns, v, path);
+    else ns[path] = v;
   }
 }
 
@@ -224,8 +231,9 @@ export function extractScopes(parsed) {
 // We avoid [section] headers: TOML section semantics would merge a `[diff]` header
 // with an existing top-level `"diff" = "overlay"` into one nested object, losing
 // sub-keys after extractScopes. Flat keys match upstream Helix themes (rose_pine, etc.).
-export function exportTOML(palette, scopes) {
+export function exportTOML(palette, scopes, inherits) {
   let out = "";
+  if (inherits) out += 'inherits = "' + inherits + '"\n\n';
   for (const [k, v] of Object.entries(scopes)) out += '"' + k + '" = ' + formatVal(v) + '\n';
   out += "\n[palette]\n";
   for (const [k, v] of Object.entries(palette)) out += '"' + k + '" = ' + formatVal(v) + '\n';

@@ -1,4 +1,14 @@
+// Expand `#rgb` to `#rrggbb`. HUME's loader accepts the shorthand
+// (`parse_hex_color` in hume-engine/src/theme/loader.rs), so a palette entry
+// written that way must be shiftable here rather than silently left alone.
+// Any other length passes through for the caller's own length check.
+function expandShorthandHex(hex) {
+  if (hex.length !== 4) return hex;
+  return "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+}
+
 export function hexToHSL(hex) {
+  hex = expandShorthandHex(hex);
   const r = parseInt(hex.slice(1, 3), 16) / 255;
   const g = parseInt(hex.slice(3, 5), 16) / 255;
   const b = parseInt(hex.slice(5, 7), 16) / 255;
@@ -34,12 +44,14 @@ export function hslToHex(h, s, l) {
 }
 
 export function adjustColor(hex, hShift, sShift, lShift) {
-  if (!hex || !hex.startsWith("#") || hex.length < 7) return hex;
-  const hsl = hexToHSL(hex);
+  if (!hex || !hex.startsWith("#")) return hex;
+  const full = expandShorthandHex(hex);
+  if (full.length < 7) return hex;
+  const hsl = hexToHSL(full);
   const rgb = hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
   // #rrggbbaa: hslToHex only ever produces 6 digits, so the alpha byte —
   // untouched by an H/S/L shift — must be carried over from the input.
-  const alpha = hex.length === 9 ? hex.slice(7, 9) : "";
+  const alpha = full.length === 9 ? full.slice(7, 9) : "";
   return rgb + alpha;
 }
 

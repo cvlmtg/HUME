@@ -48,6 +48,19 @@ test('a string that merely looks like a hex color still parses as a string', () 
   assert.equal(typeof parsed.k, 'string');
 });
 
+test('exportTOML with an inherits name emits it as the first line and round-trips', () => {
+  const exported = exportTOML({ bg0: '#eeeeee' }, { 'ui.cursorline': { bg: 'bg1' } }, 'gruvbox');
+  assert.match(exported, /^inherits = "gruvbox"\n\n/);
+  const reparsed = parseTOML(exported);
+  assert.equal(reparsed.inherits, 'gruvbox');
+  assert.deepEqual(extractScopes(reparsed), { 'ui.cursorline': { bg: 'bg1' } });
+});
+
+test('exportTOML without an inherits name omits the key, as before', () => {
+  const exported = exportTOML({}, { k: 'v' });
+  assert.doesNotMatch(exported, /^inherits/);
+});
+
 test('parseInlineTable splits on the "=" outside a quoted key containing one', () => {
   const parsed = parseInlineTable('{ "a=b" = "c", x = 1 }');
   assert.deepEqual(parsed, { 'a=b': 'c', x: 1 });
@@ -115,10 +128,43 @@ test('a scope def with a modifiers array round-trips through export and re-parse
   assert.deepEqual(reparsed, original);
 });
 
-test('an inline table with a nested object value (e.g. `style = {...}`) parses and round-trips', () => {
+// `style` is a style field only inside `underline = { color, style }`, which
+// walkScopes keeps verbatim as part of the def. A bare `style` at the top of a
+// scope table is not a style field, so it flattens like any other child —
+// matching STYLE_KEYS in hume-engine/src/theme/loader.rs.
+test('a bare `style` key in a scope table is a child, not a style field', () => {
   const parsed = parseTOML('"a" = { style = { bold = true } }');
   const original = extractScopes(parsed);
-  assert.deepEqual(original, { a: { style: { bold: true } } });
+  assert.deepEqual(original, { 'a.style.bold': true });
+
+  const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
+  assert.deepEqual(reparsed, original);
+});
+
+test('`underline = { color, style }` keeps its nested style field', () => {
+  const parsed = parseTOML('"a" = { underline = { color = "#ff0000", style = "curl" } }');
+  assert.deepEqual(extractScopes(parsed), {
+    a: { underline: { color: '#ff0000', style: 'curl' } },
+  });
+});
+
+// The catalog of style fields has to stay identical to STYLE_KEYS in
+// hume-engine/src/theme/loader.rs: a key this list treats as a style field but
+// HUME treats as a child scope (or vice versa) makes the same theme flatten
+// two different ways in the editor and the editor it previews.
+test('the style-field set matches the loader\'s STYLE_KEYS', () => {
+  const parsed = parseTOML(
+    '"a" = { fg = "#111111", bg = "#222222", underline = "curl", modifiers = ["bold"] }'
+  );
+  const def = extractScopes(parsed).a;
+  assert.deepEqual(Object.keys(def).sort(), ['bg', 'fg', 'modifiers', 'underline']);
+});
+
+// A scalar that is neither a string nor a table used to vanish here, so an
+// imported theme carrying one lost it on export.
+test('a non-string scalar scope value is preserved, not dropped', () => {
+  const original = extractScopes(parseTOML('"a" = 42\n"b" = true'));
+  assert.deepEqual(original, { a: 42, b: true });
 
   const reparsed = extractScopes(parseTOML(exportTOML({}, original)));
   assert.deepEqual(reparsed, original);

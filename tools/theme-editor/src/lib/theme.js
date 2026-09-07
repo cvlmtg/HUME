@@ -1,6 +1,17 @@
+// The sixteen terminal colour names HUME's loader resolves to a fixed RGB
+// value (see `ANSI_COLORS` in hume-engine/src/theme/loader.rs, the source of
+// truth for these — the two tables are hand-kept in sync). A theme's own
+// `[palette]` entry of the same name still wins, matching the loader's order.
+const ANSI_COLORS = {
+  black: "#000000", red: "#cd0000", green: "#00cd00", yellow: "#cdcd00",
+  blue: "#0000ee", magenta: "#cd00cd", cyan: "#00cdcd", "light-gray": "#e5e5e5",
+  gray: "#7f7f7f", "light-red": "#ff0000", "light-green": "#00ff00", "light-yellow": "#ffff00",
+  "light-blue": "#5c5cff", "light-magenta": "#ff00ff", "light-cyan": "#00ffff", white: "#ffffff",
+};
+
 export function resolveColor(c, pal) {
   if (!c || typeof c !== "string") return null;
-  return c.startsWith("#") ? c : (pal[c] || c);
+  return c.startsWith("#") ? c : (pal[c] || ANSI_COLORS[c] || c);
 }
 
 export function resolve(val, pal) {
@@ -37,11 +48,10 @@ export function bgc(id, sc, pal, fb) {
   return typeof c === "object" ? (c.bg || fb) : "transparent";
 }
 
-// Returns a fully normalised style for a scope (including modifiers and underline),
-// walking the dotted fallback chain. Returns null when no scope matches.
-export function fullStyle(id, sc, pal) {
-  const v = lookupRaw(id, sc);
-  if (v == null) return null;
+// Normalise a raw scope value (a bare color string, or a `{fg,bg,modifiers,
+// underline}` table) into a fully-resolved style. Shared by `fullStyle` and
+// `fullStyleChain` so the two lookup strategies below produce the same shape.
+function normalizeStyle(v, pal) {
   if (typeof v === "string") return { fg: resolveColor(v, pal), bg: null, mods: [], underline: null };
   const u = v.underline;
   return {
@@ -56,8 +66,29 @@ export function fullStyle(id, sc, pal) {
   };
 }
 
+// Returns a fully normalised style for a scope (including modifiers and underline),
+// walking the dotted fallback chain. Returns null when no scope matches.
+export function fullStyle(id, sc, pal) {
+  const v = lookupRaw(id, sc);
+  return v == null ? null : normalizeStyle(v, pal);
+}
+
+// Resolve the first key in `ids` that has an explicit scope entry — no
+// dotted-chain fallback beyond what `ids` itself lists. Mirrors
+// `resolve_cursor_chain` in hume-engine/src/theme/mod.rs, which every
+// cursor scope's list is built from — see `cursorColors` in
+// preview/EditorPane.jsx for what each list actually contains and why.
+// Returns null when no listed key is defined.
+export function fullStyleChain(ids, sc, pal) {
+  for (const id of ids) {
+    const v = sc[id];
+    if (v !== undefined && v !== "") return normalizeStyle(v, pal);
+  }
+  return null;
+}
+
 export function cssUnderlineStyle(s) {
-  if (s === "curl" || s === "wavy" || s === "undercurl") return "wavy";
+  if (s === "curl") return "wavy";
   if (s === "dotted") return "dotted";
   if (s === "dashed") return "dashed";
   if (s === "double_line") return "double";
@@ -77,7 +108,7 @@ export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
   if (mods.includes("reversed")) { const t = fg; fg = editorBg; bg = t; }
 
   const decos = [];
-  if (mods.includes("strikethrough") || mods.includes("crossed_out")) decos.push("line-through");
+  if (mods.includes("crossed_out")) decos.push("line-through");
   if (mods.includes("underlined") || u) decos.push("underline");
 
   const css = {};
@@ -95,6 +126,5 @@ export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
   }
   if (mods.includes("slow_blink")) css.animation = "hume-blink 1s steps(1,end) infinite";
   else if (mods.includes("rapid_blink")) css.animation = "hume-blink 0.5s steps(1,end) infinite";
-  if (tag) { css.borderRadius = 2; css.padding = "0 1px"; }
   return css;
 }
