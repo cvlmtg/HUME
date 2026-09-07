@@ -1,19 +1,7 @@
 ;;; core:plum/lib.scm
 
-(provide plum/batch-run plum/run! plum/read-file plum/safe-segment? plum/two-level-repos
+(provide plum/batch-run plum/run! plum/read-file plum/two-level-repos
          plum/clone-github!)
-
-;; ── Path-segment validation ───────────────────────────────────────────────────
-
-;;; Safe to use as one filesystem path segment — see README.md.
-(define (plum/safe-segment? name)
-  (and (not (equal? name ""))
-       (not (equal? name "."))
-       (not (equal? name ".."))
-       (not (string-contains? name "/"))
-       (not (string-contains? name "\\"))
-       (not (string-contains? name ":"))
-       (not (string-contains? name "\""))))
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 

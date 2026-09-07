@@ -804,8 +804,8 @@ fn plum_missing_plugins_excludes_declared_core_plugins() {
     load_with_init(
         &mut ed,
         data_tmp.path(),
-        "(load-plugin \"core:plum\")\n\
-         (load-plugin \"core:stdlib\")\n\
+        "(load-plugin \"core:stdlib\")\n\
+         (load-plugin \"core:plum\")\n\
          (declare-plugin \"core:lsp\" #:languages '(\"rust\"))",
     );
 
@@ -952,6 +952,35 @@ fn lsp_uninstall_rejects_path_traversal_name() {
     assert!(
         log.contains("invalid server name") && log.contains("../plugins"),
         "must warn loudly about the rejected name: {log}"
+    );
+}
+
+/// `stdlib/safe-path-segment?` (used by `lsp-uninstall`) must reject `:` and
+/// `"`, not just `.`/`..`/path separators — the drive-relative-root escape
+/// `hume_platform::path::is_safe_segment` exists to block.
+#[test]
+fn lsp_uninstall_rejects_colon_and_quote_in_name() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    type_cmd(&mut ed, ":lsp-uninstall c:evil");
+    ed.drain_async_sources();
+    ed.settle();
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("invalid server name") && log.contains("c:evil"),
+        "must warn loudly about a drive-relative-root name: {log}"
+    );
+
+    type_cmd(&mut ed, ":lsp-uninstall a\"b");
+    ed.drain_async_sources();
+    ed.settle();
+    let log = ed.state.message_log.format_for_display();
+    assert!(
+        log.contains("invalid server name") && log.contains("a\"b"),
+        "must warn loudly about a quote-embedded name: {log}"
     );
 }
 

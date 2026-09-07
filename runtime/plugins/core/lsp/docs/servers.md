@@ -37,7 +37,7 @@ instead of treating them as already taken. `apply_pending_lsp_server_reg`
 Rust side for every registration this queues.
 
 `:lsp-uninstall` takes a user-typed server name straight into a path join, so it
-validates the name (non-empty, not `.`/`..`, no path separators) before touching disk;
+validates the name via `core:stdlib`'s `stdlib/safe-path-segment?` before touching disk;
 `lsp-install` never needs this validation since its name always comes from the seeded
 language-to-server index, never a raw argument. An orphan directory (on disk, no
 seeded catalog entry) skips the unregister step and only removes the directory.

@@ -28,8 +28,12 @@
 ;;; Steel 0.8.2's continuation stack. See README.md.
 (define (plum/fetch-raw-query name filename)
   ;; `name` may come from an untrusted `; inherits:` line, unlike the
-  ;; top-level grammar name — guard the scratch-file path.
-  (unless (plum/safe-segment? name)
+  ;; top-level grammar name — guard the scratch-file path. `eq? #t`, not a
+  ;; bare truthiness check: `call!` returns non-#f `#void` (not an error) if
+  ;; core:stdlib is ever declared with an explicit #:commands override that
+  ;; omits this command — see core:stdlib's README — and #void must not be
+  ;; read as "safe".
+  (unless (eq? #t (call! "stdlib/safe-path-segment?" name))
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))
   (let ((tmp (path-join (grammar-sources-dir) (string-append "_fetch_" name "_" filename))))

@@ -44,6 +44,19 @@ idempotent unlike Steel's own `delete-directory!`/`delete-file!` — a missing t
 error. `list-subdirs` skips stray non-directory entries that sit alongside a directory tree
 (`.install-lock`, `.DS_Store`).
 
+### Path safety
+
+`safe-path-segment?` rejects the empty string, `.`/`..`, a path separator (`/` or `\`),
+and `:`/`"` — the set that's safe to use as one filesystem path segment, for any name
+that reaches `path-join` or a subprocess arg but did not come from a fixed catalog: a
+user-typed slug, or a name parsed out of downloaded content. The `:` rejection matters
+on Windows specifically: a segment like `c:evil` after a single path component makes
+`PathBuf::push` treat it as a drive-relative root, replacing the sandboxed base path
+entirely instead of joining onto it (mirrors `hume_platform::path::is_safe_segment`'s
+rule on the Rust side). Every call site checks `(eq? #t (call! "stdlib/safe-path-segment?"
+…))` rather than a bare truthiness test — see "Usage" above for why a bare `call!` result
+can be non-#f `#void` on a miss.
+
 ### Subprocess
 
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`

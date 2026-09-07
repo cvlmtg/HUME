@@ -68,23 +68,26 @@ PLUM bundles three independent subsystems:
   etc); see "Theme install" below.
 - `lib.scm` — shared utilities: `plum/read-file`, `plum/run!` (a `core:stdlib`
   `stdlib/run` wrapper that raises instead of returning a status), `plum/batch-run`
-  (batch installs), `plum/safe-segment?` (validates one untrusted filesystem path
-  segment — see "Path safety" below), and `plum/two-level-repos` (the
-  `<root>/<user>/<repo>/` discovery walk shared by plugin and theme-repo discovery) —
-  used by `plugins.scm`, `grammars.scm`, and `themes.scm` as needed. Directory listing,
-  filesystem cleanup, and list search live in `core:stdlib` (`stdlib/list-subdirs`,
-  `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`, `stdlib/delete-file`) —
+  (batch installs), and `plum/two-level-repos` (the `<root>/<user>/<repo>/` discovery
+  walk shared by plugin and theme-repo discovery) — used by `plugins.scm`,
+  `grammars.scm`, and `themes.scm` as needed. Directory listing, filesystem cleanup,
+  list search, and path-segment validation live in `core:stdlib`
+  (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`,
+  `stdlib/delete-file`, `stdlib/safe-path-segment?` — see "Path safety" below) —
   reached via `call!`, not local wrappers.
 
 #### Path safety
 
-`plum/safe-segment?` rejects the empty string, `.`/`..`, a path separator, and `:`/`"` for any name that
-reaches `path-join`/a subprocess arg but did not come from a fixed catalog — either half
-of a GitHub `user/repo` slug typed by the user, or a dependency name parsed out of
-downloaded content. The `:` rejection matters on Windows specifically: a segment like
-`c:evil` after a single path component makes `PathBuf::push` treat it as a
-drive-relative root, replacing the sandboxed base path entirely instead of joining onto
-it (mirrors `hume_platform::path::is_safe_segment`'s rule on the Rust side).
+`core:stdlib`'s `stdlib/safe-path-segment?` rejects the empty string, `.`/`..`, a path
+separator, and `:`/`"` for any name that reaches `path-join`/a subprocess arg but did
+not come from a fixed catalog — either half of a GitHub `user/repo` slug typed by the
+user, or a dependency name parsed out of downloaded content. The `:` rejection matters
+on Windows specifically: a segment like `c:evil` after a single path component makes
+`PathBuf::push` treat it as a drive-relative root, replacing the sandboxed base path
+entirely instead of joining onto it (mirrors `hume_platform::path::is_safe_segment`'s
+rule on the Rust side). See `core:stdlib`'s README for the full rejected set and why
+every call site checks `(eq? #t (call! "stdlib/safe-path-segment?" …))` rather than a
+bare truthiness test.
 
 ### Plugin discovery
 
@@ -184,9 +187,9 @@ on every `Tab`.
 A user-typed slug that isn't shaped like `"user/repo"` at all (`plum/parse-slug`) is an
 ordinary usage mistake — routed the same way `plum/resolve-grammar-arg` routes a bad
 grammar argument: a status-line-only `log! 'info`, not a `:messages` entry. A slug that
-*is* shaped right but has a segment `plum/safe-segment?` (see "Path safety" above)
-rejects is different in kind: it would otherwise reach `path-join` and `git clone`, so
-it raises and stays in `:messages` instead.
+*is* shaped right but has a segment `stdlib/safe-path-segment?` (see "Path safety"
+above) rejects is different in kind: it would otherwise reach `path-join` and
+`git clone`, so it raises and stays in `:messages` instead.
 
 The clone itself is kept, at `<data>/themes/sources/<user>/<repo>/` — the direct analog
 of `<data>/grammars/sources/<name>/`. A `sources/` *directory* has no extension, so it

@@ -37,21 +37,6 @@
 ;;; so revisiting a buffer's language doesn't re-hint (or re-suppress) it.
 (define *lsp-hinted-languages* (hash))
 
-;; ── Server name validation ───────────────────────────────────────────────────
-
-;;; Safe to join as a path segment — see docs/servers.md.
-(define (lsp/valid-server-name? name)
-  (and (string? name)
-       (> (string-length name) 0)
-       (not (equal? name "."))
-       (not (equal? name ".."))
-       (let loop ((i 0))
-         (cond ((= i (string-length name)) #t)
-               ((or (equal? (substring name i (+ i 1)) "/")
-                    (equal? (substring name i (+ i 1)) "\\"))
-                #f)
-               (else (loop (+ i 1)))))))
-
 ;; ── Receipts (write side) ────────────────────────────────────────────────────
 ;; receipt.scm is the install commit point, written LAST. Read side lives in
 ;; registration.scm, required above.
@@ -283,8 +268,9 @@
     (cond
       ((not (string? arg))
        (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
-      ;; Stays 'warn, not 'info — see docs/servers.md.
-      ((not (lsp/valid-server-name? arg))
+      ;; Stays 'warn, not 'info — see docs/servers.md. `eq? #t`, not a bare
+      ;; truthiness check — see core:plum's grammars.scm for why.
+      ((not (eq? #t (call! "stdlib/safe-path-segment?" arg)))
        (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
       (else
         (let* ((name arg)

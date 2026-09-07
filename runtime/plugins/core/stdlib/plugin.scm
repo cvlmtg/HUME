@@ -68,6 +68,18 @@
   (filter (lambda (name) (is-dir? (path-join dir name)))
           (sort (map file-name (read-dir dir)) string<?)))
 
+;; ── Path-segment validation ──────────────────────────────────────────────────
+
+;;; Safe to use as one filesystem path segment — see README.md.
+(define (stdlib/safe-path-segment? name)
+  (and (not (equal? name ""))
+       (not (equal? name "."))
+       (not (equal? name ".."))
+       (not (string-contains? name "/"))
+       (not (string-contains? name "\\"))
+       (not (string-contains? name ":"))
+       (not (string-contains? name "\""))))
+
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 
 (define (stdlib/run cmd args cwd)
@@ -198,6 +210,10 @@
 (define-command! "stdlib/list-subdirs"
   "Sorted basenames of the given directory's subdirectories."
   stdlib/list-subdirs)
+
+(define-command! "stdlib/safe-path-segment?"
+  "#t iff the given name is safe to use as one filesystem path segment."
+  stdlib/safe-path-segment?)
 
 (define-command! "stdlib/run"
   "Spawn a command; blocks until exit. Returns (stdout stderr exit-code), exit-code #f on spawn/wait failure."

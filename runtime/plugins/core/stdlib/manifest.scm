@@ -5,7 +5,7 @@
                "stdlib/primary-selection"
                "stdlib/all-single-char?" "stdlib/single-selection?" "stdlib/cursor-char-index"
                "stdlib/find" "stdlib/write-file" "stdlib/delete-dir" "stdlib/delete-file"
-               "stdlib/list-subdirs" "stdlib/run" "stdlib/git-repo?" "stdlib/git-toplevel"
-               "stdlib/resolve-lang-arg"
+               "stdlib/list-subdirs" "stdlib/safe-path-segment?"
+               "stdlib/run" "stdlib/git-repo?" "stdlib/git-toplevel" "stdlib/resolve-lang-arg"
                "stdlib/config-boolean" "stdlib/config-string" "stdlib/config-enum"
                "stdlib/config-integer" "stdlib/config-list"))

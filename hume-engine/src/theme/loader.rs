@@ -740,7 +740,7 @@ fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
 /// report as an I/O failure.
 ///
 /// Accepts exactly the same set as `hume_platform::path::is_safe_segment` and
-/// `core:plum`'s `plum/safe-segment?` (`runtime/plugins/core/plum/lib.scm`).
+/// `core:stdlib`'s `stdlib/safe-path-segment?` (`runtime/plugins/core/stdlib/plugin.scm`).
 /// Kept as its own copy because `hume-engine` deliberately depends on no
 /// platform layer — taking one for a six-line predicate would pull `termina`
 /// and `nix` into the renderer and everything downstream of it.

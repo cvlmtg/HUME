@@ -28,8 +28,8 @@
        (log! 'info (string-append cmd ": expected a \"user/repo\" slug, e.g. "
                                   cmd " cvlmtg/everforest.hume"))
        #f)
-      ((not (and (plum/safe-segment? (car parts))
-                 (plum/safe-segment? (cadr parts))))
+      ((not (and (eq? #t (call! "stdlib/safe-path-segment?" (car parts)))
+                 (eq? #t (call! "stdlib/safe-path-segment?" (cadr parts)))))
        (error (string-append cmd ": \"" slug "\" is not a valid \"user/repo\" slug")))
       (else slug))))
 

@@ -384,6 +384,26 @@ fn remove_theme_survives_a_failed_sync() {
     );
 }
 
+/// `core:plum` now `call!`s into `core:stdlib` for path-segment validation
+/// (`plum/parse-slug`, `plum/fetch-raw-query`) as well as the filesystem
+/// helpers it already used — loading it without `core:stdlib` declared first
+/// must fail loudly at load time, the same guard `core:lsp` has always had
+/// (`lsp/plugin.scm`), rather than leaving every `call!` site to discover
+/// the missing dependency one at a time.
+#[test]
+fn plum_requires_core_stdlib() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_with_init(&mut ed, data_tmp.path(), "(load-plugin \"core:plum\")");
+
+    let errors = error_log(&ed);
+    assert!(
+        errors.iter().any(|e| e.contains("core:stdlib")),
+        "loading core:plum without core:stdlib must error naming core:stdlib: {errors:?}"
+    );
+}
+
 /// Removing a repo that was never installed is a no-op, not an error.
 #[test]
 fn remove_theme_not_installed_is_a_noop() {
