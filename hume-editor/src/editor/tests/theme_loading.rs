@@ -164,6 +164,38 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
     }
 }
 
+/// Every one of the six resolved `theme.ui.cursor*` styles must have a
+/// distinct `bg` in every bundled theme — reading the `ui` fields themselves
+/// (not `resolve_by_name`) so the check exercises `cursor_ladder`'s actual
+/// output, the same six values `style::head_style` picks between. A theme
+/// that leaves the per-mode cursor scopes undefined collapses several of
+/// these onto the base `ui.cursor`/`ui.cursor.primary` pair, so no mode
+/// carries a cursor cue.
+#[test]
+fn bundled_theme_cursor_scopes_are_pairwise_distinct() {
+    for (name, theme) in load_bundled_themes() {
+        let styles = [
+            ("cursor (normal)", theme.ui.cursor),
+            ("cursor (insert)", theme.ui.cursor_insert),
+            ("cursor (extend)", theme.ui.cursor_select),
+            ("cursor primary (normal)", theme.ui.cursor_primary),
+            ("cursor primary (insert)", theme.ui.cursor_insert_primary),
+            ("cursor primary (extend)", theme.ui.cursor_select_primary),
+        ];
+
+        for i in 0..styles.len() {
+            for j in (i + 1)..styles.len() {
+                assert_ne!(
+                    styles[i].1.bg, styles[j].1.bg,
+                    "bundled theme '{name}': '{}' and '{}' share the same cursor bg {:?} — \
+                     no cursor cue distinguishes the two modes",
+                    styles[i].0, styles[j].0, styles[i].1.bg
+                );
+            }
+        }
+    }
+}
+
 /// `load_theme_by_name` reports failure via the message log and returns `false`;
 /// the theme stays unchanged.
 #[test]

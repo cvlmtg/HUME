@@ -75,16 +75,35 @@ export function fullStyle(id, sc, pal) {
 
 // Resolve the first key in `ids` that has an explicit scope entry — no
 // dotted-chain fallback beyond what `ids` itself lists. Mirrors
-// `resolve_cursor_chain` in hume-engine/src/theme/mod.rs, which every
-// cursor scope's list is built from — see `cursorColors` in
-// preview/EditorPane.jsx for what each list actually contains and why.
-// Returns null when no listed key is defined.
+// `resolve_cursor_chain` in hume-engine/src/theme/mod.rs. Returns null when
+// no listed key is defined — `cursorColors` below is the only caller, and it
+// always lists a final rung (`ui.selection`) a real theme is expected to
+// define, so this is the rare "theme defines none of its cursor scopes at
+// all" case, not the common one.
 export function fullStyleChain(ids, sc, pal) {
   for (const id of ids) {
     const v = sc[id];
     if (v !== undefined && v !== "") return normalizeStyle(v, pal);
   }
   return null;
+}
+
+// Resolve a selection-head's full style (fg/bg/modifiers) for one of HUME's
+// three cursor-scope chains, mirroring `cursor_ladder` in
+// hume-engine/src/theme/mod.rs exactly:
+//   secondary: `ui.cursor.<chain>` -> `ui.cursor` -> `ui.selection`
+//   primary:   `ui.cursor.primary.<chain>` -> `ui.cursor.primary` ->
+//              `ui.cursor` -> `ui` -> `ui.selection`
+// `chain` is `"normal"`, `"insert"`, or `"select"` — see `MODES` in
+// preview/samples.js for which chain each of HUME's modes actually uses.
+// Always returns a normalized style object, never null: both ladders end at
+// `ui.selection`, matching how the real ladder falls back to an all-`None`
+// `ResolvedStyle` rather than "no style at all".
+export function cursorColors(chain, primary, sc, pal) {
+  const ids = primary
+    ? [`ui.cursor.primary.${chain}`, "ui.cursor.primary", "ui.cursor", "ui", "ui.selection"]
+    : [`ui.cursor.${chain}`, "ui.cursor", "ui.selection"];
+  return fullStyleChain(ids, sc, pal) ?? { fg: null, bg: null, mods: [], underline: null };
 }
 
 export function cssUnderlineStyle(s) {

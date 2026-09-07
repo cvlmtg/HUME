@@ -20,3 +20,7 @@ cargo test --all-targets -p hume-editor -- --test-threads=1
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.
 cargo test --doc
+
+# tools/theme-editor is a separate npm package (pure-logic modules only, no
+# JSX under test) with its own test runner.
+(cd tools/theme-editor && npm test)

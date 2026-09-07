@@ -47,7 +47,7 @@ error. `list-subdirs` skips stray non-directory entries that sit alongside a dir
 ### Path safety
 
 `safe-path-segment?` rejects the empty string, `.`/`..`, a path separator (`/` or `\`),
-and `:`/`"` — the set that's safe to use as one filesystem path segment, for any name
+`:`/`"`, and NUL — the set that's safe to use as one filesystem path segment, for any name
 that reaches `path-join` or a subprocess arg but did not come from a fixed catalog: a
 user-typed slug, or a name parsed out of downloaded content. The `:` rejection matters
 on Windows specifically: a segment like `c:evil` after a single path component makes

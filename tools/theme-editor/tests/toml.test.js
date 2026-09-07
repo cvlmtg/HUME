@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTOML, extractScopes, exportTOML, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
+import { parseTOML, extractScopes, exportTOML, diffFromBaseline, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
 import { bgc, lookupRaw } from '../src/lib/theme.js';
 
 test('unescapeBasic handles \\", \\\\, \\n, \\t, \\r', () => {
@@ -59,6 +59,42 @@ test('exportTOML with an inherits name emits it as the first line and round-trip
 test('exportTOML without an inherits name omits the key, as before', () => {
   const exported = exportTOML({}, { k: 'v' });
   assert.doesNotMatch(exported, /^inherits/);
+});
+
+test('diffFromBaseline finds only the overridden and newly-added entries', () => {
+  const baseline = { keyword: 'red', comment: 'gray' };
+  const current = { keyword: 'blue', comment: 'gray', 'markup.link': 'cyan' };
+  assert.deepEqual(diffFromBaseline(current, baseline), {
+    keyword: 'blue',
+    'markup.link': 'cyan',
+  });
+});
+
+// The end-to-end shape App.jsx's handleExport relies on: a resolved child
+// theme's merged (parent + child) state, diffed back against the parent's
+// own baseline, exports as `inherits` plus only the child's own overrides —
+// round-tripping as the small file it started as, not the merged state the
+// editor renders from.
+test('a merged inherits-child exports and round-trips as inherits plus only its own overrides', () => {
+  const parentPalette = { bg0: '#111111', bg1: '#222222' };
+  const parentScopes = { keyword: 'bg0', comment: { fg: 'bg1', modifiers: ['italic'] } };
+
+  // What the app actually holds after merging the child onto the parent: a
+  // new `bg0` color, and `keyword` re-pointed at `bg1` instead of `bg0`.
+  const mergedPalette = { ...parentPalette, bg0: '#999999' };
+  const mergedScopes = { ...parentScopes, keyword: 'bg1' };
+
+  const exportPalette = diffFromBaseline(mergedPalette, parentPalette);
+  const exportScopes = diffFromBaseline(mergedScopes, parentScopes);
+  const exported = exportTOML(exportPalette, exportScopes, 'base');
+
+  assert.match(exported, /^inherits = "base"\n\n/);
+  const reparsed = parseTOML(exported);
+  assert.equal(reparsed.inherits, 'base');
+  // Only the child's own override survives — the untouched `comment` scope
+  // and `bg1` palette entry, both still exactly the parent's, are absent.
+  assert.deepEqual(extractScopes(reparsed), { keyword: 'bg1' });
+  assert.deepEqual(reparsed.palette, { bg0: '#999999' });
 });
 
 test('parseInlineTable splits on the "=" outside a quoted key containing one', () => {

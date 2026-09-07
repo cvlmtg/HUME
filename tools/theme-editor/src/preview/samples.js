@@ -155,20 +155,31 @@ export const CHROME_SCOPES = [
 
 // Mode -> (statusline scope, cursor chain) — mirrors HUME's own mapping:
 // `hume-editor/src/ui/theme.rs`'s `mode_scope`, and `head_style` in
-// `hume-engine/src/style/mod.rs`, which picks the cursor chain by
-// `mode.cursor_is_bar()` (Insert/Command/Search/Select -> "bar") vs. Extend
-// ("select") vs. everything else, i.e. Normal, ("normal"). `barInStatusline`
-// marks Command/Search: their bar cursor sits in the minibuf/statusline
-// prompt, not the buffer, so the preview shows no buffer cursor for them at
-// all (`hume-editor/src/editor/lifecycle.rs:432-459`) — unlike Insert/Select,
-// whose bar cursor does land in the buffer, on the primary head only.
+// `hume-engine/src/style/mod.rs`, whose match picks the chain by document
+// mode: Insert -> "insert"; Extend (HUME's name for Helix's Select mode) ->
+// "select"; everything else, including HUME's own Command/Search/Select
+// prompt modes (which have no Helix equivalent — Helix keeps the underlying
+// document mode while a prompt is open, and HUME's prompts have no
+// cursor-shape option of their own) -> "normal".
+//
+// `barPrimary` marks Insert alone: HUME's `cursor-shape-insert` default is
+// `bar`, so the buffer's primary head shows no theme color at all there — the
+// real terminal bar is the sole indicator (`cursorColors` in lib/theme.js).
+// Every other mode is hardwired `Block` (Normal and Extend by design; the
+// three prompt modes because they render like Normal while a prompt is
+// open), so their primary head always paints from its chain, the same as
+// Normal — even for Command/Search, whose *own* bar cursor blinks in the
+// minibuf/statusline instead (`hume-editor/src/editor/lifecycle.rs`), a fact
+// with no effect on how the buffer itself renders. A secondary head is
+// always painted regardless of `barPrimary` — it has no real terminal cursor
+// to fall back on, matching Helix's own unconditional secondary painting.
 export const MODES = [
-  { scope: "ui.statusline.normal", label: "NOR", cursor: "normal" },
-  { scope: "ui.statusline.insert", label: "INS", cursor: "bar" },
-  { scope: "ui.statusline.select", label: "EXT", cursor: "select" },
-  { scope: "ui.statusline.search", label: "SRC", cursor: "bar", barInStatusline: true },
-  { scope: "ui.statusline.command", label: "CMD", cursor: "bar", barInStatusline: true },
-  { scope: "ui.statusline.filter", label: "SEL", cursor: "bar" },
+  { scope: "ui.statusline.normal", label: "NOR", chain: "normal" },
+  { scope: "ui.statusline.insert", label: "INS", chain: "insert", barPrimary: true },
+  { scope: "ui.statusline.select", label: "EXT", chain: "select" },
+  { scope: "ui.statusline.search", label: "SRC", chain: "normal" },
+  { scope: "ui.statusline.command", label: "CMD", chain: "normal" },
+  { scope: "ui.statusline.filter", label: "SEL", chain: "normal" },
 ];
 
 // Overlay surfaces the pane can show on top of the buffer, and which scopes

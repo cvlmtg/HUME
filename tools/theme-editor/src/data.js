@@ -94,6 +94,18 @@ export const DEFAULT_PAL = {
 export const DEFAULT_SC = {
   "ui.background": { bg: "black" }, "ui.text": "white", "ui.cursor": { fg: "black", bg: "blue" },
   "ui.text.focus": { fg: "black", bg: "blue" },
+  // `.normal`/`.select` (secondary) and `.primary`/`.primary.normal`/
+  // `.primary.select` fill out the six-scope cursor ladder `cursor_ladder`
+  // resolves (hume-engine/src/theme/mod.rs) — see the "Cursor" group in
+  // SCOPES above. `ui.cursor.insert`/`ui.cursor.primary.insert` are
+  // deliberately absent: undefined is what makes HUME's default
+  // `cursor-shape-insert = bar` show the real terminal cursor through
+  // instead of a themed block (`cursorColors` in lib/theme.js).
+  "ui.cursor.normal": { fg: "black", bg: "blue" },
+  "ui.cursor.select": { fg: "black", bg: "yellow" },
+  "ui.cursor.primary": { fg: "black", bg: "cyan" },
+  "ui.cursor.primary.normal": { fg: "black", bg: "light-gray" },
+  "ui.cursor.primary.select": { fg: "black", bg: "orange" },
   "ui.cursor.match": { fg: "yellow", bg: "#3a371a", modifiers: ["bold"] }, "ui.selection": { bg: "dark-gray" },
   "ui.selection.primary": { bg: "gray" }, "ui.cursor.match.search": { fg: "orange", bg: "#3a2a14" }, "ui.linenr": "gray",
   "ui.linenr.selected": "yellow",
@@ -181,4 +193,8 @@ export const DEFAULT_SC = {
   "warning.diagnostic.inline": "yellow",
   "info.diagnostic.inline": "blue",
   "hint.diagnostic.inline": "cyan",
+  // Bare gutter names — dotless, so `lookupRaw`'s dot-trim fallback gives
+  // them nowhere to fall back to; leaving these unset makes the gutter dot
+  // render a hardcoded grey instead of a themed color (`EditorPane.jsx`).
+  error: "red", warning: "yellow", info: "blue", hint: "cyan",
 };

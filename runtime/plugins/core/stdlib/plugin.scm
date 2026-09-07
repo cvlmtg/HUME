@@ -78,7 +78,8 @@
        (not (string-contains? name "/"))
        (not (string-contains? name "\\"))
        (not (string-contains? name ":"))
-       (not (string-contains? name "\""))))
+       (not (string-contains? name "\""))
+       (not (string-contains? name "\0"))))
 
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 

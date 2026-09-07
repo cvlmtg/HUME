@@ -122,10 +122,17 @@ pub fn parse_theme(toml_str: &str) -> Result<LoadedTheme, ThemeError> {
 /// because they merge separately: a child overriding one palette name leaves
 /// every other name pointing at the file that did define it. Both empty for
 /// an embedded ([`parse_theme`]) document, which has no file to attribute to.
+///
+/// `warnings` carries flatten-time warnings (a misspelled style attribute
+/// found by `walk_scope`) already attributed to this document's file — they
+/// happen before `origins`/`palette_origins` exist, so they can't wait to be
+/// attributed alongside `resolve_theme_table`'s own warnings the way a bad
+/// color or modifier does.
 struct RawTheme {
     table: toml::Table,
     origins: FxHashMap<String, Arc<Path>>,
     palette_origins: FxHashMap<String, Arc<Path>>,
+    warnings: Vec<ThemeError>,
 }
 
 fn load_raw_recursive(
@@ -168,7 +175,12 @@ fn parse_raw_recursive(
         .parse()
         .map_err(|e| attribute(ThemeError::Parse(e), path))?;
     validate_reserved_keys(&table).map_err(|e| attribute(e, path))?;
-    let table = flatten_scopes(table).map_err(|e| attribute(e, path))?;
+    let mut flatten_warnings = Vec::new();
+    let table = flatten_scopes(table, &mut flatten_warnings);
+    let warnings = flatten_warnings
+        .into_iter()
+        .map(|e| attribute(e, path))
+        .collect();
 
     let origins = origins_for(
         table
@@ -188,6 +200,7 @@ fn parse_raw_recursive(
         table,
         origins,
         palette_origins,
+        warnings,
     };
 
     match raw.table.get("inherits").and_then(|v| v.as_str()) {
@@ -298,10 +311,13 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
     origins.extend(child.origins);
     let mut palette_origins = parent.palette_origins;
     palette_origins.extend(child.palette_origins);
+    let mut warnings = parent.warnings;
+    warnings.extend(child.warnings);
     RawTheme {
         table,
         origins,
         palette_origins,
+        warnings,
     }
 }
 
@@ -323,27 +339,29 @@ fn merge_raw_themes(parent: RawTheme, child: RawTheme) -> RawTheme {
 ///
 /// Everything that stays fatal instead is a problem with the *document*, not
 /// one entry in it — unparseable TOML, a missing or cyclic `inherits`
-/// parent, a malformed `inherits`/`palette` key, the section-header ambiguity
-/// `walk_scope` rejects. All of those are raised earlier, in
-/// `parse_raw_recursive`/`load_raw_recursive`, before this function ever
-/// runs — there is no partial document to warn-and-continue from.
+/// parent, a malformed `inherits`/`palette` key. All of those are raised
+/// earlier, in `parse_raw_recursive`/`load_raw_recursive`, before this
+/// function ever runs — there is no partial document to warn-and-continue
+/// from. A misspelled style attribute (`walk_scope`'s own malformed entry) is
+/// collected as a warning the same way, just earlier — see `RawTheme::warnings`.
 fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let RawTheme {
         table,
         origins,
         palette_origins,
+        mut warnings,
     } = raw;
-    let mut warnings = Vec::new();
 
     // ── Parse [palette] (if any) ──────────────────────────────────────────────
     // Palette entries must be #rgb/#rrggbb literals — matching where Helix
     // itself draws the line: its `ThemePalette::try_from` parses each palette
     // value before the built-in ANSI names are merged in, so a name here
     // (`red = "red"`) doesn't resolve there either. A malformed entry is
-    // warned and dropped from the palette — every scope that references it
-    // then gets its own cascading warning from `resolve_color` below, rather
-    // than silently taking on some other colour.
-    let mut palette: FxHashMap<String, Rgb> = FxHashMap::default();
+    // warned and recorded as `None` (declared but broken) rather than simply
+    // omitted — omitting it would let a scope referencing the same name fall
+    // through to an ANSI/hex match instead of getting its own cascading
+    // warning from `resolve_color` below.
+    let mut palette: FxHashMap<String, Option<Rgb>> = FxHashMap::default();
     if let Some(pal_table) = table.get("palette").and_then(|v| v.as_table()) {
         for (k, v) in pal_table {
             let origin = palette_origins.get(k).map(|p| &**p);
@@ -351,20 +369,24 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
                 Some(s) => s,
                 None => {
                     warnings.push(attribute(bad_style_field("palette", k, "a string"), origin));
+                    palette.insert(k.clone(), None);
                     continue;
                 }
             };
             match parse_hex_color(hex) {
                 Ok(color) => {
-                    palette.insert(k.clone(), color);
+                    palette.insert(k.clone(), Some(color));
                 }
-                Err(_) => warnings.push(attribute(
-                    ThemeError::BadColor {
-                        key: format!("palette.{k}"),
-                        value: hex.to_owned(),
-                    },
-                    origin,
-                )),
+                Err(_) => {
+                    warnings.push(attribute(
+                        ThemeError::BadColor {
+                            key: format!("palette.{k}"),
+                            value: hex.to_owned(),
+                        },
+                        origin,
+                    ));
+                    palette.insert(k.clone(), None);
+                }
             }
         }
     }
@@ -373,7 +395,11 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // A malformed entry is warned and given a default (all-`None`) style
     // rather than omitted, so it still blocks the dot-notation fallback chain
     // the way a real entry would — an explicit `keyword.function`, even a
-    // broken one, must not silently fall through to `keyword`'s style.
+    // broken one, must not silently fall through to `keyword`'s style. A style
+    // *table* with only one bad field is the partial exception: the fields
+    // that did parse are kept (see `parse_style_table`), so only a shorthand
+    // string or a wrong-shaped value (`parse_scope_value`'s `Err` arm) falls
+    // back to a fully empty style.
     let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
     for (key, value) in &table {
         // Reserved keys — not scope entries.
@@ -382,7 +408,10 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
         }
         let origin = origins.get(key).map(|p| &**p);
         let style = match parse_scope_value(key, value, &palette) {
-            Ok(style) => style,
+            Ok((style, field_warnings)) => {
+                warnings.extend(field_warnings.into_iter().map(|e| attribute(e, origin)));
+                style
+            }
             Err(e) => {
                 warnings.push(attribute(e, origin));
                 ResolvedStyle::default()
@@ -429,16 +458,19 @@ const STYLE_KEY_LIST: &str = "one of fg, bg, underline, modifiers";
 /// parent's flat `"ui.text"` against a child's `[ui]` / `text` on the same
 /// key, or which one wins depends on table iteration order instead of the
 /// child always winning.
-fn flatten_scopes(table: toml::Table) -> Result<toml::Table, ThemeError> {
+///
+/// `warnings` collects a misspelled style attribute found along the way (see
+/// `walk_scope`) — flattening itself never fails a load.
+fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>) -> toml::Table {
     let mut out = toml::Table::new();
     for (key, value) in table {
         if key == "inherits" || key == "palette" {
             out.insert(key, value);
             continue;
         }
-        walk_scope(&mut out, key, value)?;
+        walk_scope(&mut out, key, value, warnings);
     }
-    Ok(out)
+    out
 }
 
 /// Recursively flattens one scope's value into `out`, under dotted key
@@ -451,28 +483,27 @@ fn flatten_scopes(table: toml::Table) -> Result<toml::Table, ThemeError> {
 /// `[ui.cursor.match]` beneath it) emits nothing for `path` itself — this is
 /// what keeps the dot-fallback chain from stopping on an empty entry.
 ///
-/// A scalar entry *beside* a style field is rejected rather than recursed:
+/// A scalar entry *beside* a style field is dropped rather than recursed:
 /// once a table is known to be a style, `underline_style = "curl"` and
 /// `text = "#fff"` are indistinguishable, and treating either as a child
-/// scope silently invents a name nothing resolves — so a misspelled attribute
-/// would either vanish or surface later as a `BadColor` on a key the file
-/// never contained. A sub-table beside a style field stays a child, since
-/// nothing else it could be. The rejected spelling has a flat equivalent that
-/// still works: give the child its own top-level `"ui.text"` key.
-///
-/// This stays a fatal load error rather than joining `resolve_theme_table`'s
-/// warn-and-continue treatment of a malformed entry: it runs during
-/// flattening, before a document's real scope keys even exist, so there is no
-/// key yet to attach a per-entry warning to and no upstream Helix theme can
-/// trigger it in the first place — Helix has no section-header form to be
-/// ambiguous about. It can only come from a hand-authored HUME theme, where
-/// the flat spelling above is the fix.
-fn walk_scope(out: &mut toml::Table, path: String, value: toml::Value) -> Result<(), ThemeError> {
+/// scope silently invents a name nothing resolves. So it's warned instead —
+/// the same treatment `resolve_theme_table` gives every other malformed
+/// entry — and the rest of the style table is kept, exactly as one bad field
+/// inside a genuine style table (`parse_style_table`) is. A sub-table beside
+/// a style field stays a child, since nothing else it could be. The dropped
+/// spelling has a flat equivalent that still works: give the child its own
+/// top-level `"ui.text"` key.
+fn walk_scope(
+    out: &mut toml::Table,
+    path: String,
+    value: toml::Value,
+    warnings: &mut Vec<ThemeError>,
+) {
     let toml::Value::Table(t) = value else {
         // Shorthand string (or an outright bad type — `parse_scope_value`
         // reports that as `BadScopeValue`) — insert unchanged.
         out.insert(path, value);
-        return Ok(());
+        return;
     };
 
     let mut style = toml::Table::new();
@@ -485,45 +516,58 @@ fn walk_scope(out: &mut toml::Table, path: String, value: toml::Value) -> Result
         }
     }
 
-    if !style.is_empty()
-        && let Some((k, _)) = children.iter().find(|(_, v)| !v.is_table())
-    {
-        return Err(bad_style_field(&path, k, STYLE_KEY_LIST));
+    if !style.is_empty() {
+        children.retain(|(k, v)| {
+            if v.is_table() {
+                true
+            } else {
+                warnings.push(bad_style_field(&path, k, STYLE_KEY_LIST));
+                false
+            }
+        });
     }
 
     if !style.is_empty() || children.is_empty() {
         out.insert(path.clone(), toml::Value::Table(style));
     }
     for (k, v) in children {
-        walk_scope(out, format!("{path}.{k}"), v)?;
+        walk_scope(out, format!("{path}.{k}"), v, warnings);
     }
-    Ok(())
 }
 
 // ---------------------------------------------------------------------------
 // Scope value parsing
 // ---------------------------------------------------------------------------
 
-/// Parse one TOML scope entry into a `ResolvedStyle`.
-///
-/// Helix supports two forms:
+/// Parse one TOML scope entry into a `ResolvedStyle`, plus a warning for
+/// every individually malformed field inside a style table (the `Ok` arm's
+/// second element — empty for a clean table). Helix supports two forms:
 /// - `"keyword" = "red"` — shorthand; sets `fg` only
 /// - `"keyword" = { fg = "red", bg = "black", modifiers = ["bold"] }` — full form
+///
+/// Only the shorthand string form and an outright wrong-shaped value
+/// (`BadScopeValue` — neither a string nor a table) fail outright: a
+/// shorthand color is the entry's only field, so nothing partial survives a
+/// bad one, and a value with no style table to draw fields from has nothing
+/// to salvage either.
 fn parse_scope_value(
     key: &str,
     value: &toml::Value,
-    palette: &FxHashMap<String, Rgb>,
-) -> Result<ResolvedStyle, ThemeError> {
+    palette: &FxHashMap<String, Option<Rgb>>,
+) -> Result<(ResolvedStyle, Vec<ThemeError>), ThemeError> {
     match value {
         // Shorthand: `"keyword" = "red"` sets fg only.
         toml::Value::String(s) => {
             let fg = Some(resolve_color(key, s, palette)?);
-            Ok(ResolvedStyle {
-                fg,
-                ..Default::default()
-            })
+            Ok((
+                ResolvedStyle {
+                    fg,
+                    ..Default::default()
+                },
+                Vec::new(),
+            ))
         }
-        toml::Value::Table(t) => parse_style_table(key, t, palette),
+        toml::Value::Table(t) => Ok(parse_style_table(key, t, palette)),
         other => Err(ThemeError::BadScopeValue {
             key: key.to_owned(),
             value: format!("{other:?}"),
@@ -539,79 +583,124 @@ fn bad_style_field(key: &str, field: &str, expected: &'static str) -> ThemeError
     }
 }
 
+/// Parse a scope's style table field by field. A malformed field is warned
+/// and left unset rather than discarding the fields around it — matching
+/// Helix's own `build_theme_values`, which keeps a partially-built style
+/// rather than throwing it away over one bad key. A bad item inside
+/// `modifiers` gets the same treatment at the item level: the valid items
+/// beside it still apply.
 fn parse_style_table(
     key: &str,
     t: &toml::map::Map<String, toml::Value>,
-    palette: &FxHashMap<String, Rgb>,
-) -> Result<ResolvedStyle, ThemeError> {
+    palette: &FxHashMap<String, Option<Rgb>>,
+) -> (ResolvedStyle, Vec<ThemeError>) {
     let mut style = ResolvedStyle::default();
+    let mut warnings = Vec::new();
 
     if let Some(v) = t.get("fg") {
-        let s = v
-            .as_str()
-            .ok_or_else(|| bad_style_field(key, "fg", "a string"))?;
-        style.fg = Some(resolve_color(key, s, palette)?);
+        match v.as_str() {
+            Some(s) => match resolve_color(key, s, palette) {
+                Ok(c) => style.fg = Some(c),
+                Err(e) => warnings.push(e),
+            },
+            None => warnings.push(bad_style_field(key, "fg", "a string")),
+        }
     }
     if let Some(v) = t.get("bg") {
-        let s = v
-            .as_str()
-            .ok_or_else(|| bad_style_field(key, "bg", "a string"))?;
-        style.bg = Some(resolve_color(key, s, palette)?);
+        match v.as_str() {
+            Some(s) => match resolve_color(key, s, palette) {
+                Ok(c) => style.bg = Some(c),
+                Err(e) => warnings.push(e),
+            },
+            None => warnings.push(bad_style_field(key, "bg", "a string")),
+        }
     }
     if let Some(v) = t.get("underline") {
         if let Some(s) = v.as_str() {
-            style.underline = parse_underline(key, s)?;
+            match parse_underline(key, s) {
+                Ok(u) => style.underline = u,
+                Err(e) => warnings.push(e),
+            }
         } else if let Some(ut) = v.as_table() {
             // `underline = { color = "#...", style = "..." }` (Helix extended form)
             if let Some(color_v) = ut.get("color") {
-                let s = color_v
-                    .as_str()
-                    .ok_or_else(|| bad_style_field(key, "underline.color", "a string"))?;
-                style.underline_color = Some(resolve_color(key, s, palette)?);
+                match color_v.as_str() {
+                    Some(s) => match resolve_color(key, s, palette) {
+                        Ok(c) => style.underline_color = Some(c),
+                        Err(e) => warnings.push(e),
+                    },
+                    None => warnings.push(bad_style_field(key, "underline.color", "a string")),
+                }
             }
             if let Some(style_v) = ut.get("style") {
-                let s = style_v
-                    .as_str()
-                    .ok_or_else(|| bad_style_field(key, "underline.style", "a string"))?;
-                style.underline = parse_underline(key, s)?;
+                match style_v.as_str() {
+                    Some(s) => match parse_underline(key, s) {
+                        Ok(u) => style.underline = u,
+                        Err(e) => warnings.push(e),
+                    },
+                    None => warnings.push(bad_style_field(key, "underline.style", "a string")),
+                }
             }
         } else {
-            return Err(bad_style_field(key, "underline", "a string or a table"));
+            warnings.push(bad_style_field(key, "underline", "a string or a table"));
         }
     }
     if let Some(v) = t.get("modifiers") {
-        let arr = v
-            .as_array()
-            .ok_or_else(|| bad_style_field(key, "modifiers", "an array"))?;
-        for item in arr {
-            let s = item
-                .as_str()
-                .ok_or_else(|| bad_style_field(key, "modifiers", "an array of strings"))?;
-            match s {
-                // Helix exposes underline as a modifier; route it to the dedicated
-                // underline field so underline has a single source of truth. A more
-                // specific `underline = "..."` key (parsed just above) wins.
-                "underlined" => {
-                    if style.underline == UnderlineStyle::None {
-                        style.underline = UnderlineStyle::Solid;
+        match v.as_array() {
+            Some(arr) => {
+                for item in arr {
+                    match item.as_str() {
+                        Some(s) => match s {
+                            // Helix exposes underline as a modifier; route it to the
+                            // dedicated underline field so underline has a single
+                            // source of truth. A more specific `underline = "..."`
+                            // key (parsed above) wins.
+                            "underlined" => {
+                                if style.underline == UnderlineStyle::None {
+                                    style.underline = UnderlineStyle::Solid;
+                                }
+                            }
+                            _ => match parse_modifier(key, s) {
+                                Ok(m) => style.modifiers |= m,
+                                Err(e) => warnings.push(e),
+                            },
+                        },
+                        None => {
+                            warnings.push(bad_style_field(key, "modifiers", "an array of strings"))
+                        }
                     }
                 }
-                _ => style.modifiers |= parse_modifier(key, s)?,
             }
+            None => warnings.push(bad_style_field(key, "modifiers", "an array")),
         }
     }
 
-    Ok(style)
+    (style, warnings)
 }
 
 // ---------------------------------------------------------------------------
 // Colour resolution
 // ---------------------------------------------------------------------------
 
-fn resolve_color(key: &str, s: &str, palette: &FxHashMap<String, Rgb>) -> Result<Rgb, ThemeError> {
-    // Palette reference takes priority.
-    if let Some(&color) = palette.get(s) {
-        return Ok(color);
+fn resolve_color(
+    key: &str,
+    s: &str,
+    palette: &FxHashMap<String, Option<Rgb>>,
+) -> Result<Rgb, ThemeError> {
+    // Palette reference takes priority. A palette entry that was itself
+    // malformed (`Some(None)`, already warned when `[palette]` was parsed)
+    // must not fall through to an ANSI/hex guess at the same name — that
+    // would silently recolor every referencing scope instead of cascading
+    // the warning.
+    match palette.get(s) {
+        Some(Some(color)) => return Ok(*color),
+        Some(None) => {
+            return Err(ThemeError::BadColor {
+                key: key.to_owned(),
+                value: s.to_owned(),
+            });
+        }
+        None => {}
     }
     // Built-in ANSI name — a theme's own palette entry of the same name
     // (checked above) overrides it, matching how Helix's `ThemePalette::new`
@@ -770,6 +859,15 @@ fn is_safe_theme_name(name: &str) -> bool {
 /// search dir), then canonicalizes the path for the visited-check. Canonicalize
 /// failure after a successful read uses the unresolved path as the cycle key —
 /// safe because a deleted-after-read file cannot form a cycle.
+///
+/// A candidate that exists but can't be read for some other reason (a
+/// directory left in its place, a permissions error) is likewise skipped
+/// rather than aborting the whole search: search order is a priority list,
+/// and one broken higher-priority candidate must not shadow a working
+/// lower-priority one — most concretely the bundled copy a config-dir theme
+/// of the same name would otherwise make unreachable. The first such error is
+/// remembered and only reported if nothing later in the list works either, so
+/// a real problem still surfaces instead of silently becoming `NotFound`.
 fn find_theme_file(
     name: &str,
     search_paths: &[PathBuf],
@@ -782,6 +880,7 @@ fn find_theme_file(
     }
     let filename = format!("{name}.toml");
     let mut cycle_found = false;
+    let mut io_error = None;
     for dir in search_paths {
         let candidate = dir.join(&filename);
         match std::fs::read_to_string(&candidate) {
@@ -797,7 +896,7 @@ fn find_theme_file(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                return Err(ThemeError::Io {
+                io_error.get_or_insert(ThemeError::Io {
                     name: name.to_owned(),
                     path: candidate,
                     error: e,
@@ -809,6 +908,9 @@ fn find_theme_file(
         return Err(ThemeError::Cycle {
             name: name.to_owned(),
         });
+    }
+    if let Some(e) = io_error {
+        return Err(e);
     }
     Err(ThemeError::NotFound {
         name: name.to_owned(),

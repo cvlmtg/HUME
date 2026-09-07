@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, MONO } from '../ui.js';
-import { fgc, bgc, fullStyle, fullStyleChain, tokenStyle } from '../lib/theme.js';
+import { fgc, bgc, fullStyle, cursorColors, tokenStyle } from '../lib/theme.js';
 import { BUFFERS, DIFF_SAMPLE, MODES, OVERLAYS, PICKER_ROWS, DRAWER_ROWS, NEIGHBOR_TOP, NEIGHBOR_BOTTOM } from './samples.js';
 
 // Floor under the pane's content height so an overlay (the picker's centered
@@ -8,30 +8,6 @@ import { BUFFERS, DIFF_SAMPLE, MODES, OVERLAYS, PICKER_ROWS, DRAWER_ROWS, NEIGHB
 // buffers range from 5 rows (the diff) to ~50, but a terminal pane doesn't
 // shrink to fit its content. Not a claim about any real terminal row count.
 const PANE_MIN_H = 440;
-
-// Resolve a selection-head's full style (fg/bg/modifiers) for the active
-// mode's cursor chain. `primary` selects between the `.primary` scopes (the
-// head the viewport follows) and the plain ones (every other selection's
-// head) — the same primary/secondary split `head_style` makes in
-// hume-engine/src/style/mod.rs. Bar-cursor modes (`kind === "bar"`) use
-// `fullStyleChain`: the primary head's chain has no dotted-chain fallback —
-// an unset `ui.cursor.primary.insert`/`ui.cursor.insert` means the real
-// terminal bar shows through, so this returns null for it rather than
-// inheriting the block cursor's background (it's up to the caller to decide
-// what "nothing to layer" renders as). The secondary head's chain DOES fall
-// back to `ui.cursor`: there is no second hardware cursor for a secondary
-// head to rely on, so HUME paints it regardless of shape — matching Helix's
-// own unconditional secondary-cursor painting.
-function cursorColors(kind, primary, sc, pal) {
-  if (kind === "bar") {
-    const keys = primary
-      ? ["ui.cursor.primary.insert", "ui.cursor.insert"]
-      : ["ui.cursor.insert", "ui.cursor"];
-    return fullStyleChain(keys, sc, pal);
-  }
-  const key = (primary ? "ui.cursor.primary" : "ui.cursor") + (kind === "select" ? ".select" : ".normal");
-  return fullStyle(key, sc, pal);
-}
 
 // One overlay box (completion menu or hover popup) drawn on top of the
 // buffer — mirrors `menu_box.rs`'s pairing of a root scope with its
@@ -291,16 +267,16 @@ export default function EditorPane({ pal, sc }) {
     if (!tag) return null;
     if (tag === "cursor" || tag === "cursor2") {
       const primary = tag === "cursor";
-      const c = cursorColors(mode.cursor, primary, sc, pal);
-      if (c) return c;
-      // Bar-cursor mode with no theme entry for this chain. The real
-      // terminal bar only ever exists for the primary head — a secondary
-      // head has none — and only when Command/Search haven't already
-      // routed it to the statusline instead of the buffer.
-      if (mode.cursor === "bar" && primary && !mode.barInStatusline) {
+      // `barPrimary` (Insert only, HUME's default `cursor-shape-insert`) means
+      // the primary head has no configured Block shape: the real terminal bar
+      // is the sole indicator, so nothing from the theme is layered over it.
+      // A secondary head has no real terminal cursor to fall back on, so
+      // HUME always paints it regardless of shape — matching Helix's own
+      // unconditional secondary-cursor painting.
+      if (primary && mode.barPrimary) {
         return { fg: FG, bg: null, bar: true };
       }
-      return null;
+      return cursorColors(mode.chain, primary, sc, pal);
     }
     if (tag === "sel") return fullStyle("ui.selection.primary", sc, pal);
     if (tag === "sel2") return fullStyle("ui.selection", sc, pal);

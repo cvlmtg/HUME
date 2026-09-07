@@ -45,6 +45,7 @@
 - Themes can now use TOML section headers as well as HUME's flat dotted-key format.
 - A theme with a malformed entry — a bad color, an unsupported scope shape — now loads with that one entry left unstyled and a warning explaining why, instead of failing the whole theme or silently rendering it unstyled. A theme that's fundamentally broken (invalid TOML, a missing inherited theme) still fails to load with a clear error.
 - A theme-loading error now names the file it actually came from, even one inherited from a parent theme.
+- The bundled `sand` theme now gives Normal, Insert, and Extend mode their own cursor color instead of two colors shared across all three.
 
 ### Configuration & options
 - New `--config <FILE>` flag loads a config file other than the default `init.scm`; `:reload-config` re-evaluates the same file.

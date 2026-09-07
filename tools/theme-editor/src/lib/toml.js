@@ -227,13 +227,27 @@ export function extractScopes(parsed) {
   return ns;
 }
 
+// Entries in `current` whose value differs from (or is entirely absent from)
+// `baseline` — used to export an inherits-child theme as just its own
+// overrides rather than the merged (parent + child) state the editor renders
+// from. A plain string-keyed diff, structural on the value: scope defs are
+// small `{fg,bg,modifiers,underline}` objects, so a JSON comparison is exact
+// and doesn't need a deep-equal dependency.
+export function diffFromBaseline(current, baseline) {
+  const out = {};
+  for (const [k, v] of Object.entries(current)) {
+    if (JSON.stringify(v) !== JSON.stringify(baseline[k])) out[k] = v;
+  }
+  return out;
+}
+
 // Emit every scope as a flat top-level quoted dotted key, then [palette] last.
 // We avoid [section] headers: TOML section semantics would merge a `[diff]` header
 // with an existing top-level `"diff" = "overlay"` into one nested object, losing
 // sub-keys after extractScopes. Flat keys match upstream Helix themes (rose_pine, etc.).
 export function exportTOML(palette, scopes, inherits) {
   let out = "";
-  if (inherits) out += 'inherits = "' + inherits + '"\n\n';
+  if (inherits) out += "inherits = " + formatVal(inherits) + "\n\n";
   for (const [k, v] of Object.entries(scopes)) out += '"' + k + '" = ' + formatVal(v) + '\n';
   out += "\n[palette]\n";
   for (const [k, v] of Object.entries(palette)) out += '"' + k + '" = ' + formatVal(v) + '\n';

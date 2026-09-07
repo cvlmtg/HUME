@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { C, MONO, INPUT, COLOR_PICKER } from '../ui.js';
 import { adjustPalette } from '../lib/color.js';
-import { parseTOML, extractScopes, exportTOML } from '../lib/toml.js';
+import { parseTOML, extractScopes, exportTOML, diffFromBaseline } from '../lib/toml.js';
 import { SCOPES, ALL_SCOPES, DEFAULT_PAL, DEFAULT_SC } from '../data.js';
 import Acc from './Acc.jsx';
 import ScopeRow from './ScopeRow.jsx';
@@ -37,6 +37,14 @@ export default function HelixThemeEditor() {
   const [inheritBanner, setInheritBanner] = useState(null);
   const [loadedThemeName, setLoadedThemeName] = useState(null);
   const [importError, setImportError] = useState(null);
+  // Snapshot of the resolved parent's own palette/scopes, taken the moment a
+  // child theme merges onto it — `{ name, palette, scopes }` or `null`. Lets
+  // `handleExport` emit only this theme's own overrides plus `inherits`,
+  // instead of the merged (parent + child) state the app actually renders
+  // from. `null` covers both "this is a plain root theme" and "still waiting
+  // on the banner's ancestor" — either way there's nothing to diff against,
+  // so export falls back to emitting everything, as it always has.
+  const [parentBaseline, setParentBaseline] = useState(null);
   const fileRef = useRef(null);
 
   // Merge a most-derived-first override stack onto a base, most-derived wins.
@@ -68,9 +76,12 @@ export default function HelixThemeEditor() {
           if (loadedThemeName && loadedThemeName === parsed.inherits) {
             // The loaded theme is confirmed (by name) to be this child's
             // declared parent — merge child overrides directly on top of it.
-            // Track this child as the now-loaded theme (not the parent it
-            // just merged onto) so a further import naming *it* as their
-            // parent (a theme -> variant -> base chain) also matches.
+            // The pre-merge `palette`/`scopes` state *is* that parent's own
+            // content, so it becomes the new export baseline. Track this
+            // child as the now-loaded theme (not the parent it just merged
+            // onto) so a further import naming *it* as their parent (a
+            // theme -> variant -> base chain) also matches.
+            setParentBaseline({ name: loadedThemeName, palette, scopes });
             setPalette(p => ({...p, ...newPalette}));
             setScopes(s => ({...s, ...newScopes}));
             setPendingChildren([]);
@@ -81,19 +92,22 @@ export default function HelixThemeEditor() {
             // child's parent — stack this child's overrides (discarding
             // whatever was loaded, since it's the wrong base), apply the
             // stack for visual feedback, and point the banner at the real
-            // ancestor this file names.
+            // ancestor this file names. The resolved baseline is unknown
+            // until that ancestor arrives.
             const nextPending = [...pendingChildren, { palette: newPalette, scopes: newScopes }];
             setPendingChildren(nextPending);
             const merged = mergeChildStack(nextPending);
             setPalette(merged.palette);
             setScopes(merged.scopes);
             setInheritBanner({ parent: parsed.inherits });
+            setParentBaseline(null);
             setLoadedThemeName(null);
           }
         } else {
           if (pendingChildren.length && inheritBanner?.parent === themeName) {
-            // This is the ancestor the banner asked for — apply it first,
-            // then the whole pending stack on top.
+            // This is the ancestor the banner asked for — its own content,
+            // before the pending stack lands on top, is the export baseline.
+            setParentBaseline({ name: themeName, palette: newPalette, scopes: newScopes });
             const merged = mergeChildStack(pendingChildren, newPalette, newScopes);
             setPalette(merged.palette);
             setScopes(merged.scopes);
@@ -101,11 +115,13 @@ export default function HelixThemeEditor() {
             setInheritBanner(null);
           } else {
             // A fresh root theme — any stashed children were waiting on a
-            // different ancestor and no longer apply.
+            // different ancestor and no longer apply, and a root theme has
+            // no parent to diff its export against.
             setPalette(newPalette);
             setScopes(newScopes);
             setPendingChildren([]);
             setInheritBanner(null);
+            setParentBaseline(null);
           }
           setLoadedThemeName(themeName);
         }
@@ -116,14 +132,26 @@ export default function HelixThemeEditor() {
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, [loadedThemeName, pendingChildren, inheritBanner]);
+  }, [loadedThemeName, pendingChildren, inheritBanner, palette, scopes]);
 
   const handleExport = useCallback(() => {
-    // A pending parent banner means `scopes`/`adjPalette` hold only the
-    // child's own overrides — keep `inherits` in the export so the file
-    // round-trips faithfully instead of shipping a flattened-looking stub
-    // that silently drops everything the parent provided.
-    const toml = exportTOML(adjPalette, scopes, inheritBanner?.parent);
+    // A resolved `parentBaseline` means `scopes`/`adjPalette` hold the
+    // *merged* state (parent content plus this theme's own overrides) — diff
+    // against the baseline so the export is `inherits` plus only the child's
+    // own overrides, round-tripping as the small file it started as instead
+    // of a flattened ~340-scope dump of everything the parent also provides.
+    // Without one (a plain root theme, or an inherits chain still waiting on
+    // its ancestor) export everything, unchanged from before.
+    let exportPalette = adjPalette;
+    let exportScopes = scopes;
+    let inherits = inheritBanner?.parent;
+    if (parentBaseline) {
+      inherits = parentBaseline.name;
+      exportPalette = diffFromBaseline(adjPalette, parentBaseline.palette);
+      exportScopes = diffFromBaseline(scopes, parentBaseline.scopes);
+    }
+
+    const toml = exportTOML(exportPalette, exportScopes, inherits);
     const blob = new Blob([toml], { type: "application/toml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -131,7 +159,7 @@ export default function HelixThemeEditor() {
     a.download = "theme.toml";
     a.click();
     URL.revokeObjectURL(url);
-  }, [adjPalette, scopes, inheritBanner]);
+  }, [adjPalette, scopes, inheritBanner, parentBaseline]);
 
   const addColor = () => {
     if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
@@ -182,7 +210,7 @@ export default function HelixThemeEditor() {
             <code style={{ background: "#1f1a0e", padding: "1px 6px", borderRadius: 3, color: "#fab387" }}>{inheritBanner.parent + ".toml"}</code>
             {" — import the parent file to apply its scopes. Child overrides are stashed and will be re-applied on top."}
           </span>
-          <button onClick={() => { setInheritBanner(null); setPendingChildren([]); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
+          <button onClick={() => { setInheritBanner(null); setPendingChildren([]); setParentBaseline(null); }} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss and discard pending overrides">{"×"}</button>
         </div>
       )}
 

@@ -116,3 +116,10 @@ jobs:
       # --all-targets above excludes doctests; run them separately.
       - name: Doctests
         run: cargo test --doc
+
+      # tools/theme-editor is a separate npm package with its own test
+      # runner. shell: bash so `tests/*.test.js` glob-expands the same way
+      # on the Windows runner (its default shell doesn't).
+      - name: Test (theme editor)
+        shell: bash
+        run: cd tools/theme-editor && npm test

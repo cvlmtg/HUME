@@ -2647,9 +2647,9 @@ fn core_stdlib_selection_commands() {
 
 /// `stdlib/safe-path-segment?` — the merged `core:plum`/`core:lsp`
 /// path-segment predicate — must reject every unsafe input (empty, `.`,
-/// `..`, a path separator, `:`, `"`) and accept ordinary names. Independent
-/// oracle: each literal input/expected pair is hand-picked, not derived from
-/// the implementation, mirroring `hume-platform/src/path/tests.rs`'s
+/// `..`, a path separator, `:`, `"`, NUL) and accept ordinary names.
+/// Independent oracle: each literal input/expected pair is hand-picked, not
+/// derived from the implementation, mirroring `hume-platform/src/path/tests.rs`'s
 /// `is_safe_segment` coverage for the Rust copy.
 #[test]
 fn core_stdlib_safe_path_segment_command() {
@@ -2663,6 +2663,7 @@ fn core_stdlib_safe_path_segment_command() {
 (unless (equal? (call! "stdlib/safe-path-segment?" "a\\b") #f) (error "backslash rejected"))
 (unless (equal? (call! "stdlib/safe-path-segment?" "c:evil") #f) (error "colon rejected"))
 (unless (equal? (call! "stdlib/safe-path-segment?" "a\"b") #f) (error "quote rejected"))
+(unless (equal? (call! "stdlib/safe-path-segment?" "a\0b") #f) (error "nul rejected"))
 
 (unless (equal? (call! "stdlib/safe-path-segment?" "v1.2.3") #t) (error "version string accepted"))
 (unless (equal? (call! "stdlib/safe-path-segment?" "rust-analyzer") #t) (error "plain name accepted"))

@@ -72,7 +72,8 @@ fn the_warning<'a>(
 /// gives a bad key, not to whatever its dot-notation ancestor would supply.
 /// This is what "warn and load" means in practice: the key isn't dropped,
 /// its slot is just empty, so it still blocks fallback the way a real entry
-/// would.
+/// would. Only holds when *nothing* in the entry parsed — see
+/// `assert_bad_style_field` for the partial case.
 fn assert_resolves_to_default_style(loaded: &LoadedTheme, key: &'static str) {
     assert_eq!(
         loaded.theme.resolve_by_name(crate::types::Scope(key)),
@@ -82,11 +83,18 @@ fn assert_resolves_to_default_style(loaded: &LoadedTheme, key: &'static str) {
 }
 
 /// Assert `loaded`'s one `BadStyleField` warning has this payload, and that
-/// `key` still resolves to the default style. The payload check alone can't
-/// tell strict-type rejections apart — every one produces the same variant,
-/// and only `field`/`expected` say which fired — so a mislabelled arm would
-/// otherwise pass.
-fn assert_bad_style_field(loaded: &LoadedTheme, key: &'static str, field: &str, expected: &str) {
+/// `key` resolves to `expected_style` — the fields that parsed cleanly
+/// alongside the bad one, per `parse_style_table`'s partial-style behavior.
+/// The payload check alone can't tell strict-type rejections apart — every
+/// one produces the same variant, and only `field`/`expected` say which
+/// fired — so a mislabelled arm would otherwise pass.
+fn assert_bad_style_field(
+    loaded: &LoadedTheme,
+    key: &'static str,
+    field: &str,
+    expected: &str,
+    expected_style: ResolvedStyle,
+) {
     let warning = the_warning(loaded, |w| matches!(w, ThemeError::BadStyleField { .. }));
     match inner(warning) {
         ThemeError::BadStyleField {
@@ -98,7 +106,11 @@ fn assert_bad_style_field(loaded: &LoadedTheme, key: &'static str, field: &str, 
         }
         other => panic!("expected BadStyleField, got: {other}"),
     }
-    assert_resolves_to_default_style(loaded, key);
+    assert_eq!(
+        loaded.theme.resolve_by_name(crate::types::Scope(key)),
+        expected_style,
+        "'{key}' must resolve to the fields that parsed cleanly alongside the bad one"
+    );
 }
 
 /// The behavior this whole warn-vs-fail split exists for: two independently
@@ -732,7 +744,15 @@ fn empty_string_color_becomes_a_warning() {
     );
     let loaded = load_theme("empty_color", &paths(dir.path())).unwrap();
     the_warning(&loaded, |w| matches!(w, ThemeError::BadColor { .. }));
-    assert_resolves_to_default_style(&loaded, "constant");
+    let cn = loaded
+        .theme
+        .resolve_by_name(crate::types::Scope("constant"));
+    assert_eq!(
+        cn.fg,
+        Some(Rgb(0xff, 0xff, 0xff)),
+        "the valid fg must survive the bad bg alongside it"
+    );
+    assert_eq!(cn.bg, None);
 }
 
 // ── Bad modifier ─────────────────────────────────────────────────────────
@@ -749,7 +769,13 @@ fn bad_modifier_becomes_a_warning() {
     );
     let loaded = load_theme("bad_mod", &paths(dir.path())).unwrap();
     the_warning(&loaded, |w| matches!(w, ThemeError::BadModifier { .. }));
-    assert_resolves_to_default_style(&loaded, "keyword");
+    let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(
+        kw.fg,
+        Some(Rgb(0xff, 0, 0)),
+        "the valid fg must survive the bad modifier alongside it"
+    );
+    assert_eq!(kw.modifiers, Modifiers::empty());
 }
 
 // ── crossed_out (Helix name for strikethrough) ────────────────────────────
@@ -789,7 +815,13 @@ fn strikethrough_is_no_longer_accepted_as_a_modifier_name() {
         &loaded,
         |w| matches!(w, ThemeError::BadModifier { key, value } if key == "keyword" && value == "strikethrough"),
     );
-    assert_resolves_to_default_style(&loaded, "keyword");
+    let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(
+        kw.fg,
+        Some(Rgb(0xff, 0, 0)),
+        "the valid fg must survive the bad modifier alongside it"
+    );
+    assert_eq!(kw.modifiers, Modifiers::empty());
 }
 
 // ── Bad underline style ───────────────────────────────────────────────────
@@ -806,7 +838,13 @@ fn bad_underline_becomes_a_warning() {
     );
     let loaded = load_theme("bad_underline", &paths(dir.path())).unwrap();
     the_warning(&loaded, |w| matches!(w, ThemeError::BadUnderline { .. }));
-    assert_resolves_to_default_style(&loaded, "keyword");
+    let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(
+        kw.fg,
+        Some(Rgb(0xff, 0, 0)),
+        "the valid fg must survive the bad underline alongside it"
+    );
+    assert_eq!(kw.underline, UnderlineStyle::None);
 }
 
 /// HUME used to also accept "solid"/"wavy"/"undercurl" alongside Helix's own
@@ -909,6 +947,27 @@ fn nul_embedded_name_reports_not_found_not_io() {
         matches!(inner(&err), ThemeError::NotFound { .. }),
         "expected NotFound, got: {err}"
     );
+}
+
+/// A higher-priority candidate that exists but can't be read (here: a
+/// directory sitting where `<name>.toml` should be a file) must not shadow a
+/// working lower-priority one — search order is a priority list, and one
+/// broken candidate must not take the whole search down with it.
+#[test]
+fn unreadable_higher_priority_candidate_falls_through_to_the_next_search_dir() {
+    let broken_dir = TempDir::new().unwrap();
+    std::fs::create_dir(broken_dir.path().join("sand.toml")).unwrap();
+
+    let working_dir = TempDir::new().unwrap();
+    write_theme(working_dir.path(), "sand", r##""keyword" = "#ff0000""##);
+
+    let search_paths = vec![
+        broken_dir.path().to_path_buf(),
+        working_dir.path().to_path_buf(),
+    ];
+    let theme = load_theme("sand", &search_paths).unwrap().theme;
+    let kw = theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
 }
 
 // ── parse_theme ───────────────────────────────────────────────────────────
@@ -1095,7 +1154,8 @@ bg = "#000000"
 /// sibling in it is a misspelled style attribute, not a child scope — there is
 /// no way to tell `text = "#fff"` here from `underline_style = "curl"`, and
 /// reading it as a child silently invents a scope nothing resolves. The child
-/// meaning stays available: write `"ui.text"` as its own key.
+/// meaning stays available: write `"ui.text"` as its own key. Warned and
+/// dropped, not fatal — the scope's own `fg` still loads.
 #[test]
 fn scalar_sibling_of_a_style_field_is_an_unknown_attribute() {
     let dir = TempDir::new().unwrap();
@@ -1108,18 +1168,17 @@ fg = "#aaaaaa"
 text = "#ffffff"
 "##,
     );
-    let err = load_theme("nested_mix", &paths(dir.path()))
-        .err()
-        .expect("expected an Err result");
-    assert!(
-        matches!(
-            inner(&err),
-            ThemeError::BadStyleField { key, field, .. } if key == "ui" && field == "text"
-        ),
-        "expected BadStyleField on ui/text, got: {err}"
+    let loaded = load_theme("nested_mix", &paths(dir.path())).unwrap();
+    the_warning(
+        &loaded,
+        |w| matches!(w, ThemeError::BadStyleField { key, field, .. } if key == "ui" && field == "text"),
     );
+    let ui = loaded.theme.resolve_by_name(crate::types::Scope("ui"));
+    assert_eq!(ui.fg, Some(Rgb(0xaa, 0xaa, 0xaa)));
 }
 
+/// Warned and dropped rather than failing the whole load — one typo in a
+/// hand-authored theme must not cost the rest of an otherwise-good file.
 #[test]
 fn misspelled_style_attribute_names_itself_not_a_phantom_scope() {
     let dir = TempDir::new().unwrap();
@@ -1130,17 +1189,13 @@ fn misspelled_style_attribute_names_itself_not_a_phantom_scope() {
 "keyword" = { fg = "#ff0000", underline_style = "curl" }
 "##,
     );
-    let err = load_theme("typo", &paths(dir.path()))
-        .err()
-        .expect("expected an Err result");
-    assert!(
-        matches!(
-            inner(&err),
-            ThemeError::BadStyleField { key, field, .. }
-                if key == "keyword" && field == "underline_style"
-        ),
-        "expected BadStyleField naming 'underline_style', got: {err}"
+    let loaded = load_theme("typo", &paths(dir.path())).unwrap();
+    the_warning(
+        &loaded,
+        |w| matches!(w, ThemeError::BadStyleField { key, field, .. } if key == "keyword" && field == "underline_style"),
     );
+    let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
 }
 
 /// A table with no style field of its own is a pure container, so its scalar
@@ -1220,6 +1275,46 @@ crimson = "red"
         |w| matches!(w, ThemeError::BadColor { key, value } if key == "keyword" && value == "crimson"),
     );
     assert_resolves_to_default_style(&loaded, "keyword");
+}
+
+/// The cascading warning must not turn into a silent recolor: a malformed
+/// palette entry whose name happens to collide with a built-in ANSI name
+/// (`blue`, here) must not let a referencing scope fall through to that ANSI
+/// color once the palette entry itself is dropped.
+#[test]
+fn malformed_palette_entry_colliding_with_ansi_name_does_not_fall_through_to_it() {
+    let dir = TempDir::new().unwrap();
+    write_theme(
+        dir.path(),
+        "ansi_collision",
+        r##"
+"function" = "blue"
+
+[palette]
+blue = "89b4fa"
+"##,
+    );
+    let loaded = load_theme("ansi_collision", &paths(dir.path())).unwrap();
+
+    the_warning(
+        &loaded,
+        |w| matches!(w, ThemeError::BadColor { key, value } if key == "palette.blue" && value == "89b4fa"),
+    );
+    the_warning(
+        &loaded,
+        |w| matches!(w, ThemeError::BadColor { key, value } if key == "function" && value == "blue"),
+    );
+    assert_eq!(loaded.warnings.len(), 2);
+
+    let function = loaded
+        .theme
+        .resolve_by_name(crate::types::Scope("function"));
+    assert_ne!(
+        function.fg,
+        Some(Rgb(0x00, 0x00, 0xee)),
+        "must not silently take on ANSI blue once the theme's own 'blue' entry was dropped"
+    );
+    assert_eq!(function.fg, None);
 }
 
 #[test]
@@ -1379,7 +1474,13 @@ fn non_string_fg_becomes_a_warning() {
     let dir = TempDir::new().unwrap();
     write_theme(dir.path(), "bad_fg", r#""keyword" = { fg = 42 }"#);
     let loaded = load_theme("bad_fg", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "fg", "a string");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "fg",
+        "a string",
+        ResolvedStyle::default(),
+    );
 }
 
 #[test]
@@ -1387,7 +1488,13 @@ fn non_string_bg_becomes_a_warning() {
     let dir = TempDir::new().unwrap();
     write_theme(dir.path(), "bad_bg", r#""keyword" = { bg = 42 }"#);
     let loaded = load_theme("bad_bg", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "bg", "a string");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "bg",
+        "a string",
+        ResolvedStyle::default(),
+    );
 }
 
 #[test]
@@ -1399,7 +1506,16 @@ fn non_array_modifiers_becomes_a_warning() {
         r##""keyword" = { fg = "#ffffff", modifiers = "bold" }"##,
     );
     let loaded = load_theme("bad_mods_type", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "modifiers", "an array");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "modifiers",
+        "an array",
+        ResolvedStyle {
+            fg: Some(Rgb(0xff, 0xff, 0xff)),
+            ..Default::default()
+        },
+    );
 }
 
 #[test]
@@ -1411,7 +1527,16 @@ fn non_string_modifier_item_becomes_a_warning() {
         r##""keyword" = { modifiers = ["bold", 7] }"##,
     );
     let loaded = load_theme("bad_mod_item", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "modifiers", "an array of strings");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "modifiers",
+        "an array of strings",
+        ResolvedStyle {
+            modifiers: Modifiers::BOLD,
+            ..Default::default()
+        },
+    );
 }
 
 #[test]
@@ -1423,7 +1548,16 @@ fn non_string_underline_becomes_a_warning() {
         r##""keyword" = { fg = "#ffffff", underline = 7 }"##,
     );
     let loaded = load_theme("bad_underline_type", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "underline", "a string or a table");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "underline",
+        "a string or a table",
+        ResolvedStyle {
+            fg: Some(Rgb(0xff, 0xff, 0xff)),
+            ..Default::default()
+        },
+    );
 }
 
 #[test]
@@ -1435,7 +1569,13 @@ fn non_string_underline_color_becomes_a_warning() {
         r##""keyword" = { underline = { color = 7 } }"##,
     );
     let loaded = load_theme("bad_uline_color", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "underline.color", "a string");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "underline.color",
+        "a string",
+        ResolvedStyle::default(),
+    );
 }
 
 #[test]
@@ -1447,7 +1587,13 @@ fn non_string_underline_style_becomes_a_warning() {
         r##""keyword" = { underline = { style = 7 } }"##,
     );
     let loaded = load_theme("bad_uline_style", &paths(dir.path())).unwrap();
-    assert_bad_style_field(&loaded, "keyword", "underline.style", "a string");
+    assert_bad_style_field(
+        &loaded,
+        "keyword",
+        "underline.style",
+        "a string",
+        ResolvedStyle::default(),
+    );
 }
 
 /// A scope value that is neither a string nor a table has no style to build
