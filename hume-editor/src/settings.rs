@@ -252,7 +252,7 @@ impl fmt::Display for ObjectJumpAlign {
 /// Only the primary head can ever take this shape: a terminal has exactly one
 /// hardware cursor, so a secondary head is always rendered as a themed block
 /// via `ui.cursor.insert` regardless of this setting — see
-/// `hume_engine::style::head_style`.
+/// `hume_engine::style::cursor_cell_style`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
     /// The primary head is painted from `ui.cursor.primary.insert` (falling

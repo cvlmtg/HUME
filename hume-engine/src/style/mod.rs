@@ -245,7 +245,7 @@ pub(crate) fn style_row(
         let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
         if is_primary_head {
             if primary_cursor_is_block {
-                style = style.layer(head_style(theme, mode, true));
+                style = style.layer(cursor_cell_style(theme, mode, true));
             } else if primary_is_reverse
                 && scratch
                     .primary_sel_span
@@ -254,7 +254,7 @@ pub(crate) fn style_row(
                 style = style.layer(theme.ui.selection_primary);
             }
         } else if scratch.head_display_cols.contains(&g.display_col) {
-            style = style.layer(head_style(theme, mode, false));
+            style = style.layer(cursor_cell_style(theme, mode, false));
         } else if scratch
             .primary_sel_span
             .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e)
@@ -272,7 +272,10 @@ pub(crate) fn style_row(
     }
 }
 
-/// Pick the Tier-0 cursor style for a selection head, by mode and primary-ness.
+/// Pick the Tier-0 cursor cell style for a selection head, by mode and
+/// primary-ness. This is the themed cell color/attrs a head is painted with —
+/// unrelated to `hume_editor::settings::CursorShape`, which is the real
+/// terminal hardware cursor's appearance during Insert mode.
 ///
 /// `Insert` uses the insert chain; `Extend` — HUME's name for Helix's Select
 /// mode — uses the select chain; every other mode, including HUME's own
@@ -280,7 +283,7 @@ pub(crate) fn style_row(
 /// keeps the underlying document mode while a prompt is open, and HUME's
 /// prompts have no cursor-shape option of their own), uses the plain Normal
 /// chain.
-fn head_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> ResolvedStyle {
+fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> ResolvedStyle {
     let (primary, secondary) = match mode {
         EditorMode::Insert => (theme.ui.cursor_insert_primary, theme.ui.cursor_insert),
         EditorMode::Extend => (theme.ui.cursor_select_primary, theme.ui.cursor_select),

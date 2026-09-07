@@ -553,7 +553,7 @@ impl EngineView {
 /// shape rather than mode: `true` for every unfocused pane, and for the
 /// focused pane whenever the resolved cursor shape for its live mode is
 /// `Block` — only Insert varies (`cursor-shape-insert`); every other mode is
-/// hardwired block. Gates whether [`style::head_style`](crate::style)'s Tier
+/// hardwired block. Gates whether [`style::cursor_cell_style`](crate::style)'s Tier
 /// 0 paints the primary selection head at all, matching Helix's own
 /// `cursor_is_block` gate in `doc_selection_highlights`.
 #[derive(Copy, Clone)]

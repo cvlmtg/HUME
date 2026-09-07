@@ -167,7 +167,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
 /// Every one of the six resolved `theme.ui.cursor*` styles must have a
 /// distinct `bg` in every bundled theme — reading the `ui` fields themselves
 /// (not `resolve_by_name`) so the check exercises `cursor_ladder`'s actual
-/// output, the same six values `style::head_style` picks between. A theme
+/// output, the same six values `style::cursor_cell_style` picks between. A theme
 /// that leaves the per-mode cursor scopes undefined collapses several of
 /// these onto the base `ui.cursor`/`ui.cursor.primary` pair, so no mode
 /// carries a cursor cue.
