@@ -40,7 +40,7 @@ pub(crate) struct PaneHighlights {
 
 /// Highlights a set of byte ranges at a fixed tier, each carrying its own
 /// scope. Bracket/search match each carry one editor-wide constant scope
-/// (`ui.cursor.match`/`ui.selection.search`, interned once per frame in
+/// (`ui.cursor.match`/`ui.cursor.match.search`, interned once per frame in
 /// `Editor::update_highlight_providers`) written into every span at push
 /// time; diagnostics carry one scope per severity; extra
 /// highlights carry one scope per plugin-supplied span — all four write the

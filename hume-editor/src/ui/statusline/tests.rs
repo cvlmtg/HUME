@@ -147,10 +147,10 @@ fn make_mode_theme() -> hume_engine::theme::Theme {
     for (scope, color) in [
         ("ui.statusline.normal", Rgb(255, 0, 0)),
         ("ui.statusline.insert", Rgb(0, 255, 255)),
-        ("ui.statusline.extend", Rgb(255, 255, 0)),
+        ("ui.statusline.select", Rgb(255, 255, 0)),
         ("ui.statusline.search", Rgb(255, 0, 255)),
         ("ui.statusline.command", Rgb(0, 255, 0)),
-        ("ui.statusline.select", Rgb(0, 0, 255)),
+        ("ui.statusline.filter", Rgb(0, 0, 255)),
     ] {
         styles.insert(
             scope,

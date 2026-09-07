@@ -1,13 +1,12 @@
 ---
 source: hume-editor/src/editor/tests/unix/git_diff_plugin.rs
-assertion_line: 403
 expression: snap
 ---
-<fg=#e05050,bg=#3a3a3a>- </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#000000,bg=#ffffff>o</><fg=#d0d0d0,bg=#3a3a3a>ne</>
-<fg=#808080,bg=#3e2424>    </><fg=#d0d0d0,bg=#3e2424>    tabbed line</>
-<fg=#808080,bg=#1a1a1a>  1 </><fg=#d0d0d0,bg=#1a1a1a>three</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff> Opened f.txt</>
+<fg=#fb4934,bg=#3c3836>- </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#bdae93>o</><fg=#ebdbb2,bg=#3c3836>ne</>
+<fg=#665c54,bg=#4e2e2a>    </><fg=#ebdbb2,bg=#4e2e2a>    tabbed line</>
+<fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#282828>three</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold> Opened f.txt</>

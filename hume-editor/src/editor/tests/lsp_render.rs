@@ -316,7 +316,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -365,7 +365,7 @@ fn extra_highlight_style_resolves_correctly_on_the_frame_it_is_first_interned() 
 fn search_match_beats_extra_highlight_in_overlapping_region() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     type_text(&mut ed, "abcdefgh");
     let mut host = ScriptingHost::new();
     // Reuses the theme's "diagnostic.warning" name as the extra highlight's

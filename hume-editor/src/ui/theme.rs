@@ -37,10 +37,15 @@ fn mode_scope(mode: Option<hume_engine::types::EditorMode>) -> &'static str {
         None => "ui.statusline",
         Some(EditorMode::Normal) => "ui.statusline.normal",
         Some(EditorMode::Insert) => "ui.statusline.insert",
-        Some(EditorMode::Extend) => "ui.statusline.extend",
+        // Extend is HUME's name for the mode Helix calls Select, so it reads
+        // Helix's real `ui.statusline.select` scope.
+        Some(EditorMode::Extend) => "ui.statusline.select",
         Some(EditorMode::Search) => "ui.statusline.search",
         Some(EditorMode::Command) => "ui.statusline.command",
-        Some(EditorMode::Select) => "ui.statusline.select",
+        // HUME's own Select mode (the `s` regex-filter prompt) has no Helix
+        // equivalent, so it gets its own scope rather than squatting on
+        // Helix's `ui.statusline.select`, which belongs to Extend above.
+        Some(EditorMode::Select) => "ui.statusline.filter",
     }
 }
 
@@ -101,18 +106,20 @@ pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
         .theme
 }
 
-/// `dark.toml`, embedded for renderer snapshot tests that assert exact
+/// `gruvbox.toml`, embedded for renderer snapshot tests that assert exact
 /// colors. Those tests exercise seam/junction/dimming *rendering mechanics*,
 /// not the default theme's palette — pinning them to a stable theme means
 /// retuning `sand.toml` (the compiled-in default) never forces an unrelated
-/// snapshot re-record.
+/// snapshot re-record. `gruvbox.toml` is a vendored upstream file rather
+/// than one HUME tunes for its own sake, so it stays stable for the same
+/// reason `sand.toml` doesn't serve this role.
 #[cfg(test)]
-const DARK_THEME_TOML_FOR_SNAPSHOT_TESTS: &str = include_str!("../../../runtime/themes/dark.toml");
+const SNAPSHOT_THEME_TOML: &str = include_str!("../../../runtime/themes/gruvbox.toml");
 
 #[cfg(test)]
-pub(crate) fn build_dark_theme_for_snapshot_tests() -> hume_engine::theme::Theme {
-    hume_engine::theme::loader::parse_theme(DARK_THEME_TOML_FOR_SNAPSHOT_TESTS)
-        .expect("embedded dark.toml must parse — file is compile-time embedded")
+pub(crate) fn build_snapshot_theme() -> hume_engine::theme::Theme {
+    hume_engine::theme::loader::parse_theme(SNAPSHOT_THEME_TOML)
+        .expect("embedded gruvbox.toml must parse — file is compile-time embedded")
         .theme
 }
 

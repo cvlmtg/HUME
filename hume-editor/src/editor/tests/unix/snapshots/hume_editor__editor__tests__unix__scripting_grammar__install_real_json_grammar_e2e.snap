@@ -2,8 +2,8 @@
 source: hume-editor/src/editor/tests/unix/scripting_grammar.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
-<fg=#000000,bg=#ffffff>{</><fg=#d0d0d0,bg=#3a3a3a>"x"</><fg=#808080,bg=#3a3a3a>:</><fg=#d0d0d0,bg=#3a3a3a> </><fg=#d09060,bg=#3a3a3a>1</><fg=#8c8ca0,bg=#3a3a3a>}</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff>     1:1 *scratch* [json]         </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#3c3836,bg=#bdae93>{</><fg=#83a598,bg=#3c3836>"x"</><fg=#fe8019,bg=#3c3836>:</><fg=#ebdbb2,bg=#3c3836> </><fg=#d3869b,bg=#3c3836>1</><fg=#fe8019,bg=#3c3836>}</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>     1:1 *scratch* [json]         </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

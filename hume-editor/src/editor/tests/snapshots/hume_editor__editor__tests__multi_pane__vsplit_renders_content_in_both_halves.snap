@@ -2,7 +2,7 @@
 source: hume-editor/src/editor/tests/multi_pane.rs
 expression: "render_to_styled_string(&mut ed, rect)"
 ---
-<fg=#0d0d0d,bg=#8d8d8d>a</><fg=#757575,bg=#2a2a2a>bc </><bg=#2a2a2a>     </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#000000,bg=#ffffff>a</><fg=#d0d0d0,bg=#3a3a3a>bc</>
-<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#808080,bg=#1a1a1a>~</>
-<fg=#4d4d4d,bg=#1a1a1a>~</><bg=#1a1a1a>        </><fg=#5bc0eb,bg=#1a1a1a>│</><fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff>     1:1 *scr…</><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#32302f,bg=#736b5e>a</><fg=#8a826d,bg=#32302f>bc </><bg=#32302f>     </><fg=#fabd2f,bg=#282828>│</><fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#bdae93>a</><fg=#ebdbb2,bg=#3c3836>bc</>
+<fg=#5d564e,bg=#282828>~</><bg=#282828>        </><fg=#fabd2f,bg=#282828>│</><fg=#928374,bg=#282828>~</>
+<fg=#5d564e,bg=#282828>~</><bg=#282828>        </><fg=#fabd2f,bg=#282828>│</><fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>     1:1 *scr…</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

@@ -916,7 +916,7 @@ fn vsplit_renders_content_in_both_halves() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.execute_typed("vsplit", None).unwrap();
 
     let rect = Rect::new(0, 0, 20, 4);
@@ -932,7 +932,7 @@ fn split_then_vsplit_renders_t_junction_glyph() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.execute_typed("split", None).unwrap();
     ed.execute_typed("vsplit", None).unwrap();
 
@@ -949,7 +949,7 @@ fn grid_of_four_panes_renders_cross_junction_glyph() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     let pid_a = ed.state.focused_pane_id;
 
     ed.execute_typed("split", None).unwrap(); // A/B stacked.
@@ -977,7 +977,7 @@ fn insert_mode_hides_cursor_only_in_focused_pane() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.execute_typed("vsplit", None).unwrap();
     assert_eq!(ed.state.mode(), Mode::Normal, "sanity: starts in Normal");
 
@@ -1627,7 +1627,7 @@ fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
     use super::render_snapshot::render_to_styled_string;
 
     let mut ed = editor_from("-[a]>bc\n");
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.state.settings.pane_dividers = false;
     ed.execute_typed("vsplit", None).unwrap();
 

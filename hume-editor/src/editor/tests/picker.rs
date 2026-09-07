@@ -524,7 +524,7 @@ fn open_real_editor() -> Editor {
 #[test]
 fn snapshot_picker_over_populated_buffer_empty_query() {
     let mut ed = open_real_editor();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     for ch in "hello world".chars() {
         ed.feed_key(key('i'));
         ed.feed_key(key(ch));
@@ -544,7 +544,7 @@ fn snapshot_picker_over_populated_buffer_empty_query() {
 #[test]
 fn snapshot_picker_after_filtering_query() {
     let mut ed = open_real_editor();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     open_test_picker(&mut ed, &["apple", "banana", "apricot"]);
     ed.feed_key(key('a'));
     ed.feed_key(key('p'));
@@ -561,7 +561,7 @@ fn snapshot_picker_after_filtering_query() {
 #[test]
 fn snapshot_picker_scrolled_with_selection_highlight() {
     let mut ed = open_real_editor();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     let items: Vec<String> = (0..30).map(|i| format!("item{i}")).collect();
     let refs: Vec<&str> = items.iter().map(String::as_str).collect();
     open_test_picker(&mut ed, &refs);
@@ -585,7 +585,7 @@ fn snapshot_picker_scrolled_with_selection_highlight() {
 #[test]
 fn snapshot_picker_no_match_state() {
     let mut ed = open_real_editor();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     open_test_picker(&mut ed, &["foo", "bar"]);
     for ch in "zzz".chars() {
         ed.feed_key(key(ch));
@@ -603,7 +603,7 @@ fn snapshot_picker_no_match_state() {
 #[test]
 fn snapshot_picker_with_prompt() {
     let mut ed = open_real_editor();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     open_test_picker_with_prompt(&mut ed, &["alpha", "beta", "gamma"], "files: ");
     ed.feed_key(key('a'));
 

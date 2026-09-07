@@ -71,7 +71,7 @@
 (define lsp/*sign-priority* 10)
 
 (define (lsp/severity-scope severity)
-  (string-append "diagnostic." severity))
+  (string-append severity ".diagnostic.inline"))
 
 (define (lsp/most-severe line-diags)
   (foldl (lambda (d best)

@@ -196,7 +196,7 @@ fn show_menu_accepted_in_normal_mode() {
 fn selected_row_renders_with_the_menu_selected_scope() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "abcdefgh".chars() {
         ed.feed_key(key(ch));

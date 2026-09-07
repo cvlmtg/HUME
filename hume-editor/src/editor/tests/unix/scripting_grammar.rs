@@ -421,7 +421,7 @@ fn install_real_json_grammar_e2e() {
 
     // Pin a stable snapshot theme so default-theme changes don't churn this frame.
     // Bake after :attach-json has interned the grammar's scopes into the registry.
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.view.theme.bake(&ed.view.registry);
 
     // Styled-frame snapshot: locks down token colours after the full e2e pipeline.

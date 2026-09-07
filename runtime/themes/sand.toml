@@ -1,40 +1,33 @@
 "ui.background" = { bg = "bg" }
 "ui.text" = { fg = "fg" }
 "ui.text.focus" = { fg = "bright_fg", bg = "plum" }
-"ui.text.inactive" = { fg = "muted" }
-"ui.text.info" = { fg = "blue" }
 "ui.window" = { fg = "surface" }
 "ui.window.focused" = { fg = "sand" }
 "ui.popup" = { fg = "fg", bg = "surface" }
-"ui.popup.info" = { fg = "fg", bg = "surface" }
 "ui.popup.scroll" = { fg = "sand", bg = "surface" }
 "ui.menu" = { fg = "fg", bg = "surface" }
 "ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
 "ui.menu.scroll" = { fg = "sand", bg = "surface" }
 "ui.drawer" = { fg = "fg", bg = "surface" }
-"ui.help" = { fg = "fg", bg = "surface" }
 "ui.selection" = { fg = "bg", bg = "fg" }
 "ui.selection.primary" = { fg = "fg", bg = "plum" }
-"ui.selection.search" = { fg = "bg", bg = "sand" }
 "ui.cursor" = { fg = "fg", bg = "muted" }
+"ui.cursor.select" = { fg = "fg", bg = "muted" }
 "ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
-"ui.cursor.select" = { bg = "plum" }
+"ui.cursor.primary.select" = { fg = "fg", bg = "dark_plum" }
 "ui.cursor.match" = { fg = "fg", bg = "plum" }
+"ui.cursor.match.search" = { fg = "bg", bg = "sand" }
 "ui.cursorline.primary" = { bg = "surface" }
-"ui.cursorline.secondary" = { bg = "surface" }
 "ui.linenr" = { fg = "muted" }
 "ui.linenr.selected" = { fg = "sand" }
 "ui.statusline" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.statusline.separator" = { fg = "surface", modifiers = [ "bold" ] }
 "ui.statusline.normal" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
+"ui.statusline.select" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
 "ui.statusline.insert" = { fg = "bg", bg = "plum", modifiers = [ "bold" ] }
-"ui.statusline.extend" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
-"ui.statusline.search" = { fg = "bg", bg = "red", modifiers = [ "bold" ] }
+"ui.statusline.search" = { fg = "bg", bg = "muted", modifiers = [ "bold" ] }
 "ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
-"ui.statusline.select" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
-"ui.bufferline" = { fg = "muted", bg = "bg" }
-"ui.bufferline.active" = { fg = "bright_fg", bg = "surface" }
-"ui.bufferline.background" = { bg = "bg" }
+"ui.statusline.filter" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
 "ui.virtual.indent-guide" = { fg = "muted" }
@@ -43,13 +36,16 @@
 # hiding in source is exactly what this has to catch the eye for.
 "ui.virtual.invisible" = { fg = "bg", bg = "red" }
 "ui.virtual.inlay-hint" = { fg = "muted" }
-"ui.gutter" = { bg = "bg" }
-"ui.gutter.selected" = { bg = "surface" }
 "diagnostic.error" = { fg = "red", modifiers = [ "underlined" ] }
 "diagnostic.warning" = { fg = "sand", modifiers = [ "underlined" ] }
 "diagnostic.info" = { fg = "blue", modifiers = [ "underlined" ] }
 "diagnostic.hint" = { fg = "green", modifiers = [ "underlined" ] }
-"diagnostic.deprecated" = { modifiers = [ "crossed_out" ] }
+# End-of-line diagnostic summary. Its own scope so this virtual text carries
+# no `underlined` modifier from the `diagnostic.*` squiggle above.
+"error.diagnostic.inline" = { fg = "red" }
+"warning.diagnostic.inline" = { fg = "sand" }
+"info.diagnostic.inline" = { fg = "blue" }
+"hint.diagnostic.inline" = { fg = "green" }
 "diagnostic.error.message" = { fg = "bg", bg = "red" }
 "diagnostic.warning.message" = { fg = "bg", bg = "sand" }
 "diagnostic.info.message" = { fg = "bg", bg = "blue" }

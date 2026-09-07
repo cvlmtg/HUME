@@ -670,7 +670,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
 #[test]
 fn wrapped_and_scrolled_frame_pins_the_rendered_rows() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     type_cmd(&mut ed, ":set global wrap-mode=soft");
     // Ten lines that each wrap into several rows at this width, typed in one
     // go so the cursor finishes on the last line and the viewport has to

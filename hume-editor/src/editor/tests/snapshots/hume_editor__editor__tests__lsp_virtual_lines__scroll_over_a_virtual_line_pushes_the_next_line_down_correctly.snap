@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/lsp_virtual_lines.rs
 expression: snap
 ---
-<fg=#808080,bg=#1a1a1a>  1 </><fg=#d0d0d0,bg=#1a1a1a>aaa</>
-<fg=#808080,bg=#1a1a1a>    hint</>
-<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>2 </><fg=#d0d0d0,bg=#3a3a3a>bb</><fg=#000000,bg=#ffffff>b</>
-<fg=#808080,bg=#1a1a1a>  1 </><fg=#d0d0d0,bg=#1a1a1a>ccc</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff>     2:3 *scratch* [+]            </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#282828>aaa</>
+<fg=#665c54,bg=#282828>    </><fg=#928374,bg=#282828>hint</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>2 </><fg=#ebdbb2,bg=#3c3836>bb</><fg=#3c3836,bg=#bdae93>b</>
+<fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#282828>ccc</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>     2:3 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

@@ -90,7 +90,7 @@ impl Editor {
     pub(super) fn update_highlight_providers(&mut self, panes: &[DecoratedPane]) {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
-        let search_scope = self.view.registry.intern("ui.selection.search");
+        let search_scope = self.view.registry.intern("ui.cursor.match.search");
         let bracket_scope = self.view.registry.intern("ui.cursor.match");
 
         // ── Search match highlights — one pane at a time ─────────────────────

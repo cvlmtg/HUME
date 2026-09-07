@@ -420,7 +420,7 @@ fn inline_tab_indented_deletion_keeps_a_literal_tab_that_still_renders_at_the_ri
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
 
     let repo = safe_tempdir();
     git_init(repo.path());
@@ -472,7 +472,7 @@ fn inline_wide_cjk_before_tab_in_a_deletion_shifts_the_tab_on_screen() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
 
     let repo = safe_tempdir();
     git_init(repo.path());

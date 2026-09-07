@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/lsp_inlay_hints.rs
 expression: snap
 ---
-<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>let x = </><fg=#808080,bg=#3a3a3a>n: </><fg=#d0d0d0,bg=#3a3a3a>5</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff>    1:10 *scratch* [+]            </><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>let x = </><fg=#928374,bg=#3c3836>n: </><fg=#ebdbb2,bg=#3c3836>5</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>    1:10 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

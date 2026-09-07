@@ -401,7 +401,7 @@ fn docked_popup_renders_as_a_band_above_the_statusline_and_shrinks_the_pane() {
     // layout.
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     run(
         &mut ed,
         tmp.path(),
@@ -804,7 +804,7 @@ fn scrollable_popup_paints_its_scrolled_window() {
     // windowing wouldn't be caught by the data-only assertions above).
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     let tall = (0..20)
         .map(|i| format!("line{i}"))
         .collect::<Vec<_>>()
@@ -834,7 +834,7 @@ fn popup_never_paints_outside_the_pane_rect() {
     // within the pane rows (no bleed into the statusline row).
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_dark_theme_for_snapshot_tests();
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
         ed.feed_key(key(ch));

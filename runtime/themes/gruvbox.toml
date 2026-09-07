@@ -1,136 +1,250 @@
-# Gruvbox dark theme for HUME.
-# Ported from the Helix gruvbox theme (MIT licensed, © Helix contributors).
+# Gruvbox dark — ported from Helix's runtime/themes/gruvbox.toml (MPL-2.0).
+# Author : Jakub Bartodziej <kubabartodziej@gmail.com>
+# The theme uses the gruvbox dark palette with standard contrast: github.com/morhetz/gruvbox
 #
-# ── Cursor ────────────────────────────────────────────────────────────────────
-"ui.cursor.primary" = { fg = "bg0", bg = "fg0" }
-"ui.cursor"         = { fg = "bg0", bg = "fg3" }
+# Source: https://github.com/helix-editor/helix/blob/master/runtime/themes/gruvbox.toml
+# Everything up to the "HUME additions" marker below is the upstream file,
+# byte-for-byte, except at three places, each marked with its own comment
+# where it appears: `ui.window` gained an `fg` (HUME paints the seam divider
+# glyph in it, not just its background); the four `diagnostic.<severity>`
+# scopes gained an `fg`; and `diff.plus`/`diff.minus`/`diff.delta` had their
+# `fg` replaced and a `bg` added (HUME's git-diff plugin tints whole lines
+# with these scopes via `set-line-backgrounds!`, rather than fg-coloring a
+# gutter marker the way Helix's own diff view does — upstream's fg values
+# moved to the `diff.*.gutter` scopes below). Helix scopes HUME
+# doesn't read yet (`ui.bufferline*`, `ui.virtual.ruler`/`.wrap`/
+# `.jump-label`, `ui.picker.header.column*`, `ui.help`, `ui.text.directory`,
+# `definition`, `annotation`) are kept as-is so a future re-sync stays a
+# clean diff — see user-manual/docs/configuration.md's Themes section for
+# the full list HUME reads that Helix doesn't define.
 
-# ── Selection / cursor-line ───────────────────────────────────────────────────
-"ui.selection"  = { bg = "bg3" }
-"ui.cursorline" = { bg = "bg1" }
+"annotation" = { fg = "fg1" }
 
-# ── Base text / pane background ─────────────────────────────────────────────
+"attribute" = { fg = "aqua1", modifiers = ["italic"] }
+
+"comment" = { fg = "gray", modifiers = ["italic"] }
+
+"constant" = { fg = "purple1" }
+"constant.character" = { fg = "aqua1" }
+"constant.character.escape" = { fg = "orange1" }
+"constant.macro" = { fg = "aqua1" }
+"constructor" = { fg = "purple1" }
+
+"definition" = { underline = { color = "aqua1" } }
+
+"diagnostic" = { underline = { color = "orange1", style = "curl" } }
+"diagnostic.deprecated" = { modifiers = ["crossed_out"] }
+# `fg` added to each (upstream sets only `underline`): a plugin-defined
+# sub-scope like "diagnostic.warning.<marker>" falls back to this scope by
+# dot-notation and needs a real color, not just an underline, to resolve to.
+"diagnostic.error" = { fg = "red1", underline = { color = "red1", style = "curl" } }
+"diagnostic.hint" = { fg = "blue1", underline = { color = "blue1", style = "curl" } }
+"diagnostic.info" = { fg = "aqua1", underline = { color = "aqua1", style = "curl" } }
+"diagnostic.warning" = { fg = "yellow1", underline = { color = "yellow1", style = "curl" } }
+# "diagnostic.unnecessary" = { modifiers = ["dim"] }  # do not remove this for future resolving
+
+"error" = { fg = "red1" }
+"hint" = { fg = "blue1" }
+"info" = { fg = "aqua1" }
+"warning" = { fg = "yellow1" }
+
+# `bg` added and `fg` replaced (upstream colors the gutter marker with these):
+# HUME tints the whole changed line, and upstream's fg values live on the
+# `diff.*.gutter` scopes further down.
+"diff.delta" = { fg = "fg1", bg = "diff_delta_bg" }
+"diff.minus" = { fg = "fg1", bg = "diff_minus_bg" }
+"diff.plus" = { fg = "fg1", bg = "diff_plus_bg" }
+
+"function" = { fg = "green1" }
+"function.builtin" = { fg = "yellow1" }
+"function.macro" = { fg = "blue1" }
+
+"keyword" = { fg = "red1" }
+"keyword.control.import" = { fg = "aqua1" }
+
+"label" = { fg = "red1" }
+
+"markup.bold" = { modifiers = ["bold"] }
+"markup.heading" = "aqua1"
+"markup.italic" = { modifiers = ["italic"] }
+"markup.link.text" = "red1"
+"markup.link.url" = { fg = "green1", modifiers = ["underlined"] }
+"markup.raw" = "red1"
+"markup.strikethrough" = { modifiers = ["crossed_out"] }
+
+"module" = { fg = "aqua1" }
+
+"namespace" = { fg = "fg1" }
+
+"operator" = { fg = "purple1" }
+
+"punctuation" = { fg = "orange1" }
+
+"special" = { fg = "purple0" }
+
+"string" = { fg = "green1" }
+"string.regexp" = { fg = "orange1" }
+"string.special" = { fg = "orange1" }
+"string.symbol" = { fg = "yellow1" }
+
+"tag" = { fg = "aqua1" }
+
+"type" = { fg = "yellow1" }
+"type.enum.variant" = { modifiers = ["italic"] }
+
 "ui.background" = { bg = "bg0" }
-"ui.text"       = { fg = "fg1" }
-"ui.text.focus" = { fg = "fg0", bg = "bg3" }
+"ui.bufferline" = { fg = "fg1", bg = "bg1" }
+"ui.bufferline.active" = { fg = "bg0", bg = "yellow0" }
+"ui.bufferline.background" = { bg = "bg2" }
 
-# ── Virtual text ──────────────────────────────────────────────────────────────
-"ui.virtual" = { fg = "bg3" }
-"ui.virtual.inlay-hint" = { fg = "bg3" }
+"ui.cursor" = { fg = "bg1", bg = "bg2" }
+"ui.cursor.insert" = { fg = "bg1", bg = "blue0" }
+"ui.cursor.normal" = { fg = "bg1", bg = "gray" }
+"ui.cursor.select" = { fg = "bg1", bg = "orange0" }
+"ui.cursor.match" = { fg = "fg3", bg = "bg3" }
 
-# ── Gutter ────────────────────────────────────────────────────────────────────
-"ui.linenr"          = { fg = "bg4" }
-"ui.linenr.selected" = { fg = "fg2" }
+"ui.cursor.primary" = { bg = "fg3", fg = "bg1" }
+"ui.cursor.primary.insert" = { fg = "bg1", bg = "blue1" }
+"ui.cursor.primary.normal" = { fg = "bg1", bg = "fg3" }
+"ui.cursor.primary.select" = { fg = "bg1", bg = "orange1" }
 
-# ── Highlights ────────────────────────────────────────────────────────────────
-"ui.cursor.match"     = { fg = "bright_yellow", bg = "bg1", modifiers = ["bold"] }
-"ui.selection.search" = { fg = "bright_orange",  bg = "bg1" }
+"ui.cursorline" = { bg = "bg0_s" }
+"ui.cursorline.primary" = { bg = "bg1" }
 
-# ── Diagnostics ───────────────────────────────────────────────────────────────
-"diagnostic.error"   = { fg = "bright_red",    modifiers = ["underlined"] }
-"diagnostic.warning" = { fg = "bright_yellow", modifiers = ["underlined"] }
-"diagnostic.info"    = { fg = "bright_blue",   modifiers = ["underlined"] }
-"diagnostic.hint"    = { fg = "bright_green",  modifiers = ["underlined"] }
+"ui.help" = { bg = "bg1", fg = "fg1" }
+"ui.linenr" = { fg = "bg3" }
+"ui.linenr.selected" = { fg = "yellow1" }
+"ui.menu" = { fg = "fg1", bg = "bg2" }
+"ui.menu.selected" = { fg = "green1", bg = "bg1", modifiers = ["bold"] }
+"ui.popup" = { bg = "bg1" }
+"ui.picker.header.column" = { underline.style = "line" }
+"ui.picker.header.column.active" = { modifiers = ["bold"], underline.style = "line" }
+"ui.selection" = { bg = "bg2" }
+"ui.selection.primary" = { bg = "bg3" }
 
-# :messages severity badge/body
-"diagnostic.error.message"        = { fg = "bg0", bg = "bright_red" }
-"diagnostic.warning.message"      = { fg = "bg0", bg = "bright_yellow" }
-"diagnostic.info.message"         = { fg = "bg0", bg = "bright_blue" }
-"diagnostic.hint.message"         = { fg = "bg0", bg = "bright_green" }
-"diagnostic.error.message-text"   = { fg = "bright_red" }
-"diagnostic.warning.message-text" = { fg = "bright_yellow" }
-"diagnostic.info.message-text"    = { fg = "bright_blue" }
-"diagnostic.hint.message-text"    = { fg = "bright_green" }
+"ui.statusline" = { fg = "fg1", bg = "bg2" }
+"ui.statusline.inactive" = { fg = "fg4", bg = "bg2" }
+"ui.statusline.insert" = { fg = "bg1", bg = "blue1", modifiers = ["bold"] }
+"ui.statusline.normal" = { fg = "bg1", bg = "fg3", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "bg1", bg = "orange1", modifiers = ["bold"] }
 
-"error"   = { fg = "bright_red" }
-"warning" = { fg = "bright_yellow" }
-"info"    = { fg = "bright_blue" }
-"hint"    = { fg = "bright_green" }
+"ui.text" = { fg = "fg1" }
+"ui.text.focus" = { fg = "green1", bg="bg1" }
+"ui.text.directory" = { fg = "blue1" }
+"ui.virtual.inlay-hint" = { fg = "gray" }
+"ui.virtual.jump-label" = { fg = "purple0", modifiers = ["bold"] }
+"ui.virtual.ruler" = { bg = "bg1" }
+"ui.virtual.whitespace" = "bg2"
+"ui.virtual.wrap" = { fg = "bg2" }
+# `fg` added: HUME draws the seam divider glyph itself, so the seam needs a
+# foreground, not just the background upstream gives it.
+"ui.window" = { fg = "bg4", bg = "bg1" }
 
-# ── Diff ──────────────────────────────────────────────────────────────────────
-"diff.plus"         = { fg = "fg1", bg = "diff_plus_bg" }
-"diff.minus"        = { fg = "fg1", bg = "diff_minus_bg" }
-"diff.delta"        = { fg = "fg1", bg = "diff_delta_bg" }
-"diff.plus.gutter"  = { fg = "bright_green" }
-"diff.minus.gutter" = { fg = "bright_red" }
-"diff.delta.gutter" = { fg = "bright_blue" }
-# Word-level segments (`diff.*.word`) mark the exact changed span inside a
-# `diff.plus`/`diff.minus`-tinted row
-"diff.plus.word"    = { fg = "fg1", bg = "diff_plus_word_bg", modifiers = ["bold"] }
-"diff.minus.word"   = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
+"variable" = { fg = "fg1" }
+"variable.builtin" = { fg = "orange1", modifiers = ["italic"] }
+"variable.other.member" = { fg = "blue1" }
+"variable.parameter" = { fg = "blue1", modifiers = ["italic"] }
 
-# ── Whitespace ────────────────────────────────────────────────────────────────
-"ui.virtual.whitespace" = { fg = "bg3" }
+# ── HUME additions ─────────────────────────────────────────────────────────
+# Scopes below have no Helix equivalent. Values draw only on the palette
+# above, chosen to sit naturally alongside it.
 
-# ── Completion popup ──────────────────────────────────────────────────────────
-"ui.menu"          = { fg = "fg2", bg = "bg2" }
-"ui.menu.selected" = { fg = "fg0", bg = "bg3" }
-"ui.menu.scroll"   = { fg = "yellow", bg = "bg2" }
+# Focused-pane seam accent (`ui.window` above is the unfocused seam).
+"ui.window.focused" = { fg = "yellow1" }
 
-# ── Hover / signature-help popup ────────────────────────────────────────────────
-"ui.popup" = { fg = "fg2", bg = "bg2" }
-"ui.popup.scroll" = { fg = "yellow", bg = "bg2" }
+# Every visible search match. Renamed from HUME's own former
+# `ui.selection.search` (Helix themes neither name); distinct from the muted
+# `ui.cursor.match` bracket-match highlight above.
+"ui.cursor.match.search" = { fg = "bg0", bg = "orange1" }
 
-# ── Bottom drawer (location lists, etc.) ────────────────────────────────────────
-"ui.drawer" = { fg = "fg2", bg = "bg2" }
+# Base virtual text (tilde rows, EOF marker) and its dot-fallback parent for
+# `ui.virtual.indent-guide`, which this theme leaves undefined on purpose.
+"ui.virtual" = { fg = "gray" }
+# The `<200b>` stand-in for a character the terminal must not be shown.
+# Deliberately not muted like the rest of `ui.virtual`: a bidi override
+# hiding in source is exactly what this has to catch the eye for.
+"ui.virtual.invisible" = { fg = "bg0", bg = "red1" }
 
-# ── Statusline ────────────────────────────────────────────────────────────────
-"ui.statusline"           = { fg = "bg0",  bg = "fg4" }
-"ui.statusline.normal"    = { fg = "bg0",  bg = "fg4" }
-"ui.statusline.insert"    = { fg = "bg0",  bg = "bright_blue" }
-"ui.statusline.extend"    = { fg = "bg0",  bg = "bright_yellow" }
-"ui.statusline.search"    = { fg = "bg0",  bg = "bright_purple" }
-"ui.statusline.command"   = { fg = "bg0",  bg = "bright_green" }
-"ui.statusline.select"    = { fg = "bg0",  bg = "bright_orange" }
+# HUME-only modes (Extend reads Helix's own `ui.statusline.select` above).
+"ui.statusline.search" = { fg = "bg1", bg = "purple1", modifiers = ["bold"] }
+"ui.statusline.command" = { fg = "bg1", bg = "green1", modifiers = ["bold"] }
+"ui.statusline.filter" = { fg = "bg1", bg = "aqua1", modifiers = ["bold"] }
 "ui.statusline.separator" = { fg = "bg3" }
 
-# ── Syntax ────────────────────────────────────────────────────────────────────
-"comment"             = { fg = "gray", modifiers = ["italic"] }
-"constant"            = "bright_purple"
-"constant.numeric"    = "bright_purple"
-"constant.character"  = "bright_purple"
-"string"              = "bright_green"
-"type"                = "bright_yellow"
-"type.builtin"        = { fg = "bright_yellow", modifiers = ["bold"] }
-"keyword"             = "red"
-"keyword.control"     = "red"
-"keyword.operator"    = "orange"
-"keyword.function"    = { fg = "red", modifiers = ["bold"] }
-"function"            = "bright_green"
-"function.builtin"    = { fg = "bright_green", modifiers = ["bold"] }
-"variable"            = "fg1"
-"variable.builtin"    = { fg = "orange", modifiers = ["bold"] }
-"operator"            = "orange"
-"punctuation"         = "fg3"
-"label"               = "bright_blue"
+"ui.popup.scroll" = { fg = "yellow1", bg = "bg1" }
+"ui.menu.scroll" = { fg = "yellow1", bg = "bg2" }
+"ui.drawer" = { fg = "fg1", bg = "bg1" }
+
+# End-of-line diagnostic summary. Its own scope so this virtual text carries
+# no `underlined` modifier from the `diagnostic.*` squiggle above; muted
+# against that squiggle so the line's own code stays the brighter thing.
+"error.diagnostic.inline" = { fg = "red0" }
+"warning.diagnostic.inline" = { fg = "yellow0" }
+"info.diagnostic.inline" = { fg = "aqua0" }
+"hint.diagnostic.inline" = { fg = "blue0" }
+
+# :messages severity badge/body
+"diagnostic.error.message" = { fg = "bg0", bg = "red1" }
+"diagnostic.warning.message" = { fg = "bg0", bg = "yellow1" }
+"diagnostic.info.message" = { fg = "bg0", bg = "aqua1" }
+"diagnostic.hint.message" = { fg = "bg0", bg = "blue1" }
+"diagnostic.error.message-text" = { fg = "red1" }
+"diagnostic.warning.message-text" = { fg = "yellow1" }
+"diagnostic.info.message-text" = { fg = "aqua1" }
+"diagnostic.hint.message-text" = { fg = "blue1" }
+
+# Gutter counterparts of `diff.plus`/`diff.minus`/`diff.delta` above (sign
+# column reads these; the editing-area scopes carry the row-tint bg instead).
+"diff.plus.gutter" = { fg = "green1" }
+"diff.minus.gutter" = { fg = "red1" }
+"diff.delta.gutter" = { fg = "yellow1" }
+# Word-level segments mark the exact changed span inside a
+# `diff.plus`/`diff.minus`-tinted row.
+"diff.plus.word" = { fg = "fg1", bg = "diff_plus_word_bg", modifiers = ["bold"] }
+"diff.minus.word" = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
+
+"markup.heading.marker" = { fg = "bg4" }
+"markup.link" = { fg = "blue1", modifiers = ["underlined"] }
+"markup.link.label" = { fg = "purple1" }
+"markup.quote" = { fg = "gray", modifiers = ["italic"] }
+"markup.raw.block" = { fg = "fg1" }
+"markup.raw.inline" = { fg = "purple1" }
+"markup.list" = { fg = "yellow1" }
+"markup.list.checked" = { fg = "green1" }
+"markup.list.unchecked" = { fg = "gray" }
 
 [palette]
-# Gruvbox dark palette (retro groove color scheme)
-bg0                = "#282828"
-bg1                = "#3c3836"
-bg2                = "#504945"
-bg3                = "#665c54"
-bg4                = "#7c6f64"
-fg0                = "#fbf1c7"
-fg1                = "#ebdbb2"
-fg2                = "#d5c4a1"
-fg3                = "#bdae93"
-fg4                = "#a89984"
-gray               = "#928374"
-red                = "#cc241d"
-green              = "#98971a"
-yellow             = "#d79921"
-blue               = "#458588"
-purple             = "#b16286"
-aqua               = "#689d6a"
-orange             = "#d65d0e"
-bright_red         = "#fb4934"
-bright_green       = "#b8bb26"
-bright_yellow      = "#fabd2f"
-bright_blue        = "#83a598"
-bright_purple      = "#d3869b"
-bright_aqua        = "#8ec07c"
-bright_orange      = "#fe8019"
+bg0 = "#282828"   # main background
+bg0_s = "#32302f"
+bg1 = "#3c3836"
+bg2 = "#504945"
+bg3 = "#665c54"
+bg4 = "#7c6f64"
+
+fg0 = "#fbf1c7"
+fg1 = "#ebdbb2" # main foreground
+fg2 = "#d5c4a1"
+fg3 = "#bdae93"
+fg4 = "#a89984"
+
+gray = "#928374"
+
+red0 = "#cc241d"    # neutral
+red1 = "#fb4934"    # bright
+green0 = "#98971a"
+green1 = "#b8bb26"
+yellow0 = "#d79921"
+yellow1 = "#fabd2f"
+blue0 = "#458588"
+blue1 = "#83a598"
+purple0 = "#b16286"
+purple1 = "#d3869b"
+aqua0 = "#689d6a"
+aqua1 = "#8ec07c"
+orange0 = "#d65d0e"
+orange1 = "#fe8019"
+
+# HUME additions — diff row backgrounds (`diff.*` and `diff.*.word` above).
 diff_plus_bg       = "#424228"
 diff_plus_word_bg  = "#5F6027"
 diff_minus_bg      = "#4E2E2A"

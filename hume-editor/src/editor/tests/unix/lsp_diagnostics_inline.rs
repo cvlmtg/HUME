@@ -41,7 +41,10 @@ fn single_diagnostic_on_a_line_shows_a_bare_message() {
         "a single diagnostic must not get a '[1]' count prefix, but keeps \
          the leading space that separates it from the line's code"
     );
-    assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
+    assert_eq!(
+        scope_name(&ed, entries[0].1.scope),
+        "error.diagnostic.inline"
+    );
 }
 
 #[test]
@@ -92,7 +95,7 @@ fn inline_color_follows_the_highest_severity_on_the_line_not_the_leftmost() {
     assert_eq!(entries.len(), 1);
     assert_eq!(
         scope_name(&ed, entries[0].1.scope),
-        "diagnostic.error",
+        "error.diagnostic.inline",
         "an error anywhere on the line must win the color, even when the \
          leftmost (message-supplying) diagnostic is only a warning"
     );
@@ -151,11 +154,15 @@ fn diagnostics_on_different_lines_get_independent_entries() {
     assert_eq!(
         entries,
         vec![
-            (3, " problem A".to_string(), "diagnostic.error".to_string()),
+            (
+                3,
+                " problem A".to_string(),
+                "error.diagnostic.inline".to_string()
+            ),
             (
                 9,
                 " problem B".to_string(),
-                "diagnostic.warning".to_string()
+                "warning.diagnostic.inline".to_string()
             ),
         ]
     );

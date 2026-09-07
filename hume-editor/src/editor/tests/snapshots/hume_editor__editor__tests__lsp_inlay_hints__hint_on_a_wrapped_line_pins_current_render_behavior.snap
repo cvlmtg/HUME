@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/lsp_inlay_hints.rs
 expression: snap
 ---
-<fg=#808080,bg=#3a3a3a>  </><fg=#c8c8d2,bg=#3a3a3a>1 </><fg=#d0d0d0,bg=#3a3a3a>aaaaaaaaaab</>
-<fg=#808080,bg=#3a3a3a>    [hint]</><fg=#d0d0d0,bg=#3a3a3a>bbbbbbbbbc</>
-<fg=#808080,bg=#3a3a3a>    </><fg=#d0d0d0,bg=#3a3a3a>cccccccccddddddd</>
-<fg=#808080,bg=#3a3a3a>    </><fg=#d0d0d0,bg=#3a3a3a>ddd</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#808080,bg=#1a1a1a>~</>
-<fg=#000000,bg=#ffffff>    1:41 … [+]</><fg=#808080,bg=#ffffff>│</><fg=#000000,bg=#ffffff> NOR</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>aaaaaaaaaab</>
+<fg=#665c54,bg=#3c3836>    </><fg=#928374,bg=#3c3836>[hint]</><fg=#ebdbb2,bg=#3c3836>bbbbbbbbbc</>
+<fg=#665c54,bg=#3c3836>    </><fg=#ebdbb2,bg=#3c3836>cccccccccddddddd</>
+<fg=#665c54,bg=#3c3836>    </><fg=#ebdbb2,bg=#3c3836>ddd</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#3c3836,bg=#bdae93,bold>    1:41 … [+]</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

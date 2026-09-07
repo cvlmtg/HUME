@@ -12,13 +12,22 @@ fn load_bundled_themes() -> Vec<(&'static str, hume_engine::theme::Theme)> {
     let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
     let paths = vec![themes_dir];
 
-    ["dark", "light", "gruvbox", "sand"]
+    ["gruvbox", "gruvbox_light", "sand"]
         .into_iter()
         .map(|name| {
-            let theme = hume_engine::theme::loader::load_theme(name, &paths)
-                .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"))
-                .theme;
-            (name, theme)
+            let loaded = hume_engine::theme::loader::load_theme(name, &paths)
+                .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
+            // A bundled theme is HUME's own content, not a third-party import
+            // — a warning here means a bug we shipped, not something a user
+            // needs to see. Stronger than "it loads": without this, a
+            // malformed key would still pass every check below it, just
+            // with an empty style standing in for the one it broke.
+            assert!(
+                loaded.warnings.is_empty(),
+                "bundled theme '{name}' produced load warnings: {:?}",
+                loaded.warnings
+            );
+            (name, loaded.theme)
         })
         .collect()
 }
@@ -33,6 +42,22 @@ fn bundled_themes_load_and_resolve() {
         assert!(
             style.fg.is_some() || style.bg.is_some(),
             "bundled theme '{name}': ui.cursor.primary has neither fg nor bg"
+        );
+    }
+}
+
+/// Every bundled theme must carry its own `ui.cursor.match.search` entry.
+/// `raw_contains`, not `resolve_by_name`: after the `ui.selection.search` →
+/// `ui.cursor.match.search` rename, a theme that dropped the key would
+/// silently resolve through the dot-notation fallback onto `ui.cursor.match`
+/// instead — a `resolve_by_name` check can't tell "has its own colour" from
+/// "fell back to the bracket-match colour", only `raw_contains` can.
+#[test]
+fn bundled_themes_define_their_own_search_match_scope() {
+    for (name, theme) in load_bundled_themes() {
+        assert!(
+            theme.raw_contains("ui.cursor.match.search"),
+            "bundled theme '{name}': missing ui.cursor.match.search (renamed from ui.selection.search)"
         );
     }
 }
@@ -82,10 +107,10 @@ fn bundled_theme_gutter_diagnostic_scopes_have_no_underline() {
 fn bundled_theme_mode_scopes_tint_the_whole_row() {
     let mode_scopes = [
         "ui.statusline.insert",
-        "ui.statusline.extend",
+        "ui.statusline.select",
         "ui.statusline.search",
         "ui.statusline.command",
-        "ui.statusline.select",
+        "ui.statusline.filter",
     ];
 
     for (name, theme) in load_bundled_themes() {
@@ -114,10 +139,10 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
     let mode_scopes = [
         "ui.statusline.normal",
         "ui.statusline.insert",
-        "ui.statusline.extend",
+        "ui.statusline.select",
         "ui.statusline.search",
         "ui.statusline.command",
-        "ui.statusline.select",
+        "ui.statusline.filter",
     ];
 
     for (name, theme) in load_bundled_themes() {
