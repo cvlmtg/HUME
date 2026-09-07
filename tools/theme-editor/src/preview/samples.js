@@ -9,6 +9,8 @@
 // under the offending code, distinct from the gutter dot and the
 // end-of-line summary this pane also shows.
 
+import { SCOPES } from '../data.js';
+
 export const RUST_SAMPLE = {
   name: "theme.rs",
   cursorLine: 7,
@@ -130,32 +132,14 @@ export const DIFF_SAMPLE = {
 
 // Pane-level scopes rendered as chrome around whichever buffer is active —
 // background, gutter, seams, cursor/selection, the statusline, virtual-text
-// indicators, and diagnostics — rather than as inline token scopes. Kept as
-// an explicit list (not derived) so `tests/coverage.test.js` catches a scope
-// that's editable but rendered nowhere, the drift this file exists to close.
-export const CHROME_SCOPES = [
-  "ui.background", "ui.text", "ui.text.focus",
-  "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected",
-  "ui.statusline", "ui.statusline.normal", "ui.statusline.insert",
-  "ui.statusline.select", "ui.statusline.search", "ui.statusline.command",
-  "ui.statusline.filter", "ui.statusline.separator",
-  "ui.popup", "ui.popup.scroll", "ui.menu", "ui.menu.selected", "ui.menu.scroll",
-  "ui.window", "ui.window.focused", "ui.drawer",
-  "ui.cursorline", "ui.cursorline.primary",
-  "ui.cursor", "ui.cursor.normal", "ui.cursor.insert", "ui.cursor.select",
-  "ui.cursor.primary", "ui.cursor.primary.normal", "ui.cursor.primary.insert",
-  "ui.cursor.primary.select", "ui.cursor.match", "ui.cursor.match.search",
-  "ui.virtual", "ui.virtual.indent-guide", "ui.virtual.whitespace",
-  "ui.virtual.inlay-hint", "ui.virtual.invisible",
-  "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
-  "diagnostic.error.message", "diagnostic.warning.message",
-  "diagnostic.info.message", "diagnostic.hint.message",
-  "diagnostic.error.message-text", "diagnostic.warning.message-text",
-  "diagnostic.info.message-text", "diagnostic.hint.message-text",
-  "error.diagnostic.inline", "warning.diagnostic.inline",
-  "info.diagnostic.inline", "hint.diagnostic.inline",
-  "error", "warning", "info", "hint",
-];
+// indicators, and diagnostics — rather than as inline token scopes. Derived
+// from the matching `SCOPES` categories in `data.js` rather than
+// hand-copied, so the two can't drift apart; `tests/coverage.test.js` still
+// catches a scope that's editable but rendered nowhere in these samples.
+const CHROME_CATEGORIES = ["UI", "Cursor", "Virtual", "Diagnostic"];
+export const CHROME_SCOPES = SCOPES
+  .filter(([category]) => CHROME_CATEGORIES.includes(category))
+  .flatMap(([, ids]) => ids);
 
 // Mode -> (statusline scope, cursor chain) — mirrors HUME's own mapping:
 // `hume-editor/src/ui/theme.rs`'s `mode_scope`, and `head_style` in
@@ -186,15 +170,16 @@ export const MODES = [
   { scope: "ui.statusline.filter", label: "SEL", chain: "normal" },
 ];
 
-// Overlay surfaces the pane can show on top of the buffer, and which scopes
-// each one exercises (all already covered by CHROME_SCOPES above — this list
-// only documents which overlay demonstrates which scope).
+// Overlay surfaces the pane can show on top of the buffer. Each one's scopes
+// are already covered by CHROME_SCOPES above; nothing here reads them per
+// overlay, so this list carries only what EditorPane actually needs to
+// render the toggle and pick the right overlay body.
 export const OVERLAYS = [
   { key: "none", label: "None" },
-  { key: "menu", label: "Menu", scopes: ["ui.menu", "ui.menu.selected", "ui.menu.scroll"] },
-  { key: "popup", label: "Popup", scopes: ["ui.popup", "ui.popup.scroll"] },
-  { key: "picker", label: "Picker", scopes: ["ui.background", "ui.text", "ui.text.focus", "ui.cursor.primary"] },
-  { key: "drawer", label: "Drawer", scopes: ["ui.drawer", "ui.menu.selected"] },
+  { key: "menu", label: "Menu" },
+  { key: "popup", label: "Popup" },
+  { key: "picker", label: "Picker" },
+  { key: "drawer", label: "Drawer" },
 ];
 
 // Fuzzy-picker file list — enough rows to fill the panel's

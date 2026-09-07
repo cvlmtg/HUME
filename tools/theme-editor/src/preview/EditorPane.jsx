@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { C, MONO } from '../ui.js';
+import { C, MONO, pill } from '../ui.js';
 import { fgc, bgc, fullStyle, cursorColors, diagnosticStyle, tokenStyle } from '../lib/theme.js';
 import { BUFFERS, DIFF_SAMPLE, MODES, OVERLAYS, PICKER_ROWS, DRAWER_ROWS, NEIGHBOR_TOP, NEIGHBOR_BOTTOM } from './samples.js';
 
@@ -368,29 +368,14 @@ export default function EditorPane({ pal, sc }) {
 
       <div style={{ display: "flex", gap: 4, padding: "6px 10px", background: C.bgChrome, borderTop: "1px solid " + C.border, flexWrap: "wrap" }}>
         {BUFFERS.map((b, i) => (
-          <button key={b.name} onClick={() => setBufIdx(i)}
-            style={{
-              background: i === bufIdx ? C.accent : C.bgBtn,
-              color: i === bufIdx ? C.bg : C.textMuted,
-              border: "none", borderRadius: 10, padding: "2px 9px",
-              fontSize: 10, fontFamily: MONO, cursor: "pointer",
-              fontWeight: i === bufIdx ? 600 : 400,
-            }}
-          >
+          <button key={b.name} onClick={() => setBufIdx(i)} style={pill(i === bufIdx)}>
             {b.name}
           </button>
         ))}
       </div>
       <div style={{ display: "flex", gap: 4, padding: "0 10px 6px", background: C.bgChrome, flexWrap: "wrap" }}>
         {MODES.map((m, i) => (
-          <button key={m.scope} onClick={() => setModeIdx(i)}
-            style={{
-              background: i === modeIdx ? C.accent : C.bgBtn,
-              color: i === modeIdx ? C.bg : C.textMuted,
-              border: "none", borderRadius: 10, padding: "2px 9px",
-              fontSize: 10, fontFamily: MONO, cursor: "pointer",
-              fontWeight: i === modeIdx ? 600 : 400,
-            }}
+          <button key={m.scope} onClick={() => setModeIdx(i)} style={pill(i === modeIdx)}
             title={"Preview " + m.scope}
           >
             {m.label}
@@ -398,15 +383,7 @@ export default function EditorPane({ pal, sc }) {
         ))}
         <span style={{ width: 1, background: C.border, margin: "2px 4px" }} />
         {OVERLAYS.map(o => (
-          <button key={o.key} onClick={() => setOverlay(o.key)}
-            style={{
-              background: overlay === o.key ? C.brand : C.bgBtn,
-              color: overlay === o.key ? C.bg : C.textMuted,
-              border: "none", borderRadius: 10, padding: "2px 9px",
-              fontSize: 10, fontFamily: MONO, cursor: "pointer",
-              fontWeight: overlay === o.key ? 600 : 400,
-            }}
-          >
+          <button key={o.key} onClick={() => setOverlay(o.key)} style={pill(overlay === o.key, { activeBg: C.brand })}>
             {o.label}
           </button>
         ))}

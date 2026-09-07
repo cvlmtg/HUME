@@ -42,6 +42,17 @@ use crate::types::{Modifiers, ResolvedStyle, UnderlineStyle};
 
 const MAX_DEPTH: usize = 8;
 
+/// Top-level keys that carry loader configuration rather than a scope entry.
+/// `validate_reserved_keys` and `merge_raw_themes` still name each one
+/// individually — they need per-key type expectations and merge behavior —
+/// but every plain "is this a scope key?" test below goes through
+/// [`is_reserved`] so a third reserved key needs only one new entry here.
+const RESERVED_KEYS: [&str; 2] = ["inherits", "palette"];
+
+fn is_reserved(key: &str) -> bool {
+    RESERVED_KEYS.contains(&key)
+}
+
 // ---------------------------------------------------------------------------
 // Public entry points
 // ---------------------------------------------------------------------------
@@ -182,12 +193,7 @@ fn parse_raw_recursive(
         .map(|e| attribute(e, path))
         .collect();
 
-    let origins = origins_for(
-        table
-            .keys()
-            .filter(|k| k.as_str() != "inherits" && k.as_str() != "palette"),
-        path,
-    );
+    let origins = origins_for(table.keys().filter(|k| !is_reserved(k)), path);
     let palette_origins = origins_for(
         table
             .get("palette")
@@ -403,7 +409,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     let mut scopes: FxHashMap<String, ResolvedStyle> = FxHashMap::default();
     for (key, value) in &table {
         // Reserved keys — not scope entries.
-        if key == "inherits" || key == "palette" {
+        if is_reserved(key) {
             continue;
         }
         let origin = origins.get(key).map(|p| &**p);
@@ -425,10 +431,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // plain/unhighlighted text has `fg: None` → renders as the terminal's own
     // default colour, which the pane dim has no numeric value to blend and so
     // leaves at full strength in an unfocused pane.
-    let mut default = ResolvedStyle::default();
-    if let Some(ui_text) = scopes.get("ui.text") {
-        default = default.layer(*ui_text);
-    }
+    let default = scopes.get("ui.text").copied().unwrap_or_default();
 
     LoadedTheme {
         theme: Theme::from_owned(scopes, default),
@@ -464,7 +467,7 @@ const STYLE_KEY_LIST: &str = "one of fg, bg, underline, modifiers";
 fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>) -> toml::Table {
     let mut out = toml::Table::new();
     for (key, value) in table {
-        if key == "inherits" || key == "palette" {
+        if is_reserved(&key) {
             out.insert(key, value);
             continue;
         }
@@ -583,6 +586,39 @@ fn bad_style_field(key: &str, field: &str, expected: &'static str) -> ThemeError
     }
 }
 
+/// Read `t.get(lookup)` as a string and run `parse` on it, warning (into
+/// `warnings`) and returning `None` if the TOML value isn't a string or
+/// `parse` itself rejects it — the shared shape behind `fg`/`bg`/
+/// `underline.color`/`underline.style`, which differ only in `lookup`'s key
+/// (`"color"`/`"style"` inside the nested `underline` table, same as
+/// `display` everywhere else) and what `parse` does with the string. `None`
+/// on the absent-key path too, so every caller can write `if let Some(v) =
+/// str_field(...) { style.x = v }` uniformly instead of branching on
+/// presence itself.
+fn str_field<T>(
+    key: &str,
+    t: &toml::map::Map<String, toml::Value>,
+    lookup: &str,
+    display: &'static str,
+    parse: impl FnOnce(&str) -> Result<T, ThemeError>,
+    warnings: &mut Vec<ThemeError>,
+) -> Option<T> {
+    let v = t.get(lookup)?;
+    match v.as_str() {
+        Some(s) => match parse(s) {
+            Ok(val) => Some(val),
+            Err(e) => {
+                warnings.push(e);
+                None
+            }
+        },
+        None => {
+            warnings.push(bad_style_field(key, display, "a string"));
+            None
+        }
+    }
+}
+
 /// Parse a scope's style table field by field. A malformed field is warned
 /// and left unset rather than discarding the fields around it — matching
 /// Helix's own `build_theme_values`, which keeps a partially-built style
@@ -597,23 +633,25 @@ fn parse_style_table(
     let mut style = ResolvedStyle::default();
     let mut warnings = Vec::new();
 
-    if let Some(v) = t.get("fg") {
-        match v.as_str() {
-            Some(s) => match resolve_color(key, s, palette) {
-                Ok(c) => style.fg = Some(c),
-                Err(e) => warnings.push(e),
-            },
-            None => warnings.push(bad_style_field(key, "fg", "a string")),
-        }
+    if let Some(c) = str_field(
+        key,
+        t,
+        "fg",
+        "fg",
+        |s| resolve_color(key, s, palette),
+        &mut warnings,
+    ) {
+        style.fg = Some(c);
     }
-    if let Some(v) = t.get("bg") {
-        match v.as_str() {
-            Some(s) => match resolve_color(key, s, palette) {
-                Ok(c) => style.bg = Some(c),
-                Err(e) => warnings.push(e),
-            },
-            None => warnings.push(bad_style_field(key, "bg", "a string")),
-        }
+    if let Some(c) = str_field(
+        key,
+        t,
+        "bg",
+        "bg",
+        |s| resolve_color(key, s, palette),
+        &mut warnings,
+    ) {
+        style.bg = Some(c);
     }
     if let Some(v) = t.get("underline") {
         if let Some(s) = v.as_str() {
@@ -623,23 +661,25 @@ fn parse_style_table(
             }
         } else if let Some(ut) = v.as_table() {
             // `underline = { color = "#...", style = "..." }` (Helix extended form)
-            if let Some(color_v) = ut.get("color") {
-                match color_v.as_str() {
-                    Some(s) => match resolve_color(key, s, palette) {
-                        Ok(c) => style.underline_color = Some(c),
-                        Err(e) => warnings.push(e),
-                    },
-                    None => warnings.push(bad_style_field(key, "underline.color", "a string")),
-                }
+            if let Some(c) = str_field(
+                key,
+                ut,
+                "color",
+                "underline.color",
+                |s| resolve_color(key, s, palette),
+                &mut warnings,
+            ) {
+                style.underline_color = Some(c);
             }
-            if let Some(style_v) = ut.get("style") {
-                match style_v.as_str() {
-                    Some(s) => match parse_underline(key, s) {
-                        Ok(u) => style.underline = u,
-                        Err(e) => warnings.push(e),
-                    },
-                    None => warnings.push(bad_style_field(key, "underline.style", "a string")),
-                }
+            if let Some(u) = str_field(
+                key,
+                ut,
+                "style",
+                "underline.style",
+                |s| parse_underline(key, s),
+                &mut warnings,
+            ) {
+                style.underline = u;
             }
         } else {
             warnings.push(bad_style_field(key, "underline", "a string or a table"));

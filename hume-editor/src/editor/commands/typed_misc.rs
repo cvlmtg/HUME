@@ -233,34 +233,23 @@ pub(crate) fn typed_theme_debug(
         }
     }
 
-    /// Every name on `scope`'s dot-notation chain that the theme actually
-    /// defines. Not the resolution path: `resolve_by_name` stops at the first
-    /// of these, the rest are what it would fall through to next.
-    fn defined_ancestors(theme: &hume_engine::theme::Theme, scope: &str) -> String {
-        let chain: Vec<&str> = hume_engine::theme::fallback_chain(scope)
-            .filter(|key| theme.raw_contains(key))
-            .collect();
+    /// Every name in `names` the theme actually defines, in the order given —
+    /// not necessarily the resolution path: both a dot-notation lookup and a
+    /// cursor ladder stop at the *first* match, so a later name here is only
+    /// what it would have fallen through to next. `empty_label` covers the
+    /// "theme defines none of them" case, which reads differently for an
+    /// ordinary scope (`"{scope} → default"`, from `fallback_chain`, which
+    /// always yields `scope` itself first) than for a cursor ladder's rung
+    /// list (`"default"` — the rungs are never dot-trimmed from one shared
+    /// name, so there's no single name to report finding nothing for).
+    fn defined_chain<'a>(
+        theme: &hume_engine::theme::Theme,
+        names: impl Iterator<Item = &'a str>,
+        empty_label: &str,
+    ) -> String {
+        let chain: Vec<&str> = names.filter(|key| theme.raw_contains(key)).collect();
         if chain.is_empty() {
-            format!("{scope} → default")
-        } else {
-            chain.join(" → ")
-        }
-    }
-
-    /// Every name on an explicit cursor-ladder rung list (`ids`, from
-    /// [`hume_engine::theme::cursor_ladder_ids`]) the theme actually defines,
-    /// in ladder order. Not `defined_ancestors`'s dot-notation walk: a cursor
-    /// ladder skips rungs dot-trimming would visit — `ui.cursor.primary.insert`
-    /// never trims down to `ui.cursor.insert` — so showing the real rung list
-    /// is the only way this names colors that actually render.
-    fn defined_rungs(theme: &hume_engine::theme::Theme, ids: &[&str]) -> String {
-        let chain: Vec<&str> = ids
-            .iter()
-            .copied()
-            .filter(|k| theme.raw_contains(k))
-            .collect();
-        if chain.is_empty() {
-            "default".to_owned()
+            empty_label.to_owned()
         } else {
             chain.join(" → ")
         }
@@ -268,7 +257,7 @@ pub(crate) fn typed_theme_debug(
 
     fn style_line(label: &str, chain: &str, style: hume_engine::types::ResolvedStyle) -> String {
         format!(
-            "  {label}: {chain} fg={} bg={}{}",
+            "  {label}: chain={chain} fg={} bg={}{}",
             color_str(style.fg),
             color_str(style.bg),
             if style.modifiers.is_empty() {
@@ -289,42 +278,33 @@ pub(crate) fn typed_theme_debug(
     let mut lines = vec![format!("Theme: {name}")];
 
     // Cursor rows report the style the renderer will actually layer, taken
-    // from the same pre-resolved `ui` fields it reads. Their chains aren't
-    // plain dot-notation — a primary ladder reaches a key dot-trimming
-    // skips (`ui.cursor.primary.insert` never trims to `ui.cursor.insert`)
-    // — so each row's chain comes from the explicit rung list
-    // `cursor_ladder_ids` builds, the same one the renderer resolves against.
+    // from the same pre-resolved `ui` fields it reads, one (secondary,
+    // primary) pair per mode in `CURSOR_MODES` — the single source of the
+    // mode↔scope-name pairing `Theme::compute_ui` itself resolves against.
+    // Their chains aren't plain dot-notation — a primary ladder reaches a key
+    // dot-trimming skips (`ui.cursor.primary.insert` never trims to
+    // `ui.cursor.insert`) — so each row's chain comes from the explicit rung
+    // list `cursor_ladder_ids` builds.
     let ui = &theme.ui;
-    let (normal_ids, normal_primary_ids) =
-        hume_engine::theme::cursor_ladder_ids("ui.cursor.normal", "ui.cursor.primary.normal");
-    let (insert_ids, insert_primary_ids) =
-        hume_engine::theme::cursor_ladder_ids("ui.cursor.insert", "ui.cursor.primary.insert");
-    let (select_ids, select_primary_ids) =
-        hume_engine::theme::cursor_ladder_ids("ui.cursor.select", "ui.cursor.primary.select");
-    for (label, ids, style) in [
-        ("cursor (normal)", &normal_ids[..], ui.cursor),
-        ("cursor (insert)", &insert_ids[..], ui.cursor_insert),
-        ("cursor (extend)", &select_ids[..], ui.cursor_select),
-        (
-            "cursor primary (normal)",
-            &normal_primary_ids[..],
-            ui.cursor_primary,
-        ),
-        (
-            "cursor primary (insert)",
-            &insert_primary_ids[..],
-            ui.cursor_insert_primary,
-        ),
-        (
-            "cursor primary (extend)",
-            &select_primary_ids[..],
-            ui.cursor_select_primary,
-        ),
-    ] {
+    let per_mode = [
+        (ui.cursor, ui.cursor_primary),
+        (ui.cursor_insert, ui.cursor_insert_primary),
+        (ui.cursor_select, ui.cursor_select_primary),
+    ];
+    for ((label, mode_scope, primary_mode_scope), (style, primary_style)) in
+        hume_engine::theme::CURSOR_MODES.into_iter().zip(per_mode)
+    {
+        let (ids, primary_ids) =
+            hume_engine::theme::cursor_ladder_ids(mode_scope, primary_mode_scope);
         lines.push(style_line(
-            label,
-            &format!("chain={}", defined_rungs(theme, ids)),
+            &format!("cursor ({label})"),
+            &defined_chain(theme, ids.into_iter(), "default"),
             style,
+        ));
+        lines.push(style_line(
+            &format!("cursor primary ({label})"),
+            &defined_chain(theme, primary_ids.into_iter(), "default"),
+            primary_style,
         ));
     }
 
@@ -340,7 +320,11 @@ pub(crate) fn typed_theme_debug(
         let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
         lines.push(style_line(
             scope,
-            &format!("chain={}", defined_ancestors(theme, scope)),
+            &defined_chain(
+                theme,
+                hume_engine::theme::fallback_chain(scope),
+                &format!("{scope} → default"),
+            ),
             style,
         ));
     }

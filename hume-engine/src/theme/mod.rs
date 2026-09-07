@@ -115,6 +115,21 @@ pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
 }
 
+/// The three cursor modes a theme's `ui.cursor*` scopes distinguish, as
+/// `(display label, mode scope, primary mode scope)` — the mode-identity half
+/// [`cursor_ladder_ids`] itself leaves to its caller. Single source for both
+/// [`Theme::compute_ui`] and `:theme-debug`, so renaming a mode's scope (or
+/// adding a fourth mode) can't leave one of them naming the old pair — the
+/// exact drift the shared rung-list function below was introduced to
+/// prevent, one level up.
+pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
+    ("normal", "ui.cursor.normal", "ui.cursor.primary.normal"),
+    ("insert", "ui.cursor.insert", "ui.cursor.primary.insert"),
+    // Labelled "extend" (not "select"): HUME's own Select mode is an
+    // unrelated prompt with no cursor ladder of its own — see `EditorMode`.
+    ("extend", "ui.cursor.select", "ui.cursor.primary.select"),
+];
+
 /// The (secondary, primary) rung lists [`Theme::cursor_ladder`] resolves, for
 /// one mode's own scope names — see that method's doc for the ladder shape.
 ///
@@ -361,12 +376,14 @@ impl Theme {
     // ── Private helpers ──────────────────────────────────────────────────
 
     fn compute_ui(&self) -> UiScopes {
-        let (cursor, cursor_primary) =
-            self.cursor_ladder("ui.cursor.normal", "ui.cursor.primary.normal");
-        let (cursor_insert, cursor_insert_primary) =
-            self.cursor_ladder("ui.cursor.insert", "ui.cursor.primary.insert");
-        let (cursor_select, cursor_select_primary) =
-            self.cursor_ladder("ui.cursor.select", "ui.cursor.primary.select");
+        let [
+            (_, normal, normal_primary),
+            (_, insert, insert_primary),
+            (_, select, select_primary),
+        ] = CURSOR_MODES;
+        let (cursor, cursor_primary) = self.cursor_ladder(normal, normal_primary);
+        let (cursor_insert, cursor_insert_primary) = self.cursor_ladder(insert, insert_primary);
+        let (cursor_select, cursor_select_primary) = self.cursor_ladder(select, select_primary);
         UiScopes {
             cursor,
             cursor_insert,

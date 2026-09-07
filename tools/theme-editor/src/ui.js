@@ -20,3 +20,18 @@ export const COLOR_PICKER = {
   border: "1px solid " + C.surface,
   borderRadius: 3, background: "transparent", cursor: "pointer", flexShrink: 0,
 };
+
+// Toggle-pill button style shared by the category filter, buffer/mode/overlay
+// switches, and the modifier toggles — same shape everywhere but the active
+// background and (ScopeRow's smaller modifier pills) size.
+export function pill(active, {
+  activeBg = C.accent, inactiveColor = C.textMuted,
+  radius = 10, padding = "2px 9px", fontSize = 10,
+} = {}) {
+  return {
+    background: active ? activeBg : C.bgBtn,
+    color: active ? C.bg : inactiveColor,
+    border: "none", borderRadius: radius, padding, fontSize,
+    fontFamily: MONO, cursor: "pointer", fontWeight: active ? 600 : 400,
+  };
+}

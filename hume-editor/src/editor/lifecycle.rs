@@ -435,8 +435,15 @@ impl Editor {
                 let statusline_row = term_height.saturating_sub(1);
                 Some(Position::new(mb.statusline_cursor_x(), statusline_row))
             } else {
-                let settings = self.resolve_pane_settings(self.state.focused_pane_id);
-                if settings.primary_cursor_is_block {
+                // Reads `cursor_shape()` directly rather than through
+                // `resolve_pane_settings` — the focused pane's own
+                // `primary_cursor_is_block` is defined as exactly this
+                // comparison (`frame.rs`), and resolving full pane settings
+                // (a `FormatKey` build included) just to throw away
+                // everything but this one bool would repeat, for the
+                // focused pane specifically, work `render_frame` already
+                // does for every pane this same frame.
+                if self.state.cursor_shape() == crate::settings::CursorShape::Block {
                     None
                 } else {
                     // Non-block shape (only Insert can be, via
@@ -486,19 +493,20 @@ impl Editor {
             // `resolve_pane_settings`' `primary_cursor_is_block` read, so the
             // real terminal cursor and the grid's painted primary head can
             // never disagree about which shape is in effect.
-            let cursor_style = if self.state.minibuf.is_some() {
-                hume_platform::terminal::CursorStyle::SteadyBar
+            let shape = if self.state.minibuf.is_some() {
+                crate::settings::CursorShape::Bar
             } else {
-                match self.state.cursor_shape() {
-                    crate::settings::CursorShape::Block => {
-                        hume_platform::terminal::CursorStyle::SteadyBlock
-                    }
-                    crate::settings::CursorShape::Bar => {
-                        hume_platform::terminal::CursorStyle::SteadyBar
-                    }
-                    crate::settings::CursorShape::Underline => {
-                        hume_platform::terminal::CursorStyle::SteadyUnderline
-                    }
+                self.state.cursor_shape()
+            };
+            let cursor_style = match shape {
+                crate::settings::CursorShape::Block => {
+                    hume_platform::terminal::CursorStyle::SteadyBlock
+                }
+                crate::settings::CursorShape::Bar => {
+                    hume_platform::terminal::CursorStyle::SteadyBar
+                }
+                crate::settings::CursorShape::Underline => {
+                    hume_platform::terminal::CursorStyle::SteadyUnderline
                 }
             };
             let _ = hume_platform::terminal::set_cursor_shape(term, cursor_style);

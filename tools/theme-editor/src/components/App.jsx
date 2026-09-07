@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
-import { C, MONO, INPUT, COLOR_PICKER } from '../ui.js';
+import { C, MONO, INPUT, COLOR_PICKER, pill } from '../ui.js';
 import { adjustPalette } from '../lib/color.js';
 import { parseTOML, extractScopes, exportTOML, diffFromBaseline } from '../lib/toml.js';
 import { SCOPES, ALL_SCOPES, DEFAULT_PAL, DEFAULT_SC } from '../data.js';
@@ -244,7 +244,7 @@ export default function HelixThemeEditor() {
               <input type="text" value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter scopes..." style={{ ...INPUT, width: "100%", boxSizing: "border-box", padding: "5px 8px", marginBottom: 6 }} />
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {cats.map(c => (
-                  <button key={c} onClick={() => setCatFilter(c)} style={{ background: catFilter === c ? C.accent : C.bgBtn, color: catFilter === c ? C.bg : C.textMuted, border: "none", borderRadius: 10, padding: "2px 9px", fontSize: 10, fontFamily: MONO, cursor: "pointer", fontWeight: catFilter === c ? 600 : 400 }}>{c}</button>
+                  <button key={c} onClick={() => setCatFilter(c)} style={pill(catFilter === c)}>{c}</button>
                 ))}
               </div>
             </div>

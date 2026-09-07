@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { C, INPUT, MONO } from '../ui.js';
+import { C, INPUT, MONO, pill } from '../ui.js';
 import { resolve, STYLE_KEYS } from '../lib/theme.js';
 import Swatch from './Swatch.jsx';
 
@@ -21,11 +21,6 @@ export default function ScopeRow({ id, value, palette, onChange }) {
     : (underlineRaw && typeof underlineRaw === "object" ? (underlineRaw.style || "line") : "line");
   const underlineColorVal = underlineRaw && typeof underlineRaw === "object" ? (underlineRaw.color || "") : "";
   const hasUnderline = modifiers.includes("underlined");
-  // Fields Helix themes carry that this editor doesn't author (e.g. `style`)
-  // survive an import/export round-trip untouched — see README's Known limitations.
-  const extra = isObj
-    ? Object.fromEntries(Object.entries(value).filter(([k]) => !STYLE_KEYS.includes(k)))
-    : {};
   const palNames = Object.keys(palette);
 
   const [fgCustom, setFgCustom] = useState(false);
@@ -68,18 +63,25 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   // else is set — matches sand.toml's own shorthand (e.g.
   // `"punctuation.bracket" = "muted"`) instead of always writing a table.
   const emit = patch => {
-    const next = {
-      fg: patch.fg !== undefined ? patch.fg : fgVal,
-      bg: patch.bg !== undefined ? patch.bg : bgVal,
-      modifiers: patch.modifiers !== undefined ? patch.modifiers : modifiers,
-      underline: patch.underline !== undefined ? patch.underline : underlineRaw,
-    };
+    // No caller ever patches a key to `undefined` (only a real value or
+    // `null`), so a plain spread over the current fg/bg/modifiers/underline
+    // is exactly the "patch wins where given" merge this needs.
+    const next = { fg: fgVal, bg: bgVal, modifiers, underline: underlineRaw, ...patch };
+    // Fields Helix themes carry that this editor doesn't author (e.g. `style`)
+    // survive an import/export round-trip untouched — see README's Known
+    // limitations. Computed here, not in the render body: `emit` is the only
+    // reader, and it only runs on a user edit, not every render.
+    const extra = isObj
+      ? Object.fromEntries(Object.entries(value).filter(([k]) => !STYLE_KEYS.includes(k)))
+      : {};
     const hasExtra = Object.keys(extra).length > 0;
     const hasBg = next.bg !== "";
     const hasMods = next.modifiers.length > 0;
     const hasUl = next.underline != null;
-    if (next.fg === "" && !hasBg && !hasMods && !hasUl && !hasExtra) { onChange(null); return; }
-    if (!hasBg && !hasMods && !hasUl && !hasExtra) { onChange(next.fg); return; }
+    if (!hasBg && !hasMods && !hasUl && !hasExtra) {
+      onChange(next.fg === "" ? null : next.fg);
+      return;
+    }
     const def = { ...extra };
     if (next.fg !== "") def.fg = next.fg;
     if (hasBg) def.bg = next.bg;
@@ -164,11 +166,7 @@ export default function ScopeRow({ id, value, palette, onChange }) {
           const on = modifiers.includes(m);
           return (
             <button key={m} onClick={() => toggleModifier(m)}
-              style={{
-                background: on ? C.accent : C.bgBtn, color: on ? C.bg : C.textDim,
-                border: "none", borderRadius: 8, padding: "1px 7px", fontSize: 9,
-                fontFamily: MONO, cursor: "pointer", fontWeight: on ? 600 : 400,
-              }}>
+              style={pill(on, { inactiveColor: C.textDim, radius: 8, padding: "1px 7px", fontSize: 9 })}>
               {m}
             </button>
           );

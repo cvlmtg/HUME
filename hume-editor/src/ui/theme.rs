@@ -101,9 +101,20 @@ const DEFAULT_THEME_TOML: &str = include_str!("../../../runtime/themes/sand.toml
 /// The content is `runtime/themes/sand.toml`, embedded at compile time via
 /// `include_str!` — editing that file requires a rebuild to take effect.
 pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
-    hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
-        .expect("embedded sand.toml must parse — file is compile-time embedded")
-        .theme
+    let loaded = hume_engine::theme::loader::parse_theme(DEFAULT_THEME_TOML)
+        .expect("embedded sand.toml must parse — file is compile-time embedded");
+    // Unlike a user's own theme, sand.toml is HUME's shipped content — a
+    // warning here is a bug in this repo, not a typo to shrug off, so it's
+    // stated as an invariant at the one site that would otherwise drop it
+    // silently (`load_theme_by_name` surfaces the same warnings for every
+    // other load path). `load_bundled_themes` in `tests/theme_loading.rs`
+    // pins the same guarantee for the on-disk copy of this file.
+    debug_assert!(
+        loaded.warnings.is_empty(),
+        "embedded sand.toml produced load warnings: {:?}",
+        loaded.warnings
+    );
+    loaded.theme
 }
 
 /// `gruvbox.toml`, embedded for renderer snapshot tests that assert exact
@@ -118,9 +129,14 @@ const SNAPSHOT_THEME_TOML: &str = include_str!("../../../runtime/themes/gruvbox.
 
 #[cfg(test)]
 pub(crate) fn build_snapshot_theme() -> hume_engine::theme::Theme {
-    hume_engine::theme::loader::parse_theme(SNAPSHOT_THEME_TOML)
-        .expect("embedded gruvbox.toml must parse — file is compile-time embedded")
-        .theme
+    let loaded = hume_engine::theme::loader::parse_theme(SNAPSHOT_THEME_TOML)
+        .expect("embedded gruvbox.toml must parse — file is compile-time embedded");
+    assert!(
+        loaded.warnings.is_empty(),
+        "embedded gruvbox.toml produced load warnings: {:?}",
+        loaded.warnings
+    );
+    loaded.theme
 }
 
 // ---------------------------------------------------------------------------
