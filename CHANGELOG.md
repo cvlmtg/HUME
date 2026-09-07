@@ -3,152 +3,70 @@
 ## Unreleased
 
 ### Breaking changes
-- **Breaking**: `(set-signs! source bid signs)` entries are now `(line text scope)` — the
-  trailing `priority` is gone. A sign source's gutter column now comes from a new
-  `(register-sign-source! name bid priority)` call instead, scoped to that one buffer and
-  made every time the source is about to place or clear signs there (idempotent, so
-  repeating it is cheap) rather than once globally; `set-signs!` for a source unregistered
-  for that buffer now errors instead of silently rendering nothing. A source's gutter slot
-  is per-buffer — a buffer neither `core:lsp` nor `core:git-diff` (nor any other plugin)
-  ever registers a sign source for never reserves a gutter column for one.
-- **Breaking**: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)`: it
-  checks every selection in the buffer instead of just the primary one, and each selection
-  may now span any number of whole lines instead of exactly one. New `(selections-charwise?
-  bid)` complements it — `#t` when none of `bid`'s selections is linewise — so `:lsp-fmt`'s
-  three-way verdict (all linewise / none linewise / mixed) is two plain predicates rather than
-  one boolean plus an inferred third state. A collapsed cursor sitting alone on a blank line
-  doesn't count toward either predicate — it neither breaks an otherwise-linewise set into
-  "mixed" nor counts as a deliberate whole-line selection on its own — and `#f` from
-  `selections-linewise?` (`#t` from `selections-charwise?`) when every selection is such a
-  cursor, matching a bare cursor's usual behavior.
-- **Breaking**: `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)` (same shape,
-  from `bid`'s primary selection alone), plus a new `(lsp-linewise-ranges-params bid)` that
-  returns one wire range per linewise selection in `bid`'s buffer (touching selections
-  coalesced into one range apiece), empty if none are linewise. `:lsp-fmt` now formats a set of
-  disjoint linewise selections as several ranges instead of falling back to the whole buffer:
-  one `textDocument/rangesFormatting` request (LSP 3.18) when the server advertises
-  `rangesSupport`, otherwise one `rangeFormatting` request per range — capped at the new
-  `lsp.format-max-ranges` setting (default 16), past which nothing is formatted, with a
-  warning naming the cap. A mix of whole-line and partial-line selections now warns and
-  formats nothing, rather than silently reformatting the whole buffer.
-- **Breaking**: `goto-alternate-file` is renamed `goto-alternate-buffer`.
-- **Breaking**: `:` now resolves only typed commands — an editor (key-bindable) command's
-  name is no longer reachable from the command line, even though it still works from a key
-  binding or `(call! …)`. `(define-command! …)` keeps registering editor commands only; a
-  new `(define-typed-command! …)` registers a typed command instead, and `declare-plugin`
-  gained a matching `#:typed-commands` alongside `#:commands`. Third-party plugins whose
-  commands were reachable at `:` must switch to `define-typed-command!`/`#:typed-commands`.
-  `core:lsp`'s `lsp-install`, `lsp-uninstall`, `lsp-servers`, `lsp-rescan-servers`,
-  `lsp-status`, `lsp-stop`, `lsp-restart`, and `diagnostics`; `core:plum`'s
-  `plum-install-plugins`, `plum-cleanup-plugins`, `plum-update-plugins`, `plum-list-plugins`,
-  `plum-install-grammar`, `plum-list-grammars`, and `plum-cleanup-grammars`; and
-  `core:git-diff`'s `toggle-git-signs`/`toggle-inline-diff` and `core:steel-server`'s
-  `steel-server-install` all move to `define-typed-command!` in this release. `:lsp-fmt` is
-  replaced by a new typed `:format-source`; the key-bindable `lsp-fmt` (for `on-buffer-save`
-  hooks) is unchanged.
+- Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally; nothing to do unless you write your own plugins.
+- `:format-source` (renamed from `:lsp-fmt`) can now format several selected line ranges at once instead of falling back to the whole buffer when a server supports it.
+- The search-match highlight now falls back to the bracket-match color instead of the selection color, so it's easier to tell apart from a real selection. A custom theme setting `ui.selection.search` should rename that key to `ui.cursor.match.search`.
+- Extend mode's and Select mode's statusline colors were swapped to match how Helix themes expect them. A custom theme should rename `ui.statusline.extend` to `ui.statusline.select`, and its old `ui.statusline.select` to `ui.statusline.filter`.
+- `goto-alternate-file` is renamed `goto-alternate-buffer`.
+- A handful of commands (LSP install/status, PLUM plugin/grammar management, git-diff sign toggles, `:lsp-fmt` → `:format-source`) can no longer be typed at the `:` prompt by their old bindable name — bind them to a key instead, or use their new typed command name.
+- A theme's `inherits` now merges colors with its parent before resolving them, matching Helix. Most custom themes using `inherits` will look the same or better; one that relied on the old behavior may render differently.
+- Themes no longer accept HUME's own `solid`/`wavy`/`undercurl` underline names or `strikethrough` modifier — only Helix's own `line`/`curl`/`crossed_out`, which HUME already accepted alongside them. A custom theme using the old names should rename `solid` to `line`, `wavy` or `undercurl` to `curl`, and `strikethrough` to `crossed_out`.
 
 ### Editing
-- **Breaking**: `goto-next-paragraph`/`goto-prev-paragraph` (`}`/`{`) now select the whole
-  paragraph — plus its trailing blank gap — instead of moving a bare cursor, matching every other
-  navigation command (`w` selects the word; `goto-next-function` and the rest of the structural
-  family select the whole object). Pressing `}`/`{` past the last/first paragraph now does nothing
-  instead of clamping to EOF/BOF, and both now record a jump-list entry (`Ctrl+o` returns)
-  regardless of how far the hop moved. `{` from inside a blank-line gap now selects the nearest
-  paragraph above it rather than skipping past it, mirroring how `}` from a gap already selects
-  the nearest one below. New `m i p`/`m a p` text objects select the paragraph on its own — the
-  text only, or the text plus its trailing gap — for when a bare selection is wanted instead.
-- New `goto-matching-pair` (`#`) jumps between a bracket and its partner (`(` `)` `[` `]` `{` `}`), or between an HTML/XML/JSX tag and its partner — vim's `%`, without disturbing HUME's own `%` (select-all). For single line selections, it scans for brackets against the whole selection, not just the character the cursor sits on — so `#` still jumps after a motion like `w` leaves the cursor on the whitespace past a bracket rather than on the bracket itself.
-- `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`, `Ctrl+W`, `*`, quote auto-pairing, the identifier under the cursor used by plugin commands (e.g. rename), and the LSP completion fallback replace span now honor a buffer's configured `word-chars` (see the new setting below) — e.g. with `-` configured, `foo-bar` is one word instead of three. Bracket pairs are unaffected: only pairs whose opening and closing character are the same (`'`, `"`, `` ` ``) skip auto-pairing after a word character. `W`/`B`/`MM` are unaffected: they already treat punctuation and word characters as one class. With `word-chars` configured, `*` can now still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there).
-- New `indent`/`unindent` (`>`/`<`) shift every line touched by a selection by one indent level (a count shifts by that many, e.g. `3>`), in the buffer's `tab-width`/`tab-style`. Blank and whitespace-only lines are left alone. Each touched line's whole indent is re-rendered to the new width rather than just prepended to or trimmed from, so `<` immediately after `>` restores the previous indent width exactly (re-rendered in the buffer's `tab-style`, so a mixed tabs-and-spaces indent normalizes as a side effect rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin rather than going negative, so `>` afterwards lands on a full level, not back where `<` started.
-- A numeric count prefix (`3w`, `12j`) is now capped at 10,000, whether typed or supplied by a script's `(call! "cmd" count)`. A large count no longer risks an overflow, and no longer slows down motions like `w`/`h`/`l` past their buffer clamp — they now stop as soon as the motion stops moving instead of repeating the full count.
-- Pasting or inserting a vertical tab, form feed, NEL, or Unicode line/paragraph separator character no longer splits the buffer into an extra editor line — it's ordinary content now, rendered like any other control character, matching every other editor and the line-break definition language servers use.
-- Every line-ending convention now normalizes to `\n` wherever text enters a buffer, not just at load: pasting, `p`/`P` register paste, a language server's edit or completion, and a plugin's own insertion all collapse a `\r\n` or a bare `\r` (old Mac) the way file load already did for `\r\n`. A buffer's lines always end in `\n` regardless of where the text came from. A file written with bare `\r` line endings is still read correctly, but that convention is not preserved on save: it loads as `LF` and saves with `\n`.
-- New tree-sitter structural text objects, for a language whose grammar ships a `textobjects.scm`
-  (PLUM installs one alongside highlights where the upstream grammar has one): `m i f`/`m a f`
-  (function), `m i t`/`m a t` (class/type), `m i c`/`m a c` (comment), `m i u`/`m a u` (unit test),
-  `m i v`/`m a v` (array/tuple/struct value). Each is a silent no-op without a matching grammar.
-- `m i a`/`m a a` (argument) is now structure-aware: where the grammar defines a `parameter` object
-  it's used in preference to the lexical scan, which still covers everything the grammar doesn't (a
-  region under a syntax error, a language with no grammar at all). This changes what counts as "the
-  argument" inside a call: a nested list, tuple, or struct literal is now one argument rather than
-  the lexical scan's innermost comma-delimited fragment — reach its members with `m i v`/`m a v`.
-- New `goto-next-<kind>`/`goto-prev-<kind>` commands, one pair per structural kind above plus
-  `goto-next-argument`/`goto-prev-argument`, select the next/previous object of that kind as a whole
-  selection with the cursor on its start; they don't wrap past either end of the buffer and each
-  records a jump-list entry (`Ctrl+o` returns). Bound by default under the `g` prefix, on the same
-  letter as each kind's text object — lowercase forward, uppercase backward: `g f`/`g F`, `g t`/`g T`,
-  `g a`/`g A`, `g c`/`g C`, `g u`/`g U`, `g v`/`g V`. Also run from the command line, e.g.
-  `:goto-next-function`.
-- `}` and the forward `goto-next-<kind>` commands now re-center the view on the object they just
-  selected — previously the object landed at the very bottom of the screen, often leaving its
-  body scrolled out of view entirely. New setting `object-jump-align` (`top`/`center`/`off`,
-  default `center`) controls this; `{`/`goto-prev-<kind>` are unaffected, since they already
-  land with the object's body on screen.
-- Case transforms moved from `gu`/`gU`/`gC` to `G L`/`G U`/`G C` — `G` is a dedicated prefix for
-  commands Vim files under `g` that aren't gotos, freeing `g` for goto motions and the structural
-  navigation above.
-- **Breaking**: several default keys moved so `g` holds only goto motions. `core:pickers`' fuzzy
-  finders move from `g f`/`g b`/`g m` to `z f`/`z b`/`z m` — a picker opens a panel over the
-  buffer, the same shape as `core:lsp`'s references list and code-action menu, already on `z`.
-  `core:lsp`'s `lsp-rename` moves from `g r` to `G R`, alongside the case transforms. `lsp-hover`
-  moves off the `z` prefix entirely to bare `K` — Vim's own keyword-lookup key, and common enough
-  to earn a single keystroke. The viewport triple becomes directional: `z t`/`z z`/`z b` are now
-  `z k`/`z z`/`z j`, the same up/down axis the motion keys use. `g f`, `g b`, `g m`, `g r`, and
-  `z t` are unbound; `z z`, `z r`, `z a`, and every other `g` goto are unchanged.
-- **Breaking**: `core:vim-keybind` no longer binds `G`. It was a single-key binding sitting on top
-  of HUME's own `G` prefix, which meant loading the plugin silently removed `G L`/`G U`/`G C` (and
-  would have removed `G R`) — a single-key bind replaces the whole trie node under it. `g e`
-  reaches the last line and is unaffected; every other binding the plugin adds (`0`, `^`, `$`, `C`,
-  `D`, `Ctrl+6`, Extend-mode `o`) is unchanged.
+- `}`/`{` now select the whole paragraph (plus its trailing blank line) instead of just moving the cursor, consistent with other structural motions. New `mip`/`map` text objects select just the paragraph when a plain selection is wanted.
+- New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).
+- Word motions, `miw`/`maw`, `Ctrl+W`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
+- New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).
+- Count prefixes (`3w`, `12j`) are capped at 10,000.
+- Pasting or typing unusual line-break characters no longer splits the buffer into an extra line.
+- Files with old-style line endings (`\r\n`, bare `\r`) are normalized to `\n` everywhere text enters the buffer, not just on load.
+- New tree-sitter based text objects for functions, types, comments, unit tests, and array/struct values (`mif`/`maf`, `mit`/`mat`, `mic`/`mac`, `miu`/`mau`, `miv`/`mav`), for any language with textobject support.
+- `mia`/`maa` (argument) is now smarter about nested lists, tuples, or structs inside a call.
+- New `goto-next-`/`goto-prev-` navigation for each text-object kind above, bound under `g` on the same letter (e.g. `gf`/`gF` for functions), also available from the command line.
+- `}` and forward structural navigation now re-center the view on the selected object instead of leaving it at the bottom of the screen (new `object-jump-align` setting).
+- Case transforms moved from `gu`/`gU`/`gC` to `GL`/`GU`/`GC`.
+- Several default keys moved to keep `g` reserved for goto motions: fuzzy finders move from `gf`/`gb`/`gm` to `zf`/`zb`/`zm`, rename moves from `gr` to `GR`, hover moves to bare `K`, and the viewport keys become `zk`/`zz`/`zj`.
+- The vim-keybind plugin no longer binds `G`, since it was overriding HUME's own case-transform keys.
 
 ### Files & buffers
-- New `goto-next-buffer`/`goto-prev-buffer` editor commands — the bindable-to-a-key
-  equivalents of `:bnext`/`:bprev`, for mapping from `init.scm`.
+- New `goto-next-buffer`/`goto-prev-buffer` commands, for binding to a key.
 
 ### Appearance
-- Curly, dotted and dashed underlines now render on terminals that support them. Themes could already ask for them and HUME already parsed the request; it was being flattened to a plain underline on the way to the terminal.
-- Whitespace indicator glyphs (spaces, tabs, newlines shown by the `whitespace-*` options) are now themable via `ui.virtual.whitespace` — previously they always inherited whatever syntax color sat underneath them, regardless of what a theme set for that scope. The online theme editor gains a "Virtual" category with rows for it and the other `ui.virtual.*` scopes HUME reads, all previously invisible to the tool.
-- Themes now also load from the `themes/` subdirectory of the HUME data directory, between the config directory and the bundled themes in search order — the destination for a theme installed by a tool (see `:plum-install-theme` below), as opposed to a hand-authored config-dir theme, which still wins on a name clash.
+- Extend mode now honors a theme's own selection cursor color instead of ignoring it; Normal mode gets a matching option.
+- A second, simultaneous cursor during multi-cursor Insert-mode editing now falls back to a theme's `ui.cursor` color when it has no `ui.cursor.insert` of its own, instead of rendering with no color at all.
+- Curly, dotted, dashed, and now double-line underlines render correctly on terminals that support them.
+- A theme color can now be one of the sixteen bare terminal color names Helix themes use (`red`, `light-gray`, and so on), resolved to a fixed value from the standard terminal palette.
+- Whitespace indicator glyphs (spaces, tabs, newlines) are now themable.
+- Themes can now also be installed to the data directory (see `:plum-install-theme` below) alongside hand-authored ones.
+- Inline diagnostic messages now use their own theme color instead of always matching the underlined squiggle.
+- Replaced the bundled `dark`/`light`/`gruvbox` themes with faithful ports of Helix's `gruvbox` and `gruvbox_light`. Bundled themes are now `sand`, `gruvbox`, `gruvbox_light`.
+- Themes can now use TOML section headers as well as HUME's flat dotted-key format.
+- A theme with a malformed entry — a bad color, an unsupported scope shape — now loads with that one entry left unstyled and a warning explaining why, instead of failing the whole theme or silently rendering it unstyled. A theme that's fundamentally broken (invalid TOML, a missing inherited theme) still fails to load with a clear error.
+- A theme-loading error now names the file it actually came from, even one inherited from a parent theme.
 
 ### Configuration & options
-- New `--config <FILE>` flag loads an arbitrary Steel config file instead of the default `init.scm`; `:reload-config` re-evaluates the same file. Themes and the data directory still resolve from the standard directories. Not valid with `--keys`.
-- Command-line file arguments now accept a trailing `:LINE` or `:LINE:COLUMN` position — `hume src/main.rs:42:5` opens the file with the cursor placed there, matching the `file:line:col` shape most tools print in diagnostics. A path that exists on disk exactly as typed always opens as-is, so a file genuinely named with a colon is unaffected.
-- New buffer option `word-chars` (Vim's `iskeyword`, minus the range syntax): extra characters counted as part of a word. Ships with no default set — configure it per language from an `on-language-set` hook (see the manual's [Configuration](https://cvlmtg.github.io/HUME/configuration.html) page).
+- New `--config <FILE>` flag loads a config file other than the default `init.scm`; `:reload-config` re-evaluates the same file.
+- File arguments can include a `:LINE` or `:LINE:COLUMN` suffix to open at that position (e.g. `hume src/main.rs:42:5`).
+- New `word-chars` buffer option configures extra characters treated as part of a word, settable per language.
 
 ### Plugins
-- `register-grammar!` gains an optional 6th positional argument, a `textobjects.scm` path. A
-  language that defines textobjects but nothing embedded passes `#f` for the 5th argument
-  (`injections-path`) to reach it.
-- `picker!` gains `#:query`, which prefills the input line and filters the (still empty, until seeded) item list against it.
-- `picker!` and `live-picker!` gain `#:truncate`, which end of an over-long row the panel clips: `'head` (default, unchanged) or `'tail`, for rows whose distinguishing part sits at the front (a grep match's path, say, ahead of the line preview).
-- New `live-picker!` opens a picker whose query drives an external source instead of the local fuzzy filter — a live grep, say, that re-runs its search per pattern instead of only locally filtering already-fetched rows.
-- New `picker-replace!`, `picker-push!`'s sibling: replaces the open picker's item list instead of appending to it.
-- `picker-source-spawn!` gains `#:ok-exit-codes` (default `'(0)`): the complete set of exit codes treated as a normal outcome, e.g. to add `rg`'s "no matches" exit to the default.
-- New `picker-source-stop!` stops the open picker's attached streaming source, if any, without touching the item list — the missing half of `picker-replace!` for a live requery whose new query has nothing to spawn a replacement source for.
-- New `core:stdlib` commands `stdlib/git-repo?` and `stdlib/git-toplevel` (git work-tree detection / repo-root resolution).
-- New `core:stdlib` commands `stdlib/selection-anchor`, `stdlib/selection-head`, `stdlib/selection-primary?`, and `stdlib/primary-selection` — accessors for a single selection triple.
-- New `core:stdlib` commands `stdlib/config-integer` (takes a minimum, `#f` for no minimum) and `stdlib/config-list` (a list of strings), rounding out `stdlib/config-boolean`/`-string`/`-enum` with the two remaining common `#:config` value shapes.
-- New `set-statusline-text!` writes per-buffer text for a `"steel:<name>"` statusline element — place it with `configure-statusline!` like any built-in element, then push its content from a hook, timer, or command.
-- `core:git-diff` now also drives a `"steel:git-branch"` statusline element for the focused buffer — place it with `configure-statusline!` and it shows the current branch, e.g. `(main)`, with no extra Steel required.
-- Pressing a key bound to a typed command's name, or typing `:` before an editor command's name, now says which kind it actually is and how to reach it instead of a bare "unknown command" — the post-init keymap lint catches a key bound to a typed-only name the same way at startup, rather than staying silent until the key is pressed. A duplicate `define-typed-command!` for a name another plugin already defined now names that owner instead of a generic conflict message. `declare-plugin`'s "no manifest.scm" error now suggests `#:typed-commands` alongside `#:commands`. `(call! …)` on a typed-only pending name no longer activates that plugin — it can never reach a typed command anyway, so the load was pure side effect. `:plugin-status` now shows a pending `#:typed-commands` entry as `:cmd:name` instead of `cmd:name`, so it's clear the name isn't key-bindable once its plugin loads.
-- New `core:plum` commands `:plum-install-theme <user/repo>`, `:plum-update-themes`, `:plum-list-themes`, and `:plum-remove-theme <user/repo>` install, update, list, and remove third-party theme repositories from GitHub, the same way PLUM already manages plugins and grammars.
+- New scripting support for structural text objects, live/streaming pickers, git helpers, and a per-buffer statusline element plugins can write to.
+- `core:git-diff` can now show the current git branch in the statusline.
+- Clearer error messages when a key or `:` command targets a command that isn't reachable that way.
+- New `:plum-install-theme`, `:plum-update-themes`, `:plum-list-themes`, and `:plum-remove-theme` manage third-party themes from GitHub, the same way PLUM already manages plugins and grammars.
 
 ### Fixes
-- `n`/`N` with no search match, `:b` on a buffer name that isn't open, a mistyped `:set` key, and other "nothing to do here" refusals now flash their message in the statusline and don't leave an error in `:messages` or raise the "N errors — :messages for details" nudge; real failures (a write that couldn't happen, a server that crashed) still do.
-- `Ctrl+O`/`Ctrl+I` now land on the text you jumped from rather than on whatever happens to sit at the old offset after you edit, undo, or reload the file (`:e!`). Re-running `:messages`/`:ls` drops that view's stale jump stops instead of leaving them pointing into regenerated content.
-- `p` on an empty line now pastes charwise register content onto that line instead of at the start of the next one.
-- `:reload-config` no longer leaves an `on-buffer-enter`-driven `"steel:<name>"` statusline element (e.g. `core:git-diff`'s `steel:git-branch`) blank until the next buffer switch or save — it now re-fires `on-buffer-enter` for the focused buffer as part of its usual buffer-lifecycle replay.
-- The sign column no longer shuffles a channel's marker sideways depending on what else shares its line, and no longer changes width as a channel's individual signs come and go. `signcolumn` (bare `always`/`auto`, no `:N`) now sizes the column to one slot per registered sign source (see `register-sign-source!` above), reserved the moment a plugin registers rather than derived from whatever priorities happen to be present in the buffer right now; pin `signcolumn=always:N`/`auto:N` for a fixed width, as before.
-- Diagnostic gutter markers no longer render underlined. They were interning the same scope as the text-span squiggle, which every bundled theme underlines; the gutter now reads its own scope (`error`/`warning`/`info`/`hint`).
-- `m/` (select all search matches) and `ms` (surround selection, e.g. `ms(`) followed by an edit are now replayable with `.` — they previously replayed only the edit against whatever selection happened to remain, instead of re-running the selection step (every current search match, or the next surrounding delimiter pair) before repeating the edit.
-- `C` (`copy-selection-on-next-line`/`-prev-line`) preceding an edit is now replayable with `.` — it previously replayed only the edit against whatever selection happened to remain, instead of re-duplicating the selection onto the adjacent line first.
-- The bracket-match cursor highlight (`ui.cursor.match`) no longer treats `<`/`>` as a pair — a cursor on either in `Vec<String>` or `a < b` no longer highlights the other as if they matched.
-- `,` (keep only the primary selection), `S` (split a selection into one per line), `_` (trim whitespace from a selection), `(`/`)` (cycle the primary selection), `Ctrl+,` (remove the primary selection), and `Ctrl+e` (flip anchor/head) preceding an edit are now replayable with `.` — each previously replayed only the edit against whatever selection happened to remain, instead of re-running the step that narrowed or reshaped the selection first.
-- `select-word-nearest-on-line` (bound by plugins, not a default key) is now replayable with `.` when it precedes an edit.
-- `m/` with a search pattern matching nothing, or `ms`/`ma`/`mi` finding no surrounding pair, no longer discards a selection step an earlier command in the same sequence had already built before an edit — `.` now re-runs that earlier step instead of replaying the edit against whatever selection happens to remain.
-- The alternate buffer (`Ctrl+6`/`goto-alternate-buffer`, `#`/`:b#`) now follows the order buffers were last visited rather than the order they were opened, so it keeps toggling with the buffer you actually came from after jumping around with a picker or another pane instead of falling back to whichever buffer opened just before the current one.
-- `:lsp-fmt` now range-formats a multi-line selection that spans only complete lines, instead of silently formatting the whole document.
-- `:split`/`:vsplit` now resize every pane sharing that split axis to an equal size, instead of halving whatever pane was split (three `:vsplit`s in a row now gives three equal columns, not 50/25/25). Closing a pane redistributes its space equally between the survivors rather than handing it all to one neighbour.
+- "Nothing to do here" refusals (no search match, unknown buffer name, mistyped setting, …) now just flash a message instead of being logged as errors.
+- `Ctrl+O`/`Ctrl+I` jumps now land correctly even after the buffer was edited, undone, or reloaded.
+- `p` on an empty line now pastes onto that line instead of the next one.
+- `:reload-config` no longer leaves plugin-driven statusline elements (e.g. the git branch) blank until the next buffer switch or save.
+- The sign column no longer shifts or resizes as gutter signs come and go.
+- Diagnostic gutter markers no longer render underlined.
+- `.` (repeat) now correctly replays the selection step, not just the edit, for: `m/` (select all matches), `ms` (surround), `C` (copy selection to adjacent line), `,` (keep primary selection), `S` (split into lines), `_` (trim whitespace), `(`/`)` (cycle selection), `Ctrl+,` (remove primary selection), `Ctrl+e` (flip anchor/head), and `select-word-nearest-on-line`.
+- The bracket-match highlight no longer treats `<`/`>` as a pair, so it no longer misfires on generics or comparisons.
+- The alternate buffer (`Ctrl+6`, `#`, `:b#`) now follows visit order, so it keeps toggling with the buffer you actually came from.
+- `:format-source` now correctly range-formats a multi-line selection instead of formatting the whole document.
+- `:split`/`:vsplit` now resize every pane on that axis equally instead of just halving the one being split; closing a pane redistributes its space evenly.
 
 ## [0.11.0] - 2026-08-25
 
