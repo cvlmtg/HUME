@@ -923,6 +923,36 @@ fn vsplit_renders_content_in_both_halves() {
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
+/// A theme that gives `ui.window` only a `bg` (the common upstream Helix
+/// shape — Helix's own border code leaves an unset fg as whatever the
+/// terminal already shows) must not leave the seam glyph's foreground
+/// unthemed in HUME: it falls back to `ui.text`'s color, the same base every
+/// other undecorated surface (a content row, a virtual row) already falls
+/// back to. See `EngineView::render`'s seam block in `hume-engine/src/pipeline/mod.rs`.
+#[test]
+fn seam_divider_falls_back_to_ui_text_when_window_has_no_fg() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.view.theme = hume_engine::theme::loader::parse_theme(
+        r##"
+        "ui.text" = { fg = "#abcdef" }
+        "ui.background" = { bg = "#000000" }
+        "ui.window" = { bg = "#123456" }
+        "##,
+    )
+    .expect("inline test theme must parse")
+    .theme;
+    ed.execute_typed("vsplit", None).unwrap();
+
+    let rect = Rect::new(0, 0, 20, 4);
+    let frame = render_to_styled_string(&mut ed, rect);
+    assert!(
+        frame.contains("fg=#abcdef,bg=#123456"),
+        "seam glyph must use ui.text's color when ui.window has no fg of its own, got: {frame}"
+    );
+}
+
 /// Where a horizontal seam meets a vertical seam, the crossing cell must get
 /// a proper junction glyph (`┬`), not whichever straight glyph drew last.
 /// `:split` stacks A/B, then `:vsplit` on B splits it into B|C — the seam

@@ -36,6 +36,7 @@
 - Replaced the bundled `dark`/`light`/`gruvbox` themes with faithful ports of Helix's `gruvbox` and `gruvbox_light`. Bundled themes are now `sand`, `gruvbox`, `gruvbox_light`.
 - Themes can now use TOML section headers as well as HUME's flat dotted-key format.
 - The theme loader is more Helix-compliant in several places (search-match highlighting, statusline mode colors, underline/modifier names, git-diff's gutter and line colors) — HUME's bundled themes already reflect this.
+- The pane seam divider now falls back to the theme's own base text color when `ui.window` sets only a background, instead of leaving the divider's foreground unthemed.
 
 ### Configuration & options
 - New `--config <FILE>` flag loads a config file other than the default `init.scm`; `:reload-config` re-evaluates the same file.

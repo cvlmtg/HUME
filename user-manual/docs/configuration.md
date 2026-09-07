@@ -271,8 +271,9 @@ listed alternative is where to put the color instead:
 #### Scopes HUME reads differently
 
 `ui.window` is the seam between split panes. HUME draws the divider glyph itself, so it
-reads that scope's foreground; a theme that sets only a background leaves the seam
-uncolored.
+reads that scope's foreground; a theme that sets only a background falls back to the
+theme's own base text color (`ui.text`) for it, the same fallback every other undecorated
+element uses.
 
 ## Key bindings
 

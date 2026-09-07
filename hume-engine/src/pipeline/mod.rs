@@ -451,8 +451,25 @@ impl EngineView {
             ctx.seam_arms.clear();
             collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
 
-            let muted = self.theme.ui.background.layer(self.theme.ui.window);
-            let accent = self.theme.ui.background.layer(self.theme.ui.window_focused);
+            // `theme.default` (ui.text's color) is the base layer here for the
+            // same reason it's the base for a content row (`style_row`'s
+            // `row_base`) and a virtual row (`base_scope` in
+            // `pane_render.rs`): a scope that leaves `fg` unset should fall
+            // back to the theme's own base text color everywhere, not just on
+            // some rendered surfaces — the seam is chrome HUME draws itself,
+            // it isn't Helix's own border (which leaves an unset fg as
+            // whatever the terminal already shows), so there's no reason for
+            // it to be the one exception.
+            let muted = self
+                .theme
+                .default
+                .layer(self.theme.ui.background)
+                .layer(self.theme.ui.window);
+            let accent = self
+                .theme
+                .default
+                .layer(self.theme.ui.background)
+                .layer(self.theme.ui.window_focused);
 
             // Junction cells at the focused pane's corners are missed by the
             // per-seam accent test (see `focused_pane_corners`); precompute
