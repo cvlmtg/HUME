@@ -106,6 +106,15 @@ impl ScopeRegistry {
     }
 }
 
+/// The dot-notation fallback chain for `scope`, most specific first:
+/// `"keyword.function"` yields `"keyword.function"`, then `"keyword"`.
+///
+/// Shared so the walk exists once: [`Theme::resolve_raw`] takes the first name
+/// with an entry, while `:theme-debug` reports every name that has one.
+pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
+    std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
+}
+
 // ---------------------------------------------------------------------------
 // UiScopes
 // ---------------------------------------------------------------------------
@@ -118,9 +127,13 @@ impl ScopeRegistry {
 /// construction, but calling it is idempotent).
 #[derive(Default)]
 pub struct UiScopes {
-    /// Selection-head highlight (Normal, Visual, … modes). Named `cursor` for Helix theme compat.
+    /// Selection-head highlight in Normal mode. Falls back through
+    /// `ui.cursor.normal` → `ui.cursor`, matching Helix's own fallback chain.
     pub cursor: ResolvedStyle,
-    /// Selection-head highlight in Insert mode. Named `cursor_insert` for Helix theme compat.
+    /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
+    /// for Helix theme compat. Falls back to `ui.cursor` if unset — unlike the
+    /// primary head, a secondary one has no real terminal cursor to fall back
+    /// on instead.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
@@ -140,10 +153,22 @@ pub struct UiScopes {
     /// to `CellContent::TabFill` — the blank a tab renders as with its
     /// indicator off must stay unstyled regardless of this scope.
     pub whitespace: ResolvedStyle,
-    /// Primary selection-head highlight (Normal/Extend/… modes). Falls back to `cursor` if unset.
+    /// Primary selection-head highlight in Normal mode. Falls back through
+    /// `ui.cursor.primary.normal` → `ui.cursor.primary` → `ui.cursor.normal` →
+    /// `ui.cursor`.
     pub cursor_primary: ResolvedStyle,
-    /// Primary selection-head highlight in Insert mode. Falls back to `cursor_insert` if unset.
+    /// Primary selection-head highlight in Insert mode. Falls back to `cursor_insert`'s
+    /// own scope (`ui.cursor.insert`), then empty — never to `ui.cursor`. HUME's insert
+    /// cursor is always a bar, and the real terminal cursor shows through when unset.
     pub cursor_insert_primary: ResolvedStyle,
+    /// Selection-head highlight in Extend mode — HUME's name for Helix's Select mode
+    /// (HUME's own `Select` mode is the `s` regex prompt, unrelated to this scope).
+    /// Falls back to `cursor` if unset.
+    pub cursor_select: ResolvedStyle,
+    /// Primary selection-head highlight in Extend mode. Falls back through
+    /// `ui.cursor.primary.select` → `ui.cursor.primary` → `ui.cursor.select` →
+    /// `ui.cursor`.
+    pub cursor_select_primary: ResolvedStyle,
     /// Primary selection highlight. Falls back to `selection` if unset.
     pub selection_primary: ResolvedStyle,
     /// Pane background colour. Painted behind all content cells so the theme bg shows
@@ -299,27 +324,27 @@ impl Theme {
     ///
     /// `"keyword.function"` tries `"keyword.function"`, then `"keyword"`, then returns `default`.
     pub(crate) fn resolve_raw(&self, s: &str) -> ResolvedStyle {
-        let mut cur = s;
-        loop {
-            if let Some(&style) = self.raw.get(cur) {
-                return style;
-            }
-            match cur.rfind('.') {
-                Some(dot) => cur = &cur[..dot],
-                None => return self.default,
-            }
-        }
+        fallback_chain(s)
+            .find_map(|key| self.raw.get(key).copied())
+            .unwrap_or(self.default)
     }
 
     // ── Private helpers ──────────────────────────────────────────────────
 
     fn compute_ui(&self) -> UiScopes {
         UiScopes {
-            cursor: self.resolve_raw("ui.cursor"),
-            // Insert and block cursors are distinct shapes, not a specificity hierarchy.
-            // No dot-notation parent fallback: absent → empty (no-op layer) so the real
-            // terminal bar cursor shows through the head cell.
-            cursor_insert: self.resolve_cursor_chain(&["ui.cursor.insert"]),
+            // Normal-mode cursor: ui.cursor.normal → ui.cursor, matching Helix's own
+            // `Mode::Normal` arm in `doc_selection_highlights`. Helix's chain ends in a
+            // further fallback to ui.selection; HUME gets the same pixels for free — an
+            // empty head style here just leaves the Tier-1 selection paint showing through.
+            cursor: self.resolve_raw("ui.cursor.normal"),
+            // Secondary insert cursor: ui.cursor.insert → ui.cursor. Matches Helix's own
+            // gate in `doc_selection_highlights` — a non-primary selection is always
+            // painted, regardless of the configured cursor shape, since a terminal has
+            // only one hardware cursor and a second simultaneous insertion point has no
+            // native indicator to fall back on. See `cursor_insert_primary` below for
+            // why the primary head's chain is different.
+            cursor_insert: self.resolve_cursor_chain(&["ui.cursor.insert", "ui.cursor"]),
             selection: self.resolve_raw("ui.selection"),
             cursorline: self.resolve_raw("ui.cursorline.primary"),
             virtual_text: self.resolve_raw("ui.virtual"),
@@ -327,12 +352,39 @@ impl Theme {
             indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
             invisible: self.resolve_raw("ui.virtual.invisible"),
             whitespace: self.resolve_raw("ui.virtual.whitespace"),
-            // Primary cursor: dot-notation fallback ui.cursor.primary → ui.cursor is correct.
-            cursor_primary: self.resolve_raw("ui.cursor.primary"),
-            // Primary insert cursor: prefer ui.cursor.primary.insert, then ui.cursor.insert,
-            // then empty. No fallback to the block ui.cursor (same rationale as cursor_insert).
+            // Primary cursor: ui.cursor.primary.normal → ui.cursor.primary →
+            // ui.cursor.normal → ui.cursor. Spelled out rather than left to
+            // dot-notation, which trims `ui.cursor.primary.normal` straight to
+            // `ui.cursor.primary` and never visits the mode's own secondary
+            // scope — a theme colouring only `ui.cursor.normal` would give its
+            // primary head the plain block colour and every other head the
+            // Normal one.
+            cursor_primary: self.resolve_cursor_chain(&[
+                "ui.cursor.primary.normal",
+                "ui.cursor.primary",
+                "ui.cursor.normal",
+                "ui.cursor",
+            ]),
+            // Primary insert cursor: ui.cursor.primary.insert → ui.cursor.insert → empty.
+            // No fallback to the block ui.cursor/ui.cursor.primary scopes: in Helix,
+            // `doc_selection_highlights` only paints the *primary* cursor's cell when the
+            // configured shape is Block — for Bar/Underline it relies on the terminal's own
+            // shaped cursor and paints nothing. HUME's insert cursor is always a bar (no
+            // block option), so the Helix-equivalent behaviour is this one, matching the
+            // Bar/Underline branch: an undefined insert scope stays empty rather than
+            // borrowing the block cursor's colour, and the terminal's real bar shows
+            // through unmodified.
             cursor_insert_primary: self
                 .resolve_cursor_chain(&["ui.cursor.primary.insert", "ui.cursor.insert"]),
+            // Extend-mode cursor: same shape as the block Normal cursor, so unlike
+            // the insert chain this one does end at `ui.cursor`.
+            cursor_select: self.resolve_raw("ui.cursor.select"),
+            cursor_select_primary: self.resolve_cursor_chain(&[
+                "ui.cursor.primary.select",
+                "ui.cursor.primary",
+                "ui.cursor.select",
+                "ui.cursor",
+            ]),
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
             selection_primary: self.resolve_raw("ui.selection.primary"),
             background: self.resolve_raw("ui.background"),
@@ -341,10 +393,23 @@ impl Theme {
         }
     }
 
-    /// Resolve a cursor scope from an explicit, ordered key list with NO dot-notation
-    /// parent fallback. Insert and block cursors are distinct shapes, not a specificity
-    /// hierarchy: `ui.cursor.insert` must never inherit `ui.cursor`'s block background.
-    /// Returns an empty (all-`None`) style when no listed key is defined.
+    /// Resolve a cursor scope from an explicit, ordered key list — first key with
+    /// an entry wins — with NO dot-notation fallback of its own. Returns an empty
+    /// (all-`None`) style when no listed key is defined.
+    ///
+    /// Two distinct reasons a cursor scope needs this instead of `resolve_raw`:
+    ///
+    /// - To stop *short* of a parent, for exactly one field:
+    ///   `cursor_insert_primary`'s list omits the block cursor scopes on purpose,
+    ///   because HUME's insert cursor is always a bar and Helix itself doesn't
+    ///   paint a *primary* bar/underline cursor's cell either — see that field's
+    ///   own doc at its `compute_ui` call site for the full reasoning.
+    /// - To reach a key dot-trimming *skips*. A primary cursor's chain is
+    ///   `ui.cursor.primary.<mode>` → `ui.cursor.primary` → `ui.cursor.<mode>` →
+    ///   `ui.cursor` (Helix's own order), and trimming the leading key by dots
+    ///   jumps from `ui.cursor.primary` straight past `ui.cursor.<mode>`.
+    ///
+    /// Both lists are written out at the [`Self::compute_ui`] call sites.
     fn resolve_cursor_chain(&self, keys: &[&str]) -> ResolvedStyle {
         keys.iter()
             .find_map(|k| self.raw.get(*k).copied())

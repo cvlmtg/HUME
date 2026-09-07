@@ -216,10 +216,11 @@ pub(crate) fn typed_theme(
         .map_err(CommandError::new)
 }
 
-/// `:theme-debug` — print the resolved style chain for key UI scopes.
+/// `:theme-debug` — print what the active theme resolves for key UI surfaces.
 ///
-/// Reports the scope name, resolution chain, and final fg/bg/modifiers for
-/// the cursor, selection, and cursorline scopes from the active theme.
+/// Cursor rows report the pre-resolved style the renderer reads; selection,
+/// cursorline and statusline rows report their resolved style plus every name
+/// on their dot-notation chain the theme defines.
 pub(crate) fn typed_theme_debug(
     ed: &mut Editor,
     _arg: Option<&str>,
@@ -232,24 +233,31 @@ pub(crate) fn typed_theme_debug(
         }
     }
 
-    fn scope_chain(theme: &hume_engine::theme::Theme, scope: &str) -> String {
-        // Walk the dot-notation prefix chain and collect names that have entries.
-        let mut chain: Vec<&str> = Vec::new();
-        let mut cur = scope;
-        loop {
-            if theme.raw_contains(cur) {
-                chain.push(cur);
-            }
-            match cur.rfind('.') {
-                Some(dot) => cur = &cur[..dot],
-                None => break,
-            }
-        }
+    /// Every name on `scope`'s dot-notation chain that the theme actually
+    /// defines. Not the resolution path: `resolve_by_name` stops at the first
+    /// of these, the rest are what it would fall through to next.
+    fn defined_ancestors(theme: &hume_engine::theme::Theme, scope: &str) -> String {
+        let chain: Vec<&str> = hume_engine::theme::fallback_chain(scope)
+            .filter(|key| theme.raw_contains(key))
+            .collect();
         if chain.is_empty() {
             format!("{scope} → default")
         } else {
             chain.join(" → ")
         }
+    }
+
+    fn style_line(label: &str, chain: &str, style: hume_engine::types::ResolvedStyle) -> String {
+        format!(
+            "  {label}: {chain} fg={} bg={}{}",
+            color_str(style.fg),
+            color_str(style.bg),
+            if style.modifiers.is_empty() {
+                String::new()
+            } else {
+                format!(" modifiers={:?}", style.modifiers)
+            },
+        )
     }
 
     let theme = &ed.view.theme;
@@ -259,28 +267,40 @@ pub(crate) fn typed_theme_debug(
         &ed.state.settings.theme
     };
 
-    let scopes = [
-        "ui.cursor.primary",
-        "ui.cursor",
-        "ui.cursor.insert",
-        "ui.selection",
-        "ui.cursorline",
-        "ui.statusline",
-    ];
-
     let mut lines = vec![format!("Theme: {name}")];
-    for scope in scopes {
+
+    // Cursor rows report the style the renderer will actually layer, taken
+    // from the same pre-resolved `ui` fields it reads. Their chains aren't
+    // plain dot-notation — the primary insert cursor deliberately stops
+    // short of `ui.cursor`, the primary normal/extend ones reach a key
+    // dot-trimming skips — so showing a dot-notation walk here would name
+    // colors that never render.
+    let ui = &theme.ui;
+    for (label, style) in [
+        ("cursor (normal)", ui.cursor),
+        ("cursor (insert)", ui.cursor_insert),
+        ("cursor (extend)", ui.cursor_select),
+        ("cursor primary (normal)", ui.cursor_primary),
+        ("cursor primary (insert)", ui.cursor_insert_primary),
+        ("cursor primary (extend)", ui.cursor_select_primary),
+    ] {
+        lines.push(style_line(label, "resolved", style));
+    }
+
+    // Ordinary dot-notation scopes: the chain is the whole story.
+    for scope in [
+        "ui.cursor.match",
+        "ui.cursor.match.search",
+        "ui.selection",
+        "ui.selection.primary",
+        "ui.cursorline.primary",
+        "ui.statusline",
+    ] {
         let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
-        let chain = scope_chain(theme, scope);
-        lines.push(format!(
-            "  {scope}: chain={chain} fg={} bg={}{}",
-            color_str(style.fg),
-            color_str(style.bg),
-            if style.modifiers.is_empty() {
-                String::new()
-            } else {
-                format!(" modifiers={:?}", style.modifiers)
-            },
+        lines.push(style_line(
+            scope,
+            &format!("chain={}", defined_ancestors(theme, scope)),
+            style,
         ));
     }
 

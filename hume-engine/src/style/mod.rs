@@ -242,23 +242,29 @@ pub(crate) fn style_row(
         // visual indicator.
         let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
         if is_primary_head {
-            let head_style = if mode.cursor_is_bar() {
-                theme.ui.cursor_insert_primary
-            } else {
-                theme.ui.cursor_primary
-            };
-            style = style.layer(head_style);
+            style = style.layer(head_style(theme, mode, true));
         } else if scratch.head_display_cols.contains(&g.display_col) {
-            let head_style = if mode.cursor_is_bar() {
-                theme.ui.cursor_insert
-            } else {
-                theme.ui.cursor
-            };
-            style = style.layer(head_style);
+            style = style.layer(head_style(theme, mode, false));
         }
 
         scratch.styles[g_idx] = style;
     }
+}
+
+/// Pick the Tier-0 cursor style for a selection head, by mode and primary-ness.
+///
+/// Bar-cursor modes (Insert, Command, Search, HUME's own Select prompt) use the
+/// insert chain; Extend — HUME's name for Helix's Select mode — uses the select
+/// chain; every other (block) mode uses the plain chain.
+fn head_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> ResolvedStyle {
+    let (primary, secondary) = if mode.cursor_is_bar() {
+        (theme.ui.cursor_insert_primary, theme.ui.cursor_insert)
+    } else if mode == EditorMode::Extend {
+        (theme.ui.cursor_select_primary, theme.ui.cursor_select)
+    } else {
+        (theme.ui.cursor_primary, theme.ui.cursor)
+    };
+    if is_primary { primary } else { secondary }
 }
 
 // ---------------------------------------------------------------------------

@@ -558,10 +558,20 @@ fn insert_mode_uses_insert_cursor_scope() {
 }
 
 #[test]
-fn insert_head_is_transparent_without_insert_scope() {
+fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
     // Theme defines ui.cursor with a block bg but NOT ui.cursor.insert.
-    // In Insert mode the head cell must NOT inherit the block bg so the real
-    // terminal bar cursor shows through.
+    //
+    // The primary head must NOT inherit the block bg: Helix's own gate
+    // (`doc_selection_highlights`) only paints the primary cursor's cell
+    // when the configured shape is Block, never for Bar/Underline — and
+    // HUME's insert cursor is always a bar, so the real terminal cursor
+    // shows through unmodified here, matching that Bar-shape behaviour.
+    //
+    // The secondary head DOES inherit ui.cursor: Helix paints every
+    // secondary cursor unconditionally, regardless of shape, because a
+    // terminal has only one hardware cursor — a second simultaneous
+    // insertion point has no native indicator to fall back on and would
+    // otherwise be genuinely invisible, not just uncoloured.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
@@ -594,11 +604,13 @@ fn insert_head_is_transparent_without_insert_scope() {
 
     assert_eq!(
         scratch.styles[0].bg, None,
-        "primary insert head has no block bg"
+        "primary insert head has no block bg — the terminal's own bar shows through"
     );
     assert_eq!(
-        scratch.styles[2].bg, None,
-        "secondary insert head has no block bg"
+        scratch.styles[2].bg,
+        Some(Rgb(255, 0, 0)),
+        "secondary insert head falls back to ui.cursor — there is no second hardware \
+         cursor for it to rely on instead"
     );
 }
 
@@ -874,6 +886,171 @@ fn primary_selection_gets_primary_style() {
         scratch.styles[2].bg,
         Some(Rgb(0, 255, 255)),
         "display_col 2 is primary head — must have primary selection bg"
+    );
+}
+
+#[test]
+fn extend_mode_uses_select_cursor_scope() {
+    // Extend is HUME's name for Helix's Select mode — a theme's
+    // ui.cursor.select / ui.cursor.primary.select must apply there, not the
+    // plain block scope.
+    let rope = ropey::Rope::from_str("abcde");
+    let graphemes = make_graphemes(5);
+    let rows = vec![make_row(0..5)];
+    let selections = vec![
+        Selection { anchor: 0, head: 0 }, // primary
+        Selection { anchor: 2, head: 2 }, // secondary
+    ];
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.cursor",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 0, 0)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.primary",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 255, 0)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.select",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 0, 255)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.primary.select",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Extend,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    assert_eq!(
+        scratch.styles[0].fg,
+        Some(Rgb(255, 255, 0)),
+        "primary head in Extend mode gets ui.cursor.primary.select"
+    );
+    assert_eq!(
+        scratch.styles[2].fg,
+        Some(Rgb(0, 0, 255)),
+        "secondary head in Extend mode gets ui.cursor.select"
+    );
+}
+
+/// Insert-mode twin of the Extend test above. Two heads with distinct primary
+/// and secondary insert colours: with one selection the primary would resolve
+/// to the same colour either way, since `cursor_insert_primary` falls back to
+/// `ui.cursor.insert`, so only a second head can tell them apart.
+#[test]
+fn insert_mode_distinguishes_primary_from_secondary_head() {
+    let rope = ropey::Rope::from_str("abcde");
+    let graphemes = make_graphemes(5);
+    let rows = vec![make_row(0..5)];
+    let selections = vec![
+        Selection { anchor: 0, head: 0 }, // primary
+        Selection { anchor: 2, head: 2 }, // secondary
+    ];
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.cursor.insert",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 0, 255)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.primary.insert",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Insert,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    assert_eq!(
+        scratch.styles[0].fg,
+        Some(Rgb(255, 255, 0)),
+        "primary head in Insert mode gets ui.cursor.primary.insert"
+    );
+    assert_eq!(
+        scratch.styles[2].fg,
+        Some(Rgb(0, 0, 255)),
+        "secondary head in Insert mode gets ui.cursor.insert"
+    );
+}
+
+#[test]
+fn normal_mode_still_uses_plain_cursor_scope_not_select() {
+    // Regression guard: adding Extend-mode select scopes must not leak
+    // into Normal mode.
+    let rope = ropey::Rope::from_str("abcde");
+    let graphemes = make_graphemes(5);
+    let rows = vec![make_row(0..5)];
+    let selections = vec![Selection { anchor: 0, head: 0 }];
+
+    let mut styles_map = HashMap::new();
+    styles_map.insert(
+        "ui.cursor.primary",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 255, 0)),
+            ..Default::default()
+        },
+    );
+    styles_map.insert(
+        "ui.cursor.primary.select",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            ..Default::default()
+        },
+    );
+    let theme = Theme::new(styles_map, ResolvedStyle::default());
+
+    let mut scratch = StyleScratch::new();
+    apply_styles(
+        &rows,
+        &graphemes,
+        &selections,
+        EditorMode::Normal,
+        &theme,
+        &rope,
+        &mut scratch,
+    );
+
+    assert_eq!(
+        scratch.styles[0].fg,
+        Some(Rgb(0, 255, 0)),
+        "Normal mode must use ui.cursor.primary, not the select variant"
     );
 }
 
