@@ -161,7 +161,15 @@ Accepted values:
 
 To see which themes are available, type `:theme ` and press `Tab`.
 
-Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins. HUME uses the Helix theme format, so any theme written for Helix works in HUME too.
+Custom themes are TOML files placed in the `themes/` subdirectory of your HUME config directory — hand-authored, alongside `init.scm`. A theme installed by a tool instead goes in the `themes/` subdirectory of your HUME data directory (see [File locations](#file-locations)); a config-dir theme of the same name wins.
+
+HUME reads the Helix theme format and aims to support Helix themes as they are written. It is not there in every detail yet, but it is close: most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`) — HUME treats the two as equivalent, though Helix itself reads only the flat form, so a section-header theme won't travel back.
+
+A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on) — these resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
+
+One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive and is skipped.
+
+A theme fails to load outright only when the file itself is broken: invalid TOML syntax, or an `inherits` parent that doesn't exist or forms a cycle. Loading then keeps your current theme.
 
 ### Installing themes
 
@@ -181,50 +189,91 @@ A theme editor is available online — a single-file HTML tool you download and 
 
 ### Theme scopes
 
-HUME reads these Helix statusline scopes:
+A scope not listed below behaves as
+[Helix's own theme reference](https://docs.helix-editor.com/themes.html) describes it.
+Every syntax-highlighting scope works this way, so the part of a theme that colors your
+code carries over as-is.
 
-- `ui.statusline` — fallback style for the statusline row, and the style
-  shown in every mode when `statusline.mode-colors` is off
-- `ui.statusline.normal` — row style in Normal mode
-- `ui.statusline.insert` — row style in Insert mode
-- `ui.statusline.separator` — separator glyph between statusline elements;
-  when a theme doesn't define it, the separator matches whatever the row
-  itself is currently tinted, rather than the untinted base `ui.statusline`
+#### Scopes HUME adds
 
-The whole statusline row is tinted with the current mode's color (see
-`statusline.mode-colors` above); a theme that omits a mode scope falls back to
-`ui.statusline`. HUME adds four more mode scopes for modes Helix doesn't have:
+These have no Helix equivalent:
 
-- `ui.statusline.extend`
-- `ui.statusline.search`
-- `ui.statusline.command`
-- `ui.statusline.select`
+- `ui.cursor.match.search` — coloring every visible search match, falling back to
+  `ui.cursor.match` when unset
+- `ui.popup.scroll` — scrollbar thumb on a scrolled hover popup (Helix only themes a
+  scrollbar for `ui.menu`)
+- `ui.window.focused` — seam divider segments adjacent to the focused pane, falling back
+  to `ui.window`
+- `ui.drawer` — background of the bottom drawer (`show-drawer-list!`), a generic pick-list
+  panel Helix doesn't have
+- `ui.statusline.search` / `.command` / `.filter` — one more mode-tinted statusline scope
+  per HUME mode Helix doesn't have, alongside Helix's own
+  `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
+  what Helix calls Select mode; `.filter` colors HUME's own, unrelated `Select` mode — the
+  `s` regex-filter prompt)
+- `ui.virtual.invisible` — the `<200b>`-style stand-in for a character the terminal must
+  not be shown as itself (see the note under Buffer options above)
+- `diff.plus.word` / `diff.minus.word` — word-level highlight inside a changed line
+  (`core:git-diff`'s inline diff), inside the row-level `diff.plus`/`diff.minus` tint
+- `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
+  their `.message-text` counterparts — the `:messages` log's severity badge and body text,
+  a HUME-only feature
+- `error.diagnostic.inline` / `warning.diagnostic.inline` / `info.diagnostic.inline` /
+  `hint.diagnostic.inline` — the diagnostic summary shown at the end of an offending line.
+  Separate from `diagnostic.error` and friends, which style the squiggle under the code
+  itself, so the summary doesn't pick up that scope's underline. Each falls back to the
+  matching `error`/`warning`/`info`/`hint` gutter color when unset
 
-Popups and menus (LSP hover, completion, the fuzzy picker) read their own scopes:
+#### Helix scopes HUME doesn't read
 
-- `ui.popup` / `ui.popup.info` — hover and info popup background
-- `ui.popup.scroll` — scrollbar thumb on a scrolled hover popup
-- `ui.menu` / `ui.menu.selected` — completion and picker rows / the selected row
-- `ui.menu.scroll` — scrollbar thumb on a scrolled menu
+Declaring any of these has no effect today. They fall into two groups, and the difference
+matters if you're deciding whether to keep them in a theme you maintain.
 
-HUME reads these Helix virtual-text scopes:
+**Waiting on a feature.** HUME doesn't have the thing these color yet. When it does, these
+scopes are the natural way to theme it, so leaving them in a theme costs nothing:
 
-- `ui.virtual` — fallback style for virtual/filler content (end-of-buffer
-  `~` rows, provider-drawn virtual lines), and the fallback every other
-  `ui.virtual.*` scope below reaches when a theme leaves it undefined
-- `ui.virtual.indent-guide` — indent guide columns (see `indent-guides`
-  under Buffer options)
-- `ui.virtual.whitespace` — the indicators shown for spaces, tabs, and
-  newlines when whitespace rendering is on (see `whitespace-space` and
-  friends under Buffer options)
-- `ui.virtual.inlay-hint` — LSP inlay hints; every hint kind is styled the
-  same way
+- No debugger (DAP) support: `ui.debug`, `ui.debug.breakpoint`, `ui.debug.active`
+- No tabline yet: `ui.bufferline`, `ui.bufferline.active`, `ui.bufferline.background`
+- No which-key-style prompts: `ui.popup.info`, `ui.help`, `ui.text.info`
+- No picker-preview highlighting: `ui.highlight`, `ui.highlight.frameline`
+- No cursor-column ruler: `ui.cursorcolumn`, `ui.cursorcolumn.primary`,
+  `ui.cursorcolumn.secondary`
+- No per-kind completion-entry styling: `ui.text.directory`, `ui.text.symlink`
+- No LSP deprecated/unnecessary diagnostic tags: `diagnostic.deprecated`,
+  `diagnostic.unnecessary`
+- No move- or conflict-specific diff styling: `diff.delta.moved`, `diff.delta.conflict`
+- No snippet support: `tabstop`
+- Ruler columns, the soft-wrap indicator, virtual jump labels, and per-kind inlay hints:
+  `ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`,
+  `ui.virtual.inlay-hint.parameter`, `ui.virtual.inlay-hint.type`
 
-HUME also reads `ui.virtual.invisible`, a scope Helix doesn't have — see
-the note under Buffer options above. It does not currently read Helix's
-`ui.virtual.ruler`, `ui.virtual.wrap`, `ui.virtual.jump-label`, or the
-per-kind `ui.virtual.inlay-hint.parameter`/`ui.virtual.inlay-hint.type`;
-declaring any of those in a theme has no effect yet.
+**HUME's interface works differently.** These color a piece of Helix's UI that HUME either
+doesn't present the same way or styles from another scope. They may never apply, so the
+listed alternative is where to put the color instead:
+
+- `ui.picker.header`, `ui.picker.header.column`, `ui.picker.header.column.active` — HUME's
+  picker has no column headers to style
+- `ui.gutter`, `ui.gutter.selected` — the gutter takes no background of its own; style it
+  with `ui.linenr` and `ui.linenr.selected`
+- `ui.statusline.inactive`, `ui.text.inactive` — HUME tints the whole statusline row by
+  mode rather than dimming an unfocused one, and dims an unfocused pane wholesale instead
+  of theming an inactive state
+- `ui.cursorline.secondary` — only the primary selection's line is tinted, via
+  `ui.cursorline.primary`
+- `ui.background.separator` — HUME's prompt line has no separator rule beneath it
+
+#### Scopes HUME reads differently
+
+`diff.plus`, `diff.minus` and `diff.delta` tint the whole changed line in HUME, so it reads
+their **background**. Helix colors a marker in the gutter with them and reads their
+foreground. Most Helix themes therefore set only an `fg` on these, which leaves HUME with
+no row tint to paint. Give each one a `bg` to get the tint, and put the gutter color on
+`diff.plus.gutter`, `diff.minus.gutter` and `diff.delta.gutter`, which HUME reads for the
+sign column.
+
+`ui.window` is the seam between split panes. HUME draws the divider glyph itself, so it
+reads that scope's foreground; a theme that sets only a background leaves the seam
+uncolored.
 
 ## Key bindings
 

@@ -16,6 +16,16 @@ summary: `diagnostics-for-buffer` only applies the new floor the next time it's
 called, so without this hook every buffer would keep showing the old cut until its
 next unrelated `on-diagnostics-changed` fire.
 
+The summary's scope is `lsp/severity-scope`'s `<severity>.diagnostic.inline`
+(`error.diagnostic.inline` and friends) — a HUME scope with no Helix counterpart,
+since Helix has no end-of-line diagnostic summary to theme. It is deliberately not
+`diagnostic.<severity>`, which belongs to the editing-area text span: every bundled
+theme gives that one an `underlined` modifier for the squiggle, and virtual text
+sitting past the end of the line must not inherit it. The leading-severity spelling
+puts each severity's own name first so a theme can colour all four from one
+`error`/`warning`/`info`/`hint` entry through the usual dot-notation fallback, which
+is exactly what a theme that declares none of them gets.
+
 ## Gutter signs
 
 Gutter signs are the same pull, one call further: `lsp/refresh-diagnostic-decorations`
@@ -28,10 +38,10 @@ through `"end-line"`, both inclusive — `diagnostics-for-buffer` clamps `"end-l
 into the buffer's addressable range the same way it does `"line"`); the most severe
 diagnostic on a line wins, via the same `lsp/most-severe` reduction the EOL summary
 uses. The sign's scope is the bare severity name (`error`/`warning`/`info`/`hint`)
-rather than `lsp/severity-scope`'s `diagnostic.*`-prefixed form: the gutter glyph and
-its underlying text span are different render surfaces, and every bundled theme
-underlines the `diagnostic.*` scope for the text squiggle — an underline the gutter
-glyph must not inherit.
+rather than `lsp/severity-scope`'s form: the gutter glyph and its underlying text
+span are different render surfaces, and every bundled theme underlines the
+`diagnostic.<severity>` scope for the text squiggle — an underline the gutter glyph
+must not inherit.
 
 `lsp/most-severe` ranks by each diagnostic's own `"severity-rank"` field
 (`DiagSeverity`'s `Ord`, authored once in Rust — 0 for error, counting up to 3 for
