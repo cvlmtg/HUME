@@ -773,7 +773,7 @@ dependencies = [
  "ctrlc",
  "hume-grid",
  "nix",
- "signal-hook",
+ "signal-hook 0.4.4",
  "tempfile",
  "termina",
 ]
@@ -1672,6 +1672,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
+]
+
+[[package]]
 name = "signal-hook-registry"
 version = "1.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1927,7 +1937,7 @@ dependencies = [
  "bitflags 2.13.1",
  "parking_lot",
  "rustix",
- "signal-hook",
+ "signal-hook 0.3.18",
  "windows-sys 0.61.2",
 ]
 
