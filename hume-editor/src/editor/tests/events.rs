@@ -8,11 +8,15 @@ use hume_grid::Rect;
 /// transition.  Before the fix, `end_insert_session` wrote `state.mode`
 /// directly, bypassing the funnel, so the hook never reached script handlers.
 ///
-/// Verification: install an `on-mode-change` handler that calls `move-right`;
-/// the cursor advances only if the hook fired. `handle_input` does not
-/// drain itself (that lives in `Editor::run`'s loop, see
-/// `Editor::settle`'s doc) — an explicit `settle()` after dispatch is what
-/// fires the queued hook.
+/// Verification: install an `on-mode-change` handler that logs a message;
+/// a new log entry proves the hook fired. Deliberately not a cursor motion
+/// (as the sibling mouse-click test below uses) — with `select-inserted-text`
+/// on, the entry hook's own `move-right` would land inside the pinned typed
+/// run and get folded into the Esc-time auto-select, then cancelled out by
+/// the exit hook's own `move-right`, so `state()` would spuriously come back
+/// unchanged. `handle_input` does not drain itself (that lives in
+/// `Editor::run`'s loop, see `Editor::settle`'s doc) — an explicit `settle()`
+/// after dispatch is what fires the queued hook.
 #[test]
 fn exit_insert_via_esc_fires_on_mode_change() {
     use crate::testing::MockHost;
@@ -25,29 +29,28 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     let mut host = ScriptingHost::new();
     let mut mock = MockHost::new();
     host.eval_source(
-        r#"(register-hook! 'on-mode-change (lambda (old new) (call! "move-right")))"#,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (log! 'trace "mode-changed")))"#,
         &mut mock,
     )
     .unwrap();
     ed.scripting = Some(host);
 
     // Enter Insert via `i` via handle_input + settle(), draining the
-    // Normal→Insert hook before we capture the before state.
+    // Normal→Insert hook before we capture the before count.
     ed.handle_input(TerminalEvent::Key(key('i')));
     ed.settle();
     assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
 
-    let before = state(&ed);
+    let before = ed.state.message_log.entries().count();
 
     // Exit via Esc, then settle() to drain the queued on-mode-change hook.
     ed.handle_input(TerminalEvent::Key(key_esc()));
     ed.settle();
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
-    assert_ne!(
-        state(&ed),
-        before,
-        "on-mode-change handler (move-right) must have fired on Insert→Normal via Esc"
+    assert!(
+        ed.state.message_log.entries().count() > before,
+        "on-mode-change handler must have fired on Insert→Normal via Esc"
     );
 }
 

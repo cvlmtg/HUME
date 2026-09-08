@@ -392,7 +392,7 @@ pub(super) use typed_buffer::*;
 pub(super) use typed_file::*;
 pub(super) use typed_misc::*;
 
-// insert_session.rs's remaining items (begin_insert_session, pin_insert_anchors,
+// insert_session.rs's remaining items (begin_insert_session, begin_typed_run,
 // is_group_open_current, has_blank_line_cursor) are re-exported privately above
 // (visible only within `commands` and its descendants — every other `mod` in
 // this file, and the registry glob) since nothing outside `commands` calls

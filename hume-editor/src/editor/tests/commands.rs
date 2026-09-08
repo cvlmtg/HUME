@@ -35,7 +35,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
     assert!(!ed.doc().can_undo());
 }
 
-// ── `c` leaves the typed replacement selected (select-changed-text) ──────────
+// ── `c` leaves the typed replacement selected (select-inserted-text) ─────────
 
 #[test]
 fn c_type_esc_selects_replacement() {
@@ -57,7 +57,7 @@ fn c_esc_without_typing_stays_collapsed() {
 
 /// Ctrl-W (delete-word-backward) inside a `c` session must not clear the
 /// insertion pin — it's a text edit within the session, not a cursor motion
-/// away from it. `select-changed-text` must still select what survived.
+/// away from it. `select-inserted-text` must still select what survived.
 #[test]
 fn c_type_ctrl_w_esc_selects_surviving_typed_run() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -129,7 +129,7 @@ fn c_arrow_mid_session_cancels_selection() {
 #[test]
 fn c_setting_false_keeps_current_behavior() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.settings.select_changed_text = false;
+    ed.state.settings.select_inserted_text = false;
     ed.handle_key(key('c'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
@@ -145,6 +145,11 @@ fn mii(ed: &mut Editor) {
     ed.handle_key(key('i'));
 }
 
+/// With `select-inserted-text` on (the default), `i` already selects what it
+/// typed on `Esc` — this test's real point is that `mii` recomputes the
+/// identical span independently, so the selection is perturbed (`;`,
+/// collapse-to-head) between `Esc` and `mii` to prove `mii` actively
+/// reconstructed it rather than the perturbation simply not having happened.
 #[test]
 fn mii_after_insert_before_selects_typed_text() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -152,7 +157,8 @@ fn mii_after_insert_before_selects_typed_text() {
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "hi-[h]>ello\n"); // plain `i` leaves a collapsed cursor
+    assert_eq!(state(&ed), "-[hi]>hello\n");
+    ed.handle_key(key(';')); // collapse to head — perturb before mii
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hi]>hello\n");
 }
@@ -164,16 +170,36 @@ fn mii_after_insert_after_selects_typed_text() {
     ed.handle_key(key('X'));
     ed.handle_key(key('Y'));
     ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "h-[XY]>ello\n");
+    ed.handle_key(key(';'));
     mii(&mut ed);
     assert_eq!(state(&ed), "h-[XY]>ello\n");
 }
 
-/// `A` steps the cursor back one grapheme on exit (cosmetic), but the span
-/// `mii` reconstructs must cover everything typed, not just up to the
-/// stepped-back cursor.
+/// `A` steps the cursor back one grapheme when nothing is typed, but here the
+/// typed run's own selected span already lands on the same head position, so
+/// `select-inserted-text` selects the whole run, not just the last char.
 #[test]
 fn mii_after_capital_a_selects_full_typed_run_despite_step_back() {
     let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('A'));
+    for ch in " world".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hello-[ world]>\n");
+    ed.handle_key(key(';'));
+    mii(&mut ed);
+    assert_eq!(state(&ed), "hello-[ world]>\n");
+}
+
+/// With `select-inserted-text` off, `A`'s own step-back-on-exit still leaves
+/// a genuinely collapsed cursor — `mii` must still recover the full typed
+/// run despite that, not just reflect whatever Esc left selected.
+#[test]
+fn mii_after_capital_a_selects_full_typed_run_despite_step_back_setting_off() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.select_inserted_text = false;
     ed.handle_key(key('A'));
     for ch in " world".chars() {
         ed.handle_key(key(ch));
@@ -194,6 +220,8 @@ fn mii_after_o_excludes_structural_newline() {
     ed.handle_key(key('b'));
     ed.handle_key(key('c'));
     ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "hello\n-[abc]>\n");
+    ed.handle_key(key(';'));
     mii(&mut ed);
     assert_eq!(state(&ed), "hello\n-[abc]>\n");
 }
@@ -206,18 +234,20 @@ fn mii_after_capital_o_excludes_structural_newline() {
     ed.handle_key(key('y'));
     ed.handle_key(key('z'));
     ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "foo\n-[xyz]>\nbar\n");
+    ed.handle_key(key(';'));
     mii(&mut ed);
     assert_eq!(state(&ed), "foo\n-[xyz]>\nbar\n");
 }
 
-/// `mii` recomputes the span independently of `select-changed-text` — after
+/// `mii` recomputes the span independently of `select-inserted-text` — after
 /// `c` already selected the replacement, `mii` must select the identical
 /// range (a regression check that generalizing the pin capture didn't change
 /// `c`'s own behavior). The selection is perturbed between `c`'s exit and
 /// `mii` so the final assertion can only pass if `mii` actively recomputed
 /// the span — not because `c`'s own selection was simply left untouched.
 #[test]
-fn mii_after_c_matches_select_changed_text_result() {
+fn mii_after_c_matches_select_inserted_text_result() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('c'));
     ed.handle_key(key('h'));
@@ -230,13 +260,13 @@ fn mii_after_c_matches_select_changed_text_result() {
     assert_eq!(state(&ed), "-[hi]>o\n");
 }
 
-/// With `select-changed-text` off, `c` leaves a collapsed cursor — but `mii`
+/// With `select-inserted-text` off, `c` leaves a collapsed cursor — but `mii`
 /// still recovers the typed span, since pinning doesn't depend on the
 /// setting (only auto-select-on-exit does).
 #[test]
 fn mii_works_after_c_with_setting_off() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.settings.select_changed_text = false;
+    ed.state.settings.select_inserted_text = false;
     ed.handle_key(key('c'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
@@ -257,6 +287,8 @@ fn mii_after_insert_with_ctrl_w_selects_surviving_typed_run() {
     }
     ed.handle_key(key_ctrl('w')); // deletes "world", keeps "hello "
     ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[hello ]>x\n");
+    ed.handle_key(key(';'));
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hello ]>x\n");
 }
@@ -281,15 +313,19 @@ fn mii_multi_cursor_selects_each_span_primary_is_last() {
 /// `i`) selection are adjacent but don't share an index, so — consistent with
 /// `SelectionSet`'s merge rule elsewhere in the codebase, which merges only on
 /// genuine overlap, not mere touching — both survive as separate selections
-/// rather than being discarded or force-merged.
+/// rather than being discarded or force-merged. `select-inserted-text` off:
+/// this test is about `mii`'s Extend-mode merge logic, which needs a plain
+/// collapsed cursor left over from `i` to set up a genuinely adjacent (not
+/// identical) current selection.
 #[test]
 fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.select_inserted_text = false;
     ed.handle_key(key('i'));
     ed.handle_key(key('h'));
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "hi-[h]>ello\n"); // plain `i` leaves a collapsed cursor
+    assert_eq!(state(&ed), "hi-[h]>ello\n"); // setting off — plain collapsed cursor
     ed.state.mode = Mode::Extend;
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hi]>-[h]>ello\n");
@@ -375,7 +411,7 @@ fn mii_stash_goes_stale_after_a_later_edit() {
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "x-[h]>ello\n");
+    assert_eq!(state(&ed), "-[x]>hello\n");
     ed.handle_key(key('d')); // unrelated edit — never touches `last_insert`
     mii(&mut ed);
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
@@ -426,7 +462,8 @@ fn mii_reports_info_on_read_only_buffer() {
 /// between the base char and its combining mark. The resulting selection
 /// covers the base char only (HUME's "1-char selection" is one `char`
 /// (codepoint), not one rendered grapheme) — this is the exact formula
-/// `c`'s `select-changed-text` already uses, reused unchanged here.
+/// `end_insert_session`'s own select-on-exit path already uses, reused
+/// unchanged here.
 #[test]
 fn mii_span_end_never_lands_mid_grapheme_cluster() {
     let mut ed = editor_from("-[\n]>");
@@ -1060,30 +1097,129 @@ fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
     assert_eq!(state(&ed), "helloX-[\n]>world\n");
 }
 
-/// `i` must NOT step the cursor back on Esc — only `a`/`A` do.
+/// `i` never sets `step_back_on_exit` — with `select-inserted-text` on, its
+/// typed run is simply selected on Esc.
 #[test]
-fn i_esc_does_not_step_cursor_back() {
+fn i_esc_selects_the_typed_run() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('i')); // cursor stays on 'h', Insert
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
 
-    // No step-back: cursor stays on 'h', not on 'X'.
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "-[X]>hello\n");
+}
+
+/// With `select-inserted-text` off, `i` never steps the cursor back on Esc
+/// either (only `a`/`A`/`o`/`O`'s empty-run fallback does) — it leaves the
+/// cursor exactly where typing left it.
+#[test]
+fn i_esc_does_not_step_cursor_back_setting_off() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.select_inserted_text = false;
+
+    ed.handle_key(key('i')); // cursor stays on 'h', Insert
+    ed.handle_key(key('X'));
+    ed.handle_key(key_esc());
+
+    // No step-back: cursor stays one past 'X', on 'h' — not stepped back
+    // onto 'X' itself the way `a`/`A`/`o`/`O` would.
     assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(state(&ed), "X-[h]>ello\n");
 }
 
+/// After `I` + typing + Esc the typed run is selected.
+#[test]
+fn capital_i_esc_selects_the_typed_run() {
+    let mut ed = editor_from("  -[hello]>\n");
+
+    ed.handle_key(key('I'));
+    ed.handle_key(key('X'));
+    ed.handle_key(key('Y'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(state(&ed), "  -[XY]>hello\n");
+}
+
+/// After `A` + typing + Esc the typed run is selected, same as `a`.
+#[test]
+fn capital_a_esc_selects_the_typed_run() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('A'));
+    ed.handle_key(key('X'));
+    ed.handle_key(key('Y'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(state(&ed), "hello-[XY]>\n");
+}
+
+/// `a` + immediate Esc (nothing typed): the empty-run fallback steps the
+/// cursor back one grapheme — the only case `step_back_on_exit` still governs.
+#[test]
+fn a_esc_with_nothing_typed_steps_back() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('a')); // cursor → 'e'
+    ed.handle_key(key_esc());
+
+    assert_eq!(state(&ed), "-[h]>ello\n");
+}
+
+/// `A` + immediate Esc (nothing typed): same empty-run fallback as `a`.
+#[test]
+fn capital_a_esc_with_nothing_typed_steps_back() {
+    let mut ed = editor_from("-[h]>ello\n");
+
+    ed.handle_key(key('A')); // cursor → trailing '\n'
+    ed.handle_key(key_esc());
+
+    assert_eq!(state(&ed), "hell-[o]>\n");
+}
+
+// ── Multi-cursor auto-select on Esc ─────────────────────────────────────────
+
+/// `i` on two cursors: each typed run is selected independently on Esc.
+#[test]
+fn i_multi_cursor_selects_each_typed_run() {
+    let mut ed = editor_from("-[foo]> -[bar]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key('y'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[xy]>foo -[xy]>bar\n");
+}
+
 // ── `o` / `O` step-back on Esc ───────────────────────────────────────────────
 
-/// After `o` + typing + Esc the cursor must land on the last typed character
-/// (same as `a`), not on the trailing `\n` of the new line.
+/// After `o` + typing + Esc the typed run is selected — not just a cursor on
+/// the last character, and not on the trailing `\n` of the new line.
 ///
-/// Regression: without `mark_insert_step_back`, pressing `x` after `o+text+Esc`
-/// selected the *next* line rather than the just-created one.
+/// Regression: without `mark_insert_step_back`'s empty-run fallback, `o` +
+/// immediate `Esc` (nothing typed) would select the *next* line's `\n`
+/// rather than staying on the just-created blank one — see
+/// `o_esc_on_empty_line_does_not_step_to_previous_line` for that case.
 #[test]
-fn o_esc_steps_cursor_back_to_last_typed_char() {
+fn o_esc_selects_the_typed_run() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
+
+    ed.handle_key(key('o'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
+}
+
+/// With `select-inserted-text` off, `o` + typing + Esc still steps the
+/// cursor back to the last typed character (same as `a`), not the typed run.
+#[test]
+fn o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
+    let mut ed = editor_from("-[h]>ello\nworld\n");
+    ed.state.settings.select_inserted_text = false;
 
     ed.handle_key(key('o'));
     ed.handle_key(key('a'));
@@ -1096,10 +1232,27 @@ fn o_esc_steps_cursor_back_to_last_typed_char() {
     assert_eq!(state(&ed), "hello\nab-[c]>\nworld\n");
 }
 
-/// After `O` + typing + Esc the cursor must land on the last typed character.
+/// After `O` + typing + Esc the typed run is selected.
 #[test]
-fn capital_o_esc_steps_cursor_back_to_last_typed_char() {
+fn capital_o_esc_selects_the_typed_run() {
     let mut ed = editor_from("hello\n-[w]>orld\n");
+
+    ed.handle_key(key('O'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('c'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
+}
+
+/// With `select-inserted-text` off, `O` + typing + Esc still steps the
+/// cursor back to the last typed character.
+#[test]
+fn capital_o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
+    let mut ed = editor_from("hello\n-[w]>orld\n");
+    ed.state.settings.select_inserted_text = false;
 
     ed.handle_key(key('O'));
     ed.handle_key(key('a'));

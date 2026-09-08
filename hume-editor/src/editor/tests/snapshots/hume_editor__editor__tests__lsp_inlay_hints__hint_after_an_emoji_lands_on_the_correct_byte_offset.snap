@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/lsp_inlay_hints.rs
 expression: snap
 ---
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>🎉 </><fg=#928374,bg=#3c3836><HINT></><fg=#ebdbb2,bg=#3c3836>party</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#665c54>🎉 </><fg=#928374,bg=#665c54><HINT></><fg=#ebdbb2,bg=#665c54>part</><fg=#3c3836,bg=#bdae93>y</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>     1:7 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>     1:6 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

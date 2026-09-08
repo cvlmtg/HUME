@@ -525,11 +525,15 @@ fn open_real_editor() -> Editor {
 fn snapshot_picker_over_populated_buffer_empty_query() {
     let mut ed = open_real_editor();
     ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    // One session, not one `i`/char/`Esc` per character: with
+    // `select-inserted-text` on, each `Esc` selects the char just typed, so a
+    // following `i` would collapse back to its start (not past it) and type
+    // the string in reverse.
+    ed.feed_key(key('i'));
     for ch in "hello world".chars() {
-        ed.feed_key(key('i'));
         ed.feed_key(key(ch));
-        ed.feed_key(key_esc());
     }
+    ed.feed_key(key_esc());
     open_test_picker(&mut ed, &["alpha", "beta", "gamma"]);
 
     let mut ctx = RenderContext::new();

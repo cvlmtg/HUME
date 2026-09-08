@@ -37,7 +37,12 @@ pub(crate) enum InsertInput {
 /// `begin_insert_session` that recording should be suppressed.
 pub(crate) struct InsertSession {
     pub(super) keystrokes: Vec<InsertInput>,
-    /// Step cursor back one grapheme on exit (set for `a` / `A` / `o` / `O` entry).
+    /// Set for `a` / `A` / `o` / `O` entry. Decides where an *empty* typed
+    /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a
+    /// round trip) rather than staying put. When the run isn't empty, the
+    /// selected span's own head already coincides with the stepped-back
+    /// position, so this flag has no further effect: `end_insert_session`'s
+    /// `exit_cursor` is where both cases converge.
     pub(super) step_back_on_exit: bool,
 }
 
@@ -128,8 +133,8 @@ pub(crate) enum MacroPending {
 impl EditorState {
     // ── Insert session ────────────────────────────────────────────────────────
 
-    /// Mark the active insert session as append-style so the cursor steps back
-    /// one grapheme on exit.
+    /// Mark the active insert session as append-style — see
+    /// `InsertSession::step_back_on_exit`'s doc for what this decides.
     pub(super) fn mark_insert_step_back(&mut self) {
         if let Some(s) = self.insert_session.as_mut() {
             s.step_back_on_exit = true;

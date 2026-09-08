@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/lsp_virtual_lines.rs
 expression: snap
 ---
-<fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#282828>let x = 5</>
+<fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#665c54>let x = 5</>
 <fg=#665c54,bg=#282828>    </><fg=#fabd2f,bg=#282828,underline>^ unused variable</>
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>2 </><fg=#ebdbb2,bg=#3c3836>let y = 10</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>2 </><fg=#ebdbb2,bg=#665c54>let y = 1</><fg=#3c3836,bg=#bdae93>0</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>    2:11 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>    2:10 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

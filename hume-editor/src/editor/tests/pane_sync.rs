@@ -59,15 +59,16 @@ fn pane_selections_synced_after_exit_insert() {
     let mut ed = editor_from("ab-[c]>\n");
     ed.handle_key(key('i')); // enter Insert at 'c' (byte 2)
     ed.handle_key(key('x')); // type 'x' before 'c' → "abxc\n", cursor at byte 3
-    ed.handle_key(key_esc()); // exit Insert
+    ed.handle_key(key_esc()); // exit Insert — select-inserted-text selects 'x'
 
     ed.sync_all_pane_mirrors();
 
-    // 'x' was inserted at byte 2; cursor now sits just after 'x' at byte 3.
+    // 'x' was inserted at byte 2; Esc selects the typed run, so the (anchor
+    // == head) selection's head sits back on 'x' itself, at byte 2.
     assert_eq!(
         pane_head(&ed),
-        3,
-        "pane head must be at char 3 (after 'x') after Esc"
+        2,
+        "pane head must be at char 2 (on 'x') after Esc"
     );
 }
 

@@ -19,7 +19,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.wrap_mode, WrapMode::Indent { width: 0 });
     assert_eq!(s.line_number_style, LineNumberStyle::Hybrid);
     assert!(s.auto_pairs_enabled);
-    assert!(s.select_changed_text);
+    assert!(s.select_inserted_text);
     assert!(s.word_selects_whitespace);
     assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
@@ -35,7 +35,7 @@ fn buffer_overrides_default_is_all_none() {
     assert!(ov.tab_style.is_none());
     assert!(ov.line_number_style.is_none());
     assert!(ov.auto_pairs_enabled.is_none());
-    assert!(ov.select_changed_text.is_none());
+    assert!(ov.select_inserted_text.is_none());
     assert!(ov.word_selects_whitespace.is_none());
     assert!(ov.word_chars.is_none());
     assert!(ov.whitespace_space.is_none());
@@ -536,11 +536,11 @@ fn set_global_indent_guides() {
 }
 
 #[test]
-fn set_global_select_changed_text() {
+fn set_global_select_inserted_text() {
     assert!(
-        !global("select-changed-text", "false")
+        !global("select-inserted-text", "false")
             .unwrap()
-            .select_changed_text
+            .select_inserted_text
     );
 }
 
@@ -685,10 +685,10 @@ fn set_buffer_auto_pairs_enabled() {
 }
 
 #[test]
-fn set_buffer_select_changed_text() {
+fn set_buffer_select_inserted_text() {
     let global = EditorSettings::default();
-    let ov = buffer("select-changed-text", "false").unwrap();
-    assert!(!ov.select_changed_text(&global));
+    let ov = buffer("select-inserted-text", "false").unwrap();
+    assert!(!ov.select_inserted_text(&global));
 }
 
 #[test]
@@ -839,7 +839,7 @@ fn is_bool_setting_matches_every_bool_field() {
         "popup-border",
         "pane-dividers",
         "auto-pairs-enabled",
-        "select-changed-text",
+        "select-inserted-text",
         "indent-guides",
     ] {
         assert!(is_bool_setting(key), "'{key}' should be a bool setting");

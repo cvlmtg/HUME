@@ -15,8 +15,8 @@ use hume_ops::surround::wrap_each_selection;
 use super::super::{EditorState, Severity, doc_ops};
 use super::{
     apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
-    begin_insert_session_preserving_register, doc, focused_buffer_id, pin_insert_anchors,
-    tab_format, word_chars_owned,
+    begin_insert_session_preserving_register, begin_typed_run, doc, focused_buffer_id, tab_format,
+    word_chars_owned,
 };
 use crate::editor::error::CommandError;
 
@@ -76,20 +76,10 @@ pub(crate) fn cmd_change(
     // prefix here would consume it a step too early.
     begin_insert_session_preserving_register(state, view);
     apply_focused_edit_grouped(state, view, delete_selection_content);
-    pin_insert_anchors(state, view);
-    // Auto-select the typed replacement on exit only when the setting is on
-    // (`mii` can still recover it later regardless — see `pin_insert_anchors`).
-    // Gated on the group actually being open (skips read-only buffers, and
-    // re-captures correctly on dot-repeat replay, which pre-opens the group).
-    if doc(state, view)
-        .overrides
-        .select_changed_text(&state.settings)
-        && super::is_group_open_current(state, view)
-    {
-        let pid = state.focused_pane_id;
-        let bid = focused_buffer_id(state, view);
-        state.panes.state[pid][bid].select_on_exit = true;
-    }
+    // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
+    // reconstruct the typed replacement from — same helper every insert-entry
+    // command uses, so `c`'s auto-select behaves identically to theirs.
+    begin_typed_run(state, view);
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
     // the session bumps `edit_seq` and would strand it — the flag makes
@@ -135,7 +125,7 @@ pub(crate) fn cmd_select_last_insertion(
         return Ok(());
     };
     // Non-empty by construction: `end_insert_session` only ever stashes a
-    // non-empty `spans` vec (see `pin_insert_anchors`'s caller). The last
+    // non-empty `spans` vec (see `begin_typed_run`'s caller). The last
     // span is spatially last (stashed in ascending-start order) — primary
     // there, matching the entry command's own cursor placement.
     let insertion_primary = spans.len() - 1;

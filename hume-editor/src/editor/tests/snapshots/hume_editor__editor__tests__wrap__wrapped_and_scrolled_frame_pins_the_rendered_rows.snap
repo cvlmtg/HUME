@@ -2,11 +2,11 @@
 source: hume-editor/src/editor/tests/wrap.rs
 expression: snap
 ---
-<fg=#665c54,bg=#282828>   1 </><fg=#ebdbb2,bg=#282828>line5 with enough t</>
+<fg=#665c54,bg=#282828>     </><fg=#ebdbb2,bg=#282828> times</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836> 6 </><fg=#ebdbb2,bg=#3c3836>line5 with enough t</>
+<fg=#665c54,bg=#3c3836>     </><fg=#ebdbb2,bg=#3c3836>ext to wrap several</>
+<fg=#665c54,bg=#3c3836>     </><fg=#ebdbb2,bg=#3c3836> time</><fg=#3c3836,bg=#bdae93>s</>
+<fg=#665c54,bg=#282828>   1 </><fg=#ebdbb2,bg=#282828>line6 with enough t</>
 <fg=#665c54,bg=#282828>     </><fg=#ebdbb2,bg=#282828>ext to wrap several</>
 <fg=#665c54,bg=#282828>     </><fg=#ebdbb2,bg=#282828> times</>
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836> 7 </><fg=#3c3836,bg=#bdae93>l</><fg=#ebdbb2,bg=#3c3836>ine6 with enough t</>
-<fg=#665c54,bg=#3c3836>     </><fg=#ebdbb2,bg=#3c3836>ext to wrap several</>
-<fg=#665c54,bg=#3c3836>     </><fg=#ebdbb2,bg=#3c3836> times</>
-<fg=#665c54,bg=#282828>   1 </><fg=#ebdbb2,bg=#282828>line7 with enough t</>
-<fg=#3c3836,bg=#bdae93,bold>     7:1 *scr… [+]</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>    6:44 *scr… [+]</><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

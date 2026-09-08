@@ -496,14 +496,14 @@ server.listen(8080)
 | c | delete the selection and enter Insert mode |
 +---+--------------------------------------------+
 
-Type your replacement, then press ``Esc``. Unlike other ways of
-leaving Insert mode, ``c`` keeps the selection on the text you
-changed — once you leave Insert mode, your replacement is selected
-instead of leaving a plain cursor after it, so you can act on it
-again right away (delete it, search for it, and so on). If you
-press ``Esc`` without typing anything, the cursor is left where the
-change began. This is controlled by the ``select-changed-text``
-option (on by default).
+Type your replacement, then press ``Esc``. Leaving Insert mode
+selects the text you just typed — once you leave Insert mode, your
+replacement is selected instead of leaving a plain cursor after it,
+so you can act on it again right away (delete it, search for it,
+and so on). If you press ``Esc`` without typing anything, the
+cursor is left where you started. This is controlled by the
+``select-inserted-text`` option (on by default) and applies to
+every way of entering Insert mode, not just ``c``.
 
 Exercise
 ~~~~~~~~
@@ -1110,9 +1110,9 @@ There is no ``mai`` — an insertion has no delimiters to select
 Exercise
 ~~~~~~~~
 
-Press ``A`` on the line below, type " — reviewed", press ``Esc``,
-then press ``mii`` — " — reviewed" is selected again, even though
-plain ``A`` alone would have left just a cursor:
+Press ``A`` on the line below, type " — reviewed", press ``Esc``
+(the typed text is already selected), then collapse the selection
+with ``;`` and press ``mii`` — " — reviewed" is selected again:
 
 Q3 results
 

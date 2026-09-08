@@ -2,13 +2,13 @@
 source: hume-editor/src/editor/tests/lsp_menu.rs
 expression: snap
 ---
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>abcdefgh</>
-<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>        </><fg=#ebdbb2,bg=#504945>┌────────────────┐</>
-<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>        </><fg=#ebdbb2,bg=#504945>│</><fg=#b8bb26,bg=#3c3836,bold>Extract function</><fg=#ebdbb2,bg=#504945>│</>
-<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>        </><fg=#ebdbb2,bg=#504945>│Inline variable │</>
-<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>        </><fg=#ebdbb2,bg=#504945>└────────────────┘</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#665c54>abcdefg</><fg=#3c3836,bg=#bdae93>h</>
+<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>       </><fg=#ebdbb2,bg=#504945>┌────────────────┐</>
+<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>       </><fg=#ebdbb2,bg=#504945>│</><fg=#b8bb26,bg=#3c3836,bold>Extract function</><fg=#ebdbb2,bg=#504945>│</>
+<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>       </><fg=#ebdbb2,bg=#504945>│Inline variable │</>
+<fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><bg=#282828>       </><fg=#ebdbb2,bg=#504945>└────────────────┘</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>     1:9 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>     1:8 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

@@ -2,7 +2,7 @@
 source: hume-editor/src/editor/tests/picker.rs
 expression: snap
 ---
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>hello world</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#665c54>hello worl</><fg=#3c3836,bg=#bdae93>d</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><fg=#ebdbb2,bg=#282828>┌──────────────────────────────┐</>
 <fg=#928374,bg=#282828>~</><fg=#665c54,bg=#282828>   </><fg=#ebdbb2,bg=#282828>│</><fg=#3c3836,bg=#bdae93> </><bg=#282828>                          </><fg=#ebdbb2,bg=#282828>3/3│</>
@@ -13,4 +13,4 @@ expression: snap
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>    1:12 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>    1:11 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

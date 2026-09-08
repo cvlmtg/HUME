@@ -2,6 +2,6 @@
 source: hume-editor/src/editor/tests/lsp_render.rs
 expression: snap
 ---
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#fabd2f,bg=#3c3836,underline>ab</><fg=#282828,bg=#fe8019,underline>cde</><fg=#fabd2f,bg=#3c3836,underline>fgh</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#fabd2f,bg=#665c54,underline>ab</><fg=#282828,bg=#665c54,underline>cde</><fg=#fabd2f,bg=#665c54,underline>fg</><fg=#3c3836,bg=#bdae93,underline>h</>
 <fg=#928374,bg=#282828>~</>
-<fg=#3c3836,bg=#bdae93,bold>     1:9 [+]</>
+<fg=#3c3836,bg=#bdae93,bold>     1:8 [+]</>

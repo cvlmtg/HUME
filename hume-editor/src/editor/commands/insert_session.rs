@@ -2,6 +2,7 @@
 //! action, with the undo group and dot-repeat bookkeeping that entails.
 
 use hume_editing::selection::Selection;
+use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 
 use crate::editor::buffer::LastInsert;
@@ -35,10 +36,13 @@ pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> b
     })
 }
 
-/// Pin each current selection's head as an insertion anchor, so `mii`
-/// (`select-last-insertion`) — and, for a `c`-entered session with
-/// `select-changed-text` on, `end_insert_session` itself — can later
-/// reconstruct the span(s) typed since.
+/// Pin each current selection's head as an insertion anchor, and arm whether
+/// `end_insert_session` should select the typed span (rather than just stash
+/// it for `mii`) on exit — the whole lifecycle of a session's "typed run".
+///
+/// `mii` (`select-last-insertion`) recovers the span regardless of the
+/// `select-inserted-text` setting; only the auto-select-on-exit behavior is
+/// gated on it.
 ///
 /// No-op if no edit group is open (read-only buffer, where
 /// `begin_insert_session` already refused to enter Insert). Call after the
@@ -49,8 +53,9 @@ pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> b
 /// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned anchors through
 /// every subsequent grouped edit; a cursor-motion key during the session
 /// clears them (`mappings/insert.rs`); a fresh `begin_edit_group` clears them
-/// too, so a later session never inherits stale pins.
-pub(super) fn pin_insert_anchors(state: &mut EditorState, view: &EngineView) {
+/// (and resets `select_on_exit`) too, so a later session never inherits stale
+/// pins.
+pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView) {
     if !is_group_open_current(state, view) {
         return;
     }
@@ -58,9 +63,14 @@ pub(super) fn pin_insert_anchors(state: &mut EditorState, view: &EngineView) {
         .iter_sorted()
         .map(|s| s.head())
         .collect();
+    let select_on_exit = doc(state, view)
+        .overrides
+        .select_inserted_text(&state.settings);
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    state.panes.state[pid][bid].pinned_anchors = Some(anchors);
+    let pbs = &mut state.panes.state[pid][bid];
+    pbs.pinned_anchors = Some(anchors);
+    pbs.select_on_exit = select_on_exit;
 }
 
 /// Enter Insert mode as a repeatable insert action.
@@ -140,13 +150,13 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
         action.insert_keys = session.keystrokes;
     }
     // Every insert entry pins one anchor per selection via
-    // `pin_insert_anchors` — reconstruct each selection's typed span here as
+    // `begin_typed_run` — reconstruct each selection's typed span here as
     // `(anchor, head - 1 grapheme)`, guarded by `head > anchor` (nothing
     // typed / all backspaced away yields `None`, never a backwards or
     // zero-width range). A count mismatch (selections merged mid-session,
     // e.g. via Backspace) drops the pins entirely — `spans` stays `None`, so
-    // this session contributes nothing to the `mii` stash and (for `c`)
-    // falls back to a collapsed cursor.
+    // this session contributes nothing to the `mii` stash and, for an empty
+    // run, falls back to `exit_cursor`'s step-back handling below.
     let (pinned, select_on_exit, kill_opened) = {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);
@@ -198,27 +208,40 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
         }
     }
 
-    if let Some(spans) = spans.filter(|_| select_on_exit) {
-        apply_focused_motion(state, view, move |_b, sels| {
-            let mut spans = spans.into_iter();
-            sels.map(|sel| match spans.next().expect("length checked above") {
-                Some((anchor, end)) => Selection::new(anchor, end),
-                None => Selection::collapsed(sel.head()),
-            })
-        });
-    } else if step_back {
-        apply_focused_motion(state, view, |b, sels| {
-            sels.map(|sel| {
-                let head = sel.head();
-                let line_start = b.line_to_char(b.char_to_line(head));
-                let new_head = if head > line_start {
-                    hume_editing::grapheme::prev_grapheme_boundary(b, head)
-                } else {
-                    head
-                };
-                Selection::collapsed(new_head)
-            })
-        });
+    match spans.filter(|_| select_on_exit) {
+        Some(spans) => {
+            apply_focused_motion(state, view, move |b, sels| {
+                let mut spans = spans.into_iter();
+                sels.map(|sel| match spans.next().expect("length checked above") {
+                    Some((anchor, end)) => Selection::new(anchor, end),
+                    None => exit_cursor(b, sel.head(), step_back),
+                })
+            });
+        }
+        None if step_back => {
+            apply_focused_motion(state, view, |b, sels| {
+                sels.map(|sel| exit_cursor(b, sel.head(), true))
+            });
+        }
+        None => {}
     }
     state.set_mode(Mode::Normal);
+}
+
+/// Where a selection's cursor lands when its typed run is empty — the entry
+/// command's own exit position. `a`/`A`/`o`/`O` step one grapheme back so
+/// `a<Esc>` is a round trip; the line-start guard keeps that from crossing
+/// onto the previous line. `i`/`I`/`c` never set `step_back`, so `head` is
+/// returned unchanged.
+fn exit_cursor(b: &BufferText, head: usize, step_back: bool) -> Selection {
+    if !step_back {
+        return Selection::collapsed(head);
+    }
+    let line_start = b.line_to_char(b.char_to_line(head));
+    let new_head = if head > line_start {
+        hume_editing::grapheme::prev_grapheme_boundary(b, head)
+    } else {
+        head
+    };
+    Selection::collapsed(new_head)
 }

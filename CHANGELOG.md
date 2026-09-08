@@ -13,8 +13,10 @@
 - Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally. If you write your own: `(set-signs! …)` entries are `(line text scope)`, without the trailing priority — a source now declares its column with `(register-sign-source! name bid priority)` before placing or clearing signs in that buffer.
 - Two more scripting renames, if you write your own plugins: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)` and checks every selection instead of only the primary one, with a new `(selections-charwise? bid)` as its counterpart; `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)`, joined by a new `(lsp-linewise-ranges-params bid)` returning one range per linewise selection.
 - HUME's own Select mode (the `s` regex prompt) is renamed **Sift mode**, to stop colliding with Extend mode (HUME's name for what Helix calls Select mode). The status bar shows `SIF` instead of `SEL`; the `select-within` command is renamed `sift-within`.
+- `select-changed-text` is renamed `select-inserted-text`, since it now governs every way of leaving Insert mode, not just `c` — see below.
 
 ### Editing
+- Leaving Insert mode now selects the text you just typed, however you entered it (`i`, `a`, `I`, `A`, `o`, `O`, `c`, …) — previously only `c` did this. Controlled by `select-inserted-text` (default on).
 - New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).
 - Word motions, `miw`/`maw`, `Ctrl+W`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
 - New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).

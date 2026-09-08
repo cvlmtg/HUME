@@ -61,11 +61,13 @@ fn dot_repeat_replays_tab() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i')); // insert at 'h'
     ed.handle_key(key_tab()); // insert \t
-    ed.handle_key(key_esc()); // back to normal, cursor on 'h'
-    // Move right then dot-repeat: should insert another \t before 'e'.
-    ed.handle_key(key('l')); // cursor on 'e'
+    ed.handle_key(key_esc()); // back to normal — Esc selects the typed \t
+    // Move right twice (off the selected \t, onto 'h', onto 'e'), then
+    // dot-repeat: should insert another \t before 'e'.
+    ed.handle_key(key('l'));
+    ed.handle_key(key('l'));
     ed.handle_key(key('.')); // repeat last edit
-    assert_eq!(state(&ed), "\th\t-[e]>llo\n");
+    assert_eq!(state(&ed), "\th-[\t]>ello\n");
 }
 
 // ── Auto-indent on Enter ──────────────────────────────────────────────────────
@@ -137,7 +139,8 @@ fn i_esc_on_pre_existing_blank_line_does_not_trim() {
 }
 
 /// Typing whitespace by hand onto an empty line, then `Esc`: vim keeps
-/// hand-typed whitespace — only auto-inserted indent is vacated.
+/// hand-typed whitespace — only auto-inserted indent is vacated. Esc also
+/// selects the two typed spaces (`select-inserted-text`).
 #[test]
 fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
     let mut ed = editor_from("x\n-[\n]>");
@@ -145,7 +148,7 @@ fn i_type_spaces_esc_does_not_trim_hand_typed_whitespace() {
     ed.handle_key(key(' '));
     ed.handle_key(key(' '));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "x\n  -[\n]>");
+    assert_eq!(state(&ed), "x\n-[  ]>\n");
 }
 
 /// Contrast with the two tests above: when Enter itself creates the blank,
@@ -159,7 +162,11 @@ fn enter_esc_trims_auto_inserted_blank_line() {
     ed.handle_key(key_enter());
     assert_eq!(state(&ed), "  x\n  -[\n]>");
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "  x\n-[\n]>");
+    // The typed run is just the inserted "\n" (the copied indent it carried
+    // was trimmed above), and its own `Assoc::Before` anchor sits right where
+    // that newline landed — on "  x"'s own trailing '\n', not the new blank
+    // line's.
+    assert_eq!(state(&ed), "  x-[\n]>\n");
 }
 
 /// Dot-repeat replays an Enter-then-Esc insert session as a unit: the
@@ -174,21 +181,23 @@ fn dot_repeat_replays_enter_esc_trim() {
 
     ed.feed_key(key('i')); // insert-at-selection-start; cursor stays put
     ed.feed_key(key_enter()); // auto-indent creates a blank "  " line, cursor on its '\n'
-    ed.feed_key(key_esc()); // trimmed: "  x\n\n  y\n", cursor on the blank line's '\n'
-    assert_eq!(state(&ed), "  x\n-[\n]>  y\n");
+    ed.feed_key(key_esc()); // trimmed: "  x\n\n  y\n"; Esc selects "  x"'s own '\n'
+    assert_eq!(state(&ed), "  x-[\n]>\n  y\n");
 
     // Navigate to line 2's own trailing '\n' with plain motions (not a
     // selection-establishing command) — dot-repeat replays the ORIGINAL
     // entry command ('i') at whatever selection exists when '.' is pressed.
-    ed.feed_key(key('j')); // down, col 0, onto "  y\n"'s first space
-    ed.feed_key(key('l')); // second space
-    ed.feed_key(key('l')); // 'y'
-    ed.feed_key(key('l')); // onto "  y\n"'s own trailing '\n'
+    // One `j` lands on the blank line just created above; a second reaches
+    // "  y", already past its indent onto 'y' itself; one `l` reaches the
+    // trailing '\n'.
+    ed.feed_key(key('j'));
+    ed.feed_key(key('j'));
+    ed.feed_key(key('l'));
     ed.feed_key(key('.')); // replay: insert-at-selection-start, Enter, Esc
 
     // Same shape as the first site: the replayed Enter's auto-indent on
-    // line 2 was trimmed by the replayed Esc.
-    assert_eq!(state(&ed), "  x\n\n  y\n-[\n]>");
+    // line 2 was trimmed by the replayed Esc, which selects "  y"'s own '\n'.
+    assert_eq!(state(&ed), "  x\n\n  y-[\n]>\n");
 }
 
 // ── Dedent on Backspace ───────────────────────────────────────────────────────

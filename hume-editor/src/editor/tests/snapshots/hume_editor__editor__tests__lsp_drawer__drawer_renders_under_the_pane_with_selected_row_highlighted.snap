@@ -2,7 +2,7 @@
 source: hume-editor/src/editor/tests/lsp_drawer.rs
 expression: snap
 ---
-<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#3c3836>hello</>
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#ebdbb2,bg=#665c54>hell</><fg=#3c3836,bg=#bdae93>o</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
 <fg=#928374,bg=#282828>~</>
@@ -11,4 +11,4 @@ expression: snap
 
 <fg=#b8bb26,bg=#3c3836,bold>src/a.rs:1: unused import</>
 <fg=#ebdbb2,bg=#3c3836>src/b.rs:9: TODO</>
-<fg=#3c3836,bg=#bdae93,bold>     1:6 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>
+<fg=#3c3836,bg=#bdae93,bold>     1:5 *scratch* [+]            </><fg=#665c54,bg=#bdae93>│</><fg=#3c3836,bg=#bdae93,bold> NOR</>

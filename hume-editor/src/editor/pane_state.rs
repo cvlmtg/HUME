@@ -75,13 +75,13 @@ pub(crate) struct PaneBufferState {
     /// Anchors of the run typed during the open insert session — one per
     /// selection, sorted, kept in post-edit coordinates by
     /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
-    /// command positions the cursor (`pin_insert_anchors`) until
+    /// command positions the cursor (`begin_typed_run`) until
     /// `end_insert_session` consumes it on exit, for every insert entry
-    /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…), not just `c`.
+    /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
     pub pinned_anchors: Option<Vec<usize>>,
     /// Whether `end_insert_session` should select the typed span (rather than
-    /// just stash it for `mii`) on exit. Set only by `cmd_change`, gated on
-    /// the `select-changed-text` setting. Lives here (not on `InsertSession`)
+    /// just stash it for `mii`) on exit. Set by `begin_typed_run`, gated on
+    /// the `select-inserted-text` setting. Lives here (not on `InsertSession`)
     /// because dot-repeat replay never creates an `InsertSession` — see
     /// `begin_insert_session`'s replay-signal guard — so a flag needed at
     /// exit must survive on state that isn't cleared by that guard.

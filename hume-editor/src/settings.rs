@@ -876,12 +876,12 @@ define_settings! {
         "auto-pairs-enabled" => auto_pairs_enabled: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
-        // After `c` (change), leaving Insert mode selects the text just
-        // typed — see `cmd_change` and `end_insert_session`'s pinned-anchor
-        // finalization. Only `c` does this; `i`/`a`/`o`/`O` always leave a
-        // collapsed cursor, since there's no prior selection whose extent
-        // the typed text is replacing.
-        "select-changed-text" => select_changed_text: bool = true,
+        // Leaving Insert mode selects whatever text the session just typed
+        // (empty run: falls back to the entry command's own exit position) —
+        // see `begin_typed_run` and `end_insert_session`'s pinned-anchor
+        // finalization. Applies to every way of entering Insert mode:
+        // `i`/`a`/`I`/`A`/`o`/`O`/`c`.
+        "select-inserted-text" => select_inserted_text: bool = true,
             scope: [Scope::Global, Scope::Buffer],
             parser: bool;
         // Word motions (`w`/`W`/`b`/`B`) and `mm`/`MM` cover the destination

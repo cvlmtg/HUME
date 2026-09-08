@@ -15,6 +15,10 @@ Say what you mean, then say what to do with it. Because the selection always com
 
 Press `Esc` or `Ctrl+c` to return to Normal mode. `Ctrl+w` deletes the word before the cursor while you type.
 
+Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor — so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+
+Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
+
 ## Deleting and changing text
 
 | Key | Effect |
@@ -25,10 +29,6 @@ Press `Esc` or `Ctrl+c` to return to Normal mode. `Ctrl+w` deletes the word befo
 Use `x` to select the current line first if you want a line-wise delete (`x` then `d`).
 
 See [Copy & Paste](copy-and-paste.md) for what the kill ring is and how to paste from it.
-
-`c` keeps the selection on the text you changed: leaving Insert mode selects your replacement instead of leaving a plain cursor, so you can immediately act on it again — delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where the change began. Disable this with the `select-changed-text` option (see [Configuration](configuration.md)).
-
-Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
 
 ## Replacing text
 
