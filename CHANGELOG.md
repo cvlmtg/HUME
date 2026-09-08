@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.12.0] - 2026-09-08
+
 ### Breaking changes
 - `}`/`{` now select the whole paragraph (plus its trailing blank line) instead of just moving the cursor, consistent with other structural motions. New `mip`/`map` text objects select just the paragraph when a plain selection is wanted.
 - Case transforms moved from `gu`/`gU`/`gC` to `GL`/`GU`/`GC`.
