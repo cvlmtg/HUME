@@ -148,12 +148,30 @@ export function cursorColors(chain, primary, sc, pal) {
   return fullStyleChain(ids, sc, pal) ?? { fg: null, bg: null, mods: [], underline: null };
 }
 
+// The underline styles the loader accepts (`parse_underline` in
+// hume-engine/src/theme/loader.rs), each mapped to its CSS equivalent. One
+// keyed table rather than a name list in the editor and a switch here: a
+// style added to the loader needs one line, and the editor can't offer a name
+// HUME would reject on load. `tests/theme.test.js` reads the loader's own
+// match arms and pins these keys against them.
+export const UNDERLINE_STYLES = {
+  line: "solid",
+  curl: "wavy",
+  dotted: "dotted",
+  dashed: "dashed",
+  double_line: "double",
+};
+
+// The loader's modifier vocabulary (`parse_modifier`, same file) plus
+// "underlined", which the loader routes to the dedicated underline field
+// rather than the modifier bitset. Also pinned against the loader by test.
+export const MODIFIERS = [
+  "bold", "italic", "dim", "reversed", "hidden",
+  "crossed_out", "slow_blink", "rapid_blink", "underlined",
+];
+
 export function cssUnderlineStyle(s) {
-  if (s === "curl") return "wavy";
-  if (s === "dotted") return "dotted";
-  if (s === "dashed") return "dashed";
-  if (s === "double_line") return "double";
-  return "solid";
+  return UNDERLINE_STYLES[s] ?? "solid";
 }
 
 // Build a React style object for a token or markup span from its scope's theme style.

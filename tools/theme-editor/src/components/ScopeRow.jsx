@@ -1,15 +1,9 @@
 import { useState } from 'react';
 import { C, INPUT, MONO, pill } from '../ui.js';
-import { resolve, STYLE_KEYS } from '../lib/theme.js';
+import { resolve, STYLE_KEYS, MODIFIERS, UNDERLINE_STYLES } from '../lib/theme.js';
 import Swatch from './Swatch.jsx';
 
-// The loader's accepted modifier vocabulary (hume-engine/src/theme/loader.rs's
-// `parse_modifier`) plus "underlined", which the loader routes to the
-// dedicated underline field rather than the modifier bitset — offering
-// anything else here would let the editor author a theme HUME's loader
-// rejects on load.
-const MODIFIERS = ["bold", "italic", "dim", "reversed", "hidden", "crossed_out", "slow_blink", "rapid_blink", "underlined"];
-const UNDERLINE_STYLES = ["line", "curl", "dotted", "dashed", "double_line"];
+const UNDERLINE_STYLE_NAMES = Object.keys(UNDERLINE_STYLES);
 
 export default function ScopeRow({ id, value, palette, onChange }) {
   const isObj = typeof value === "object" && value !== null;
@@ -20,7 +14,11 @@ export default function ScopeRow({ id, value, palette, onChange }) {
   const underlineStyle = typeof underlineRaw === "string" ? underlineRaw
     : (underlineRaw && typeof underlineRaw === "object" ? (underlineRaw.style || "line") : "line");
   const underlineColorVal = underlineRaw && typeof underlineRaw === "object" ? (underlineRaw.color || "") : "";
-  const hasUnderline = modifiers.includes("underlined");
+  // The loader reads `underline` unconditionally — it is not gated on the
+  // `underlined` modifier (which is just a shorthand for a solid one). So an
+  // imported `{ fg = "red", underline = "curl" }` has a real, rendered
+  // underline with no modifier set, and must be editable here.
+  const hasUnderline = modifiers.includes("underlined") || underlineRaw != null;
   const palNames = Object.keys(palette);
 
   const [fgCustom, setFgCustom] = useState(false);
@@ -90,22 +88,25 @@ export default function ScopeRow({ id, value, palette, onChange }) {
     onChange(def);
   };
 
+  // Turning `underlined` off leaves any explicit `underline` field alone: the
+  // loader reads that field whether or not the modifier is set, so dropping it
+  // here would silently delete a style the modifier never controlled.
   function toggleModifier(name) {
     const has = modifiers.includes(name);
     const nextMods = has ? modifiers.filter(m => m !== name) : [...modifiers, name];
-    const patch = { modifiers: nextMods };
-    // Turning the modifier off drops any explicit style/color override too —
-    // an `underline` field with no `underlined` modifier is meaningless.
-    if (name === "underlined" && has) patch.underline = null;
-    emit(patch);
+    emit({ modifiers: nextMods });
   }
 
-  // "line" + no color needs no explicit `underline` field at all: the
-  // `underlined` modifier alone already resolves to a plain (Solid) underline
-  // (loader.rs's modifiers-array match arm), matching every bundled theme's
-  // own convention. Anything else needs the field to carry the difference.
+  // "line" + no color needs no explicit `underline` field *while the
+  // `underlined` modifier is set* — that modifier alone already resolves to a
+  // plain (Solid) underline (loader.rs's modifiers-array match arm), which is
+  // every bundled theme's own convention. Without it the field is the only
+  // thing carrying the underline, so it has to be written out.
   function setUnderline(style, color) {
-    if (style === "line" && !color) { emit({ underline: null }); return; }
+    if (style === "line" && !color && modifiers.includes("underlined")) {
+      emit({ underline: null });
+      return;
+    }
     emit({ underline: color ? { style, color } : style });
   }
 
@@ -175,7 +176,7 @@ export default function ScopeRow({ id, value, palette, onChange }) {
       {hasUnderline && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4, paddingLeft: 22 }}>
           <select value={underlineStyle} onChange={e => setUnderline(e.target.value, underlineColorVal)} style={{ ...sel, flex: "0 0 90px" }}>
-            {UNDERLINE_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
+            {UNDERLINE_STYLE_NAMES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           {renderSelect(underlineColorVal, ulColorCustom, ulColorHex, setUlColorCustom, setUlColorHex, v => setUnderline(underlineStyle, v))}
         </div>
