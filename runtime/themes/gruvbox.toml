@@ -12,7 +12,9 @@
 # `ui.help`, `ui.text.directory`, `definition`, `annotation`) are kept as-is
 # so a future re-sync stays a clean diff — see
 # user-manual/docs/configuration.md's Themes section for the full list of
-# scopes HUME adds, doesn't read, or reads differently from Helix.
+# scopes HUME adds, doesn't read, or reads differently from Helix. The palette
+# is kept whole for the same reason, so `bg0_s`, `fg0`, `fg2` and `green0`
+# below are upstream's shape and are referenced by no scope in this file.
 
 "annotation" = { fg = "fg1" }
 

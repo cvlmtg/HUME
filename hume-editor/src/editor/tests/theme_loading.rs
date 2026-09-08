@@ -7,15 +7,35 @@ use super::*;
 /// which walks the raw dot-notation map directly (same as
 /// `EditorColors::from_theme` at render time) — baking only feeds the
 /// ID-based `resolve()` fast path, which none of these tests exercise.
-fn load_bundled_themes() -> Vec<(&'static str, hume_engine::theme::Theme)> {
+fn load_bundled_themes() -> Vec<(String, hume_engine::theme::Theme)> {
     use std::path::PathBuf;
     let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
-    let paths = vec![themes_dir];
+    let paths = vec![themes_dir.clone()];
 
-    ["gruvbox", "gruvbox_light", "sand"]
+    // Read the directory rather than listing the names: it is already the
+    // source of truth for `:theme <Tab>`, and a hand-written list here means a
+    // newly bundled theme silently skips every check in this file.
+    let mut names: Vec<String> = std::fs::read_dir(&themes_dir)
+        .expect("runtime/themes must be readable")
+        .map(|e| e.expect("runtime/themes entry must be readable").path())
+        .filter(|p| p.extension().is_some_and(|e| e == "toml"))
+        .map(|p| {
+            p.file_stem()
+                .expect("a *.toml path has a stem")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    assert!(
+        !names.is_empty(),
+        "runtime/themes must bundle at least one theme"
+    );
+
+    names
         .into_iter()
         .map(|name| {
-            let loaded = hume_engine::theme::loader::load_theme(name, &paths)
+            let loaded = hume_engine::theme::loader::load_theme(&name, &paths)
                 .unwrap_or_else(|e| panic!("bundled theme '{name}' failed to load: {e}"));
             // A bundled theme is HUME's own content, not a third-party import
             // — a warning here means a bug we shipped, not something a user
@@ -87,6 +107,40 @@ fn bundled_theme_gutter_diagnostic_scopes_have_no_underline() {
                 "bundled theme '{name}': gutter scope '{scope}' must not underline — \
                  that decoration belongs to the editing-area 'diagnostic.{scope}' scope"
             );
+        }
+    }
+}
+
+/// The three `diff.*.line` row tints must differ from each other in every
+/// bundled theme. They are the only signal distinguishing an added, deleted or
+/// changed row once the eye is past the one-glyph gutter marker, so two of them
+/// sharing a background makes those rows indistinguishable at a glance.
+/// Also pins that the directory scan above found real themes: an empty or
+/// one-entry `runtime/themes` would make every other check here vacuous.
+#[test]
+fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
+    let scopes = ["diff.plus.line", "diff.minus.line", "diff.delta.line"];
+    let themes = load_bundled_themes();
+    assert!(
+        themes.len() >= 3,
+        "expected every bundled theme to be discovered, got: {:?}",
+        themes.iter().map(|(n, _)| n).collect::<Vec<_>>()
+    );
+
+    for (name, theme) in themes {
+        let bgs: Vec<_> = scopes
+            .iter()
+            .map(|s| theme.resolve_by_name(hume_engine::types::Scope(s)).bg)
+            .collect();
+        for i in 0..scopes.len() {
+            for j in (i + 1)..scopes.len() {
+                assert_ne!(
+                    bgs[i], bgs[j],
+                    "bundled theme '{name}': '{}' and '{}' share the row tint {:?} — \
+                     added, deleted and changed rows must not look alike",
+                    scopes[i], scopes[j], bgs[i]
+                );
+            }
         }
     }
 }
