@@ -277,26 +277,22 @@ settings_enum!(ObjectJumpAlign, "object-jump-align", [
 
 // ── CursorShape ──────────────────────────────────────────────────────────────
 
-/// The real terminal cursor's shape while the primary selection head is in
-/// Insert mode — Helix's `editor.cursor-shape.insert`, minus the `hidden`
-/// variant Helix offers mainly for IME positioning.
-///
-/// Only the primary head can ever take this shape from the real terminal
-/// cursor itself — a terminal has exactly one hardware cursor. HUME extends
-/// the setting to secondary heads too, a deliberate departure from Helix
-/// (which always paints its secondary cursor as a themed block): `Block`
-/// paints every head from its own themed scope, while `Bar`/`Underline`
-/// leaves every head unpainted, relying on the fallen-through selection tier
-/// (or nothing, for a collapsed selection) instead — see
-/// `hume_engine::style::cursor_cell_style` and its caller in `style_row`.
+/// The real terminal cursor's shape in Insert mode — Helix's
+/// `editor.cursor-shape.insert`, minus the `hidden` variant Helix offers
+/// mainly for IME positioning. Applies to every selection head, not just the
+/// primary (HUME's own departure from Helix) — see the Tier 1/0 comment in
+/// `hume_engine::style::style_row` for why and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
-    /// The primary head is painted from `ui.cursor.primary.insert` (falling
-    /// back through the usual ladder) like any other themed cell; the real
-    /// terminal cursor is hidden.
+    /// Every selection head is painted from its own themed scope (the
+    /// primary from `ui.cursor.primary.insert`, a secondary from
+    /// `ui.cursor.insert`, both falling back through the usual ladder); the
+    /// real terminal cursor is hidden.
     Block,
-    /// The primary head is left unpainted; the real terminal cursor shows as
-    /// a thin bar. This is HUME's long-standing default.
+    /// Every selection head is left unpainted. The real terminal cursor
+    /// shows as a thin bar, marking the primary; secondary heads are visible
+    /// only where they fall inside a highlighted selection. This is HUME's
+    /// long-standing default.
     #[default]
     Bar,
     /// Same as `Bar`, but the real terminal cursor shows as an underline.

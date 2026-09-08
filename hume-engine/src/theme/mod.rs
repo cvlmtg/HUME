@@ -172,10 +172,7 @@ pub struct UiScopes {
     /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
     /// for Helix theme compat. Falls back through `ui.cursor.insert` →
     /// `ui.cursor` → `ui.selection`. Painted only when `cursor-shape-insert` is
-    /// `block` — a departure from Helix, which paints its secondary cursor
-    /// unconditionally; HUME has no second hardware cursor for a themed block
-    /// to stand in for either head, so `bar`/`underline` leaves this one
-    /// unpainted too. See `PaneRenderSettings::cursor_is_block`.
+    /// `block` — see the Tier 1/0 comment in `style::style_row`.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
@@ -208,7 +205,7 @@ pub struct UiScopes {
     /// style is unused.
     pub cursor_insert_primary: ResolvedStyle,
     /// Secondary selection-head highlight in Extend mode — HUME's name for Helix's
-    /// Select mode (HUME's own `Select` mode is the `s` regex prompt, unrelated to
+    /// Select mode (HUME's own `Sift` mode is the `s` regex prompt, unrelated to
     /// this scope, and maps to the Normal ladder instead). Falls back through
     /// `ui.cursor.select` → `ui.cursor` → `ui.selection`.
     pub cursor_select: ResolvedStyle,

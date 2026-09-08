@@ -548,20 +548,12 @@ impl EngineView {
 /// default (see `commands::effective_wrap_mode`) and folds the result into
 /// the same key alongside the document facts, since the render pass's
 /// `RowMap` and the scroll pass's must resolve a bit-identical key to share
-/// this pane's line store — see `FormatKey`'s own doc. `mode` is a per-focus
-/// fact, not a document fact: the editor resolves it to the live editor mode
-/// only for the focused pane, and to `Normal` for every other pane, so an
-/// unfocused pane doesn't take Insert's or Extend's cursor *colours* — which
-/// ladder applies is all `mode` decides here. Whether a selection head is
-/// painted at all is `cursor_is_block` below: `true` for every unfocused pane
-/// (no real terminal cursor sits there to stand in for either head), and for
-/// the focused pane whenever the resolved cursor shape for its live mode is
-/// `Block` — only Insert varies (`cursor-shape-insert`); every other mode is
-/// hardwired block. Gates both heads in `style::style_row`'s Tier 1/0 —
-/// HUME extends `cursor-shape-insert` to the secondary head too, a deliberate
-/// departure from Helix's own `cursor_is_block` gate in
-/// `doc_selection_highlights`, which paints its secondary cursor
-/// unconditionally.
+/// this pane's line store — see `FormatKey`'s own doc. `mode` and
+/// `cursor_is_block` are both per-focus facts rather than document facts —
+/// see `Editor::resolve_pane_settings` (`hume-editor`) for exactly what each
+/// resolves to and why. `mode` picks which cursor-scope ladder applies;
+/// `cursor_is_block` gates both selection heads in `style::style_row`'s
+/// Tier 1/0.
 #[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,

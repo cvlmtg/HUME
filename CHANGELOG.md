@@ -30,7 +30,7 @@
 - New `goto-next-buffer`/`goto-prev-buffer` commands, for binding to a key.
 
 ### Appearance
-- New `cursor-shape-insert` setting (`block`/`bar`/`underline`, default `bar`) picks the real terminal cursor's shape in Insert mode, and now applies to every cursor during multi-cursor editing — with `bar`/`underline`, extra cursors are hidden the same way the primary one is.
+- New `cursor-shape-insert` setting (`block`/`bar`/`underline`, default `bar`) picks the real terminal cursor's shape in Insert mode, and applies to every cursor during multi-cursor editing — with `bar`/`underline`, extra cursors go unpainted and are visible only where they sit inside a highlighted selection.
 - Curly, dotted, dashed, and now double-line underlines render correctly on terminals that support them.
 - Whitespace indicator glyphs (spaces, tabs, newlines) are now themable.
 - Themes can now also be installed to the data directory (see `:plum-install-theme` below) alongside hand-authored ones.

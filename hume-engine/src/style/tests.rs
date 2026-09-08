@@ -503,15 +503,9 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     );
 }
 
-/// HUME departs from Helix here: Helix paints every secondary cursor
-/// unconditionally, regardless of shape, since a terminal has only one
-/// hardware cursor and a secondary insertion point has no native indicator to
-/// fall back on. HUME instead extends `cursor-shape-insert` to secondary
-/// heads too — matching what the primary head does — so with a non-block
-/// shape *neither* head is cursor-painted: a collapsed secondary goes bare
-/// (there's nothing else to paint), and a ranged secondary falls through to
-/// plain `ui.selection` on its head cell rather than punching a hole in an
-/// otherwise-unbroken selection highlight.
+/// Pins the non-block fall-through this project departs from Helix on — see
+/// the Tier 1/0 comment in `style_row` for the why: a collapsed secondary
+/// head goes bare, a ranged one falls through to plain `ui.selection`.
 #[test]
 fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
     let rope = ropey::Rope::from_str("abcdefg");

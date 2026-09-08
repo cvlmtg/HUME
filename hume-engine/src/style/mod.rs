@@ -238,7 +238,9 @@ pub(crate) fn style_row(
         // primary's sole indicator, and HUME extends that same rule to
         // secondary heads (a deliberate departure from Helix, which paints
         // secondary cursors unconditionally — HUME has no second hardware
-        // cursor for a themed block to stand in for either).
+        // cursor for a themed block to stand in for either). This is the one
+        // implementing site for that rule; every other mention in this
+        // codebase is a pointer back here, not a second copy.
         //
         // The primary's unpainted head keeps its selection styling only for a
         // reverse selection (head before anchor), Helix's own carve-out for
@@ -248,23 +250,24 @@ pub(crate) fn style_row(
         // through to the plain span checks below: a ranged secondary keeps an
         // unbroken `ui.selection` run across its head cell, and a collapsed
         // one (no span to fall through to) goes bare.
+        //
+        // `head_display_cols` holds every head, the primary's included (see
+        // `collect_head_display_cols`), so one `cursor_is_block` gate covers
+        // both heads; `is_primary_head` only then picks which scope ladder.
+        // The `is_primary_head` arm below is not folded into that gate's
+        // condition: a primary head that fails it must stay bare, never fall
+        // through to the span checks meant for the secondary case.
         let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
-        if is_primary_head {
-            if cursor_is_block {
-                style = style.layer(cursor_cell_style(theme, mode, true));
-            } else if primary_is_reverse
-                && scratch
-                    .primary_sel_span
-                    .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e)
-            {
+        let in_primary_span = scratch
+            .primary_sel_span
+            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e);
+        if cursor_is_block && scratch.head_display_cols.contains(&g.display_col) {
+            style = style.layer(cursor_cell_style(theme, mode, is_primary_head));
+        } else if is_primary_head {
+            if primary_is_reverse && in_primary_span {
                 style = style.layer(theme.ui.selection_primary);
             }
-        } else if cursor_is_block && scratch.head_display_cols.contains(&g.display_col) {
-            style = style.layer(cursor_cell_style(theme, mode, false));
-        } else if scratch
-            .primary_sel_span
-            .is_some_and(|(s, e)| g.display_col >= s && g.display_col < e)
-        {
+        } else if in_primary_span {
             style = style.layer(theme.ui.selection_primary);
         } else if scratch
             .sel_spans

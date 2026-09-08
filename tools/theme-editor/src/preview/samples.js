@@ -160,11 +160,9 @@ export const CHROME_SCOPES = SCOPES
 // open), so their primary head always paints from its chain, the same as
 // Normal — even for Command/Search, whose *own* bar cursor blinks in the
 // minibuf/statusline instead (`hume-editor/src/editor/lifecycle.rs`), a fact
-// with no effect on how the buffer itself renders. In the real editor a
-// secondary head follows `barPrimary` too now (HUME's own departure from
-// Helix, which always paints its secondary cursor) — this preview's
-// "cursor2" tag ignores `barPrimary` regardless, deliberately showing the
-// `cursor-shape-insert = block` case so `ui.cursor.insert` stays editable.
+// with no effect on how the buffer itself renders. "cursor2" deliberately
+// ignores `barPrimary` regardless of mode — see `tagStyle` in
+// `EditorPane.jsx` for why.
 export const MODES = [
   { scope: "ui.statusline.normal", label: "NOR", chain: "normal" },
   { scope: "ui.statusline.insert", label: "INS", chain: "insert", barPrimary: true },

@@ -587,7 +587,7 @@ impl EditorState {
     /// Only Insert is configurable (`cursor-shape-insert`): a terminal has one
     /// hardware cursor, so HUME offers no shape choice for Normal/Extend
     /// (always `Block`, matching Helix's own default), and Command/Search/
-    /// Select also resolve to `Block` here — their document heads render like
+    /// Sift also resolve to `Block` here — their document heads render like
     /// Normal mode while a prompt is open — but their *real* terminal cursor
     /// never reflects this value: it lives in the minibuf, placed by a
     /// separate branch in `Editor::run`'s `cursor_screen` that is
