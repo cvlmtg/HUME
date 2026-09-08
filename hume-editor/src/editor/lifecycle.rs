@@ -14,6 +14,7 @@ use hume_platform::terminal::SharedTerm;
 use super::Editor;
 use super::event::EditorEvent;
 use super::tui::Tui;
+use crate::cli::ConfigSource;
 
 impl Editor {
     // ── Kitty keybinds ──────────────────────────────────────────────────────────
@@ -182,7 +183,7 @@ impl Editor {
             view: engine_view,
             kitty_enabled: false,
             scripting: None,
-            config_path_override: None,
+            config_source: ConfigSource::Default,
             builtin_cmd_names: rustc_hash::FxHashSet::default(),
             parse_worker: Box::new(
                 hume_treesitter::parse_worker::ThreadedParseBackend::with_waker(
@@ -220,13 +221,14 @@ impl Editor {
         self.state.terminate_exit_code = code;
     }
 
-    /// Override the config file `init_scripting` evaluates (`--config`),
-    /// instead of the default `<config_dir>/init.scm`.
+    /// Set where `init_scripting` (and every later `:reload-config`) reads
+    /// its config from (`--config` / `--no-config`), instead of the default
+    /// `<config_dir>/init.scm`.
     ///
     /// Must run before `init_scripting`, same as `set_kitty_support` — the
-    /// override is read once resolution starts.
-    pub(crate) fn set_config_path(&mut self, path: std::path::PathBuf) {
-        self.config_path_override = Some(path);
+    /// source is read once resolution starts.
+    pub(crate) fn set_config_source(&mut self, source: ConfigSource) {
+        self.config_source = source;
     }
 
     /// Queue a 1-based CLI position (`hume foo.rs:12:24`) for `bid`, applied

@@ -5,10 +5,19 @@
 #
 # For each challenge directory under tools/golf/challenges the script:
 #   1. Copies the challenge `in` file to a temp file.
-#   2. Runs `hume --keys "$(cat cmd)" --output <tmp> <tmp>`.
+#   2. Runs `hume --keys "$(cat cmd)" --output <tmp> --no-config <tmp>`.
 #   3. Compares the result byte-for-byte against `out`.
 #   4. Counts keystrokes (each bare char = 1; each <...> token = 1).
 #   5. Prints a results table.
+#
+# `--no-config` keeps scores reproducible: `--keys` now loads config like any
+# other invocation (see `--no-config` in `hume --help`), and this harness
+# needs pristine built-in defaults for a fair vimgolf-style byte comparison,
+# not the developer's own init.scm/plugins. `XDG_DATA_HOME` is additionally
+# pointed at an empty scratch dir for the same reason: the bundled runtime
+# Scheme that `--no-config` still loads registers whatever tree-sitter
+# grammars are installed under the data dir, and scores must not depend on
+# which grammars the developer happens to have installed via PLUM.
 #
 # Requires Rust toolchain; builds hume-editor from source on each run.
 
@@ -28,6 +37,12 @@ PROJECT_ROOT="$(realpath "$(dirname "$0")/../..")"
 echo "golf: building hume-editor ..."
 cargo build --package hume-editor --manifest-path "$PROJECT_ROOT/Cargo.toml"
 HUME="$PROJECT_ROOT/target/debug/hume"
+
+# Empty data dir so the bundled runtime Scheme --no-config still loads sees
+# no installed grammars, regardless of the developer's own PLUM installs.
+GOLF_DATA_DIR="$(mktemp -d)"
+trap 'rm -rf "$GOLF_DATA_DIR"' EXIT
+export XDG_DATA_HOME="$GOLF_DATA_DIR"
 
 if [[ -n "$challenge_id" && ! -d "$CHALLENGES_DIR/$challenge_id" ]]; then
     echo "golf: unknown challenge '$challenge_id'" >&2
@@ -104,7 +119,7 @@ for dir in "${dirs[@]}"; do
     tmp="$(mktemp)"
     cp "$in_file" "$tmp"
 
-    if "$HUME" --keys "$keys" --output "$tmp" "$tmp" 2>/dev/null \
+    if "$HUME" --keys "$keys" --output "$tmp" --no-config "$tmp" 2>/dev/null \
        && cmp -s "$out_file" "$tmp"; then
         printf "%-28s  %5s  %7s  %s\n" "$name" "$score" "$kakoune_score" "OK"
         pass=$((pass + 1))

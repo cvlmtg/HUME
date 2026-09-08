@@ -25,8 +25,11 @@ pub(crate) mod testing;
 ///
 /// Opens `input`, feeds every key in `keys` (golf-stream notation — see
 /// [`hume_scripting::parse_key_stream`]) through the editor's normal dispatch
-/// path, then writes the final buffer content to `output`.  No terminal is
-/// initialised and no `init.scm` is loaded.
+/// path, then writes the final buffer content to `output`. No terminal is
+/// initialised. `config` picks what `init_scripting` evaluates — the default
+/// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
+/// `--no-config` — exactly as it would for [`run`]; headless mode carries no
+/// config posture of its own any more.
 ///
 /// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
 /// editor sets `should_quit`); the buffer is written to `output` regardless.
@@ -34,6 +37,7 @@ pub fn run_keys(
     input: std::path::PathBuf,
     keys: &str,
     output: std::path::PathBuf,
+    config: cli::ConfigSource,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let parsed =
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
@@ -49,6 +53,10 @@ pub fn run_keys(
     editor.set_kitty_support(true);
     // The pane viewport defaults to 80×24 (from Pane::new) and is never
     // updated without a terminal, so scores are reproducible.
+    // Must run before `init_scripting`, same as `set_kitty_support` above —
+    // the source is read once resolution starts.
+    editor.set_config_source(config);
+    editor.init_scripting(&mut Default::default());
 
     for key in parsed {
         editor.step(key);
@@ -70,15 +78,19 @@ pub fn run_keys(
 
     let content = editor.doc().text().to_string();
     std::fs::write(&output, content)?;
+    // Config can now spawn LSP servers (see the `config` param above) —
+    // give them the same graceful shutdown window `run` gives them, rather
+    // than leaving `ServerHandle::drop` to `SIGKILL` them on the way out.
+    editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
     Ok(())
 }
 
 /// Start the editor.
 ///
-/// `config_path` is the validated, already-absolutized `--config` override
-/// (see `resolve` in `main.rs`) — `None` means fall back to the default
-/// `<config_dir>/init.scm`. Set on the editor via `set_config_path` before
-/// `init_scripting` runs, below.
+/// `config` is `resolve`'s (`main.rs`) validated `ConfigSource` — the
+/// default `<config_dir>/init.scm`, an already-absolutized `--config`
+/// override, or `--no-config`. Set on the editor via `set_config_source`
+/// before `init_scripting` runs, below.
 ///
 /// Scripting initialisation (Steel VM boot + `init.scm`, ~150-200 ms) runs
 /// *before* the terminal enters raw mode / the alternate screen, so the
@@ -108,7 +120,7 @@ pub fn run_keys(
 /// exclusion here — `hangup_exit_code` has no source tag to distinguish it.
 pub fn run(
     files: Vec<cli::FileArg>,
-    config_path: Option<std::path::PathBuf>,
+    config: cli::ConfigSource,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared = hume_platform::terminal::create()?;
 
@@ -152,10 +164,8 @@ pub fn run(
     let kitty_enabled = hume_platform::terminal::probe_kitty(&shared)?;
     editor.set_kitty_support(kitty_enabled);
     // Must run before `init_scripting`, same as `set_kitty_support` above —
-    // the override is read once config resolution starts.
-    if let Some(path) = config_path {
-        editor.set_config_path(path);
-    }
+    // the source is read once resolution starts.
+    editor.set_config_source(config);
     editor.init_scripting(&mut Default::default());
     // `first`'s buffer is already open via `Editor::open` above, so its id is
     // read straight off the focused buffer. Open remaining paths after

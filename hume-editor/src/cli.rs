@@ -36,6 +36,20 @@ pub struct FileArg {
     pub pos: Option<CliPosition>,
 }
 
+/// Where a session's Steel config comes from — `--config` and `--no-config`
+/// collapsed into one value, since they're mutually exclusive at the CLI
+/// layer. Independent of `--keys`: any variant is valid in either headless
+/// or interactive mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConfigSource {
+    /// `<config_dir>/init.scm`.
+    Default,
+    /// `--config FILE` — validated and pinned to the startup cwd by `resolve`.
+    File(PathBuf),
+    /// `--no-config` — bundled runtime Scheme only, no user `init.scm`.
+    Skip,
+}
+
 /// Parses one positional CLI argument into a [`FileArg`].
 ///
 /// A path that names a real file or symlink *as typed* always wins over

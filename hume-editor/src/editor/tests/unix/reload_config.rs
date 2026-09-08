@@ -10,6 +10,7 @@
 use super::*;
 
 use super::super::scripting_grammar::grammar_fixture;
+use crate::cli::ConfigSource;
 use crate::editor::keymap::{BindMode, Keymap};
 use crate::editor::minibuf::history::HistoryKind;
 
@@ -219,7 +220,7 @@ fn reload_config_repopulates_statusline_text_pushed_from_on_buffer_enter() {
 // --config override
 // ---------------------------------------------------------------------------
 
-/// `set_config_path` (the `--config` flag's editor-side setter) must make
+/// `set_config_source` (the `--config` flag's editor-side setter) must make
 /// `init_scripting` evaluate the override file instead of the default
 /// `<config_dir>/init.scm` — even though a real, different `init.scm` exists
 /// on disk right where `config_dir()` would otherwise find it.
@@ -229,7 +230,7 @@ fn config_override_is_evaluated_instead_of_default_init_scm() {
     let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.set_config_path(override_path);
+    ed.set_config_source(ConfigSource::File(override_path));
     ed.init_scripting(&mut Default::default());
 
     assert_eq!(
@@ -248,7 +249,7 @@ fn config_override_survives_reload_config() {
     let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.set_config_path(override_path.clone());
+    ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
         ed.state.settings.scrolloff, 42,
@@ -289,7 +290,7 @@ fn config_override_missing_at_reload_reports_error_and_does_not_report_success()
     let override_path = fixture.write_override("override.scm", r#"(set-option! "scrolloff" 42)"#);
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.set_config_path(override_path.clone());
+    ed.set_config_source(ConfigSource::File(override_path.clone()));
     ed.init_scripting(&mut Default::default());
     assert_eq!(
         ed.state.settings.scrolloff, 42,
@@ -348,7 +349,7 @@ fn config_override_works_with_no_config_dir() {
     let _runtime_dir = EnvVarGuard::set("HUME_RUNTIME", runtime_tmp.path());
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.set_config_path(override_path);
+    ed.set_config_source(ConfigSource::File(override_path));
     ed.init_scripting(&mut Default::default());
 
     assert!(
@@ -369,6 +370,69 @@ fn config_override_works_with_no_config_dir() {
         ed.state.status_msg.as_deref(),
         Some("Config reloaded"),
         "reload must report success, not the no-config-dir failure"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// --no-config
+// ---------------------------------------------------------------------------
+
+/// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm` —
+/// `scrolloff` stays at its compiled-in default despite the fixture's
+/// `init.scm` setting it to 9 — while still initialising the scripting host
+/// so the bundled runtime Scheme (language identities, grammars, prelude
+/// macros) loads.
+#[test]
+fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
+    let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_source(ConfigSource::Skip);
+    ed.init_scripting(&mut Default::default());
+
+    assert_eq!(
+        ed.state.settings.scrolloff,
+        EditorSettings::default().scrolloff,
+        "--no-config must skip the fixture's init.scm entirely"
+    );
+    assert!(
+        ed.scripting.is_some(),
+        "--no-config must still initialize the scripting host so bundled \
+         runtime Scheme loads"
+    );
+}
+
+/// `:reload-config` must refuse outright under `--no-config` rather than
+/// silently loading the real config — the flag is a session-wide posture,
+/// not a startup-only skip, and loading config on reload would end that
+/// posture with no way back.
+#[test]
+fn reload_config_under_no_config_errors() {
+    let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
+
+    let mut ed = editor_from("-[a]>b\n");
+    ed.set_config_source(ConfigSource::Skip);
+    ed.init_scripting(&mut Default::default());
+
+    type_cmd(&mut ed, ":reload-config");
+
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("--no-config")),
+        "reload-config under --no-config must log an error naming the flag; \
+         messages: {:?}",
+        ed.state
+            .message_log
+            .entries()
+            .map(|e| format!("{:?}: {}", e.severity, e.text))
+            .collect::<Vec<_>>()
+    );
+    assert_ne!(
+        ed.state.status_msg.as_deref(),
+        Some("Config reloaded"),
+        "a reload that just errored must not also report success"
     );
 }
 

@@ -365,12 +365,22 @@ pub(crate) fn typed_reload_config(
     _arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    // Checked before anything is touched: `init_scripting` needs this same
-    // path to re-evaluate the config, and failing here — before
-    // `reset_config_state` wipes languages/keymap/theme/highlighting — means
-    // a reload with no resolvable path leaves the editor exactly as it was,
-    // rather than reset to compiled-in defaults with no way back. A
-    // `--config` override always resolves, regardless of HOME/XDG_CONFIG_HOME.
+    // Checked before anything is touched — failing here, before
+    // `reset_config_state` wipes languages/keymap/theme/highlighting, means a
+    // reload that can't proceed leaves the editor exactly as it was, rather
+    // than reset to compiled-in defaults with no way back.
+    //
+    // `--no-config` refuses outright: it's a session-wide posture the user
+    // chose (a clean-debugging run, or a headless script that deliberately
+    // wants no plugins), not a startup-only skip — silently loading the real
+    // config on reload would end that posture with no way back either. A
+    // `--config` override always resolves, regardless of HOME/XDG_CONFIG_HOME,
+    // so only the default source can hit the no-resolvable-directory case.
+    if ed.config_source == crate::cli::ConfigSource::Skip {
+        return Err(CommandError::new(
+            "reload-config: session started with --no-config",
+        ));
+    }
     if ed.config_path().is_none() {
         return Err(CommandError::new(
             "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",

@@ -9,6 +9,7 @@ use super::buffer::DiskCheckTrigger;
 use super::event::{EditorEvent, PendingWork};
 use super::reload::ReloadSnapshot;
 use super::{Editor, Severity, host_impl::EditorHostImpl};
+use crate::cli::ConfigSource;
 
 /// Upper bound on total work items processed per `settle()` boundary.
 ///
@@ -520,7 +521,8 @@ impl Editor {
 
     // ── Scripting ─────────────────────────────────────────────────────────────
 
-    /// Initialise the Steel scripting host and evaluate `init.scm`.
+    /// Initialise the Steel scripting host, then evaluate `init.scm` unless
+    /// this session has no `init.scm` to run.
     ///
     /// Called once at startup, after `Editor::open` returns and before
     /// `Editor::run` starts (with `snapshot` at its `Default` — nothing to
@@ -529,21 +531,20 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        // Resolve the config path up front. `None` means no `--config`
-        // override and neither XDG_CONFIG_HOME nor HOME (APPDATA on Windows)
-        // is set — there is no meaningful place to look for init.scm, so we
-        // skip scripting entirely and log a warning.
-        let Some(init_path) = self.config_path() else {
+        // Resolve the config path up front. `None` under `ConfigSource::Skip`
+        // (`--no-config`) is what the user asked for — no warning. `None`
+        // under the default source, with neither XDG_CONFIG_HOME nor HOME
+        // (APPDATA on Windows) set, means there's no meaningful place to look
+        // for init.scm. Either way the *bundled* runtime Scheme below still
+        // loads — it's HUME's own, not the user's, and doesn't depend on a
+        // resolvable HOME.
+        let init_path = self.config_path();
+        if init_path.is_none() && self.config_source == ConfigSource::Default {
             self.report(
                 Severity::Warning,
                 "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
             );
-            return;
-        };
-        self.report(
-            Severity::Trace,
-            format!("scripting: config file = {}", init_path.display()),
-        );
+        }
         let mut host = hume_scripting::ScriptingHost::new();
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
@@ -599,7 +600,16 @@ impl Editor {
         self.eval_runtime_scheme(&mut host, "scheme/prelude.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/languages.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
-        {
+        // `None` here means `ConfigSource::Skip` or an unresolvable default
+        // directory (both handled, with their differing warnings, above) —
+        // either way there's no `init.scm` to evaluate, so every plugin it
+        // would otherwise `load-plugin` is skipped for free. The runtime
+        // scheme above always loads regardless — it's HUME's own.
+        if let Some(init_path) = init_path {
+            self.report(
+                Severity::Trace,
+                format!("scripting: config file = {}", init_path.display()),
+            );
             let init_budget = self.state.settings.steel_init_budget_ms as u64;
             // A missing default `init.scm` is normal — `eval_init` treats
             // `NotFound` as a silent no-op — but a `--config` override is an
@@ -610,17 +620,18 @@ impl Editor {
             // `main.rs` — a relative path outrun by an intervening `:cd`), so
             // re-check it here rather than let it fall through `eval_init`'s
             // silent-skip path and read as a successful, empty reload.
-            let result = if self.config_path_override.is_some() && !init_path.is_file() {
-                Err(format!("--config: not found: {}", init_path.display()).into())
-            } else {
-                let mut ih = EditorHostImpl::init(
-                    &mut self.state,
-                    &mut self.view,
-                    self.tui.clone(),
-                    self.kitty_enabled,
-                );
-                host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
-            };
+            let result =
+                if matches!(self.config_source, ConfigSource::File(_)) && !init_path.is_file() {
+                    Err(format!("--config: not found: {}", init_path.display()).into())
+                } else {
+                    let mut ih = EditorHostImpl::init(
+                        &mut self.state,
+                        &mut self.view,
+                        self.tui.clone(),
+                        self.kitty_enabled,
+                    );
+                    host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
+                };
             // Named by the path actually evaluated — "init.scm: " for the
             // default location, the override's own file name under
             // `--config` — so an eval error names the file the user actually
@@ -754,16 +765,22 @@ impl Editor {
         }
     }
 
-    /// The Steel config file this session evaluates — at startup and on
-    /// every `:reload-config`, which must re-run the file the session
-    /// booted from rather than falling back to the default one.
+    /// The `init.scm` this session evaluates — at startup and on every
+    /// `:reload-config`, which must re-run the file the session booted from
+    /// rather than falling back to the default one.
     ///
-    /// `None` means no `--config` override *and* no resolvable config
-    /// directory (`HOME`/`XDG_CONFIG_HOME`, `APPDATA` on Windows all unset).
+    /// `None` means either `--no-config` (`ConfigSource::Skip`) or the
+    /// default source with no resolvable config directory
+    /// (`HOME`/`XDG_CONFIG_HOME`, `APPDATA` on Windows all unset) — both
+    /// mean "no `init.scm` to evaluate", though `init_scripting` only warns
+    /// for the latter (the former is what the user asked for).
     pub(crate) fn config_path(&self) -> Option<PathBuf> {
-        match &self.config_path_override {
-            Some(path) => Some(path.clone()),
-            None => hume_platform::dirs::config_dir().map(|dir| dir.join("init.scm")),
+        match &self.config_source {
+            ConfigSource::File(path) => Some(path.clone()),
+            ConfigSource::Skip => None,
+            ConfigSource::Default => {
+                hume_platform::dirs::config_dir().map(|dir| dir.join("init.scm"))
+            }
         }
     }
 

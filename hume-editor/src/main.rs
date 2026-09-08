@@ -20,9 +20,14 @@ struct Cli {
     /// Load configuration from FILE instead of the default `init.scm`.
     ///
     /// Themes and the data directory still resolve from the standard
-    /// directories. Not valid in headless --keys mode.
-    #[arg(long, value_name = "FILE", conflicts_with = "keys")]
+    /// directories.
+    #[arg(long, value_name = "FILE", conflicts_with = "no_config")]
     config: Option<PathBuf>,
+
+    /// Skip `init.scm` — no user config, no plugins. Bundled language
+    /// identities, grammars, and prelude macros still load.
+    #[arg(long, conflicts_with = "config")]
+    no_config: bool,
 
     /// Files to open (normal mode) or the single input file (headless mode).
     #[arg(value_name = "FILE")]
@@ -37,74 +42,83 @@ enum Mode {
     },
     Normal {
         files: Vec<hume_editor::cli::FileArg>,
-        config: Option<PathBuf>,
     },
 }
 
-// Classify validated args into a run mode. clap guarantees `output` is present
-// whenever `keys` is, and vice-versa, via `requires`, and that `config` never
-// appears alongside `keys`, via `conflicts_with`. The constraints clap can't
-// express — exactly one input file in headless mode, `config` naming a real
-// file — are checked here.
-fn resolve(cli: Cli) -> Result<Mode, String> {
-    match cli.keys {
+struct Invocation {
+    mode: Mode,
+    config: hume_editor::cli::ConfigSource,
+}
+
+// Classify validated args into a run mode plus a config source — the two are
+// orthogonal (any ConfigSource is valid with either Mode), unlike the old
+// `--config`/`--keys` coupling this replaces. clap guarantees `output` is
+// present whenever `keys` is, and vice-versa, via `requires`, and that
+// `config` and `no_config` never appear together, via `conflicts_with`. The
+// constraints clap can't express — exactly one input file in headless mode,
+// `config` naming a real file — are checked here.
+fn resolve(cli: Cli) -> Result<Invocation, String> {
+    // A missing default `init.scm` is normal and silently skipped (see
+    // `Editor::init_scripting`), but a path the user named explicitly is an
+    // assertion — a typo here should fail loudly before the terminal even
+    // enters raw mode (or, in headless mode, before any key is replayed),
+    // not silently boot unconfigured. `File::open` (not `fs::metadata`, a
+    // bare `stat`) proves the path is both present and readable in one
+    // syscall. Runs for both modes: `--config` is no longer `--keys`-only.
+    let config = if cli.no_config {
+        hume_editor::cli::ConfigSource::Skip
+    } else if let Some(path) = cli.config {
+        let file =
+            std::fs::File::open(&path).map_err(|e| format!("--config: {}: {e}", path.display()))?;
+        let is_file = file
+            .metadata()
+            .map_err(|e| format!("--config: {}: {e}", path.display()))?
+            .is_file();
+        if !is_file {
+            return Err(format!("--config: not a file: {}", path.display()));
+        }
+        // HUME moves its own process cwd at runtime (`:cd`), so a relative
+        // path must be pinned to the startup cwd here — otherwise
+        // `:reload-config` would re-resolve it against wherever `:cd` last
+        // left the process, miss the file, and silently reset to
+        // compiled-in defaults instead of erroring (see `Editor::config_path`).
+        let cwd = std::env::current_dir()
+            .map_err(|e| format!("--config: resolving current directory: {e}"))?;
+        hume_editor::cli::ConfigSource::File(hume_platform::path::absolute_unresolved(&path, &cwd))
+    } else {
+        hume_editor::cli::ConfigSource::Default
+    };
+
+    let mode = match cli.keys {
         Some(keys) => {
             // Safe: clap's `requires` ensures output is set when keys is set.
             let output = cli
                 .output
                 .expect("clap ensures --output when --keys is set");
             match cli.files.as_slice() {
-                [input] => Ok(Mode::Headless {
+                [input] => Mode::Headless {
                     input: input.clone(),
                     keys,
                     output,
-                }),
-                _ => Err("--keys mode requires exactly one input file".into()),
+                },
+                _ => return Err("--keys mode requires exactly one input file".into()),
             }
         }
         None => {
-            // A missing default `init.scm` is normal and silently skipped
-            // (see `Editor::init_scripting`), but a path the user named
-            // explicitly is an assertion — a typo here should fail loudly
-            // before the terminal even enters raw mode, not silently boot
-            // unconfigured. `File::open` (not `fs::metadata`, a bare `stat`)
-            // proves the path is both present and readable in one syscall.
-            let config = match cli.config {
-                Some(path) => {
-                    let file = std::fs::File::open(&path)
-                        .map_err(|e| format!("--config: {}: {e}", path.display()))?;
-                    let is_file = file
-                        .metadata()
-                        .map_err(|e| format!("--config: {}: {e}", path.display()))?
-                        .is_file();
-                    if !is_file {
-                        return Err(format!("--config: not a file: {}", path.display()));
-                    }
-                    // HUME moves its own process cwd at runtime (`:cd`), so a
-                    // relative path must be pinned to the startup cwd here —
-                    // otherwise `:reload-config` would re-resolve it against
-                    // wherever `:cd` last left the process, miss the file,
-                    // and silently reset to compiled-in defaults instead of
-                    // erroring (see `Editor::config_path`).
-                    let cwd = std::env::current_dir()
-                        .map_err(|e| format!("--config: resolving current directory: {e}"))?;
-                    Some(hume_platform::path::absolute_unresolved(&path, &cwd))
-                }
-                None => None,
-            };
             let files = cli
                 .files
                 .iter()
                 .map(|p| hume_editor::cli::parse_file_arg(p))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Mode::Normal { files, config })
+            Mode::Normal { files }
         }
-    }
+    };
+    Ok(Invocation { mode, config })
 }
 
 fn main() {
-    let mode = match resolve(Cli::parse()) {
-        Ok(mode) => mode,
+    let Invocation { mode, config } = match resolve(Cli::parse()) {
+        Ok(inv) => inv,
         Err(msg) => {
             eprintln!("hume: {msg}");
             process::exit(1);
@@ -115,8 +129,8 @@ fn main() {
             input,
             keys,
             output,
-        } => hume_editor::run_keys(input, &keys, output),
-        Mode::Normal { files, config } => hume_editor::run(files, config),
+        } => hume_editor::run_keys(input, &keys, output, config),
+        Mode::Normal { files } => hume_editor::run(files, config),
     };
     if let Err(e) = result {
         eprintln!("hume: {e}");
@@ -127,7 +141,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hume_editor::cli::FileArg;
+    use hume_editor::cli::{ConfigSource, FileArg};
 
     // ── clap layer: parse from argv strings ──────────────────────────────────
 
@@ -178,22 +192,65 @@ mod tests {
         assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
     }
 
+    // `--config` and `--keys` are now orthogonal (see `Invocation`) — this
+    // is the deliberate inversion of the old `conflicts_with = "keys"`.
     #[test]
-    fn parse_config_with_keys_is_rejected() {
-        let err = Cli::try_parse_from([
+    fn parse_config_with_keys_is_accepted() {
+        let cli = Cli::try_parse_from([
             "hume", "--keys", "dwx", "--output", "o.txt", "--config", "alt.scm", "in.txt",
-        ]);
-        assert!(err.is_err(), "clap must reject --config with --keys");
+        ])
+        .expect("--config must now be valid alongside --keys");
+        assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
+        assert_eq!(cli.keys.as_deref(), Some("dwx"));
     }
 
-    // ── resolve layer: mode classification (no clap; touches the filesystem
-    //    only to validate/pin a `--config` path) ───────────────────────────
+    #[test]
+    fn parse_no_config_flag() {
+        let cli = Cli::try_parse_from(["hume", "--no-config", "in.txt"])
+            .expect("--no-config should parse");
+        assert!(cli.no_config);
+    }
+
+    #[test]
+    fn parse_no_config_with_config_is_rejected() {
+        let err = Cli::try_parse_from(["hume", "--no-config", "--config", "alt.scm", "in.txt"]);
+        assert!(err.is_err(), "clap must reject --no-config with --config");
+    }
+
+    #[test]
+    fn parse_no_config_with_keys_is_accepted() {
+        let cli = Cli::try_parse_from([
+            "hume",
+            "--keys",
+            "dwx",
+            "--output",
+            "o.txt",
+            "--no-config",
+            "in.txt",
+        ])
+        .expect("--no-config must be valid alongside --keys");
+        assert!(cli.no_config);
+    }
+
+    // ── resolve layer: mode + config-source classification (no clap; touches
+    //    the filesystem only to validate/pin a `--config` path) ─────────────
 
     fn make_headless(files: Vec<PathBuf>) -> Cli {
         Cli {
             keys: Some("dw".into()),
             output: Some(PathBuf::from("out.txt")),
             config: None,
+            no_config: false,
+            files,
+        }
+    }
+
+    fn make_headless_with_config(files: Vec<PathBuf>, config: Option<PathBuf>) -> Cli {
+        Cli {
+            keys: Some("dw".into()),
+            output: Some(PathBuf::from("out.txt")),
+            config,
+            no_config: false,
             files,
         }
     }
@@ -203,6 +260,17 @@ mod tests {
             keys: None,
             output: None,
             config,
+            no_config: false,
+            files,
+        }
+    }
+
+    fn make_normal_no_config(files: Vec<PathBuf>) -> Cli {
+        Cli {
+            keys: None,
+            output: None,
+            config: None,
+            no_config: true,
             files,
         }
     }
@@ -210,18 +278,23 @@ mod tests {
     #[test]
     fn resolve_headless_exactly_one_file_succeeds() {
         let cli = make_headless(vec![PathBuf::from("in.txt")]);
-        let mode = resolve(cli).expect("one input file should succeed");
+        let inv = resolve(cli).expect("one input file should succeed");
         let Mode::Headless {
             input,
             keys,
             output,
-        } = mode
+        } = inv.mode
         else {
             panic!("expected Mode::Headless");
         };
         assert_eq!(input, PathBuf::from("in.txt"));
         assert_eq!(keys, "dw");
         assert_eq!(output, PathBuf::from("out.txt"));
+        assert_eq!(
+            inv.config,
+            ConfigSource::Default,
+            "headless mode now loads config by default, same as interactive mode"
+        );
     }
 
     #[test]
@@ -242,8 +315,8 @@ mod tests {
     #[test]
     fn resolve_normal_carries_all_files() {
         let files = vec![PathBuf::from("x.rs"), PathBuf::from("y.rs")];
-        let mode = resolve(make_normal(files, None)).expect("normal mode should succeed");
-        let Mode::Normal { files: got, .. } = mode else {
+        let inv = resolve(make_normal(files, None)).expect("normal mode should succeed");
+        let Mode::Normal { files: got } = inv.mode else {
             panic!("expected Mode::Normal");
         };
         assert_eq!(
@@ -267,8 +340,8 @@ mod tests {
     #[test]
     fn resolve_normal_splits_a_line_column_suffix() {
         let files = vec![PathBuf::from("does-not-exist.rs:12:24")];
-        let mode = resolve(make_normal(files, None)).expect("normal mode should succeed");
-        let Mode::Normal { files: got, .. } = mode else {
+        let inv = resolve(make_normal(files, None)).expect("normal mode should succeed");
+        let Mode::Normal { files: got } = inv.mode else {
             panic!("expected Mode::Normal");
         };
         assert_eq!(
@@ -289,8 +362,8 @@ mod tests {
     #[test]
     fn resolve_headless_input_path_is_never_split() {
         let cli = make_headless(vec![PathBuf::from("weird:12")]);
-        let mode = resolve(cli).expect("one input file should succeed");
-        let Mode::Headless { input, .. } = mode else {
+        let inv = resolve(cli).expect("one input file should succeed");
+        let Mode::Headless { input, .. } = inv.mode else {
             panic!("expected Mode::Headless");
         };
         assert_eq!(input, PathBuf::from("weird:12"));
@@ -298,8 +371,8 @@ mod tests {
 
     #[test]
     fn resolve_normal_no_files() {
-        let mode = resolve(make_normal(vec![], None)).expect("no-file launch should succeed");
-        let Mode::Normal { files, .. } = mode else {
+        let inv = resolve(make_normal(vec![], None)).expect("no-file launch should succeed");
+        let Mode::Normal { files } = inv.mode else {
             panic!("expected Mode::Normal");
         };
         assert!(files.is_empty());
@@ -310,14 +383,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("alt.scm");
         std::fs::write(&path, "").unwrap();
-        let mode = resolve(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
-        let Mode::Normal { config, .. } = mode else {
-            panic!("expected Mode::Normal");
-        };
+        let inv = resolve(make_normal(vec![], Some(path.clone()))).expect("real file should pass");
         // Already absolute with no `.`/`..` components, so pinning to the
         // startup cwd (see `resolve_config_relative_path_is_pinned_to_startup_cwd`)
         // is a no-op here.
-        assert_eq!(config, Some(path));
+        assert_eq!(inv.config, ConfigSource::File(path));
     }
 
     #[test]
@@ -337,12 +407,33 @@ mod tests {
     }
 
     #[test]
-    fn resolve_no_config_flag_succeeds() {
-        let mode = resolve(make_normal(vec![], None)).expect("no --config should pass");
-        let Mode::Normal { config, .. } = mode else {
-            panic!("expected Mode::Normal");
-        };
-        assert_eq!(config, None);
+    fn resolve_default_config_source_when_no_flags_given() {
+        let inv = resolve(make_normal(vec![], None)).expect("no --config should pass");
+        assert_eq!(inv.config, ConfigSource::Default);
+    }
+
+    #[test]
+    fn resolve_no_config_flag_skips_config() {
+        let inv = resolve(make_normal_no_config(vec![])).expect("--no-config should pass");
+        assert_eq!(inv.config, ConfigSource::Skip);
+    }
+
+    // The `--config` validation/pinning path is shared code, exercised in
+    // full above under normal mode — this pins that headless mode reaches
+    // the same code, not a bypassed copy, now that `--config` and `--keys`
+    // are no longer mutually exclusive.
+    #[test]
+    fn resolve_headless_config_flag_validates_and_pins() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("alt.scm");
+        std::fs::write(&path, "").unwrap();
+        let inv = resolve(make_headless_with_config(
+            vec![PathBuf::from("in.txt")],
+            Some(path.clone()),
+        ))
+        .expect("real --config file should pass in headless mode");
+        assert!(matches!(inv.mode, Mode::Headless { .. }));
+        assert_eq!(inv.config, ConfigSource::File(path));
     }
 
     // A relative `--config` path must be pinned to the startup cwd, not left
@@ -366,12 +457,10 @@ mod tests {
         let result = resolve(make_normal(vec![], Some(PathBuf::from("alt.scm"))));
         std::env::set_current_dir(&saved_cwd).unwrap();
 
-        let Mode::Normal { config, .. } = result.expect("relative real file should pass") else {
-            panic!("expected Mode::Normal");
-        };
+        let inv = result.expect("relative real file should pass");
         assert_eq!(
-            config,
-            Some(canonical_dir.join("alt.scm")),
+            inv.config,
+            ConfigSource::File(canonical_dir.join("alt.scm")),
             "a relative --config path must be resolved against the cwd at \
              startup, not left relative for a later re-resolution to miss"
         );

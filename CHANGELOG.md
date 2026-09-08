@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Breaking changes
+- `--keys` (headless mode) now loads `init.scm` and plugins, same as interactive mode — previously it always ran with pure built-in defaults. Pass `--no-config` for the old pristine behavior.
+
+### CLI
+- New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
+
 ## [0.12.0] - 2026-09-08
 
 ### Breaking changes
