@@ -144,7 +144,7 @@ export const CHROME_SCOPES = SCOPES
   .flatMap(([, ids]) => ids);
 
 // Mode -> (statusline scope, cursor chain) — mirrors HUME's own mapping:
-// `hume-editor/src/ui/theme.rs`'s `mode_scope`, and `head_style` in
+// `hume-editor/src/ui/theme.rs`'s `mode_scope`, and `cursor_cell_style` in
 // `hume-engine/src/style/mod.rs`, whose match picks the chain by document
 // mode: Insert -> "insert"; Extend (HUME's name for Helix's Select mode) ->
 // "select"; everything else, including HUME's own Command/Search/Select
@@ -209,7 +209,7 @@ export const DRAWER_ROWS = [
   "hume-editor/src/ui/theme.rs:42:5    pub fn mode_scope(mode: Mode) -> Scope {",
   "hume-editor/src/ui/drawer.rs:61:1   pub(crate) struct DrawerWidget {",
   "hume-editor/src/ui/picker_panel.rs:109:1  fn panel_geometry(pane_area: Rect)",
-  "hume-engine/src/style/mod.rs:88:9   pub fn head_style(mode: Mode, primary: bool)",
+  "hume-engine/src/style/mod.rs:286:1  fn cursor_cell_style(theme, mode, is_primary)",
   "hume-engine/src/pipeline/mod.rs:344:5   let bottom_edge = area.bottom() - 1;",
   "runtime/themes/sand.toml:11:1       \"ui.drawer\" = { fg = \"text\", bg = \"surface\" }",
 ];
