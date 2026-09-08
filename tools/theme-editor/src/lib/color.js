@@ -49,8 +49,11 @@ export function adjustColor(hex, hShift, sShift, lShift) {
   if (full.length < 7) return hex;
   const hsl = hexToHSL(full);
   const rgb = hslToHex(hsl[0] + hShift, hsl[1] + sShift, hsl[2] + lShift);
-  // #rrggbbaa: hslToHex only ever produces 6 digits, so the alpha byte —
-  // untouched by an H/S/L shift — must be carried over from the input.
+  // #rrggbbaa: carried through rather than supported. HUME's loader accepts
+  // only #rgb/#rrggbb and rejects this form outright (so does Helix), but an
+  // imported hand-edited theme can contain one, and silently dropping the
+  // alpha byte on an unrelated H/S/L shift would rewrite the user's value.
+  // See README's Known limitations.
   const alpha = full.length === 9 ? full.slice(7, 9) : "";
   return rgb + alpha;
 }

@@ -126,10 +126,13 @@ export default function HelixThemeEditor() {
           setLoadedThemeName(themeName);
         }
       } catch (err) {
-        console.error("Parse error", err);
         setImportError(err.message || String(err));
       }
     };
+    // A read that never yields a result must say so rather than looking like
+    // an import that quietly did nothing.
+    reader.onerror = () =>
+      setImportError(`could not read ${file.name}: ${reader.error?.message ?? "read failed"}`);
     reader.readAsText(file);
     e.target.value = "";
   }, [loadedThemeName, pendingChildren, inheritBanner, palette, scopes]);
@@ -156,10 +159,10 @@ export default function HelixThemeEditor() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "theme.toml";
+    a.download = loadedThemeName ? `${loadedThemeName}.toml` : "theme.toml";
     a.click();
     URL.revokeObjectURL(url);
-  }, [adjPalette, scopes, inheritBanner, parentBaseline]);
+  }, [adjPalette, scopes, inheritBanner, parentBaseline, loadedThemeName]);
 
   const addColor = () => {
     if (newName.trim() && /^#[0-9a-fA-F]{6}$/.test(newColor)) {
@@ -183,7 +186,7 @@ export default function HelixThemeEditor() {
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: MONO, display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "12px 20px", background: C.bgHeader, borderBottom: "1px solid " + C.border, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
         <span style={{ fontSize: 18, fontWeight: 700, color: C.brand, letterSpacing: "0.04em" }}>
-          {"⬡ helix theme editor"}
+          {"⬡ hume theme editor"}
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <input type="file" ref={fileRef} accept=".toml" onChange={handleImport} style={{ display: "none" }} />
