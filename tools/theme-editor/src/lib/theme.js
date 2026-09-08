@@ -132,10 +132,19 @@ export function fullStyleChain(ids, sc, pal) {
 // Always returns a normalized style object, never null: both ladders end at
 // `ui.selection`, matching how the real ladder falls back to an all-`None`
 // `ResolvedStyle` rather than "no style at all".
-export function cursorColors(chain, primary, sc, pal) {
-  const ids = primary
+// The (secondary, primary) rung list for one mode's chain. Split out from
+// `cursorColors` so it is comparable data rather than an inline literal:
+// `tests/theme.test.js` parses `cursor_ladder_ids`' own literals out of
+// hume-engine/src/theme/mod.rs and asserts these match, so the copy the Rust
+// side went to the trouble of exposing as a shared function can't drift here.
+export function cursorLadderIds(chain, primary) {
+  return primary
     ? [`ui.cursor.primary.${chain}`, "ui.cursor.primary", "ui.cursor", "ui", "ui.selection"]
     : [`ui.cursor.${chain}`, "ui.cursor", "ui.selection"];
+}
+
+export function cursorColors(chain, primary, sc, pal) {
+  const ids = cursorLadderIds(chain, primary);
   return fullStyleChain(ids, sc, pal) ?? { fg: null, bg: null, mods: [], underline: null };
 }
 

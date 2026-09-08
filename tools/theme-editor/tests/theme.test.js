@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveColor, cursorColors, diagnosticStyle, fullStyle, tokenStyle } from '../src/lib/theme.js';
+import { readFileSync } from 'node:fs';
+import { resolveColor, cursorColors, cursorLadderIds, diagnosticStyle, fullStyle, tokenStyle } from '../src/lib/theme.js';
 
 test('resolveColor resolves a bare ANSI name to its fixed hex value', () => {
   assert.equal(resolveColor('red', {}), '#cd0000');
@@ -45,6 +46,33 @@ test('cursorColors primary chain reaches the bare "ui" rung the secondary chain 
   // The secondary ladder has no "ui" rung at all — it must fall through
   // past it rather than resolving the same way the primary ladder did.
   assert.equal(cursorColors('insert', false, sc, {}).fg, null);
+});
+
+// The rung lists are a cross-language copy of `cursor_ladder_ids`, which
+// hume-engine exposes as a shared function precisely so the order and the
+// primary-only bare `ui` rung exist once. Nothing else pins the JS copy, so
+// this reads the Rust literals directly: a reordered or extended ladder there
+// fails here instead of silently leaving the live preview wrong.
+test('the cursor ladders match cursor_ladder_ids in hume-engine', () => {
+  const src = readFileSync(
+    new URL('../../../hume-engine/src/theme/mod.rs', import.meta.url), 'utf8');
+  const start = src.indexOf('pub fn cursor_ladder_ids');
+  assert.notEqual(start, -1, 'cursor_ladder_ids must still exist in hume-engine/src/theme/mod.rs');
+  const bodyStart = src.indexOf('{', start);
+  const body = src.slice(bodyStart, src.indexOf('\n}', bodyStart));
+  const rungs = [...body.matchAll(/\[([^\]]*)\]/g)].map(m =>
+    m[1].split(',').map(t => t.trim()).filter(Boolean).map(t => t.replace(/^"|"$/g, '')));
+  assert.equal(rungs.length, 2, `expected the secondary and primary rung arrays, got ${rungs.length}`);
+
+  // The two array literals name their mode rung by parameter; every other
+  // rung is a literal shared by all three chains.
+  const chain = 'insert';
+  const expand = t =>
+    t === 'mode_scope' ? `ui.cursor.${chain}`
+      : t === 'primary_mode_scope' ? `ui.cursor.primary.${chain}`
+        : t;
+  assert.deepEqual(cursorLadderIds(chain, false), rungs[0].map(expand));
+  assert.deepEqual(cursorLadderIds(chain, true), rungs[1].map(expand));
 });
 
 test('cursorColors always returns a normalized style, never null', () => {
