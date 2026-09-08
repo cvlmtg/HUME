@@ -29,10 +29,7 @@
 (define (plum/fetch-raw-query name filename)
   ;; `name` may come from an untrusted `; inherits:` line, unlike the
   ;; top-level grammar name — guard the scratch-file path. `eq? #t`, not a
-  ;; bare truthiness check: `call!` returns non-#f `#void` (not an error) if
-  ;; core:stdlib is ever declared with an explicit #:commands override that
-  ;; omits this command — see core:stdlib's README — and #void must not be
-  ;; read as "safe".
+  ;; bare truthiness check — see core:stdlib's README.
   (unless (eq? #t (call! "stdlib/safe-path-segment?" name))
     (log! 'warn (string-append "plum/fetch-raw-query: rejecting unsafe grammar/dependency name \"" name "\""))
     (error (string-append "plum/fetch-raw-query: unsafe grammar/dependency name \"" name "\"")))

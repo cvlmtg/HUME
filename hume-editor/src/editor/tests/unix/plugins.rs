@@ -2667,6 +2667,11 @@ fn core_stdlib_safe_path_segment_command() {
 
 (unless (equal? (call! "stdlib/safe-path-segment?" "v1.2.3") #t) (error "version string accepted"))
 (unless (equal? (call! "stdlib/safe-path-segment?" "rust-analyzer") #t) (error "plain name accepted"))
+
+;; A non-string answers #f rather than raising from inside string-contains?.
+;; It's a public command, so a plugin author can reach it with anything.
+(unless (equal? (call! "stdlib/safe-path-segment?" 42) #f) (error "number rejected"))
+(unless (equal? (call! "stdlib/safe-path-segment?" #f) #f) (error "boolean rejected"))
 "#;
 
     let result = {

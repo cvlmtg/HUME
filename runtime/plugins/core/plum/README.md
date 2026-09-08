@@ -78,16 +78,12 @@ PLUM bundles three independent subsystems:
 
 #### Path safety
 
-`core:stdlib`'s `stdlib/safe-path-segment?` rejects the empty string, `.`/`..`, a path
-separator, and `:`/`"` for any name that reaches `path-join`/a subprocess arg but did
-not come from a fixed catalog — either half of a GitHub `user/repo` slug typed by the
-user, or a dependency name parsed out of downloaded content. The `:` rejection matters
-on Windows specifically: a segment like `c:evil` after a single path component makes
-`PathBuf::push` treat it as a drive-relative root, replacing the sandboxed base path
-entirely instead of joining onto it (mirrors `hume_platform::path::is_safe_segment`'s
-rule on the Rust side). See `core:stdlib`'s README for the full rejected set and why
-every call site checks `(eq? #t (call! "stdlib/safe-path-segment?" …))` rather than a
-bare truthiness test.
+PLUM validates every name that reaches `path-join` or a subprocess argument without
+coming from a fixed catalog — either half of a GitHub `user/repo` slug typed by the
+user, and a dependency name parsed out of downloaded content — with
+`core:stdlib`'s `stdlib/safe-path-segment?`. See `core:stdlib`'s README for the
+rejected set, why the `:` rejection matters on Windows, and why every call site tests
+`(eq? #t …)` rather than bare truthiness.
 
 ### Plugin discovery
 

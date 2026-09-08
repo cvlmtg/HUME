@@ -72,7 +72,8 @@
 
 ;;; Safe to use as one filesystem path segment — see README.md.
 (define (stdlib/safe-path-segment? name)
-  (and (not (equal? name ""))
+  (and (string? name)
+       (not (equal? name ""))
        (not (equal? name "."))
        (not (equal? name ".."))
        (not (string-contains? name "/"))

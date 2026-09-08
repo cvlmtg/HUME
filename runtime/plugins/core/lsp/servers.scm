@@ -269,7 +269,7 @@
       ((not (string? arg))
        (log! 'info "lsp-uninstall: requires a server name, e.g. :lsp-uninstall rust-analyzer"))
       ;; Stays 'warn, not 'info — see docs/servers.md. `eq? #t`, not a bare
-      ;; truthiness check — see core:plum's grammars.scm for why.
+      ;; truthiness check — see core:stdlib's README.
       ((not (eq? #t (call! "stdlib/safe-path-segment?" arg)))
        (log! 'warn (string-append "lsp-uninstall: invalid server name: " arg)))
       (else
