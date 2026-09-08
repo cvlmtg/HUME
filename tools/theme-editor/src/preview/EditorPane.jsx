@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, MONO, pill } from '../ui.js';
-import { fgc, bgc, fullStyle, cursorColors, diagnosticStyle, tokenStyle } from '../lib/theme.js';
+import { fgc, bgc, baseFg, baseBg, fullStyle, cursorColors, diagnosticStyle, tokenStyle } from '../lib/theme.js';
 import { BUFFERS, DIFF_SAMPLE, MODES, OVERLAYS, PICKER_ROWS, DRAWER_ROWS, NEIGHBOR_TOP, NEIGHBOR_BOTTOM } from './samples.js';
 
 // Floor under the pane's content height so an overlay (the picker's centered
@@ -16,11 +16,11 @@ const PANE_MIN_H = 440;
 // see `PickerPanel`/`DrawerBand` below, not this shared box.
 function OverlayBox({ kind, sc, pal }) {
   const boxStyle = (root, selected, scroll) => ({
-    bg: bgc(root, sc, pal, "#33374c"),
-    fg: fgc(root, sc, pal, "#c0caf5"),
-    selBg: selected ? bgc(selected, sc, pal, "#7aa2f7") : null,
-    selFg: selected ? fgc(selected, sc, pal, "#1a1b26") : null,
-    scroll: fgc(scroll, sc, pal, "#e0af68"),
+    bg: bgc(root, sc, pal, baseBg(sc, pal)),
+    fg: fgc(root, sc, pal, baseFg(sc, pal)),
+    selBg: selected ? bgc(selected, sc, pal, baseBg(sc, pal)) : null,
+    selFg: selected ? fgc(selected, sc, pal, baseFg(sc, pal)) : null,
+    scroll: fgc(scroll, sc, pal, baseFg(sc, pal)),
   });
 
   let title, rows, style;
@@ -66,10 +66,10 @@ function OverlayBox({ kind, sc, pal }) {
 // fill on the selected row. Unlike `OverlayBox`'s menu/popup, the picker
 // draws no title and no scrollbar thumb — the real panel has neither.
 function PickerPanel({ sc, pal }) {
-  const bg = bgc("ui.background", sc, pal, "#1a1b26");
-  const fg = fgc("ui.text", sc, pal, "#c0caf5");
-  const selBg = bgc("ui.text.focus", sc, pal, "#7aa2f7");
-  const selFg = fgc("ui.text.focus", sc, pal, "#1a1b26");
+  const bg = baseBg(sc, pal);
+  const fg = baseFg(sc, pal);
+  const selBg = bgc("ui.text.focus", sc, pal, bg);
+  const selFg = fgc("ui.text.focus", sc, pal, fg);
   const cursorBg = bgc("ui.cursor.primary", sc, pal, fg);
   const cursorFg = fgc("ui.cursor.primary", sc, pal, bg);
 
@@ -110,10 +110,10 @@ function PickerPanel({ sc, pal }) {
 // blank row 0 (the real drawer's only separation from the pane above), and
 // a full-width `ui.menu.selected` fill on the selected row.
 function DrawerBand({ sc, pal }) {
-  const bg = bgc("ui.drawer", sc, pal, "#33374c");
-  const fg = fgc("ui.drawer", sc, pal, "#c0caf5");
-  const selBg = bgc("ui.menu.selected", sc, pal, "#7aa2f7");
-  const selFg = fgc("ui.menu.selected", sc, pal, "#1a1b26");
+  const bg = bgc("ui.drawer", sc, pal, baseBg(sc, pal));
+  const fg = fgc("ui.drawer", sc, pal, baseFg(sc, pal));
+  const selBg = bgc("ui.menu.selected", sc, pal, bg);
+  const selFg = fgc("ui.menu.selected", sc, pal, fg);
 
   return (
     <div style={{ background: bg, color: fg, fontSize: 13, flexShrink: 0 }}>
@@ -241,23 +241,34 @@ export default function EditorPane({ pal, sc }) {
   const buf = BUFFERS[bufIdx];
   const isDiff = buf === DIFF_SAMPLE;
 
-  const BG = bgc("ui.background", sc, pal, "#1a1b26");
-  const FG = fgc("ui.text", sc, pal, "#c0caf5");
-  const lnr = fgc("ui.linenr", sc, pal, "#565f89");
-  const lnrS = fgc("ui.linenr.selected", sc, pal, "#e0af68");
-  const rowFg = fgc(mode.scope, sc, pal, fgc("ui.statusline", sc, pal, "#c0caf5"));
-  const rowBg = bgc(mode.scope, sc, pal, bgc("ui.statusline", sc, pal, "#33374c"));
-  const sepFg = fgc("ui.statusline.separator", sc, pal, rowFg);
-  const brdFocused = fgc("ui.window.focused", sc, pal, "#7aa2f7");
-  const brd = fgc("ui.window", sc, pal, "#565f89");
+  const BG = baseBg(sc, pal);
+  // Every chrome fallback below is `FG`, not a hex of its own: `resolve_raw`
+  // (hume-engine/src/theme/mod.rs) falls back to `Theme::default`, which the
+  // loader folds `ui.text` into. A literal here previews a colour HUME would
+  // never render for a theme that leaves the scope unset.
+  const FG = baseFg(sc, pal);
+  const lnr = fgc("ui.linenr", sc, pal, FG);
+  const lnrS = fgc("ui.linenr.selected", sc, pal, FG);
+  const rowFg = fgc(mode.scope, sc, pal, fgc("ui.statusline", sc, pal, FG));
+  const rowBg = bgc(mode.scope, sc, pal, bgc("ui.statusline", sc, pal, BG));
+  // No dotted-chain fallback here, unlike every other scope on this row:
+  // `EditorColors::from_theme` (hume-editor/src/ui/theme.rs) tests for an
+  // explicit entry and otherwise reuses the row's own mode-tinted style,
+  // precisely so an absent separator doesn't resolve to the untinted base
+  // `ui.statusline` and punch a hole of the wrong colour through a tinted row.
+  const sepFg = sc["ui.statusline.separator"] !== undefined
+    ? fgc("ui.statusline.separator", sc, pal, rowFg)
+    : rowFg;
+  const brdFocused = fgc("ui.window.focused", sc, pal, FG);
+  const brd = fgc("ui.window", sc, pal, FG);
   const statusBg = rowBg !== "transparent" ? rowBg : BG;
 
   // `isCur` below only ever matches when `buf.cursorLine` names a real line,
   // so no separate guard is needed here for buffers that omit it.
   const cursorlineBg = bgc("ui.cursorline.primary", sc, pal, "transparent");
-  const indentGuideFg = fgc("ui.virtual.indent-guide", sc, pal, "#565f89");
-  const whitespaceFg = fgc("ui.virtual.whitespace", sc, pal, "#565f89");
-  const virtualFg = fgc("ui.virtual", sc, pal, "#565f89");
+  const indentGuideFg = fgc("ui.virtual.indent-guide", sc, pal, FG);
+  const whitespaceFg = fgc("ui.virtual.whitespace", sc, pal, FG);
+  const virtualFg = fgc("ui.virtual", sc, pal, FG);
 
   // Returns the tagged scope's own style (fg/bg/mods), or null for "nothing
   // to layer" — `tokenStyle`'s `tag?.fg ?? s?.fg ?? fallbackFg` already
@@ -319,7 +330,7 @@ export default function EditorPane({ pal, sc }) {
                   const d = diag.find(x => x.line === line.n);
                   return (
                     <div key={line.n} style={{ display: "flex", padding: "0 12px 0 0", background: isCur ? cursorlineBg : "transparent", minHeight: 20 }}>
-                      <span style={{ width: 16, textAlign: "center", color: d ? fgc(d.sev, sc, pal, "#888") : "transparent", flexShrink: 0, fontSize: 12 }}>
+                      <span style={{ width: 16, textAlign: "center", color: d ? fgc(d.sev, sc, pal, FG) : "transparent", flexShrink: 0, fontSize: 12 }}>
                         {d ? "●" : ""}
                       </span>
                       <span style={{ display: "inline-block", width: 36, textAlign: "right", paddingRight: 12, color: isCur ? lnrS : lnr, userSelect: "none", flexShrink: 0, fontSize: 12 }}>{line.n}</span>
@@ -328,7 +339,7 @@ export default function EditorPane({ pal, sc }) {
                         {line.t.map((tok, i) => renderToken(tok, i, tagStyle(tok[2], d), sc, pal, FG, BG))}
                       </span>
                       {d && (
-                        <span style={{ marginLeft: 12, whiteSpace: "pre", ...tokenStyle(d.sev + ".diagnostic.inline", sc, pal, "#888", BG, null) }}>
+                        <span style={{ marginLeft: 12, whiteSpace: "pre", ...tokenStyle(d.sev + ".diagnostic.inline", sc, pal, FG, BG, null) }}>
                           {"■ " + d.msg}
                         </span>
                       )}

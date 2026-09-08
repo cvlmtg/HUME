@@ -56,6 +56,16 @@ export function bgc(id, sc, pal, fb) {
   return typeof c === "object" ? (c.bg || fb) : "transparent";
 }
 
+// The colours an unmatched scope falls back to. `Theme::resolve_raw`
+// (hume-engine/src/theme/mod.rs) ends its dotted walk at `Theme::default`,
+// which the loader folds `ui.text` into, and the pane background comes from
+// `ui.background`. Every preview fallback resolves through these two rather
+// than carrying a literal of its own, so a theme that leaves a chrome scope
+// unset previews the colour HUME would actually render for it. The literals
+// here are the true last resort: a theme that defines neither.
+export const baseFg = (sc, pal) => fgc("ui.text", sc, pal, "#c0caf5");
+export const baseBg = (sc, pal) => bgc("ui.background", sc, pal, "#1a1b26");
+
 // Normalise a raw scope value (a bare color string, or a `{fg,bg,modifiers,
 // underline}` table) into a fully-resolved style. Shared by `fullStyle` and
 // `fullStyleChain` so the two lookup strategies below produce the same shape.

@@ -1,5 +1,5 @@
 import { C, MONO } from '../ui.js';
-import { fgc, bgc, tokenStyle } from '../lib/theme.js';
+import { baseFg, baseBg, tokenStyle } from '../lib/theme.js';
 
 // The `:messages` log — matches `hume-editor/src/editor/message_log.rs`'s
 // severity -> scope mapping: a `diagnostic.<sev>.message` badge next to
@@ -14,8 +14,8 @@ const ENTRIES = [
 ];
 
 export default function MessagesPane({ pal, sc }) {
-  const BG = bgc("ui.background", sc, pal, "#1a1b26");
-  const FG = fgc("ui.text", sc, pal, "#c0caf5");
+  const BG = baseBg(sc, pal);
+  const FG = baseFg(sc, pal);
 
   return (
     <div style={{ borderRadius: 6, overflow: "hidden", border: "1px solid " + C.border, fontFamily: MONO, fontSize: 12, background: BG }}>
