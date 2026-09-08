@@ -189,15 +189,11 @@ fn virtual_row_resolves_scopes_from_unsorted_segments() {
         Rgb(255, 255, 0),
         Rgb(255, 0, 255),
     ];
+    // Built in a loop, so `theme_with`'s array form doesn't fit — but the
+    // per-entry `fg` helper still applies.
     let mut styles_map = HashMap::new();
     for (name, color) in scope_names.iter().zip(colors) {
-        styles_map.insert(
-            *name,
-            ResolvedStyle {
-                fg: Some(color),
-                ..Default::default()
-            },
-        );
+        styles_map.insert(*name, crate::test_support::fg(color));
     }
     let mut theme = Theme::new(styles_map, ResolvedStyle::default());
     theme.bake(&registry);

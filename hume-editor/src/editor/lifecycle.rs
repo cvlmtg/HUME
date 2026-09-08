@@ -493,6 +493,17 @@ impl Editor {
             // `resolve_pane_settings`' `primary_cursor_is_block` read, so the
             // real terminal cursor and the grid's painted primary head can
             // never disagree about which shape is in effect.
+            //
+            // Re-asserted every frame rather than only on a change — unlike
+            // the cursor *colour* below, which is gated on one. That's the
+            // point of emitting it here: the show-cursor sequence closing a
+            // frame resets the shape on some terminals, so a shape sent once
+            // when the mode changed would be silently undone by the next
+            // frame. One SGR-sized write per frame is not worth tracking.
+            //
+            // The write is best-effort: a terminal that doesn't understand
+            // DECSCUSR ignores it, and a genuine I/O failure here would
+            // already have surfaced from `screen.present` above.
             let shape = if self.state.minibuf.is_some() {
                 crate::settings::CursorShape::Bar
             } else {

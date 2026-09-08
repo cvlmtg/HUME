@@ -4,7 +4,6 @@ use crate::test_support::{bg, fg, theme_with};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use hume_grid::Rgb;
-use std::collections::HashMap;
 
 /// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
 /// (`pipeline::pane_render::render_pane`'s row walk): primary-based
@@ -120,8 +119,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
 
     let mut registry = crate::theme::ScopeRegistry::new();
     let tint_scope = registry.intern("diff.plus.line");
-    let mut styles_map = HashMap::new();
-    styles_map.insert(
+    let mut theme = crate::test_support::theme_with([(
         "diff.plus.line",
         ResolvedStyle {
             fg: Some(Rgb(255, 0, 0)),
@@ -129,8 +127,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
             modifiers: crate::types::Modifiers::BOLD,
             ..Default::default()
         },
-    );
-    let mut theme = Theme::new(styles_map, ResolvedStyle::default());
+    )]);
     theme.bake(&registry);
 
     scratch.populate_sorted_sels(&[], 0);
