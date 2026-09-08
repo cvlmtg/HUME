@@ -16,6 +16,10 @@ You can also do a one-shot extend without entering Extend mode: under the kitty 
 
 The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl+N` does the same backward, extending to the previous match.
 
+::: tip Extending to a brand-new search
+Extend mode also works with a fresh `/` or `?` search, not just `Ctrl+n`/`Ctrl+N` stepping through an existing one. Enter Extend mode with `e`, then start a search: the anchor stays where you were, and the head jumps to the first match as you type and again on every `n`/`N` afterward.
+:::
+
 `w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
 
 <div class="key-demo">

@@ -970,6 +970,12 @@ growing the selection to cover everything in between, and ``Ctrl+N``
 does the same backward. This is a one-shot extend — no need to enter
 Extend mode first. Requires a terminal with the kitty keyboard protocol.
 
+Note: on a terminal without the kitty keyboard protocol, ``e`` to enter
+Extend mode first works the same way — not just for ``n``/``N`` stepping
+through an existing search, but for a brand-new ``/`` or ``?`` too. The
+anchor stays where you were, and the head jumps to the first match as
+you type and on every ``n``/``N`` afterward.
+
 Exercise
 ~~~~~~~~
 
