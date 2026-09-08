@@ -9,7 +9,7 @@ use crate::providers::{
 };
 use crate::style::StyleScratch;
 use crate::theme::{ScopeRegistry, Theme};
-use crate::types::{EditorMode, ScopeId};
+use crate::types::{EditorMode, ResolvedStyle, ScopeId};
 
 mod layout;
 mod pane_render;
@@ -460,16 +460,19 @@ impl EngineView {
             // it isn't Helix's own border (which leaves an unset fg as
             // whatever the terminal already shows), so there's no reason for
             // it to be the one exception.
-            let muted = self
-                .theme
-                .default
-                .layer(self.theme.ui.background)
-                .layer(self.theme.ui.window);
-            let accent = self
-                .theme
-                .default
-                .layer(self.theme.ui.background)
-                .layer(self.theme.ui.window_focused);
+            //
+            // Only `ui.background`'s *background* is layered, never its whole
+            // style — the same constraint `style_row`'s Tier 4 and
+            // `render.rs`'s `row_bg` apply. A background scope has no business
+            // contributing a foreground, and letting it would give a theme
+            // that sets `ui.background = { fg, bg }` a seam glyph in that fg
+            // and nowhere else, contradicting the base-layer rule above.
+            let seam_base = self.theme.default.layer(ResolvedStyle {
+                bg: self.theme.ui.background.bg,
+                ..ResolvedStyle::default()
+            });
+            let muted = seam_base.layer(self.theme.ui.window);
+            let accent = seam_base.layer(self.theme.ui.window_focused);
 
             // Junction cells at the focused pane's corners are missed by the
             // per-seam accent test (see `focused_pane_corners`); precompute

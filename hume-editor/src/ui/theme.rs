@@ -109,7 +109,11 @@ pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
     // silently (`load_theme_by_name` surfaces the same warnings for every
     // other load path). `load_bundled_themes` in `editor/tests/theme_loading.rs`
     // pins the same guarantee for the on-disk copy of this file.
-    debug_assert!(
+    // A real `assert!`, not `debug_assert!`: this runs once at startup over
+    // content fixed at compile time, so it costs nothing, and a `debug_assert`
+    // would drop in release exactly the builds where a shipped-theme mistake
+    // reaches users. `build_snapshot_theme` below asserts the same way.
+    assert!(
         loaded.warnings.is_empty(),
         "embedded sand.toml produced load warnings: {:?}",
         loaded.warnings
