@@ -387,6 +387,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
                     warnings.push(attribute(
                         ThemeError::BadColor {
                             key: format!("palette.{k}"),
+                            field: None,
                             value: hex.to_owned(),
                         },
                         origin,
@@ -464,6 +465,14 @@ const STYLE_KEY_LIST: &str = "one of fg, bg, underline, modifiers";
 ///
 /// `warnings` collects a misspelled style attribute found along the way (see
 /// `walk_scope`) — flattening itself never fails a load.
+///
+/// One document may spell the same scope both ways (`"ui.text" = "red"` beside
+/// `[ui]` / `text = "blue"`); TOML sees two distinct keys, so this is legal
+/// input rather than a duplicate-key error it could reject. The flat key wins:
+/// `toml::Table` is a `BTreeMap` here (the crate's `preserve_order` feature is
+/// deliberately off — see hume-engine's `Cargo.toml`), so `"ui"` sorts before
+/// `"ui.text"` and the flat key's insert lands second. Pinned by test, since
+/// it would otherwise be an accident of a dependency's feature flags.
 fn flatten_scopes(table: toml::Table, warnings: &mut Vec<ThemeError>) -> toml::Table {
     let mut out = toml::Table::new();
     for (key, value) in table {
@@ -561,7 +570,7 @@ fn parse_scope_value(
     match value {
         // Shorthand: `"keyword" = "red"` sets fg only.
         toml::Value::String(s) => {
-            let fg = Some(resolve_color(key, s, palette)?);
+            let fg = Some(resolve_color(key, None, s, palette)?);
             Ok((
                 ResolvedStyle {
                     fg,
@@ -638,7 +647,7 @@ fn parse_style_table(
         t,
         "fg",
         "fg",
-        |s| resolve_color(key, s, palette),
+        |s| resolve_color(key, None, s, palette),
         &mut warnings,
     ) {
         style.fg = Some(c);
@@ -648,7 +657,7 @@ fn parse_style_table(
         t,
         "bg",
         "bg",
-        |s| resolve_color(key, s, palette),
+        |s| resolve_color(key, None, s, palette),
         &mut warnings,
     ) {
         style.bg = Some(c);
@@ -666,7 +675,7 @@ fn parse_style_table(
                 ut,
                 "color",
                 "underline.color",
-                |s| resolve_color(key, s, palette),
+                |s| resolve_color(key, Some("underline.color"), s, palette),
                 &mut warnings,
             ) {
                 style.underline_color = Some(c);
@@ -722,8 +731,12 @@ fn parse_style_table(
 // Colour resolution
 // ---------------------------------------------------------------------------
 
+/// `field` is passed straight to [`ThemeError::BadColor`] — `None` for a
+/// scope's own `fg`/`bg`/shorthand, `Some` for the nested `underline.color`,
+/// whose failure `key` alone can't distinguish from those.
 fn resolve_color(
     key: &str,
+    field: Option<&'static str>,
     s: &str,
     palette: &FxHashMap<String, Option<Rgb>>,
 ) -> Result<Rgb, ThemeError> {
@@ -737,6 +750,7 @@ fn resolve_color(
         Some(None) => {
             return Err(ThemeError::BadColor {
                 key: key.to_owned(),
+                field,
                 value: s.to_owned(),
             });
         }
@@ -751,6 +765,7 @@ fn resolve_color(
     // Hex literal.
     parse_hex_color(s).map_err(|_| ThemeError::BadColor {
         key: key.to_owned(),
+        field,
         value: s.to_owned(),
     })
 }

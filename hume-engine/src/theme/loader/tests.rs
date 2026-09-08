@@ -301,7 +301,7 @@ fn a_color_name_helix_does_not_define_still_warns() {
     let loaded = load_theme("notansi", &paths(dir.path())).unwrap();
     the_warning(
         &loaded,
-        |w| matches!(w, ThemeError::BadColor { key, value } if key == "keyword" && value == "orange"),
+        |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "keyword" && value == "orange"),
     );
     assert_resolves_to_default_style(&loaded, "keyword");
 }
@@ -970,6 +970,45 @@ fn unreadable_higher_priority_candidate_falls_through_to_the_next_search_dir() {
     assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
 }
 
+/// The other side of the fall-through above: when *no* candidate works, the
+/// remembered read error is reported rather than being flattened into
+/// "no such theme". A directory sitting where the file should be is the
+/// reproducible stand-in for any non-`NotFound` read failure.
+#[test]
+fn an_unreadable_sole_candidate_reports_the_io_error_not_not_found() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir(dir.path().join("sand.toml")).unwrap();
+
+    let err = load_theme("sand", &paths(dir.path()))
+        .err()
+        .expect("expected an Err result");
+    assert!(
+        matches!(inner(&err), ThemeError::Io { .. }),
+        "expected Io, got: {err}"
+    );
+}
+
+/// A cycle outranks a remembered I/O error: the cycle names a real mistake in
+/// the theme being loaded, where the unreadable candidate was only ever a
+/// lower-priority alternative the search moved past.
+#[test]
+fn a_cycle_is_reported_even_when_an_earlier_candidate_was_unreadable() {
+    let broken = TempDir::new().unwrap();
+    std::fs::create_dir(broken.path().join("a.toml")).unwrap();
+
+    let real = TempDir::new().unwrap();
+    write_theme(real.path(), "a", "inherits = \"a\"\n");
+
+    let search_paths = vec![broken.path().to_path_buf(), real.path().to_path_buf()];
+    let err = load_theme("a", &search_paths)
+        .err()
+        .expect("expected an Err result");
+    assert!(
+        matches!(inner(&err), ThemeError::Cycle { .. }),
+        "expected Cycle, got: {err}"
+    );
+}
+
 // ── parse_theme ───────────────────────────────────────────────────────────
 
 #[test]
@@ -1245,6 +1284,31 @@ fg = "#ff0000"
     );
 }
 
+/// A document may name one scope both ways at once — TOML sees two distinct
+/// keys, so it isn't a duplicate-key error and the loader has to pick. The
+/// flat key wins, and this pins that: the alternative is an accident of
+/// whether the `toml` crate's `preserve_order` feature happens to be on.
+#[test]
+fn a_flat_key_beats_a_section_header_for_the_same_scope() {
+    let dir = TempDir::new().unwrap();
+    write_theme(
+        dir.path(),
+        "collide",
+        r##""ui.text" = "#111111"
+
+[ui]
+text = "#222222"
+"##,
+    );
+    let theme = load_theme("collide", &paths(dir.path())).unwrap().theme;
+    assert_eq!(
+        theme
+            .resolve_by_name(crate::types::Scope("ui.text"))
+            .fg,
+        Some(Rgb(0x11, 0x11, 0x11)),
+    );
+}
+
 // ── Palette validation ────────────────────────────────────────────────────
 
 #[test]
@@ -1265,14 +1329,14 @@ crimson = "red"
     // The malformed palette entry itself...
     the_warning(
         &loaded,
-        |w| matches!(w, ThemeError::BadColor { key, value } if key == "palette.crimson" && value == "red"),
+        |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "palette.crimson" && value == "red"),
     );
     // ...and, since the entry never made it into the palette, the scope
     // that referenced it by name gets its own cascading warning too — the
     // load doesn't try to guess a colour for a name it just dropped.
     the_warning(
         &loaded,
-        |w| matches!(w, ThemeError::BadColor { key, value } if key == "keyword" && value == "crimson"),
+        |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "keyword" && value == "crimson"),
     );
     assert_resolves_to_default_style(&loaded, "keyword");
 }
@@ -1298,11 +1362,11 @@ blue = "89b4fa"
 
     the_warning(
         &loaded,
-        |w| matches!(w, ThemeError::BadColor { key, value } if key == "palette.blue" && value == "89b4fa"),
+        |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "palette.blue" && value == "89b4fa"),
     );
     the_warning(
         &loaded,
-        |w| matches!(w, ThemeError::BadColor { key, value } if key == "function" && value == "blue"),
+        |w| matches!(w, ThemeError::BadColor { key, value, .. } if key == "function" && value == "blue"),
     );
     assert_eq!(loaded.warnings.len(), 2);
 
@@ -1576,6 +1640,29 @@ fn non_string_underline_color_becomes_a_warning() {
         "a string",
         ResolvedStyle::default(),
     );
+}
+
+/// A bad *colour* under `underline` names the field, so it can't be mistaken
+/// for a bad `fg`/`bg` on the same scope — the two would otherwise produce the
+/// same sentence.
+#[test]
+fn bad_underline_color_names_the_field_it_came_from() {
+    let dir = TempDir::new().unwrap();
+    write_theme(
+        dir.path(),
+        "bad_uline_hex",
+        r##""keyword" = { fg = "#ff0000", underline = { color = "nope", style = "curl" } }"##,
+    );
+    let loaded = load_theme("bad_uline_hex", &paths(dir.path())).unwrap();
+    let warning = the_warning(&loaded, |w| matches!(w, ThemeError::BadColor { .. }));
+    assert!(
+        warning.to_string().contains("underline.color"),
+        "the warning must say which field carried the bad colour: {warning}"
+    );
+    // The rest of the style still applies — one bad field doesn't discard it.
+    let kw = loaded.theme.resolve_by_name(crate::types::Scope("keyword"));
+    assert_eq!(kw.fg, Some(Rgb(0xff, 0, 0)));
+    assert_eq!(kw.underline, UnderlineStyle::Wavy);
 }
 
 #[test]

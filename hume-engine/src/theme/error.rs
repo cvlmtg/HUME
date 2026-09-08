@@ -13,7 +13,14 @@ pub enum ThemeError {
     /// The `inherits` chain exceeds the maximum allowed depth.
     MaxDepth { name: String },
     /// A color value could not be parsed (bad hex, unknown palette name).
-    BadColor { key: String, value: String },
+    /// `field` names the style field the value came from when `key` alone
+    /// doesn't say — the nested `underline.color`, whose failure would
+    /// otherwise read identically to a bad `fg`/`bg` on the same scope.
+    BadColor {
+        key: String,
+        field: Option<&'static str>,
+        value: String,
+    },
     /// A scope entry has the wrong TOML value type (must be String or Table).
     BadScopeValue { key: String, value: String },
     /// A reserved top-level key (`inherits`, `palette`) has the wrong TOML
@@ -66,9 +73,13 @@ impl fmt::Display for ThemeError {
             ThemeError::MaxDepth { name } => {
                 write!(f, "theme '{name}' exceeds maximum inherits depth")
             }
-            ThemeError::BadColor { key, value } => {
-                write!(f, "theme key '{key}': bad color value '{value}'")
-            }
+            ThemeError::BadColor { key, field, value } => match field {
+                Some(field) => write!(
+                    f,
+                    "theme key '{key}': bad color value '{value}' for {field}"
+                ),
+                None => write!(f, "theme key '{key}': bad color value '{value}'"),
+            },
             ThemeError::BadScopeValue { key, value } => {
                 write!(
                     f,
@@ -105,4 +116,17 @@ impl fmt::Display for ThemeError {
     }
 }
 
-impl std::error::Error for ThemeError {}
+impl std::error::Error for ThemeError {
+    /// Chains the three variants that wrap another error, so a caller walking
+    /// `source()` reaches the underlying cause instead of stopping at the
+    /// formatted string. `InFile` is the common one: it wraps whatever the
+    /// document's own load produced.
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ThemeError::Parse(e) => Some(e),
+            ThemeError::Io { error, .. } => Some(error),
+            ThemeError::InFile { error, .. } => Some(&**error),
+            _ => None,
+        }
+    }
+}
