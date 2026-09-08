@@ -643,3 +643,87 @@ fn host_set_buffer_option_invalid_bid_errors() {
         "error must name the invalid bid; got: {msg}"
     );
 }
+
+// ── cursor-shape-insert reaches the render settings ───────────────────────
+
+/// `cursor-shape-insert` only ever changes the *Insert* cursor: every other
+/// mode is hardwired to a block, because a terminal has one hardware cursor
+/// and HUME's prompt modes park it in the minibuf instead. Reads
+/// `EditorState::cursor_shape`, the single source both the terminal-cursor
+/// branch in `Editor::run` and `resolve_pane_settings` consult.
+#[test]
+fn cursor_shape_insert_only_applies_to_insert_mode() {
+    let mut ed = editor_from("-[a]>bc\n");
+    eval_set_option(&mut ed, r#"(set-option! "cursor-shape-insert" "bar")"#).unwrap();
+
+    assert_eq!(ed.state.mode(), Mode::Normal, "sanity: starts in Normal");
+    assert_eq!(
+        ed.state.cursor_shape(),
+        crate::settings::CursorShape::Block,
+        "Normal is hardwired to a block regardless of the setting"
+    );
+
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert");
+    assert_eq!(
+        ed.state.cursor_shape(),
+        crate::settings::CursorShape::Bar,
+        "Insert is the one mode the setting reaches"
+    );
+}
+
+/// The focused pane's `primary_cursor_is_block` is exactly "the resolved shape
+/// for the live mode is Block", so flipping the setting flips it — and with it
+/// whether `style_row` paints the primary head at all. An *unfocused* pane is
+/// always `true` regardless: no real terminal cursor sits there to stand in
+/// for the painted one, so its head must be drawn either way.
+#[test]
+fn cursor_shape_insert_gates_primary_head_painting_in_the_focused_pane_only() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.execute_typed("vsplit", None).unwrap();
+    let focused = ed.state.focused_pane_id;
+    let other = ed
+        .view
+        .panes
+        .keys()
+        .find(|&p| p != focused)
+        .expect("vsplit must leave a second pane");
+
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert");
+
+    for (shape, expected_focused) in [("bar", false), ("underline", false), ("block", true)] {
+        eval_set_option(
+            &mut ed,
+            &format!(r#"(set-option! "cursor-shape-insert" "{shape}")"#),
+        )
+        .unwrap();
+        assert_eq!(
+            ed.resolve_pane_settings(focused).primary_cursor_is_block,
+            expected_focused,
+            "focused pane with cursor-shape-insert={shape}"
+        );
+        assert!(
+            ed.resolve_pane_settings(other).primary_cursor_is_block,
+            "an unfocused pane paints its head for every shape (cursor-shape-insert={shape})"
+        );
+    }
+}
+
+/// With `cursor-shape-insert=block` the painted head *is* the cursor, so the
+/// real terminal cursor must be hidden — the same rule the default `bar`
+/// inverts (`insert_mode_hides_cursor_only_in_focused_pane` covers that side).
+/// Asserts on the resolved shape rather than the escape byte: `Editor::run`
+/// maps it to `CursorStyle` with no branch of its own beyond this value.
+#[test]
+fn insert_block_shape_suppresses_the_terminal_cursor() {
+    let mut ed = editor_from("-[a]>bc\n");
+    eval_set_option(&mut ed, r#"(set-option! "cursor-shape-insert" "block")"#).unwrap();
+    ed.feed_key(key('i'));
+
+    assert_eq!(
+        ed.state.cursor_shape(),
+        crate::settings::CursorShape::Block,
+        "block is what `Editor::run` tests to decide the cursor is not drawn"
+    );
+}

@@ -923,6 +923,27 @@ fn vsplit_renders_content_in_both_halves() {
     insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
 }
 
+/// The other half of the test above: with `cursor-shape-insert=block` the
+/// focused pane's primary head is *painted* from `ui.cursor.primary.insert`
+/// rather than left bare for the real terminal cursor to occupy. Both panes
+/// show a themed head here, where the default `bar` leaves only the unfocused
+/// one painted.
+#[test]
+fn insert_block_shape_paints_the_head_in_both_panes() {
+    use super::render_snapshot::render_to_styled_string;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.state.settings.cursor_shape_insert = crate::settings::CursorShape::Block;
+    ed.execute_typed("vsplit", None).unwrap();
+
+    ed.feed_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert mode");
+
+    let rect = Rect::new(0, 0, 20, 4);
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, rect));
+}
+
 /// A theme that gives `ui.window` only a `bg` (the common upstream Helix
 /// shape — Helix's own border code leaves an unset fg as whatever the
 /// terminal already shows) must not leave the seam glyph's foreground

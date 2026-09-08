@@ -134,6 +134,19 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
         ed.state.message_log.has_unseen(),
         "the malformed key's warning must reach the message log"
     );
+    // The status line is the half the user actually reads without opening
+    // `:messages`, and the one bad key here makes it the singular branch.
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("theme 'flawed' loaded with 1 warning"),
+        "a partial load must say so on the status line"
+    );
+    // The malformed entry lands as a default style rather than being dropped,
+    // so it still blocks the dot-notation chain the way a real entry would.
+    assert!(
+        ed.view.theme.raw_contains("keyword"),
+        "a malformed entry stays present, blocking fallback"
+    );
     let text = ed
         .view
         .theme
