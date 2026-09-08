@@ -192,6 +192,18 @@ fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandErr
     Ok(bid)
 }
 
+/// The active theme's display name: the `theme` setting, or the label standing
+/// in for the compiled-in default when it is unset. Both `:theme` and
+/// `:theme-debug` open with this, and they must agree on what "no theme set"
+/// is called.
+fn active_theme_name(ed: &Editor) -> &str {
+    if ed.state.settings.theme.is_empty() {
+        super::DEFAULT_THEME_LABEL
+    } else {
+        &ed.state.settings.theme
+    }
+}
+
 /// `:theme <name>` — load a theme by name from the theme search path.
 ///
 /// On success the engine view's theme is replaced; the next `prepare_frame`
@@ -203,11 +215,7 @@ pub(crate) fn typed_theme(
     _force: bool,
 ) -> Result<(), CommandError> {
     let Some(name) = arg.map(str::trim).filter(|s| !s.is_empty()) else {
-        let current: &str = if ed.state.settings.theme.is_empty() {
-            super::DEFAULT_THEME_LABEL
-        } else {
-            &ed.state.settings.theme
-        };
+        let current = active_theme_name(ed);
         // NLL: `current` borrow of ed.state.settings.theme ends inside format!(), before report().
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
@@ -269,13 +277,7 @@ pub(crate) fn typed_theme_debug(
     }
 
     let theme = &ed.view.theme;
-    let name = if ed.state.settings.theme.is_empty() {
-        super::DEFAULT_THEME_LABEL
-    } else {
-        &ed.state.settings.theme
-    };
-
-    let mut lines = vec![format!("Theme: {name}")];
+    let mut lines = vec![format!("Theme: {}", active_theme_name(ed))];
 
     // Cursor rows report the style the renderer will actually layer, taken
     // from the same pre-resolved `ui` fields it reads, one (secondary,
@@ -285,15 +287,18 @@ pub(crate) fn typed_theme_debug(
     // dot-trimming skips (`ui.cursor.primary.insert` never trims to
     // `ui.cursor.insert`) — so each row's chain comes from the explicit rung
     // list `cursor_ladder_ids` builds.
+    // Destructured irrefutably, not zipped: a fourth entry in `CURSOR_MODES`
+    // has to fail to compile here — the way it already does in
+    // `Theme::compute_ui`, which destructures the same const — rather than
+    // being silently dropped by `zip` stopping at the shorter side and leaving
+    // the new mode missing from this listing.
+    let [normal, insert, select] = hume_engine::theme::CURSOR_MODES;
     let ui = &theme.ui;
-    let per_mode = [
-        (ui.cursor, ui.cursor_primary),
-        (ui.cursor_insert, ui.cursor_insert_primary),
-        (ui.cursor_select, ui.cursor_select_primary),
-    ];
-    for ((label, mode_scope, primary_mode_scope), (style, primary_style)) in
-        hume_engine::theme::CURSOR_MODES.into_iter().zip(per_mode)
-    {
+    for ((label, mode_scope, primary_mode_scope), style, primary_style) in [
+        (normal, ui.cursor, ui.cursor_primary),
+        (insert, ui.cursor_insert, ui.cursor_insert_primary),
+        (select, ui.cursor_select, ui.cursor_select_primary),
+    ] {
         let (ids, primary_ids) =
             hume_engine::theme::cursor_ladder_ids(mode_scope, primary_mode_scope);
         lines.push(style_line(
