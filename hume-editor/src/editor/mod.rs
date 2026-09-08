@@ -580,8 +580,8 @@ impl EditorState {
         self.mode
     }
 
-    /// The document-mode cursor shape for the live mode — how the primary
-    /// selection head is painted, and (outside a prompt) the real terminal
+    /// The document-mode cursor shape for the live mode — how the document's
+    /// selection heads are painted, and (outside a prompt) the real terminal
     /// cursor's shape.
     ///
     /// Only Insert is configurable (`cursor-shape-insert`): a terminal has one
@@ -593,9 +593,9 @@ impl EditorState {
     /// separate branch in `Editor::run`'s `cursor_screen` that is
     /// unconditionally a bar regardless of what this method returns. This is
     /// the single source both that branch's sibling (the non-minibuf case)
-    /// and `resolve_pane_settings`' `primary_cursor_is_block` read, so the
-    /// real terminal cursor and the grid's painted primary head can never
-    /// disagree about which shape is in effect outside a prompt.
+    /// and `resolve_pane_settings`' `cursor_is_block` read, so the real
+    /// terminal cursor and the grid's painted heads can never disagree about
+    /// which shape is in effect outside a prompt.
     pub(crate) fn cursor_shape(&self) -> crate::settings::CursorShape {
         if self.mode == Mode::Insert {
             self.settings.cursor_shape_insert

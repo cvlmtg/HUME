@@ -218,7 +218,7 @@ pub const MAX_COUNT: usize = 10_000;
 /// Editor mode — selects the cursor scope ladder and highlight behavior.
 ///
 /// Not the cursor's *shape*: that is `hume_editor::settings::CursorShape`,
-/// resolved per pane into `PaneRenderSettings::primary_cursor_is_block`.
+/// resolved per pane into `PaneRenderSettings::cursor_is_block`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum EditorMode {
     #[default]

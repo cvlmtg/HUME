@@ -120,7 +120,7 @@ pub(crate) fn style_row(
     is_head_line: bool,
     line_tint: Option<ScopeId>,
     mode: EditorMode,
-    primary_cursor_is_block: bool,
+    cursor_is_block: bool,
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
@@ -232,19 +232,25 @@ pub(crate) fn style_row(
         // Tiers 1 and 0: selection and selection-head, as mutually exclusive
         // spans — matching Helix's own non-overlapping selection/cursor spans
         // in `doc_selection_highlights` rather than layering a (possibly
-        // partial) head style over a selection style underneath it. A
-        // secondary head is always cursor-painted (a terminal has one
-        // hardware cursor, so a second simultaneous insertion point has no
-        // native indicator to fall back on); the primary head is painted only
-        // when the resolved cursor shape for the live mode is `Block` — for
-        // Bar/Underline the real terminal cursor is the sole indicator, and
-        // this cell keeps its selection styling only for a reverse selection
-        // (head before anchor), Helix's own carve-out for that case. A
-        // forward or collapsed selection under a non-block primary leaves the
-        // cell bare.
+        // partial) head style over a selection style underneath it. Both
+        // heads are painted only when the resolved cursor shape for the live
+        // mode is `Block`; for Bar/Underline the real terminal cursor is the
+        // primary's sole indicator, and HUME extends that same rule to
+        // secondary heads (a deliberate departure from Helix, which paints
+        // secondary cursors unconditionally — HUME has no second hardware
+        // cursor for a themed block to stand in for either).
+        //
+        // The primary's unpainted head keeps its selection styling only for a
+        // reverse selection (head before anchor), Helix's own carve-out for
+        // that case; a forward or collapsed primary selection leaves the cell
+        // bare, since the real terminal cursor already marks it. A secondary
+        // head has no such marker, so its unpainted head instead falls
+        // through to the plain span checks below: a ranged secondary keeps an
+        // unbroken `ui.selection` run across its head cell, and a collapsed
+        // one (no span to fall through to) goes bare.
         let is_primary_head = scratch.primary_head_display_col == Some(g.display_col);
         if is_primary_head {
-            if primary_cursor_is_block {
+            if cursor_is_block {
                 style = style.layer(cursor_cell_style(theme, mode, true));
             } else if primary_is_reverse
                 && scratch
@@ -253,7 +259,7 @@ pub(crate) fn style_row(
             {
                 style = style.layer(theme.ui.selection_primary);
             }
-        } else if scratch.head_display_cols.contains(&g.display_col) {
+        } else if cursor_is_block && scratch.head_display_cols.contains(&g.display_col) {
             style = style.layer(cursor_cell_style(theme, mode, false));
         } else if scratch
             .primary_sel_span

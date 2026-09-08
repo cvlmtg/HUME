@@ -552,20 +552,22 @@ impl EngineView {
 /// fact, not a document fact: the editor resolves it to the live editor mode
 /// only for the focused pane, and to `Normal` for every other pane, so an
 /// unfocused pane doesn't take Insert's or Extend's cursor *colours* — which
-/// ladder applies is all `mode` decides here. Whether the primary head is
-/// painted at all is `primary_cursor_is_block` below. `primary_cursor_is_block` is the same per-focus resolution for
-/// shape rather than mode: `true` for every unfocused pane, and for the
-/// focused pane whenever the resolved cursor shape for its live mode is
+/// ladder applies is all `mode` decides here. Whether a selection head is
+/// painted at all is `cursor_is_block` below: `true` for every unfocused pane
+/// (no real terminal cursor sits there to stand in for either head), and for
+/// the focused pane whenever the resolved cursor shape for its live mode is
 /// `Block` — only Insert varies (`cursor-shape-insert`); every other mode is
-/// hardwired block. Gates whether [`style::cursor_cell_style`](crate::style)'s Tier
-/// 0 paints the primary selection head at all, matching Helix's own
-/// `cursor_is_block` gate in `doc_selection_highlights`.
+/// hardwired block. Gates both heads in `style::style_row`'s Tier 1/0 —
+/// HUME extends `cursor-shape-insert` to the secondary head too, a deliberate
+/// departure from Helix's own `cursor_is_block` gate in
+/// `doc_selection_highlights`, which paints its secondary cursor
+/// unconditionally.
 #[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
     pub format: crate::rows::line_store::FormatKey,
     pub show_indent_guides: bool,
-    pub primary_cursor_is_block: bool,
+    pub cursor_is_block: bool,
 }
 
 /// Transient bundle of borrows needed to render one pane. Avoids passing a

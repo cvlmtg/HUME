@@ -53,10 +53,10 @@ impl Editor {
     /// pane. `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes are
     /// forced to `Normal` so they don't take Insert's or Extend's cursor
-    /// colours. `primary_cursor_is_block` is the separate per-focus resolution
-    /// that decides whether the primary head is painted at all — always for an
-    /// unfocused pane (no real cursor sits there to stand in for it), and for
-    /// the focused pane only when its mode's resolved shape is `Block`.
+    /// colours. `cursor_is_block` is the separate per-focus resolution that
+    /// decides whether either selection head is painted at all — always for
+    /// an unfocused pane (no real cursor sits there to stand in for one), and
+    /// for the focused pane only when its mode's resolved shape is `Block`.
     ///
     /// Split from gutter width ([`Self::pane_gutter_width`]) because every
     /// caller wants one or the other, never reliably both.
@@ -70,13 +70,13 @@ impl Editor {
         } else {
             EditorMode::Normal
         };
-        let primary_cursor_is_block =
+        let cursor_is_block =
             !is_focused || self.state.cursor_shape() == crate::settings::CursorShape::Block;
         PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),
             show_indent_guides,
-            primary_cursor_is_block,
+            cursor_is_block,
         }
     }
 

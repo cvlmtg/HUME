@@ -437,8 +437,8 @@ impl Editor {
             } else {
                 // Reads `cursor_shape()` directly rather than through
                 // `resolve_pane_settings` — the focused pane's own
-                // `primary_cursor_is_block` is defined as exactly this
-                // comparison (`frame.rs`), and resolving full pane settings
+                // `cursor_is_block` is defined as exactly this comparison
+                // (`frame.rs`), and resolving full pane settings
                 // (a `FormatKey` build included) just to throw away
                 // everything but this one bool would repeat, for the
                 // focused pane specifically, work `render_frame` already
@@ -490,9 +490,9 @@ impl Editor {
             // branch above — HUME's prompt modes have no shape option of their
             // own. Otherwise the live mode's resolved shape
             // (`EditorState::cursor_shape`) is the single source both this and
-            // `resolve_pane_settings`' `primary_cursor_is_block` read, so the
-            // real terminal cursor and the grid's painted primary head can
-            // never disagree about which shape is in effect.
+            // `resolve_pane_settings`' `cursor_is_block` read, so the real
+            // terminal cursor and the grid's painted heads can never disagree
+            // about which shape is in effect.
             //
             // Re-asserted every frame rather than only on a change — unlike
             // the cursor *colour* below, which is gated on one. That's the

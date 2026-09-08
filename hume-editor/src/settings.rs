@@ -281,10 +281,14 @@ settings_enum!(ObjectJumpAlign, "object-jump-align", [
 /// Insert mode — Helix's `editor.cursor-shape.insert`, minus the `hidden`
 /// variant Helix offers mainly for IME positioning.
 ///
-/// Only the primary head can ever take this shape: a terminal has exactly one
-/// hardware cursor, so a secondary head is always rendered as a themed block
-/// via `ui.cursor.insert` regardless of this setting — see
-/// `hume_engine::style::cursor_cell_style`.
+/// Only the primary head can ever take this shape from the real terminal
+/// cursor itself — a terminal has exactly one hardware cursor. HUME extends
+/// the setting to secondary heads too, a deliberate departure from Helix
+/// (which always paints its secondary cursor as a themed block): `Block`
+/// paints every head from its own themed scope, while `Bar`/`Underline`
+/// leaves every head unpainted, relying on the fallen-through selection tier
+/// (or nothing, for a collapsed selection) instead — see
+/// `hume_engine::style::cursor_cell_style` and its caller in `style_row`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
     /// The primary head is painted from `ui.cursor.primary.insert` (falling

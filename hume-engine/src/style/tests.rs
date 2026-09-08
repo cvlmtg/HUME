@@ -15,7 +15,7 @@ fn apply_styles(
     graphemes: &[Grapheme],
     selections: &[Selection],
     mode: EditorMode,
-    primary_cursor_is_block: bool,
+    cursor_is_block: bool,
     theme: &Theme,
     rope: &ropey::Rope,
     scratch: &mut StyleScratch,
@@ -48,7 +48,7 @@ fn apply_styles(
             is_head_line,
             tint,
             mode,
-            primary_cursor_is_block,
+            cursor_is_block,
             theme,
             scratch,
         );
@@ -467,47 +467,6 @@ fn cursorline_background_applied_to_cursor_line_only() {
     assert_eq!(scratch.styles[3].bg, None, "line 1 has no cursorline bg");
 }
 
-#[test]
-fn insert_mode_secondary_head_uses_its_own_insert_scope_when_set() {
-    // A secondary head is always cursor-painted, regardless of shape — it has
-    // no real terminal cursor to fall back on. It must use its own mode scope
-    // (`ui.cursor.insert`), not the generic `ui.cursor`.
-    let rope = ropey::Rope::from_str("abcde");
-    let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
-    let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary
-        Selection { anchor: 2, head: 2 }, // secondary
-    ];
-
-    let theme = theme_with([
-        ("ui.cursor.insert", fg(Rgb(0, 255, 0))),
-        ("ui.cursor", fg(Rgb(255, 0, 0))),
-    ]);
-
-    let mut scratch = StyleScratch::new();
-    apply_styles(
-        &rows,
-        &graphemes,
-        &selections,
-        EditorMode::Insert,
-        false,
-        &theme,
-        &rope,
-        &mut scratch,
-    );
-
-    assert_eq!(
-        scratch.styles[2].fg,
-        Some(Rgb(0, 255, 0)),
-        "secondary insert head uses its own ui.cursor.insert scope"
-    );
-    assert_eq!(
-        scratch.styles[0].fg, None,
-        "primary insert head unpainted under the default Bar shape"
-    );
-}
-
 /// Regression: everforest defines `ui.cursor.insert` (the secondary scope)
 /// and `ui.cursor` (the plain block scope), but no `ui.cursor.primary.insert`
 /// or `ui.cursor.primary`. A block-shape primary head must land on the plain
@@ -544,31 +503,33 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     );
 }
 
+/// HUME departs from Helix here: Helix paints every secondary cursor
+/// unconditionally, regardless of shape, since a terminal has only one
+/// hardware cursor and a secondary insertion point has no native indicator to
+/// fall back on. HUME instead extends `cursor-shape-insert` to secondary
+/// heads too — matching what the primary head does — so with a non-block
+/// shape *neither* head is cursor-painted: a collapsed secondary goes bare
+/// (there's nothing else to paint), and a ranged secondary falls through to
+/// plain `ui.selection` on its head cell rather than punching a hole in an
+/// otherwise-unbroken selection highlight.
 #[test]
-fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
-    // Theme defines ui.cursor with a block bg but NOT ui.cursor.insert.
-    //
-    // The primary head must NOT inherit the block bg under the default Bar
-    // shape (`primary_cursor_is_block: false`): Helix's own gate
-    // (`doc_selection_highlights`) only paints the primary cursor's cell
-    // when the configured shape is Block — for Bar/Underline the real
-    // terminal cursor is the sole indicator.
-    //
-    // The secondary head DOES inherit ui.cursor: Helix paints every
-    // secondary cursor unconditionally, regardless of shape, because a
-    // terminal has only one hardware cursor — a second simultaneous
-    // insertion point has no native indicator to fall back on and would
-    // otherwise be genuinely invisible, not just uncoloured.
-    let rope = ropey::Rope::from_str("abcde");
-    let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
-    // Two selections: head 0 = primary, head 2 = secondary.
+fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
+    let rope = ropey::Rope::from_str("abcdefg");
+    let graphemes = make_graphemes(7);
+    let rows = vec![make_row(0..7)];
+    // head 0 = primary (collapsed), head 4 = secondary (ranged, anchor 2..4),
+    // head 6 = secondary (collapsed).
     let selections = vec![
         Selection { anchor: 0, head: 0 },
-        Selection { anchor: 2, head: 2 },
+        Selection { anchor: 2, head: 4 },
+        Selection { anchor: 6, head: 6 },
     ];
 
-    let theme = theme_with([("ui.cursor", bg(Rgb(255, 0, 0)))]);
+    let theme = theme_with([
+        ("ui.cursor.insert", fg(Rgb(0, 255, 0))),
+        ("ui.cursor", fg(Rgb(255, 0, 0))),
+        ("ui.selection", bg(Rgb(0, 0, 255))),
+    ]);
 
     let mut scratch = StyleScratch::new();
     apply_styles(
@@ -583,14 +544,17 @@ fn insert_primary_head_stays_transparent_but_secondary_falls_back_to_cursor() {
     );
 
     assert_eq!(
-        scratch.styles[0].bg, None,
-        "primary insert head has no block bg — the terminal's own bar shows through"
+        scratch.styles[0].fg, None,
+        "primary head unpainted under the default Bar shape"
     );
     assert_eq!(
-        scratch.styles[2].bg,
-        Some(Rgb(255, 0, 0)),
-        "secondary insert head falls back to ui.cursor — there is no second hardware \
-         cursor for it to rely on instead"
+        scratch.styles[4].bg,
+        Some(Rgb(0, 0, 255)),
+        "ranged secondary's head cell falls through to ui.selection, not ui.cursor.insert"
+    );
+    assert_eq!(
+        scratch.styles[6].fg, None,
+        "collapsed secondary head has nothing to fall through to — stays bare"
     );
 }
 

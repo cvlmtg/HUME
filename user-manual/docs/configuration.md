@@ -82,7 +82,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `theme` | string | `""` (built-in `sand`) | Active color theme name |
-| `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode |
+| `cursor-shape-insert` | `block`/`bar`/`underline` | `bar` | Cursor shape while in Insert mode, applied to every cursor when multiple are active |
 | `scrolloff` | integer | `3` | Minimum lines kept above/below cursor |
 | `object-jump-align` | `top`/`center`/`off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` is still subject to `scrolloff` |
 | `mouse-enabled` | bool | `#t` | Enable mouse support |

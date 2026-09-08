@@ -283,9 +283,11 @@ export default function EditorPane({ pal, sc }) {
       // `barPrimary` (Insert only, HUME's default `cursor-shape-insert`) means
       // the primary head has no configured Block shape: the real terminal bar
       // is the sole indicator, so nothing from the theme is layered over it.
-      // A secondary head has no real terminal cursor to fall back on, so
-      // HUME always paints it regardless of shape — matching Helix's own
-      // unconditional secondary-cursor painting.
+      // With HUME's default `bar` shape a secondary head goes unpainted too
+      // (see `cursor_is_block` in hume-engine/src/style/mod.rs) — but this
+      // preview always paints "cursor2" regardless, deliberately showing the
+      // `cursor-shape-insert = block` case so `ui.cursor.insert` stays
+      // editable and visible here.
       if (primary && mode.barPrimary) {
         return { fg: FG, bg: null, bar: true };
       }

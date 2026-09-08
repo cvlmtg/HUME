@@ -672,13 +672,13 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
     );
 }
 
-/// The focused pane's `primary_cursor_is_block` is exactly "the resolved shape
-/// for the live mode is Block", so flipping the setting flips it — and with it
-/// whether `style_row` paints the primary head at all. An *unfocused* pane is
-/// always `true` regardless: no real terminal cursor sits there to stand in
-/// for the painted one, so its head must be drawn either way.
+/// The focused pane's `cursor_is_block` is exactly "the resolved shape for
+/// the live mode is Block", so flipping the setting flips it — and with it
+/// whether `style_row` paints either selection head at all. An *unfocused*
+/// pane is always `true` regardless: no real terminal cursor sits there to
+/// stand in for the painted one, so its heads must be drawn either way.
 #[test]
-fn cursor_shape_insert_gates_primary_head_painting_in_the_focused_pane_only() {
+fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.execute_typed("vsplit", None).unwrap();
     let focused = ed.state.focused_pane_id;
@@ -699,13 +699,13 @@ fn cursor_shape_insert_gates_primary_head_painting_in_the_focused_pane_only() {
         )
         .unwrap();
         assert_eq!(
-            ed.resolve_pane_settings(focused).primary_cursor_is_block,
+            ed.resolve_pane_settings(focused).cursor_is_block,
             expected_focused,
             "focused pane with cursor-shape-insert={shape}"
         );
         assert!(
-            ed.resolve_pane_settings(other).primary_cursor_is_block,
-            "an unfocused pane paints its head for every shape (cursor-shape-insert={shape})"
+            ed.resolve_pane_settings(other).cursor_is_block,
+            "an unfocused pane paints its heads for every shape (cursor-shape-insert={shape})"
         );
     }
 }

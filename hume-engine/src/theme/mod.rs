@@ -171,9 +171,11 @@ pub struct UiScopes {
     pub cursor: ResolvedStyle,
     /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
     /// for Helix theme compat. Falls back through `ui.cursor.insert` →
-    /// `ui.cursor` → `ui.selection` — a secondary head is always painted (it
-    /// has no real terminal cursor to fall back on), regardless of the
-    /// configured Insert cursor shape.
+    /// `ui.cursor` → `ui.selection`. Painted only when `cursor-shape-insert` is
+    /// `block` — a departure from Helix, which paints its secondary cursor
+    /// unconditionally; HUME has no second hardware cursor for a themed block
+    /// to stand in for either head, so `bar`/`underline` leaves this one
+    /// unpainted too. See `PaneRenderSettings::cursor_is_block`.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
@@ -197,12 +199,13 @@ pub struct UiScopes {
     /// `ui.cursor.primary.normal` → `ui.cursor.primary` → `ui.cursor` → `ui` →
     /// `ui.selection`. Painted only when the resolved cursor shape for the
     /// current mode is `Block` (Normal always is) — see
-    /// `PaneRenderSettings::primary_cursor_is_block`.
+    /// `PaneRenderSettings::cursor_is_block`.
     pub cursor_primary: ResolvedStyle,
     /// Primary selection-head highlight in Insert mode. Same ladder as
     /// [`Self::cursor_primary`], rooted at `ui.cursor.primary.insert`. Painted
     /// only when `cursor-shape-insert` is `block`; for `bar`/`underline` the
-    /// real terminal cursor is the sole indicator and this style is unused.
+    /// real terminal cursor is the sole indicator for this head, and this
+    /// style is unused.
     pub cursor_insert_primary: ResolvedStyle,
     /// Secondary selection-head highlight in Extend mode — HUME's name for Helix's
     /// Select mode (HUME's own `Select` mode is the `s` regex prompt, unrelated to
