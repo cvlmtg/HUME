@@ -212,6 +212,46 @@ test('parseTOML skips a malformed line with no "=" instead of throwing', () => {
   assert.deepEqual(parsed, { k: 'v' });
 });
 
+// Skipping is right — one bad line shouldn't cost the rest of the theme, the
+// same call HUME's loader makes. Doing it *silently* is what made a typo'd
+// file import as a quietly-wrong theme with nothing to show for it.
+test('parseTOML reports the line it skipped', () => {
+  const diagnostics = [];
+  parseTOML('not a valid toml line\nk = "v"', diagnostics);
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0], /^line 1: /);
+});
+
+test('parseTOML reports an unterminated string, naming its key', () => {
+  const diagnostics = [];
+  const parsed = parseTOML('k = "unterminated', diagnostics);
+  assert.equal(parsed.k, '"unterminated', 'the value still round-trips unchanged');
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0], /line 1: unterminated string .*"k"/);
+});
+
+test('parseTOML reports an unclosed inline table', () => {
+  const diagnostics = [];
+  parseTOML('"a" = { fg = "red"', diagnostics);
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0], /line 1: unclosed \{ .*"a"/);
+});
+
+test('parseTOML reports nothing for a clean document', () => {
+  const diagnostics = [];
+  parseTOML('"a" = { fg = "red" }\n\n# comment\n[palette]\nred = "#ff0000"', diagnostics);
+  assert.deepEqual(diagnostics, []);
+});
+
+test('a shipped theme parses with no diagnostics', () => {
+  const diagnostics = [];
+  parseTOML(
+    readFileSync(new URL('../../../runtime/themes/gruvbox.toml', import.meta.url), 'utf8'),
+    diagnostics,
+  );
+  assert.deepEqual(diagnostics, []);
+});
+
 test('parseTOML does not throw on an unterminated string value', () => {
   // No closing quote — parseInlineVal doesn't match the quoted-string
   // pattern (start AND end with '"'), so the value falls through unchanged

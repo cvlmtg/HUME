@@ -137,12 +137,20 @@ export function parseInlineTable(s) {
   return obj;
 }
 
-export function parseTOML(text) {
+// `diagnostics`, when given, collects a message per line this parser could
+// not make sense of. Nothing here throws: a theme with one bad line still
+// imports, matching how HUME's own loader warns per entry rather than
+// rejecting the file. Without somewhere to report them, though, a typo
+// imports as a quietly-wrong theme — so the caller passes an array and shows
+// what came back.
+export function parseTOML(text, diagnostics) {
+  const note = (n, msg) => diagnostics?.push(`line ${n}: ${msg}`);
   const result = {};
   let cur = result;
   const lines = text.split("\n");
   let i = 0;
   while (i < lines.length) {
+    const lineNo = i + 1;
     const line = stripComment(lines[i]).trim();
     i++;
     if (!line) continue;
@@ -162,7 +170,10 @@ export function parseTOML(text) {
     for (const { i: pos, c, inStr } of scanString(line)) {
       if (!inStr && c === '=') { eq = pos; break; }
     }
-    if (eq === -1) continue;
+    if (eq === -1) {
+      note(lineNo, "not a key/value pair or a [section] header — skipped");
+      continue;
+    }
 
     // "ui.cursor" → ["ui.cursor"] → "ui.cursor"; ui.cursor → ["ui","cursor"] → "ui.cursor".
     // Both produce the same flat key to match the shape upstream Helix themes use.
@@ -179,6 +190,11 @@ export function parseTOML(text) {
       bracketDepth += countChars(nextLine, '[', ']');
     }
     val = val.trim();
+    if (braceDepth > 0 || bracketDepth > 0) {
+      note(lineNo, `unclosed ${braceDepth > 0 ? "{" : "["} in the value for "${key}"`);
+    } else if (val.startsWith('"') && !val.endsWith('"')) {
+      note(lineNo, `unterminated string in the value for "${key}"`);
+    }
 
     cur[key] = parseInlineVal(val);
   }

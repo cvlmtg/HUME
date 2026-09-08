@@ -37,6 +37,9 @@ export default function HelixThemeEditor() {
   const [inheritBanner, setInheritBanner] = useState(null);
   const [loadedThemeName, setLoadedThemeName] = useState(null);
   const [importError, setImportError] = useState(null);
+  // Lines the parser couldn't make sense of. Distinct from `importError`: the
+  // theme still imported, so this warns rather than reporting a failure.
+  const [importWarnings, setImportWarnings] = useState([]);
   // Snapshot of the resolved parent's own palette/scopes, taken the moment a
   // child theme merges onto it — `{ name, palette, scopes }` or `null`. Lets
   // `handleExport` emit only this theme's own overrides plus `inherits`,
@@ -65,8 +68,10 @@ export default function HelixThemeEditor() {
     const reader = new FileReader();
     reader.onload = ev => {
       try {
-        const parsed = parseTOML(ev.target.result);
+        const diagnostics = [];
+        const parsed = parseTOML(ev.target.result, diagnostics);
         setImportError(null);
+        setImportWarnings(diagnostics);
         const newPalette = parsed.palette || {};
         const newScopes = extractScopes(parsed);
         const hasInherits = typeof parsed.inherits === "string" && parsed.inherits.length > 0;
@@ -203,6 +208,17 @@ export default function HelixThemeEditor() {
         <div style={{ padding: "8px 20px", background: "#3a1a1a", borderBottom: "1px solid #4a2a2a", color: "#f38ba8", fontFamily: MONO, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <span>{"Import failed: " + importError}</span>
           <button onClick={() => setImportError(null)} style={{ background: "transparent", border: "1px solid #4a2a2a", color: "#f38ba8", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss">{"×"}</button>
+        </div>
+      )}
+
+      {importWarnings.length > 0 && (
+        <div style={{ padding: "8px 20px", background: "#3a2f1a", borderBottom: "1px solid #4a3f2a", color: "#f9e2af", fontFamily: MONO, fontSize: 12, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div>{`Imported with ${importWarnings.length} unreadable line${importWarnings.length === 1 ? "" : "s"} — skipped:`}</div>
+            {importWarnings.slice(0, 5).map(w => <div key={w} style={{ opacity: 0.85 }}>{w}</div>)}
+            {importWarnings.length > 5 && <div style={{ opacity: 0.85 }}>{`… and ${importWarnings.length - 5} more`}</div>}
+          </div>
+          <button onClick={() => setImportWarnings([])} style={{ background: "transparent", border: "1px solid #4a3f2a", color: "#f9e2af", borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: MONO, fontSize: 11, flexShrink: 0 }} title="Dismiss">{"×"}</button>
         </div>
       )}
 
