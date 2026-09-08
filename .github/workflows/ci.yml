@@ -118,8 +118,9 @@ jobs:
         run: cargo test --doc
 
       # tools/theme-editor is a separate npm package with its own test
-      # runner. shell: bash so `tests/*.test.js` glob-expands the same way
-      # on the Windows runner (its default shell doesn't).
+      # runner. No dependency install: the tests import the tool's own pure
+      # modules only, and `node --test` expands `tests/*.test.js` itself on
+      # every runner, so npm passing it through cmd.exe on Windows is fine.
       - name: Test (theme editor)
         shell: bash
         run: cd tools/theme-editor && npm test

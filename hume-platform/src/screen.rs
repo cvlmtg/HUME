@@ -310,6 +310,15 @@ fn modifier_delta(from: &ResolvedStyle, to: &ResolvedStyle) -> SgrModifiers {
     }
 
     if from.underline != to.underline {
+        // `Double` is the one style termina writes as a bare SGR code (21)
+        // rather than a `4:n` sub-parameter. ECMA-48 assigns 21 to "doubly
+        // underlined", but several terminals read it as "bold off" instead, so
+        // a scope pairing `modifiers = ["bold"]` with `underline =
+        // "double_line"` can lose its bold there — termina emits intensity
+        // before underline in the same burst. Left as termina writes it: the
+        // alternative is hand-emitting `4:2` outside its `Sgr` writer, which
+        // buys correctness on those terminals at the cost of this crate no
+        // longer having a single escape-sequence encoder.
         m |= match to.underline {
             UnderlineStyle::None => SgrModifiers::UNDERLINE_NONE,
             UnderlineStyle::Solid => SgrModifiers::UNDERLINE_SINGLE,

@@ -10,6 +10,12 @@ cd "$REPO_ROOT"
 
 bash scripts/fetch-test-grammars.sh
 
+# tools/theme-editor is a separate npm package (pure-logic modules only, no
+# JSX under test) with its own test runner. Run before the Rust suite: it takes
+# under a second, and a missing Node shouldn't surface only after the slow half
+# of the run has already passed.
+(cd tools/theme-editor && npm test)
+
 cargo test --all-targets --workspace --exclude hume-editor
 # hume-editor's tests spin up a Steel engine per test; steel-core 0.8.2's
 # mark-and-sweep GC keeps process-global roots (GLOBAL_ROOTS/MARKER in
@@ -20,7 +26,3 @@ cargo test --all-targets -p hume-editor -- --test-threads=1
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.
 cargo test --doc
-
-# tools/theme-editor is a separate npm package (pure-logic modules only, no
-# JSX under test) with its own test runner.
-(cd tools/theme-editor && npm test)
