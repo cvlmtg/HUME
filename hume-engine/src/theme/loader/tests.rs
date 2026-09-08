@@ -1302,9 +1302,7 @@ text = "#222222"
     );
     let theme = load_theme("collide", &paths(dir.path())).unwrap().theme;
     assert_eq!(
-        theme
-            .resolve_by_name(crate::types::Scope("ui.text"))
-            .fg,
+        theme.resolve_by_name(crate::types::Scope("ui.text")).fg,
         Some(Rgb(0x11, 0x11, 0x11)),
     );
 }
