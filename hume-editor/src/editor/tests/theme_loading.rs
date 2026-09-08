@@ -218,45 +218,27 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
     }
 }
 
-/// Every one of the six resolved `theme.ui.cursor*` styles must have a
-/// distinct `bg` in every bundled theme — reading the `ui` fields themselves
-/// (not `resolve_by_name`) so the check exercises `cursor_ladder`'s actual
-/// output, the same six values `style::cursor_cell_style` picks between. A theme
-/// that leaves the per-mode cursor scopes undefined collapses several of
-/// these onto the base `ui.cursor`/`ui.cursor.primary` pair, so no mode
-/// carries a cursor cue.
-#[test]
-fn bundled_theme_cursor_scopes_are_pairwise_distinct() {
-    for (name, theme) in load_bundled_themes() {
-        let styles = [
-            ("cursor (normal)", theme.ui.cursor),
-            ("cursor (insert)", theme.ui.cursor_insert),
-            ("cursor (extend)", theme.ui.cursor_select),
-            ("cursor primary (normal)", theme.ui.cursor_primary),
-            ("cursor primary (insert)", theme.ui.cursor_insert_primary),
-            ("cursor primary (extend)", theme.ui.cursor_select_primary),
-        ];
-
-        for i in 0..styles.len() {
-            for j in (i + 1)..styles.len() {
-                assert_ne!(
-                    styles[i].1.bg, styles[j].1.bg,
-                    "bundled theme '{name}': '{}' and '{}' share the same cursor bg {:?} — \
-                     no cursor cue distinguishes the two modes",
-                    styles[i].0, styles[j].0, styles[i].1.bg
-                );
-            }
-        }
-    }
-}
-
-/// `:theme-debug`'s cursor rows must name a real rung chain — the theme's
-/// bundled `sand` sets `ui.cursor.normal` directly, so that row's chain must
+/// `:theme-debug`'s cursor rows must name a real rung chain — the bundled
+/// `gruvbox` theme sets `ui.cursor.normal` directly, so that row's chain must
 /// say so, not print the placeholder word the pre-fix implementation used in
-/// place of every cursor row's chain.
+/// place of every cursor row's chain. Pinned to `gruvbox` rather than `sand`:
+/// gruvbox mirrors an established upstream Helix theme and isn't expected to
+/// change, where `sand` is HUME's own theme and still gets retuned — a
+/// fixture that happens to rely on one of its rungs would drift out from
+/// under this test with no relation to what it actually checks. There is
+/// deliberately no assertion that a theme's cursor colors differ across
+/// modes: which modes get a distinct cursor cue, if any, is the theme
+/// author's call, not a bundled-theme requirement.
 #[test]
 fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
     let mut ed = editor_from("-[a]>b\n");
+    // `load_theme_by_name` resolves through the real XDG theme dirs, which
+    // this unit test has no fixture for — load straight from the repo's
+    // `runtime/themes`, the same path `load_bundled_themes` above uses.
+    let themes_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
+    ed.view.theme = hume_engine::theme::loader::load_theme("gruvbox", &[themes_dir])
+        .expect("bundled theme 'gruvbox' must load")
+        .theme;
     ed.execute_typed("theme-debug", None)
         .expect(":theme-debug must succeed");
     let text = ed
