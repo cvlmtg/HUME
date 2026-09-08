@@ -107,7 +107,7 @@ pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
     // warning here is a bug in this repo, not a typo to shrug off, so it's
     // stated as an invariant at the one site that would otherwise drop it
     // silently (`load_theme_by_name` surfaces the same warnings for every
-    // other load path). `load_bundled_themes` in `tests/theme_loading.rs`
+    // other load path). `load_bundled_themes` in `editor/tests/theme_loading.rs`
     // pins the same guarantee for the on-disk copy of this file.
     debug_assert!(
         loaded.warnings.is_empty(),

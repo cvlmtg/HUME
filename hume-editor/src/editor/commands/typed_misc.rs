@@ -218,9 +218,9 @@ pub(crate) fn typed_theme(
 
 /// `:theme-debug` — print what the active theme resolves for key UI surfaces.
 ///
-/// Cursor rows report the pre-resolved style the renderer reads; selection,
-/// cursorline and statusline rows report their resolved style plus every name
-/// on their dot-notation chain the theme defines.
+/// Cursor rows report the pre-resolved style the renderer reads; every other
+/// row — bracket/search match, selection, cursorline, statusline — reports its
+/// resolved style plus every name on its dot-notation chain the theme defines.
 pub(crate) fn typed_theme_debug(
     ed: &mut Editor,
     _arg: Option<&str>,

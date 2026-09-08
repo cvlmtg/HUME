@@ -195,7 +195,7 @@ fn separator_scope_honored_when_defined() {
 /// color through the tinted row: the separator has to inherit whatever the
 /// row itself resolved to, not dot-fallback to its own untinted parent
 /// scope. Covers every imported/Helix/user theme that doesn't define an
-/// explicit separator scope (all four bundled themes do).
+/// explicit separator scope (every bundled theme does).
 #[test]
 fn separator_falls_back_to_the_active_row_style_not_the_base_scope_when_undefined() {
     let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();

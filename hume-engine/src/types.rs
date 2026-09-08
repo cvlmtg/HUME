@@ -215,7 +215,10 @@ impl Selection {
 /// replay queue by `count × macro length`) run long enough to hang the editor.
 pub const MAX_COUNT: usize = 10_000;
 
-/// Editor mode — determines cursor shape and highlight behavior.
+/// Editor mode — selects the cursor scope ladder and highlight behavior.
+///
+/// Not the cursor's *shape*: that is `hume_editor::settings::CursorShape`,
+/// resolved per pane into `PaneRenderSettings::primary_cursor_is_block`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum EditorMode {
     #[default]

@@ -345,8 +345,8 @@ fn backward_selection_anchor_cell_highlighted() {
 }
 
 /// Regression: a collapsed selection (anchor == head, i.e. bare cursor) must
-/// not emit a selection-highlight span. In Insert mode the bar cursor is
-/// transparent, so a spurious 1-cell span shows through as a highlighted char.
+/// not emit a selection-highlight span — a bare cursor marks a position, not a
+/// one-character selection.
 #[test]
 fn insert_mode_collapsed_selection_not_highlighted() {
     let rope = ropey::Rope::from_str("foo");

@@ -344,9 +344,9 @@ fn collect_selection_spans(
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
         // A collapsed selection (anchor == head) has no extent to paint — the
-        // cursor at Tier 0 is its sole representation. Emitting a 1-cell span
-        // here is invisible under the Normal block cursor but leaks through the
-        // transparent Insert bar cursor as a spuriously highlighted cell.
+        // cursor at Tier 0 is its sole representation, and a 1-cell span here
+        // would claim the head cell is *selected* rather than merely where the
+        // cursor sits.
         if sel.is_collapsed() {
             continue;
         }

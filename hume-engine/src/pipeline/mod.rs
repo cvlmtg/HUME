@@ -547,9 +547,10 @@ impl EngineView {
 /// `RowMap` and the scroll pass's must resolve a bit-identical key to share
 /// this pane's line store — see `FormatKey`'s own doc. `mode` is a per-focus
 /// fact, not a document fact: the editor resolves it to the live editor mode
-/// only for the focused pane (whose fake cursor must yield to the real
-/// terminal cursor in bar-cursor modes) and to a block-cursor mode for every
-/// other pane. `primary_cursor_is_block` is the same per-focus resolution for
+/// only for the focused pane, and to `Normal` for every other pane, so an
+/// unfocused pane doesn't take Insert's or Extend's cursor *colours* — which
+/// ladder applies is all `mode` decides here. Whether the primary head is
+/// painted at all is `primary_cursor_is_block` below. `primary_cursor_is_block` is the same per-focus resolution for
 /// shape rather than mode: `true` for every unfocused pane, and for the
 /// focused pane whenever the resolved cursor shape for its live mode is
 /// `Block` — only Insert varies (`cursor-shape-insert`); every other mode is

@@ -51,14 +51,15 @@ impl Editor {
     /// across all render paths, so this and the scroll pass
     /// (`commands::pane_row_map`) resolve a bit-identical key for the same
     /// pane. `mode` is a per-focus fact: only the focused pane owns the real
-    /// terminal cursor, so it alone gets the live editor mode; other panes
-    /// are forced to a block-cursor mode so their fake cursor stays visible
-    /// instead of turning transparent.
+    /// terminal cursor, so it alone gets the live editor mode; other panes are
+    /// forced to `Normal` so they don't take Insert's or Extend's cursor
+    /// colours. `primary_cursor_is_block` is the separate per-focus resolution
+    /// that decides whether the primary head is painted at all — always for an
+    /// unfocused pane (no real cursor sits there to stand in for it), and for
+    /// the focused pane only when its mode's resolved shape is `Block`.
     ///
     /// Split from gutter width ([`Self::pane_gutter_width`]) because every
-    /// caller wants one or the other, never reliably both — bundling them
-    /// meant two of three call sites computed a gutter width just to throw
-    /// it away.
+    /// caller wants one or the other, never reliably both.
     pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);

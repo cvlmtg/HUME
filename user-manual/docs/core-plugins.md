@@ -170,7 +170,7 @@ Configure with `#:config`:
 | `"ref"` | string | `"HEAD"` | The default git ref a buffer diffs against, until overridden per-buffer via the toggle commands |
 
 Inline rendering's background tint and word highlights depend on your theme defining colors
-for them; HUME's four bundled themes do.
+for them; HUME's bundled themes do.
 
 ## core:vim-keybind
 
