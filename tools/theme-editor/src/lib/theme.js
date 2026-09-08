@@ -66,10 +66,16 @@ function normalizeStyle(v, pal) {
     fg: resolveColor(v.fg, pal),
     bg: resolveColor(v.bg, pal),
     mods: Array.isArray(v.modifiers) ? v.modifiers : [],
+    // A table form with no `style` key resolves to no underline at all, not to
+    // a solid one: `parse_style_table` (hume-engine/src/theme/loader.rs) sets
+    // only `underline_color` in that case, and `ResolvedStyle::normalized`
+    // (hume-grid/src/style.rs) then clears the colour because no style was
+    // ever set. Defaulting to "line" here previews an underline HUME doesn't
+    // draw.
     underline: u
       ? (typeof u === "string"
           ? { style: u, color: null }
-          : { style: u.style || "line", color: resolveColor(u.color, pal) })
+          : (u.style ? { style: u.style, color: resolveColor(u.color, pal) } : null))
       : null,
   };
 }
@@ -139,7 +145,11 @@ export function tokenStyle(scopeId, sc, pal, fallbackFg, editorBg, tag) {
   let fg = tag?.fg ?? s?.fg ?? fallbackFg;
   let bg = tag?.bg ?? s?.bg ?? null;
   const mods = [...(s?.mods ?? []), ...(tag?.mods ?? [])];
-  const u = s?.underline;
+  // The tag is layered over the token's own scope, so its underline wins the
+  // same way its fg/bg do — the "diag" tag exists precisely to draw a squiggle,
+  // and reading only the token's own scope dropped it for every token that
+  // carries no underline itself.
+  const u = tag?.underline ?? s?.underline;
 
   if (mods.includes("reversed")) { const t = fg; fg = editorBg; bg = t; }
 

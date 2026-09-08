@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveColor, cursorColors, diagnosticStyle } from '../src/lib/theme.js';
+import { resolveColor, cursorColors, diagnosticStyle, fullStyle, tokenStyle } from '../src/lib/theme.js';
 
 test('resolveColor resolves a bare ANSI name to its fixed hex value', () => {
   assert.equal(resolveColor('red', {}), '#cd0000');
@@ -67,4 +67,52 @@ test('diagnosticStyle resolves the diagnostic.<sev> scope, distinct per severity
 
 test('diagnosticStyle returns null for a severity the theme leaves unset', () => {
   assert.equal(diagnosticStyle('hint', {}, {}), null);
+});
+
+// ── underline resolution — mirrors parse_style_table + ResolvedStyle ───────
+
+// An `underline` table carrying only a colour leaves the style unset in Rust
+// (`parse_style_table` sets `underline_color` alone), and `normalized()` in
+// hume-grid/src/style.rs then drops the colour because no style was set — so
+// HUME draws nothing. gruvbox's `"definition" = { underline = { color = … } }`
+// is exactly this shape, and defaulting it to a solid line previewed an
+// underline the editor it previews never renders.
+test('an underline table with a colour but no style resolves to no underline', () => {
+  const sc = { definition: { underline: { color: '#8ec07c' } } };
+  assert.equal(fullStyle('definition', sc, {}).underline, null);
+});
+
+test('an underline table with an explicit style keeps both fields', () => {
+  const sc = { a: { underline: { color: '#ff0000', style: 'curl' } } };
+  assert.deepEqual(fullStyle('a', sc, {}).underline, { style: 'curl', color: '#ff0000' });
+});
+
+test('a shorthand string underline resolves with no colour of its own', () => {
+  assert.deepEqual(fullStyle('a', { a: { underline: 'curl' } }, {}).underline, {
+    style: 'curl',
+    color: null,
+  });
+});
+
+// `tokenStyle`'s `tag` is a fully-resolved style layered over the token's own
+// scope — the "diag" tag passes `diagnosticStyle(...)`, whose whole point is
+// the squiggle. Reading `underline` from the token's scope alone dropped it
+// for every token that carries no underline itself, which is nearly all of
+// them: the squiggle simply never rendered.
+test('tokenStyle takes the underline from an overlaid tag', () => {
+  const sc = { variable: '#ebdbb2' };
+  const tag = fullStyle('diagnostic.error', {
+    'diagnostic.error': { fg: '#fb4934', underline: { color: '#fb4934', style: 'curl' } },
+  }, {});
+  const css = tokenStyle('variable', sc, {}, '#fff', '#282828', tag);
+  assert.equal(css.textDecoration, 'underline');
+  assert.equal(css.textDecorationStyle, 'wavy');
+  assert.equal(css.textDecorationColor, '#fb4934');
+});
+
+// A tag that carries no underline must not erase the token's own.
+test("tokenStyle keeps the token's own underline when the tag has none", () => {
+  const sc = { a: { fg: '#ffffff', underline: 'dotted' } };
+  const css = tokenStyle('a', sc, {}, '#fff', '#282828', { fg: '#ff0000', mods: [] });
+  assert.equal(css.textDecorationStyle, 'dotted');
 });
