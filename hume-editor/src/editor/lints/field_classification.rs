@@ -139,11 +139,8 @@ const EDITOR_FIELD_CLASSIFICATION: &[(&str, &str)] = &[
     ),
     (
         "config_source",
-        "preserved: the whole point of --config/--no-config is that \
-         :reload-config re-evaluates the same source the session booted \
-         from — re-running the override file, or (for --no-config) \
-         refusing to run at all, rather than falling back to the default \
-         init.scm",
+        "preserved: :reload-config must re-evaluate the source the session \
+         booted from, not the default init.scm",
     ),
     (
         "builtin_cmd_names",

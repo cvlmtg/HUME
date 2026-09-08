@@ -28,8 +28,7 @@ pub(crate) mod testing;
 /// path, then writes the final buffer content to `output`. No terminal is
 /// initialised. `config` picks what `init_scripting` evaluates — the default
 /// `init.scm`, a `--config` override, or `ConfigSource::Skip` for
-/// `--no-config` — exactly as it would for [`run`]; headless mode carries no
-/// config posture of its own any more.
+/// `--no-config` — exactly as it would for [`run`].
 ///
 /// Exits cleanly when the key sequence contains `:wq` / `:q` / `<c-c>` (the
 /// editor sets `should_quit`); the buffer is written to `output` regardless.
@@ -43,7 +42,9 @@ pub fn run_keys(
         hume_scripting::parse_key_stream(keys).map_err(|e| format!("invalid key stream: {e}"))?;
 
     // Headless: no terminal, so nothing to wake — background threads (parse
-    // worker, LSP transport) call this harmlessly into the void.
+    // worker, LSP transport) call this harmlessly into the void. The pane
+    // viewport defaults to 80×24 (from Pane::new) and is never updated
+    // without a terminal, so scores are reproducible.
     let mut editor = editor::Editor::open(Some(input), std::sync::Arc::new(|| {}))?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume
     // full capability. Ctrl+letter keys (e.g. `<c-w>`) are no-ops without
@@ -51,10 +52,6 @@ pub fn run_keys(
     // kitty_enabled is true (see handle_normal). The kitty-only default
     // binds are also installed to match interactive kitty.
     editor.set_kitty_support(true);
-    // The pane viewport defaults to 80×24 (from Pane::new) and is never
-    // updated without a terminal, so scores are reproducible.
-    // Must run before `init_scripting`, same as `set_kitty_support` above —
-    // the source is read once resolution starts.
     editor.set_config_source(config);
     editor.init_scripting(&mut Default::default());
 

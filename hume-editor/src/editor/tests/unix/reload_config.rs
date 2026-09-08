@@ -380,8 +380,8 @@ fn config_override_works_with_no_config_dir() {
 /// `ConfigSource::Skip` (`--no-config`) must skip the user's `init.scm` —
 /// `scrolloff` stays at its compiled-in default despite the fixture's
 /// `init.scm` setting it to 9 — while still initialising the scripting host
-/// so the bundled runtime Scheme (language identities, grammars, prelude
-/// macros) loads.
+/// itself (the bundled runtime Scheme load is a silent no-op here since
+/// `HUME_RUNTIME` points at an empty tempdir, not exercised by this test).
 #[test]
 fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
     let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);
@@ -397,15 +397,12 @@ fn no_config_skips_init_scm_but_keeps_bundled_runtime() {
     );
     assert!(
         ed.scripting.is_some(),
-        "--no-config must still initialize the scripting host so bundled \
-         runtime Scheme loads"
+        "--no-config must still initialize the scripting host"
     );
 }
 
-/// `:reload-config` must refuse outright under `--no-config` rather than
-/// silently loading the real config — the flag is a session-wide posture,
-/// not a startup-only skip, and loading config on reload would end that
-/// posture with no way back.
+/// `:reload-config` must refuse outright under `--no-config` — see
+/// `typed_reload_config`'s doc for why.
 #[test]
 fn reload_config_under_no_config_errors() {
     let _fixture = ReloadFixture::new(r#"(set-option! "scrolloff" 9)"#);

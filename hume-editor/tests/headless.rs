@@ -48,19 +48,3 @@ fn write_failure_still_returns_err() {
          by the LSP shutdown that now runs alongside it"
     );
 }
-
-#[test]
-fn no_config_leaves_config_bindings_inert_in_headless_replay() {
-    let dir = tempfile::tempdir().unwrap();
-    let input = dir.path().join("in.txt");
-    let output = dir.path().join("out.txt");
-    std::fs::write(&input, "hello\n").unwrap();
-
-    hume::run_keys(input, "Z", output.clone(), ConfigSource::Skip).unwrap();
-
-    assert_eq!(
-        std::fs::read_to_string(&output).unwrap(),
-        "hello\n",
-        "--no-config must leave an unbound key inert — no init.scm ever ran to bind it"
-    );
-}

@@ -1,7 +1,9 @@
 //! Parses `hume`'s positional file arguments, each optionally suffixed with
 //! a `:line[:col]` startup cursor position (`hume foo.rs:12`,
 //! `hume foo.rs:12:24`) — the shape most tools emit in `file:line:col`
-//! diagnostics, so it can be pasted straight onto the command line.
+//! diagnostics, so it can be pasted straight onto the command line. Also
+//! holds [`ConfigSource`], the crate-wide-reachable type `run`/`run_keys`
+//! take for where a session's Steel config comes from.
 
 use std::path::{Path, PathBuf};
 

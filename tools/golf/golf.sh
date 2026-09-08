@@ -38,8 +38,7 @@ echo "golf: building hume-editor ..."
 cargo build --package hume-editor --manifest-path "$PROJECT_ROOT/Cargo.toml"
 HUME="$PROJECT_ROOT/target/debug/hume"
 
-# Empty data dir so the bundled runtime Scheme --no-config still loads sees
-# no installed grammars, regardless of the developer's own PLUM installs.
+# Isolated XDG_DATA_HOME — see the header comment above.
 GOLF_DATA_DIR="$(mktemp -d)"
 trap 'rm -rf "$GOLF_DATA_DIR"' EXIT
 export XDG_DATA_HOME="$GOLF_DATA_DIR"

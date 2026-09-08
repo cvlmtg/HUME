@@ -375,7 +375,7 @@ pub(crate) fn typed_reload_config(
     // wants no plugins), not a startup-only skip — silently loading the real
     // config on reload would end that posture with no way back either.
     match ed.config_path() {
-        ConfigPath::Resolved(_) => {}
+        ConfigPath::Resolved { .. } => {}
         ConfigPath::Skipped => {
             return Err(CommandError::new(
                 "reload-config: session started with --no-config",

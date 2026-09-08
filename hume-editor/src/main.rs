@@ -192,8 +192,7 @@ mod tests {
         assert_eq!(cli.config.as_deref(), Some(std::path::Path::new("alt.scm")));
     }
 
-    // `--config` and `--keys` are now orthogonal (see `Invocation`) — this
-    // is the deliberate inversion of the old `conflicts_with = "keys"`.
+    // `--config` and `--keys` are orthogonal (see `Invocation`).
     #[test]
     fn parse_config_with_keys_is_accepted() {
         let cli = Cli::try_parse_from([

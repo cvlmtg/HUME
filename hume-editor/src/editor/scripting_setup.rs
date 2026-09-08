@@ -33,8 +33,11 @@ const MAX_EVENT_DRAIN: usize = 1000;
 /// it to `Option<PathBuf>` so callers (`init_scripting`, `typed_reload_config`)
 /// don't each have to re-derive it from `config_source` separately.
 pub(crate) enum ConfigPath {
-    /// The file to evaluate — a `--config` override, or `<config_dir>/init.scm`.
-    Resolved(PathBuf),
+    /// The file to evaluate. `required` marks a `--config` override: the user
+    /// asserted the file exists, so a missing one is an error (checked at
+    /// `:reload-config` time in `init_scripting`) — where a missing default
+    /// `<config_dir>/init.scm` is normal and silently skipped.
+    Resolved { path: PathBuf, required: bool },
     /// `--no-config` (`ConfigSource::Skip`): the user asked for no `init.scm`.
     Skipped,
     /// Default source with no resolvable config directory
@@ -545,22 +548,6 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        // Resolve the config path up front. `Skipped` (`ConfigSource::Skip`,
-        // `--no-config`) is what the user asked for — no warning. `NoConfigDir`
-        // means there's no meaningful place to look for init.scm. Either way
-        // the *bundled* runtime Scheme below still loads — it's HUME's own,
-        // not the user's, and doesn't depend on a resolvable HOME.
-        let init_path = match self.config_path() {
-            ConfigPath::Resolved(path) => Some(path),
-            ConfigPath::Skipped => None,
-            ConfigPath::NoConfigDir => {
-                self.report(
-                    Severity::Warning,
-                    "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
-                );
-                None
-            }
-        };
         let mut host = hume_scripting::ScriptingHost::new();
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
@@ -616,29 +603,38 @@ impl Editor {
         self.eval_runtime_scheme(&mut host, "scheme/prelude.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/languages.scm", builtin_names.clone());
         self.eval_runtime_scheme(&mut host, "scheme/grammars.scm", builtin_names.clone());
-        // `None` here means `ConfigSource::Skip` or an unresolvable default
-        // directory (both handled, with their differing warnings, above) —
-        // either way there's no `init.scm` to evaluate, so every plugin it
-        // would otherwise `load-plugin` is skipped for free. The runtime
-        // scheme above always loads regardless — it's HUME's own.
-        if let Some(init_path) = init_path {
-            self.report(
-                Severity::Trace,
-                format!("scripting: config file = {}", init_path.display()),
-            );
-            let init_budget = self.state.settings.steel_init_budget_ms as u64;
-            // A missing default `init.scm` is normal — `eval_init` treats
-            // `NotFound` as a silent no-op — but a `--config` override is an
-            // assertion (see `resolve` in `main.rs`), and that assertion is
-            // only checked once, at process start. A path valid at startup
-            // can go missing by the time `:reload-config` re-evaluates it
-            // (moved, deleted, or — before the startup-time absolutize in
-            // `main.rs` — a relative path outrun by an intervening `:cd`), so
-            // re-check it here rather than let it fall through `eval_init`'s
-            // silent-skip path and read as a successful, empty reload.
-            let result =
-                if matches!(self.config_source, ConfigSource::File(_)) && !init_path.is_file() {
-                    Err(format!("--config: not found: {}", init_path.display()).into())
+        // `Skipped` (`--no-config`) and `NoConfigDir` both mean there's no
+        // `init.scm` to evaluate, so every plugin it would otherwise
+        // `load-plugin` is skipped for free — the runtime scheme above
+        // always loads regardless, it's HUME's own, not the user's. `Skipped`
+        // is what the user asked for (no warning); `NoConfigDir` means
+        // there's no meaningful place to look (warned).
+        match self.config_path() {
+            ConfigPath::Skipped => {}
+            ConfigPath::NoConfigDir => {
+                self.report(
+                    Severity::Warning,
+                    "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
+                );
+            }
+            ConfigPath::Resolved { path, required } => {
+                self.report(
+                    Severity::Trace,
+                    format!("scripting: config file = {}", path.display()),
+                );
+                let init_budget = self.state.settings.steel_init_budget_ms as u64;
+                // A missing default `init.scm` is normal — `eval_init` treats
+                // `NotFound` as a silent no-op — but a `--config` override
+                // (`required`) is an assertion (see `resolve` in `main.rs`),
+                // and that assertion is only checked once, at process start.
+                // A path valid at startup can go missing by the time
+                // `:reload-config` re-evaluates it (moved, deleted, or —
+                // before the startup-time absolutize in `main.rs` — a
+                // relative path outrun by an intervening `:cd`), so re-check
+                // it here rather than let it fall through `eval_init`'s
+                // silent-skip path and read as a successful, empty reload.
+                let result = if required && !path.is_file() {
+                    Err(format!("--config: not found: {}", path.display()).into())
                 } else {
                     let mut ih = EditorHostImpl::init(
                         &mut self.state,
@@ -646,19 +642,20 @@ impl Editor {
                         self.tui.clone(),
                         self.kitty_enabled,
                     );
-                    host.eval_init(&init_path, init_budget, &mut ih, builtin_names)
+                    host.eval_init(&path, init_budget, &mut ih, builtin_names)
                 };
-            // Named by the path actually evaluated — "init.scm: " for the
-            // default location, the override's own file name under
-            // `--config` — so an eval error names the file the user actually
-            // pointed HUME at, not always the default. Falls back to the
-            // full path for the pathological case of a path with no file
-            // name component (e.g. one ending in `..`).
-            let err_prefix = match init_path.file_name() {
-                Some(name) => format!("{}: ", name.to_string_lossy()),
-                None => format!("{}: ", init_path.display()),
-            };
-            self.apply_script_result(result, &err_prefix);
+                // Named by the path actually evaluated — "init.scm: " for the
+                // default location, the override's own file name under
+                // `--config` — so an eval error names the file the user
+                // actually pointed HUME at, not always the default. Falls
+                // back to the full path for the pathological case of a path
+                // with no file name component (e.g. one ending in `..`).
+                let err_prefix = match path.file_name() {
+                    Some(name) => format!("{}: ", name.to_string_lossy()),
+                    None => format!("{}: ", path.display()),
+                };
+                self.apply_script_result(result, &err_prefix);
+            }
         }
         // Snapshot language activation entries for the post-init lint below —
         // every eval's effects (identities, grammars, LSP server ops) are
@@ -786,10 +783,16 @@ impl Editor {
     /// rather than falling back to the default one.
     pub(crate) fn config_path(&self) -> ConfigPath {
         match &self.config_source {
-            ConfigSource::File(path) => ConfigPath::Resolved(path.clone()),
+            ConfigSource::File(path) => ConfigPath::Resolved {
+                path: path.clone(),
+                required: true,
+            },
             ConfigSource::Skip => ConfigPath::Skipped,
             ConfigSource::Default => match hume_platform::dirs::config_dir() {
-                Some(dir) => ConfigPath::Resolved(dir.join("init.scm")),
+                Some(dir) => ConfigPath::Resolved {
+                    path: dir.join("init.scm"),
+                    required: false,
+                },
                 None => ConfigPath::NoConfigDir,
             },
         }
