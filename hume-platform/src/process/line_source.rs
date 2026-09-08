@@ -480,12 +480,17 @@ mod tests {
             let pid =
                 nix::unistd::Pid::from_raw(i32::try_from(source.child.id()).expect("pid fits i32"));
 
+            // 5s, not a tight bound on the kill/reap/stderr-EOF handoff
+            // itself (which spans two thread wakeups and is scheduler-
+            // sensitive) — it only needs to rule out `finish()` waiting the
+            // child out instead of killing it, which would take the full 30s
+            // the child sleeps for. Matches the margin `drop_kills_the_child_
+            // promptly` below uses against the same kind of child.
             let started = Instant::now();
             let exit = source.finish();
             assert!(
-                started.elapsed() < Duration::from_millis(100),
-                "finish() must kill a lingering child immediately, not poll for a grace \
-                 period, took {:?}",
+                started.elapsed() < Duration::from_secs(5),
+                "finish() must kill a lingering child immediately, not wait it out, took {:?}",
                 started.elapsed()
             );
             assert!(

@@ -214,14 +214,23 @@ const KILL_LOCK_ATTEMPTS: u32 = 5;
 const KILL_LOCK_RETRY: Duration = Duration::from_millis(1);
 
 fn kill_slot(slot: &Arc<ChildSlot>) {
-    for attempt in 0..KILL_LOCK_ATTEMPTS {
+    kill_slot_with(slot, KILL_LOCK_ATTEMPTS, KILL_LOCK_RETRY)
+}
+
+/// [`kill_slot`] over injectable retry parameters, so a test can widen the
+/// retry budget against a lock held for a fixed, known duration instead of
+/// racing it against the production constants (a comparison of two
+/// scheduler-controlled durations, which is exactly what makes that race
+/// flaky).
+fn kill_slot_with(slot: &Arc<ChildSlot>, attempts: u32, retry: Duration) {
+    for attempt in 0..attempts {
         match try_lock_recovering(slot) {
             Some(mut inner) => {
                 inner.kill();
                 return;
             }
-            None if attempt + 1 < KILL_LOCK_ATTEMPTS => {
-                std::thread::sleep(KILL_LOCK_RETRY);
+            None if attempt + 1 < attempts => {
+                std::thread::sleep(retry);
             }
             None => {}
         }

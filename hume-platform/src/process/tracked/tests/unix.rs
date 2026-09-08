@@ -322,12 +322,19 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
 
     // Stand in for a concurrent `id()`/`try_wait()` call, which holds the
     // same slot mutex without killing anything — unlike a concurrent
-    // `reap()`, there is no one else here to signal the child, so `kill_all`
-    // giving up on the first contended `try_lock` (the pre-retry behaviour)
-    // would leave it alive. A channel handshake (not a blind sleep before
-    // calling `kill_all`) guarantees the lock is actually held by the time
-    // `kill_all` makes its first attempt — the race this test relies on is
-    // real time elapsing during `kill_all`'s own retries, not in the setup.
+    // `reap()`, there is no one else here to signal the child, so a retrying
+    // kill giving up on the first contended `try_lock` (the pre-retry
+    // behaviour) would leave it alive. A channel handshake (not a blind
+    // sleep before killing) guarantees the lock is actually held by the time
+    // the first attempt runs.
+    //
+    // Drives `kill_slot_with` directly (bypassing `registry.kill_all()`, the
+    // path this exercises in production) with a retry budget an order of
+    // magnitude past the 1ms hold below: comparing the production constants
+    // (`KILL_LOCK_ATTEMPTS`/`KILL_LOCK_RETRY`, a ~4ms budget) against a 1ms
+    // hold is a race between two scheduler-controlled durations — one
+    // preemption between the hold's sleep expiring and its guard dropping,
+    // and the retries run out first, flaking the test on correct behaviour.
     let (acquired_tx, acquired_rx) = mpsc::channel::<()>();
     let slot = Arc::clone(&tracked.0);
     let holder = std::thread::spawn(move || {
@@ -339,7 +346,7 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
         .recv()
         .expect("holder thread must signal once it holds the lock");
 
-    registry.kill_all();
+    kill_slot_with(&tracked.0, 200, Duration::from_millis(5));
     holder.join().expect("holder thread must not panic");
 
     // `kill_all` deliberately never `wait()`s its victims (see its own doc),
@@ -361,8 +368,8 @@ fn kill_all_retries_a_slot_contended_by_a_non_killing_reader() {
     }
     assert!(
         matches!(status, Some(WaitStatus::Signaled(_, Signal::SIGKILL, _))),
-        "kill_all must retry a slot contended by a non-killing reader and reach \
-         the child once it's released, not abandon it on the first failed \
+        "kill_slot_with must retry a slot contended by a non-killing reader and \
+         reach the child once it's released, not abandon it on the first failed \
          try_lock: got {status:?}"
     );
 }

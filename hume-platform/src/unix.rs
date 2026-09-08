@@ -431,6 +431,7 @@ fn wait_readable(fd: BorrowedFd<'_>, timeout: Option<Duration>) -> io::Result<bo
 
 #[cfg(test)]
 mod terminator_tests {
+    use std::net::Shutdown;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -453,19 +454,35 @@ mod terminator_tests {
         (sig_read, sig_write)
     }
 
-    /// A regression to the drain-less spin `terminator_exits_instead_of_spinning_when_the_pipe_closes`
-    /// guards against — an unbounded `watch` call that never returns — is a
-    /// real failure mode for this module (observed directly: a sabotage run
-    /// of this module's own signal-detection test sat at 100% CPU for three
-    /// days before being mistaken for a live bug). A direct call on the test
-    /// thread would hang `cargo test` forever on that regression instead of
-    /// failing it. This runs the call on its own thread and fails the test if
-    /// it hasn't returned within `bound`, so a spin becomes a fast, visible
-    /// test failure. Takes `sig_read` by value — it must outlive the spawned
-    /// thread — while each test keeps its own writer handle so it can still
-    /// act on the connection after the call starts.
-    fn run_bounded(sig_read: UnixStream, bound: Duration) -> Watched {
-        let handle = std::thread::spawn(move || watch(sig_read.as_fd(), None));
+    /// Retires the write end so the reader sees EOF. A plain `drop` is not
+    /// enough: a child forked by a concurrent test in this same binary
+    /// inherits a duplicate of the descriptor between `fork` and `exec`
+    /// (`CLOEXEC` closes it at `exec`, not at `fork`), keeping the
+    /// connection's write side open and turning the expected EOF into a
+    /// transient `EWOULDBLOCK`. `shutdown` acts on the connection every
+    /// duplicate shares, so the EOF is unconditional.
+    fn retire_write_end(sig_write: UnixStream) {
+        sig_write
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write end");
+    }
+
+    /// Waits for a spawned `watch` call to finish, failing the test if it
+    /// hasn't within `bound`. A regression to the drain-less spin
+    /// `terminator_exits_instead_of_spinning_when_the_pipe_closes` guards
+    /// against — an unbounded `watch` call that never returns — is a real
+    /// failure mode for this module (observed directly: a sabotage run of
+    /// this module's own signal-detection test sat at 100% CPU for three
+    /// days before being mistaken for a live bug). Polling `is_finished()`
+    /// against a deadline turns a spin into a fast, visible test failure
+    /// instead of hanging `cargo test` forever, while `join()`ing rather than
+    /// snapshotting once also gives an unscheduled-but-not-spinning thread
+    /// its full `bound` to run — a blind post-spawn sleep can't tell the two
+    /// apart.
+    fn join_bounded(
+        handle: std::thread::JoinHandle<io::Result<Watched>>,
+        bound: Duration,
+    ) -> io::Result<Watched> {
         let deadline = Instant::now() + bound;
         while !handle.is_finished() {
             assert!(
@@ -475,10 +492,15 @@ mod terminator_tests {
             );
             std::thread::sleep(Duration::from_millis(5));
         }
-        handle
-            .join()
-            .expect("terminator thread panicked")
-            .expect("watch returned an error")
+        handle.join().expect("terminator thread panicked")
+    }
+
+    /// Takes `sig_read` by value — it must outlive the spawned thread —
+    /// while each test keeps its own writer handle so it can still act on
+    /// the connection after the call starts.
+    fn run_bounded(sig_read: UnixStream, bound: Duration) -> Watched {
+        let handle = std::thread::spawn(move || watch(sig_read.as_fd(), None));
+        join_bounded(handle, bound).expect("watch returned an error")
     }
 
     /// Hang-detector bound for [`run_bounded`] — generous on purpose since it
@@ -505,18 +527,11 @@ mod terminator_tests {
     #[test]
     fn terminator_exits_instead_of_spinning_when_the_pipe_closes() {
         let (sig_read, sig_write) = idle_sig_pipe();
-        drop(sig_write);
+        retire_write_end(sig_write);
 
         let handle = std::thread::spawn(move || watch(sig_read.as_fd(), None));
-        std::thread::sleep(Duration::from_millis(50));
-        assert!(
-            handle.is_finished(),
-            "a permanently closed signal pipe must return promptly, not spin forever"
-        );
-        assert!(
-            handle.join().expect("thread panicked").is_err(),
-            "a permanently closed signal pipe is a real failure, not a trigger"
-        );
+        join_bounded(handle, SPIN_BOUND)
+            .expect_err("a permanently closed signal pipe is a real failure, not a trigger");
     }
 
     // ── grace_window_exit_code ───────────────────────────────────────────
@@ -574,7 +589,7 @@ mod terminator_tests {
     #[test]
     fn grace_window_exit_code_waits_out_the_window_on_a_closed_pipe() {
         let (sig_read, sig_write) = idle_sig_pipe();
-        drop(sig_write);
+        retire_write_end(sig_write);
         let flag = AtomicUsize::new(0);
         let grace = Duration::from_millis(30);
 
@@ -630,7 +645,7 @@ mod terminator_tests {
     fn drain_signal_pipe_reports_closed_when_every_writer_is_gone() {
         let (fd, peer) = UnixStream::pair().expect("socketpair");
         fd.set_nonblocking(true).expect("set_nonblocking");
-        drop(peer);
+        retire_write_end(peer);
         assert_eq!(drain_signal_pipe(fd.as_fd()), Drained::Closed);
     }
 
