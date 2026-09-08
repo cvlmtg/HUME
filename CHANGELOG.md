@@ -3,13 +3,17 @@
 ## Unreleased
 
 ### Breaking changes
-- Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally; nothing to do unless you write your own plugins.
-- `:format-source` (renamed from `:lsp-fmt`) can now format several selected line ranges at once instead of falling back to the whole buffer when a server supports it.
+- `}`/`{` now select the whole paragraph (plus its trailing blank line) instead of just moving the cursor, consistent with other structural motions. New `mip`/`map` text objects select just the paragraph when a plain selection is wanted.
+- Case transforms moved from `gu`/`gU`/`gC` to `GL`/`GU`/`GC`.
+- Several default keys moved to keep `g` reserved for goto motions: fuzzy finders move from `gf`/`gb`/`gm` to `zf`/`zb`/`zm`, rename moves from `gr` to `GR`, hover moves to bare `K`, and the viewport keys become `zk`/`zz`/`zj`.
+- The vim-keybind plugin no longer binds `G`, since it was overriding HUME's own case-transform keys.
 - `goto-alternate-file` is renamed `goto-alternate-buffer`.
+- `:format-source` (renamed from `:lsp-fmt`) can now format several selected line ranges at once instead of falling back to the whole buffer when a server supports it.
 - A handful of commands (LSP install/status, PLUM plugin/grammar management, git-diff sign toggles, `:lsp-fmt` → `:format-source`) can no longer be typed at the `:` prompt by their old bindable name — bind them to a key instead, or use their new typed command name.
+- Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally. If you write your own: `(set-signs! …)` entries are `(line text scope)`, without the trailing priority — a source now declares its column with `(register-sign-source! name bid priority)` before placing or clearing signs in that buffer.
+- Two more scripting renames, if you write your own plugins: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)` and checks every selection instead of only the primary one, with a new `(selections-charwise? bid)` as its counterpart; `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)`, joined by a new `(lsp-linewise-ranges-params bid)` returning one range per linewise selection.
 
 ### Editing
-- `}`/`{` now select the whole paragraph (plus its trailing blank line) instead of just moving the cursor, consistent with other structural motions. New `mip`/`map` text objects select just the paragraph when a plain selection is wanted.
 - New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).
 - Word motions, `miw`/`maw`, `Ctrl+W`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
 - New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).
@@ -20,9 +24,6 @@
 - `mia`/`maa` (argument) is now smarter about nested lists, tuples, or structs inside a call.
 - New `goto-next-`/`goto-prev-` navigation for each text-object kind above, bound under `g` on the same letter (e.g. `gf`/`gF` for functions), also available from the command line.
 - `}` and forward structural navigation now re-center the view on the selected object instead of leaving it at the bottom of the screen (new `object-jump-align` setting).
-- Case transforms moved from `gu`/`gU`/`gC` to `GL`/`GU`/`GC`.
-- Several default keys moved to keep `g` reserved for goto motions: fuzzy finders move from `gf`/`gb`/`gm` to `zf`/`zb`/`zm`, rename moves from `gr` to `GR`, hover moves to bare `K`, and the viewport keys become `zk`/`zz`/`zj`.
-- The vim-keybind plugin no longer binds `G`, since it was overriding HUME's own case-transform keys.
 
 ### Files & buffers
 - New `goto-next-buffer`/`goto-prev-buffer` commands, for binding to a key.
