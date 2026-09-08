@@ -67,23 +67,14 @@
 ## [0.11.0] - 2026-08-25
 
 ### Breaking changes
-- **Breaking**: `core:pickers` and `core:vim-keybind` now require `core:stdlib` declared or
-  loaded first — their `#:config` validation moved into `core:stdlib`'s new
-  `stdlib/config-boolean`/`stdlib/config-string`/`stdlib/config-enum` commands, the same
-  helpers `core:git-diff` uses.
-- **Breaking**: `core:lsp` now requires `core:stdlib` declared or loaded first — it scans
-  installed servers via `core:stdlib`'s new `stdlib/list-subdirs` at its own load time.
-  New `stdlib/run` (shared subprocess spawn, used by `core:plum`/`core:pickers`) and
-  `stdlib/resolve-lang-arg` (shared `:` command language-argument resolution, used by
-  `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.
-- **Breaking**: `core:plum`'s plugin commands are renamed `:plum-install-plugins`,
-  `:plum-cleanup-plugins`, `:plum-update-plugins`, `:plum-list-plugins` (were
-  `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`).
-- **Breaking**: `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
-- **Breaking**: `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
-- **Breaking**: `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
-- **Breaking**: `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
-- **Breaking**: `(viewport-range bid)` now returns `(first-line . end-line)`, 0-based end-exclusive — `end-line` was previously the last visible line, inclusive. Drop any `(+ 1 (cdr vr))` adjustment; the pair now passes straight through as `buffer-lines`' `#:start`/`#:end`. The `on-viewport-change` hook's third argument is renamed `end-line` to match.
+- `core:pickers` and `core:vim-keybind` now require `core:stdlib` declared or loaded first — their `#:config` validation moved into `core:stdlib`'s new `stdlib/config-boolean`/`stdlib/config-string`/`stdlib/config-enum` commands, the same helpers `core:git-diff` uses.
+- `core:lsp` now requires `core:stdlib` declared or loaded first — it scans installed servers via `core:stdlib`'s new `stdlib/list-subdirs` at its own load time. New `stdlib/run` (shared subprocess spawn, used by `core:plum`/`core:pickers`) and `stdlib/resolve-lang-arg` (shared `:` command language-argument resolution, used by `core:plum`/`core:lsp`) round out this round of plugin-internal deduplication.
+- `core:plum`'s plugin commands are renamed `:plum-install-plugins`, `:plum-cleanup-plugins`, `:plum-update-plugins`, `:plum-list-plugins` (were `:plum-install`, `:plum-cleanup`, `:plum-update`, `:plum-list`).
+- `set-inline-diagnostics!` is renamed `set-eol-text!` and now takes a `source` argument first: `(set-eol-text! source bid entries)`, matching every other decoration setter's `(set-X! source bid entries)` shape.
+- `set-inlay-hints!` now takes a `source` argument first — `(set-inlay-hints! source bid hints)` — and each hint's position is a plain buffer char offset instead of an LSP wire `{"line" ... "character" ...}` hashmap. Convert a wire position first with the new `lsp-position->offset`/`lsp-range->offsets` builtins.
+- `set-virtual-lines!`'s entries are now hashmaps (`(hash 'line ... 'text ... 'scope ... 'anchor ... 'segments ...)`) instead of positional `(line text scope)` lists, and `'segments` are char offsets, not byte offsets.
+- `declare-plugin`'s `#:events` entries must now be symbols (e.g. `'(on-buffer-save)`), matching `register-hook!`. The string form (`'("on-buffer-save")`) that older releases accepted is now rejected.
+- `(viewport-range bid)` now returns `(first-line . end-line)`, 0-based end-exclusive — `end-line` was previously the last visible line, inclusive. Drop any `(+ 1 (cdr vr))` adjustment; the pair now passes straight through as `buffer-lines`' `#:start`/`#:end`. The `on-viewport-change` hook's third argument is renamed `end-line` to match.
 
 ### Editing
 - `C` now honours a count prefix: `3C` duplicates each selection onto the 3 lines below in one step instead of ignoring the count and copying onto just one.
