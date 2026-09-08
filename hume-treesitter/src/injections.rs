@@ -204,7 +204,7 @@ pub(crate) fn resolve_and_parse_injections(
         // `@injection.language` capture (patterns rarely carry both).
         let language = pattern.language.clone().or_else(|| {
             inj.language_capture.and_then(|idx| {
-                m.captures
+                m.captures()
                     .iter()
                     .find(|c| c.index == idx)
                     .map(|c| node_text(c.node, rope).to_lowercase())
@@ -227,7 +227,7 @@ pub(crate) fn resolve_and_parse_injections(
             continue;
         };
         let mut ranges: Vec<tree_sitter::Range> = m
-            .captures
+            .captures()
             .iter()
             .filter(|c| c.index == content_idx)
             .flat_map(|c| content_ranges(c.node, pattern.include_unnamed_children))

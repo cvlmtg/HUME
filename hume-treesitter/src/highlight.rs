@@ -135,7 +135,7 @@ impl TreeSitterHighlighter {
         ));
         let mut captures = cursor.captures(&self.query, root, RopeProvider(rope));
         while let Some((m, capture_index)) = captures.next() {
-            let cap = m.captures[*capture_index];
+            let cap = m.captures()[*capture_index];
             let Some(scope) = self
                 .capture_scopes
                 .get(cap.index as usize)

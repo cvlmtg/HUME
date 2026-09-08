@@ -184,9 +184,12 @@ pub(crate) fn do_parse(
     req: ParseRequest,
     cancel: &AtomicBool,
 ) -> ParseDone {
-    parser
-        .set_language(req.bundle.grammar.language())
-        .expect("ABI verified at grammar registration time in attach_grammar");
+    parser.set_language(req.bundle.grammar.language()).expect(
+        "ABI verified at grammar registration time in attach_grammar; the only \
+             other failure mode, a language recovered from a tree in a different \
+             WebAssembly instance, cannot arise here — grammars are dlopen'd \
+             natively, never wasm-recovered",
+    );
     parser
         .set_included_ranges(&[])
         .expect("empty ranges are always valid — whole-buffer parse");

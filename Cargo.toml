@@ -49,4 +49,4 @@ similar = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 num-traits = "0.2"
-tree-sitter = "0.26.8"
+tree-sitter = "0.27"
