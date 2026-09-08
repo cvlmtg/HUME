@@ -77,12 +77,14 @@ pub fn run_keys(
     editor.settle();
 
     let content = editor.doc().text().to_string();
-    std::fs::write(&output, content)?;
+    let written = std::fs::write(&output, content);
     // Config can now spawn LSP servers (see the `config` param above) —
     // give them the same graceful shutdown window `run` gives them, rather
     // than leaving `ServerHandle::drop` to `SIGKILL` them on the way out.
+    // Runs before the write result is propagated: an early `?` on `written`
+    // would skip it.
     editor.lsp_shutdown_all(editor::Editor::SHUTDOWN_GRACE);
-    Ok(())
+    Ok(written?)
 }
 
 /// Start the editor.

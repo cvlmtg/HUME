@@ -72,6 +72,7 @@ mod visual_move;
 pub(crate) use search::SearchState;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
+pub(crate) use scripting_setup::ConfigPath;
 use scripting_setup::theme_search_paths;
 
 pub(crate) use minibuf::MiniBuffer;

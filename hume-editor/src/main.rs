@@ -245,32 +245,12 @@ mod tests {
         }
     }
 
-    fn make_headless_with_config(files: Vec<PathBuf>, config: Option<PathBuf>) -> Cli {
-        Cli {
-            keys: Some("dw".into()),
-            output: Some(PathBuf::from("out.txt")),
-            config,
-            no_config: false,
-            files,
-        }
-    }
-
     fn make_normal(files: Vec<PathBuf>, config: Option<PathBuf>) -> Cli {
         Cli {
             keys: None,
             output: None,
             config,
             no_config: false,
-            files,
-        }
-    }
-
-    fn make_normal_no_config(files: Vec<PathBuf>) -> Cli {
-        Cli {
-            keys: None,
-            output: None,
-            config: None,
-            no_config: true,
             files,
         }
     }
@@ -414,7 +394,11 @@ mod tests {
 
     #[test]
     fn resolve_no_config_flag_skips_config() {
-        let inv = resolve(make_normal_no_config(vec![])).expect("--no-config should pass");
+        let cli = Cli {
+            no_config: true,
+            ..make_normal(vec![], None)
+        };
+        let inv = resolve(cli).expect("--no-config should pass");
         assert_eq!(inv.config, ConfigSource::Skip);
     }
 
@@ -427,11 +411,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("alt.scm");
         std::fs::write(&path, "").unwrap();
-        let inv = resolve(make_headless_with_config(
-            vec![PathBuf::from("in.txt")],
-            Some(path.clone()),
-        ))
-        .expect("real --config file should pass in headless mode");
+        let cli = Cli {
+            config: Some(path.clone()),
+            ..make_headless(vec![PathBuf::from("in.txt")])
+        };
+        let inv = resolve(cli).expect("real --config file should pass in headless mode");
         assert!(matches!(inv.mode, Mode::Headless { .. }));
         assert_eq!(inv.config, ConfigSource::File(path));
     }

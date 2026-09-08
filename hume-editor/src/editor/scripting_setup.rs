@@ -28,6 +28,20 @@ use crate::cli::ConfigSource;
 /// not worth the bookkeeping to prevent.
 const MAX_EVENT_DRAIN: usize = 1000;
 
+/// The `init.scm` a session should evaluate, or why there is none —
+/// `Editor::config_path`'s result. Carries the reason rather than collapsing
+/// it to `Option<PathBuf>` so callers (`init_scripting`, `typed_reload_config`)
+/// don't each have to re-derive it from `config_source` separately.
+pub(crate) enum ConfigPath {
+    /// The file to evaluate — a `--config` override, or `<config_dir>/init.scm`.
+    Resolved(PathBuf),
+    /// `--no-config` (`ConfigSource::Skip`): the user asked for no `init.scm`.
+    Skipped,
+    /// Default source with no resolvable config directory
+    /// (`HOME`/`XDG_CONFIG_HOME`, `APPDATA` on Windows all unset).
+    NoConfigDir,
+}
+
 impl Editor {
     /// Apply every effect a Steel eval queued, in the exact order the
     /// script emitted them (`hume_scripting::Effect`) — one ordered log, not
@@ -531,20 +545,22 @@ impl Editor {
     /// just produced). Any error from `init.scm` is reported as
     /// `Severity::Error` and shown in the statusline.
     pub(crate) fn init_scripting(&mut self, snapshot: &mut ReloadSnapshot) {
-        // Resolve the config path up front. `None` under `ConfigSource::Skip`
-        // (`--no-config`) is what the user asked for — no warning. `None`
-        // under the default source, with neither XDG_CONFIG_HOME nor HOME
-        // (APPDATA on Windows) set, means there's no meaningful place to look
-        // for init.scm. Either way the *bundled* runtime Scheme below still
-        // loads — it's HUME's own, not the user's, and doesn't depend on a
-        // resolvable HOME.
-        let init_path = self.config_path();
-        if init_path.is_none() && self.config_source == ConfigSource::Default {
-            self.report(
-                Severity::Warning,
-                "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
-            );
-        }
+        // Resolve the config path up front. `Skipped` (`ConfigSource::Skip`,
+        // `--no-config`) is what the user asked for — no warning. `NoConfigDir`
+        // means there's no meaningful place to look for init.scm. Either way
+        // the *bundled* runtime Scheme below still loads — it's HUME's own,
+        // not the user's, and doesn't depend on a resolvable HOME.
+        let init_path = match self.config_path() {
+            ConfigPath::Resolved(path) => Some(path),
+            ConfigPath::Skipped => None,
+            ConfigPath::NoConfigDir => {
+                self.report(
+                    Severity::Warning,
+                    "scripting: no config directory — HOME/APPDATA unset; init.scm skipped".into(),
+                );
+                None
+            }
+        };
         let mut host = hume_scripting::ScriptingHost::new();
         // Pre-register every native command name as a callable Steel binding before
         // any user code sees the engine.  This lets `init.scm` call `(move-left)`
@@ -768,19 +784,14 @@ impl Editor {
     /// The `init.scm` this session evaluates — at startup and on every
     /// `:reload-config`, which must re-run the file the session booted from
     /// rather than falling back to the default one.
-    ///
-    /// `None` means either `--no-config` (`ConfigSource::Skip`) or the
-    /// default source with no resolvable config directory
-    /// (`HOME`/`XDG_CONFIG_HOME`, `APPDATA` on Windows all unset) — both
-    /// mean "no `init.scm` to evaluate", though `init_scripting` only warns
-    /// for the latter (the former is what the user asked for).
-    pub(crate) fn config_path(&self) -> Option<PathBuf> {
+    pub(crate) fn config_path(&self) -> ConfigPath {
         match &self.config_source {
-            ConfigSource::File(path) => Some(path.clone()),
-            ConfigSource::Skip => None,
-            ConfigSource::Default => {
-                hume_platform::dirs::config_dir().map(|dir| dir.join("init.scm"))
-            }
+            ConfigSource::File(path) => ConfigPath::Resolved(path.clone()),
+            ConfigSource::Skip => ConfigPath::Skipped,
+            ConfigSource::Default => match hume_platform::dirs::config_dir() {
+                Some(dir) => ConfigPath::Resolved(dir.join("init.scm")),
+                None => ConfigPath::NoConfigDir,
+            },
         }
     }
 

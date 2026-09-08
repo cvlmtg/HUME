@@ -10,7 +10,7 @@
 use hume_engine::pipeline::BufferId;
 
 use super::event::EditorEvent;
-use super::{Editor, Severity};
+use super::{ConfigPath, Editor, Severity};
 use crate::editor::error::CommandError;
 
 // ── ReloadSnapshot ───────────────────────────────────────────────────────────
@@ -373,18 +373,19 @@ pub(crate) fn typed_reload_config(
     // `--no-config` refuses outright: it's a session-wide posture the user
     // chose (a clean-debugging run, or a headless script that deliberately
     // wants no plugins), not a startup-only skip — silently loading the real
-    // config on reload would end that posture with no way back either. A
-    // `--config` override always resolves, regardless of HOME/XDG_CONFIG_HOME,
-    // so only the default source can hit the no-resolvable-directory case.
-    if ed.config_source == crate::cli::ConfigSource::Skip {
-        return Err(CommandError::new(
-            "reload-config: session started with --no-config",
-        ));
-    }
-    if ed.config_path().is_none() {
-        return Err(CommandError::new(
-            "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
-        ));
+    // config on reload would end that posture with no way back either.
+    match ed.config_path() {
+        ConfigPath::Resolved(_) => {}
+        ConfigPath::Skipped => {
+            return Err(CommandError::new(
+                "reload-config: session started with --no-config",
+            ));
+        }
+        ConfigPath::NoConfigDir => {
+            return Err(CommandError::new(
+                "reload-config: no config directory — HOME/XDG_CONFIG_HOME (APPDATA on Windows) unset",
+            ));
+        }
     }
     // Lifetime totals, not `unseen_counts`: the log can evict old entries
     // past `MAX_ENTRIES`, which would otherwise skew a before/after unseen

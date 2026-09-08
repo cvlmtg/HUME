@@ -32,6 +32,24 @@ fn config_binding_takes_effect_in_headless_replay() {
 }
 
 #[test]
+fn write_failure_still_returns_err() {
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("in.txt");
+    std::fs::write(&input, "hello\n").unwrap();
+    // A directory that doesn't exist: `std::fs::write` fails with `NotFound`
+    // rather than creating it.
+    let output = dir.path().join("missing-dir").join("out.txt");
+
+    let result = hume::run_keys(input, "Z", output, ConfigSource::Skip);
+
+    assert!(
+        result.is_err(),
+        "a failed output write must still surface as an error, not be swallowed \
+         by the LSP shutdown that now runs alongside it"
+    );
+}
+
+#[test]
 fn no_config_leaves_config_bindings_inert_in_headless_replay() {
     let dir = tempfile::tempdir().unwrap();
     let input = dir.path().join("in.txt");
