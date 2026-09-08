@@ -5,6 +5,33 @@ use crate::testing::MockHost;
 use hume_scripting::ScriptingHost;
 use hume_scripting::host::{CommandHost, CursorHost};
 
+/// Build a `ScriptingHost`, pre-register every native command name as a Steel
+/// binding (so `(move-right)`-style calls in `src` resolve), eval `src`, and
+/// install the result as `ed.scripting` — the bootstrap this file's Steel
+/// dispatch tests repeat before driving a command through
+/// `execute_keymap_command` or `(call! …)`.
+///
+/// Not a fit for a test that needs `live_host!`'s LSP/timer access instead of
+/// a bare `EditorHostImpl`, or one that inspects `eval_source`'s `Result`
+/// itself rather than treating a failed eval as a test-harness bug — those
+/// stay hand-written.
+fn attach_steel(ed: &mut Editor, src: &str) {
+    let names: Vec<String> = ed
+        .state
+        .config
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.eval_source(src, &mut init_host)
+        .expect("define-command! must succeed");
+    ed.scripting = Some(host);
+}
+
 // ── Unit tests: run_command_sync ──────────────────────────────────────────────
 
 /// `run_command_sync` for a `Motion` command must immediately update the cursor
@@ -126,26 +153,10 @@ fn run_command_sync_selection_updates_sel() {
 fn call_bang_count_arg_dispatches_synchronously() {
     let mut ed = editor_from("-[a]>bcdef\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "move-right-5" "" (lambda () (call! "move-right" 5)))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("move-right-5".into(), Some(1), false);
 
     let idx = ed
@@ -176,26 +187,10 @@ fn call_bang_count_arg_dispatches_synchronously() {
 fn call_bang_malformed_arg_to_native_cmd_errors_without_side_effect() {
     let mut ed = editor_from("-[a]>bc\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "move-right-bad" "" (lambda () (call! "move-right" "garbage")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
 
     // execute_keymap_command reports errors to the status bar rather than panicking;
     // check the cursor did not move (the Steel error aborted the eval).
@@ -224,33 +219,14 @@ fn case_b_sync_cursor_read_reflects_motion() {
     // "-[a]>\nb\nc\n" — cursor on line 1.
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    // Pre-register native command names as Steel bindings so `(move-down)` etc.
-    // resolve at compile time.
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    // Define a command that exercises the sync-read property.
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "test-case-b" "Case B probe"
                  (lambda ()
                    (move-down)
                    (when (= (current-line-number) 2)
                      (move-down))))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
 
     ed.execute_keymap_command("test-case-b".into(), Some(1), false);
 
@@ -286,28 +262,11 @@ fn steel_call_repeat_last_action_drains_via_handle_key() {
 
     let mut ed = editor_from("-[foo]> bar\n");
 
-    // Register command names so `(call! "repeat-last-action")` resolves.
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "steel-dot-repeat" "Repeat last action via Steel"
                  (lambda () (call! "repeat-last-action")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
 
     // Bind the Steel command to an unoccupied key (F2) in Normal mode.
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
@@ -447,29 +406,14 @@ fn classification_sites_all_agree() {
 fn steel_call_native_respects_register_prefix() {
     let mut ed = editor_from("-[hello]>\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
-        // Register '0' is a valid named storage register (digit registers: 0–9).
+    // Register '0' is a valid named storage register (digit registers: 0–9).
+    attach_steel(
+        &mut ed,
         r#"(define-command! "yank-to-0" ""
                  (lambda ()
                    (set-register-prefix! "0")
                    (call! "yank")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("yank-to-0".into(), Some(1), false);
 
     // Register '0' must hold "hello" (the selection content).
@@ -496,26 +440,11 @@ fn steel_call_native_respects_register_prefix() {
 fn steel_call_repeatable_cmd_sets_dot_repeat() {
     let mut ed = editor_from("-[foo]> bar\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "steel-delete" ""
                  (lambda () (call! "delete")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
 
     ed.execute_keymap_command("steel-delete".into(), Some(1), false);
     // `delete` is repeatable — last_repeatable_action must be set.
@@ -553,26 +482,11 @@ fn steel_call_jump_cmd_records_jump_entry() {
     let content = "-[l]>ine1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\n";
     let mut ed = editor_from(content);
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "steel-goto-end" ""
                  (lambda () (call! "goto-last-line")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
 
     let pane_id = ed.state.focused_pane_id;
     let bid = ed.focused_buffer_id();
@@ -599,28 +513,13 @@ fn steel_call_paste_then_motion_commits_paste_session() {
     let mut ed = editor_from("-[w]>orld\n");
     ed.state.kill_ring.push(vec!["hello".to_owned()]);
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "paste-and-move" ""
                  (lambda ()
                    (call! "paste-after")
                    (call! "move-down")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("paste-and-move".into(), Some(1), false);
 
     let buf_after_paste = ed.doc().text().to_string();
@@ -656,30 +555,15 @@ fn steel_call_source_order_native_after_steel() {
     // deletes 'b'. If order were reversed, 'a' (not 'b') would be deleted.
     let mut ed = editor_from("-[a]>b\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "steel-move-right" ""
                  (lambda () (call! "move-right")))
                (define-command! "order-test" ""
                  (lambda ()
                    (call! "steel-move-right")
                    (call! "delete")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("order-test".into(), Some(1), false);
 
     // If correct order (move-right then delete): 'b' is deleted → "a\n".
@@ -706,30 +590,15 @@ fn steel_native_via_call_preserves_own_count() {
     let content = "-[a]>\nb\nc\nd\ne\n";
     let mut ed = editor_from(content);
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // noop-steel is a no-op plugin command; move-down 3 runs sync via %call-native!.
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "noop-steel" "" (lambda () #t))
                (define-command! "count-chain-test" ""
                  (lambda ()
                    (call! "noop-steel")
                    (call! "move-down" 3)))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("count-chain-test".into(), Some(1), false);
 
     let host = live_host!(ed);
@@ -752,29 +621,14 @@ fn steel_unknown_cmd_errors_and_continues() {
     // "-[a]>bc\n", cursor at 0. Two moves should bring cursor to 2.
     let mut ed = editor_from("-[a]>bc\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "warn-test" ""
                  (lambda ()
                    (call! "move-right")
                    (call! "this-command-does-not-exist")
                    (call! "move-right")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("warn-test".into(), Some(1), false);
 
     // Both move-rights run inline despite the unknown name — cursor ends at 2.
@@ -866,25 +720,11 @@ fn steel_lambda_receives_count_and_extend() {
     // 10-char buffer; cursor starts at 0.
     let mut ed = editor_from("-[a]>bcdefghij\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "step-right" ""
              (lambda (count extend) (call! "move-right" count extend)))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed.scripting = Some(host);
+    );
 
     // Dispatch with count=4: cursor must land at position 4.
     ed.execute_keymap_command("step-right".into(), Some(4), false);
@@ -932,25 +772,11 @@ fn steel_lambda_receives_count_and_extend() {
 fn steel_zero_arity_lambda_ignores_injection() {
     let mut ed = editor_from("-[a]>bc\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
-        // 0-arg lambda: always moves right 1.
+    // 0-arg lambda: always moves right 1.
+    attach_steel(
+        &mut ed,
         r#"(define-command! "fixed-right" "" (lambda () (call! "move-right")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed.scripting = Some(host);
+    );
 
     // Dispatch with count=5: the 0-arg lambda ignores count, moves exactly 1.
     let before = ed
@@ -1002,25 +828,11 @@ fn steel_zero_arity_lambda_ignores_injection() {
 fn steel_arity_1_lambda_receives_count_only() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "step-count-only" ""
              (lambda (count) (call! "move-right" count)))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed.scripting = Some(host);
+    );
 
     // Dispatch with count=3: cursor must land 3 positions to the right.
     ed.execute_keymap_command("step-count-only".into(), Some(3), false);
@@ -1064,25 +876,10 @@ fn steel_arity_1_lambda_receives_count_only() {
 fn steel_call_delete_in_extend_exits_extend_mode() {
     let mut ed = editor_from("-[hell]>o\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.state.mode = Mode::Extend;
 
     ed.execute_keymap_command("wrap-delete".into(), Some(1), false);
@@ -1126,23 +923,10 @@ fn parity_delete_bookkeeping_keypress_vs_steel() {
 
     // Path B — Steel (call! "delete").
     let mut ed_steel = editor_from("-[f]>oo\n");
-    let names: Vec<String> = ed_steel
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed_steel,
         r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed_steel.scripting = Some(host);
+    );
     let before_steel = snapshot_bookkeeping(&ed_steel);
     ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
@@ -1176,23 +960,10 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 
     // Path B — Steel (call! "goto-last-line").
     let mut ed_steel = editor_from(content);
-    let names: Vec<String> = ed_steel
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed_steel,
         r#"(define-command! "steel-goto-end" "" (lambda () (call! "goto-last-line")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed_steel.scripting = Some(host);
+    );
     ed_steel.execute_keymap_command("steel-goto-end".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
@@ -1233,23 +1004,10 @@ fn parity_steel_branch_cluster_vs_native() {
     // Goes through the Steel branch of `Editor::dispatch` (outer), which
     // must run `step_stamp_repeatable` in AFTER just as the native path does.
     let mut ed_steel = editor_from("-[f]>oo\n");
-    let names: Vec<String> = ed_steel
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed_steel,
         r#"(define-command! "steel-del" "" (lambda () (call! "delete")) #:repeatable #t)"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed_steel.scripting = Some(host);
+    );
     ed_steel.execute_keymap_command("steel-del".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
@@ -1306,28 +1064,14 @@ fn parity_steel_branch_cluster_vs_native() {
         "pre-condition: paste-after must have opened a paste session"
     );
 
-    let names2: Vec<String> = ed2
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs2: Vec<&str> = names2.iter().map(String::as_str).collect();
-    let mut host2 = ScriptingHost::new();
-    host2.register_command_names(&name_refs2);
-    let mut init_host2 = EditorHostImpl::new(&mut ed2.state, &mut ed2.view);
     // The Steel command must NOT call any native command internally — any inner
     // `(call! …)` would route through `run_dispatch_pipeline` which also calls
     // `step_paste_commit`, masking a missing outer commit. A pure Steel no-op
     // (body returns a value without dispatching) isolates the outer BEFORE stage.
-    host2
-        .eval_source(
-            r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#,
-            &mut init_host2,
-        )
-        .expect("define-command! must succeed");
-    ed2.scripting = Some(host2);
+    attach_steel(
+        &mut ed2,
+        r#"(define-command! "pure-noop" "" (lambda () (+ 1 0)))"#,
+    );
     ed2.execute_keymap_command("pure-noop".into(), Some(1), false);
 
     // Fail oracle: delete the `step_paste_commit` call in the Steel BEFORE block
@@ -1362,23 +1106,10 @@ fn parity_extend_exit_keypress_vs_steel() {
     // Path B — Steel (call! "delete").
     let mut ed_steel = editor_from("-[f]>oo\n");
     ed_steel.state.mode = Mode::Extend;
-    let names: Vec<String> = ed_steel
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed_steel,
         r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed_steel.scripting = Some(host);
+    );
     ed_steel.execute_keymap_command("steel-delete".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
@@ -1405,7 +1136,7 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
     // Path A — native dispatch while in Insert mode.
     let mut ed_key = editor_from("-[h]>ello\n");
     ed_key.handle_key(key('i'));
-    ed_key.handle_key(key('X')); // pins pinned_anchors/run_ends
+    ed_key.handle_key(key('X')); // pins the typed_run
     ed_key.execute_keymap_command("move-left".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
     assert!(
@@ -1417,23 +1148,10 @@ fn parity_typed_run_invalidation_keypress_vs_steel() {
     let mut ed_steel = editor_from("-[h]>ello\n");
     ed_steel.handle_key(key('i'));
     ed_steel.handle_key(key('X'));
-    let names: Vec<String> = ed_steel
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
-    host.eval_source(
+    attach_steel(
+        &mut ed_steel,
         r#"(define-command! "steel-move-left" "" (lambda () (call! "move-left")))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-    ed_steel.scripting = Some(host);
+    );
     ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false);
     let snap_steel = snapshot_bookkeeping(&ed_steel);
 
@@ -1465,22 +1183,11 @@ fn plugin_calls_plugin_cursor_read_is_live() {
     // "-[a]>\nb\nc\n", cursor on line 1.
     let mut ed = editor_from("-[a]>\nb\nc\n");
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     // inner-move: plugin command that wraps a single move-down.
     // outer-cmd: calls inner-move (plugin→plugin), reads cursor, conditionally
     //   moves down again if cursor advanced past line 1.
-    host.eval_source(
+    attach_steel(
+        &mut ed,
         r#"(define-command! "inner-move" ""
                  (lambda () (call! "move-down")))
                (define-command! "outer-cmd" ""
@@ -1488,11 +1195,7 @@ fn plugin_calls_plugin_cursor_read_is_live() {
                    (call! "inner-move")
                    (when (> (current-line-number) 1)
                      (call! "move-down"))))"#,
-        &mut init_host,
-    )
-    .expect("define-command! must succeed");
-
-    ed.scripting = Some(host);
+    );
     ed.execute_keymap_command("outer-cmd".into(), Some(1), false);
 
     // Inline: inner-move ran synchronously (line 2 during eval), branch fired → line 3.
@@ -1618,23 +1321,7 @@ fn setup_steel_f2(ed: &mut Editor, snippet: &str, cmd_name: &str) -> termina::ev
     use crate::editor::keymap::BindMode;
     use termina::event::KeyCode;
 
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(snippet, &mut init_host)
-        .expect("Steel snippet must compile and evaluate without error");
-
-    ed.scripting = Some(host);
+    attach_steel(ed, snippet);
 
     let f2 = termina::event::KeyEvent::new(KeyCode::Function(2), termina::event::Modifiers::NONE);
     ed.state.config.keymap.bind_user_with_extend(
@@ -1929,23 +1616,11 @@ fn steel_repeatable_change_via_call_records_insert_keys() {
 #[test]
 fn keymap_dispatch_arity_over_2_reports_error() {
     let mut ed = editor_from("-[a]>b\n");
-    let names: Vec<String> = ed
-        .state
-        .config
-        .registry
-        .native_mappable_names()
-        .map(str::to_owned)
-        .collect();
-    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let mut host = ScriptingHost::new();
-    host.register_command_names(&name_refs);
-    let mut init_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.eval_source(
+    // A 3-param lambda is valid for `call!` use — only keymap dispatch rejects it.
+    attach_steel(
+        &mut ed,
         r#"(define-command! "three-params" "" (lambda (a b c) (+ a b c)))"#,
-        &mut init_host,
-    )
-    .expect("registration must succeed — 3-param lambda is valid for call! use");
-    ed.scripting = Some(host);
+    );
 
     ed.execute_keymap_command("three-params".into(), Some(1), false);
 
