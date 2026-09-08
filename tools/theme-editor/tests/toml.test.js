@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { parseTOML, extractScopes, exportTOML, diffFromBaseline, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
 import { bgc, lookupRaw } from '../src/lib/theme.js';
 
@@ -228,4 +229,67 @@ test('a quoted key containing "." is kept as one flat key, not split into a nest
   const parsed = parseTOML('"a.b" = 1');
   assert.equal(parsed['a.b'], 1);
   assert.equal(parsed.a, undefined);
+});
+
+// ── Dotted keys inside an inline table ────────────────────────────────────
+
+// TOML nests a dotted key, and so does the `toml` crate the Rust loader parses
+// with: `{ underline.style = "line" }` is `underline = { style = "line" }`, not
+// a key literally named "underline.style". Kept literal, `walkScopes` doesn't
+// recognise it as the `underline` style field and promotes it into an invented
+// child scope instead, losing the real scope's underline.
+test('a dotted key inside an inline table nests instead of staying literal', () => {
+  assert.deepEqual(parseInlineTable('{ underline.style = "line" }'), {
+    underline: { style: 'line' },
+  });
+});
+
+test('a dotted inline key merges with its sibling rather than replacing it', () => {
+  assert.deepEqual(parseInlineTable('{ underline.color = "#ff0000", underline.style = "curl" }'), {
+    underline: { color: '#ff0000', style: 'curl' },
+  });
+});
+
+test('a quoted inline key containing "." stays one segment', () => {
+  assert.deepEqual(parseInlineTable('{ "a.b" = 1 }'), { 'a.b': 1 });
+});
+
+// Reads the shipped theme rather than a fixture: `ui.picker.header.column`'s
+// `{ underline.style = "line" }` is the exact shape that flattened into an
+// invented `…column.underline.style` scope, dropping the real one entirely —
+// and re-exported the invented name over it.
+test('a shipped theme with a dotted inline key imports with its scope intact', () => {
+  const src = readFileSync(
+    new URL('../../../runtime/themes/gruvbox.toml', import.meta.url), 'utf8');
+  const scopes = extractScopes(parseTOML(src));
+  assert.deepEqual(scopes['ui.picker.header.column'], { underline: { style: 'line' } });
+  assert.ok(!('ui.picker.header.column.underline.style' in scopes));
+});
+
+// ── Scalar siblings of a style field ──────────────────────────────────────
+
+// Matches `walk_scope` in hume-engine/src/theme/loader.rs: once a table is
+// known to be a style, a scalar sibling is indistinguishable from a misspelled
+// attribute, so HUME warns and drops it rather than inventing a child scope
+// nothing resolves.
+test('a scalar beside a style field is dropped, not promoted to a child scope', () => {
+  const parsed = parseTOML('[ui]\nfg = "white"\ntext = "#ffffff"');
+  assert.deepEqual(extractScopes(parsed), { ui: { fg: 'white' } });
+});
+
+// The other half of the same rule: with no style field present the table is a
+// pure container, so its scalar entries are real child scopes.
+test('a scalar in a table with no style field is still a child scope', () => {
+  const parsed = parseTOML('[ui]\ntext = "#ffffff"');
+  assert.deepEqual(extractScopes(parsed), { 'ui.text': '#ffffff' });
+});
+
+// A sub-table beside a style field stays a child — there's nothing else it
+// could be, so only scalars are dropped.
+test('a sub-table beside a style field is still a child scope', () => {
+  const parsed = { ui: { fg: 'white', cursor: { bg: 'blue' } } };
+  assert.deepEqual(extractScopes(parsed), {
+    ui: { fg: 'white' },
+    'ui.cursor': { bg: 'blue' },
+  });
 });

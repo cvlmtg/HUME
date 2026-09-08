@@ -119,8 +119,20 @@ export function parseInlineTable(s) {
       if (!inStr && c === '=') { eq = pos; break; }
     }
     if (eq === -1) continue;
-    const k = pair.slice(0, eq).trim().replace(/^["']|["']$/g, "");
-    obj[k] = parseInlineVal(pair.slice(eq + 1).trim());
+    // A dotted key nests, matching TOML itself and the `toml` crate the Rust
+    // loader parses with: `{ underline.style = "line" }` is `underline =
+    // { style = "line" }`. Kept as one literal "underline.style" key it isn't
+    // recognised as the `underline` style field, and `walkScopes` promotes it
+    // into a child scope name nothing resolves.
+    const path = splitDottedKey(pair.slice(0, eq).trim());
+    if (path.length === 0) continue;
+    const val = parseInlineVal(pair.slice(eq + 1).trim());
+    let node = obj;
+    for (const seg of path.slice(0, -1)) {
+      if (!isTable(node[seg])) node[seg] = {};
+      node = node[seg];
+    }
+    node[path[path.length - 1]] = val;
   }
   return obj;
 }
@@ -209,11 +221,18 @@ function walkScopes(ns, obj, prefix) {
     if (!prefix && (k === "palette" || k === "inherits")) continue;
     const v = obj[k];
     const path = prefix ? prefix + "." + k : k;
-    // Any non-table value is kept as-is, not just a string: a number, bool or
-    // array here is a malformed scope HUME's loader rejects outright, and
-    // dropping it silently would lose it on the next export instead.
-    if (isTable(v)) walkScopes(ns, v, path);
-    else ns[path] = v;
+    // A sub-table is always a child scope — nothing else it could be.
+    if (isTable(v)) { walkScopes(ns, v, path); continue; }
+    // A scalar beside a style field is dropped, matching `walk_scope` in
+    // hume-engine/src/theme/loader.rs: once a table is known to be a style,
+    // a scalar sibling is indistinguishable from a misspelled attribute, and
+    // promoting it to a child invents a scope name nothing resolves. With no
+    // style field present the table is a pure container, so its scalars are
+    // real child scopes and are kept — a number, bool or array among them is
+    // a malformed scope the loader warns on, and dropping it here would lose
+    // it on the next export instead of round-tripping it back.
+    if (styleKeys.length > 0) continue;
+    ns[path] = v;
   }
 }
 
