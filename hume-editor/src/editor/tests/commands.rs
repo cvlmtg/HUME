@@ -429,8 +429,6 @@ fn mii_reports_info_when_fully_backspaced_away() {
 /// with inserting — bumps `text_gen` past the stash's stamp.
 #[test]
 fn mii_stash_goes_stale_after_a_later_edit() {
-    use hume_editing::selection::Selection;
-
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
@@ -440,7 +438,7 @@ fn mii_stash_goes_stale_after_a_later_edit() {
     // left it selected (`select-inserted-text`), so deleting it in place
     // wouldn't distinguish "text_gen bumped" (the thing under test) from
     // "the stashed text is simply gone" (a different, weaker guarantee).
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(2))); // "e" of "ello"
+    set_cursor(&mut ed, 2); // "e" of "ello"
     ed.handle_key(key('d')); // unrelated edit — never touches the stashed "x"
     mii(&mut ed);
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));

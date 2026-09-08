@@ -6,13 +6,12 @@
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
 
-use hume_engine::pipeline::EngineView;
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
 use super::dispatch::CmdCtx;
 use super::registry::MappableCommand;
-use super::{Editor, EditorState, Mode, commands, doc_ops};
+use super::{Editor, Mode, commands, doc_ops};
 
 // ── Dot-repeat / insert-session state ────────────────────────────────────────
 
@@ -122,22 +121,6 @@ pub(crate) enum MacroPending {
     Record,
     /// `q` was pressed — waiting for a register name to start replay.
     Replay,
-}
-
-impl EditorState {
-    // ── Insert session ────────────────────────────────────────────────────────
-
-    /// Mark the open insert session as append-style — see
-    /// `PaneBufferState::step_back_on_exit`'s doc for what this decides.
-    /// Writes directly to the pane/buffer state rather than `InsertSession`
-    /// (which dot-repeat replay never creates — see `begin_insert_session`'s
-    /// replay-signal guard) so a replayed `a`/`A`/`o`/`O` sets this exactly
-    /// like an interactive session would, instead of silently no-oping.
-    pub(super) fn mark_insert_step_back(&mut self, view: &EngineView) {
-        let pid = self.focused_pane_id;
-        let bid = super::commands::focused_buffer_id(self, view);
-        self.panes.state[pid][bid].step_back_on_exit = true;
-    }
 }
 
 impl Editor {

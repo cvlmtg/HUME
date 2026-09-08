@@ -1,5 +1,4 @@
 use super::*;
-use hume_editing::selection::{Selection, SelectionSet};
 use pretty_assertions::assert_eq;
 
 // ── Dot-repeat tests ──────────────────────────────────────────────────────────
@@ -140,7 +139,7 @@ fn mii_after_dot_repeat_selects_replayed_insertion() {
     // typed "ab" itself (`select-inserted-text`), and "ab"/"x" are one word
     // ("abx", no separator), so a word motion from inside "ab" has nowhere
     // to advance to.
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(2)));
+    set_cursor(&mut ed, 2);
     ed.feed_key(key('.')); // repeat insert "ab" before 'x'
     assert_eq!(ed.doc().text().to_string(), "ababx\n");
 
@@ -197,7 +196,7 @@ fn dot_repeat_replays_a_empty_run_step_back() {
     );
 
     // Reposition onto 'e' and replay — `.` re-enters `a` there.
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(1)));
+    set_cursor(&mut ed, 1);
     ed.feed_key(key('.'));
 
     // Without the fix, the replayed session's step-back flag is a silent
@@ -1072,7 +1071,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     // Move off "ab" first — `select-inserted-text` (default on) already left
     // it selected, so pressing `mii` right away would be a no-op and the
     // assertion below would hold whether or not `mii` actually did anything.
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(2))); // onto 'x'
+    set_cursor(&mut ed, 2); // onto 'x'
     ed.feed_key(key('m'));
     ed.feed_key(key('i'));
     ed.feed_key(key('i')); // mii: re-select "ab", the last insertion

@@ -222,11 +222,14 @@ pub(crate) fn apply_doc_edit_grouped(
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
-    if let Some(anchors) = pbs.pinned_anchors.as_mut() {
-        cs.map_positions(anchors, hume_editing::changeset::Assoc::Before);
-    }
-    if let Some(run_ends) = pbs.run_ends.as_mut() {
-        cs.map_positions(run_ends, hume_editing::changeset::Assoc::After);
+    // `ChangeSet::map_ranges` maps (start, end) pairs directly, but with
+    // `Assoc::After` on starts and `Assoc::Before` on ends — it shrinks a
+    // range around inserted text. A typed run needs the opposite: it must
+    // grow to include what was just typed, so anchors and ends are mapped
+    // separately with `Assoc` reversed from what `map_ranges` would use.
+    if let Some(run) = pbs.typed_run.as_mut() {
+        cs.map_positions(&mut run.anchors, hume_editing::changeset::Assoc::Before);
+        cs.map_positions(&mut run.ends, hume_editing::changeset::Assoc::After);
     }
     finish_edit(
         buffers,
@@ -391,11 +394,9 @@ pub(crate) fn begin_edit_group(
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
-    // A fresh group never inherits pins (or the select-on-exit/kill-opened
-    // flags) from a previous session (interactive or replay-preopened).
-    pbs.pinned_anchors = None;
-    pbs.run_ends = None;
-    pbs.select_on_exit = false;
+    // A fresh group never inherits a typed run or exit flags from a previous
+    // session (interactive or replay-preopened).
+    pbs.typed_run = None;
     pbs.step_back_on_exit = false;
     pbs.kill_opened_session = false;
 }

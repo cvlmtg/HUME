@@ -961,9 +961,9 @@ pub(super) struct BookkeepingSnapshot {
     /// `ed.state.mode` — set by `step_clear_extend` for selection-consuming edits.
     pub mode: Mode,
     /// Whether any (pane, buffer) pair has a pinned Insert-mode typed run
-    /// (`pinned_anchors.is_some()`) — cleared by `step_clear_typed_run` for
-    /// any cursor-motion command reached while still in Insert mode,
-    /// regardless of route (keypress, Steel `call!`, `run_command_sync`).
+    /// (`typed_run.is_some()`) — cleared by `step_clear_typed_run` for any
+    /// cursor-motion command reached while still in Insert mode, regardless
+    /// of route (keypress, Steel `call!`, `run_command_sync`).
     pub typed_run_open: bool,
 }
 
@@ -973,6 +973,16 @@ pub(super) struct BookkeepingSnapshot {
 /// a path-parity test or diff them for targeted assertions.
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
     let pane_id = ed.state.focused_pane_id;
+    // Shared by every "does any (pane, buffer) pair satisfy this predicate"
+    // field below, so a future one doesn't add a third copy of the walk.
+    let any_pbs = |pred: fn(&crate::editor::pane_state::PaneBufferState) -> bool| {
+        ed.state
+            .panes
+            .state
+            .iter()
+            .flat_map(|(_, inner)| inner.iter())
+            .any(|(_, pbs)| pred(pbs))
+    };
     BookkeepingSnapshot {
         last_repeatable: ed
             .state
@@ -981,21 +991,9 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .map(|a| (a.command.to_string(), a.count, a.char_arg)),
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
-        paste_session_open: ed
-            .state
-            .panes
-            .state
-            .iter()
-            .flat_map(|(_, inner)| inner.iter())
-            .any(|(_, pbs)| pbs.paste_group.is_some()),
+        paste_session_open: any_pbs(|pbs| pbs.paste_group.is_some()),
         mode: ed.state.mode,
-        typed_run_open: ed
-            .state
-            .panes
-            .state
-            .iter()
-            .flat_map(|(_, inner)| inner.iter())
-            .any(|(_, pbs)| pbs.pinned_anchors.is_some()),
+        typed_run_open: any_pbs(|pbs| pbs.typed_run.is_some()),
     }
 }
 

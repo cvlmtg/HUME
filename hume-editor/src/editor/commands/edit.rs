@@ -14,7 +14,7 @@ use hume_ops::surround::wrap_each_selection;
 
 use super::super::{EditorState, Severity, doc_ops};
 use super::{
-    apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
+    ExitCursor, apply_focused_edit, apply_focused_edit_grouped, apply_focused_motion,
     begin_insert_session_preserving_register, begin_typed_run, doc, focused_buffer_id, tab_format,
     word_chars_owned,
 };
@@ -78,8 +78,9 @@ pub(crate) fn cmd_change(
     apply_focused_edit_grouped(state, view, delete_selection_content);
     // Pins the anchor `mii` and (if `select-inserted-text` is on) Esc itself
     // reconstruct the typed replacement from — same helper every insert-entry
-    // command uses, so `c`'s auto-select behaves identically to theirs.
-    begin_typed_run(state, view);
+    // command uses, so `c`'s auto-select behaves identically to theirs. `c`
+    // never steps the cursor back on an empty run, same as `i`/`I`.
+    begin_typed_run(state, view, ExitCursor::StayPut);
     // Kill-opened only when the yank actually captured to the ring: the
     // capture stamped `PasteStamp`, but every keystroke about to be typed in
     // the session bumps `edit_seq` and would strand it — the flag makes
@@ -87,7 +88,7 @@ pub(crate) fn cmd_change(
     // explicit-register change (`"5c`) writes no stamp, and refreshing
     // whatever stale stamp might pre-exist would wrongly resurrect it. Lives
     // on `PaneBufferState`, not `InsertSession`, for the same reason
-    // `select_on_exit` does (see its doc).
+    // `step_back_on_exit` does (see its doc).
     if state.route_kill(yanked) {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);

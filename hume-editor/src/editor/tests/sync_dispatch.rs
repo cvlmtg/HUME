@@ -1391,13 +1391,10 @@ fn parity_extend_exit_keypress_vs_steel() {
 /// **Parity: typed-run invalidation from Insert mode** — a motion reached
 /// while still in Insert mode must clear a pinned typed run identically via
 /// native dispatch and via a Steel `(call! "move-left")` wrapper.
-///
-/// Before `step_clear_typed_run` moved into the pipeline, this clearing was a
-/// trie-local check inside the Insert keymap walk (`mappings/insert.rs`) —
-/// reached only by a real key press. A motion arriving via `run_command_sync`
-/// (a hook, `call!`, or this test's Steel wrapper) bypassed it entirely and
-/// left the pins in place, so Esc would go on to select across text the
-/// motion had moved away from.
+/// `step_clear_typed_run` (`commands/pipeline.rs`) is the shared funnel this
+/// pins on: every route into a native command — key press, Steel `call!`, a
+/// hook, `run_command_sync` — clears the run identically, so Esc never goes
+/// on to select across text a motion moved away from.
 ///
 /// Fail oracle: revert `step_clear_typed_run` (or its call site in
 ///   `run_dispatch_pipeline`) — `typed_run_open` stays `true` after both

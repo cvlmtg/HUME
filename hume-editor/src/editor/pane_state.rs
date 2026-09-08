@@ -49,6 +49,24 @@ pub(crate) struct EditGroup {
     pub cs: Option<ChangeSet>,
 }
 
+/// The span typed since an open insert session's entry command positioned the
+/// cursor — one (anchor, end) pair per selection, index-paired and always the
+/// same length (both `Vec`s are seeded together by `begin_typed_run` and
+/// remapped together by `apply_doc_edit_grouped`, which is the only writer
+/// after seeding).
+pub(crate) struct TypedRun {
+    /// Start of each selection's typed span, kept in post-edit coordinates
+    /// with `Assoc::Before` — a keystroke exactly at the anchor is typed
+    /// content, so the anchor must stay left of it.
+    pub anchors: Vec<usize>,
+    /// Exclusive end of each typed span, kept with `Assoc::After` (opposite
+    /// of `anchors`) so it tracks what was written rather than where the
+    /// cursor happens to sit: a real keystroke at the run's end pushes it
+    /// forward, an auto-paired closer pushes it past both inserted chars, and
+    /// a skip-close (which edits nothing) leaves it where it was.
+    pub ends: Vec<usize>,
+}
+
 // ── PaneBufferState ──────────────────────────────────────────────────────────
 
 /// All per-(pane, buffer) editor state bundled into one struct.
@@ -72,41 +90,25 @@ pub(crate) struct PaneBufferState {
     /// Meaningful only while `paste_group.is_some()`; read by `[`/`]` so cycling
     /// re-pastes in the same direction as the opening `p`/`P`.
     pub paste_before: bool,
-    /// Anchors of the run typed during the open insert session — one per
-    /// selection, sorted, kept in post-edit coordinates by
+    /// The open insert session's typed span, kept in post-edit coordinates by
     /// `apply_doc_edit_grouped`. `Some` from the moment the session's entry
     /// command positions the cursor (`begin_typed_run`) until
     /// `end_insert_session` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
-    pub pinned_anchors: Option<Vec<usize>>,
-    /// Exclusive end of each typed run, paired index-for-index with
-    /// `pinned_anchors` — the span `[anchor, run_end)` is what this session
-    /// actually inserted. Seeded equal to its anchor by `begin_typed_run`,
-    /// then remapped by `apply_doc_edit_grouped` with `Assoc::After` (opposite
-    /// of `pinned_anchors`'s `Assoc::Before`), so it tracks what was written
-    /// rather than where the cursor happens to sit: a real keystroke at the
-    /// run's end pushes it forward, an auto-paired closer pushes it past both
-    /// inserted chars, and a skip-close (which edits nothing) leaves it where
-    /// it was — the pre-existing char the cursor stepped over is excluded.
-    pub run_ends: Option<Vec<usize>>,
-    /// Whether `end_insert_session` should select the typed span (rather than
-    /// just stash it for `mii`) on exit. Set by `begin_typed_run`, gated on
-    /// the `select-inserted-text` setting. Lives here (not on `InsertSession`)
-    /// because dot-repeat replay never creates an `InsertSession` — see
-    /// `begin_insert_session`'s replay-signal guard — so a flag needed at
-    /// exit must survive on state that isn't cleared by that guard.
-    pub select_on_exit: bool,
-    /// Set by `mark_insert_step_back` for `a`/`A`/`o`/`O` entry. Decides
-    /// where an *empty* typed run's cursor lands on exit — step one grapheme
-    /// back (so `a<Esc>` is a round trip) rather than staying put. Lives here
-    /// rather than on `InsertSession` for the same reason `select_on_exit`
-    /// does: dot-repeat replay never creates one, so a flag `end_insert_session`
-    /// reads on exit must survive on state that isn't cleared by that guard.
+    pub typed_run: Option<TypedRun>,
+    /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
+    /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
+    /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a
+    /// round trip) rather than staying put. Lives here rather than on
+    /// `InsertSession` because dot-repeat replay never creates one — see
+    /// `begin_insert_session`'s replay-signal guard — so a flag
+    /// `end_insert_session` reads on exit must survive on state that isn't
+    /// cleared by that guard.
     pub step_back_on_exit: bool,
     /// Whether the open insert session was entered via a ring-capturing kill
     /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
     /// stamp and must not set this). Set only by `cmd_change`, for the same
-    /// reason `select_on_exit` lives here rather than on `InsertSession`.
+    /// reason `step_back_on_exit` lives here rather than on `InsertSession`.
     /// Read by `end_insert_session`: every keystroke typed during the session
     /// bumps `BufferStore::edit_seq`, so the `PasteStamp` `cmd_change` wrote
     /// (pointing at the just-replaced text) goes stale by the time the

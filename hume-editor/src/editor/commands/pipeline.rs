@@ -172,11 +172,9 @@ pub(super) fn step_capture_pre_jump(
 }
 
 /// Invalidate a still-open Insert-mode typed run before a cursor-motion
-/// command runs — its pinned anchor/run-end would otherwise select across
-/// text the cursor jumped away from once Insert exits. The single funnel
-/// every route into a native command shares (a key press, a Steel `call!`, a
-/// hook, `run_command_sync`): the trie-local version this replaced only
-/// fired for a motion reached by a key press.
+/// command runs — it would otherwise select across text the cursor jumped
+/// away from once Insert exits. Covers every route into a native command: a
+/// key press, a Steel `call!`, a hook, `run_command_sync`.
 ///
 /// Gated on `state.mode() == Mode::Insert`, checked in BEFORE against the
 /// *pre-body* mode. `exit-insert` itself needs no special-casing — it
@@ -203,9 +201,7 @@ pub(super) fn step_clear_typed_run(state: &mut EditorState, view: &EngineView, m
     }
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
-    let pbs = &mut state.panes.state[pid][bid];
-    pbs.pinned_anchors = None;
-    pbs.run_ends = None;
+    state.panes.state[pid][bid].typed_run = None;
 }
 
 /// The primary selection, its line, and the focused buffer — what a jump

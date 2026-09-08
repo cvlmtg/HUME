@@ -122,13 +122,9 @@ impl Editor {
                     );
                     return;
                 }
-                // A cursor-motion command (arrows, Home/End, goto-*, …)
-                // invalidates a pinned "typed run" — its anchor would
-                // otherwise select across text the cursor jumped away from.
-                // Handled by `step_clear_typed_run` inside the dispatch
-                // pipeline `execute_keymap_command` reaches below, not here —
-                // that funnel also covers a motion reached via Steel `call!`
-                // or `run_command_sync`, which a trie-local clear never would.
+                // A cursor-motion command reached here invalidates a pinned
+                // typed run — see `step_clear_typed_run` (`commands/pipeline.rs`),
+                // which `execute_keymap_command` below runs through.
                 self.execute_keymap_command(cmd.name, Some(1), false);
                 return;
             }
