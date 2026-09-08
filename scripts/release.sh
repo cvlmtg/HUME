@@ -37,8 +37,13 @@ fi
 current="$(cargo metadata --format-version 1 --no-deps \
     --manifest-path hume-editor/Cargo.toml \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(p["version"] for p in d["packages"] if p["name"] == "hume-editor"))')"
-if [[ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" || "$current" == "$version" ]]; then
-  echo "error: $version is not greater than current version $current" >&2
+# Equality is the normal case: RELEASING.md step 3 pre-bumps Cargo.toml to the
+# next release's version right after each release, so build.rs can suffix dev
+# builds with -<sha> until HEAD sits on the matching tag. Only a downgrade
+# (releasing older than what's staged) is a mistake here; a true re-release of
+# an already-tagged version is caught separately by the tag check above.
+if [[ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]]; then
+  echo "error: $version is older than current version $current" >&2
   exit 1
 fi
 
