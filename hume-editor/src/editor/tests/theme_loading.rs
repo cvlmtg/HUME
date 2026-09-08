@@ -164,7 +164,7 @@ fn bundled_theme_mode_scopes_tint_the_whole_row() {
         "ui.statusline.select",
         "ui.statusline.search",
         "ui.statusline.command",
-        "ui.statusline.filter",
+        "ui.statusline.sift",
     ];
 
     for (name, theme) in load_bundled_themes() {
@@ -196,7 +196,7 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
         "ui.statusline.select",
         "ui.statusline.search",
         "ui.statusline.command",
-        "ui.statusline.filter",
+        "ui.statusline.sift",
     ];
 
     for (name, theme) in load_bundled_themes() {

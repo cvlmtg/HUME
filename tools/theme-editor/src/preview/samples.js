@@ -169,7 +169,7 @@ export const MODES = [
   { scope: "ui.statusline.select", label: "EXT", chain: "select" },
   { scope: "ui.statusline.search", label: "SRC", chain: "normal" },
   { scope: "ui.statusline.command", label: "CMD", chain: "normal" },
-  { scope: "ui.statusline.filter", label: "SEL", chain: "normal" },
+  { scope: "ui.statusline.sift", label: "SIF", chain: "normal" },
 ];
 
 // Overlay surfaces the pane can show on top of the buffer. Each one's scopes

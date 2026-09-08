@@ -207,11 +207,10 @@ These have no Helix equivalent:
   to `ui.window`
 - `ui.drawer` — background of the bottom drawer (`show-drawer-list!`), a generic pick-list
   panel Helix doesn't have
-- `ui.statusline.search` / `.command` / `.filter` — one more mode-tinted statusline scope
+- `ui.statusline.search` / `.command` / `.sift` — one more mode-tinted statusline scope
   per HUME mode Helix doesn't have, alongside Helix's own
   `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
-  what Helix calls Select mode; `.filter` colors HUME's own, unrelated `Select` mode — the
-  `s` regex-filter prompt)
+  what Helix calls Select mode; `.sift` colors HUME's own Sift mode — the `s` regex prompt)
 - `ui.virtual.invisible` — the `<200b>`-style stand-in for a character the terminal must
   not be shown as itself (see the note under Buffer options above)
 - `diff.plus.line` / `diff.minus.line` / `diff.delta.line` — the whole-line background tint
@@ -357,7 +356,7 @@ Available elements:
 
 | Element | Description |
 |---------|-------------|
-| `"Mode"` | Current mode label (`NOR`/`INS`/`EXT`/`CMD`/`SRC`/`SEL`) |
+| `"Mode"` | Current mode label (`NOR`/`INS`/`EXT`/`CMD`/`SRC`/`SIF`) |
 | `"Separator"` | Divider between sections |
 | `"FileName"` | Current buffer filename (basename) |
 | `"FilePath"` | Full path of current buffer |

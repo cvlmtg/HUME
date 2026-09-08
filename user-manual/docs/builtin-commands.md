@@ -74,7 +74,7 @@ Create, refine, or manipulate the selection set.
 | `remove-primary-selection` | `Ctrl+,` | Remove the primary selection, promoting the next. |
 | `select-all` | `%` | Select the entire buffer. |
 | `select-last-insertion` | `m i i` | Select the text typed during the most recently completed insert session. |
-| `select-within` | `s` | Select regex matches within current selections. |
+| `sift-within` | `s` | Narrow each selection down to its regex matches. |
 | `split-selection-on-newlines` | `S` | Split each multi-line selection into one per line. |
 | `trim-selection-whitespace` | `_` | Trim leading and trailing whitespace from each selection. |
 

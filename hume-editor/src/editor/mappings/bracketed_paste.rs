@@ -67,7 +67,7 @@ impl Editor {
                     |b, s| insert_str(b, s, &text),
                 );
             }
-            Mode::Command | Mode::Search | Mode::Select => {
+            Mode::Command | Mode::Search | Mode::Sift => {
                 let flattened = flatten_for_minibuf(&text);
                 if flattened.is_empty() {
                     return;
@@ -76,7 +76,7 @@ impl Editor {
                     .state
                     .minibuf
                     .as_mut()
-                    .expect("minibuf present in Command/Search/Select mode");
+                    .expect("minibuf present in Command/Search/Sift mode");
                 self.state.status_msg.take();
                 mb.insert_str(&flattened);
                 self.on_minibuf_paste_edited();
@@ -138,7 +138,7 @@ impl Editor {
                 }
                 self.update_live_search();
             }
-            Mode::Select => self.update_live_select(),
+            Mode::Sift => self.update_live_sift(),
             Mode::Normal | Mode::Extend | Mode::Insert => {}
         }
     }

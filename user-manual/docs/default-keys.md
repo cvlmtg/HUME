@@ -131,7 +131,7 @@ Text objects (use the `m` prefix):
 |-----|---------|--------|
 | `n` | `search-next` | Next match |
 | `N` | `search-prev` | Previous match |
-| `s` | `select-within` | Select within (regex filter on each selection) |
+| `s` | `sift-within` | Sift within (narrow each selection to its regex matches) |
 | `Ctrl+/` | `search-selection` | Use the selected text literally as the search pattern (kitty only) |
 
 ### Macros
@@ -276,7 +276,7 @@ Entered with `/` (forward) or `?` (backward). Every keystroke live-previews the 
 | Any other character | Insert and re-preview |
 | `Tab` / `Shift+Tab` | No-op |
 
-## Select mode
+## Sift mode
 
 Entered with `s` from Normal mode (requires at least one non-collapsed selection). Live-previews sub-match selections within the original selections. Does **not** overwrite the search register, so `n`/`N` continue the prior search after `Enter`.
 
@@ -286,8 +286,8 @@ Entered with `s` from Normal mode (requires at least one non-collapsed selection
 | `Enter` (non-empty) | Keep the live-preview selections, return to Normal |
 | `Esc` / `Ctrl+c` | Cancel, restore original selections |
 | `Backspace` (input non-empty) | Delete char and re-preview |
-| `Backspace` (empties input or on empty) | Restore original selections, stay in Select mode |
+| `Backspace` (empties input or on empty) | Restore original selections, stay in Sift mode |
 | `Ctrl+w` | Delete word before cursor |
 | `Left` / `Right` | Move the cursor |
 | Any other character | Insert and re-preview |
-| `Tab` / `Shift+Tab` / `Up` / `Down` | No-op (Select mode has no pattern history) |
+| `Tab` / `Shift+Tab` / `Up` / `Down` | No-op (Sift mode has no pattern history) |

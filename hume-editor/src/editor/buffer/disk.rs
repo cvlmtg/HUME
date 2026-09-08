@@ -293,7 +293,7 @@ impl Editor {
         let mode_ok = match self.state.mode() {
             Mode::Normal | Mode::Extend => true,
             Mode::Command => self.state.dispatching_typed_command,
-            Mode::Insert | Mode::Search | Mode::Select => false,
+            Mode::Insert | Mode::Search | Mode::Sift => false,
         };
         mode_ok
             && self.state.config.confirm.is_none()

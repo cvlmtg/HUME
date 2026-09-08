@@ -142,7 +142,7 @@ fn from_theme_fallback_to_statusline_when_mode_missing() {
         EditorMode::Extend,
         EditorMode::Search,
         EditorMode::Command,
-        EditorMode::Select,
+        EditorMode::Sift,
     ] {
         let colors = EditorColors::from_theme(&theme, Some(mode));
         assert_eq!(

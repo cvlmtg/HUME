@@ -38,9 +38,9 @@ See [Command mode](command-mode.md) for a full list of commands.
 
 Invoked with `/` (forward) or `?` (backward). Type a pattern and press `Enter` to jump to the first match. `n` / `N` cycle through matches afterward.
 
-## Select mode
+## Sift mode
 
-Invoked with `s` in Normal mode. Select mode opens a regex prompt (`⫽`). Enter a pattern and press `Enter` to filter each existing selection, keeping only sub-ranges that match. Use it to split a selection into individual tokens.
+Invoked with `s` in Normal mode. Sift mode opens a regex prompt (`⫽`). Enter a pattern and press `Enter` to narrow each existing selection down to its matching sub-ranges. Use it to break a selection into individual tokens.
 
 **Enter from Normal:** `s`
 

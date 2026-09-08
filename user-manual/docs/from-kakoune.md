@@ -8,7 +8,7 @@ These work the way you expect, same keys:
 
 - Select-then-act, selections always covering at least one character, multiple selections as a first-class tool
 - `;` reduce to cursor, `,` keep only the main selection, `(` / `)` rotate the main selection
-- `%` select the whole buffer, `s` select regex matches within the selection
+- `%` select the whole buffer, `s` narrow each selection to its regex matches
 - `&` align selections, `_` trim surrounding whitespace
 - `C` duplicate the selection onto the line below
 - `>` / `<` indent / unindent the lines a selection touches, same keys and idea — HUME additionally re-renders each touched line's whole indent to the buffer's `tab-width`/`tab-style` rather than only prepending or trimming a fixed amount (blank and whitespace-only lines are left alone), and flattens an indent narrower than one level to the left margin instead of going negative
@@ -83,7 +83,7 @@ HUME's `x` re-anchors instead: each press selects one line and moves on, rather 
 | Kakoune | HUME |
 |---------|------|
 | `<a-s>` (split on line boundaries) | `S` |
-| `S` (split on a regex) | *(none)* — `s` selects regex matches instead |
+| `S` (split on a regex) | *(none)* — `s` narrows to regex matches instead |
 | `<a-_>` (merge contiguous selections) | automatic — adjacent selections never persist |
 
 ### Search

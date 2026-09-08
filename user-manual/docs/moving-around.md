@@ -152,7 +152,7 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 
 ### Regex syntax
 
-`/`, `?`, `s` (select-within), and `*` all use [Rust regex](https://docs.rs/regex) syntax. Notable points:
+`/`, `?`, `s` (sift-within), and `*` all use [Rust regex](https://docs.rs/regex) syntax. Notable points:
 
 - **Smart case.** A pattern with no uppercase letter matches case-insensitively; a single uppercase letter anywhere makes it case-sensitive. Note that this looks at the raw pattern text, so an escape like `\W` or `\S` counts as uppercase and will quietly make the search case-sensitive. Override with `(?i)` or `(?-i)`.
 - **Other inline flags** — `(?m)` multiline `^`/`$`, `(?s)` dot-matches-newline, `(?x)` extended (whitespace ignored), `(?U)` swap greedy/non-greedy.
@@ -169,7 +169,7 @@ HUME has no `:s/foo/bar/g` substitute command. Find-and-replace is done with mul
 3. Press `c` to change them all at once — type the replacement once and every selected instance updates together.
 4. `Esc` returns you to Normal.
 
-To replace within a single region instead of the whole buffer, select the region first (e.g. `x` for a line, or `m i {` for a block), then use `s` (select-within) with a regex instead of `m /`.
+To replace within a single region instead of the whole buffer, select the region first (e.g. `x` for a line, or `m i {` for a block), then use `s` (sift-within) with a regex instead of `m /`.
 
 ## Jump list
 

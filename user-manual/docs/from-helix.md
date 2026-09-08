@@ -83,8 +83,8 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |
 | Sort | `:sort` | `:sort` (different semantics — see below) |
-| Select within (regex per selection) | `s` | `s` |
-| Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sub-select regex matches) | `m /` |
+| Sift within (regex per selection) | `s` | `s` |
+| Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sift to regex matches) | `m /` |
 | Search selection, auto word-boundary anchors | `*` | *(none)* |
 | Search word under cursor (Vim-style) | *(unbound)* | `*` |
 | Search selection literally, no anchors | `Alt-*` | `Ctrl+/` (kitty only) |

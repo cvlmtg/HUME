@@ -183,9 +183,9 @@ pub(crate) struct PaneTransient {
     /// Snapshot of selections taken when this pane entered Search mode.
     /// Restored on cancel; discarded on confirm. `None` when not in Search mode.
     pub pre_search_sels: Option<SelectionSet>,
-    /// Snapshot of selections taken when this pane entered Select mode.
+    /// Snapshot of selections taken when this pane entered Sift mode.
     /// Restored on cancel; discarded on confirm.
-    pub pre_select_sels: Option<SelectionSet>,
+    pub pre_sift_sels: Option<SelectionSet>,
     /// Whether Extend mode was active when this pane entered Search mode.
     /// Captured so live-search can extend from the pre-search anchor even
     /// though `mode` is `Search` during the live preview.

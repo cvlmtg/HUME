@@ -939,7 +939,7 @@ fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
         ("ui.cursor.primary.insert", fg(Rgb(255, 255, 0))),
     ]);
 
-    for mode in [EditorMode::Command, EditorMode::Search, EditorMode::Select] {
+    for mode in [EditorMode::Command, EditorMode::Search, EditorMode::Sift] {
         let mut scratch = StyleScratch::new();
         apply_styles(
             &rows,

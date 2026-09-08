@@ -39,7 +39,7 @@ The three modes you will use most:
 | Insert | `i`, `a`, `o`, `c` from Normal mode | Type text |
 | Extend | `e` from Normal mode | Grow and shrink selections |
 
-You spend most of your time in Normal. Drop into Insert only to type, then `Esc` back. See [Modes](modes.md) for the full list, including command-line, search, and select modes.
+You spend most of your time in Normal. Drop into Insert only to type, then `Esc` back. See [Modes](modes.md) for the full list, including command-line, search, and sift modes.
 
 ## Motions
 

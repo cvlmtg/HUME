@@ -279,7 +279,7 @@ pub(crate) fn style_row(
 ///
 /// `Insert` uses the insert chain; `Extend` — HUME's name for Helix's Select
 /// mode — uses the select chain; every other mode, including HUME's own
-/// Command/Search/Select prompt modes (which have no Helix equivalent — Helix
+/// Command/Search/Sift prompt modes (which have no Helix equivalent — Helix
 /// keeps the underlying document mode while a prompt is open, and HUME's
 /// prompts have no cursor-shape option of their own), uses the plain Normal
 /// chain.
@@ -287,7 +287,7 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
     let (primary, secondary) = match mode {
         EditorMode::Insert => (theme.ui.cursor_insert_primary, theme.ui.cursor_insert),
         EditorMode::Extend => (theme.ui.cursor_select_primary, theme.ui.cursor_select),
-        EditorMode::Normal | EditorMode::Command | EditorMode::Search | EditorMode::Select => {
+        EditorMode::Normal | EditorMode::Command | EditorMode::Search | EditorMode::Sift => {
             (theme.ui.cursor_primary, theme.ui.cursor)
         }
     };

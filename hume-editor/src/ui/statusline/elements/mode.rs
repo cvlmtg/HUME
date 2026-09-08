@@ -23,7 +23,7 @@ impl StatuslineElement for ModeElement {
             EditorMode::Insert => "INS",
             EditorMode::Search => "SRC",
             EditorMode::Command => "CMD",
-            EditorMode::Select => "SEL",
+            EditorMode::Sift => "SIF",
         };
         (Cow::Borrowed(label), colors.statusline)
     }

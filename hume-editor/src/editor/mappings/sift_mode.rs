@@ -3,24 +3,24 @@ use termina::event::KeyEvent;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::{Editor, Mode};
 use hume_ops::search::compile_search_regex;
-use hume_ops::selection_cmd::select_matches_within;
+use hume_ops::selection_cmd::sift_matches_within;
 
 impl Editor {
-    // ── Select mode (s) ────────────────────────────────────────────────────────
+    // ── Sift mode (s) ─────────────────────────────────────────────────────────
 
-    pub(super) fn handle_select(&mut self, key: KeyEvent) {
+    pub(super) fn handle_sift(&mut self, key: KeyEvent) {
         let event = match self.state.minibuf.as_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
         match event {
-            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_select(),
+            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_sift(),
             MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
                 let pid = self.state.focused_pane_id;
-                self.state.panes.transient[pid].pre_select_sels = None;
+                self.state.panes.transient[pid].pre_sift_sels = None;
                 // Do NOT write to the search register or clear search state —
-                // select-within is a selection op, not a search. The previous
+                // sift-within is a selection op, not a search. The previous
                 // search pattern and its highlights should be preserved so that
                 // n/N continues to navigate the original search.
                 self.set_mode(Mode::Normal);
@@ -28,10 +28,10 @@ impl Editor {
             }
             MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
                 // Restore original selections when pattern is fully erased.
-                self.restore_select_snapshot();
+                self.restore_sift_snapshot();
             }
-            MiniBufferEvent::Edited => self.update_live_select(),
-            // Up/Down are reserved for minibuffer history — no-op in select-within.
+            MiniBufferEvent::Edited => self.update_live_sift(),
+            // Up/Down are reserved for minibuffer history — no-op in sift-within.
             MiniBufferEvent::CursorMoved
             | MiniBufferEvent::Ignored
             | MiniBufferEvent::CompleteRequested { .. }
@@ -40,21 +40,21 @@ impl Editor {
         }
     }
 
-    /// Cancel select mode: restore original selections, return to Normal.
-    fn cancel_select(&mut self) {
+    /// Cancel sift mode: restore original selections, return to Normal.
+    fn cancel_sift(&mut self) {
         let pid = self.state.focused_pane_id;
-        if let Some(sels) = self.state.panes.transient[pid].pre_select_sels.take() {
+        if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.take() {
             self.set_current_selections(sels);
         }
         // Do not clear search state — the previous search should survive a
-        // cancelled select-within.
+        // cancelled sift-within.
         self.set_mode(Mode::Normal);
         self.close_minibuf();
     }
 
     /// Recompile the regex and replace selections with matches within the
-    /// original selections. Called on every keystroke in Select mode.
-    pub(super) fn update_live_select(&mut self) {
+    /// original selections. Called on every keystroke in Sift mode.
+    pub(super) fn update_live_sift(&mut self) {
         let pattern = match self.state.minibuf.as_ref() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,
@@ -62,32 +62,32 @@ impl Editor {
 
         let Some(regex) = compile_search_regex(&pattern) else {
             // Invalid regex in progress — restore originals.
-            self.restore_select_snapshot();
+            self.restore_sift_snapshot();
             return;
         };
 
         // Compute matches in a limited scope so the borrow on
-        // pre_select_sels is released before we need to restore.
+        // pre_sift_sels is released before we need to restore.
         let pid = self.state.focused_pane_id;
         let result = self.state.panes.transient[pid]
-            .pre_select_sels
+            .pre_sift_sels
             .as_ref()
-            .and_then(|sels| select_matches_within(self.doc().text(), sels, &regex));
+            .and_then(|sels| sift_matches_within(self.doc().text(), sels, &regex));
 
         match result {
             Some(new_sels) => self.set_current_selections(new_sels),
-            None => self.restore_select_snapshot(),
+            None => self.restore_sift_snapshot(),
         }
     }
 
     // ── Snapshot restore helpers ────────────────────────────────────────────────
 
-    /// Restore selections from the select-mode snapshot without consuming it.
-    fn restore_select_snapshot(&mut self) {
+    /// Restore selections from the sift-mode snapshot without consuming it.
+    fn restore_sift_snapshot(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
-        if let Some(sels) = self.state.panes.transient[pid].pre_select_sels.as_ref() {
+        if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.as_ref() {
             self.state.panes.state[pid][bid].selections = sels.clone();
         }
     }

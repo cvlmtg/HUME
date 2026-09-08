@@ -372,11 +372,11 @@ impl CommandRegistry {
         )
         .reg(self);
 
-        // ── Editor commands — select ─────────────────────────────────────────
+        // ── Editor commands — sift ────────────────────────────────────────────
         ecmd(
-            "select-within",
-            "Select regex matches within current selections.",
-            cmd_select_within,
+            "sift-within",
+            "Sift each selection down to the regex matches inside it.",
+            cmd_sift_within,
         )
         .reg(self);
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read

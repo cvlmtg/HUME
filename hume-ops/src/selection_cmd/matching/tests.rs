@@ -209,14 +209,14 @@ fn trim_empty_buffer_collapses() {
     );
 }
 
-// ── select_matches_within ─────────────────────────────────────────────
+// ── sift_matches_within ─────────────────────────────────────────────
 
 #[test]
 fn select_matches_basic() {
     // Select "ab" within a selection that spans "aababab".
     let (text, sels) = parse_state("-[aababab]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
-    let result = select_matches_within(&text, &sels, &regex).unwrap();
+    let result = sift_matches_within(&text, &sels, &regex).unwrap();
     // Expect 3 selections: (1,2), (3,4), (5,6)
     assert_eq!(result.len(), 3);
     assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
@@ -226,7 +226,7 @@ fn select_matches_basic() {
 fn select_matches_no_hits_returns_none() {
     let (text, sels) = parse_state("-[hello]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("xyz").unwrap();
-    assert!(select_matches_within(&text, &sels, &regex).is_none());
+    assert!(sift_matches_within(&text, &sels, &regex).is_none());
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn select_matches_bounded_to_selection() {
     let text = BufferText::from("abcdab\n");
     let sels = SelectionSet::single(Selection::new(2, 3));
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
-    assert!(select_matches_within(&text, &sels, &regex).is_none());
+    assert!(sift_matches_within(&text, &sels, &regex).is_none());
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn select_matches_multiple_selections() {
     let sel1 = Selection::new(6, 7); // "ab"
     let sels = SelectionSet::from_vec(vec![sel0, sel1], 0);
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
-    let result = select_matches_within(&text, &sels, &regex).unwrap();
+    let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 2);
 }
 
@@ -258,7 +258,7 @@ fn select_matches_backward_selection() {
     let text = BufferText::from("aababab\n");
     let sels = SelectionSet::single(Selection::new(6, 0)); // backward
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
-    let result = select_matches_within(&text, &sels, &regex).unwrap();
+    let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 3);
     assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
 }
@@ -268,7 +268,7 @@ fn select_matches_single_char_match() {
     // Single-char regex matches produce cursor-sized selections.
     let (text, sels) = parse_state("-[abc]>\n");
     let regex = regex_cursor::engines::meta::Regex::new("b").unwrap();
-    let result = select_matches_within(&text, &sels, &regex).unwrap();
+    let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 1);
     let sel = result.primary();
     assert_eq!(sel.anchor(), 1);
@@ -284,7 +284,7 @@ fn select_matches_combining_grapheme() {
     let text = BufferText::from("caf\u{0065}\u{0301}\n");
     let sels = SelectionSet::single(Selection::new(0, 4));
     let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
-    let result = select_matches_within(&text, &sels, &regex).unwrap();
+    let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!((result.primary().anchor(), result.primary().head()), (3, 4));
 }

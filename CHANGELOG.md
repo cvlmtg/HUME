@@ -12,6 +12,7 @@
 - A handful of commands (LSP install/status, PLUM plugin/grammar management, git-diff sign toggles, `:lsp-fmt` → `:format-source`) can no longer be typed at the `:` prompt by their old bindable name — bind them to a key instead, or use their new typed command name.
 - Plugins that place gutter signs (LSP diagnostics, git signs) now reserve their gutter column per buffer instead of globally. If you write your own: `(set-signs! …)` entries are `(line text scope)`, without the trailing priority — a source now declares its column with `(register-sign-source! name bid priority)` before placing or clearing signs in that buffer.
 - Two more scripting renames, if you write your own plugins: `(selection-spans-full-line? bid)` is now `(selections-linewise? bid)` and checks every selection instead of only the primary one, with a new `(selections-charwise? bid)` as its counterpart; `(lsp-range-params bid)` is now `(lsp-primary-range-params bid)`, joined by a new `(lsp-linewise-ranges-params bid)` returning one range per linewise selection.
+- HUME's own Select mode (the `s` regex prompt) is renamed **Sift mode**, to stop colliding with Extend mode (HUME's name for what Helix calls Select mode). The status bar shows `SIF` instead of `SEL`; the `select-within` command is renamed `sift-within`.
 
 ### Editing
 - New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).

@@ -14,7 +14,7 @@ fn pane_buffer_state_default_is_valid() {
 fn pane_transient_default_is_empty() {
     let t = PaneTransient::default();
     assert!(t.pre_search_sels.is_none());
-    assert!(t.pre_select_sels.is_none());
+    assert!(t.pre_sift_sels.is_none());
     assert!(!t.search_extend);
 }
 

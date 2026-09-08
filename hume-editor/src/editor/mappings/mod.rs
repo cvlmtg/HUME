@@ -11,7 +11,7 @@ mod insert;
 mod lazy;
 mod normal;
 mod search_mode;
-mod select_mode;
+mod sift_mode;
 mod widgets;
 
 impl Editor {
@@ -119,7 +119,7 @@ impl Editor {
                 Mode::Insert => self.handle_insert(key),
                 Mode::Command => self.handle_command(key),
                 Mode::Search => self.handle_search(key),
-                Mode::Select => self.handle_select(key),
+                Mode::Sift => self.handle_sift(key),
             }
         }
 

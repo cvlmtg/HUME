@@ -224,7 +224,7 @@ pub enum EditorMode {
     #[default]
     Normal,
     Insert,
-    Select,
+    Sift,
     Extend,
     Command,
     Search,

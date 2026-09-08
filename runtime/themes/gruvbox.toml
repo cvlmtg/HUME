@@ -162,7 +162,7 @@
 # HUME-only modes (Extend reads Helix's own `ui.statusline.select` above).
 "ui.statusline.search" = { fg = "bg1", bg = "purple1", modifiers = ["bold"] }
 "ui.statusline.command" = { fg = "bg1", bg = "green1", modifiers = ["bold"] }
-"ui.statusline.filter" = { fg = "bg1", bg = "aqua1", modifiers = ["bold"] }
+"ui.statusline.sift" = { fg = "bg1", bg = "aqua1", modifiers = ["bold"] }
 "ui.statusline.separator" = { fg = "bg3" }
 
 "ui.popup.scroll" = { fg = "yellow1", bg = "bg1" }

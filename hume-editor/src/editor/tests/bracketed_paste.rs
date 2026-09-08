@@ -184,12 +184,12 @@ fn search_mode_paste_triggers_live_search() {
 }
 
 #[test]
-fn select_mode_paste_triggers_live_select() {
+fn sift_mode_paste_triggers_live_sift() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.handle_key(key('s'));
-    assert_eq!(ed.state.mode, Mode::Select);
+    assert_eq!(ed.state.mode, Mode::Sift);
     paste(&mut ed, "ab");
-    // Live select-within already narrowed to the two "ab" matches within the
+    // Live sift-within already narrowed to the two "ab" matches within the
     // original selection — same `on_minibuf_paste_edited` follow-up a typed
     // pattern would trigger.
     assert_eq!(ed.current_selections().len(), 2);

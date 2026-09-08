@@ -116,7 +116,7 @@ HUME supports multiple simultaneous selections. Each selection behaves independe
 
 | Action | Key | Effect |
 |--------|-----|--------|
-| Select within selection | `s` | Enter a regex pattern; each selection is filtered to its sub-matches |
+| Sift within selection | `s` | Enter a regex pattern; each selection is narrowed to its sub-matches |
 | Split on newlines | `S` | Split multi-line selections into one selection per line |
 | Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections cover the same column range on the next line. A count prefix (e.g. `3C`) copies onto that many lines below in one step; repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
 | Trim whitespace | `_` | Remove leading/trailing whitespace from all selections |
@@ -125,9 +125,9 @@ HUME supports multiple simultaneous selections. Each selection behaves independe
 | Cycle primary forward | `)` | Make the next selection the primary |
 | Cycle primary backward | `(` | Make the previous selection the primary |
 
-### Select within (`s`)
+### Sift within (`s`)
 
-Press `s` to enter Select mode. Type a regex pattern and press `Enter`. Each existing selection is filtered to only the sub-ranges matching the pattern, creating one new selection per match. This is useful for splitting a line selection into individual tokens:
+Press `s` to enter Sift mode. Type a regex pattern and press `Enter`. Each existing selection is narrowed down to only the sub-ranges matching the pattern, creating one new selection per match. This is useful for splitting a line selection into individual tokens:
 
 1. Select a line (`x`)
 2. Press `s` and type `\w+` to select each word individually

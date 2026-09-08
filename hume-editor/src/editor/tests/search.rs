@@ -227,26 +227,26 @@ fn clear_search_command_clears_search() {
     );
 }
 
-// ── Select within (s) ────────────────────────────────────────────────────────
+// ── Sift within (s) ────────────────────────────────────────────────────────
 
 /// `s` is a noop when all selections are collapsed (anchor == head).
 #[test]
-fn select_within_noop_when_collapsed() {
+fn sift_within_noop_when_collapsed() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('s'));
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(ed.state.minibuf.is_none());
 }
 
-/// `s` enters Select mode, sets up minibuffer, and snapshots selections.
+/// `s` enters Sift mode, sets up minibuffer, and snapshots selections.
 #[test]
-fn select_within_enters_select_mode() {
+fn sift_within_enters_sift_mode() {
     let mut ed = editor_from("-[hello world]>\n");
     ed.handle_key(key('s'));
-    assert_eq!(ed.state.mode, Mode::Select);
+    assert_eq!(ed.state.mode, Mode::Sift);
     assert!(
         ed.state.panes.transient[ed.state.focused_pane_id]
-            .pre_select_sels
+            .pre_sift_sels
             .is_some()
     );
     assert!(ed.state.minibuf.is_some());
@@ -255,7 +255,7 @@ fn select_within_enters_select_mode() {
 
 /// `s` + pattern + Enter confirms: selections become matches, mode returns to Normal.
 #[test]
-fn select_within_confirm_replaces_selections() {
+fn sift_within_confirm_replaces_selections() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
@@ -265,7 +265,7 @@ fn select_within_confirm_replaces_selections() {
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
         ed.state.panes.transient[ed.state.focused_pane_id]
-            .pre_select_sels
+            .pre_sift_sels
             .is_none()
     );
     // Two "ab" matches within the original selection.
@@ -276,7 +276,7 @@ fn select_within_confirm_replaces_selections() {
 
 /// `s` + Esc restores original selections.
 #[test]
-fn select_within_esc_restores() {
+fn sift_within_esc_restores() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     let original = state(&ed);
     ed.handle_key(key('s'));
@@ -291,7 +291,7 @@ fn select_within_esc_restores() {
 
 /// `s` + Enter with empty pattern cancels (same as Esc).
 #[test]
-fn select_within_empty_confirm_cancels() {
+fn sift_within_empty_confirm_cancels() {
     let mut ed = editor_from("-[hello]>\n");
     let original = state(&ed);
     ed.handle_key(key('s'));
@@ -301,14 +301,14 @@ fn select_within_empty_confirm_cancels() {
 }
 
 /// `s` does not overwrite the search register — it is a selection op, not a search.
-/// A prior search pattern must survive a select-within so that n/N still works.
+/// A prior search pattern must survive a sift-within so that n/N still works.
 #[test]
-fn select_within_does_not_overwrite_search_register() {
+fn sift_within_does_not_overwrite_search_register() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     // Simulate a prior search by writing directly to the search register (as
     // search confirm does).
     ed.state.registers.set_search_register("cd".to_string());
-    // Select within using a different pattern.
+    // Sift within using a different pattern.
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
@@ -320,7 +320,7 @@ fn select_within_does_not_overwrite_search_register() {
 /// `s` does not set the search regex — highlights would be misleading
 /// because they appear outside the selection scope.
 #[test]
-fn select_within_does_not_set_search_regex() {
+fn sift_within_does_not_set_search_regex() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.handle_key(key('s'));
     ed.handle_key(key('a'));
@@ -330,7 +330,7 @@ fn select_within_does_not_set_search_regex() {
 
 /// `s` with no matches restores original selections on each keystroke.
 #[test]
-fn select_within_no_matches_keeps_originals() {
+fn sift_within_no_matches_keeps_originals() {
     let mut ed = editor_from("-[hello]>\n");
     let original = state(&ed);
     ed.handle_key(key('s'));
@@ -339,7 +339,7 @@ fn select_within_no_matches_keeps_originals() {
     assert_eq!(state(&ed), original);
 }
 
-// ── select-within with multiple cursors ───────────────────────────────────────
+// ── sift-within with multiple cursors ───────────────────────────────────────
 
 /// Two pre-existing selections each containing matches — `s` produces one
 /// result selection per match, across all original selections.
@@ -347,7 +347,7 @@ fn select_within_no_matches_keeps_originals() {
 /// "aa bb aa\n" with two selections: [aa ] and [aa] at start/end.
 /// Splitting on "aa" yields two "aa" selections, one from each original.
 #[test]
-fn select_within_multiple_selections_finds_matches_in_each() {
+fn sift_within_multiple_selections_finds_matches_in_each() {
     use hume_editing::selection::{Selection, SelectionSet};
     // "aa bb aa\n"
     //  0123456789
@@ -382,7 +382,7 @@ fn select_within_multiple_selections_finds_matches_in_each() {
 /// When one selection has matches and another does not, only the matching
 /// selection produces results — the non-matching one is dropped.
 #[test]
-fn select_within_drops_selections_with_no_match() {
+fn sift_within_drops_selections_with_no_match() {
     use hume_editing::selection::{Selection, SelectionSet};
     // "aa bb cc\n"
     //  01234567
@@ -415,7 +415,7 @@ fn select_within_drops_selections_with_no_match() {
 
 /// When NO selection contains a match, the original selections are restored.
 #[test]
-fn select_within_multiple_selections_no_match_restores_all() {
+fn sift_within_multiple_selections_no_match_restores_all() {
     use hume_editing::selection::{Selection, SelectionSet};
     let mut ed = editor_from("-[aa bb cc]>\n");
     let two_sels = SelectionSet::from_vec(vec![Selection::new(0, 1), Selection::new(3, 4)], 0);
@@ -436,10 +436,10 @@ fn select_within_multiple_selections_no_match_restores_all() {
     );
 }
 
-/// Primary index after select-within tracks to the first match within the
+/// Primary index after sift-within tracks to the first match within the
 /// original primary selection, even when that selection is not first in order.
 #[test]
-fn select_within_primary_tracks_original_primary() {
+fn sift_within_primary_tracks_original_primary() {
     use hume_editing::selection::{Selection, SelectionSet};
     // "aa bb aa\n" — two selections, primary is the SECOND one (6..7).
     let mut ed = editor_from("-[aa bb aa]>\n");
@@ -470,7 +470,7 @@ fn select_within_primary_tracks_original_primary() {
 
 /// Esc after live-preview with multiple selections restores all originals.
 #[test]
-fn select_within_esc_restores_multiple_selections() {
+fn sift_within_esc_restores_multiple_selections() {
     use hume_editing::selection::{Selection, SelectionSet};
     // Use wider original selections ("aa bb" and "aa") so the live-preview
     // of "aa" visibly shrinks them — confirming the snapshot is correct.
@@ -503,12 +503,12 @@ fn select_within_esc_restores_multiple_selections() {
     assert_eq!(state(&ed), original);
 }
 
-// ── Search / select-within independence ──────────────────────────────────────
+// ── Search / sift-within independence ──────────────────────────────────────
 
 /// After `/foo` + confirm, `s` + `bar` + confirm, pressing `n` must jump to the
 /// next "foo" — not "bar". This is the critical end-to-end independence test.
 #[test]
-fn search_n_after_select_within_uses_original_search() {
+fn search_n_after_sift_within_uses_original_search() {
     // "xx ab cd ab cd\n" — cursor starts before all matches.
     let mut ed = editor_from("-[x]>x ab cd ab cd\n");
 
@@ -540,7 +540,7 @@ fn search_n_after_select_within_uses_original_search() {
 /// After `/foo` + confirm, `s` + `bar` + Esc (cancel), pressing `n` must still
 /// jump to the next "foo".
 #[test]
-fn search_n_after_cancelled_select_within_uses_original_search() {
+fn search_n_after_cancelled_sift_within_uses_original_search() {
     let mut ed = editor_from("-[x]>x ab cd ab cd\n");
 
     // Search for "ab", confirm.
@@ -551,7 +551,7 @@ fn search_n_after_cancelled_select_within_uses_original_search() {
     ed.handle_key(key_enter());
     assert_eq!(state(&ed), "xx -[ab]> cd ab cd\n");
 
-    // Select all, start select-within with "cd", then cancel.
+    // Select all, start sift-within with "cd", then cancel.
     ed.handle_key(key('%'));
     ed.handle_key(key('s'));
     for ch in "cd".chars() {
@@ -568,9 +568,9 @@ fn search_n_after_cancelled_select_within_uses_original_search() {
     );
 }
 
-/// A prior search pattern must survive a select-within confirm.
+/// A prior search pattern must survive a sift-within confirm.
 #[test]
-fn search_regex_survives_select_within_confirm() {
+fn search_regex_survives_sift_within_confirm() {
     let mut ed = editor_from("-[ab cd ab]>\n").with_search_regex("cd");
     assert!(ed.search_pattern().is_some());
 
@@ -582,13 +582,13 @@ fn search_regex_survives_select_within_confirm() {
 
     assert!(
         ed.search_pattern().is_some(),
-        "search pattern should survive select-within confirm"
+        "search pattern should survive sift-within confirm"
     );
 }
 
-/// A prior search pattern must survive a select-within cancel.
+/// A prior search pattern must survive a sift-within cancel.
 #[test]
-fn search_regex_survives_select_within_cancel() {
+fn search_regex_survives_sift_within_cancel() {
     let mut ed = editor_from("-[ab cd ab]>\n").with_search_regex("cd");
     assert!(ed.search_pattern().is_some());
 
@@ -600,14 +600,14 @@ fn search_regex_survives_select_within_cancel() {
 
     assert!(
         ed.search_pattern().is_some(),
-        "search pattern should survive select-within cancel"
+        "search pattern should survive sift-within cancel"
     );
 }
 
 /// `s` + confirm with no prior search — pressing `n` afterward should be a
 /// no-op (no crash, no match, selection unchanged).
 #[test]
-fn search_n_after_select_within_with_no_prior_search() {
+fn search_n_after_sift_within_with_no_prior_search() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     assert!(ed.search_pattern().is_none());
     assert!(reg(&ed, 's').is_empty());

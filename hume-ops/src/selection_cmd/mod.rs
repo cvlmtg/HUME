@@ -1,7 +1,7 @@
 mod matching;
 
 pub use matching::{
-    cmd_split_selection_on_newlines, cmd_trim_selection_whitespace, select_matches_within,
+    cmd_split_selection_on_newlines, cmd_trim_selection_whitespace, sift_matches_within,
 };
 
 use super::MotionMode;

@@ -78,7 +78,7 @@ pub fn cmd_split_selection_on_newlines(
     new_set
 }
 
-// ── Select matches within ─────────────────────────────────────────────────────
+// ── Sift matches within ────────────────────────────────────────────────────────
 
 /// Replace each selection with the regex matches found within it.
 ///
@@ -89,7 +89,7 @@ pub fn cmd_split_selection_on_newlines(
 ///
 /// Returns `None` when no matches are found in any selection — the caller
 /// should keep the original selections unchanged.
-pub fn select_matches_within(
+pub fn sift_matches_within(
     text: &BufferText,
     sels: &SelectionSet,
     regex: &Regex,

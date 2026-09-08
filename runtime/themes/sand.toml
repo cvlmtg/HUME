@@ -31,7 +31,7 @@
 "ui.statusline.insert" = { fg = "bg", bg = "plum", modifiers = [ "bold" ] }
 "ui.statusline.search" = { fg = "bg", bg = "muted", modifiers = [ "bold" ] }
 "ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
-"ui.statusline.filter" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
+"ui.statusline.sift" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
 "ui.virtual.indent-guide" = { fg = "muted" }

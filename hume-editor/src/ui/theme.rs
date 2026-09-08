@@ -42,10 +42,10 @@ fn mode_scope(mode: Option<hume_engine::types::EditorMode>) -> &'static str {
         Some(EditorMode::Extend) => "ui.statusline.select",
         Some(EditorMode::Search) => "ui.statusline.search",
         Some(EditorMode::Command) => "ui.statusline.command",
-        // HUME's own Select mode (the `s` regex-filter prompt) has no Helix
+        // HUME's own Sift mode (the `s` regex prompt) has no Helix
         // equivalent, so it gets its own scope rather than squatting on
         // Helix's `ui.statusline.select`, which belongs to Extend above.
-        Some(EditorMode::Select) => "ui.statusline.filter",
+        Some(EditorMode::Sift) => "ui.statusline.sift",
     }
 }
 

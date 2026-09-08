@@ -344,7 +344,7 @@ fn mode_name(m: Mode) -> &'static str {
         Mode::Extend => "extend",
         Mode::Command => "command",
         Mode::Search => "search",
-        Mode::Select => "select",
+        Mode::Sift => "sift",
     }
 }
 

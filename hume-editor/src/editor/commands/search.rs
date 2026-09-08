@@ -279,9 +279,9 @@ pub(crate) fn cmd_select_all_matches(
     Ok(())
 }
 
-// ── Select within (s) ────────────────────────────────────────────────────────
+// ── Sift within (s) ──────────────────────────────────────────────────────────
 
-pub(crate) fn cmd_select_within(
+pub(crate) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -295,8 +295,8 @@ pub(crate) fn cmd_select_within(
     }
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focused_pane_id;
-    state.panes.transient[pid].pre_select_sels = Some(pre_sels);
-    state.set_mode(Mode::Select);
+    state.panes.transient[pid].pre_sift_sels = Some(pre_sels);
+    state.set_mode(Mode::Sift);
     state.minibuf = Some(MiniBuffer {
         prompt: "⫽".to_string(),
         input: String::new(),

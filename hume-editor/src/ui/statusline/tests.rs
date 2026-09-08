@@ -150,7 +150,7 @@ fn make_mode_theme() -> hume_engine::theme::Theme {
         ("ui.statusline.select", Rgb(255, 255, 0)),
         ("ui.statusline.search", Rgb(255, 0, 255)),
         ("ui.statusline.command", Rgb(0, 255, 0)),
-        ("ui.statusline.filter", Rgb(0, 0, 255)),
+        ("ui.statusline.sift", Rgb(0, 0, 255)),
     ] {
         styles.insert(
             scope,
@@ -184,7 +184,7 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
         (EditorMode::Extend, Rgb(255, 255, 0)),
         (EditorMode::Search, Rgb(255, 0, 255)),
         (EditorMode::Command, Rgb(0, 255, 0)),
-        (EditorMode::Select, Rgb(0, 0, 255)),
+        (EditorMode::Sift, Rgb(0, 0, 255)),
     ] {
         let colors = crate::ui::theme::EditorColors::from_theme(&theme, Some(mode));
         let (text, style) = ModeElement::format(mode, &colors);
@@ -196,7 +196,7 @@ fn mode_element_uses_row_style_not_a_per_mode_pill() {
             EditorMode::Extend => insta::assert_snapshot!(text, @"EXT"),
             EditorMode::Search => insta::assert_snapshot!(text, @"SRC"),
             EditorMode::Command => insta::assert_snapshot!(text, @"CMD"),
-            EditorMode::Select => insta::assert_snapshot!(text, @"SEL"),
+            EditorMode::Sift => insta::assert_snapshot!(text, @"SIF"),
         }
     }
 }

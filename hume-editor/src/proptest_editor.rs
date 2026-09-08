@@ -6,7 +6,7 @@
 //!
 //! This complements the `proptest_doc` tests (which target `BufferText` and pure
 //! ops) by exercising the whole editor: mode transitions, minibuffer, search,
-//! select-within, undo/redo, and multi-cursor, all interacting.
+//! sift-within, undo/redo, and multi-cursor, all interacting.
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
@@ -155,7 +155,7 @@ mod tests {
         }
 
         /// The same property with longer sequences, to exercise multi-step
-        /// interactions like search → confirm → n → select-within → undo.
+        /// interactions like search → confirm → n → sift-within → undo.
         #[test]
         fn prop_long_key_sequence_never_panic(
             mut ed in arb_initial_editor(),
