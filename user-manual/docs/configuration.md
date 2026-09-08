@@ -168,9 +168,9 @@ HUME reads the Helix theme format and aims to support Helix themes as they are w
 
 A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on) — these resolve to fixed colors from the standard terminal palette rather than to whatever your own terminal happens to have those colors set to, so a theme looks the same everywhere and unfocused-pane dimming has an actual color to blend toward. A color value outside these three forms leaves that one entry unstyled rather than failing the whole load, and `:messages` names it.
 
-One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive and is skipped.
+One thing a Helix theme can contain isn't supported, but it doesn't stop the rest of the theme from loading either: the top-level `rainbow` array. HUME has no rainbow-bracket highlighting, so it has nothing to drive. The theme still loads, and the entry is reported in `:messages` like any other one HUME couldn't use.
 
-A theme fails to load outright only when the file itself is broken: invalid TOML syntax, or an `inherits` parent that doesn't exist or forms a cycle. Loading then keeps your current theme.
+A theme fails to load outright only when the problem is with the document rather than one entry in it: invalid TOML syntax, an `inherits` parent that doesn't exist or forms a cycle or nests more than eight deep, or an `inherits`/`palette` key that isn't a string/table. Loading then keeps your current theme.
 
 ### Installing themes
 
@@ -274,6 +274,12 @@ listed alternative is where to put the color instead:
 reads that scope's foreground; a theme that sets only a background falls back to the
 theme's own base text color (`ui.text`) for it, the same fallback every other undecorated
 element uses.
+
+`ui.statusline.separator` divides the statusline's segments. HUME tints the whole
+statusline row by mode, so leaving this scope undefined takes the row's own current color
+rather than the untinted `ui.statusline` — otherwise the separator would show through a
+mode-tinted row as a stripe of the wrong color. Set it explicitly and that wins, in every
+mode.
 
 ## Key bindings
 
