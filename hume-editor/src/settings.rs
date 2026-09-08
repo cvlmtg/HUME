@@ -51,6 +51,64 @@ use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use crate::ui::statusline::{StatusElement, StatusLineConfig};
 use hume_ops::auto_pairs::Pair;
 
+// ── settings_enum! ────────────────────────────────────────────────────────────
+
+/// `"a"`, `"a or b"`, `"a, b, or c"` — how [`settings_enum`]'s parse error
+/// lists the values it would have accepted.
+fn or_list(values: &[&str]) -> String {
+    match values {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [a, b] => format!("{a} or {b}"),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+    }
+}
+
+/// Generate a `:set` enum's wire-format plumbing from one list of
+/// `Variant => "name"` pairs: the `VALUES` slice `:set <key>=<Tab>` completes
+/// from, a case-insensitive `FromStr` whose error names every accepted value,
+/// and the `Display` that writes the same names back.
+///
+/// Hand-writing these meant four copies of one variant list per enum — the
+/// const, the parse arms, the error message's prose, the display arms — and
+/// four places for a new variant to be half-added. A variant missing from
+/// `VALUES` alone still parses and prints, so it fails silently: it just stops
+/// being completable. Only the enum declaration stays hand-written, so each
+/// variant keeps its own doc comment.
+macro_rules! settings_enum {
+    ($ty:ty, $key:literal, [$($variant:ident => $name:literal),+ $(,)?]) => {
+        impl $ty {
+            /// The wire-format strings [`FromStr`] accepts — the single source
+            /// `:set <key>=<Tab>` completion mirrors, so the two can never
+            /// drift out of sync.
+            pub const VALUES: &'static [&'static str] = &[$($name),+];
+        }
+
+        impl FromStr for $ty {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s.to_ascii_lowercase().as_str() {
+                    $($name => Ok(Self::$variant),)+
+                    _ => Err(format!(
+                        concat!("invalid ", $key, " '{}': expected {}"),
+                        s,
+                        or_list(<$ty>::VALUES),
+                    )),
+                }
+            }
+        }
+
+        impl fmt::Display for $ty {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(match self {
+                    $(Self::$variant => $name,)+
+                })
+            }
+        }
+    };
+}
+
 // ── SignColumnConfig ──────────────────────────────────────────────────────────
 
 /// Whether the sign column stays visible or collapses when empty.
@@ -211,37 +269,11 @@ pub enum ObjectJumpAlign {
     Off,
 }
 
-impl ObjectJumpAlign {
-    /// The wire-format strings `FromStr` accepts — the single source `:set
-    /// global object-jump-align=<Tab>` completion mirrors, so the two can
-    /// never drift out of sync.
-    pub const VALUES: &'static [&'static str] = &["top", "center", "off"];
-}
-
-impl FromStr for ObjectJumpAlign {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "top" => Ok(Self::Top),
-            "center" => Ok(Self::Center),
-            "off" => Ok(Self::Off),
-            _ => Err(format!(
-                "invalid object-jump-align '{s}': expected top, center, or off"
-            )),
-        }
-    }
-}
-
-impl fmt::Display for ObjectJumpAlign {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Top => "top",
-            Self::Center => "center",
-            Self::Off => "off",
-        })
-    }
-}
+settings_enum!(ObjectJumpAlign, "object-jump-align", [
+    Top => "top",
+    Center => "center",
+    Off => "off",
+]);
 
 // ── CursorShape ──────────────────────────────────────────────────────────────
 
@@ -267,37 +299,11 @@ pub enum CursorShape {
     Underline,
 }
 
-impl CursorShape {
-    /// The wire-format strings `FromStr` accepts — the single source `:set
-    /// global cursor-shape-insert=<Tab>` completion mirrors, so the two can
-    /// never drift out of sync.
-    pub const VALUES: &'static [&'static str] = &["block", "bar", "underline"];
-}
-
-impl FromStr for CursorShape {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "block" => Ok(Self::Block),
-            "bar" => Ok(Self::Bar),
-            "underline" => Ok(Self::Underline),
-            _ => Err(format!(
-                "invalid cursor-shape-insert '{s}': expected block, bar, or underline"
-            )),
-        }
-    }
-}
-
-impl fmt::Display for CursorShape {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Block => "block",
-            Self::Bar => "bar",
-            Self::Underline => "underline",
-        })
-    }
-}
+settings_enum!(CursorShape, "cursor-shape-insert", [
+    Block => "block",
+    Bar => "bar",
+    Underline => "underline",
+]);
 
 // ── Scope ─────────────────────────────────────────────────────────────────────
 

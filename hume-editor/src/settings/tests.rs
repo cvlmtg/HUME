@@ -1119,3 +1119,24 @@ fn set_buffer_signcolumn() {
     assert_eq!(cfg.mode, SignColumnMode::Always);
     assert_eq!(cfg.pinned_slots, Some(3));
 }
+
+// `settings_enum!` generates the parse error from `VALUES`; these pin the
+// exact wording, which is what a user sees after a typo in `init.scm`.
+#[test]
+fn settings_enum_parse_error_lists_every_accepted_value() {
+    assert_eq!(
+        "bogus".parse::<ObjectJumpAlign>().unwrap_err(),
+        "invalid object-jump-align 'bogus': expected top, center, or off"
+    );
+    assert_eq!(
+        "bogus".parse::<CursorShape>().unwrap_err(),
+        "invalid cursor-shape-insert 'bogus': expected block, bar, or underline"
+    );
+}
+
+#[test]
+fn or_list_joins_one_two_and_many() {
+    assert_eq!(super::or_list(&["a"]), "a");
+    assert_eq!(super::or_list(&["a", "b"]), "a or b");
+    assert_eq!(super::or_list(&["a", "b", "c"]), "a, b, or c");
+}
