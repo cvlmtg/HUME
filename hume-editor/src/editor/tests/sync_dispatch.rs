@@ -1388,6 +1388,64 @@ fn parity_extend_exit_keypress_vs_steel() {
     );
 }
 
+/// **Parity: typed-run invalidation from Insert mode** — a motion reached
+/// while still in Insert mode must clear a pinned typed run identically via
+/// native dispatch and via a Steel `(call! "move-left")` wrapper.
+///
+/// Before `step_clear_typed_run` moved into the pipeline, this clearing was a
+/// trie-local check inside the Insert keymap walk (`mappings/insert.rs`) —
+/// reached only by a real key press. A motion arriving via `run_command_sync`
+/// (a hook, `call!`, or this test's Steel wrapper) bypassed it entirely and
+/// left the pins in place, so Esc would go on to select across text the
+/// motion had moved away from.
+///
+/// Fail oracle: revert `step_clear_typed_run` (or its call site in
+///   `run_dispatch_pipeline`) — `typed_run_open` stays `true` after both
+///   dispatches, or (if only the Steel path regresses) `snap_steel.typed_run_open`
+///   diverges from `snap_key.typed_run_open`.
+#[test]
+fn parity_typed_run_invalidation_keypress_vs_steel() {
+    // Path A — native dispatch while in Insert mode.
+    let mut ed_key = editor_from("-[h]>ello\n");
+    ed_key.handle_key(key('i'));
+    ed_key.handle_key(key('X')); // pins pinned_anchors/run_ends
+    ed_key.execute_keymap_command("move-left".into(), Some(1), false);
+    let snap_key = snapshot_bookkeeping(&ed_key);
+    assert!(
+        !snap_key.typed_run_open,
+        "sanity: native dispatch must clear the pinned typed run"
+    );
+
+    // Path B — Steel (call! "move-left") while in Insert mode.
+    let mut ed_steel = editor_from("-[h]>ello\n");
+    ed_steel.handle_key(key('i'));
+    ed_steel.handle_key(key('X'));
+    let names: Vec<String> = ed_steel
+        .state
+        .config
+        .registry
+        .native_mappable_names()
+        .map(str::to_owned)
+        .collect();
+    let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let mut host = ScriptingHost::new();
+    host.register_command_names(&name_refs);
+    let mut init_host = EditorHostImpl::new(&mut ed_steel.state, &mut ed_steel.view);
+    host.eval_source(
+        r#"(define-command! "steel-move-left" "" (lambda () (call! "move-left")))"#,
+        &mut init_host,
+    )
+    .expect("define-command! must succeed");
+    ed_steel.scripting = Some(host);
+    ed_steel.execute_keymap_command("steel-move-left".into(), Some(1), false);
+    let snap_steel = snapshot_bookkeeping(&ed_steel);
+
+    assert_eq!(
+        snap_key, snap_steel,
+        "keypress vs Steel dispatch of a motion from Insert mode must clear the typed run identically"
+    );
+}
+
 // ── In-Steel plugin dispatch (core goal) ─────────────────────────────────────
 //
 // Plugin commands are applied directly on the Steel call stack via (apply proc args).

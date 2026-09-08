@@ -45,6 +45,14 @@ from a real selection. On a bare cursor with no count it delegates to `vim-chang
 (`goto-line-end` extend, then `change`); any count prefix, or a real selection with no count,
 calls `copy-selection-on-next-line` directly with the count forwarded.
 
+`stdlib/all-single-char?`'s "bare cursor" reads as `anchor == head`, which the editor's own
+`select-inserted-text` setting (on by default) now makes false right after typing something
+in Insert mode: leaving Insert selects the run you just typed instead of leaving a plain
+cursor there. So `i foo <Esc> C` in `'smart` mode copies the selection onto the line below
+rather than changing to end-of-line — `C` still reads a bare cursor correctly, it's just that
+Esc no longer always leaves one. `'on` sidesteps this by binding `vim-change-to-eol`
+unconditionally, ignoring what the selection looks like.
+
 Dot-repeat needs no `#:repeatable` annotation on the wrapper commands: `change` and `delete`
 are natively repeatable and capture the preceding `goto-line-end` (extend) step themselves,
 via the shared selection-recipe accumulator, regardless of whether the wrapper that invoked

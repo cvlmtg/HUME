@@ -16,7 +16,7 @@ use super::{
 };
 
 /// `true` when the focused (pane, buffer) has an open edit group.
-pub(super) fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
+fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let bid = focused_buffer_id(state, view);
     state.panes.state[state.focused_pane_id][bid]
         .edit_group
@@ -50,16 +50,16 @@ pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> b
 /// structural newline has been inserted — so the anchor marks the start of
 /// typed text only, never the newline or the pre-edit selection.
 ///
-/// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned anchors through
-/// every subsequent grouped edit; a cursor-motion key during the session
-/// clears them (`mappings/insert.rs`); a fresh `begin_edit_group` clears them
-/// (and resets `select_on_exit`) too, so a later session never inherits stale
-/// pins.
+/// `apply_doc_edit_grouped` (doc_ops.rs) maps the pinned anchors and run ends
+/// through every subsequent grouped edit; a cursor-motion command during the
+/// session clears them (`step_clear_typed_run`, `commands/pipeline.rs`); a
+/// fresh `begin_edit_group` clears them (and resets `select_on_exit`) too, so
+/// a later session never inherits stale pins.
 pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView) {
     if !is_group_open_current(state, view) {
         return;
     }
-    let anchors: Vec<usize> = current_selections(state, view)
+    let heads: Vec<usize> = current_selections(state, view)
         .iter_sorted()
         .map(|s| s.head())
         .collect();
@@ -69,7 +69,10 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView) {
     let pid = state.focused_pane_id;
     let bid = focused_buffer_id(state, view);
     let pbs = &mut state.panes.state[pid][bid];
-    pbs.pinned_anchors = Some(anchors);
+    // run_ends starts equal to the anchors — an empty run — and is pushed
+    // forward only by actual insertions (see the field's own doc).
+    pbs.run_ends = Some(heads.clone());
+    pbs.pinned_anchors = Some(heads);
     pbs.select_on_exit = select_on_exit;
 }
 
@@ -114,7 +117,6 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
         begin_edit_group_current(state, view);
         state.insert_session = Some(InsertSession {
             keystrokes: Vec::new(),
-            step_back_on_exit: false,
         });
     }
     // Outside the guard above (unlike `insert_session`) so replay — which
@@ -126,10 +128,6 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
 
 /// Exit Insert mode and finalise the undo/repeat state.
 pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
-    let step_back = state
-        .insert_session
-        .as_ref()
-        .is_some_and(|s| s.step_back_on_exit);
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
     // does in `insert_newline_indent`. Joins the still-open session group —
@@ -149,21 +147,27 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     ) {
         action.insert_keys = session.keystrokes;
     }
-    // Every insert entry pins one anchor per selection via
-    // `begin_typed_run` — reconstruct each selection's typed span here as
-    // `(anchor, head - 1 grapheme)`, guarded by `head > anchor` (nothing
-    // typed / all backspaced away yields `None`, never a backwards or
-    // zero-width range). A count mismatch (selections merged mid-session,
-    // e.g. via Backspace) drops the pins entirely — `spans` stays `None`, so
-    // this session contributes nothing to the `mii` stash and, for an empty
-    // run, falls back to `exit_cursor`'s step-back handling below.
-    let (pinned, select_on_exit, kill_opened) = {
+    // Every insert entry pins one (anchor, run_end) pair per selection via
+    // `begin_typed_run` — reconstruct each selection's typed span here by
+    // walking back from `run_end` (not the live cursor head — see
+    // `PaneBufferState::run_ends`'s doc for why) over any trailing `\n`
+    // graphemes, which are line terminators, not typed content, then taking
+    // the grapheme immediately before whatever's left. Walking off the start
+    // of the run (nothing typed, or only newlines were) yields `None`, never
+    // a backwards or zero-width range. A count mismatch (selections merged
+    // mid-session, e.g. via Backspace) drops the pins entirely — `spans`
+    // stays `None`, so this session contributes nothing to the `mii` stash
+    // and, for an empty run, falls back to `exit_cursor`'s step-back
+    // handling below.
+    let (pinned, run_ends, select_on_exit, step_back, kill_opened) = {
         let pid = state.focused_pane_id;
         let bid = focused_buffer_id(state, view);
         let pbs = &mut state.panes.state[pid][bid];
         (
             pbs.pinned_anchors.take(),
+            pbs.run_ends.take(),
             std::mem::take(&mut pbs.select_on_exit),
+            std::mem::take(&mut pbs.step_back_on_exit),
             std::mem::take(&mut pbs.kill_opened_session),
         )
     };
@@ -174,20 +178,37 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     if kill_opened && let Some(stamp) = state.paste_stamp.as_mut() {
         stamp.seq = state.buffers.edit_seq();
     }
-    let valid_pins = pinned.filter(|a| a.len() == current_selections(state, view).len());
-    let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|anchors| {
+    let sel_count = current_selections(state, view).len();
+    let valid_pins = pinned
+        .zip(run_ends)
+        .filter(|(a, e)| a.len() == sel_count && e.len() == sel_count);
+    let spans: Option<Vec<Option<(usize, usize)>>> = valid_pins.map(|(anchors, run_ends)| {
         let text = doc(state, view).text();
-        current_selections(state, view)
-            .iter_sorted()
-            .zip(anchors.iter())
-            .map(|(sel, &anchor)| {
-                let head = sel.head();
-                (head > anchor).then(|| {
-                    (
-                        anchor,
-                        hume_editing::grapheme::prev_grapheme_boundary(text, head),
-                    )
-                })
+        anchors
+            .iter()
+            .zip(run_ends.iter())
+            .map(|(&anchor, &run_end)| {
+                let mut cursor = run_end;
+                let mut end = None;
+                while cursor > anchor {
+                    let prev = hume_editing::grapheme::prev_grapheme_boundary(text, cursor);
+                    // A typed combining mark can merge with a PRE-EXISTING
+                    // base char into one grapheme cluster, so the boundary
+                    // before `cursor` can land behind `anchor` in a single
+                    // step rather than landing on it — the loop guard above
+                    // only catches `cursor <= anchor`, not a jump past it.
+                    // Nothing wholly inside the run is left to select.
+                    if prev < anchor {
+                        break;
+                    }
+                    if text.char_at(prev) == Some('\n') {
+                        cursor = prev;
+                        continue;
+                    }
+                    end = Some(prev);
+                    break;
+                }
+                end.map(|end| (anchor, end))
             })
             .collect()
     });

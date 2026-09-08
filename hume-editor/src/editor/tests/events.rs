@@ -35,22 +35,31 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     .unwrap();
     ed.scripting = Some(host);
 
+    let mode_changed_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "mode-changed")
+            .count()
+    };
+
     // Enter Insert via `i` via handle_input + settle(), draining the
     // Normal→Insert hook before we capture the before count.
     ed.handle_input(TerminalEvent::Key(key('i')));
     ed.settle();
     assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
 
-    let before = ed.state.message_log.entries().count();
+    let before = mode_changed_count(&ed);
 
     // Exit via Esc, then settle() to drain the queued on-mode-change hook.
     ed.handle_input(TerminalEvent::Key(key_esc()));
     ed.settle();
 
     assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
-    assert!(
-        ed.state.message_log.entries().count() > before,
-        "on-mode-change handler must have fired on Insert→Normal via Esc"
+    assert_eq!(
+        mode_changed_count(&ed),
+        before + 1,
+        "on-mode-change handler must have fired exactly once on Insert→Normal via Esc"
     );
 }
 

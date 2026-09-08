@@ -128,9 +128,10 @@ impl CmdMeta {
     /// Returns `true` if this command moved the cursor rather than editing —
     /// the disjunction of `is_motion`, `is_jump`, and `is_visual_move`.
     ///
-    /// Two stages want exactly this set and nothing else: `step_capture_pre_jump`
-    /// (snapshot the pre-body position for the jump list) and the Insert-mode
-    /// trie's pinned-anchor invalidation (`mappings/insert.rs`). Derived in one
+    /// Two pipeline steps want exactly this set and nothing else:
+    /// `step_capture_pre_jump` (snapshot the pre-body position for the jump
+    /// list) and `step_clear_typed_run` (invalidate a still-open Insert
+    /// session's pinned typed run, `commands/pipeline.rs`). Derived in one
     /// place so the two can't drift apart on a future flag.
     ///
     /// **Blind spot**: [`MappableCommand::meta`] hardcodes all three flags

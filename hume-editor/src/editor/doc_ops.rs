@@ -225,6 +225,9 @@ pub(crate) fn apply_doc_edit_grouped(
     if let Some(anchors) = pbs.pinned_anchors.as_mut() {
         cs.map_positions(anchors, hume_editing::changeset::Assoc::Before);
     }
+    if let Some(run_ends) = pbs.run_ends.as_mut() {
+        cs.map_positions(run_ends, hume_editing::changeset::Assoc::After);
+    }
     finish_edit(
         buffers,
         decorations,
@@ -391,7 +394,9 @@ pub(crate) fn begin_edit_group(
     // A fresh group never inherits pins (or the select-on-exit/kill-opened
     // flags) from a previous session (interactive or replay-preopened).
     pbs.pinned_anchors = None;
+    pbs.run_ends = None;
     pbs.select_on_exit = false;
+    pbs.step_back_on_exit = false;
     pbs.kill_opened_session = false;
 }
 

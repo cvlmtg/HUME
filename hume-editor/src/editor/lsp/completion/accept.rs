@@ -317,6 +317,10 @@ impl CompletionSession {
             uniform => uniform,
         };
 
+        // This is the edit that grows an open Insert session's typed-run
+        // selection to cover the whole replacement, not just what was keyed
+        // since — see `CompletionSession::anchor`'s doc for why that's
+        // intended.
         let cs_cursors = match span {
             ReplaceSpan::Uniform { back, forward } => {
                 crate::editor::doc_ops::apply_doc_edit_grouped(

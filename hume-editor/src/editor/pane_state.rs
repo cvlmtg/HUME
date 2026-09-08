@@ -79,6 +79,16 @@ pub(crate) struct PaneBufferState {
     /// `end_insert_session` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
     pub pinned_anchors: Option<Vec<usize>>,
+    /// Exclusive end of each typed run, paired index-for-index with
+    /// `pinned_anchors` — the span `[anchor, run_end)` is what this session
+    /// actually inserted. Seeded equal to its anchor by `begin_typed_run`,
+    /// then remapped by `apply_doc_edit_grouped` with `Assoc::After` (opposite
+    /// of `pinned_anchors`'s `Assoc::Before`), so it tracks what was written
+    /// rather than where the cursor happens to sit: a real keystroke at the
+    /// run's end pushes it forward, an auto-paired closer pushes it past both
+    /// inserted chars, and a skip-close (which edits nothing) leaves it where
+    /// it was — the pre-existing char the cursor stepped over is excluded.
+    pub run_ends: Option<Vec<usize>>,
     /// Whether `end_insert_session` should select the typed span (rather than
     /// just stash it for `mii`) on exit. Set by `begin_typed_run`, gated on
     /// the `select-inserted-text` setting. Lives here (not on `InsertSession`)
@@ -86,6 +96,13 @@ pub(crate) struct PaneBufferState {
     /// `begin_insert_session`'s replay-signal guard — so a flag needed at
     /// exit must survive on state that isn't cleared by that guard.
     pub select_on_exit: bool,
+    /// Set by `mark_insert_step_back` for `a`/`A`/`o`/`O` entry. Decides
+    /// where an *empty* typed run's cursor lands on exit — step one grapheme
+    /// back (so `a<Esc>` is a round trip) rather than staying put. Lives here
+    /// rather than on `InsertSession` for the same reason `select_on_exit`
+    /// does: dot-repeat replay never creates one, so a flag `end_insert_session`
+    /// reads on exit must survive on state that isn't cleared by that guard.
+    pub step_back_on_exit: bool,
     /// Whether the open insert session was entered via a ring-capturing kill
     /// (bare or `"k`-prefixed `c` — an explicit-register change writes no
     /// stamp and must not set this). Set only by `cmd_change`, for the same

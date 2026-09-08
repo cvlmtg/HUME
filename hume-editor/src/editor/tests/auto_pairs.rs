@@ -31,6 +31,22 @@ fn auto_pairs_skip_close() {
     assert_eq!(state(&ed), "()-[h]>ello\n");
 }
 
+/// Skip-close over a PRE-EXISTING `)` (one this session never inserted) edits
+/// nothing — `run_ends` only advances on a real insertion, so the typed run
+/// stops before it: Esc selects just what was typed, not the char the
+/// cursor stepped over. Contrast with `c_auto_pair_includes_trailing_closer`
+/// (`commands.rs`), where the `)` IS included because auto-pairs inserted it
+/// this session.
+#[test]
+fn auto_pairs_skip_close_over_pre_existing_closer_excludes_it_from_typed_run() {
+    let mut ed = editor_from("-[)]>\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('a')); // typed content
+    ed.handle_key(key(')')); // skip-close: moves past the pre-existing `)`
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[a]>)\n");
+}
+
 /// Backspace between an empty pair `()` deletes both brackets.
 #[test]
 fn auto_pairs_auto_delete() {

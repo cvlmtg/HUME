@@ -6,6 +6,7 @@
 //! replayed at a different cursor. Macro replay drains a queue of recorded
 //! keys through the normal event path.
 
+use hume_engine::pipeline::EngineView;
 use std::borrow::Cow;
 use termina::event::{Event as TerminalEvent, KeyEvent};
 
@@ -37,13 +38,6 @@ pub(crate) enum InsertInput {
 /// `begin_insert_session` that recording should be suppressed.
 pub(crate) struct InsertSession {
     pub(super) keystrokes: Vec<InsertInput>,
-    /// Set for `a` / `A` / `o` / `O` entry. Decides where an *empty* typed
-    /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a
-    /// round trip) rather than staying put. When the run isn't empty, the
-    /// selected span's own head already coincides with the stepped-back
-    /// position, so this flag has no further effect: `end_insert_session`'s
-    /// `exit_cursor` is where both cases converge.
-    pub(super) step_back_on_exit: bool,
 }
 
 /// One selection-building step in a dot-repeat recipe.
@@ -133,12 +127,16 @@ pub(crate) enum MacroPending {
 impl EditorState {
     // ── Insert session ────────────────────────────────────────────────────────
 
-    /// Mark the active insert session as append-style — see
-    /// `InsertSession::step_back_on_exit`'s doc for what this decides.
-    pub(super) fn mark_insert_step_back(&mut self) {
-        if let Some(s) = self.insert_session.as_mut() {
-            s.step_back_on_exit = true;
-        }
+    /// Mark the open insert session as append-style — see
+    /// `PaneBufferState::step_back_on_exit`'s doc for what this decides.
+    /// Writes directly to the pane/buffer state rather than `InsertSession`
+    /// (which dot-repeat replay never creates — see `begin_insert_session`'s
+    /// replay-signal guard) so a replayed `a`/`A`/`o`/`O` sets this exactly
+    /// like an interactive session would, instead of silently no-oping.
+    pub(super) fn mark_insert_step_back(&mut self, view: &EngineView) {
+        let pid = self.focused_pane_id;
+        let bid = super::commands::focused_buffer_id(self, view);
+        self.panes.state[pid][bid].step_back_on_exit = true;
     }
 }
 

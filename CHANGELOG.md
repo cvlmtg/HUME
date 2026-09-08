@@ -16,7 +16,7 @@
 - `select-changed-text` is renamed `select-inserted-text`, since it now governs every way of leaving Insert mode, not just `c` — see below.
 
 ### Editing
-- Leaving Insert mode now selects the text you just typed, however you entered it (`i`, `a`, `I`, `A`, `o`, `O`, `c`, …) — previously only `c` did this. Controlled by `select-inserted-text` (default on).
+- Leaving Insert mode now selects the text you just typed, however you entered it (`i`, `a`, `I`, `A`, `o`, `O`, `c`, …) — previously only `c` did this. Controlled by `select-inserted-text` (default on). One consequence: `i` re-enters Insert *before* that selection, so `a` — not `i` — is the key to continue typing past what you just typed.
 - New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).
 - Word motions, `miw`/`maw`, `Ctrl+W`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
 - New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).

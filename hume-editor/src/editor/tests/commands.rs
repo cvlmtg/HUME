@@ -102,14 +102,18 @@ fn c_enter_mid_session_selects_across_newline() {
     assert_eq!(state(&ed), "-[a\nb]>\n");
 }
 
+/// The auto-inserted closer is part of what the session wrote, so the
+/// typed-run selection includes it — `run_ends` tracks insertions, not the
+/// live cursor head, and `insert_pair_close` inserts `()` as one edit that
+/// pushes `run_end` past both chars even though the head lands between them.
 #[test]
-fn c_auto_pair_excludes_trailing_closer() {
+fn c_auto_pair_includes_trailing_closer() {
     let mut ed = editor_from("-[foo]>\n");
     ed.handle_key(key('c'));
     ed.handle_key(key('('));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
-    assert_eq!(state(&ed), "-[(x]>)\n");
+    assert_eq!(state(&ed), "-[(x)]>\n");
 }
 
 /// Regression: a cursor motion during the session (arrows etc.) must
@@ -331,6 +335,24 @@ fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     assert_eq!(state(&ed), "-[hi]>-[h]>ello\n");
 }
 
+/// With `select-inserted-text` on (the default), Esc already leaves the
+/// current selection identical to the insertion span — the sibling test
+/// above disables the setting specifically to avoid this case, so it's
+/// covered here instead: `mii` in Extend mode must merge them into one
+/// selection (full self-overlap), not append a duplicate.
+#[test]
+fn mii_extend_mode_default_setting_merges_identical_current_selection() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    ed.handle_key(key('h'));
+    ed.handle_key(key('i'));
+    ed.handle_key(key_esc());
+    assert_eq!(state(&ed), "-[hi]>hello\n"); // setting on — Esc already selects "hi"
+    ed.state.mode = Mode::Extend;
+    mii(&mut ed);
+    assert_eq!(state(&ed), "-[hi]>hello\n");
+}
+
 /// When the current selection genuinely overlaps the insertion span, the
 /// union collapses into a single merged selection — proving `mii` in Extend
 /// mode actually reaches `SelectionSet`'s merge path, not just an append.
@@ -407,12 +429,19 @@ fn mii_reports_info_when_fully_backspaced_away() {
 /// with inserting — bumps `text_gen` past the stash's stamp.
 #[test]
 fn mii_stash_goes_stale_after_a_later_edit() {
+    use hume_editing::selection::Selection;
+
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('i'));
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), "-[x]>hello\n");
-    ed.handle_key(key('d')); // unrelated edit — never touches `last_insert`
+    // Reposition off the just-typed "x" before the "unrelated" edit — Esc
+    // left it selected (`select-inserted-text`), so deleting it in place
+    // wouldn't distinguish "text_gen bumped" (the thing under test) from
+    // "the stashed text is simply gone" (a different, weaker guarantee).
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(2))); // "e" of "ello"
+    ed.handle_key(key('d')); // unrelated edit — never touches the stashed "x"
     mii(&mut ed);
     assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
 }
@@ -473,6 +502,24 @@ fn mii_span_end_never_lands_mid_grapheme_cluster() {
     ed.handle_key(key_esc());
     mii(&mut ed);
     assert_eq!(state(&ed), "-[e]>\u{301}\n");
+}
+
+/// A typed combining mark can merge with a PRE-EXISTING base char (not one
+/// typed this session), pulling the run's last grapheme boundary behind the
+/// anchor rather than onto it. `end_insert_session` must recognize the run
+/// as empty in that case, not produce a backwards `(anchor, end)` pair.
+#[test]
+fn esc_after_combining_mark_merges_with_pre_existing_char_selects_nothing() {
+    let mut ed = editor_from("-[e]>\n");
+    ed.handle_key(key('a')); // anchor pins at 1, right after the pre-existing 'e'
+    ed.handle_key(key('\u{301}')); // combining acute accent merges with 'e'
+    ed.handle_key(key_esc());
+    // No typed run to select — the empty-run fallback steps the cursor back
+    // one grapheme (`a` sets `step_back_on_exit`), and the whole merged
+    // cluster is one grapheme, so it steps all the way back to 'e'.
+    assert_eq!(state(&ed), "-[e]>\u{301}\n");
+    mii(&mut ed);
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no last insertion"));
 }
 
 // ── Undo/redo boundary messages ────────────────────────────────────────────
@@ -974,6 +1021,31 @@ fn o_opens_line_below_and_enters_insert() {
     assert_eq!(state(&ed), "hello\n-[\n]>");
 }
 
+/// `o` + typed text + Enter + Esc must select just the typed text, not the
+/// newline Enter inserted — a trailing `\n` is a line terminator, not typed
+/// content (see `PaneBufferState::run_ends`'s doc). Verified by yanking the
+/// auto-selected span and checking the register text doesn't end in `\n`:
+/// `is_register_linewise` (`hume-ops/src/register.rs`) reads exactly that,
+/// and a register ending in `\n` is what makes a later `p` paste as a new
+/// line instead of inline — same root cause that flips `:format-source`
+/// between whole-document and single-range formatting (`is_selection_linewise`,
+/// `hume-editing/src/selection/single.rs`).
+#[test]
+fn o_type_enter_esc_selects_charwise_typed_text() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('o'));
+    for ch in "abc".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    ed.handle_key(key_esc());
+
+    ed.handle_key(key('y'));
+    assert_eq!(reg(&ed, CLIPBOARD_REGISTER), &["abc"]);
+}
+
 /// `o` on a blank line must open a new blank line *below* it, not overshoot
 /// into the line after.
 /// Regression: `goto_line_end + move_right` advanced past the `\n` on empty
@@ -1064,9 +1136,16 @@ fn a_on_wide_selection_collapses_after_end() {
 /// After `a` + typing + Esc the cursor must land on the last typed character,
 /// not one position past it. A second `a` should re-enter Insert at the same
 /// spot rather than advancing further.
+///
+/// `select-inserted-text` off: with the default on, a single typed char's
+/// auto-selected span (`-[X]>`) renders identically to a stepped-back
+/// collapsed cursor on that same char, so the assertion would hold even if
+/// `step_back_on_exit` were broken — this test is specifically about the
+/// step-back mechanism, so it isolates that path.
 #[test]
 fn a_esc_steps_cursor_back_to_last_typed_char() {
     let mut ed = editor_from("-[h]>ello\n");
+    ed.state.settings.select_inserted_text = false;
 
     ed.handle_key(key('a')); // cursor → 'e', Insert
     ed.handle_key(key('X'));
@@ -1080,9 +1159,14 @@ fn a_esc_steps_cursor_back_to_last_typed_char() {
 /// Regression: `$ a <text> Esc a` must not jump to the next line.
 /// After Esc the cursor must sit on the last appended character (on the same
 /// line), so that a second `a` re-enters Insert at the end of that line.
+///
+/// `select-inserted-text` off — see `a_esc_steps_cursor_back_to_last_typed_char`'s
+/// doc for why isolating the step-back path (not just typing one char)
+/// matters here.
 #[test]
 fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
+    ed.state.settings.select_inserted_text = false;
 
     ed.handle_key(key('A')); // jump to end of line → '\n', Insert
     ed.handle_key(key('X'));

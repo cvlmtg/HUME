@@ -932,7 +932,7 @@ impl Editor {
 /// Captures the entire funnel-owned side-effect cluster in one shot so a test
 /// can assert all bookkeeping in one `assert_eq!` without missing a field.
 ///
-/// Scope: five of the six effects that `run_dispatch_pipeline` is exclusively
+/// Scope: six of the seven effects that `run_dispatch_pipeline` is exclusively
 /// responsible for. Register routing (caller-armed) and handle_key-tail concerns
 /// (replay_dot, hooks, search-cache) are intentionally excluded — the former is
 /// seeding-dependent, the latter has dedicated tests.
@@ -944,7 +944,7 @@ impl Editor {
 /// from the native path is intentional per command, not a parity bug, so it
 /// legitimately diverges and cannot be a parity field.
 ///
-/// Deliberate exclusion — the sixth effect, `step_align_view`'s viewport
+/// Deliberate exclusion — the seventh effect, `step_align_view`'s viewport
 /// write: parity holds trivially (`aligns_view` is hardcoded `false` for
 /// `SteelBacked`/`Lazy`, so the Steel branch never runs it at all), and this
 /// snapshot has no viewport field to compare it against.
@@ -960,6 +960,11 @@ pub(super) struct BookkeepingSnapshot {
     pub paste_session_open: bool,
     /// `ed.state.mode` — set by `step_clear_extend` for selection-consuming edits.
     pub mode: Mode,
+    /// Whether any (pane, buffer) pair has a pinned Insert-mode typed run
+    /// (`pinned_anchors.is_some()`) — cleared by `step_clear_typed_run` for
+    /// any cursor-motion command reached while still in Insert mode,
+    /// regardless of route (keypress, Steel `call!`, `run_command_sync`).
+    pub typed_run_open: bool,
 }
 
 /// Capture the current bookkeeping state of an editor.
@@ -984,6 +989,13 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
             .flat_map(|(_, inner)| inner.iter())
             .any(|(_, pbs)| pbs.paste_group.is_some()),
         mode: ed.state.mode,
+        typed_run_open: ed
+            .state
+            .panes
+            .state
+            .iter()
+            .flat_map(|(_, inner)| inner.iter())
+            .any(|(_, pbs)| pbs.pinned_anchors.is_some()),
     }
 }
 

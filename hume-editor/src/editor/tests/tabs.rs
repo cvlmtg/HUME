@@ -163,10 +163,12 @@ fn enter_esc_trims_auto_inserted_blank_line() {
     assert_eq!(state(&ed), "  x\n  -[\n]>");
     ed.handle_key(key_esc());
     // The typed run is just the inserted "\n" (the copied indent it carried
-    // was trimmed above), and its own `Assoc::Before` anchor sits right where
-    // that newline landed — on "  x"'s own trailing '\n', not the new blank
-    // line's.
-    assert_eq!(state(&ed), "  x-[\n]>\n");
+    // was trimmed above) — a trailing newline is a line terminator, not
+    // typed content, so it trims out of the span too, leaving an empty run.
+    // `i` never sets `step_back_on_exit`, so the cursor stays exactly where
+    // it is: collapsed on the new blank line's own trailing '\n', not
+    // stepped back onto "  x"'s.
+    assert_eq!(state(&ed), "  x\n-[\n]>");
 }
 
 /// Dot-repeat replays an Enter-then-Esc insert session as a unit: the
@@ -181,23 +183,29 @@ fn dot_repeat_replays_enter_esc_trim() {
 
     ed.feed_key(key('i')); // insert-at-selection-start; cursor stays put
     ed.feed_key(key_enter()); // auto-indent creates a blank "  " line, cursor on its '\n'
-    ed.feed_key(key_esc()); // trimmed: "  x\n\n  y\n"; Esc selects "  x"'s own '\n'
-    assert_eq!(state(&ed), "  x-[\n]>\n  y\n");
+    // Trimmed to "  x\n\n  y\n"; the empty run falls back to the entry
+    // command's own exit position (`i` never sets `step_back_on_exit`), so
+    // Esc leaves the cursor collapsed on the new blank line's own '\n' — see
+    // `enter_esc_trims_auto_inserted_blank_line`.
+    ed.feed_key(key_esc());
+    assert_eq!(state(&ed), "  x\n-[\n]>  y\n");
 
     // Navigate to line 2's own trailing '\n' with plain motions (not a
     // selection-establishing command) — dot-repeat replays the ORIGINAL
     // entry command ('i') at whatever selection exists when '.' is pressed.
-    // One `j` lands on the blank line just created above; a second reaches
-    // "  y", already past its indent onto 'y' itself; one `l` reaches the
-    // trailing '\n'.
+    // `j` from the blank line (column 0, its only column) lands on column 0
+    // of "  y" — its own leading space, not 'y' — so three `l` are needed to
+    // reach the trailing '\n' (indent, indent, 'y').
     ed.feed_key(key('j'));
-    ed.feed_key(key('j'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
     ed.feed_key(key('l'));
     ed.feed_key(key('.')); // replay: insert-at-selection-start, Enter, Esc
 
     // Same shape as the first site: the replayed Enter's auto-indent on
-    // line 2 was trimmed by the replayed Esc, which selects "  y"'s own '\n'.
-    assert_eq!(state(&ed), "  x\n\n  y-[\n]>\n");
+    // line 2 was trimmed by the replayed Esc, which leaves the cursor
+    // collapsed on the newly created blank line 3's own '\n'.
+    assert_eq!(state(&ed), "  x\n\n  y\n-[\n]>");
 }
 
 // ── Dedent on Backspace ───────────────────────────────────────────────────────

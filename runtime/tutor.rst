@@ -618,7 +618,10 @@ start inserting, each placing the cursor at a slightly different spot.
 | O | open a new line ABOVE the cursor and enter Insert     |
 +---+-------------------------------------------------------+
 
-Remember: ``Esc`` exits Insert mode.
+Remember: ``Esc`` exits Insert mode. Leaving Insert mode selects the
+text you just typed instead of leaving a plain cursor after it — so
+``i`` re-enters *before* that selection, not after it. To keep typing
+past what you just typed, press ``a`` instead of ``i``.
 
 4.1 Basic Insert
 ----------------

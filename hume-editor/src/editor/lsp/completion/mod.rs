@@ -92,6 +92,17 @@ impl CompletionSession {
     /// exactly at it belongs to the token and the anchor must stay left of
     /// it, same association `apply_doc_edit_grouped` uses for
     /// `pinned_anchors`.
+    ///
+    /// A completion accept's own replacement edit (`accept.rs`) is one more
+    /// edit `apply_doc_edit_grouped` remaps `pinned_anchors`/`run_ends`
+    /// through, same as any keystroke — so if the accepted item's `textEdit`
+    /// replaces text typed before the Insert session began (e.g. `A` mid-
+    /// identifier, type one char, then accept), the selected typed run on
+    /// Esc grows to cover the whole replacement, not just the char actually
+    /// keyed. That's intended, not a pin-tracking bug: the accept's own edit
+    /// rewrote that whole span, so every character in it was written by this
+    /// session, and selecting the freshly completed token is the useful
+    /// outcome.
     pub(crate) fn anchor(&self) -> usize {
         let mut positions = [self.anchor_at_begin];
         self.cs_since_begin

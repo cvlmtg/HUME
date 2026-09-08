@@ -89,7 +89,7 @@ pub(crate) fn cmd_insert_at_line_end(
     });
     begin_insert_session(state, view);
     begin_typed_run(state, view);
-    state.mark_insert_step_back();
+    state.mark_insert_step_back(view);
     Ok(())
 }
 
@@ -112,9 +112,15 @@ pub(crate) fn cmd_insert_at_selection_start(
 /// Enter insert mode after the end of each selection (one past max of anchor and head).
 /// For a collapsed cursor this is identical to `a`.
 ///
-/// On Esc, the cursor steps back one grapheme (`mark_insert_step_back`) so that
-/// pressing `a` again re-enters Insert at the same spot rather than advancing forward.
-/// Clamps to `len_chars() - 1` so `a` on the buffer-final `\n` stays in bounds.
+/// `mark_insert_step_back` arms a step-back that applies when there is no
+/// typed span to fall back on instead: an empty run (nothing typed), or any
+/// run with `select-inserted-text` off. There, the cursor steps back one
+/// grapheme on Esc so pressing `a` again re-enters Insert at the same spot
+/// rather than advancing forward. When something was typed and
+/// `select-inserted-text` is on (the default), Esc selects that span
+/// instead — `end_insert_session` — and a following `a` continues after it,
+/// not at the pre-typing spot. Clamps to `len_chars() - 1` so `a` on the
+/// buffer-final `\n` stays in bounds.
 ///
 /// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty
 /// line), the cursor stays on that `\n` slot rather than stepping past it — `a` on
@@ -139,7 +145,7 @@ pub(crate) fn cmd_insert_at_selection_end(
     });
     begin_insert_session(state, view);
     begin_typed_run(state, view);
-    state.mark_insert_step_back();
+    state.mark_insert_step_back(view);
     Ok(())
 }
 
@@ -155,7 +161,7 @@ pub(crate) fn cmd_open_line_below(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view);
-    state.mark_insert_step_back();
+    state.mark_insert_step_back(view);
     apply_focused_motion(state, view, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
@@ -174,7 +180,7 @@ pub(crate) fn cmd_open_line_above(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     begin_insert_session(state, view);
-    state.mark_insert_step_back();
+    state.mark_insert_step_back(view);
     apply_focused_motion(state, view, |b, s| {
         cmd_goto_line_start(b, s, 1, MotionMode::Move)
     });

@@ -13,7 +13,7 @@ HUME shares Helix's core editing model — select-then-act, selections as first-
 - `m i f`/`m a f`, `m i t`/`m a t`, `m i a`/`m a a`, `m i c`/`m a c`, `m i u`/`m a u` — the same letters as Helix's own match-mode textobjects except unit test (`T`→`u`; see below), selecting the enclosing function, class/type, argument, comment, or unit test for any language with a tree-sitter grammar that ships a textobjects query
 
 ::: tip
-Unlike Helix, leaving Insert mode in HUME (however you entered it — `i`, `a`, `o`, `c`, …) keeps the text you just typed selected instead of leaving a plain cursor, ready to act on again — delete it, surround it, search for it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
+Unlike Helix, leaving Insert mode in HUME (however you entered it — `i`, `a`, `o`, `c`, …) keeps the text you just typed selected instead of leaving a plain cursor, ready to act on again — delete it, surround it, search for it. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)). One consequence: `i` re-enters *before* that selection, so `a`, not `i`, is the key to keep typing after it.
 :::
 
 ## Key differences

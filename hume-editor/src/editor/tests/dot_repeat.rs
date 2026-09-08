@@ -151,22 +151,58 @@ fn mii_after_dot_repeat_selects_replayed_insertion() {
 }
 
 /// `i` + typed text + Esc inserts at the selection start. `.` should replay that insert.
+///
+/// Second word (`y`), not just a following char (`x`): with `select-inserted-
+/// text` on (default), Esc leaves "ab" selected rather than a bare cursor,
+/// and "ab"/"x" glued together with no separator are one word token — `w`
+/// from inside that token has nowhere to advance to and would be a no-op,
+/// making `.` replay at the original position and land on the same string
+/// by coincidence. A space-separated second word gives `w` a real target to
+/// move onto, so the assertion actually exercises the replay position.
 #[test]
 fn dot_repeats_insert_before() {
-    let mut ed = editor_from("-[x]>\n");
+    let mut ed = editor_from("-[x]> y\n");
 
     ed.feed_key(key('i')); // insert-at-selection-start, cursor collapses to start
     ed.feed_key(key('a'));
     ed.feed_key(key('b'));
-    ed.feed_key(key_esc()); // back to Normal; buffer is "abx"
+    ed.feed_key(key_esc()); // back to Normal; buffer is "abx y"
 
-    assert_eq!(ed.doc().text().to_string(), "abx\n");
+    assert_eq!(ed.doc().text().to_string(), "abx y\n");
 
-    // Move to 'x' and repeat.
-    ed.feed_key(key('w')); // select 'x'
-    ed.feed_key(key('.')); // repeat insert "ab" before 'x'
+    // Move to "y" and repeat. "y" has no trailing space (EOL follows) but
+    // does have a leading one, so `w` picks up " y" (default around-word,
+    // same convention as `dot_repeats_change_with_insert` above).
+    ed.feed_key(key('w')); // select " y"
+    ed.feed_key(key('.')); // repeat insert "ab" before " y"
 
-    assert_eq!(ed.doc().text().to_string(), "ababx\n");
+    assert_eq!(ed.doc().text().to_string(), "abxab y\n");
+}
+
+/// A replayed `a` with an empty typed run (nothing typed before Esc) must
+/// step the cursor back exactly like the interactive path, not silently
+/// stay put. `mark_insert_step_back` writes directly to `PaneBufferState`
+/// (not `InsertSession`, which `replay_dot` never creates — it pre-opens
+/// the edit group as its own replay signal instead) precisely so a
+/// replayed empty-run session isn't a no-op.
+#[test]
+fn dot_repeat_replays_a_empty_run_step_back() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.feed_key(key('a'));
+    ed.feed_key(key_esc());
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello\n",
+        "sanity: interactive a<Esc> round-trips"
+    );
+
+    // Reposition onto 'e' and replay — `.` re-enters `a` there.
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(1)));
+    ed.feed_key(key('.'));
+
+    // Without the fix, the replayed session's step-back flag is a silent
+    // no-op, leaving the cursor one grapheme past 'e' instead of on it.
+    assert_eq!(state(&ed), "h-[e]>llo\n");
 }
 
 /// `r` + char replaces every character in the selection. `.` should replay with
@@ -1033,6 +1069,10 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
     type_text(&mut ed, "ab"); // insert-before, cursor collapses to start; buffer is "abx"
     assert_eq!(ed.doc().text().to_string(), "abx\n");
 
+    // Move off "ab" first — `select-inserted-text` (default on) already left
+    // it selected, so pressing `mii` right away would be a no-op and the
+    // assertion below would hold whether or not `mii` actually did anything.
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(2))); // onto 'x'
     ed.feed_key(key('m'));
     ed.feed_key(key('i'));
     ed.feed_key(key('i')); // mii: re-select "ab", the last insertion

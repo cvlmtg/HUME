@@ -171,6 +171,43 @@ pub(super) fn step_capture_pre_jump(
     meta.moves_cursor().then(|| jump_position(state, view))
 }
 
+/// Invalidate a still-open Insert-mode typed run before a cursor-motion
+/// command runs — its pinned anchor/run-end would otherwise select across
+/// text the cursor jumped away from once Insert exits. The single funnel
+/// every route into a native command shares (a key press, a Steel `call!`, a
+/// hook, `run_command_sync`): the trie-local version this replaced only
+/// fired for a motion reached by a key press.
+///
+/// Gated on `state.mode() == Mode::Insert`, checked in BEFORE against the
+/// *pre-body* mode. `exit-insert` itself needs no special-casing — it
+/// registers with no `.jump()`/`.visual_move()` (`registry/defaults/
+/// editor_cmds.rs`), so `moves_cursor()` is `false` and it never reaches
+/// here — but placing this check in AFTER instead would read the *post-body*
+/// mode, which is already `Insert` again for every entry command
+/// (`i`/`a`/`o`/`c`/…) by the time their own body returns, and would wipe
+/// the pins `begin_typed_run` just installed (same hazard `step_clear_extend`
+/// documents for its own AFTER placement).
+///
+/// Two routes into a native command bypass this pipeline entirely, and both
+/// are already safe without it: Insert mode's `Edit`-command short-circuit
+/// (`mappings/insert.rs`) has a meta that hardcodes all three motion flags
+/// `false`, so `moves_cursor()` would answer `false` here too; dot-repeat
+/// replay (`replay.rs`) calls `run_native_body` directly, but reopens an
+/// edit group first, which clears the pins itself
+/// (`doc_ops::begin_edit_group`). See `CmdMeta::moves_cursor`'s doc for the
+/// `SteelBacked`/`Lazy` blind spot this inherits unchanged: a user-bound
+/// Steel motion still leaves the pins in place.
+pub(super) fn step_clear_typed_run(state: &mut EditorState, view: &EngineView, meta: &CmdMeta) {
+    if state.mode() != Mode::Insert || !meta.moves_cursor() {
+        return;
+    }
+    let pid = state.focused_pane_id;
+    let bid = focused_buffer_id(state, view);
+    let pbs = &mut state.panes.state[pid][bid];
+    pbs.pinned_anchors = None;
+    pbs.run_ends = None;
+}
+
 /// The primary selection, its line, and the focused buffer — what a jump
 /// entry is built from and what `step_record_jump` compares against, before
 /// and after a command runs.
@@ -379,6 +416,7 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     // BEFORE
     state.command_refused = false;
     step_paste_commit(state, view, meta.defers_paste_commit);
+    step_clear_typed_run(state, view, &meta);
     let pre_jump = step_capture_pre_jump(state, view, &meta);
     let char_arg = state.pending_char;
     let pre_recipe = step_snapshot_recipe(state, meta.repeatable);

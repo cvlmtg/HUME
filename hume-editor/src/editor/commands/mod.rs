@@ -393,7 +393,7 @@ pub(super) use typed_file::*;
 pub(super) use typed_misc::*;
 
 // insert_session.rs's remaining items (begin_insert_session, begin_typed_run,
-// is_group_open_current, has_blank_line_cursor) are re-exported privately above
+// has_blank_line_cursor) are re-exported privately above
 // (visible only within `commands` and its descendants — every other `mod` in
 // this file, and the registry glob) since nothing outside `commands` calls
 // them. pane.rs and pipeline.rs export nothing else siblings need, so both are

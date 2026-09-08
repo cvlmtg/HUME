@@ -17,6 +17,8 @@ Press `Esc` or `Ctrl+c` to return to Normal mode. `Ctrl+w` deletes the word befo
 
 Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor — so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
 
+Because of this, `i` re-enters Insert mode *before* the current selection — so typing something, pressing `Esc`, then pressing `i` again continues before what you just typed, not after it. Use `a` to continue typing after it instead.
+
 Whichever way you entered Insert mode, `m i i` recovers what you last typed after `Esc` — see [Text objects](selections.md#text-objects).
 
 ## Deleting and changing text
