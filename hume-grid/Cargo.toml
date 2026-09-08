@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 bitflags.workspace = true
-compact_str = "0.9"
+compact_str = "0.10"
 
 [dev-dependencies]
 proptest = "1.11.0"
