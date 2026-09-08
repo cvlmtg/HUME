@@ -12,13 +12,9 @@
 "ui.selection" = { fg = "bg", bg = "fg" }
 "ui.selection.primary" = { fg = "fg", bg = "plum" }
 "ui.cursor" = { fg = "fg", bg = "muted" }
-"ui.cursor.normal" = { fg = "fg", bg = "muted" }
-"ui.cursor.insert" = { fg = "fg", bg = "dark_plum" }
-"ui.cursor.select" = { fg = "bg", bg = "sand" }
+"ui.cursor.insert" = { fg = "bg", bg = "sand" }
 "ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
-"ui.cursor.primary.normal" = { fg = "bg", bg = "bright_fg" }
-"ui.cursor.primary.insert" = { fg = "bg", bg = "plum" }
-"ui.cursor.primary.select" = { fg = "bg", bg = "gold" }
+"ui.cursor.primary.insert" = { fg = "bg", bg = "gold" }
 "ui.cursor.match" = { fg = "fg", bg = "plum" }
 "ui.cursor.match.search" = { fg = "bg", bg = "sand" }
 "ui.cursorline.primary" = { bg = "surface" }
