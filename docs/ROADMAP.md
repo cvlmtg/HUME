@@ -25,6 +25,7 @@
 
 ### Editor — fixes & optimizations
 
+- [ ] Lazy grammar attachment — `register-installed-grammars!` (`runtime/scheme/grammars.scm`) runs unconditionally from bundled runtime Scheme, so `attach_grammar` eagerly dlopens and compiles up to 3 tree-sitter queries (highlights/injections/textobjects) per installed grammar at every `init_scripting`. `--no-config` skips `init.scm`, not this — only an isolated `XDG_DATA_HOME` (as `tools/golf/golf.sh` now sets) avoids it. Costs a headless `hume --keys` run highlighting it never renders, scaling with however many grammars are PLUM-installed; would benefit interactive startup identically. Fix: register grammar paths at startup, dlopen + compile queries on first buffer that resolves to that language.
 - [ ] Byte-string parsing in settings — `"10MB"` / `"512KB"` strings; companion to the size-threshold setting.
 - [ ] Native directory-walker fallback for the file picker — for bare directories without `fd`; build only if the fallback posture proves inadequate in practice (see `docs/FUZZY-FINDERS.md`).
 - [ ] `:sort --lexicographic` override — for when numeric auto-detection guesses wrong (e.g. `1.10` vs `1.9`). Not worth shipping until it actually bites.
