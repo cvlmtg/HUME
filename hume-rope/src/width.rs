@@ -11,6 +11,11 @@
 //! clusters, not cells) and from LSP wire positions
 //! (`crate::position_encoding`, which counts UTF-16 code units or bytes).
 
+// This module is `clippy.toml`'s named exception for `unicode_width`'s own
+// methods — the raw measurement they wrap into `tab_advance`/
+// `grapheme_width`/`str_width` happens right here, once.
+#![allow(clippy::disallowed_methods)]
+
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 

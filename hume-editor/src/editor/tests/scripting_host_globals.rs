@@ -4,6 +4,13 @@
 //! single source of truth for which Steel identifiers HUME's own layers
 //! add on top of a pristine engine.
 
+// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
+// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
+// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
+// callers it lists as exempt.
+#![allow(clippy::disallowed_methods)]
+
 use super::*;
 use hume_scripting::ScriptingHost;
 

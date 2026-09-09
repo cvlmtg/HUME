@@ -1,3 +1,10 @@
+// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
+// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
+// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
+// callers it lists as exempt.
+#![allow(clippy::disallowed_methods)]
+
 // Editor-level tests for the tree-sitter grammar wiring that load Steel
 // plugins or run `init_scripting` end-to-end. The platform-neutral half
 // (and the shared catalog/fixture helpers) lives in

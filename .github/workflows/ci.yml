@@ -37,6 +37,22 @@ jobs:
 
       - run: cargo fmt --all -- --check
 
+  # Separate from the test matrix for the same reason `fmt` is: this check is
+  # platform-independent, so it runs once rather than three times. Denies
+  # only `clippy::disallowed_methods` (clippy.toml) — every other clippy lint
+  # stays at its default level; adopting those is a separate decision.
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - run: cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

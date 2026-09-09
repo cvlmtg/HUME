@@ -9,6 +9,13 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect::new(x, y, w, h)
 }
 
+/// Independent width oracle for the code under test — see `clippy.toml`'s
+/// `disallowed-methods` entry.
+#[allow(clippy::disallowed_methods)]
+fn oracle_width(s: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(s)
+}
+
 fn style() -> ResolvedStyle {
     ResolvedStyle::default()
 }
@@ -168,7 +175,7 @@ fn truncate_marked_leaves_short_strings_unchanged() {
 fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
     let source = "hume-editor/src/ui/picker_panel.rs";
     let out = truncate_marked(source, 12, TruncateEnd::Head);
-    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_ref()), 12);
+    assert_eq!(oracle_width(out.as_ref()), 12);
     let kept = out
         .strip_prefix('…')
         .unwrap_or_else(|| panic!("clipped string must lead with …, got {out:?}"));
@@ -182,7 +189,7 @@ fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
 fn truncate_marked_cut_tail_appends_ellipsis_and_keeps_head() {
     let source = "src/editor/picker.rs:412:9:  fn push(&mut self)";
     let out = truncate_marked(source, 12, TruncateEnd::Tail);
-    assert_eq!(unicode_width::UnicodeWidthStr::width(out.as_ref()), 12);
+    assert_eq!(oracle_width(out.as_ref()), 12);
     let kept = out
         .strip_suffix('…')
         .unwrap_or_else(|| panic!("clipped string must trail with …, got {out:?}"));

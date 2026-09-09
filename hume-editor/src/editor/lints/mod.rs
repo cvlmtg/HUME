@@ -7,7 +7,6 @@
 
 mod absent_decode;
 mod column_naming;
-mod display_width;
 mod field_classification;
 mod grapheme;
 mod init_example;

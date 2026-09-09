@@ -16,6 +16,12 @@ bash scripts/fetch-test-grammars.sh
 # of the run has already passed.
 (cd tools/theme-editor && npm test)
 
+# Denies only `disallowed_methods` (clippy.toml) — the workspace-wide bans on
+# raw `unicode-width`/`std::env::set_var`/`remove_var` calls. Every other
+# clippy lint stays at its default (non-failing) level: adopting those is a
+# separate decision, not a side effect of this one.
+cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
+
 cargo test --all-targets
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.

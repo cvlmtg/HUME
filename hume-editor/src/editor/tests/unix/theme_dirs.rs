@@ -3,6 +3,13 @@
 //! unix-only (`dirs.rs`'s `config_dir_with`/`data_dir_with`), hence gated
 //! here rather than in the portable `tests/theme_loading.rs`.
 
+// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
+// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
+// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
+// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
+// callers it lists as exempt.
+#![allow(clippy::disallowed_methods)]
+
 use super::*;
 
 /// Points `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`HUME_RUNTIME` at three distinct

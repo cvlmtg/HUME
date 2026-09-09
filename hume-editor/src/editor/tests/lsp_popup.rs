@@ -9,6 +9,13 @@ use std::sync::Arc;
 use super::*;
 use hume_engine::pipeline::RenderContext;
 
+/// Independent width oracle for the code under test — see `clippy.toml`'s
+/// `disallowed-methods` entry.
+#[allow(clippy::disallowed_methods)]
+fn oracle_width(s: &str) -> usize {
+    unicode_width::UnicodeWidthStr::width(s)
+}
+
 fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
     ed.state
         .popup_view
@@ -439,9 +446,7 @@ fn popup_wraps_to_the_pane_width_and_anchors_below_the_cursor() {
         "text wider than the pane must wrap to multiple lines"
     );
     assert!(
-        lines
-            .iter()
-            .all(|l| unicode_width::UnicodeWidthStr::width(l.as_str()) <= 16),
+        lines.iter().all(|l| oracle_width(l.as_str()) <= 16),
         "no line may exceed min(60, pane_width - 4): {lines:?}"
     );
     assert!(
