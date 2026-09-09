@@ -16,13 +16,7 @@ bash scripts/fetch-test-grammars.sh
 # of the run has already passed.
 (cd tools/theme-editor && npm test)
 
-cargo test --all-targets --workspace --exclude hume-editor
-# hume-editor's tests spin up a Steel engine per test; steel-core 0.8.2's
-# mark-and-sweep GC keeps process-global roots (GLOBAL_ROOTS/MARKER in
-# steel-core's values/closed.rs), so engines running concurrently on
-# separate test threads can race on a weak ref, panicking in
-# HeapRef::get()'s unwrap. Serializing this crate's test binary avoids it.
-cargo test --all-targets -p hume-editor -- --test-threads=1
+cargo test --all-targets
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.
 cargo test --doc
