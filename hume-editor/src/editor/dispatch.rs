@@ -41,7 +41,7 @@ impl Editor {
     ///
     /// Dot-repeat replay bypasses this entirely — it calls
     /// [`commands::run_native_body`] directly.
-    pub(crate) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
+    pub(in crate::editor) fn dispatch(&mut self, cmd: MappableCommand, ctx: CmdCtx) {
         let is_steel = matches!(
             &cmd,
             MappableCommand::SteelBacked { .. } | MappableCommand::Lazy { .. }

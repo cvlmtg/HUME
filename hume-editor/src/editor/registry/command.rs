@@ -152,7 +152,7 @@ impl CmdMeta {
 /// and reachable from both the keypress path and `run_command_sync`.
 ///
 /// [`EditorCmd`]: MappableCommand::EditorCmd
-pub(crate) type EditorCmdFn = fn(
+pub(in crate::editor) type EditorCmdFn = fn(
     &mut super::super::EditorState,
     &mut EngineView,
     usize,
@@ -178,7 +178,7 @@ pub(crate) type EditorCmdFn = fn(
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
 /// that flag.
 #[derive(Clone, Copy)]
-pub(crate) enum SelectionBody {
+pub(in crate::editor) enum SelectionBody {
     Plain(fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet),
     Word(fn(&BufferText, SelectionSet, usize, WordCtx<'_>) -> SelectionSet),
     Structural(StructuralBody),
@@ -190,7 +190,7 @@ pub(crate) enum SelectionBody {
 /// otherwise be 22 near-identical thin functions, one per structural
 /// command name.
 #[derive(Clone, Copy)]
-pub(crate) enum StructuralBody {
+pub(in crate::editor) enum StructuralBody {
     /// `m i <k>` / `m a <k>`: the smallest captured `<kind>.<span>` object at
     /// each cursor. Extend mode grows outward through
     /// `apply_text_object_extend`'s past-end retry, so an object that shares
@@ -210,8 +210,18 @@ pub(crate) enum StructuralBody {
 ///
 /// The keymap trie stores command *names*; the registry resolves names to
 /// `MappableCommand` values at dispatch time.
+///
+/// `pub(in crate::editor)`, not `pub(crate)`: every native variant's `fun`
+/// must execute only through `commands::pipeline::run_native_body`, the one
+/// place that destructures a variant to call its function pointer — a second
+/// dispatch path would silently drop `run_dispatch_pipeline`'s bookkeeping
+/// (jump list, dot-repeat, paste session). `crate::editor` is the narrowest
+/// scope Rust's visibility can express here: `registry::command` (where this
+/// is defined) and `commands::pipeline` (the one legitimate caller) are
+/// sibling modules, so any restriction has to name their common ancestor.
+/// Matches [`StructuralBody::apply`]'s own visibility for the same reason.
 #[derive(Clone)]
-pub(crate) enum MappableCommand {
+pub(in crate::editor) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
     /// `fun` is a [`SelectionBody`] — `Plain(fn(&BufferText, SelectionSet,

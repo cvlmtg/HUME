@@ -42,10 +42,11 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(crate) use command::{
-    ArgCompleter, CmdMeta, EditorCmdFn, MappableCommand, SelectionBody, SelectionTracking,
-    StructuralBody, TypedBody, TypedCommand,
-};
+pub(crate) use command::{ArgCompleter, CmdMeta, SelectionTracking, TypedBody, TypedCommand};
+// Narrower than the re-exports above: these carry a native command's `fun`
+// function pointer, callable only from `commands::pipeline::run_native_body`
+// — see `MappableCommand`'s own doc.
+pub(in crate::editor) use command::{EditorCmdFn, MappableCommand, SelectionBody, StructuralBody};
 pub(in crate::editor) use defaults::structural::STRUCTURAL_OBJECTS;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ impl CommandRegistry {
     ///
     /// The name is extracted from the command and used as the `FxHashMap` key.
     /// For static built-ins the clone is a pointer copy (zero allocation).
-    pub(crate) fn register(&mut self, cmd: MappableCommand) {
+    pub(in crate::editor) fn register(&mut self, cmd: MappableCommand) {
         let key = cmd.name().clone();
         self.commands.insert(key, Command::Mappable(cmd));
     }
@@ -188,7 +189,7 @@ impl CommandRegistry {
     /// user-typed names, so there is no user typo to tolerate and case-folding
     /// has no purpose here. Case-insensitivity is confined to the typed (`:`)
     /// path in [`Self::get_typed`].
-    pub(crate) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
+    pub(in crate::editor) fn get_mappable(&self, name: &str) -> Option<&MappableCommand> {
         match self.commands.get(name)? {
             Command::Mappable(cmd) => Some(cmd),
             Command::Typed(_) => None,
