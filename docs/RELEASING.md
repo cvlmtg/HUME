@@ -2,9 +2,8 @@
 
 Maintainer checklist. Contributors don't need this — see `CONTRIBUTING.md`.
 
-1. `scripts/release.sh <version>` (e.g. `0.11.0` or `v0.11.0`) on `main` or a maintenance branch (`X.Y.x`), clean tree. Runs fmt + `test-all.sh`, promotes the changelog's `## Unreleased` section, bumps `hume-editor`'s version, syncs `Cargo.lock`, commits, tags.
-2. `git push origin <branch> --follow-tags` — triggers `release.yml` (three platform archives, then the GitHub Release) and, on `main`, the nightly build.
-3. Bump `hume-editor/Cargo.toml`'s version again to the next dev version, `cargo check -p hume-editor` to sync `Cargo.lock`, commit.
+1. `scripts/release.sh [<version> [<next-version>]]` (e.g. `0.11.0` or `v0.11.0`) on `main` or a maintenance branch (`X.Y.x`), clean tree. Prompts for either version left out (defaulting to the version staged in `Cargo.toml`, and to the next minor on `main` / next patch on a maintenance branch). Runs fmt + `test-all.sh`, promotes the changelog's `## Unreleased` section, bumps `hume-editor`'s version, syncs `Cargo.lock`, commits, tags — then bumps `Cargo.toml` again to the next dev version in a second commit, so `--version` reflects the version in progress rather than the one just tagged.
+2. `git push origin <branch> --follow-tags` — carries both commits and the tag, and triggers `release.yml` (three platform archives, then the GitHub Release) and, on `main`, the nightly build.
 
 ## Patching an older release
 
