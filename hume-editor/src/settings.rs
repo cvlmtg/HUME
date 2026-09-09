@@ -17,7 +17,7 @@
 //!
 //! Most settings are defined in one `define_settings!` invocation that
 //! generates [`EditorSettings`], [`BufferOverrides`], their `Default` impls,
-//! accessors, and the [`write_global`]/`write_buffer`/`setting_scopes`
+//! accessors, and the `write_global`/`write_buffer`/`setting_scopes`
 //! dispatch — a simple setting needs one macro entry and nothing else.
 //! `scope: [...]` is the SSOT for which `Scope` variants a key accepts;
 //! `typed_set` looks it up via `setting_scopes(key)` rather than

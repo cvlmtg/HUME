@@ -90,7 +90,7 @@ pub(crate) fn render_pane(
         rope: pane_ctx.rope,
         default_gutter_scope: pane_ctx.default_gutter_scope,
     };
-    let mut canvas = render::Canvas::new(grid, pane_ctx.theme, pane_ctx.dim);
+    let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
 
     // Clip `WrapMode::None` formatting to the visible horizontal window — a
     // single unwrapped line can be arbitrarily long (a minified JS file is a

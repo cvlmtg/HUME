@@ -11,7 +11,8 @@ use crate::style::ResolvedStyle;
 ///
 /// ## The write invariant
 ///
-/// [`Grid::set_glyph`] and [`Grid::fill_span`] are the only ways to change a
+/// `set_glyph` and `fill_span` (`pub(crate)` — reached from outside this
+/// crate only through [`Canvas`](crate::Canvas)) are the only ways to change a
 /// cell, and both maintain: **every continuation has its head immediately
 /// reachable to its left, and every head is followed by exactly as many
 /// continuations as it advances columns.** Overwriting half of a
@@ -96,7 +97,14 @@ impl Grid {
     /// right edge is written as blanks instead — never split, matching the
     /// rule text measurement follows everywhere else in HUME. Out-of-bounds
     /// coordinates are ignored.
-    pub fn set_glyph(&mut self, x: u16, y: u16, text: &str, advance: u8, style: ResolvedStyle) {
+    pub(crate) fn set_glyph(
+        &mut self,
+        x: u16,
+        y: u16,
+        text: &str,
+        advance: u8,
+        style: ResolvedStyle,
+    ) {
         if x >= self.width || y >= self.height {
             return;
         }
@@ -127,7 +135,7 @@ impl Grid {
     /// write instead of N bounds-checked cell writes. Repairs both edges the
     /// same way [`Grid::set_glyph`] does, so filling over half a wide glyph
     /// cannot orphan the other half.
-    pub fn fill_span(&mut self, y: u16, x_start: u16, x_end: u16, cell: Cell) {
+    pub(crate) fn fill_span(&mut self, y: u16, x_start: u16, x_end: u16, cell: Cell) {
         debug_assert!(
             cell.advance() == 1,
             "fill_span writes one column per cell; a wide glyph needs set_glyph"

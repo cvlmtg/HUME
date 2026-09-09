@@ -1,5 +1,5 @@
 use super::*;
-use hume_grid::{Modifiers, Rgb, UnderlineStyle};
+use hume_grid::{Canvas, Modifiers, Rgb, UnderlineStyle};
 
 const RED: Rgb = Rgb(255, 0, 0);
 const BLUE: Rgb = Rgb(0, 0, 255);
@@ -9,6 +9,23 @@ fn red() -> ResolvedStyle {
         fg: Some(RED),
         ..Default::default()
     }
+}
+
+/// Poke fixture content directly into `grid` at `(x, y)`, the way these
+/// tests used to via `Grid::set_glyph` before it became private to this
+/// crate's own suite — this is diff/emitter test setup, not behaviour under
+/// test, so it goes through `Canvas` (an unbounded `right_edge`: these
+/// fixtures write well within the grid they just allocated) rather than
+/// asserting anything of its own.
+fn poke(grid: &mut Grid, x: u16, y: u16, text: &str, advance: u8, style: ResolvedStyle) {
+    Canvas::new(grid, ResolvedStyle::default(), None).write_cell(
+        x,
+        y,
+        text,
+        advance,
+        style,
+        u16::MAX,
+    );
 }
 
 /// The bytes one SGR update renders to — what the terminal actually receives
@@ -210,7 +227,7 @@ fn an_unchanged_frame_writes_no_cells() {
 fn one_changed_cell_is_positioned_styled_and_written() {
     let prev = Grid::new(3, 1);
     let mut next = prev.clone();
-    next.set_glyph(1, 0, "a", 1, red());
+    poke(&mut next, 1, 0, "a", 1, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;2H\x1b[38;2;255;0;0ma\x1b[m"
@@ -221,8 +238,8 @@ fn one_changed_cell_is_positioned_styled_and_written() {
 fn a_contiguous_run_is_positioned_once() {
     let prev = Grid::new(4, 1);
     let mut next = prev.clone();
-    next.set_glyph(0, 0, "a", 1, red());
-    next.set_glyph(1, 0, "b", 1, red());
+    poke(&mut next, 0, 0, "a", 1, red());
+    poke(&mut next, 1, 0, "b", 1, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0mab\x1b[m"
@@ -233,8 +250,8 @@ fn a_contiguous_run_is_positioned_once() {
 fn separate_runs_each_reposition_but_keep_the_running_style() {
     let prev = Grid::new(8, 1);
     let mut next = prev.clone();
-    next.set_glyph(0, 0, "a", 1, red());
-    next.set_glyph(6, 0, "b", 1, red());
+    poke(&mut next, 0, 0, "a", 1, red());
+    poke(&mut next, 6, 0, "b", 1, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0ma\x1b[1;7Hb\x1b[m"
@@ -245,7 +262,7 @@ fn separate_runs_each_reposition_but_keep_the_running_style() {
 fn a_wide_glyph_writes_once_and_its_continuation_writes_nothing() {
     let prev = Grid::new(4, 1);
     let mut next = prev.clone();
-    next.set_glyph(0, 0, "コ", 2, red());
+    poke(&mut next, 0, 0, "コ", 2, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0mコ\x1b[m"
@@ -258,8 +275,8 @@ fn a_cell_after_a_wide_glyph_needs_no_reposition() {
     // the column after a double-width glyph is already contiguous.
     let prev = Grid::new(4, 1);
     let mut next = prev.clone();
-    next.set_glyph(0, 0, "コ", 2, red());
-    next.set_glyph(2, 0, "a", 1, red());
+    poke(&mut next, 0, 0, "コ", 2, red());
+    poke(&mut next, 2, 0, "a", 1, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0mコa\x1b[m"
@@ -270,8 +287,8 @@ fn a_cell_after_a_wide_glyph_needs_no_reposition() {
 fn rows_are_repositioned_separately() {
     let prev = Grid::new(3, 2);
     let mut next = prev.clone();
-    next.set_glyph(0, 0, "a", 1, red());
-    next.set_glyph(0, 1, "b", 1, red());
+    poke(&mut next, 0, 0, "a", 1, red());
+    poke(&mut next, 0, 1, "b", 1, red());
     assert_eq!(
         painted(&next, Some(&prev), None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0ma\x1b[2;1Hb\x1b[m"
@@ -296,7 +313,7 @@ fn no_cursor_leaves_it_hidden() {
 #[test]
 fn a_full_redraw_emits_every_cell() {
     let mut g = Grid::new(3, 2);
-    g.set_glyph(0, 0, "a", 1, red());
+    poke(&mut g, 0, 0, "a", 1, red());
     assert_eq!(
         painted(&g, None, None),
         "\x1b[?25l\x1b[1;1H\x1b[38;2;255;0;0ma\x1b[39m  \x1b[2;1H   \x1b[m"
@@ -322,7 +339,7 @@ fn a_size_change_resizes_both_grids_and_forces_a_full_repaint() {
 #[test]
 fn an_unchanged_size_touches_neither_grid_nor_the_flag() {
     let mut back = Grid::new(4, 2);
-    back.set_glyph(0, 0, "a", 1, red());
+    poke(&mut back, 0, 0, "a", 1, red());
     let mut front = back.clone();
     let mut force_full = false;
     resize_if_needed(&mut back, &mut front, &mut force_full, 4, 2);

@@ -29,7 +29,7 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     // begins after the whole placeholder.
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let runs: StyledRow = vec![
         ("a\u{200B}b".to_string(), style()),
         ("cd".to_string(), style()),
@@ -52,7 +52,7 @@ fn styled_runs_stop_at_the_right_edge() {
     // whole, never half-drawn.
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let runs: StyledRow = vec![
         ("abc".to_string(), style()),
         ("\u{6F22}z".to_string(), style()),
@@ -73,7 +73,7 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
     // right border has to survive, and nothing may be written past it.
     let mut buf = Grid::new(20, 5);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let outer = Rect::new(2, 0, 8, 3); // inner text spans x 3..9
     let long = vec!["abcdefghij".to_string()];
     draw_menu_box(&mut canvas, outer, &long, Some(0), 0, true, styles(), None);
@@ -90,7 +90,7 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
 fn draw_menu_box_border_frame_snapshot() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let outer = Rect::new(2, 3, 8, 4);
     draw_menu_box(
         &mut canvas,
@@ -115,7 +115,7 @@ fn draw_menu_box_border_frame_snapshot() {
 fn draw_menu_box_no_border_leaves_plain_margin() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let outer = Rect::new(2, 3, 8, 4);
     draw_menu_box(
         &mut canvas,
@@ -140,7 +140,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
 fn draw_menu_box_scrolls_to_keep_selected_visible() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3 (outer height 5), 10 rows total, selected near the end.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
@@ -162,7 +162,7 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
 fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3 (outer height 5), 10 rows total, scrolled to row 4.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
@@ -178,7 +178,7 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
 fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 0: thumb flush at the top.
     let outer = Rect::new(0, 0, 10, 5);
     draw_menu_box(&mut canvas, outer, &rows(10), None, 0, true, styles(), None);
@@ -196,7 +196,7 @@ fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
 fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 4: thumb centered.
     let outer = Rect::new(0, 0, 10, 5);
     draw_menu_box(&mut canvas, outer, &rows(10), None, 4, true, styles(), None);
@@ -214,7 +214,7 @@ fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle
 fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 7 (max_scroll): thumb flush at the bottom.
     let outer = Rect::new(0, 0, 10, 5);
     draw_menu_box(&mut canvas, outer, &rows(10), None, 7, true, styles(), None);
@@ -235,7 +235,7 @@ fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
 fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 1, 10 rows total, scroll = 4 (mid-range).
     let outer = Rect::new(0, 0, 10, 3);
     draw_menu_box(&mut canvas, outer, &rows(10), None, 4, true, styles(), None);
@@ -251,7 +251,7 @@ fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
 fn draw_menu_box_no_overflow_shows_no_scrollbar() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // 2 rows fit entirely inside inner height 3 — nothing to scroll.
     let outer = Rect::new(0, 0, 10, 5);
     draw_menu_box(&mut canvas, outer, &rows(2), None, 0, true, styles(), None);
@@ -269,7 +269,7 @@ fn draw_menu_box_no_overflow_shows_no_scrollbar() {
 fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Same overflowing case as the middle-scroll test above, but with a
     // selection (a menu) — the highlight signals *which* row, the thumb
     // signals how much more there is to scroll past; both show together.
@@ -301,7 +301,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
     let mut buf = Grid::new(20, 20);
     let before = buf.clone();
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     draw_menu_box(
         &mut canvas,
         Rect::new(0, 0, 2, 2),

@@ -11,12 +11,14 @@
 Rope-domain primitives for line counts, line ranges, grapheme boundaries, and rope-position math, shared by every crate that needs to answer "how many lines" or "which line is last." Distinguishes *ropey domain* (ropey's own line indexing, including the phantom trailing line the buffer invariant's structural `\n` creates) from *content domain* (that phantom line excluded); its six functions are the single source of truth for line-count/range math workspace-wide. Its `width` module (`tab_advance`, `grapheme_width`, `str_width`) is likewise the single source of truth for display-column math — depended on directly by every crate that measures it: `hume-ops` (editing-ops tab math), `hume-engine` (the renderer), `hume-editor` (UI chrome), and `hume-scripting` (the `:plugin-status` table), so all four converge on one convention.
 
 # hume-grid
+### Depends on
+- hume-rope
 ### Used by
 - hume-platform
 - hume-engine
 - hume-editor
 ## Description
-The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Position` geometry that describes screen regions, the `ResolvedStyle`/`Rgb` style vocabulary the theme cascade composes, and the double-buffer diff that turns two consecutive frames into the cells worth repainting. Pure data — no terminal, no I/O, no other HUME crate — so every invariant it enforces is testable without a terminal; the half that talks to one lives in `hume-platform`. A cell stores the display width its writer measured rather than re-deriving it, which is what keeps the diff and the emitter agreeing with `hume-rope`'s width model instead of carrying a second one.
+The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Position` geometry that describes screen regions, the `ResolvedStyle`/`Rgb` style vocabulary the theme cascade composes, the double-buffer diff that turns two consecutive frames into the cells worth repainting, and `Canvas` — the frame's single text writer, the only thing built directly on `Grid`'s own cell-mutating primitives (`set_glyph`/`fill_span`, `pub(crate)` for exactly that reason). Pure data plus that one text-measuring dependency — no terminal, no I/O, no other HUME crate — so every invariant it enforces is testable without a terminal; the half that talks to a terminal lives in `hume-platform`. A cell stores the display width its writer measured rather than re-deriving it, which is what keeps the diff and the emitter agreeing with `hume-rope`'s width model instead of carrying a second one — the same model `Canvas` measures with, since `hume-rope` is a real dependency of this crate.
 
 # hume-platform
 ### Depends on

@@ -8,6 +8,24 @@ fn make_test_buf(w: u16, h: u16) -> Grid {
     Grid::new(w, h)
 }
 
+/// Poke stale fixture content directly into `buf` at `(x, y)`, the way these
+/// tests used to via `Grid::set_glyph` before it became private to
+/// `hume-grid` — this is a test setup step, not behaviour under test, so it
+/// goes through `Canvas` (an unbounded `right_edge`: these fixtures write
+/// well within the grid they just allocated) rather than asserting anything
+/// of its own. `Grid`'s own out-of-bounds/clip behavior is covered by
+/// `hume-grid`'s own suite.
+fn poke(buf: &mut Grid, x: u16, y: u16, text: &str) {
+    Canvas::new(buf, ResolvedStyle::default(), None).write_cell(
+        x,
+        y,
+        text,
+        1,
+        ResolvedStyle::default(),
+        u16::MAX,
+    );
+}
+
 fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     DisplayRow {
         kind: RowKind::LineStart { line_idx: 0 },
@@ -65,7 +83,7 @@ fn renders_simple_text() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -118,7 +136,7 @@ fn filler_rows_have_tilde() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
 
     // Rows 1–4 should have '~'
@@ -172,7 +190,7 @@ fn do_compose_row(
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         row,
         graphemes,
@@ -528,7 +546,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -767,7 +785,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -821,7 +839,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     };
     let mut buf = make_test_buf(11, 1);
     for x in 0..11u16 {
-        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
+        poke(&mut buf, x, 0, "Z");
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -844,7 +862,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -954,7 +972,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     };
     let mut buf = make_test_buf(10, 1);
     for x in 0..10u16 {
-        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
+        poke(&mut buf, x, 0, "Z");
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -977,7 +995,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1062,7 +1080,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     };
     let mut buf = make_test_buf(12, 1);
     for x in 0..12u16 {
-        buf.set_glyph(x, 0, "Z", 1, ResolvedStyle::default());
+        poke(&mut buf, x, 0, "Z");
     }
     let mut registry = crate::theme::ScopeRegistry::new();
     let default_gutter_scope = registry.intern("ui.linenr");
@@ -1085,7 +1103,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1200,7 +1218,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             rope: &rope,
             default_gutter_scope,
         };
-        let mut canvas = Canvas::new(&mut buf, &theme, None);
+        let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
         compose_row(
             &rows[0],
             &graphemes,
@@ -1309,7 +1327,7 @@ fn gutter_column_reads_rope_via_ctx() {
         rope: &rope,
         default_gutter_scope,
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_row(
         &rows[0],
         &graphemes,
@@ -1330,23 +1348,15 @@ fn gutter_column_reads_rope_via_ctx() {
 }
 
 #[test]
-fn set_cell_out_of_bounds_no_panic() {
-    let mut buf = make_test_buf(10, 5);
-    // Call with coordinates well beyond the buffer area — must not panic.
-    buf.set_glyph(100, 100, "x", 1, ResolvedStyle::default());
-    buf.set_glyph(10, 0, "x", 1, ResolvedStyle::default()); // exactly at boundary
-}
-
-#[test]
 fn fill_row_bg_none_fills_with_blank() {
     let mut buf = make_test_buf(10, 3);
     // Write something so we can confirm clearing works.
     for x in 0..10 {
-        buf.set_glyph(x, 1, "X", 1, ResolvedStyle::default());
+        poke(&mut buf, x, 1, "X");
     }
     let theme = Theme::default();
     // Clear the middle 4 columns of row 1.
-    Canvas::new(&mut buf, &theme, None).fill_row_bg(3, 7, 1, None);
+    Canvas::new(&mut buf, theme.ui.invisible, None).fill_row_bg(3, 7, 1, None);
     for x in 0..10 {
         let sym = buf.cell(x, 1).unwrap().text();
         if (3..7).contains(&x) {
@@ -1361,11 +1371,11 @@ fn fill_row_bg_none_fills_with_blank() {
 fn fill_row_bg_none_clips_right_edge() {
     let mut buf = make_test_buf(10, 3);
     for x in 0..10 {
-        buf.set_glyph(x, 0, "X", 1, ResolvedStyle::default());
+        poke(&mut buf, x, 0, "X");
     }
     let theme = Theme::default();
     // x_end extends past the buffer's right edge — should clip, not panic.
-    Canvas::new(&mut buf, &theme, None).fill_row_bg(8, 20, 0, None);
+    Canvas::new(&mut buf, theme.ui.invisible, None).fill_row_bg(8, 20, 0, None);
     for x in 0..10 {
         let sym = buf.cell(x, 0).unwrap().text();
         if x >= 8 {
@@ -1381,7 +1391,7 @@ fn fill_row_bg_none_empty_range_no_panic() {
     let mut buf = make_test_buf(10, 3);
     let theme = Theme::default();
     // x_start == x_end and x_start > x_end should both be no-ops.
-    let mut canvas = Canvas::new(&mut buf, &theme, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     canvas.fill_row_bg(5, 5, 0, None);
     canvas.fill_row_bg(7, 3, 0, None);
 }
@@ -1433,7 +1443,7 @@ fn compose_row_dims_cells_inline() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, Some((Rgb(0, 0, 0), 0.5)));
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_row(
         &rows[0],
         &graphemes,
@@ -1492,7 +1502,7 @@ fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
         rope: &rope,
         default_gutter_scope: ScopeId(0),
     };
-    let mut canvas = Canvas::new(&mut buf, &theme, Some((Rgb(0, 0, 0), 0.5)));
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_row(
         &rows[0],
         &graphemes,
@@ -1520,10 +1530,10 @@ fn fill_rect_bg_clears_stale_modifiers() {
         modifiers: Modifiers::ITALIC | Modifiers::BOLD,
         ..Default::default()
     };
-    Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "x", emphasised, 4);
+    Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "x", emphasised, 4);
     assert_eq!(buf[(0, 0)].style().modifiers, emphasised.modifiers);
 
-    Canvas::new(&mut buf, &theme, None).fill_rect_bg(
+    Canvas::new(&mut buf, theme.ui.invisible, None).fill_rect_bg(
         Rect {
             x: 0,
             y: 0,
@@ -1548,7 +1558,8 @@ fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();
-    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\tb", style, 10);
+    let after =
+        Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "a\tb", style, 10);
 
     assert_eq!(buf[(0, 0)].text(), "a");
     assert_eq!(buf[(1, 0)].text(), " ", "a tab draws as a single space");
@@ -1579,7 +1590,13 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
         fg: Some(Rgb(255, 0, 0)),
         ..Default::default()
     };
-    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 10);
+    let after = Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(
+        0,
+        0,
+        "a\u{200b}b",
+        style,
+        10,
+    );
 
     assert_eq!(buf[(0, 0)].text(), "a");
     assert_eq!(buf[(0, 0)].style().fg, Some(Rgb(255, 255, 255)));
@@ -1604,7 +1621,8 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();
-    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 1);
+    let after =
+        Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "中", style, 1);
 
     assert_eq!(
         buf[(0, 0)].text(),
@@ -1621,13 +1639,13 @@ fn write_text_run_claims_the_continuation_cell_of_a_wide_grapheme() {
     // whatever the grid held before.
     let mut buf = make_test_buf(10, 1);
     // Stale content the write must displace.
-    buf.set_glyph(1, 0, "X", 1, ResolvedStyle::default());
+    poke(&mut buf, 1, 0, "X");
     let style = ResolvedStyle {
         fg: Some(Rgb(255, 255, 255)),
         ..Default::default()
     };
     let theme = Theme::default();
-    Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "中", style, 10);
+    Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "中", style, 10);
 
     assert_eq!(buf[(0, 0)].text(), "中");
     assert_eq!(buf[(0, 0)].advance(), 2);
@@ -1652,7 +1670,13 @@ fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edg
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();
-    let after = Canvas::new(&mut buf, &theme, None).write_text_run(0, 0, "a\u{200b}b", style, 4);
+    let after = Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(
+        0,
+        0,
+        "a\u{200b}b",
+        style,
+        4,
+    );
 
     assert_eq!(buf[(0, 0)].text(), "a");
     for x in 1..4u16 {

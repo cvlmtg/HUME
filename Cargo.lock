@@ -734,7 +734,9 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.13.1",
  "compact_str 0.10.0",
+ "hume-rope",
  "proptest",
+ "unicode-segmentation",
 ]
 
 [[package]]

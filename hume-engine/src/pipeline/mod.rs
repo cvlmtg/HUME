@@ -329,7 +329,7 @@ impl EngineView {
             // One canvas for every chrome row. Chrome is never dimmed, so
             // they all share the same `dim: None` — a canvas per provider
             // would only re-derive that.
-            let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
+            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
 
             // ── Render tab bar ────────────────────────────────────────────────
             if let Some(ref tabbar) = self.tabbar {
@@ -485,7 +485,7 @@ impl EngineView {
             // before the canvas takes its exclusive `&mut Grid` for the whole
             // seam pass.
             let (grid_w, grid_h) = grid.size();
-            let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
+            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
             for seam in &ctx.seams {
                 let (x0, y0, x1, y1) =
                     crate::render::clamp_rect_to_grid((grid_w, grid_h), seam.rect);
@@ -520,7 +520,7 @@ impl EngineView {
         // ── Render overlays on top (may span panes) ───────────────────────────
         // One canvas for all of them, for the same reason chrome shares one:
         // an overlay is never dimmed either.
-        let mut canvas = crate::render::Canvas::new(grid, &self.theme, None);
+        let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
         for (pane_id, _rect) in pane_rects.iter().copied() {
             let Some(pane) = self.panes.get(pane_id) else {
                 continue;

@@ -198,7 +198,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         rope: &rope,
         default_gutter_scope: blank_scope,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, &theme, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_row(
         &rows[0],
         &graphemes,
@@ -289,7 +289,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         rope: &rope,
         default_gutter_scope: blank_scope,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, &theme, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_row(
         &rows[0],
         &graphemes,
@@ -497,7 +497,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         rope: &rope,
         default_gutter_scope: blank_scope,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, &theme, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_row(
         &rows[0],
         &graphemes,

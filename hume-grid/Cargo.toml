@@ -6,6 +6,12 @@ edition = "2024"
 [dependencies]
 bitflags.workspace = true
 compact_str = "0.10"
+# `Canvas` (canvas.rs) measures text with `hume_rope::width` and walks
+# grapheme clusters with `unicode-segmentation` — the same width model every
+# other crate that draws or measures text converges on (see `hume-rope`'s
+# own crate doc).
+hume-rope = { path = "../hume-rope" }
+unicode-segmentation.workspace = true
 
 [dev-dependencies]
 proptest = "1.11.0"
