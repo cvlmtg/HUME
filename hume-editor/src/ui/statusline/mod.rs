@@ -451,7 +451,7 @@ fn render_statusline(
     area: Rect,
     y: u16,
 ) {
-    let config = &editor.state.settings.statusline;
+    let config = editor.state.settings.statusline();
 
     let (left_elems, center_elems, right_elems): (
         &[StatusElement],

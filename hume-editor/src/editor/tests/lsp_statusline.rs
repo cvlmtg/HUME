@@ -155,7 +155,7 @@ fn configure_statusline_round_trips_diagnostics_element_name() {
     crate::editor::commands::typed_set(&mut ed, Some("global statusline=Diagnostics||"), false)
         .unwrap();
     assert_eq!(
-        ed.state.settings.statusline.left,
+        ed.state.settings.statusline().left,
         vec![StatusElement::Diagnostics]
     );
 }

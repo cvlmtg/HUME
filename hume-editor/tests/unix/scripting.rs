@@ -1,4 +1,4 @@
-use crate::mock_host::MockHost;
+use hume::testing::MockHost;
 use hume_scripting::*;
 
 fn host() -> ScriptingHost {

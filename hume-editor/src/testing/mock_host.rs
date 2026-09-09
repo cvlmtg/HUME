@@ -5,10 +5,11 @@
 //! `set-option!` / `bind-key!` side effects directly, without a full editor
 //! session.
 //!
-//! Included in two ways:
-//! - `editor/src/testing/mod.rs` → `mod mock_host` for lib unit tests.
-//! - `editor/tests/scripting.rs` → `#[path = "../src/testing/mock_host.rs"]`
-//!   for integration tests.
+//! Reached two ways, both through the one real module (no `#[path]`
+//! duplication): lib unit tests get it under plain `#[cfg(test)]`;
+//! `editor/tests/scripting.rs` and `editor/tests/unix/main.rs` link against
+//! it as `hume::testing::MockHost` via the `test-util` feature their
+//! `Cargo.toml` dev-dependency enables on this crate.
 //!
 //! Uses `hume::` paths throughout; `extern crate self as hume` in `lib.rs`
 //! makes those resolve correctly in the lib-crate context too.
@@ -41,56 +42,27 @@ use hume_scripting::host::{
     SettingsHost,
 };
 
-/// Mirrors `hume::editor::event`'s Steel-visible event names by hand — that
-/// module is `pub(crate)`, unreachable from the `tests/scripting.rs`
-/// integration crate this file is also spliced into via `#[path]`, so this
-/// list can't delegate to the real one there. Same trade-off this file
-/// already accepts for every other capability: a faithful mirror, kept in
-/// sync by hand, not shared code. The lib-unit-test build (`testing/mod.rs`'s
-/// `mod mock_host`) *can* reach the real list, so
-/// `testing::tests::mock_host::mock_host_event_names_match_the_real_event_set`
-/// asserts the two stay equal — it just can't run from the integration-test
-/// build, where this drifting silently is the risk this comment describes.
-pub(super) const MOCK_HOST_EVENT_NAMES: &[&str] = &[
-    "on-buffer-open",
-    "on-buffer-close",
-    "on-buffer-save",
-    "on-buffer-enter",
-    "on-focus-gained",
-    "on-mode-change",
-    "on-language-set",
-    "on-lsp-attach",
-    "on-lsp-detach",
-    "on-diagnostics-changed",
-    "on-viewport-change",
-    "on-trigger-char",
-    "on-completion-accept",
-    "on-completion-refilter",
-    "on-option-change",
-    "on-text-changed",
-];
-
-pub(crate) struct MockHost {
-    pub(crate) settings: hume::settings::EditorSettings,
+pub struct MockHost {
+    pub settings: hume::settings::EditorSettings,
     /// Grammar names attached via `(register-grammar! …)`.
-    pub(crate) grammars: rustc_hash::FxHashSet<String>,
+    pub grammars: rustc_hash::FxHashSet<String>,
     /// Commands registered via `(define-command! …)` during evals.
-    pub(crate) registered_cmds: Vec<hume_scripting::SteelCmdDef>,
+    pub registered_cmds: Vec<hume_scripting::SteelCmdDef>,
     /// Typed commands registered via `(define-typed-command! …)` during evals.
-    pub(crate) registered_typed_cmds: Vec<hume_scripting::SteelTypedCmdDef>,
+    pub registered_typed_cmds: Vec<hume_scripting::SteelTypedCmdDef>,
     /// Names treated as native by `command_is_native`.  Empty by default
     /// (all commands return `Ok(false)`).  Tests populate this to exercise
     /// the `run_command_sync` path.
-    pub(crate) native_names: rustc_hash::FxHashSet<String>,
+    pub native_names: rustc_hash::FxHashSet<String>,
     /// Record of every `run_command_sync` call: `(name, count, extend, register)`.
     /// `count` is `None` when the Steel side passed `0` ("no count typed").
-    pub(crate) dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
+    pub dispatched_native: Vec<(String, Option<usize>, bool, Option<char>)>,
     /// Lazy activation stubs registered via `register_lazy_command`.
-    pub(crate) lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
+    pub lazy_cmds: rustc_hash::FxHashMap<String, hume_scripting::attribution::PluginId>,
 }
 
 impl MockHost {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             settings: hume::settings::EditorSettings::default(),
             grammars: rustc_hash::FxHashSet::default(),
@@ -140,7 +112,10 @@ impl EditorHost for MockHost {
 
 impl EventHost for MockHost {
     fn known_event_names(&self) -> &'static [&'static str] {
-        MOCK_HOST_EVENT_NAMES
+        // MockHost is a real part of this crate now, not text spliced into a
+        // foreign test crate, so it can name `crate::editor::event` directly
+        // instead of keeping a hand-written mirror of its event list in sync.
+        crate::editor::event::known_event_names()
     }
 }
 
@@ -226,16 +201,18 @@ impl SettingsHost for MockHost {
         center: Vec<String>,
         right: Vec<String>,
     ) -> Result<(), String> {
+        // `EditorSettings.statusline` is private outside `settings.rs`, so
+        // this re-serializes to the wire format and writes through
+        // `write_global` — the same path `EditorHostImpl::configure_statusline`
+        // (`host_impl.rs`) uses, rather than a second, mock-only writer.
         use hume::ui::statusline::{StatusLineConfig, parse_statusline_section};
-        let left = parse_statusline_section(left, "left")?;
-        let center = parse_statusline_section(center, "center")?;
-        let right = parse_statusline_section(right, "right")?;
-        self.settings.statusline = StatusLineConfig {
-            left,
-            center,
-            right,
+        let cfg = StatusLineConfig {
+            left: parse_statusline_section(left, "left")?,
+            center: parse_statusline_section(center, "center")?,
+            right: parse_statusline_section(right, "right")?,
         };
-        Ok(())
+        let wire = hume::settings::format_statusline(&cfg);
+        hume::settings::write_global("statusline", &wire, &mut self.settings)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64

@@ -43,7 +43,16 @@ regex-cursor = "0.1.5"
 arboard = { version = "3", default-features = false }
 nucleo-matcher = "0.3.1"
 
+[features]
+# Exposes `testing::MockHost` to consumer crates — same convention as
+# hume-lsp's `test-util` (see its `src/lib.rs`). Turned on below by this
+# crate's own dev-dependency on itself, for `tests/scripting.rs` and
+# `tests/unix/main.rs`, which link against the lib rather than being
+# compiled into it.
+test-util = []
+
 [dev-dependencies]
+hume-editor = { path = ".", features = ["test-util"] }
 # Independent width oracle for UI-chrome tests: asserts against `unicode-width`
 # directly rather than through `hume_rope::width`, the code under test.
 unicode-width.workspace = true

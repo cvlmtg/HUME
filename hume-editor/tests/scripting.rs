@@ -1,14 +1,12 @@
-// Alias so mock_host.rs (included below via #[path]) can keep its `hume::` paths.
+// Alias so this file can use `hume::` paths, matching the lib's own
+// `extern crate self as hume`.
 extern crate hume_editor as hume;
 
-#[path = "../src/testing/mock_host.rs"]
-mod mock_host;
-
+use hume::testing::MockHost;
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::EvalWatchdog;
 use hume_scripting::host::BindMode;
 use hume_scripting::*;
-use mock_host::MockHost;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -552,12 +550,12 @@ fn configure_statusline_sets_left_section() {
     .unwrap();
 
     assert_eq!(
-        mock.settings.statusline.left,
+        mock.settings.statusline().left,
         vec![StatusElement::Mode, StatusElement::FileName]
     );
-    assert_eq!(mock.settings.statusline.center, vec![]);
+    assert_eq!(mock.settings.statusline().center, vec![]);
     assert_eq!(
-        mock.settings.statusline.right,
+        mock.settings.statusline().right,
         vec![StatusElement::Position]
     );
 }
@@ -578,7 +576,7 @@ fn configure_statusline_all_sections() {
     .unwrap();
 
     assert_eq!(
-        mock.settings.statusline.left,
+        mock.settings.statusline().left,
         vec![
             StatusElement::Position,
             StatusElement::FileName,
@@ -586,11 +584,11 @@ fn configure_statusline_all_sections() {
         ]
     );
     assert_eq!(
-        mock.settings.statusline.center,
+        mock.settings.statusline().center,
         vec![StatusElement::SearchMatches]
     );
     assert_eq!(
-        mock.settings.statusline.right,
+        mock.settings.statusline().right,
         vec![StatusElement::Separator, StatusElement::Mode]
     );
 }
@@ -603,9 +601,9 @@ fn configure_statusline_empty_sections() {
     h.eval_source("(configure-statusline! '() '() '())", &mut mock)
         .unwrap();
 
-    assert!(mock.settings.statusline.left.is_empty());
-    assert!(mock.settings.statusline.center.is_empty());
-    assert!(mock.settings.statusline.right.is_empty());
+    assert!(mock.settings.statusline().left.is_empty());
+    assert!(mock.settings.statusline().center.is_empty());
+    assert!(mock.settings.statusline().right.is_empty());
 }
 
 #[test]
@@ -635,11 +633,11 @@ fn configure_statusline_new_elements() {
     .unwrap();
 
     assert_eq!(
-        mock.settings.statusline.left,
+        mock.settings.statusline().left,
         vec![StatusElement::LineEnding]
     );
-    assert_eq!(mock.settings.statusline.center, vec![]);
-    assert_eq!(mock.settings.statusline.right, vec![StatusElement::Cwd]);
+    assert_eq!(mock.settings.statusline().center, vec![]);
+    assert_eq!(mock.settings.statusline().right, vec![StatusElement::Cwd]);
 }
 
 #[test]

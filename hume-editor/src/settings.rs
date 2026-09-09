@@ -553,6 +553,13 @@ macro_rules! define_settings {
             $( pub $bname: $btype, )*
             $( pub $egname: $egtype, )*
             $( pub $ebname: $ebtype, )*
+            /// Not `pub`, unlike every other field here: `write_global`'s
+            /// hand-written `"statusline"` arm is its only legal writer, so
+            /// keeping the field itself private (rather than merely
+            /// `pub(crate)`) makes a raw assignment from anywhere else in
+            /// this crate — the theme bug commit 3c97bd44 hit — a compile
+            /// error instead of a bug. Read through [`EditorSettings::statusline`].
+            statusline: StatusLineConfig,
         }
 
         impl Default for EditorSettings {
@@ -562,7 +569,16 @@ macro_rules! define_settings {
                     $( $bname: $bdefault, )*
                     $( $egname: $egdefault, )*
                     $( $ebname: $ebdefault, )*
+                    statusline: StatusLineConfig::default(),
                 }
+            }
+        }
+
+        impl EditorSettings {
+            /// Read the resolved statusline config. There is no write
+            /// counterpart on this type — see the field's own doc.
+            pub fn statusline(&self) -> &StatusLineConfig {
+                &self.statusline
             }
         }
 
@@ -597,14 +613,15 @@ macro_rules! define_settings {
         /// and runs those effects; calling this directly would silently skip
         /// them.
         ///
-        /// Stays `pub` (not `pub(crate)`) only because `testing/mock_host.rs`
-        /// — which has no editor state to resync effects against, so it must
-        /// call this raw writer — is `#[path]`-included into two external
-        /// integration-test crates where `pub(crate)` would be invisible.
-        /// `editor::lints::write_global_and_write_buffer_only_called_from_allowlist`
-        /// enforces the "chokepoint or MockHost only" restriction at the
-        /// source level instead of via the type system.
-        pub fn write_global(key: &str, value: &str, settings: &mut EditorSettings) -> Result<(), String> {
+        /// `pub(crate)`: the only other caller, `testing::MockHost` (which has
+        /// no editor state to resync effects against), is a real module of
+        /// this crate — never text spliced into a foreign crate — so it
+        /// reaches this directly without needing wider visibility.
+        pub(crate) fn write_global(
+            key: &str,
+            value: &str,
+            settings: &mut EditorSettings,
+        ) -> Result<(), String> {
             match key {
                 $( $gkey => { settings.$gname = parse_setting!(value, key, $gparser)?; } )*
                 $( $bkey => { settings.$bname = parse_setting!(value, key, $bparser)?; } )*
@@ -923,7 +940,10 @@ define_settings! {
             parser: bool;
     }
     extra_global {
-        statusline: StatusLineConfig = StatusLineConfig::default();
+        // `statusline` is declared directly on the struct template above,
+        // not here: `extra_global` fields are all `pub`, and `statusline`
+        // must not be.
+        //
         // Full whitespace config lives on EditorSettings; per-sub-field buffer
         // overrides are declared in `subfield` below.
         whitespace: WhitespaceConfig = WhitespaceConfig::default();

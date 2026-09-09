@@ -7,10 +7,8 @@
 
 #![cfg(unix)]
 
-// Alias so mock_host.rs (included below via #[path]) can keep its `hume::` paths.
+// Alias so `scripting.rs` can use `hume::` paths, matching the lib's own
+// `extern crate self as hume`.
 extern crate hume_editor as hume;
-
-#[path = "../../src/testing/mock_host.rs"]
-mod mock_host;
 
 mod scripting;

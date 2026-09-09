@@ -6,7 +6,7 @@
 //! [`MockHost`] depends on `hume_engine` + `hume_scripting` and stays here.
 
 mod mock_host;
-pub(crate) use mock_host::MockHost;
+pub use mock_host::MockHost;
 
 #[cfg(test)]
 mod tests;

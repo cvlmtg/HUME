@@ -259,7 +259,7 @@ fn reset_reverts_statusline_config_to_default() {
     ed.scripting = Some(host);
 
     assert_eq!(
-        ed.state.settings.statusline.left,
+        ed.state.settings.statusline().left,
         vec![StatusElement::Cwd],
         "sanity: the write must land"
     );
@@ -267,9 +267,9 @@ fn reset_reverts_statusline_config_to_default() {
     ed.reset_config_state();
 
     let default = crate::ui::statusline::StatusLineConfig::default();
-    assert_eq!(ed.state.settings.statusline.left, default.left);
-    assert_eq!(ed.state.settings.statusline.center, default.center);
-    assert_eq!(ed.state.settings.statusline.right, default.right);
+    assert_eq!(ed.state.settings.statusline().left, default.left);
+    assert_eq!(ed.state.settings.statusline().center, default.center);
+    assert_eq!(ed.state.settings.statusline().right, default.right);
 }
 
 /// The loaded theme reverts to the compiled-in default (`sand.toml`) — not

@@ -261,7 +261,7 @@ fn macro_status_indicator() {
     use crate::ui::statusline::StatusElement;
 
     let ed = editor_from("-[a]>bcd\n");
-    let config = &ed.state.settings.statusline;
+    let config = ed.state.settings.statusline();
     assert!(
         config.right.contains(&StatusElement::MacroRecording),
         "MacroRecording should be in the default right section"

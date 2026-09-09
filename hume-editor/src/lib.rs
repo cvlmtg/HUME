@@ -18,8 +18,13 @@ extern crate self as hume;
 mod proptest_doc;
 #[cfg(test)]
 mod proptest_editor;
-#[cfg(test)]
-pub(crate) mod testing;
+// `pub`, not `pub(crate)`: `tests/scripting.rs` and `tests/unix/main.rs` are
+// separate crates that link against this lib rather than being compiled into
+// it, so `pub(crate)` would be invisible to them. `test-util` is what lets
+// those crates' `Cargo.toml` dev-dependency turn this module on without it
+// leaking into a release build.
+#[cfg(any(test, feature = "test-util"))]
+pub mod testing;
 
 /// Run a key sequence against a file without entering the interactive terminal.
 ///

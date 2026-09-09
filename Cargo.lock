@@ -684,6 +684,7 @@ dependencies = [
  "clap",
  "globset",
  "hume-editing",
+ "hume-editor",
  "hume-engine",
  "hume-grid",
  "hume-lsp",
