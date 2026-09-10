@@ -944,8 +944,9 @@ fn insert_block_shape_paints_the_head_in_both_panes() {
 /// shape — Helix's own border code leaves an unset fg as whatever the
 /// terminal already shows) must not leave the seam glyph's foreground
 /// unthemed in HUME: it falls back to `ui.text`'s color, the same base every
-/// other undecorated surface (a content row, a virtual row) already falls
-/// back to. See `EngineView::render`'s seam block in `hume-engine/src/pipeline/mod.rs`.
+/// other undecorated surface (an ordinary content line, a virtual line)
+/// already falls back to. See `EngineView::render`'s seam block in
+/// `hume-engine/src/pipeline/mod.rs`.
 #[test]
 fn seam_divider_falls_back_to_ui_text_when_window_has_no_fg() {
     use super::render_snapshot::render_to_styled_string;

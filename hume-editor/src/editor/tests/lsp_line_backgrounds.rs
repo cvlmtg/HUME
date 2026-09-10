@@ -112,12 +112,12 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     assert_eq!(
         buf[(0, 0)].style().bg,
         expected_bg,
-        "line 0's first wrap row"
+        "line 0's first wrapped display line"
     );
     assert_eq!(
         buf[(0, 1)].style().bg,
         expected_bg,
-        "line 0's second wrap row"
+        "line 0's second wrapped display line"
     );
 }
 

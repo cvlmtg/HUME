@@ -5,7 +5,7 @@
 use super::*;
 
 /// `n` one-line paragraphs, each followed by a blank line — paragraph `i`
-/// starts at buffer line `2 * i`. Unwrapped, so a display row is a buffer
+/// starts at buffer line `2 * i`. Unwrapped, so a display line is a buffer
 /// line and `viewport.top_line` is directly comparable to it.
 fn paragraph_editor(n: usize) -> Editor {
     let content: String = (0..n).map(|i| format!("para{i}\n\n")).collect();

@@ -348,7 +348,7 @@ fn virtual_line_spec_rejects_carriage_return_in_text() {
 
 #[test]
 fn virtual_line_spec_keeps_a_literal_tab_in_text() {
-    // The engine expands a tab in a virtual row's text to the next tab
+    // The engine expands a tab in a virtual line's text to the next tab
     // stop (`hume_engine::display_lines::segment_virtual_line`) — this builtin no
     // longer expands it, or rejects it, itself.
     let entry = hashmap(vec![

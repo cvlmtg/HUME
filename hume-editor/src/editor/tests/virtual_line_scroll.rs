@@ -1,17 +1,17 @@
 // Editor-level integration tests for the two ways a provider can add display
-// rows the buffer text alone does not account for, and the requirement that
+// lines the buffer text alone does not account for, and the requirement that
 // the renderer and `cursor::content_pos` agree about both:
 //
-//   - a VIRTUAL_LINE-kind `DecorationSource`'s `Before`/`After` rows, which
+//   - a VIRTUAL_LINE-kind `DecorationSource`'s `Before`/`After` lines, which
 //     occupy whole screen rows (the "virtual-line scroll accounting" risk),
 //   - an INLINE-kind `DecorationSource`'s inserts, which take columns and so
-//     can push a line onto an extra wrap row.
+//     can push a line onto an extra wrapped display line.
 //
 // `PaneVirtualLines` can now emit `Before` too (`set-virtual-lines!`'s
 // `'anchor`); these register synthetic
 // providers directly on the pane instead, mirroring `cursor/tests.rs`'s and
-// `scroll/tests.rs`'s `OneBeforeLine` doubles, to isolate row-counting math
-// from the Steel bridge (that path is exercised separately in
+// `scroll/tests.rs`'s `OneBeforeLine` doubles, to isolate display-line-
+// counting math from the Steel bridge (that path is exercised separately in
 // `lsp_virtual_lines.rs`).
 
 use super::doubles::{InlineHint, VirtualLineBlock};
@@ -58,7 +58,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let rect = Rect::new(0, 0, 10, 4);
     let buf = ed.render_to_buf(rect);
 
-    assert_eq!(cell(&buf, 0, 0), "V", "sanity: virtual row drawn at row 0");
+    assert_eq!(cell(&buf, 0, 0), "V", "sanity: virtual line drawn at row 0");
     assert_eq!(cell(&buf, 0, 1), "x", "line 0's content pushed to row 1");
     assert_eq!(cell(&buf, 0, 2), "y", "line 1 follows at row 2");
 
@@ -88,9 +88,10 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
 #[test]
 fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // Wheel scrolling (`scroll_viewport_down`) must walk through the
-    // 2-row block ([V, x]) one display row per notch — never skip the whole
-    // block in a single notch. Viewport height 2 is shorter than the 3-row
-    // total content (V, x, y), so there's genuinely something to scroll.
+    // 2-display-line block ([V, x]) one display line per notch — never skip
+    // the whole block in a single notch. Viewport height 2 is shorter than
+    // the 3-display-line total content (V, x, y), so there's genuinely
+    // something to scroll.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
     ed.view.panes[ed.state.focused_pane_id].viewport.height = 2;
@@ -98,14 +99,18 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     let scroll_down = || mouse_wheel(true);
 
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
-    assert_eq!(ed.viewport().top_slot, 0, "sanity: starts at block row 0");
+    assert_eq!(
+        ed.viewport().top_slot,
+        0,
+        "sanity: starts at the block's first (virtual) line"
+    );
 
     ed.handle_input(scroll_down());
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
     assert_eq!(
         ed.viewport().top_slot,
         1,
-        "one notch skips exactly the virtual row, not the whole 2-row block"
+        "one notch skips exactly the virtual line, not the whole 2-display-line block"
     );
 
     ed.handle_input(scroll_down());
@@ -118,14 +123,14 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
 }
 
 /// Screen-relative cursor-follow (`VerticalUnit::AnyDisplayLine` — mouse wheel,
-/// page/half-page scroll) must count virtual rows toward its display-row
-/// budget: moving "5 display rows" down through a 3-row `After(1)` block
-/// only advances the cursor 2 REAL lines (0 → 1 → 2), not 5 — matching
+/// page/half-page scroll) must count virtual lines toward its display-line
+/// budget: moving "5 display lines" down through a 3-display-line `After(1)`
+/// block only advances the cursor 2 REAL lines (0 → 1 → 2), not 5 — matching
 /// where the viewport itself would land, in either wrap mode. Plain `j`/`k`
-/// (`VerticalUnit::ContentDisplayLine`, exercised elsewhere) are unaffected: virtual
-/// rows stay free for those.
+/// (`VerticalUnit::ContentDisplayLine`, exercised elsewhere) are unaffected:
+/// virtual lines stay free for those.
 #[test]
-fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
+fn any_display_line_cursor_follow_counts_virtual_lines_toward_its_budget() {
     use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
     use hume_ops::MotionMode;
 
@@ -162,27 +167,29 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
         assert_eq!(
             cursor_line,
             hume_rope::line::ContentLine::new(2),
-            "5 display rows crosses 3 virtual After(1) rows, landing on real line 2, not 5 ({wrap:?})"
+            "5 display lines crosses 3 virtual After(1) lines, landing on real line 2, not 5 ({wrap:?})"
         );
     }
 }
 
-// ── Inline decorations count toward the wrap row budget ──────────────────
+// ── Inline decorations count toward the display-line budget ──────────────
 //
-// The other axis of the same "counted rows must equal rendered rows"
-// requirement. An inline insert takes columns, so it participates in
-// wrapping: a line that fits on one row without it can need two with it.
-// Row counting that formats without inserts reports one row where the
-// renderer draws two, and everything below the hint lands one row off.
+// The other axis of the same "counted display lines must match rendered
+// rows" requirement. An inline insert takes columns, so it participates in
+// wrapping: a line that fits on one display line without it can need two
+// with it. Display-line counting that formats without inserts reports one
+// display line where the renderer draws two, and everything below the hint
+// lands one row off.
 
 #[test]
 fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
-    // on its own. The 6-column hint makes 12, wrapping it onto a second row:
+    // on its own. The 6-column hint makes 12, wrapping it onto a second
+    // display line:
     //
     //   row 0  HHHHHHabcd
     //   row 1  ef
-    //   row 2  y            ← line 1, pushed down by the hint's wrap row
+    //   row 2  y            ← line 1, pushed down by the hint's extra display line
     let text = BufferText::from("abcdef\ny\n");
     // Cursor on line 1 (char 7), below the wrap the hint causes.
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
@@ -204,7 +211,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     assert_eq!(
         cell(&rendered, 0, 1),
         "e",
-        "the hint pushed 'ef' onto a second wrap row"
+        "the hint pushed 'ef' onto a second display line"
     );
     assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
 
@@ -221,6 +228,6 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     assert_eq!(
         crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char).map(|(_, row)| row),
         Some(2),
-        "content_pos must count the hint's wrap row, as the renderer does"
+        "content_pos must count the hint's extra display line, as the renderer does"
     );
 }

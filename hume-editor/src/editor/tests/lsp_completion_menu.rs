@@ -667,8 +667,8 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     let pid = ed.state.focused_pane_id;
     // Explicit non-zero width, independent of the terminal size passed to
-    // `prepare_frame` below, so the cursor lands several wrap rows into the
-    // line regardless of pane width.
+    // `prepare_frame` below, so the cursor lands several display lines into
+    // the wrapped line regardless of pane width.
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 6 }),
         saved: None,

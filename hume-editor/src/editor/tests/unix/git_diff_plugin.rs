@@ -549,7 +549,7 @@ fn inline_pure_addition_has_no_virtual_line_only_tint() {
     assert_eq!(
         vlines(&ed, bid),
         Vec::new(),
-        "nothing was removed, so a pure addition contributes no virtual row"
+        "nothing was removed, so a pure addition contributes no virtual line"
     );
     assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.plus.line".to_string())]);
 }

@@ -356,7 +356,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
 #[test]
 fn before_virtual_line_renders_when_not_skipped() {
     // top_slot=0: the Before(0) virtual line renders at screen row
-    // 0, pushing wrap row 0 ("aaaa") down to screen row 1.
+    // 0, pushing wrapped display line 0 ("aaaa") down to screen row 1.
     let buf =
         render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(cell_symbol(&buf, 0, 0), "V", "virtual line at screen row 0");
@@ -377,8 +377,8 @@ fn after_virtual_line_renders_below_skipped_display_lines() {
     // sentinel.
     let buf =
         render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(ContentLine::new(0)));
-    assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap row 1");
-    assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap row 2");
+    assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap display line 1");
+    assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap display line 2");
     assert_eq!(
         cell_symbol(&buf, 0, 2),
         " ",

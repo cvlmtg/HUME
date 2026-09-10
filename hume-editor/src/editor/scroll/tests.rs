@@ -158,7 +158,7 @@ fn cursor_sub_display_line_wrapped() {
 // ── ensure_cursor_visible (wrap) top/bottom margin enforcement ───────────
 //
 // 10 lines of "ab\n". Under Soft{width:3}, "ab" (2 columns) fits with a
-// column to spare → 1 display row per line, exercising the wrapped code
+// column to spare → 1 display line per buffer line, exercising the wrapped code
 // path (Soft is_wrapping=true) even though no line actually wraps. Width 3
 // rather than 2 keeps the trailing '\n's own sentinel on that same row too
 // — at width 2 "ab" would exactly fill it, wrapping the sentinel onto a row
@@ -594,10 +594,10 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
         "the scroll step must resolve the cursor with a single format"
     );
 
-    // ...and the cell it produced is the one a *second* row map would also
-    // compute, so nothing is traded away by sharing it. Runs after the count
-    // above: re-deriving is exactly the second format being ruled out, so it
-    // has to stay on this side of the assertion.
+    // ...and the cell it produced is the one a *second* `DisplayLineMap`
+    // format would also compute, so nothing is traded away by sharing it.
+    // Runs after the count above: re-deriving is exactly the second format
+    // being ruled out, so it has to stay on this side of the assertion.
     let mut s = PaneLineStore::new();
     let walked = cursor::content_pos(
         &v,

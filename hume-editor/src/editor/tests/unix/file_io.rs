@@ -527,7 +527,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     let f = safe_named_tempfile();
     // 200 short lines — well past a 24-row terminal, and each far under 80
     // columns so nothing soft-wraps regardless of the buffer's wrap-mode
-    // default, keeping the buffer-line-to-display-row mapping 1:1.
+    // default, keeping the buffer-line-to-display-line mapping 1:1.
     let content: String = (1..=200).map(|n| format!("line {n}\n")).collect();
     std::fs::write(f.path(), &content).unwrap();
     let canonical = std::fs::canonicalize(f.path()).unwrap();

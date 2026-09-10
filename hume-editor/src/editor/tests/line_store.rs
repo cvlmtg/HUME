@@ -250,7 +250,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     assert_eq!(
         cell(&grid, 0, 2),
         "y",
-        "sanity: hint present, its wrap row pushes y down to row 2"
+        "sanity: hint present, its wrapped display line pushes y down to row 2"
     );
 
     hint_on.set(false);
@@ -304,7 +304,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     // pass to reach it and one format would prove nothing.
     seek_to_line(&mut ed, PROBED + 2);
 
-    // Tall enough for all six lines at two wrap rows each, plus the
+    // Tall enough for all six lines at two display lines each, plus the
     // statusline: the probed line has to still be on screen when the render
     // pass runs, or it never reaches it and the count below proves nothing.
     let rect = Rect::new(0, 0, 20, 14);

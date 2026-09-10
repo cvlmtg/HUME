@@ -69,7 +69,7 @@ fn down_no_wrap_clamps_at_last_real_line() {
     );
     assert_eq!(
         vp.top_slot, 0,
-        "no virtual rows — clamps to the line's only row"
+        "no virtual lines — clamps to the line's only display line"
     );
 }
 

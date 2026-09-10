@@ -1,6 +1,6 @@
 //! Display-width measurement for UI chrome (popups, pickers, menus, the
 //! statusline, the minibuffer) — text with no tab-width context of its own,
-//! unlike a buffer line or a decoration's virtual row. Every measurement
+//! unlike a buffer line or a decoration's virtual line. Every measurement
 //! still funnels through `hume_rope::width`, the workspace's single source
 //! of truth, with `display_col` fixed at 0 and `tab_width` at
 //! [`hume_rope::width::CHROME_TAB_WIDTH`] — both inert for any non-tab

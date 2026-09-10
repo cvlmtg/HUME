@@ -171,7 +171,8 @@ fn nowrap_horizontal_scroll() {
 
 // ── screen_to_char_offset (wrap) ─────────────────────────────────────────
 
-/// With Soft { width: 4 }, "abcdefgh\n" wraps: row 0 = "abcd", row 1 = "efgh".
+/// With Soft { width: 4 }, "abcdefgh\n" wraps: display line 0 = "abcd",
+/// display line 1 = "efgh".
 /// Click at screen (0, 0) → char 0 ('a').
 /// Click at screen (0, 1) → char 4 ('e').
 #[test]
@@ -189,7 +190,7 @@ fn wrap_click_first_and_second_visual_display_line() {
     assert_eq!(row1, Some(co(4)));
 }
 
-/// Click on column 2 in the second wrap row → char 6 ('g').
+/// Click on column 2 in the second wrapped display line → char 6 ('g').
 #[test]
 fn wrap_click_mid_second_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
@@ -217,7 +218,7 @@ fn wrap_click_below_last_line_clamped() {
 
 // ── Virtual-line-aware row counting (synthetic provider) ────────────
 
-/// `content_pos` must count a virtual-`Before` row anchored to the
+/// `content_pos` must count a virtual `Before` line anchored to the
 /// cursor's own line as occupying a screen row above it — the cursor
 /// must land one row lower than it would with zero providers.
 ///
@@ -250,17 +251,17 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     assert_eq!(
         with_virtual,
         Some((0, 2)),
-        "a virtual row before line 1 must push the cursor down one more row"
+        "a virtual line before line 1 must push the cursor down one more row"
     );
 }
 
-/// `screen_to_char_offset` must account for a virtual row stealing a
-/// screen row from the lines below it: with a virtual-before row
+/// `screen_to_char_offset` must account for a virtual line stealing a
+/// screen row from the lines below it: with a virtual-before line
 /// inserted above line 1, screen row 2 is line 1's own content (pushed
-/// down by the virtual row), not line 2's — a virtual-row-unaware
+/// down by the virtual line), not line 2's — a virtual-line-unaware
 /// implementation would misidentify this row as line 2's.
 ///
-/// Also covers a click that lands *on* the virtual row itself (screen
+/// Also covers a click that lands *on* the virtual line itself (screen
 /// row 1): clamped to line 1's own first content sub-row (precise
 /// anchor-line mapping isn't implemented yet). See the `_no_wrap` sibling
 /// below — row math is wrap-mode-agnostic.
@@ -274,16 +275,16 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
 
     // Row layout: 0 = line 0 ('a'), 1 = virtual-before(line 1),
     // 2 = line 1's own content ('b'), 3 = line 2 ('c').
-    let on_virtual_row =
+    let on_virtual_line =
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
-        on_virtual_row,
+        on_virtual_line,
         Some(co(hume_rope::lines::line_start_char(
             &rope,
             hume_rope::line::RopeyLine::new(1)
         )
         .index())),
-        "a click on the virtual row clamps to line 1's own first char"
+        "a click on the virtual line clamps to line 1's own first char"
     );
 
     let on_pushed_down_content =
@@ -295,7 +296,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
             hume_rope::line::RopeyLine::new(1)
         )
         .index())),
-        "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
+        "row 2 must resolve to line 1 (pushed down by the virtual line), not line 2"
     );
 
     let on_next_line =
@@ -312,8 +313,8 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
 }
 
 /// No-wrap mirror of `content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line`
-/// — row math is wrap-mode-agnostic (a line occupies exactly one content row
-/// with wrapping off), so the same virtual-row accounting must hold.
+/// — row math is wrap-mode-agnostic (a line occupies exactly one display line
+/// with wrapping off), so the same virtual-line accounting must hold.
 #[test]
 fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
@@ -341,7 +342,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     assert_eq!(
         with_virtual,
         Some((0, 2)),
-        "a virtual row before line 1 must push the cursor down one more row, no-wrap too"
+        "a virtual line before line 1 must push the cursor down one more row, no-wrap too"
     );
 }
 
@@ -354,16 +355,16 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let providers = providers_with_before_line(1);
     let mut s = PaneLineStore::new();
 
-    let on_virtual_row =
+    let on_virtual_line =
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
-        on_virtual_row,
+        on_virtual_line,
         Some(co(hume_rope::lines::line_start_char(
             &rope,
             hume_rope::line::RopeyLine::new(1)
         )
         .index())),
-        "a click on the virtual row clamps to line 1's own first char"
+        "a click on the virtual line clamps to line 1's own first char"
     );
 
     let on_pushed_down_content =
@@ -375,7 +376,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
             hume_rope::line::RopeyLine::new(1)
         )
         .index())),
-        "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
+        "row 2 must resolve to line 1 (pushed down by the virtual line), not line 2"
     );
 
     let on_next_line =

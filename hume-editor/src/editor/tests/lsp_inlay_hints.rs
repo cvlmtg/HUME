@@ -120,9 +120,9 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     assert_eq!(
         crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char),
         Some((0, 2)),
-        "scroll must have already accounted for the hint's extra wrap row, \
-         placing the cursor at the last visible row rather than leaving it \
-         unplaceable off the bottom"
+        "scroll must have already accounted for the hint's extra display \
+         line, placing the cursor at the last visible row rather than \
+         leaving it unplaceable off the bottom"
     );
 }
 

@@ -618,7 +618,7 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
 }
 
 /// `goto_location` must center the jump the same way `zz` does — by display
-/// row, via `scroll::scroll_cursor_to_display_line` — not by re-deriving a
+/// line, via `scroll::scroll_cursor_to_display_line` — not by re-deriving a
 /// buffer-line-based centering of its own. The two only agree when nothing
 /// wraps; under wrap they diverge, and a hand-rolled line-based centering
 /// leaves `top_slot` untouched entirely (`clamp_viewport_top`'s own
@@ -664,7 +664,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     assert_eq!(
         dlm.distance(top, cursor_pos, 20),
         Some(5),
-        "the cursor must land exactly height/2 (5) DISPLAY rows below the new top"
+        "the cursor must land exactly height/2 (5) display lines below the new top"
     );
 }
 
