@@ -36,7 +36,9 @@ use ropey::Rope;
 /// scalar values, never a byte offset or a display column.
 ///
 /// `Default` is offset 0 — always valid, since every HUME buffer holds at
-/// least the structural trailing `\n`.
+/// least the structural trailing `\n` — for a caller that needs a `CharOffset`
+/// with no rope in hand to mint from (e.g. `#[derive(Default)]` on a
+/// containing struct).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct CharOffset(usize);
 
@@ -45,7 +47,8 @@ impl CharOffset {
     /// from another `CharOffset`, or a value a caller has proven safe by
     /// some other means (an ASCII delimiter scan). Does not check against
     /// any rope; a caller minting from unvalidated input wants
-    /// [`CharOffset::checked`]/[`CharOffset::clamped`] instead.
+    /// [`CharOffset::checked`] instead — there is no `clamped` counterpart,
+    /// see that method's own doc for why.
     pub fn new(idx: usize) -> Self {
         Self(idx)
     }
@@ -79,10 +82,9 @@ impl CharOffset {
     /// similar length derivations all read `later.chars_since(earlier)`.
     /// `self` is the *later* offset deliberately: every call site today is a
     /// subtraction (`end - start`, `p - b.old_pos()`), and keeping `self` on
-    /// the same side as the minuend preserves that written order instead of
-    /// reversing operand order at every one of ~30 migration sites — a
-    /// receiver/argument swap a mechanical pass would otherwise be prone to
-    /// getting backwards, caught (if at all) only by a debug-build assert.
+    /// the same side as the minuend preserves that written order — a
+    /// receiver/argument swap is exactly the mistake a raw subtraction hides
+    /// silently, caught (if at all) only by the debug-build assert below.
     pub fn chars_since(self, earlier: CharOffset) -> usize {
         debug_assert!(
             earlier <= self,
@@ -124,11 +126,13 @@ pub struct ExclusiveRange<T> {
     pub end: T,
 }
 
-impl<T: Copy + PartialOrd> ExclusiveRange<T> {
+impl<T> ExclusiveRange<T> {
     pub fn new(start: T, end: T) -> Self {
         Self { start, end }
     }
+}
 
+impl<T: Copy + PartialOrd> ExclusiveRange<T> {
     /// `hume-editor`'s `DecoratedPane.lines` (an `ExclusiveRange<RopeyLine>`)
     /// is the one production caller — a per-line decoration filter checking
     /// a resolved line against the pane's visible range.
@@ -148,11 +152,13 @@ pub struct InclusiveRange<T> {
     pub end: T,
 }
 
-impl<T: Copy + PartialOrd> InclusiveRange<T> {
+impl<T> InclusiveRange<T> {
     pub fn new(start: T, end: T) -> Self {
         Self { start, end }
     }
+}
 
+impl<T: Copy + PartialOrd> InclusiveRange<T> {
     pub fn contains(&self, pos: T) -> bool {
         pos >= self.start && pos <= self.end
     }

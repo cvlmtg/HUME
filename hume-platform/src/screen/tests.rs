@@ -11,12 +11,11 @@ fn red() -> ResolvedStyle {
     }
 }
 
-/// Poke fixture content directly into `grid` at `(x, y)`, the way these
-/// tests used to via `Grid::set_glyph` before it became private to this
-/// crate's own suite — this is diff/emitter test setup, not behaviour under
-/// test, so it goes through `Canvas` (an unbounded `right_edge`: these
-/// fixtures write well within the grid they just allocated) rather than
-/// asserting anything of its own.
+/// Poke fixture content directly into `grid` at `(x, y)`. `Grid::set_glyph`
+/// is `pub(crate)` to `hume-grid`, unreachable from this crate's own suite,
+/// so this goes through `Canvas` instead (an unbounded `right_edge`: these
+/// fixtures write well within the grid they just allocated) — diff/emitter
+/// test setup, not behaviour under test, asserting nothing of its own.
 fn poke(grid: &mut Grid, x: u16, y: u16, text: &str, advance: u8, style: ResolvedStyle) {
     Canvas::new(grid, ResolvedStyle::default(), None).write_cell(
         x,

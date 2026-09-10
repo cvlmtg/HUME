@@ -980,7 +980,7 @@ pub(crate) fn push_virtual_cells(
         // 255), unlike a whole run's — no `.min(255)` cap needed before
         // narrowing.
         let classified = hume_rope::width::classify(cluster, display_col.get() as usize, tab_width);
-        // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
+        // Cluster::width() reads classify()'s own decision — not a second raw measurement.
         let width = classified.width() as u8;
 
         // A cluster the terminal must not be shown as itself renders as its

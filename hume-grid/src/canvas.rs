@@ -170,7 +170,7 @@ impl<'a> Canvas<'a> {
                 (cx - x) as usize,
                 hume_rope::width::CHROME_TAB_WIDTH,
             );
-            // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
+            // Cluster::width() reads classify()'s own decision — not a second raw measurement.
             let width = classified.width() as u16;
             if cx.saturating_add(width) > right_edge {
                 break;

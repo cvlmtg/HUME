@@ -889,8 +889,8 @@ impl<'a> DisplayLineMap<'a> {
         ))
     }
 
-    /// The char range one content display line covers, as `(start, end_exclusive)`.
-    /// `None` when `pos` is not a content display line.
+    /// The char range one content display line covers. `None` when `pos` is
+    /// not a content display line.
     ///
     /// Lets a caller scope a line-oriented search (nearest word) to the
     /// head's own display line instead of the whole buffer line.

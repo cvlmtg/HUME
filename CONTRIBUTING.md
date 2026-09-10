@@ -84,12 +84,12 @@ The subject says what changed; the body says **why**. If the change is not obvio
 
 ## Code standards
 
-Read `CLAUDE.md` before your first non-trivial change. Its two invariant sections are the canonical architecture rules for this codebase, not agent-only advice — they cover the selection model, grapheme-cluster boundaries, the ropey-vs-content line-count domains, display-column math, and column naming. Getting one of them wrong produces bugs that are expensive to retrofit out.
+Read `CLAUDE.md` before your first non-trivial change. Its two invariant sections are the canonical architecture rules for this codebase, not agent-only advice — they cover the selection model, grapheme-cluster boundaries, the ropey-vs-content line-count domains, display-column math, and line/buffer columns. Getting one of them wrong produces bugs that are expensive to retrofit out.
 
 Beyond those:
 
 - **Idiomatic Rust.** Pattern matching, iterators, and the type system over runtime checks. `Result` and `Option` — no `.unwrap()` in non-test code, and no `unsafe`.
-- **The lints are tests.** `hume-editor/src/editor/lints/` holds source-scanning tests that fail the build on forbidden patterns (raw grapheme stepping, raw line-count derivations, untagged `col` identifiers, direct `unicode-width` calls, and more). If one fires, the pattern it caught is real — fix the code, do not rename around the check.
+- **Some checks are types, some are clippy, a few are still lints.** Raw grapheme stepping, raw line-count re-derivation, and untagged column arithmetic are compiler errors (`CharOffset`/`RopeyLine`/`ContentLine`/the column newtypes have no arithmetic trait impls — see `CLAUDE.md`'s invariants). Direct `unicode-width`/`ropey::len_lines` calls are `clippy::disallowed_methods` violations (`clippy.toml`, enforced by `scripts/test-all.sh`/CI). `hume-editor/src/editor/lints/` still holds genuine source-scanning tests for the handful of things neither a type nor clippy can express — a second dispatch path around the native-command funnel, a plugin manifest drifting from its defined commands, a setting's declared resync effect missing its arm, and more. If one of those fires, the pattern it caught is real — fix the code, do not rename around the check.
 - **Comments explain why, never what.** Well-named identifiers cover the what. Keep comments self-contained: no references to roadmap files, plan documents, task numbers, or "as discussed".
 - **Keep it simple.** This is a learning project as much as a product. Clarity beats cleverness, and a direct solution beats a premature abstraction.
 - **Cross-platform.** macOS is primary; Linux and Windows are supported. Platform-specific code lives behind `cfg` gates inside `hume-platform`, nowhere else.

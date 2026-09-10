@@ -395,11 +395,13 @@ via `safe_tempdir()`/`safe_named_tempfile()` without blocking on itself.
 Reentrancy alone would let a *nested guard* (as opposed to a momentary
 `safe_tempdir()` visit) silently corrupt teardown instead of hanging, so
 `TestGlobals::claim` tracks per-resource exclusivity and panics loudly on a
-same-thread double-claim rather than allowing it. Two lints
-(`hume-editor/src/editor/lints/test_globals.rs`) now forbid a bare
-`tempfile::tempdir()`/`NamedTempFile::new()` or a raw `std::env::set_var`/
-`remove_var` anywhere in the test tree outside the sanctioned constructors/
-guards, so a new test can't reintroduce either hazard even by accident.
+same-thread double-claim rather than allowing it. A lint
+(`hume-editor/src/editor/lints/test_globals.rs`) forbids a bare
+`tempfile::tempdir()`/`NamedTempFile::new()` anywhere in the test tree
+outside the sanctioned constructors; the `std::env::set_var`/`remove_var`
+half of the same hazard moved to `clippy.toml`'s `disallowed-methods`
+instead, since that call has no legitimate raw use anywhere else in the
+tree — so a new test can't reintroduce either hazard even by accident.
 
 **Files:** `hume-editor/src/editor/tests/mod.rs` (`TestGlobals`, `Global`,
 `ClaimGuard`, `safe_tempdir`, `safe_named_tempfile`, `EnvVarGuard`),

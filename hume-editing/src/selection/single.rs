@@ -217,7 +217,7 @@ impl Selection {
     /// and delete-range math. Always `next_grapheme_boundary(text, self.end())`:
     /// `end_inclusive` is defined as that boundary minus one
     /// (`cluster_last_char`'s doc), so this recovers the true exclusive bound
-    /// without the raw `+ 1` that used to appear at every such call site.
+    /// without a raw `+ 1` at the call site.
     pub fn end_exclusive(&self, text: &BufferText) -> CharOffset {
         next_grapheme_boundary(text, self.end())
     }

@@ -126,7 +126,7 @@ impl Screen {
 
 fn dimensions(term: &SharedTerm) -> io::Result<(u16, u16)> {
     let size = term.get_dimensions()?;
-    // column-name-safe: termina's own field name for a terminal width.
+    // termina's own field name for a terminal width.
     Ok((size.cols, size.rows))
 }
 
@@ -337,7 +337,7 @@ fn cursor_to(pos: Position) -> Cursor {
     // total at no practical cost, no terminal being 65535 cells across.
     Cursor::Position {
         line: OneBased::from_zero_based(pos.y.min(u16::MAX - 1)),
-        // column-name-safe: termina's own field name for a cursor column.
+        // termina's own field name for a cursor column.
         col: OneBased::from_zero_based(pos.x.min(u16::MAX - 1)),
     }
 }

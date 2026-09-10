@@ -16,13 +16,12 @@ fn make_test_buf(w: u16, h: u16) -> Grid {
     Grid::new(w, h)
 }
 
-/// Poke stale fixture content directly into `buf` at `(x, y)`, the way these
-/// tests used to via `Grid::set_glyph` before it became private to
-/// `hume-grid` — this is a test setup step, not behaviour under test, so it
-/// goes through `Canvas` (an unbounded `right_edge`: these fixtures write
-/// well within the grid they just allocated) rather than asserting anything
-/// of its own. `Grid`'s own out-of-bounds/clip behavior is covered by
-/// `hume-grid`'s own suite.
+/// Poke stale fixture content directly into `buf` at `(x, y)`. `Grid::set_glyph`
+/// is `pub(crate)` to `hume-grid` and unreachable from here, so this goes
+/// through `Canvas` instead (an unbounded `right_edge`: these fixtures write
+/// well within the grid they just allocated) — a test setup step, not
+/// behaviour under test, asserting nothing of its own. `Grid`'s own
+/// out-of-bounds/clip behavior is covered by `hume-grid`'s own suite.
 fn poke(buf: &mut Grid, x: u16, y: u16, text: &str) {
     Canvas::new(buf, ResolvedStyle::default(), None).write_cell(
         x,

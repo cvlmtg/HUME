@@ -810,8 +810,8 @@ pub struct LocationDisplay {
     /// companion never reads an unopened target's file to refine this
     /// number; see `location_display_parts`'s doc, `hume-editor`, for the
     /// full reasoning and the resulting unit divergence). Named for both
-    /// possible units, not just the common one — see CLAUDE.md's "Column
-    /// naming" invariant's one sanctioned exception.
+    /// possible units, not just the common one — see CLAUDE.md's "Line/buffer
+    /// columns" invariant's one sanctioned exception.
     pub grapheme_col_or_wire: Option<usize>,
 }
 

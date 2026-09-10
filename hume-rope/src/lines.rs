@@ -36,8 +36,10 @@ pub fn last_ropey_line(rope: &Rope) -> RopeyLine {
 
 /// Every line index ropey considers valid, phantom line included. The
 /// compliant spelling for a whole-buffer walk in the ropey domain: writing
-/// the range out by hand is the same re-derivation the line-count lint
-/// forbids everywhere else, and that lint reaches test code too.
+/// `(0..ropey_line_count(rope).get()).map(RopeyLine::new)` out by hand at a
+/// call site is the `0..<count>` pattern CLAUDE.md's line-count invariant
+/// documents as unenforced (`RopeyLine::new` is `pub`) — this function is the
+/// one sanctioned instance of that shape, not a caller re-deriving it.
 ///
 /// Deliberately kept with no production caller. Production never walks a
 /// whole buffer by line index — the render path walks a viewport window and

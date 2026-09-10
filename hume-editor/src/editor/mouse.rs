@@ -48,11 +48,11 @@ impl Editor {
         self.state.config.dismiss_scrollable_popup();
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                // column-name-safe: termina's MouseEvent::column is a terminal-absolute x
+                // termina's MouseEvent::column is a terminal-absolute x
                 self.mouse_left_down(mouse.column, mouse.row)
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                // column-name-safe: termina's MouseEvent::column is a terminal-absolute x
+                // termina's MouseEvent::column is a terminal-absolute x
                 self.mouse_left_drag(mouse.column, mouse.row)
             }
             MouseEventKind::Up(MouseButton::Left) => {

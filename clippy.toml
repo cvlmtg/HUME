@@ -1,16 +1,17 @@
 # Workspace-wide `clippy::disallowed_methods` entries — see CLAUDE.md's
-# "Display columns" and "Test-suite process-global hygiene" sections for the
-# rules these enforce and why the constant reachable from most crates
-# (`unicode-width`'s methods) or with essentially zero legitimate exceptions
-# workspace-wide (`std::env::set_var`/`remove_var`) is a better fit for this
-# than a hand-rolled scanner. A file with a real exception carries its own
+# "Display columns" section, and `hume-editor/src/editor/lints/test_globals.rs`'s
+# "Test-suite process-global hygiene" module doc, for the rules these enforce
+# and why the constant reachable from most crates (`unicode-width`'s methods)
+# or with essentially zero legitimate exceptions workspace-wide
+# (`std::env::set_var`/`remove_var`) is a better fit for this than a
+# hand-rolled scanner. A file with a real exception carries its own
 # `#[allow(clippy::disallowed_methods)]` — grep the tree for the attribute to
 # find every one.
 disallowed-methods = [
     # Display-column math goes through `hume_rope::width`
     # (`tab_advance`/`grapheme_width`/`str_width`), never a direct
     # `unicode-width` call — `hume-rope/src/width.rs` itself is the sanctioned
-    # exception. `hume-editor`'s four chrome-test oracles (an independent
+    # exception. `hume-editor`'s chrome-test oracles (an independent
     # width assertion against the code under test) are the other exception.
     "unicode_width::UnicodeWidthStr::width",
     "unicode_width::UnicodeWidthStr::width_cjk",
@@ -29,7 +30,9 @@ disallowed-methods = [
     # (`hume-rope/src/line.rs`) — see CLAUDE.md's "Line counts and ranges".
     # Those types can't stop a raw `Rope::len_lines()` call from reaching a
     # bare `usize`, so the ban lives here instead; `hume-rope/src/lines.rs`
-    # itself carries the one `#[allow(clippy::disallowed_methods)]`.
+    # carries the sanctioned wrapper's `#[allow(clippy::disallowed_methods)]`,
+    # and `hume-rope/src/lines/tests.rs` carries a second for its independent
+    # oracle (pinning ropey's own `len_lines()`, not our wrapper).
     "ropey::Rope::len_lines",
     "ropey::RopeSlice::len_lines",
 ]

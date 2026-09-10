@@ -228,9 +228,10 @@ pub struct StatusLineConfig {
 /// Parse one `configure-statusline!` section (`left`/`center`/`right`) from
 /// its wire-format element names, labeling a parse failure with which
 /// section it came from. Shared by the production host and the test mock —
-/// `mock_host.rs` is `#[path]`-included into external integration-test
-/// crates, so this must be `pub` like `StatusElement`/`StatusLineConfig`
-/// themselves.
+/// `mock_host.rs` is reachable from external integration-test crates via the
+/// `test-util` feature (`lib.rs`'s `extern crate self as hume` lets them use
+/// `hume::` paths uniformly), so this must be `pub` like
+/// `StatusElement`/`StatusLineConfig` themselves.
 pub fn parse_statusline_section(
     list: Vec<String>,
     section: &str,

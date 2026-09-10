@@ -8,18 +8,20 @@
 //! functions in this crate answer "how many lines" / "which line is last":
 //!
 //! - **Ropey domain** (`ropey_line_count`, `last_ropey_line`,
-//!   `ropey_lines_range`): the raw ropey count, phantom line included. Valid
+//!   `ropey_lines`): the raw ropey count, phantom line included. Valid
 //!   on any rope, invariant or not — this is what gutter sizing and LSP
 //!   wire-position clamps want, since they must stay addressable up to
 //!   ropey's own line indexing, not just the buffer's real content. Those
-//!   callers want a bound or a single index; the range is for a whole-buffer
-//!   walk, which only whole-document code does (see its own doc).
+//!   callers want a bound or a single index; the iterator is for a
+//!   whole-buffer walk, which only whole-document code does (see its own doc).
 //! - **Content domain** (`content_line_count`, `last_content_line`,
-//!   `content_lines_range`): the phantom line subtracted out. **Assumes the
+//!   `content_lines`): the phantom line subtracted out. **Assumes the
 //!   trailing-newline invariant** (debug-asserted) — this is what
 //!   user-facing line counts and content-bounds checks want.
 //!
-//! All line ranges produced by this crate are end-exclusive `Range<usize>`.
+//! `ropey_lines`/`content_lines` yield `RopeyLine`/`ContentLine` values, not
+//! a `Range<usize>` — the domain types this crate exists to keep separate,
+//! not a raw index a caller could accidentally compare across domains.
 //!
 //! ## LF is the only line break
 //!

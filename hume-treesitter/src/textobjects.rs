@@ -454,8 +454,9 @@ fn collect_hulls(
         // step: a hull whose byte range covers only a combining mark or ZWJ
         // continuation (its own token in some grammars) converts to a
         // one-char span, and stepping back to that cluster's start can land
-        // `end` before `start` — `enclosing`'s `end - start` would then
-        // underflow. Same "not a real object" treatment as the byte-space
+        // `end` before `start` — `enclosing`'s `span.end.chars_since(span.start)`
+        // debug-asserts `start <= end` and would fire on a span this
+        // malformed. Same "not a real object" treatment as the byte-space
         // degenerate case above.
         if end < start {
             continue;

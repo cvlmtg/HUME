@@ -48,7 +48,7 @@ pub fn lane_widths<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     max_line: hume_rope::line::RopeyLine,
 ) -> impl Iterator<Item = u16> + 'a {
-    // display-width-safe: GutterColumn::width is a cell count, not display width.
+    // GutterColumn::width is a cell count, not display width.
     gutter_columns.map(move |c| c.width(max_line) as u16)
 }
 

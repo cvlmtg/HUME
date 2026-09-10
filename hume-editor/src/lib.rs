@@ -5,14 +5,13 @@ pub(crate) mod editor;
 mod lock_ext;
 pub mod ui;
 
-// `extern crate self as hume` lets files that are #[path]-included into both
-// the lib's own test build and external integration-test crates use `hume::`
-// paths uniformly, without conditional `crate::` vs `hume::` branching.
+// `extern crate self as hume` lets `hume::testing::MockHost` (reached both
+// from the lib's own `#[cfg(test)]` build and from `tests/scripting.rs`/
+// `tests/unix/main.rs` via the `test-util` feature below) use `hume::` paths
+// uniformly in both contexts, without conditional `crate::` vs `hume::`
+// branching.
 extern crate self as hume;
 
-// The test DSL is compiled only when running tests. It lives in its own
-// module so every other module can `use crate::testing::*;` inside
-// `#[cfg(test)]` blocks without any runtime cost in release builds.
 #[cfg(test)]
 mod proptest_doc;
 #[cfg(test)]

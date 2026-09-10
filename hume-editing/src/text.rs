@@ -320,9 +320,10 @@ impl BufferText {
     }
 
     /// Returns the 0-based ropey line that contains char offset `char_idx`,
-    /// phantom trailing line included — for the two callers that must
-    /// resolve a position possibly one past the last real char (an `'after`
-    /// decoration anchor probing `pos + 1`, or LSP wire-position encoding).
+    /// phantom trailing line included — for a caller that must resolve a
+    /// position possibly one past the last real char (an `'after` decoration
+    /// anchor probing `pos + 1`, LSP wire-position encoding, a jump-list or
+    /// FFI position restored without first proving it's in content domain).
     /// Every other caller wants [`BufferText::char_to_line`].
     ///
     /// # Panics

@@ -165,7 +165,7 @@ impl BufferLineCol {
     /// `Full` and never consults the column this produces, so the
     /// non-coincident case is never actually reached there) and
     /// `hume-editor`'s vertical-motion sticky column, which resolves a
-    /// `Line`-family latch through the no-wrap-only `buffer_line_col` in
+    /// `BufferLine`-family latch through the no-wrap-only `buffer_line_col` in
     /// the first place — the same coincidence, from the other direction.
     pub fn as_display_line_unwrapped(self) -> DisplayLineCol {
         DisplayLineCol(self.0)
