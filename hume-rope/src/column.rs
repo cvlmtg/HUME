@@ -112,6 +112,21 @@ macro_rules! display_col_methods {
                 self.0.saturating_sub(earlier.0)
             }
 
+            /// [`Self::cells_since`] without the ordering precondition — 0
+            /// when `earlier` is actually later, rather than debug-panicking.
+            /// For the one caller that cannot prove `earlier <= self`:
+            /// `hume-editor`'s `cursor::place` positions a completion popup
+            /// at an LSP completion session's token-start anchor, which is
+            /// fixed while the live cursor (and the viewport's horizontal
+            /// scroll it drives) keeps moving right — so the anchor can sit
+            /// left of `viewport.horizontal_offset` in a way the live cursor,
+            /// kept on-screen by `ensure_cursor_visible_horizontal`, never
+            /// does. Every other caller of `cells_since` has that guarantee
+            /// and keeps the assert.
+            pub fn cells_since_saturating(self, earlier: Self) -> u32 {
+                self.0.saturating_sub(earlier.0)
+            }
+
             /// Unsigned distance between `self` and `other`, direction
             /// discarded — the "which grapheme is visually closest" metric a
             /// nearest-column resolve needs, where [`Self::cells_since`]'s

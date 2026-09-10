@@ -40,6 +40,18 @@ pub(crate) fn content_pos(
         return None;
     }
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    if cursor_display_col < viewport.horizontal_offset {
+        // Off the visible viewport on the horizontal axis — same contract as
+        // a row below the bottom (checked below via `distance`). Every
+        // caller but one is the live cursor, which `ensure_cursor_visible_horizontal`
+        // keeps `>= horizontal_offset`; the exception is the completion-menu
+        // anchor (`overlay_sync.rs`'s `session.anchor()`), fixed at the
+        // token's start while the cursor — and the scroll it drives — moves
+        // on. `place`'s own subtraction saturates rather than relying on this
+        // check alone, since `scroll.rs` calls it directly without going
+        // through `content_pos` first.
+        return None;
+    }
     // Clamp the top the same way `pane_render.rs` does before its
     // display-line walk: a write site that doesn't validate `top_slot`
     // against the block it addresses (`recall_scroll`, an LSP jump — see
@@ -66,7 +78,16 @@ pub(crate) fn place(
     cursor_display_col: DisplayLineCol,
     screen_row: usize,
 ) -> (u16, u16) {
-    let content_x = cursor_display_col.cells_since(viewport.horizontal_offset);
+    // Saturating, not `cells_since`: `frame.rs::scroll_into_view` — the only
+    // caller that bypasses `content_pos` — always satisfies `cursor_display_col
+    // >= horizontal_offset` (it calls `ensure_cursor_visible_horizontal` just
+    // above), but `content_pos`'s own caller can pass a completion session's
+    // fixed anchor column, which falls behind as the cursor — and the
+    // horizontal scroll it drives — moves on. `content_pos` already screens
+    // that case to `None`; this saturates too so a direct caller can't panic
+    // either, without adding a second precondition this function would have
+    // to document and enforce itself.
+    let content_x = cursor_display_col.cells_since_saturating(viewport.horizontal_offset);
     // `ensure_cursor_visible_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
     // subtraction it's a small on-screen offset — safe to narrow to the

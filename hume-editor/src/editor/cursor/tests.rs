@@ -498,3 +498,42 @@ fn content_pos_cursor_below_viewport_returns_none() {
     );
     assert_eq!(pos, None);
 }
+
+/// A position left of `horizontal_offset` is off the visible viewport on the
+/// horizontal axis, exactly as a row below the bottom is on the vertical
+/// axis — `content_pos`'s own doc already promises `None` for "outside the
+/// visible viewport" on either. The completion-menu anchor
+/// (`overlay_sync.rs`'s `session.anchor()`) is the one caller this matters
+/// for: it stays fixed at the token's start while the live cursor drives
+/// `horizontal_offset` rightward as the user types further into the token.
+#[test]
+fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
+    let rope = Rope::from_str("abcde\n");
+    let mut v = vp(0, 80, 10);
+    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(5);
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let anchor_char = co(2); // display col 2 — left of horizontal_offset 5
+
+    let pos = content_pos(
+        &v,
+        &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
+        anchor_char,
+    );
+    assert_eq!(pos, None);
+}
+
+/// `place`'s cursor-only precondition (`cursor_display_col >=
+/// horizontal_offset`) does not hold for every caller — see
+/// `cells_since_saturating`'s doc on `DisplayLineCol`. Asserts the saturating
+/// form is actually used: an inverted column must clamp to screen column 0,
+/// not debug-panic.
+#[test]
+fn place_saturates_when_column_is_left_of_horizontal_offset() {
+    let mut v = vp(0, 80, 10);
+    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(5);
+    let inverted_col = hume_rope::column::DisplayLineCol::new(2);
+
+    let pos = place(&v, inverted_col, 0);
+    assert_eq!(pos, (0, 0));
+}
