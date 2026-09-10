@@ -1,10 +1,3 @@
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 // Shared imports and harness helpers used by all test submodules.
 // Each submodule does `use super::*;` to access these.
 
@@ -881,6 +874,11 @@ struct EnvVarGuard {
 }
 
 impl EnvVarGuard {
+    // `set_var` here mutates a process-global env var, always under a
+    // `Global::Env` claim held by the caller (see this struct's doc) —
+    // `clippy.toml`'s `disallowed-methods` entry exists so a *new* raw call
+    // elsewhere in the crate gets caught; this is a sanctioned caller.
+    #[allow(clippy::disallowed_methods)]
     fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
         let prev = std::env::var(key).ok();
         unsafe {
@@ -901,6 +899,8 @@ impl EnvVarGuard {
 }
 
 impl Drop for EnvVarGuard {
+    // Sanctioned caller — see `Self::set`.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
             match &self.prev {

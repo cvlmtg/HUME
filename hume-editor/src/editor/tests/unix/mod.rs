@@ -9,13 +9,6 @@
 //! A test file with both portable and unix-only tests is split into a
 //! same-named file here holding the unix-only half.
 
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 use super::*;
 
 use std::path::{Path, PathBuf};
@@ -120,6 +113,11 @@ struct HumeRuntimeGuard {
 }
 
 impl HumeRuntimeGuard {
+    // `set_var` here mutates process-global HUME_RUNTIME/TMPDIR, always under
+    // the `Global::Env` claim taken just above — `clippy.toml`'s
+    // `disallowed-methods` entry exists so a *new* raw call elsewhere in the
+    // crate gets caught; this is a sanctioned caller.
+    #[allow(clippy::disallowed_methods)]
     fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let runtime = safe_tempdir();
@@ -137,6 +135,8 @@ impl HumeRuntimeGuard {
 }
 
 impl Drop for HumeRuntimeGuard {
+    // Sanctioned caller — see `Self::new`.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         // Clear env vars before the TempDir fields delete their directories and
         // before _lock releases the mutex, so the next waiter sees a clean env.
@@ -198,6 +198,8 @@ struct RealRuntimeGuard {
 }
 
 impl RealRuntimeGuard {
+    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    #[allow(clippy::disallowed_methods)]
     fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
@@ -216,6 +218,8 @@ impl RealRuntimeGuard {
 }
 
 impl Drop for RealRuntimeGuard {
+    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
             std::env::remove_var("HUME_RUNTIME");
@@ -364,6 +368,8 @@ impl StagedGrammarFixture {
     /// under a fresh `<data>/grammars/`; `init_scm` written to a fresh
     /// `init.scm`. Caller supplies `grammar_name`'s own fixture files —
     /// callers call `require_grammars` first.
+    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    #[allow(clippy::disallowed_methods)]
     fn new(grammar_name: &str, parser: &Path, highlights: &Path, init_scm: &str) -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let repo_runtime_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
@@ -407,6 +413,8 @@ impl StagedGrammarFixture {
 }
 
 impl Drop for StagedGrammarFixture {
+    // Sanctioned caller — see `HumeRuntimeGuard::new`.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
             std::env::remove_var("XDG_CONFIG_HOME");
@@ -459,6 +467,8 @@ fn lock() -> ClaimGuard {
 /// `runtime/` dir (so the real shipped plugin sources and catalogs are used)
 /// and `XDG_DATA_HOME` at `data_dir`. Env vars are process-global — callers
 /// must hold a `TEST_GLOBALS.claim(Global::Env)` for the test's duration.
+// Sanctioned caller — see `HumeRuntimeGuard::new`.
+#[allow(clippy::disallowed_methods)]
 fn load_with_init(ed: &mut Editor, data_dir: &Path, init_src: &str) {
     let repo_runtime_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
