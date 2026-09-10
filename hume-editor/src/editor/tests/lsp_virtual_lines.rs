@@ -419,7 +419,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         "linter".to_string(),
         bid,
         vec![crate::editor::decorations::VirtualLineEntry {
-            pos: 0,
+            pos: co(0),
             text: "hint".to_string(),
             before: false,
             scope,
@@ -487,7 +487,7 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
     let bid = ed.focused_buffer_id();
     let scope = ed.view.registry.intern("ui.virtual");
     let entry = |text: &str| crate::editor::decorations::VirtualLineEntry {
-        pos: 0,
+        pos: co(0),
         text: text.to_string(),
         before: false,
         scope,

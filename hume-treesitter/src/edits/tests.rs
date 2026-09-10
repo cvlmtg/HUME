@@ -1,10 +1,11 @@
 use super::input_edits_from_changeset;
 use hume_editing::changeset::ChangeSetBuilder;
+use hume_rope::offset::CharOffset;
 
 #[test]
 fn pure_insert_at_start() {
     let rope = ropey::Rope::from_str("hello\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.insert("AB");
     b.retain_rest();
     let cs = b.finish();
@@ -23,7 +24,7 @@ fn pure_insert_at_start() {
 #[test]
 fn pure_insert_middle() {
     let rope = ropey::Rope::from_str("hello\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(3);
     b.insert("XY");
     b.retain_rest();
@@ -41,7 +42,7 @@ fn pure_insert_middle() {
 #[test]
 fn pure_delete_single_char() {
     let rope = ropey::Rope::from_str("abc\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(1);
     b.delete(1);
     b.retain_rest();
@@ -58,7 +59,7 @@ fn pure_delete_single_char() {
 #[test]
 fn delete_crosses_line_boundary() {
     let rope = ropey::Rope::from_str("foo\nbar\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(3);
     b.delete(3); // deletes "\nba"
     b.retain_rest();
@@ -76,7 +77,7 @@ fn delete_crosses_line_boundary() {
 #[test]
 fn replace_within_one_line() {
     let rope = ropey::Rope::from_str("hello world\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(6);
     b.delete(5);
     b.insert("Rust");
@@ -99,7 +100,7 @@ fn replace_within_one_line_insert_before_delete() {
     // rather than the delete-before-insert order every `hume-ops` builder
     // emits) — must coalesce into the same single edit either way.
     let rope = ropey::Rope::from_str("hello world\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(6);
     b.insert("Rust");
     b.delete(5);
@@ -118,7 +119,7 @@ fn replace_within_one_line_insert_before_delete() {
 #[test]
 fn multiline_insert_new_end_position() {
     let rope = ropey::Rope::from_str("ab\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(1);
     b.insert("foo\nbar\n");
     b.retain_rest();
@@ -135,7 +136,7 @@ fn multiline_insert_new_end_position() {
 #[test]
 fn two_separate_edit_sites_emit_two_edits() {
     let rope = ropey::Rope::from_str("abc\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.delete(1); // delete 'a'
     b.retain(1); // keep 'b'
     b.delete(1); // delete 'c'
@@ -162,7 +163,7 @@ fn multibyte_utf8_byte_offsets() {
     // "é" = U+00E9 (precomposed) = 2 bytes in UTF-8, 1 char.
     // "漢" = U+6F22 = 3 bytes, 1 char.
     let rope = ropey::Rope::from_str("é漢\n");
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.delete(1); // delete "é" (1 char, but 2 bytes)
     b.retain_rest();
     let cs = b.finish();
@@ -217,7 +218,7 @@ fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
     // Changeset: retain 2, delete 3 + insert "X", retain 3, delete 3 + insert "YY", retain rest.
     // Edit 1: chars [2,5) → "X"   (byte delta: 1 - 3 = -2)
     // Edit 2: chars [8,11) → "YY" (byte delta: 2 - 3 = -1)
-    let mut b = ChangeSetBuilder::new(rope.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope.len_chars()));
     b.retain(2);
     b.delete(3);
     b.insert("X");

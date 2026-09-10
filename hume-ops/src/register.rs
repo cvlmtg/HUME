@@ -374,10 +374,10 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
 pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
         .map(|sel| {
-            // end_inclusive() gives the last codepoint of the final grapheme
-            // (handles multi-codepoint clusters like e + \u{0301}); +1 converts
-            // to an exclusive upper bound for the slice.
-            text.slice(sel.start()..sel.end_inclusive(text) + 1)
+            // end_exclusive() gives the exclusive upper bound one past the last
+            // codepoint of the final grapheme — handles multi-codepoint
+            // clusters like e + \u{0301} without an ad hoc +1.
+            text.slice(sel.start().index()..sel.end_exclusive(text).index())
                 .to_string()
         })
         .collect()

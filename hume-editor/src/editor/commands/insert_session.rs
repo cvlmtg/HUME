@@ -4,6 +4,7 @@
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use crate::editor::buffer::LastInsert;
 use crate::editor::pane_state::TypedRun;
@@ -75,7 +76,7 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: 
     if !is_group_open_current(state, view) {
         return;
     }
-    let heads: Vec<usize> = current_selections(state, view)
+    let heads: Vec<CharOffset> = current_selections(state, view)
         .iter_sorted()
         .map(|s| s.head())
         .collect();
@@ -187,7 +188,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     }
     let sel_count = current_selections(state, view).len();
     let valid_run = typed_run.filter(|r| r.anchors.len() == sel_count);
-    let spans: Option<Vec<Option<(usize, usize)>>> = valid_run.map(|run| {
+    let spans: Option<Vec<Option<InclusiveRange<CharOffset>>>> = valid_run.map(|run| {
         let text = doc(state, view).text();
         run.anchors
             .iter()
@@ -200,7 +201,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     // command — independent of `select-inserted-text` below, which only
     // decides whether Esc *also* selects it immediately.
     if let Some(spans) = &spans {
-        let stashed: Vec<(usize, usize)> = spans.iter().flatten().copied().collect();
+        let stashed: Vec<InclusiveRange<CharOffset>> = spans.iter().flatten().copied().collect();
         if !stashed.is_empty() {
             let bid = focused_buffer_id(state, view);
             let buf = state.buffers.get_mut(bid);
@@ -220,7 +221,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
         apply_focused_motion(state, view, move |b, sels| {
             let mut spans = spans.into_iter().flatten();
             sels.map(|sel| match spans.next().flatten() {
-                Some((anchor, end)) => Selection::new(anchor, end),
+                Some(r) => Selection::new(r.start, r.end),
                 None => exit_cursor(b, sel.head(), step_back),
             })
         });
@@ -235,7 +236,11 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// to the grapheme immediately before whatever's left. Walking off the start
 /// of the run (nothing typed, or only newlines were) yields `None`, never a
 /// backwards or zero-width range.
-fn typed_span(text: &BufferText, anchor: usize, run_end: usize) -> Option<(usize, usize)> {
+fn typed_span(
+    text: &BufferText,
+    anchor: CharOffset,
+    run_end: CharOffset,
+) -> Option<InclusiveRange<CharOffset>> {
     let mut cursor = run_end;
     loop {
         if cursor <= anchor {
@@ -250,8 +255,8 @@ fn typed_span(text: &BufferText, anchor: usize, run_end: usize) -> Option<(usize
         if prev < anchor {
             return None;
         }
-        if text.char_at(prev) != Some('\n') {
-            return Some((anchor, prev));
+        if text.char_at(prev.index()) != Some('\n') {
+            return Some(InclusiveRange::new(anchor, prev));
         }
         cursor = prev;
     }
@@ -262,7 +267,7 @@ fn typed_span(text: &BufferText, anchor: usize, run_end: usize) -> Option<(usize
 /// `a<Esc>` is a round trip; the line-start guard keeps that from crossing
 /// onto the previous line. `i`/`I`/`c` never set `step_back`, so `head` is
 /// returned unchanged.
-fn exit_cursor(b: &BufferText, head: usize, step_back: bool) -> Selection {
+fn exit_cursor(b: &BufferText, head: CharOffset, step_back: bool) -> Selection {
     if !step_back {
         return Selection::collapsed(head);
     }

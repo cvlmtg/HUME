@@ -79,7 +79,7 @@ fn next_from_before_a_jumps_to_a() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        3,
+        co(3),
         "must land on diagnostic A's start"
     );
 }
@@ -99,7 +99,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        9,
+        co(9),
         "sitting on A must advance to B, not stay on A (next = strictly-after start)"
     );
 }
@@ -119,7 +119,7 @@ fn next_from_after_b_wraps_to_a() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        3,
+        co(3),
         "must wrap around to A"
     );
 }
@@ -139,7 +139,7 @@ fn prev_from_after_b_jumps_to_b() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        9,
+        co(9),
         "must land on diagnostic B's start"
     );
 }
@@ -159,7 +159,7 @@ fn prev_from_before_a_wraps_to_b() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        9,
+        co(9),
         "must wrap around to B (the last entry)"
     );
 }
@@ -218,7 +218,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     ed.settle();
     assert_eq!(
         ed.current_selections().primary().head(),
-        9,
+        co(9),
         "selecting row 2 (B) in the drawer must jump to B's start"
     );
 }

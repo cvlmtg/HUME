@@ -15,6 +15,7 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::editor::buffer::Buffer;
+    use crate::editor::tests::co;
     use hume_editing::changeset::ChangeSet;
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
@@ -84,8 +85,8 @@ mod tests {
         );
 
         // Text invariant 2: len_chars > 0 (at minimum the structural '\n').
-        let len = text.len_chars();
-        assert!(len > 0, "buffer must have at least 1 char");
+        let len = text.end();
+        assert!(len > co(0), "buffer must have at least 1 char");
 
         // SelectionSet invariant 1: never empty.
         assert!(sels.len() > 0, "selection set must not be empty");
@@ -94,24 +95,24 @@ mod tests {
         for sel in sels.iter_sorted() {
             assert!(
                 sel.head() < len,
-                "selection head {} out of bounds (text len {})",
+                "selection head {:?} out of bounds (text len {:?})",
                 sel.head(),
                 len
             );
             assert!(
                 sel.anchor() < len,
-                "selection anchor {} out of bounds (text len {})",
+                "selection anchor {:?} out of bounds (text len {:?})",
                 sel.anchor(),
                 len
             );
         }
 
         // SelectionSet invariant 3: sorted ascending by start().
-        let starts: Vec<usize> = sels.iter_sorted().map(|s| s.start()).collect();
+        let starts: Vec<_> = sels.iter_sorted().map(|s| s.start()).collect();
         for w in starts.windows(2) {
             assert!(
                 w[0] <= w[1],
-                "selections not sorted: start {} > start {}",
+                "selections not sorted: start {:?} > start {:?}",
                 w[0],
                 w[1]
             );
@@ -119,12 +120,12 @@ mod tests {
 
         // SelectionSet invariant 4: no overlapping or adjacent selections.
         // Adjacent means one ends where the next begins — both are merged.
-        let mut prev_end: Option<usize> = None;
+        let mut prev_end: Option<hume_rope::offset::CharOffset> = None;
         for sel in sels.iter_sorted() {
             if let Some(pe) = prev_end {
                 assert!(
                     sel.start() > pe,
-                    "overlapping/adjacent selections: previous end {}, next start {}",
+                    "overlapping/adjacent selections: previous end {:?}, next start {:?}",
                     pe,
                     sel.start()
                 );
@@ -164,7 +165,7 @@ mod tests {
         // With only 1 valid position (a single-char buffer of just '\n'), we
         // can only produce a single cursor at position 0.
         if buf_len <= 1 {
-            return Just(SelectionSet::single(Selection::collapsed(0))).boxed();
+            return Just(SelectionSet::single(Selection::collapsed(co(0)))).boxed();
         }
 
         let n_sels = 1..=max_sels;
@@ -184,9 +185,9 @@ mod tests {
                                 // Ensure anchor != head when possible so we get real
                                 // selections, but a cursor (anchor == head) is also valid.
                                 if flip {
-                                    Selection::new(a, b)
+                                    Selection::new(co(a), co(b))
                                 } else {
-                                    Selection::new(b, a)
+                                    Selection::new(co(b), co(a))
                                 }
                             })
                             .collect();

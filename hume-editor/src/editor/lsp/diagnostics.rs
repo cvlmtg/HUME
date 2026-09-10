@@ -9,6 +9,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
 use hume_lsp::sync::wire_version;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 
@@ -63,8 +64,8 @@ impl std::str::FromStr for DiagSeverity {
 
 #[derive(Debug, Clone)]
 pub(crate) struct StoredDiag {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+    pub(crate) start: CharOffset,
+    pub(crate) end: CharOffset,
     pub(crate) severity: DiagSeverity,
     pub(crate) message: String,
     pub(crate) code: Option<String>,
@@ -82,16 +83,16 @@ pub(crate) struct StoredDiag {
 }
 
 impl Positioned for StoredDiag {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.start
     }
 }
 
 impl RangeAnchored for StoredDiag {
-    fn end(&self) -> usize {
+    fn end(&self) -> CharOffset {
         self.end
     }
-    fn set_range(&mut self, start: usize, end: usize) {
+    fn set_range(&mut self, start: CharOffset, end: CharOffset) {
         self.start = start;
         self.end = end;
     }
@@ -212,7 +213,7 @@ impl DiagnosticsStore {
         range: Range<usize>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
-        let (lo, hi) = (range.start, range.end);
+        let (lo, hi) = (CharOffset::new(range.start), CharOffset::new(range.end));
         self.store
             .groups_for_buffer(bid)
             .flat_map(move |(_server, diags)| {
@@ -247,14 +248,14 @@ fn map_severity(sev: Option<lsp_types::DiagnosticSeverity>) -> DiagSeverity {
 /// structural `\n`) guarantees at least the newline itself to widen onto,
 /// even on the minimal `"\n"` buffer — matching how a selection can cover
 /// that same newline cell.
-fn widen_zero_length(rope: &Rope, pos: usize) -> (usize, usize) {
+fn widen_zero_length(rope: &Rope, pos: CharOffset) -> ExclusiveRange<CharOffset> {
     let len = rope.len_chars();
-    if pos < len && rope.char(pos) != '\n' {
-        (pos, pos + 1)
-    } else if pos > 0 {
-        (pos - 1, pos)
+    if pos.index() < len && rope.char(pos.index()) != '\n' {
+        ExclusiveRange::new(pos, CharOffset::new(pos.index() + 1))
+    } else if pos.index() > 0 {
+        ExclusiveRange::new(CharOffset::new(pos.index() - 1), pos)
     } else {
-        (0, 1)
+        ExclusiveRange::new(CharOffset::new(0), CharOffset::new(1))
     }
 }
 
@@ -331,15 +332,15 @@ impl Editor {
             .into_iter()
             .map(|d| {
                 let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
-                let (start, end) = super::wire_range_to_chars(&rope, &d.range, encoding);
-                let (start, end) = if start == end {
-                    widen_zero_length(&rope, start)
+                let range = super::wire_range_to_chars(&rope, &d.range, encoding);
+                let range = if range.start == range.end {
+                    widen_zero_length(&rope, range.start)
                 } else {
-                    (start, end)
+                    range
                 };
                 StoredDiag {
-                    start,
-                    end,
+                    start: range.start,
+                    end: range.end,
                     severity: map_severity(d.severity),
                     message: d.message,
                     code: d.code.map(|c| match c {

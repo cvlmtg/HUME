@@ -53,7 +53,7 @@ fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selectio
     let anchor_line = text.char_to_line(sel.anchor());
     let head_line = text.char_to_line(sel.head());
     if delta > 0 {
-        if next_line_start(text, head_line.into()) >= text.len_chars() {
+        if next_line_start(text, head_line.into()) >= text.end() {
             return sel; // head already on the last line — clamp
         }
     } else if head_line.index() == 0 {
@@ -89,7 +89,7 @@ fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
     let bottom_line = text.char_to_line(sel.end());
     let end_excl = next_line_start(text, bottom_line.into());
     // If selection already ends on the trailing `\n`, jump to the next line.
-    let target_line = if sel.ends_on_newline(text) && end_excl < text.len_chars() {
+    let target_line = if sel.ends_on_newline(text) && end_excl < text.end() {
         bottom_line.down(1)
     } else {
         text.char_to_line(sel.start())

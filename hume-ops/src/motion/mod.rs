@@ -1,5 +1,6 @@
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 use super::MotionMode;
 
@@ -39,7 +40,7 @@ pub(crate) fn apply_motion(
     sels: SelectionSet,
     mode: MotionMode,
     count: usize,
-    motion: impl Fn(&BufferText, &Selection) -> usize,
+    motion: impl Fn(&BufferText, &Selection) -> CharOffset,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         // Stop at a fixed point. Every motion here is a pure function of

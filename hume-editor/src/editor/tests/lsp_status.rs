@@ -119,7 +119,7 @@ fn lsp_stop_clears_the_buffer_s_pending_change_queue() {
 
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    let mut b = hume_editing::changeset::ChangeSetBuilder::new(4);
+    let mut b = hume_editing::changeset::ChangeSetBuilder::new(co(4));
     b.retain(0).insert("X").retain_rest();
     ed.state
         .buffers

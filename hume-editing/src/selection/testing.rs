@@ -3,6 +3,8 @@
 //! Shared by `editing` and `editor` tests; lives here so that `editing` unit
 //! tests can use it without depending on the editor crate.
 
+use hume_rope::offset::CharOffset;
+
 use crate::selection::{Selection, SelectionSet};
 use crate::text::BufferText;
 
@@ -49,7 +51,10 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     count > *anchor_offset,
                     "parse_state: empty selection in {input:?}"
                 );
-                selections.push(Selection::new(*anchor_offset, count - 1));
+                selections.push(Selection::new(
+                    CharOffset::new(*anchor_offset),
+                    CharOffset::new(count - 1),
+                ));
                 state = State::Normal;
             }
             (State::InBackward { head_offset }, ']') if chars.peek() == Some(&'-') => {
@@ -59,7 +64,10 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     count > *head_offset,
                     "parse_state: empty selection in {input:?}"
                 );
-                selections.push(Selection::new(count - 1, *head_offset));
+                selections.push(Selection::new(
+                    CharOffset::new(count - 1),
+                    CharOffset::new(*head_offset),
+                ));
                 state = State::Normal;
             }
             (_, c) => text.push(c),

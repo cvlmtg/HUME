@@ -2,6 +2,7 @@
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use super::apply_text_object_by_mode;
 use crate::MotionMode;
@@ -10,16 +11,26 @@ use crate::pair::find_bracket_pair;
 /// Shrink a `(open, close)` delimiter pair to its inner range, or `None` if
 /// the pair is empty (no inner content in the inclusive selection model).
 /// Shared with quote.rs's `inner_quote`.
-pub(super) fn inner_of_pair(open: usize, close: usize) -> Option<(usize, usize)> {
-    if open + 1 > close - 1 {
+pub(super) fn inner_of_pair(
+    pair: InclusiveRange<CharOffset>,
+) -> Option<InclusiveRange<CharOffset>> {
+    if pair.start.index() + 1 > pair.end.index() - 1 {
         return None;
     }
-    Some((open + 1, close - 1))
+    Some(InclusiveRange::new(
+        CharOffset::new(pair.start.index() + 1),
+        CharOffset::new(pair.end.index() - 1),
+    ))
 }
 
-fn inner_bracket(text: &BufferText, pos: usize, open: char, close: char) -> Option<(usize, usize)> {
-    let (open_pos, close_pos) = find_bracket_pair(text, pos, open, close)?;
-    inner_of_pair(open_pos, close_pos)
+fn inner_bracket(
+    text: &BufferText,
+    pos: CharOffset,
+    open: char,
+    close: char,
+) -> Option<InclusiveRange<CharOffset>> {
+    let pair = find_bracket_pair(text, pos, open, close)?;
+    inner_of_pair(pair)
 }
 
 macro_rules! bracket_cmds {

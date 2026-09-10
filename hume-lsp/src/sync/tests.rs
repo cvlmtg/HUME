@@ -5,7 +5,7 @@ use hume_editing::changeset::ChangeSetBuilder;
 /// content changes plus the string the oracle should reach.
 fn check(before: &str, build: impl FnOnce(&mut ChangeSetBuilder), enc: PositionEncoding) {
     let rope = Rope::from_str(before);
-    let mut builder = ChangeSetBuilder::new(rope.len_chars());
+    let mut builder = ChangeSetBuilder::new(hume_rope::offset::CharOffset::new(rope.len_chars()));
     build(&mut builder);
     let cs = builder.finish();
 
@@ -25,7 +25,7 @@ fn check(before: &str, build: impl FnOnce(&mut ChangeSetBuilder), enc: PositionE
 #[test]
 fn empty_changeset_emits_no_events() {
     let rope = Rope::from_str("hello\n");
-    let mut builder = ChangeSetBuilder::new(rope.len_chars());
+    let mut builder = ChangeSetBuilder::new(hume_rope::offset::CharOffset::new(rope.len_chars()));
     builder.retain_rest();
     let cs = builder.finish();
 
@@ -64,7 +64,8 @@ fn single_insert_on_a_buffer_containing_a_bare_cr() {
     let before = "a\rb\n";
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
         let rope = Rope::from_str(before);
-        let mut builder = ChangeSetBuilder::new(rope.len_chars());
+        let mut builder =
+            ChangeSetBuilder::new(hume_rope::offset::CharOffset::new(rope.len_chars()));
         builder.retain(2);
         builder.insert("X");
         builder.retain_rest();

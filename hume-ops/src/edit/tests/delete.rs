@@ -1,5 +1,6 @@
 use super::super::*;
 use hume_editing::word::WordChars;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
@@ -702,8 +703,8 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // primary=1 so the last-line selection is the primary; we assert its cursor.
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(1), // on 'b'
-            hume_editing::selection::Selection::new(3, 4),    // last line "c\n"
+            hume_editing::selection::Selection::collapsed(CharOffset::new(1)), // on 'b'
+            hume_editing::selection::Selection::new(CharOffset::new(3), CharOffset::new(4)), // last line "c\n"
         ],
         1, // primary is the last-line cursor
     );
@@ -713,7 +714,7 @@ fn delete_selection_last_line_multi_cursor_cursor_lands_at_merged_line_start() {
     // Primary cursor must land at char 0 (start of merged "a" line).
     assert_eq!(
         new_sels.primary().head(),
-        0,
+        CharOffset::new(0),
         "cursor must land at merged-line start"
     );
 }

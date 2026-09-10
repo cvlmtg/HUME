@@ -193,7 +193,12 @@ impl Editor {
 
     /// Resolve a pane-relative `(x, y)` click in pane `pid` to a buffer
     /// char offset.
-    fn click_to_char(&mut self, pid: PaneId, x: u16, y: u16) -> Option<usize> {
+    fn click_to_char(
+        &mut self,
+        pid: PaneId,
+        x: u16,
+        y: u16,
+    ) -> Option<hume_rope::offset::CharOffset> {
         let buf_id = self.view.panes[pid].buffer_id;
         let gutter_w = {
             let pane = &self.view.panes[pid];

@@ -374,7 +374,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     let bid = ed.focused_buffer_id();
     let text = ed.state.buffers.get(bid).text();
     let line = text.char_to_line(head);
-    let col = head - text.line_to_char(line.into());
+    let col = head.chars_since(text.line_to_char(line.into()));
     assert_eq!(
         (line, col),
         (hume_rope::line::ContentLine::new(2), 1),

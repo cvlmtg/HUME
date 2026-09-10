@@ -206,14 +206,17 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
         "hello\nworld\n",
         "buffer must be unchanged — a count prefix must not trigger the change-to-eol branch"
     );
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
     assert_eq!(heads.len(), 2, "copy-selection-on-next-line adds a cursor");
-    assert!(heads.contains(&0), "original cursor stays at col 0 line 0");
-    assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
+    assert!(
+        heads.contains(&co(0)),
+        "original cursor stays at col 0 line 0"
+    );
+    assert!(heads.contains(&co(6)), "new cursor lands at col 0 line 1");
     assert_eq!(ed.state.mode, Mode::Normal);
 }
 
@@ -231,7 +234,7 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
         "hello\nworld\nfoo\nbar\n",
         "buffer must be unchanged"
     );
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
@@ -241,10 +244,10 @@ fn shift_c_with_count_3_copies_onto_three_lines() {
         4,
         "count=3 must add one copy per line below, not just one"
     );
-    assert!(heads.contains(&0), "original cursor at col 0 of line 0");
-    assert!(heads.contains(&6), "copy at col 0 of line 1");
-    assert!(heads.contains(&12), "copy at col 0 of line 2");
-    assert!(heads.contains(&16), "copy at col 0 of line 3");
+    assert!(heads.contains(&co(0)), "original cursor at col 0 of line 0");
+    assert!(heads.contains(&co(6)), "copy at col 0 of line 1");
+    assert!(heads.contains(&co(12)), "copy at col 0 of line 2");
+    assert!(heads.contains(&co(16)), "copy at col 0 of line 3");
 }
 
 /// `:` resolves only typed commands — a plugin-defined editor command like
@@ -266,7 +269,7 @@ fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
         "hello\nworld\nfoo\nbar\n",
         "buffer must be unchanged"
     );
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
@@ -276,7 +279,7 @@ fn vim_change_to_eol_or_copy_line_not_reachable_from_command_line() {
         1,
         "unknown : command must not dispatch anything"
     );
-    assert!(heads.contains(&0), "original cursor untouched");
+    assert!(heads.contains(&co(0)), "original cursor untouched");
 }
 
 /// A count prefix combined with an already-wide selection still forwards the
@@ -295,7 +298,7 @@ fn shift_c_with_count_and_selection_copies_with_count() {
         "hello\nworld\nfoo\n",
         "buffer must be unchanged"
     );
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
@@ -305,10 +308,10 @@ fn shift_c_with_count_and_selection_copies_with_count() {
         3,
         "count=2 must add two copies of the wide selection, not one"
     );
-    assert!(heads.contains(&4), "original head at 'o' of \"hello\"");
-    assert!(heads.contains(&10), "copy at 'd' of \"world\"");
+    assert!(heads.contains(&co(4)), "original head at 'o' of \"hello\"");
+    assert!(heads.contains(&co(10)), "copy at 'd' of \"world\"");
     assert!(
-        heads.contains(&14),
+        heads.contains(&co(14)),
         "copy clamped to 'o', last char of \"foo\""
     );
 }
@@ -348,7 +351,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
     );
     assert_eq!(ed.state.mode, Mode::Normal);
 
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
@@ -358,8 +361,11 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
         2,
         "copy-selection-on-next-line adds a second cursor"
     );
-    assert!(heads.contains(&0), "original cursor stays at col 0 line 0");
-    assert!(heads.contains(&6), "new cursor lands at col 0 line 1");
+    assert!(
+        heads.contains(&co(0)),
+        "original cursor stays at col 0 line 0"
+    );
+    assert!(heads.contains(&co(6)), "new cursor lands at col 0 line 1");
 }
 
 /// `#:config "change-to-eol" 'off` only affects `C` — `D` (which shadows

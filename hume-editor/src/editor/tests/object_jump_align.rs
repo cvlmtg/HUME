@@ -31,7 +31,7 @@ fn goto_next_paragraph_centers_view_by_default() {
     let head = ed.current_selections().primary().head();
     assert_eq!(
         head,
-        ed.doc().text().rope().line_to_char(30),
+        co(ed.doc().text().rope().line_to_char(30)),
         "sanity: head lands on paragraph 15's first line"
     );
     // height=24, target=height/2=12 → top_line = 30 - 12 = 18.
@@ -56,7 +56,7 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
     let head = ed.current_selections().primary().head();
     assert_eq!(
         head,
-        ed.doc().text().rope().line_to_char(32) - 1,
+        co(ed.doc().text().rope().line_to_char(32) - 1),
         "sanity: head lands one char before paragraph 16 begins"
     );
     // head's line is 31 (paragraph 15's own gap line); height=24,
@@ -79,7 +79,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     let head = ed.current_selections().primary().head();
     assert_eq!(
         head,
-        ed.doc().text().rope().line_to_char(38),
+        co(ed.doc().text().rope().line_to_char(38)),
         "sanity: a count past the last paragraph clamps to it"
     );
     // height=24, target=height/2=12 → top_line = 38 - 12 = 26.
@@ -193,7 +193,7 @@ fn goto_next_function_centers_view_by_default() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        ed.doc().text().rope().line_to_char(21),
+        co(ed.doc().text().rope().line_to_char(21)),
         "sanity: head lands on the target function's first line"
     );
     // height=24, target=height/2=12 → top_line = 21 - 12 = 9.

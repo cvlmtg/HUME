@@ -1,4 +1,5 @@
 use hume_grid::Grid;
+use hume_rope::offset::CharOffset;
 
 use crate::render::{self, ComposeCtx};
 use crate::rows::{RowMap, RowPos};
@@ -242,8 +243,8 @@ pub(crate) fn render_pane(
 /// Built once when the walk crosses into a line; building it also rebuilds the
 /// highlight interval buffers, which is the expensive part.
 struct LineStyle {
-    start_char: usize,
-    end_char: usize,
+    start_char: CharOffset,
+    end_char: CharOffset,
     is_head_line: bool,
     /// A provider-requested full-row background tint for this line, if any
     /// (`Decoration::LineBg`) — resolved once here and read at both paint
@@ -274,7 +275,7 @@ impl LineStyle {
             pane_ctx.rope,
             style,
         );
-        let start_char = pane_ctx.rope.line_to_char(line_idx.index());
+        let start_char = CharOffset::new(pane_ctx.rope.line_to_char(line_idx.index()));
         let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
         // Cursorline highlights only the primary cursor's line.
         let is_head_line = style

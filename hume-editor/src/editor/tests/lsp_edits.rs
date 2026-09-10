@@ -495,7 +495,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
     let before = state(&ed);
     type_cmd(&mut ed, ":go");
     assert_ne!(state(&ed), before);
-    assert_eq!(ed.current_selections().primary().head(), 3);
+    assert_eq!(ed.current_selections().primary().head(), co(3));
 
     // A jump entry was pushed — Ctrl+o must return to the origin.
     ed.handle_key(key_ctrl('o'));
@@ -524,7 +524,7 @@ fn goto_location_noop_does_not_clobber_forward_history() {
     ed.handle_key(key_ctrl('o'));
     let back_at_start = state(&ed);
     assert_ne!(back_at_start, after_percent);
-    assert_eq!(ed.current_selections().primary().head(), 0);
+    assert_eq!(ed.current_selections().primary().head(), co(0));
 
     // `:go` targets char 0 — already there — a no-op.
     type_cmd(&mut ed, ":go");
@@ -569,7 +569,7 @@ fn goto_location_other_open_buffer_by_path_string() {
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.focused_buffer_id(), other_bid);
-    assert_eq!(ed.current_selections().primary().head(), 1);
+    assert_eq!(ed.current_selections().primary().head(), co(1));
 }
 
 #[test]
@@ -590,7 +590,7 @@ fn goto_location_unopened_path_opens_it() {
     );
     type_cmd(&mut ed, ":go");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
-    assert_eq!(ed.current_selections().primary().head(), 2);
+    assert_eq!(ed.current_selections().primary().head(), co(2));
 }
 
 #[test]
@@ -604,15 +604,15 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
              (goto-location! (list (current-buffer) 999 0))))"#,
     );
     type_cmd(&mut ed, ":go");
-    let len_chars = ed.doc().text().rope().len_chars();
+    let len_chars = ed.doc().text().end();
     let head = ed.current_selections().primary().head();
     assert!(
         head < len_chars,
-        "head must satisfy head < len_chars() — got head={head}, len_chars={len_chars}"
+        "head must satisfy head < len_chars() — got head={head:?}, len_chars={len_chars:?}"
     );
     assert_eq!(
         head,
-        len_chars - 1,
+        len_chars.shift(-1),
         "a target past EOF must clamp to the buffer's last char"
     );
 }
@@ -634,7 +634,7 @@ fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
     // must center on line 20's own first row, three times as far down.
     let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
     let text = hume_editing::text::BufferText::from(content.as_str());
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     let pid = ed.state.focused_pane_id;
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))

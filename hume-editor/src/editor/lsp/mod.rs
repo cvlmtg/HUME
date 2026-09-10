@@ -42,7 +42,7 @@ pub(crate) fn wire_range_to_chars(
     rope: &ropey::Rope,
     range: &lsp_types::Range,
     encoding: hume_rope::position_encoding::PositionEncoding,
-) -> (usize, usize) {
+) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
     hume_rope::position_encoding::wire_range_to_char_range(
         rope,
         (range.start.line as usize, range.start.character as usize),
@@ -385,10 +385,11 @@ impl LspState {
     pub(crate) fn diagnostics_for_range(
         &self,
         bid: BufferId,
-        range: std::ops::Range<usize>,
+        range: hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
-        self.diagnostics.for_range_unsorted(bid, range, floor)
+        self.diagnostics
+            .for_range_unsorted(bid, range.start.index()..range.end.index(), floor)
     }
 
     /// Drops every diagnostic for `bid`, across every server — called from
@@ -406,7 +407,7 @@ impl LspState {
     ) -> impl Iterator<Item = (usize, usize)> + '_ {
         self.diagnostics
             .for_range(bid, 0..usize::MAX, diagnostics::DiagSeverity::Hint)
-            .map(|d| (d.start, d.end))
+            .map(|d| (d.start.index(), d.end.index()))
     }
 
     /// Disjoint-borrow accessor for callers that need to drive a client and

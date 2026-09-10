@@ -6,4 +6,5 @@ publish = false
 
 [dependencies]
 hume-editing = { path = "../hume-editing" }
+hume-rope = { path = "../hume-rope" }
 pretty_assertions = "1.4.1"

@@ -1,6 +1,7 @@
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 
 /// Helper: make a buffer + single-cursor SelectionSet and run a surround
@@ -11,11 +12,11 @@ fn run_surround(
     f: impl Fn(&BufferText, SelectionSet, usize, MotionMode) -> SelectionSet,
 ) -> Vec<(usize, usize)> {
     let text = BufferText::from(text);
-    let sels = SelectionSet::single(Selection::collapsed(cursor_pos));
+    let sels = SelectionSet::single(Selection::collapsed(CharOffset::new(cursor_pos)));
     let result = f(&text, sels, 0, MotionMode::Move);
     result
         .iter_sorted()
-        .map(|s| (s.anchor(), s.head()))
+        .map(|s| (s.anchor().index(), s.head().index()))
         .collect()
 }
 
@@ -94,13 +95,19 @@ fn surround_quote_no_match() {
 fn surround_multi_cursor_different_pairs() {
     // (a) [b] — cursor on 'a' (pos 1) and 'b' (pos 5).
     let text = BufferText::from("(a) [b]\n");
-    let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(5)], 0);
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(1)),
+            Selection::collapsed(CharOffset::new(5)),
+        ],
+        0,
+    );
     let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     // Only the first cursor is inside parens; second is not.
     // First → cursors on ( and ), second preserved.
     let pairs: Vec<_> = result
         .iter_sorted()
-        .map(|s| (s.anchor(), s.head()))
+        .map(|s| (s.anchor().index(), s.head().index()))
         .collect();
     assert_eq!(pairs, vec![(0, 0), (2, 2), (5, 5)]);
 }
@@ -109,12 +116,18 @@ fn surround_multi_cursor_different_pairs() {
 fn surround_multi_cursor_same_pair_merges() {
     // (hello) — two cursors both inside the same parens (pos 1 and 3).
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::from_vec(vec![Selection::collapsed(1), Selection::collapsed(3)], 0);
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(1)),
+            Selection::collapsed(CharOffset::new(3)),
+        ],
+        0,
+    );
     let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     // Both produce cursors on (0,0) and (6,6) — merge_overlapping deduplicates.
     let pairs: Vec<_> = result
         .iter_sorted()
-        .map(|s| (s.anchor(), s.head()))
+        .map(|s| (s.anchor().index(), s.head().index()))
         .collect();
     assert_eq!(pairs, vec![(0, 0), (6, 6)]);
 }
@@ -124,11 +137,11 @@ fn surround_with_range_selection_uses_head() {
     // (hello) — range selection spanning 'ell' (anchor=2, head=4).
     // find_bracket_pair searches from head (pos 4), finds the enclosing ().
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::single(Selection::new(2, 4));
+    let sels = SelectionSet::single(Selection::new(CharOffset::new(2), CharOffset::new(4)));
     let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     let pairs: Vec<_> = result
         .iter_sorted()
-        .map(|s| (s.anchor(), s.head()))
+        .map(|s| (s.anchor().index(), s.head().index()))
         .collect();
     assert_eq!(pairs, vec![(0, 0), (6, 6)]);
 }
@@ -138,11 +151,11 @@ fn surround_with_backward_range_selection() {
     // (hello) — backward selection (anchor=4, head=2).
     // head is at pos 2, still inside the parens.
     let text = BufferText::from("(hello)\n");
-    let sels = SelectionSet::single(Selection::new(4, 2));
+    let sels = SelectionSet::single(Selection::new(CharOffset::new(4), CharOffset::new(2)));
     let result = cmd_surround_paren(&text, sels, 0, MotionMode::Move);
     let pairs: Vec<_> = result
         .iter_sorted()
-        .map(|s| (s.anchor(), s.head()))
+        .map(|s| (s.anchor().index(), s.head().index()))
         .collect();
     assert_eq!(pairs, vec![(0, 0), (6, 6)]);
 }

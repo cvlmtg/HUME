@@ -16,6 +16,7 @@ use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::grapheme::prev_str_boundary;
+use hume_rope::offset::CharOffset;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,9 +70,9 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
 pub fn find_next_match(
     text: &BufferText,
     regex: &Regex,
-    from_char: usize,
+    from_char: CharOffset,
     direction: SearchDirection,
-) -> Option<(usize, usize, bool)> {
+) -> Option<(CharOffset, CharOffset, bool)> {
     let from_byte = text.char_to_byte(from_char);
     let total_bytes = text.len_bytes();
 
@@ -110,8 +111,8 @@ pub fn find_next_match(
 ///
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
-pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(usize, usize)> {
-    find_matches_in_range(text, regex, 0, text.len_chars() - 1)
+pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(CharOffset, CharOffset)> {
+    find_matches_in_range(text, regex, CharOffset::new(0), text.last_char())
 }
 
 // ── find_matches_in_range ─────────────────────────────────────────────────────
@@ -124,12 +125,12 @@ pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(usize, usize)>
 pub fn find_matches_in_range(
     text: &BufferText,
     regex: &Regex,
-    start_char: usize,
-    end_char: usize, // inclusive
-) -> Vec<(usize, usize)> {
+    start_char: CharOffset,
+    end_char: CharOffset, // inclusive
+) -> Vec<(CharOffset, CharOffset)> {
     let start_byte = text.char_to_byte(start_char);
     // end_char is inclusive — we need the byte *after* the last char in range.
-    let end_byte = text.char_to_byte(end_char + 1);
+    let end_byte = text.char_to_byte(CharOffset::new(end_char.index() + 1));
 
     let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);
@@ -140,7 +141,7 @@ pub fn find_matches_in_range(
         .filter(|m| m.start() < m.end()) // skip zero-width matches
         .map(|m| {
             let s = text.byte_to_char(m.start());
-            let e = text.byte_to_char(m.end()) - 1;
+            let e = text.byte_to_char(m.end()).shift(-1);
             (s, e)
         })
         .collect()
@@ -227,7 +228,10 @@ pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
 ///
 /// `matches` must be in document order (sorted by start position, non-overlapping),
 /// as produced by [`find_all_matches`].
-pub fn search_match_info(matches: &[(usize, usize)], cursor_head: usize) -> (usize, usize) {
+pub fn search_match_info(
+    matches: &[(CharOffset, CharOffset)],
+    cursor_head: CharOffset,
+) -> (usize, usize) {
     let total = matches.len();
     // partition_point gives the first index where start > cursor_head, so
     // idx-1 is the last match that could contain cursor_head. If cursor_head
@@ -261,10 +265,10 @@ pub fn search_match_info(matches: &[(usize, usize)], cursor_head: usize) -> (usi
 /// Returns `None` only when `matches` is empty.
 /// Returns `Some((start_char, end_char_inclusive, wrapped))` otherwise.
 pub fn find_match_from_cache(
-    matches: &[(usize, usize)],
-    from_char: usize,
+    matches: &[(CharOffset, CharOffset)],
+    from_char: CharOffset,
     direction: SearchDirection,
-) -> Option<(usize, usize, bool)> {
+) -> Option<(CharOffset, CharOffset, bool)> {
     if matches.is_empty() {
         return None;
     }
@@ -309,7 +313,7 @@ fn search_match_in(
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
     take_last: bool,
-) -> Option<(usize, usize)> {
+) -> Option<(CharOffset, CharOffset)> {
     if byte_range.is_empty() {
         return None;
     }
@@ -325,7 +329,7 @@ fn search_match_in(
         regex.find(input).filter(|m| m.start() < m.end())?
     };
     let start = text.byte_to_char(m.start());
-    let end_incl = text.byte_to_char(m.end()) - 1;
+    let end_incl = text.byte_to_char(m.end()).shift(-1);
     Some((start, end_incl))
 }
 

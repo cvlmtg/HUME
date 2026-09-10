@@ -26,6 +26,7 @@ use crate::editor::buffer::store::BufferStore;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
 
@@ -58,13 +59,13 @@ pub(crate) struct TypedRun {
     /// Start of each selection's typed span, kept in post-edit coordinates
     /// with `Assoc::Before` — a keystroke exactly at the anchor is typed
     /// content, so the anchor must stay left of it.
-    pub anchors: Vec<usize>,
+    pub anchors: Vec<CharOffset>,
     /// Exclusive end of each typed span, kept with `Assoc::After` (opposite
     /// of `anchors`) so it tracks what was written rather than where the
     /// cursor happens to sit: a real keystroke at the run's end pushes it
     /// forward, an auto-paired closer pushes it past both inserted chars, and
     /// a skip-close (which edits nothing) leaves it where it was.
-    pub ends: Vec<usize>,
+    pub ends: Vec<CharOffset>,
 }
 
 // ── PaneBufferState ──────────────────────────────────────────────────────────
@@ -163,7 +164,7 @@ pub(crate) fn write_cursor(
     buffers: &BufferStore,
     pid: PaneId,
     bid: BufferId,
-    char_pos: usize,
+    char_pos: CharOffset,
 ) {
     ensure(pane_state, buffers, pid, bid).selections =
         SelectionSet::single(Selection::collapsed(char_pos));

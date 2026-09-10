@@ -57,21 +57,21 @@ fn copy_cursor_to_next_line() {
     assert_eq!(ed.doc().text().to_string(), "foo\nbar\n"); // buffer unchanged
     assert_eq!(ed.current_selections().len(), 2);
     // "foo\n" = offsets 0-3, "bar\n" = offsets 4-7. Col 1 = offset 5.
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
     assert!(
-        heads.contains(&1),
+        heads.contains(&co(1)),
         "original cursor should remain at col 1 of line 0"
     );
     assert!(
-        heads.contains(&5),
+        heads.contains(&co(5)),
         "new cursor should be at col 1 of line 1"
     );
     // Primary should be the new copy (the one on line 1).
-    assert_eq!(ed.current_selections().primary().head(), 5);
+    assert_eq!(ed.current_selections().primary().head(), co(5));
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn copy_to_next_line_on_last_line_is_noop() {
     let mut ed = copy_test_editor("foo\nb-[a]>r\n");
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_selections().len(), 1); // no copy added
-    assert_eq!(ed.current_selections().primary().head(), 5); // cursor unchanged
+    assert_eq!(ed.current_selections().primary().head(), co(5)); // cursor unchanged
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn copy_to_next_line_clamps_to_shorter_target_line() {
     assert_eq!(ed.current_selections().len(), 2);
     // "hello\n" = offsets 0-5, "hi\n" = offsets 6-8.
     // Last non-\n char = 'i' at offset 7.
-    assert_eq!(ed.current_selections().primary().head(), 7);
+    assert_eq!(ed.current_selections().primary().head(), co(7));
 }
 
 #[test]
@@ -110,8 +110,8 @@ fn copy_next_backward_selection() {
         copy.anchor() > copy.head(),
         "copy should preserve backward direction"
     );
-    assert_eq!(copy.head(), 4); // 'b' at col 0 of line 1
-    assert_eq!(copy.anchor(), 6); // 'r' at col 2 of line 1
+    assert_eq!(copy.head(), co(4)); // 'b' at col 0 of line 1
+    assert_eq!(copy.anchor(), co(6)); // 'r' at col 2 of line 1
 }
 
 #[test]
@@ -193,7 +193,7 @@ fn copy_next_line_count_3_primary_lands_on_furthest_copy() {
     let mut ed = copy_test_editor("-[a]>\nb\nc\nd\ne\n");
     run_copy(&mut ed, true, 3);
     // "a\nb\nc\nd\ne\n": a(0) b(2) c(4) d(6) e(8). Furthest copy is on 'd'.
-    assert_eq!(ed.current_selections().primary().head(), 6);
+    assert_eq!(ed.current_selections().primary().head(), co(6));
 }
 
 #[test]
@@ -222,14 +222,14 @@ fn copy_next_line_preserves_display_column_across_a_tab() {
     let mut ed = copy_test_editor("\tw-[o]>rld\nabcdefgh\n");
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_selections().len(), 2);
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    assert!(heads.contains(&2), "original cursor unchanged");
-    assert!(heads.contains(&12), "copy lands on display col 5 ('f')");
-    assert_eq!(ed.current_selections().primary().head(), 12);
+    assert!(heads.contains(&co(2)), "original cursor unchanged");
+    assert!(heads.contains(&co(12)), "copy lands on display col 5 ('f')");
+    assert_eq!(ed.current_selections().primary().head(), co(12));
 }
 
 #[test]
@@ -242,14 +242,14 @@ fn copy_next_line_preserves_display_column_across_a_wide_cjk_char() {
     let mut ed = copy_test_editor("\u{6F22}-[b]>c\nabcdefgh\n");
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_selections().len(), 2);
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    assert!(heads.contains(&1), "original cursor unchanged");
-    assert!(heads.contains(&6), "copy lands on display col 2 ('c')");
-    assert_eq!(ed.current_selections().primary().head(), 6);
+    assert!(heads.contains(&co(1)), "original cursor unchanged");
+    assert!(heads.contains(&co(6)), "copy lands on display col 2 ('c')");
+    assert_eq!(ed.current_selections().primary().head(), co(6));
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
     let line1: String = "b".repeat(100);
     let content = format!("{line0}\n{line1}\n");
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(79)); // last 'a', buffer-line col 79
+    let sels = SelectionSet::single(Selection::collapsed(co(79))); // last 'a', buffer-line col 79
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
@@ -306,14 +306,14 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
 
     run_copy(&mut ed, true, 1);
     assert_eq!(ed.current_selections().len(), 2);
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    assert!(heads.contains(&79), "original cursor unchanged");
+    assert!(heads.contains(&co(79)), "original cursor unchanged");
     assert!(
-        heads.contains(&160),
+        heads.contains(&co(160)),
         "copy lands on line 1's buffer-line col 79 (char 160), same as `2j` \
          from this same fixture"
     );
@@ -328,18 +328,18 @@ fn copy_cursor_to_prev_line() {
     run_copy(&mut ed, false, 1);
     assert_eq!(ed.current_selections().len(), 2);
     // Original at offset 5 (line 1, col 1). New at offset 1 (line 0, col 1).
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    assert!(heads.contains(&5), "original cursor should remain");
+    assert!(heads.contains(&co(5)), "original cursor should remain");
     assert!(
-        heads.contains(&1),
+        heads.contains(&co(1)),
         "new cursor should be at col 1 of line 0"
     );
     // Primary is the new copy (on line 0).
-    assert_eq!(ed.current_selections().primary().head(), 1);
+    assert_eq!(ed.current_selections().primary().head(), co(1));
 }
 
 #[test]
@@ -347,7 +347,7 @@ fn copy_to_prev_line_on_first_line_is_noop() {
     let mut ed = copy_test_editor("f-[o]>o\nbar\n");
     run_copy(&mut ed, false, 1);
     assert_eq!(ed.current_selections().len(), 1); // no copy added
-    assert_eq!(ed.current_selections().primary().head(), 1); // cursor unchanged
+    assert_eq!(ed.current_selections().primary().head(), co(1)); // cursor unchanged
 }
 
 #[test]
@@ -358,7 +358,7 @@ fn copy_to_prev_line_clamps_to_shorter_target_line() {
     run_copy(&mut ed, false, 1);
     assert_eq!(ed.current_selections().len(), 2);
     // Copy should land at last char of "hi" = 'i' at offset 1.
-    assert_eq!(ed.current_selections().primary().head(), 1);
+    assert_eq!(ed.current_selections().primary().head(), co(1));
 }
 
 #[test]
@@ -383,7 +383,7 @@ fn copy_prev_line_count_3_primary_lands_on_furthest_copy() {
     let mut ed = copy_test_editor("a\nb\nc\nd\n-[e]>\n");
     run_copy(&mut ed, false, 3);
     // Furthest copy (3 lines up from 'e') is on 'b'.
-    assert_eq!(ed.current_selections().primary().head(), 2);
+    assert_eq!(ed.current_selections().primary().head(), co(2));
 }
 
 #[test]

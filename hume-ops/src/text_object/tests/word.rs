@@ -2,6 +2,7 @@ use super::super::*;
 use crate::WordCtx;
 use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::word::WordChars;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 
 /// Test-only shorthand: these tests exercise the word-snap pass-through, not
@@ -13,6 +14,10 @@ fn sticky(display_col: u32) -> StickyDisplayCol {
         origin: DisplayColOrigin::BufferLine,
         wrap_width: None,
     }
+}
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
 }
 
 // ── Word ──────────────────────────────────────────────────────────────────
@@ -588,11 +593,15 @@ fn nearest_on_whitespace_only_line_is_noop() {
 fn nearest_preserves_sticky_display_col_on_word() {
     // sel.sticky_display_col = Some(5) must survive the snap to a word.
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(6, 6, sticky(5)));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(6), co(6), sticky(5)));
     let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
     // "world" spans chars 6–10.
-    assert_eq!((sel.anchor(), sel.head()), (6, 10), "expected word range");
+    assert_eq!(
+        (sel.anchor(), sel.head()),
+        (co(6), co(10)),
+        "expected word range"
+    );
     assert_eq!(
         sel.sticky_display_col(),
         Some(sticky(5)),
@@ -607,10 +616,14 @@ fn nearest_preserves_sticky_display_col_on_whitespace() {
     let text = BufferText::from("hi   world\n");
     //                    0123456789
     // spaces at 2,3,4; head=3 (space), prev word = "hi" ends at 1.
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(3, 3, sticky(3)));
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(3), co(3), sticky(3)));
     let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
-    assert_eq!((sel.anchor(), sel.head()), (0, 1), "expected 'hi' range");
+    assert_eq!(
+        (sel.anchor(), sel.head()),
+        (co(0), co(1)),
+        "expected 'hi' range"
+    );
     assert_eq!(
         sel.sticky_display_col(),
         Some(sticky(3)),
@@ -623,7 +636,7 @@ fn nearest_no_sticky_display_col_is_cleared() {
     // When input sel has sticky_display_col=None, output must also have
     // sticky_display_col=None.
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::new(6, 6));
+    let sels = SelectionSet::single(Selection::new(co(6), co(6)));
     let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Move));
     let sel = result.primary();
     assert_eq!(
@@ -643,12 +656,12 @@ fn nearest_extend_grows_selection_to_snapped_word() {
     // Snap uses anchor=0 → nearest_word finds "hello" = [0,4] (anchor is already on a word).
     // new_end = max(10, 4) = 10 → selection stays (0, 10); head is already past "hello".
     let text = BufferText::from("hello\n     world\n");
-    let sels = SelectionSet::single(Selection::new(0, 10)); // anchor=0, head=10 (space)
+    let sels = SelectionSet::single(Selection::new(co(0), co(10))); // anchor=0, head=10 (space)
     let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
     let sel = result.primary();
     assert_eq!(
         (sel.anchor(), sel.head()),
-        (0, 10),
+        (co(0), co(10)),
         "extend must not shrink selection when anchor word is already covered"
     );
     assert!(sel.anchor() <= sel.head(), "selection must remain forward");
@@ -657,7 +670,7 @@ fn nearest_extend_grows_selection_to_snapped_word() {
 #[test]
 fn nearest_extend_preserves_sticky_display_col() {
     let text = BufferText::from("hello world\n");
-    let sels = SelectionSet::single(Selection::with_sticky_display_col(0, 5, sticky(7))); // anchor=0, head=5 (space)
+    let sels = SelectionSet::single(Selection::with_sticky_display_col(co(0), co(5), sticky(7))); // anchor=0, head=5 (space)
     let result = cmd_select_word_nearest_on_line(&text, sels, 0, WordCtx::bare(MotionMode::Extend));
     assert_eq!(
         result.primary().sticky_display_col(),

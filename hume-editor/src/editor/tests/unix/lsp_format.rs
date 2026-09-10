@@ -104,7 +104,7 @@ fn setup_with_caps(
 
 fn select_full_line_1(ed: &mut Editor) {
     // 'line1\n' — chars [0, 6).
-    ed.set_current_selections(SelectionSet::single(Selection::new(0, 5)));
+    ed.set_current_selections(SelectionSet::single(Selection::new(co(0), co(5))));
 }
 
 fn select_full_lines_1_and_3(ed: &mut Editor) {
@@ -112,7 +112,7 @@ fn select_full_lines_1_and_3(ed: &mut Editor) {
     // 'line3\n' (chars [12, 17]) — 'line2\n' in between is untouched by
     // either.
     ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(0, 5), Selection::new(12, 17)],
+        vec![Selection::new(co(0), co(5)), Selection::new(co(12), co(17))],
         0,
     ));
 }
@@ -121,7 +121,7 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
     // 'line1\n' whole (chars [0, 6)), plus "lin" on line 2 (chars 6..=8) —
     // not linewise.
     ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(0, 5), Selection::new(6, 8)],
+        vec![Selection::new(co(0), co(5)), Selection::new(co(6), co(8))],
         0,
     ));
 }
@@ -132,7 +132,7 @@ fn select_full_line_1_and_a_sub_line_selection(ed: &mut Editor) {
 /// one cursor happens to land on a blank line.
 fn select_mid_line_and_a_blank_line_cursor(ed: &mut Editor) {
     ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::new(1, 2), Selection::collapsed(6)],
+        vec![Selection::new(co(1), co(2)), Selection::collapsed(co(6))],
         0,
     ));
 }

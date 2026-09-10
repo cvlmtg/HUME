@@ -28,6 +28,7 @@ use hume_editing::selection::{Selection, SelectionSet};
 /// marks head, and the arrow direction shows which way the selection faces.
 /// Multiple selections in one string: `-[he]>llo -[wor]>ld\n`
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 // ── IntoTestResult ────────────────────────────────────────────────────────────
 
@@ -142,7 +143,10 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     input
                 );
                 let head = count - 1; // last char written is the head
-                selections.push(Selection::new(*anchor_offset, head));
+                selections.push(Selection::new(
+                    CharOffset::new(*anchor_offset),
+                    CharOffset::new(head),
+                ));
                 state = State::Normal;
             }
 
@@ -157,7 +161,10 @@ pub fn parse_state(input: &str) -> (BufferText, SelectionSet) {
                     input
                 );
                 let anchor = count - 1; // last char written is the anchor
-                selections.push(Selection::new(anchor, *head_offset));
+                selections.push(Selection::new(
+                    CharOffset::new(anchor),
+                    CharOffset::new(*head_offset),
+                ));
                 state = State::Normal;
             }
 
@@ -245,13 +252,13 @@ pub fn serialize_state(text: &BufferText, sels: &SelectionSet) -> String {
         if sel.anchor() <= sel.head() {
             // Forward selection (including cursor where anchor == head).
             // `-[` at anchor, `]>` one past head.
-            markers[sel.anchor()].push("-[");
-            markers[(sel.head() + 1).min(n)].push("]>");
+            markers[sel.anchor().index()].push("-[");
+            markers[(sel.head().index() + 1).min(n)].push("]>");
         } else {
             // Backward selection (anchor > head).
             // `<[` at head, `]-` one past anchor.
-            markers[sel.head()].push("<[");
-            markers[(sel.anchor() + 1).min(n)].push("]-");
+            markers[sel.head().index()].push("<[");
+            markers[(sel.anchor().index() + 1).min(n)].push("]-");
         }
     }
 

@@ -33,17 +33,17 @@ mod tests {
         assert!(sels.len() > 0, "selection set must not be empty");
 
         // All selection positions are within the buffer.
-        let len = text.len_chars();
+        let len = text.end();
         for sel in sels.iter_sorted() {
             assert!(
                 sel.head() < len,
-                "selection head {} out of bounds (buf len {})",
+                "selection head {:?} out of bounds (buf len {:?})",
                 sel.head(),
                 len
             );
             assert!(
                 sel.anchor() < len,
-                "selection anchor {} out of bounds (buf len {})",
+                "selection anchor {:?} out of bounds (buf len {:?})",
                 sel.anchor(),
                 len
             );

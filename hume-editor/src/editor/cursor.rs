@@ -32,7 +32,7 @@ use super::scroll::top_pos;
 pub(crate) fn content_pos(
     viewport: &ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_char: usize,
+    cursor_char: hume_rope::offset::CharOffset,
 ) -> Option<(u16, u16)> {
     let height = viewport.height;
     if height == 0 {
@@ -112,7 +112,7 @@ pub(crate) fn screen_to_char_offset(
     gutter_w: u16,
     viewport: &ViewportState,
     rm: &mut RowMap<'_>,
-) -> Option<usize> {
+) -> Option<hume_rope::offset::CharOffset> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
     if content_x < gutter_w {
         return None;

@@ -148,7 +148,7 @@ pub fn cmd_trim_selection_whitespace(
         // codebase — Space covers ' '/'\t', Eol covers '\n'.
         while start <= end
             && text
-                .char_at(start)
+                .char_at(start.index())
                 .is_some_and(|c| blank_class(c).is_some())
         {
             start = next_grapheme_boundary(text, start);
@@ -163,7 +163,7 @@ pub fn cmd_trim_selection_whitespace(
         let mut new_end = end;
         while new_end > start
             && text
-                .char_at(new_end)
+                .char_at(new_end.index())
                 .is_some_and(|c| blank_class(c).is_some())
         {
             new_end = prev_grapheme_boundary(text, new_end);

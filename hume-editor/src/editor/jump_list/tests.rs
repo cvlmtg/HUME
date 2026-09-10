@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::tests::co;
 use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -8,7 +9,7 @@ use hume_editing::text::BufferText;
 fn entry(char_pos: usize, line: usize) -> JumpEntry {
     JumpEntry {
         buffer_id: hume_engine::pipeline::BufferId::default(),
-        selections: SelectionSet::single(Selection::collapsed(char_pos)),
+        selections: SelectionSet::single(Selection::collapsed(co(char_pos))),
         primary_line: hume_rope::line::ContentLine::new(line),
     }
 }
@@ -234,7 +235,7 @@ fn deduplication() {
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
     let e = jl.backward(entry(0, 0)).unwrap();
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(5));
-    assert_eq!(e.selections.primary().head(), 3);
+    assert_eq!(e.selections.primary().head(), co(3));
 }
 
 #[test]
@@ -288,7 +289,7 @@ fn backward_saves_current_position() {
 fn entry_for(char_pos: usize, line: usize, bid: BufferId) -> JumpEntry {
     JumpEntry {
         buffer_id: bid,
-        selections: SelectionSet::single(Selection::collapsed(char_pos)),
+        selections: SelectionSet::single(Selection::collapsed(co(char_pos))),
         primary_line: hume_rope::line::ContentLine::new(line),
     }
 }
@@ -399,7 +400,7 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     jl.push(entry_for(7, 1, bid)); // head=7 sits inside "bbbb" on line 1
 
     // Insert "XX" at position 0 — shifts everything after it by 2.
-    let mut b = ChangeSetBuilder::new(14);
+    let mut b = ChangeSetBuilder::new(co(14));
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
@@ -409,7 +410,7 @@ fn translate_in_place_shifts_offset_and_primary_line() {
     jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
 
     let e = jl.backward(entry_for(0, 0, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), 9);
+    assert_eq!(e.selections.primary().head(), co(9));
     assert_eq!(
         e.primary_line,
         hume_rope::line::ContentLine::new(line_of("XXaaaa\nbbbb\ncccc", 9))
@@ -431,7 +432,7 @@ fn translate_in_place_skips_entries_for_other_buffers() {
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(2, 0, other_bid));
 
-    let mut b = ChangeSetBuilder::new(9);
+    let mut b = ChangeSetBuilder::new(co(9));
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
@@ -443,7 +444,7 @@ fn translate_in_place_skips_entries_for_other_buffers() {
     let e = jl.backward(entry_for(0, 0, other_bid)).unwrap();
     assert_eq!(
         e.selections.primary().head(),
-        2,
+        co(2),
         "untouched — different buffer"
     );
     assert_eq!(
@@ -463,7 +464,7 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
     let mut jl = JumpList::new(DEFAULT_JUMP_LIST_CAPACITY);
     jl.push(entry_for(1, 0, bid));
 
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.delete(6); // remove "abcdef" entirely
     b.retain_rest();
     let cs = b.finish();
@@ -473,7 +474,7 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
     jl.translate_in_place(bid, &edits, &cs, &text_pre, &text_post);
 
     let e = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), 0);
+    assert_eq!(e.selections.primary().head(), co(0));
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 }
 
@@ -493,7 +494,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
 
     // Delete "aaaa\nbbbb\n" (positions 0..10) — both entries fall inside it
     // and collapse onto the same post-edit point.
-    let mut b = ChangeSetBuilder::new(14);
+    let mut b = ChangeSetBuilder::new(co(14));
     b.delete(10);
     b.retain_rest();
     let cs = b.finish();
@@ -506,7 +507,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
     assert_eq!(jl.cursor, 1, "present remapped to the new length");
 
     let e = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(e.selections.primary().head(), 0);
+    assert_eq!(e.selections.primary().head(), co(0));
     assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
     assert!(
         jl.backward(entry_for(0, 0, bid)).is_none(),
@@ -537,7 +538,7 @@ fn translate_in_place_preserves_a_backward_created_duplicate_pair() {
 
     // Insert a line above both — a uniform shift, not a collision: both
     // entries move from line 0 to line 1 together.
-    let mut b = ChangeSetBuilder::new(14);
+    let mut b = ChangeSetBuilder::new(co(14));
     b.insert("XXXX\n");
     b.retain_rest();
     let cs = b.finish();
@@ -578,7 +579,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     // Delete "aaaa\nbbbb\n" (0..10) — A and B both fall inside it and
     // collapse onto the same post-edit point; C, past the deletion, merely
     // shifts and lands on a different line.
-    let mut b = ChangeSetBuilder::new(19);
+    let mut b = ChangeSetBuilder::new(co(19));
     b.delete(10);
     b.retain_rest();
     let cs = b.finish();
@@ -601,7 +602,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     // Oldest-to-newest: the merged A/B entry, then C — `backward` then
     // `forward` walks both without disturbing which one the cursor lands on.
     let kept_ab = jl.backward(entry_for(99, 99, bid)).unwrap();
-    assert_eq!(kept_ab.selections.primary().head(), 0);
+    assert_eq!(kept_ab.selections.primary().head(), co(0));
     assert_eq!(
         kept_ab.primary_line,
         hume_rope::line::ContentLine::new(0),
@@ -610,7 +611,7 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     let survivor_c = jl.forward().unwrap();
     assert_eq!(
         survivor_c.selections.primary().head(),
-        7,
+        co(7),
         "C merely shifts by the 10-char deletion, unaffected by the A/B merge"
     );
     assert_eq!(

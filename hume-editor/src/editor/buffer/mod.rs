@@ -9,6 +9,7 @@ use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_platform::io::FileMeta;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 mod disk;
 // Sibling buffer submodules (`file_open::enter_buffer`,
@@ -40,9 +41,9 @@ use hume_treesitter::syntax::Syntax;
 /// undo, or redo, all of which bump `text_gen`) invalidates it rather than
 /// trying to remap positions through the change.
 pub(crate) struct LastInsert {
-    /// One inclusive `(start, end)` char range per selection that was active
-    /// during the session, sorted by `start`.
-    pub(crate) spans: Vec<(usize, usize)>,
+    /// One inclusive char range per selection that was active during the
+    /// session, sorted by `start`.
+    pub(crate) spans: Vec<InclusiveRange<CharOffset>>,
     pub(crate) text_gen: u64,
 }
 

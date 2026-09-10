@@ -161,6 +161,7 @@ use std::sync::Arc;
 
 use hume_editing::grapheme::prev_grapheme_boundary;
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 use streaming_iterator::StreamingIterator;
 
 use crate::highlight::RopeProvider;
@@ -182,12 +183,12 @@ use crate::layers::{SyntaxLayer, SyntaxLayers};
 /// uses, rather than a second, `Option`-shaped "nothing to collect" case.
 #[derive(Default)]
 pub struct ObjectSpans {
-    /// Inclusive `(start, end)` char spans, sorted by `(start, Reverse(end))`
-    /// and deduplicated — `adjacent`'s `partition_point` walk depends on this
+    /// Inclusive char spans, sorted by `(start, Reverse(end))` and
+    /// deduplicated — `adjacent`'s `partition_point` walk depends on this
     /// exact ordering. `enclosing` is a full linear scan and doesn't need
     /// it, but keeps the same sorted-and-deduplicated data rather than a
     /// second representation.
-    spans: Vec<(usize, usize)>,
+    spans: Vec<InclusiveRange<CharOffset>>,
 }
 
 impl ObjectSpans {
@@ -309,19 +310,19 @@ impl ObjectSpans {
         Self::finish(spans)
     }
 
-    fn finish(mut spans: Vec<(usize, usize)>) -> Self {
-        spans.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+    fn finish(mut spans: Vec<InclusiveRange<CharOffset>>) -> Self {
+        spans.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
         spans.dedup();
         Self { spans }
     }
 
     /// The smallest span containing `pos` (`start <= pos <= end`).
-    pub fn enclosing(&self, pos: usize) -> Option<(usize, usize)> {
+    pub fn enclosing(&self, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
         self.spans
             .iter()
             .copied()
-            .filter(|&(start, end)| start <= pos && pos <= end)
-            .min_by_key(|&(start, end)| end - start)
+            .filter(|span| span.contains(pos))
+            .min_by_key(|span| span.end.chars_since(span.start))
     }
 
     /// The next/previous object relative to `pos`.
@@ -335,13 +336,13 @@ impl ObjectSpans {
     ///
     /// `Forward`: smallest `start > pos`, ties -> largest `end`.
     /// `Backward`: largest `start < pos`, ties -> largest `end`.
-    pub fn adjacent(&self, pos: usize, dir: Direction) -> Option<(usize, usize)> {
+    pub fn adjacent(&self, pos: CharOffset, dir: Direction) -> Option<InclusiveRange<CharOffset>> {
         match dir {
             Direction::Forward => {
                 // First span past every `start <= pos` entry. Since ties
                 // are pre-sorted by descending `end`, that span is already
                 // the largest-end winner within its start.
-                let idx = self.spans.partition_point(|&(start, _)| start <= pos);
+                let idx = self.spans.partition_point(|span| span.start <= pos);
                 self.spans.get(idx).copied()
             }
             Direction::Backward => {
@@ -349,10 +350,9 @@ impl ObjectSpans {
                 // largest `start < pos`, then walk to the first span
                 // sharing that start (the descending-`end` sort puts the
                 // largest-end tie-break winner there).
-                let idx = self.spans.partition_point(|&(start, _)| start < pos);
-                let (target_start, _) = *self.spans[..idx].last()?;
-                let run_start =
-                    self.spans[..idx].partition_point(|&(start, _)| start < target_start);
+                let idx = self.spans.partition_point(|span| span.start < pos);
+                let target_start = self.spans[..idx].last()?.start;
+                let run_start = self.spans[..idx].partition_point(|span| span.start < target_start);
                 self.spans.get(run_start).copied()
             }
         }
@@ -426,7 +426,7 @@ fn collect_hulls(
     capture_idx: u32,
     layer: &SyntaxLayer,
     text: &BufferText,
-    out: &mut Vec<(usize, usize)>,
+    out: &mut Vec<InclusiveRange<CharOffset>>,
 ) {
     let mut cursor = tree_sitter::QueryCursor::new();
     let root = layer.tree.root_node();
@@ -460,7 +460,7 @@ fn collect_hulls(
         if end < start {
             continue;
         }
-        out.push((start, end));
+        out.push(InclusiveRange::new(start, end));
     }
 }
 

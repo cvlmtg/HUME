@@ -273,7 +273,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        head_before + 1,
+        head_before.shift(1),
         "the closing key ('l') must still execute its normal motion"
     );
 }
@@ -656,7 +656,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        head_before + 1,
+        head_before.shift(1),
         "the closing key ('l') must still execute its normal motion"
     );
 }
@@ -762,7 +762,7 @@ fn a_mouse_click_closes_a_scrollable_popup() {
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        3,
+        co(3),
         "the click must still move the cursor to the clicked char"
     );
 }

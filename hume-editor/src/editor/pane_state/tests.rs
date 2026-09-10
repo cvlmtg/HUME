@@ -1,10 +1,11 @@
 use super::*;
+use crate::editor::tests::co;
 
 #[test]
 fn pane_buffer_state_default_is_valid() {
     use hume_editing::selection::Selection;
     let state = PaneBufferState::default();
-    assert_eq!(state.selections.primary(), Selection::collapsed(0));
+    assert_eq!(state.selections.primary(), Selection::collapsed(co(0)));
     assert!(state.edit_group.is_none());
     assert!(state.paste_group.is_none());
     assert!(state.search_cursor.match_count.is_none());

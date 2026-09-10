@@ -498,12 +498,13 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     // end and sel2 start) is retained on its own line. Sel2 replaces "z\nf",
     // retaining "oo". Both pasted "X\n" ranges are selected.
     use hume_editing::selection::{Selection, SelectionSet};
+    use hume_rope::offset::CharOffset;
     // parse_state requires at least one selection marker; we ignore the returned sels.
     let (text, _) = hume_test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(2, 4), // "c\nx" — first_line=0, last_line=1
-            Selection::new(6, 8), // "z\nf" — first_line=1, last_line=2
+            Selection::new(CharOffset::new(2), CharOffset::new(4)), // "c\nx" — first_line=0, last_line=1
+            Selection::new(CharOffset::new(6), CharOffset::new(8)), // "z\nf" — first_line=1, last_line=2
         ],
         0,
     );

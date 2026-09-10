@@ -1,6 +1,11 @@
 use super::*;
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
+use hume_rope::offset::CharOffset;
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
 
 /// Two guaranteed-distinct `BufferId`s — see the identical helper in
 /// `lsp/diagnostics.rs` for why a single `EngineView` is required.
@@ -16,7 +21,7 @@ fn make_two_bids() -> (BufferId, BufferId) {
 /// in for whatever `host_impl.rs` would have interned.
 fn sign(pos: usize, text: &str) -> SignEntry {
     SignEntry {
-        pos,
+        pos: co(pos),
         text: text.into(),
         scope: ScopeId(0),
     }
@@ -29,7 +34,7 @@ fn sign(pos: usize, text: &str) -> SignEntry {
 /// `eol_text_for_buffer` instead.
 fn eol(pos: usize, text: &str) -> EolTextEntry {
     EolTextEntry {
-        pos,
+        pos: co(pos),
         text: text.into(),
         scope: ScopeId(0),
     }
@@ -231,8 +236,8 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
     store.set_signs("vcs".to_string(), a, vec![sign(0, "+"), sign(20, "+2")]);
     store.set_signs("linter".to_string(), a, vec![sign(0, "!")]);
 
-    let mut got: Vec<(usize, &str)> = store
-        .signs_in_range(a, 0..10)
+    let mut got: Vec<_> = store
+        .signs_in_range(a, hume_rope::offset::ExclusiveRange::new(co(0), co(10)))
         .map(|(slot, e)| (slot, &*e.text))
         .collect();
     got.sort();
@@ -246,7 +251,7 @@ fn signs_in_range_yields_each_entrys_resolved_slot_filtered_to_the_range() {
 
 fn virtual_line(pos: usize) -> VirtualLineEntry {
     VirtualLineEntry {
-        pos,
+        pos: co(pos),
         text: "x".to_string(),
         before: false,
         scope: ScopeId(0),
@@ -312,7 +317,7 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
     // An identity changeset — its content doesn't matter to this test, only
     // that `remap_through` is called with *something* to remap through.
     let cs = {
-        let mut csb = ChangeSetBuilder::new(5);
+        let mut csb = ChangeSetBuilder::new(co(5));
         csb.retain_rest();
         csb.finish()
     };
@@ -337,7 +342,7 @@ fn remap_through_only_touches_a_buffer_that_has_decorations() {
 
 fn inlay(pos: usize, text: &str, before: bool) -> InlayHintEntry {
     InlayHintEntry {
-        pos,
+        pos: co(pos),
         text: text.into(),
         before,
     }
@@ -366,7 +371,7 @@ fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
     store.set_signs("linter".to_string(), a, vec![sign(8, "!")]);
 
     // Retain(4) "foo\n", Delete(4) "bar\n", Retain(4) "baz\n".
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.retain(4);
     b.delete(4);
     b.retain_rest();
@@ -379,14 +384,14 @@ fn remap_points_drops_an_entry_whose_anchor_was_deleted() {
         "a hint anchored inside the deleted line must be dropped, not \
          re-anchored to whatever text now sits at the deletion point"
     );
-    let signs: Vec<(usize, &str)> = store
+    let signs: Vec<_> = store
         .signs_for("linter", a)
         .iter()
         .map(|s| (s.pos, &*s.text))
         .collect();
     assert_eq!(
         signs,
-        vec![(4, "!")],
+        vec![(co(4), "!")],
         "a sign past the deletion still remaps, just shifted"
     );
 }

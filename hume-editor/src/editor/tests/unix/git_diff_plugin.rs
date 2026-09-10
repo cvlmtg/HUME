@@ -197,7 +197,15 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
 /// `extra_highlights_for(SOURCE, bid)`, paired with the live buffer
 /// substring each span covers — lets a test assert "this span covers the
 /// changed word" without predicting `diff-words`' exact tokenization.
-fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)> {
+fn highlights(
+    ed: &Editor,
+    bid: BufferId,
+) -> Vec<(
+    hume_rope::offset::CharOffset,
+    hume_rope::offset::CharOffset,
+    String,
+    String,
+)> {
     let text = ed.state.buffers.get(bid).text();
     ed.state
         .config
@@ -209,7 +217,7 @@ fn highlights(ed: &Editor, bid: BufferId) -> Vec<(usize, usize, String, String)>
                 e.start,
                 e.end,
                 scope_name(ed, e.scope).to_string(),
-                text.slice(e.start..e.end).to_string(),
+                text.slice(e.start.index()..e.end.index()).to_string(),
             )
         })
         .collect()
@@ -404,7 +412,12 @@ fn inline_change_renders_virtual_line_word_spans_and_tint() {
     );
     assert_eq!(
         highlights(&ed, bid),
-        vec![(8, 11, "diff.plus.word".to_string(), "QUX".to_string())],
+        vec![(
+            co(8),
+            co(11),
+            "diff.plus.word".to_string(),
+            "QUX".to_string()
+        )],
         "the new-side span must cover the live buffer's replacement word"
     );
     assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.delta.line".to_string())]);

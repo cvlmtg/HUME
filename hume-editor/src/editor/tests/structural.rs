@@ -66,7 +66,7 @@ pub(super) fn rust_editor(source: &str) -> Editor {
 /// The text a selection covers (inclusive of the grapheme at `end()`).
 fn text_of(text: &BufferText, sel: Selection) -> String {
     let end = next_grapheme_boundary(text, sel.end_inclusive(text));
-    text.slice(sel.start()..end).to_string()
+    text.slice(sel.start().index()..end.index()).to_string()
 }
 
 /// The text covered by the focused buffer's primary selection. A slice

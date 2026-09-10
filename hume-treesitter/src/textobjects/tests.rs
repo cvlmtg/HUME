@@ -10,6 +10,15 @@ use crate::registry::GrammarBundle;
 use crate::syntax::Syntax;
 use crate::test_support::{empty_langs, fresh_bid, make_bundle};
 use hume_editing::changeset::ChangeSetBuilder;
+use hume_rope::offset::{CharOffset, InclusiveRange};
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
+
+fn ir(start: usize, end: usize) -> InclusiveRange<CharOffset> {
+    InclusiveRange::new(co(start), co(end))
+}
 
 fn compile(source: &str) -> TextObjectsQuery {
     require_grammars(&["rust"]);
@@ -101,43 +110,46 @@ fn real_helix_rust_textobjects_defines_expected_pairs() {
 /// and `adjacent` both assume its sort-and-dedup, so a test double must not
 /// re-implement that comparator independently.
 fn spans_from(list: &[(usize, usize)]) -> ObjectSpans {
-    ObjectSpans::finish(list.to_vec())
+    ObjectSpans::finish(list.iter().map(|&(s, e)| ir(s, e)).collect())
 }
 
 #[test]
 fn enclosing_picks_the_smallest_containing_span() {
     let spans = spans_from(&[(0, 20), (5, 10)]);
-    assert_eq!(spans.enclosing(7), Some((5, 10)));
+    assert_eq!(spans.enclosing(co(7)), Some(ir(5, 10)));
 }
 
 #[test]
 fn enclosing_returns_none_when_nothing_contains_pos() {
     let spans = spans_from(&[(0, 5)]);
-    assert_eq!(spans.enclosing(10), None);
+    assert_eq!(spans.enclosing(co(10)), None);
 }
 
 #[test]
 fn enclosing_includes_pos_on_a_spans_last_char() {
     let spans = spans_from(&[(0, 5)]);
-    assert_eq!(spans.enclosing(5), Some((0, 5)));
+    assert_eq!(spans.enclosing(co(5)), Some(ir(0, 5)));
 }
 
 #[test]
 fn adjacent_forward_picks_smallest_start_after_pos() {
     let spans = spans_from(&[(0, 5), (10, 15), (20, 25)]);
-    assert_eq!(spans.adjacent(6, Direction::Forward), Some((10, 15)));
+    assert_eq!(spans.adjacent(co(6), Direction::Forward), Some(ir(10, 15)));
 }
 
 #[test]
 fn adjacent_forward_ties_pick_largest_end() {
     let spans = spans_from(&[(10, 12), (10, 20)]);
-    assert_eq!(spans.adjacent(5, Direction::Forward), Some((10, 20)));
+    assert_eq!(spans.adjacent(co(5), Direction::Forward), Some(ir(10, 20)));
 }
 
 #[test]
 fn adjacent_backward_picks_largest_start_before_pos() {
     let spans = spans_from(&[(0, 5), (10, 15), (20, 25)]);
-    assert_eq!(spans.adjacent(18, Direction::Backward), Some((10, 15)));
+    assert_eq!(
+        spans.adjacent(co(18), Direction::Backward),
+        Some(ir(10, 15))
+    );
 }
 
 // Vim `[m`: a backward press from *inside* an object must land on that
@@ -147,21 +159,24 @@ fn adjacent_backward_picks_largest_start_before_pos() {
 #[test]
 fn adjacent_backward_from_inside_an_object_lands_on_its_own_start() {
     let spans = spans_from(&[(0, 5), (10, 20)]);
-    assert_eq!(spans.adjacent(15, Direction::Backward), Some((10, 20)));
+    assert_eq!(
+        spans.adjacent(co(15), Direction::Backward),
+        Some(ir(10, 20))
+    );
 }
 
 #[test]
 fn adjacent_backward_ties_pick_largest_end() {
     let spans = spans_from(&[(0, 5), (0, 10)]);
-    assert_eq!(spans.adjacent(8, Direction::Backward), Some((0, 10)));
+    assert_eq!(spans.adjacent(co(8), Direction::Backward), Some(ir(0, 10)));
 }
 
 #[test]
 fn adjacent_returns_none_at_buffer_edges() {
     let forward_only = spans_from(&[(0, 5)]);
-    assert_eq!(forward_only.adjacent(10, Direction::Forward), None);
+    assert_eq!(forward_only.adjacent(co(10), Direction::Forward), None);
     let backward_only = spans_from(&[(10, 15)]);
-    assert_eq!(backward_only.adjacent(5, Direction::Backward), None);
+    assert_eq!(backward_only.adjacent(co(5), Direction::Backward), None);
 }
 
 // ── ObjectSpans::collect / collect_for_navigation — real rust fixture ──────
@@ -189,8 +204,9 @@ fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
 
 /// The buffer text at `span`, inclusive end — for asserting on the actual
 /// text a hull collected rather than hand-counted char offsets.
-fn span_text(text: &BufferText, span: (usize, usize)) -> String {
-    text.slice(span.0..span.1 + 1).to_string()
+fn span_text(text: &BufferText, span: InclusiveRange<CharOffset>) -> String {
+    text.slice(span.start.index()..span.end.index() + 1)
+        .to_string()
 }
 
 /// Parse `source` as rust with the real Helix `textobjects.scm` attached.
@@ -624,7 +640,7 @@ fn for_selector_cache_does_not_survive_a_bake() {
     // layers edited-in-place and *not* replaced by an install.
     let edited = format!("// lead\n{source}");
     let rope_pre = ropey::Rope::from_str(source);
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(co(rope_pre.len_chars()));
     b.insert("// lead\n");
     b.retain_rest();
     // `attach_sync` installs at generation 1, so the edit is generation 2.

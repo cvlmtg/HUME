@@ -1,3 +1,5 @@
+use hume_rope::offset::CharOffset;
+
 use super::*;
 use crate::changeset::ChangeSetBuilder;
 use crate::selection::{Selection, SelectionSet};
@@ -6,13 +8,13 @@ use crate::selection::{Selection, SelectionSet};
 
 /// Build a collapsed SelectionSet at offset `pos`.
 fn sel_at(pos: usize) -> SelectionSet {
-    SelectionSet::single(Selection::collapsed(pos))
+    SelectionSet::single(Selection::collapsed(CharOffset::new(pos)))
 }
 
 /// Build a simple ChangeSet that inserts `text` at offset 0 in a buffer
 /// of `buf_len` characters.
 fn insert_cs(buf_len: usize, text: &str) -> ChangeSet {
-    let mut b = ChangeSetBuilder::new(buf_len);
+    let mut b = ChangeSetBuilder::new(CharOffset::new(buf_len));
     b.insert(text);
     b.retain_rest();
     b.finish()
@@ -21,7 +23,7 @@ fn insert_cs(buf_len: usize, text: &str) -> ChangeSet {
 /// Build a simple ChangeSet that deletes the first `n` characters from a
 /// buffer of `buf_len` characters.
 fn delete_cs(buf_len: usize, n: usize) -> ChangeSet {
-    let mut b = ChangeSetBuilder::new(buf_len);
+    let mut b = ChangeSetBuilder::new(CharOffset::new(buf_len));
     b.delete(n);
     b.retain_rest();
     b.finish()

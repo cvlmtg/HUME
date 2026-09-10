@@ -62,14 +62,14 @@ fn jump_backward_then_forward() {
 #[test]
 fn goto_matching_pair_records_jump() {
     let text = BufferText::from("foo(bar)\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(3)); // on '('
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(3))); // on '('
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
     ed.state.mode = Mode::Normal;
     let before = state(&ed);
 
     ed.handle_key(key('#'));
-    assert_eq!(ed.current_selections().primary().head(), 7); // on ')'
+    assert_eq!(ed.current_selections().primary().head(), co(7)); // on ')'
 
     // jump-backward should restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
@@ -149,7 +149,7 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
     // `search_sel` itself builds — so confirming search truly changes
     // nothing, not just "landed near where it started".
     let text = BufferText::from("foo\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::new(0, 2));
+    let sels = SelectionSet::single(hume_editing::selection::Selection::new(co(0), co(2)));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
     ed.state.mode = Mode::Normal;
@@ -236,7 +236,7 @@ fn ctrl_i_works_when_current_is_same_line_as_last_jump() {
     // Two "editor" matches on the same line.
     let text = hume_editing::text::BufferText::from("the editor and the editor\nother line\n");
     let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(0),
+        hume_editing::selection::Selection::collapsed(co(0)),
     );
     let doc = crate::editor::buffer::Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
@@ -311,7 +311,7 @@ fn select_all_records_jump() {
 #[test]
 fn select_all_from_last_char_still_records_jump() {
     let text = BufferText::from("foo\nbar\n");
-    let last = text.len_chars() - 1;
+    let last = text.last_char();
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(last));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
@@ -324,7 +324,11 @@ fn select_all_from_last_char_still_records_jump() {
         last,
         "head shouldn't move — already on the last char"
     );
-    assert_eq!(after.anchor(), 0, "% should still select the whole buffer");
+    assert_eq!(
+        after.anchor(),
+        co(0),
+        "% should still select the whole buffer"
+    );
 
     // Ctrl-o must restore the pre-% collapsed cursor.
     ed.handle_key(key_ctrl('o'));
@@ -371,7 +375,7 @@ fn goto_matching_pair_noop_does_not_clobber_forward_history() {
 #[test]
 fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
     ed.state.mode = Mode::Normal;
@@ -394,7 +398,7 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
 #[test]
 fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     let text = BufferText::from("hello\n\nworld\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(7)); // on 'w'
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(7))); // on 'w'
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
     ed.state.mode = Mode::Normal;
@@ -530,7 +534,7 @@ fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
     let target = text.find(marker).expect("marker line present");
     let expected = serialize_state(
         &BufferText::from(text),
-        &SelectionSet::single(hume_editing::selection::Selection::collapsed(target)),
+        &SelectionSet::single(hume_editing::selection::Selection::collapsed(co(target))),
     );
     assert_eq!(state(ed), expected, "{msg}");
 }
@@ -818,7 +822,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     ed.handle_key(key('e')); // goto-last-line
     assert_ne!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "cursor actually moved off the initial position"
     );
 
@@ -857,7 +861,7 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     ed.handle_key(key('e')); // goto-last-line
     assert_ne!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "cursor actually moved off the initial position"
     );
 

@@ -172,7 +172,8 @@ fn call_bang_count_arg_dispatches_synchronously() {
         .primary()
         .head();
     assert_eq!(
-        idx, 5,
+        idx,
+        co(5),
         "cursor must be at position 5 after (call! \"move-right\" 5)"
     );
 }
@@ -740,7 +741,11 @@ fn steel_lambda_receives_count_and_extend() {
         .selections
         .primary()
         .head();
-    assert_eq!(idx, 4, "count=4 must move cursor 4 positions; got {idx}");
+    assert_eq!(
+        idx,
+        co(4),
+        "count=4 must move cursor 4 positions; got {idx:?}"
+    );
 
     // Fail oracle: if injection were disabled, cursor would be at 1 (count defaults to 1).
     // Restate with count=1 to prove the assert is live.
@@ -758,8 +763,9 @@ fn steel_lambda_receives_count_and_extend() {
         .primary()
         .head();
     assert_eq!(
-        idx2, 5,
-        "count=1 must advance one more position; got {idx2}"
+        idx2,
+        co(5),
+        "count=1 must advance one more position; got {idx2:?}"
     );
 }
 
@@ -806,8 +812,8 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .head();
     assert_eq!(
         after,
-        before + 1,
-        "0-arg lambda must move 1 regardless of count; got {after}"
+        before.shift(1),
+        "0-arg lambda must move 1 regardless of count; got {after:?}"
     );
     // No error was reported.
     assert!(
@@ -848,7 +854,11 @@ fn steel_arity_1_lambda_receives_count_only() {
         .selections
         .primary()
         .head();
-    assert_eq!(idx, 3, "count=3 must move cursor 3 positions; got {idx}");
+    assert_eq!(
+        idx,
+        co(3),
+        "count=3 must move cursor 3 positions; got {idx:?}"
+    );
 
     // No arity error was produced.
     assert!(
@@ -1767,7 +1777,7 @@ fn current_selections_primary_flag_follows_primary_index() {
 
     let mut ed = editor_from("-[a]>bcde\n");
     ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::collapsed(0), Selection::collapsed(4)],
+        vec![Selection::collapsed(co(0)), Selection::collapsed(co(4))],
         1,
     ));
     let host = live_host!(ed);

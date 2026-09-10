@@ -5,6 +5,7 @@ use hume_editing::changeset::ChangeSetBuilder;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::providers::SyntaxSpans;
+use hume_rope::offset::CharOffset;
 
 use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
@@ -205,7 +206,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     // Record a contiguous edit and tick — chain bakes, tree_gen catches
     // up to text_gen, so old_tree must be Some.
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("\"a\":1");
     b.retain_rest();
@@ -223,7 +224,7 @@ fn frame_tick_old_tree_present_iff_chain_baked() {
     assert!(syn.layers().is_some());
     // Force a chain break: pending edit gen does not follow tree_gen+1.
     let rope2 = ropey::Rope::from_str("{\"a\":1}\n");
-    let mut b2 = ChangeSetBuilder::new(rope2.len_chars());
+    let mut b2 = ChangeSetBuilder::new(CharOffset::new(rope2.len_chars()));
     b2.retain(1);
     b2.insert("x");
     b2.retain_rest();
@@ -259,7 +260,7 @@ fn bake_contiguous_chain_advances_tree_gen_and_clears_pending() {
     assert_eq!(syn.tree_gen(), 0);
 
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("\"a\":1");
     b.retain_rest();
@@ -306,7 +307,7 @@ fn bake_mid_chain_gap_rejected() {
     // Fabricate a gapped chain directly: recorded gens 1 and 3 (a gap at
     // 2), matching endpoints against tree_gen(=0)+1 ..= text_gen(=3).
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("x");
     b.retain_rest();
@@ -395,7 +396,7 @@ fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     // range must shift forward by the inserted length once baked.
     let prefix = "more text\n";
     let rope_pre = rope;
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.insert(prefix);
     b.retain_rest();
     let cs = b.finish();
@@ -513,7 +514,7 @@ fn install_matching_done_clears_in_flight_and_drains_pending() {
 
     // An edit lands while the initial parse (gen 0) is still in flight.
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("x");
     b.retain_rest();
@@ -658,7 +659,7 @@ fn is_current_is_false_when_a_failed_parse_advanced_parsed_gen_over_older_layers
 
     // An edit moves the text to gen 1, then gen 1's parse fails.
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("\"a\":1");
     b.retain_rest();
@@ -739,7 +740,7 @@ fn ensure_current_reparses_a_stale_tree_after_a_recorded_edit() {
     // Record an edit but deliberately skip frame_tick — ensure_current must
     // bake and reparse on its own, with no async round trip.
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("\"a\":1");
     b.retain_rest();
@@ -813,7 +814,7 @@ fn ensure_current_reports_a_broken_chain_and_full_reparses() {
 
     // Record at gen 3, skipping 1 and 2 — a gapped chain.
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("x");
     b.retain_rest();
@@ -853,7 +854,7 @@ fn install_discards_a_result_for_an_already_installed_generation() {
     // Reach gen 1 synchronously, as a structural command would.
     syn.install(parse_done_for(&bundle, bid, 0, "{}\n"), 0);
     let rope_pre = ropey::Rope::from_str("{}\n");
-    let mut b = ChangeSetBuilder::new(rope_pre.len_chars());
+    let mut b = ChangeSetBuilder::new(CharOffset::new(rope_pre.len_chars()));
     b.retain(1);
     b.insert("\"a\":1");
     b.retain_rest();

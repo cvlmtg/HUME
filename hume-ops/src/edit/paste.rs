@@ -4,6 +4,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 use crate::register;
@@ -37,7 +38,7 @@ fn paste_impl(
     before: bool,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     if values.is_empty() {
-        let mut b = ChangeSetBuilder::new(text.len_chars());
+        let mut b = ChangeSetBuilder::new(text.end());
         b.retain_rest();
         return (text, sels, b.finish());
     }
@@ -71,11 +72,11 @@ fn paste_impl(
                 } else {
                     next_line_start(text, line.into())
                 };
-                // saturating_sub guards against same-line multi-cursor underflow.
-                b.retain(insert_at.saturating_sub(b.old_pos()));
+                // Clamped to old_pos() to guard against same-line multi-cursor underflow.
+                b.retain(insert_at.max(b.old_pos()).chars_since(b.old_pos()));
                 let paste_start = b.new_pos();
                 b.insert(content);
-                new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
+                new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
             } else {
                 // Charwise cursor paste.
                 let insert_at = if before {
@@ -86,15 +87,16 @@ fn paste_impl(
                     // no other char to land on), so stepping one past it
                     // would drop the text at the start of the next line.
                     let end_incl = sel.end_inclusive(text);
-                    (end_incl + 1).min(line_break_char(text, text.char_to_line(end_incl)))
+                    sel.end_exclusive(text)
+                        .min(line_break_char(text, text.char_to_line(end_incl)))
                 };
-                b.retain(insert_at - b.old_pos());
+                b.retain(insert_at.chars_since(b.old_pos()));
                 if content.is_empty() {
                     new_sels.push(Selection::collapsed(sel.head()));
                 } else {
                     let paste_start = b.new_pos();
                     b.insert(content);
-                    new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
+                    new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
                 }
             }
         } else if register::is_register_linewise(content) {
@@ -114,14 +116,14 @@ fn paste_impl(
             // so the pasted line's own '\n' doesn't create a blank line.
             let last_line = text.char_to_line(end_incl);
             let newline_pos = line_break_char(text, last_line);
-            let del_end = if end_incl + 1 == newline_pos {
-                newline_pos + 1
+            let del_end = if sel.end_exclusive(text) == newline_pos {
+                CharOffset::new(newline_pos.index() + 1)
             } else {
-                end_incl + 1
+                sel.end_exclusive(text)
             };
 
-            b.retain(start - b.old_pos());
-            b.delete(del_end - start);
+            b.retain(start.chars_since(b.old_pos()));
+            b.delete(del_end.chars_since(start));
             if needs_prefix {
                 b.insert("\n");
             }
@@ -129,20 +131,19 @@ fn paste_impl(
             // pasted content alone, not the prefix.
             let paste_start = b.new_pos();
             b.insert(content);
-            new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
+            new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
         } else {
             // Charwise over a non-collapsed selection: delete and inline-insert.
             let start = sel.start();
-            let end_incl = sel.content_end(text);
-            let end_excl = end_incl + 1;
-            b.retain(start - b.old_pos());
-            b.delete(end_excl - start);
+            let end_excl = sel.content_end_exclusive(text);
+            b.retain(start.chars_since(b.old_pos()));
+            b.delete(end_excl.chars_since(start));
             let paste_start = b.new_pos();
             b.insert(content);
             if content.is_empty() {
                 new_sels.push(Selection::collapsed(b.new_pos()));
             } else {
-                new_sels.push(Selection::new(paste_start, b.new_pos() - 1));
+                new_sels.push(Selection::new(paste_start, b.new_pos().shift(-1)));
             }
         }
     })

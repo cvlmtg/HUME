@@ -1,3 +1,5 @@
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+
 use crate::error::ApplyError;
 use crate::text::BufferText;
 
@@ -194,7 +196,7 @@ impl<'a> PosMapCursor<'a> {
     /// whether the position's anchor character survived the edit (selections,
     /// cursors — a collapsed-to-the-deletion-point result is exactly what
     /// they want).
-    pub fn map(&mut self, pos: usize, assoc: Assoc) -> usize {
+    pub fn map(&mut self, pos: CharOffset, assoc: Assoc) -> CharOffset {
         self.map_anchor(pos, assoc).pos
     }
 
@@ -210,13 +212,14 @@ impl<'a> PosMapCursor<'a> {
     /// query can never matter again for a non-decreasing sequence of queries.
     /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
-    pub fn map_anchor(&mut self, pos: usize, assoc: Assoc) -> MappedPos {
+    pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
+        let pos = pos.index();
         while self.idx < self.ops.len() {
             match &self.ops[self.idx] {
                 Operation::Retain(n) => {
                     if pos < self.old + n {
                         return MappedPos {
-                            pos: self.new + (pos - self.old),
+                            pos: CharOffset::new(self.new + (pos - self.old)),
                             anchor_deleted: false,
                         };
                     }
@@ -227,7 +230,7 @@ impl<'a> PosMapCursor<'a> {
                 Operation::Delete(n) => {
                     if pos < self.old + n {
                         return MappedPos {
-                            pos: self.new,
+                            pos: CharOffset::new(self.new),
                             anchor_deleted: true,
                         };
                     }
@@ -237,12 +240,12 @@ impl<'a> PosMapCursor<'a> {
                 Operation::Insert(s) => {
                     let len = s.chars().count();
                     if pos == self.old {
-                        let pos = match assoc {
+                        let mapped = match assoc {
                             Assoc::Before => self.new,
                             Assoc::After => self.new + len,
                         };
                         return MappedPos {
-                            pos,
+                            pos: CharOffset::new(mapped),
                             anchor_deleted: false,
                         };
                     }
@@ -252,7 +255,7 @@ impl<'a> PosMapCursor<'a> {
             }
         }
         MappedPos {
-            pos: self.new + (pos - self.old),
+            pos: CharOffset::new(self.new + (pos - self.old)),
             anchor_deleted: false,
         }
     }
@@ -263,7 +266,7 @@ impl<'a> PosMapCursor<'a> {
 /// the anchor, not the anchor).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MappedPos {
-    pub pos: usize,
+    pub pos: CharOffset,
     pub anchor_deleted: bool,
 }
 
@@ -402,10 +405,10 @@ impl ChangeSet {
     /// # Panics
     /// Panics (debug) if `pos > self.len_before`.
     #[cfg(test)]
-    pub(crate) fn map_pos(&self, pos: usize, assoc: Assoc) -> usize {
+    pub(crate) fn map_pos(&self, pos: CharOffset, assoc: Assoc) -> CharOffset {
         debug_assert!(
-            pos <= self.len_before,
-            "map_pos: pos {pos} exceeds len_before {}",
+            pos.index() <= self.len_before,
+            "map_pos: pos {pos:?} exceeds len_before {}",
             self.len_before,
         );
         PosMapCursor::new(&self.ops).map(pos, assoc)
@@ -421,7 +424,7 @@ impl ChangeSet {
     /// # Panics
     /// Panics (debug) if `positions` is not sorted ascending, or any position
     /// exceeds `self.len_before`.
-    pub fn map_positions(&self, positions: &mut [usize], assoc: Assoc) {
+    pub fn map_positions(&self, positions: &mut [CharOffset], assoc: Assoc) {
         debug_assert!(
             positions.windows(2).all(|w| w[0] <= w[1]),
             "map_positions: positions must be sorted ascending"
@@ -429,8 +432,8 @@ impl ChangeSet {
         let mut cursor = PosMapCursor::new(&self.ops);
         for pos in positions.iter_mut() {
             debug_assert!(
-                *pos <= self.len_before,
-                "map_positions: pos {pos} exceeds len_before {}",
+                pos.index() <= self.len_before,
+                "map_positions: pos {pos:?} exceeds len_before {}",
                 self.len_before,
             );
             *pos = cursor.map(*pos, assoc);
@@ -458,30 +461,30 @@ impl ChangeSet {
     /// # Panics
     /// Panics (debug) if `ranges` is not sorted by `start`, or any input has
     /// `end < start`.
-    pub fn map_ranges(&self, ranges: &mut [(usize, usize)]) {
+    pub fn map_ranges(&self, ranges: &mut [ExclusiveRange<CharOffset>]) {
         debug_assert!(
-            ranges.windows(2).all(|w| w[0].0 <= w[1].0),
+            ranges.windows(2).all(|w| w[0].start <= w[1].start),
             "map_ranges: ranges must be sorted by start"
         );
         debug_assert!(
-            ranges.iter().all(|&(start, end)| start <= end),
+            ranges.iter().all(|r| r.start <= r.end),
             "map_ranges: every range must have start <= end"
         );
 
         let mut starts = PosMapCursor::new(&self.ops);
-        for (start, _) in ranges.iter_mut() {
-            *start = starts.map(*start, Assoc::After);
+        for range in ranges.iter_mut() {
+            range.start = starts.map(range.start, Assoc::After);
         }
 
         let mut end_order: Vec<usize> = (0..ranges.len()).collect();
-        end_order.sort_by_key(|&i| ranges[i].1);
+        end_order.sort_by_key(|&i| ranges[i].end);
         let mut ends = PosMapCursor::new(&self.ops);
         for i in end_order {
-            ranges[i].1 = ends.map(ranges[i].1, Assoc::Before);
+            ranges[i].end = ends.map(ranges[i].end, Assoc::Before);
         }
 
-        for (start, end) in ranges.iter_mut() {
-            *end = (*end).max(*start);
+        for range in ranges.iter_mut() {
+            range.end = range.end.max(range.start);
         }
     }
 
@@ -504,8 +507,8 @@ impl ChangeSet {
     /// per-pane jump lists — can compute this once and feed it to
     /// [`crate::selection::SelectionSet::translate_in_place_with`] for each,
     /// rather than paying the O(ops) walk again per list.
-    pub fn edited_old_ranges(&self) -> Vec<(usize, usize)> {
-        let mut ranges: Vec<(usize, usize)> = Vec::new();
+    pub fn edited_old_ranges(&self) -> Vec<ExclusiveRange<CharOffset>> {
+        let mut ranges: Vec<ExclusiveRange<CharOffset>> = Vec::new();
         let mut old = 0usize;
         for op in &self.ops {
             match op {
@@ -513,14 +516,24 @@ impl ChangeSet {
                 Operation::Delete(n) => {
                     let (start, end) = (old, old + n);
                     match ranges.last_mut() {
-                        Some(last) if start <= last.1 => last.1 = last.1.max(end),
-                        _ => ranges.push((start, end)),
+                        Some(last) if start <= last.end.index() => {
+                            last.end = last.end.max(CharOffset::new(end));
+                        }
+                        _ => ranges.push(ExclusiveRange::new(
+                            CharOffset::new(start),
+                            CharOffset::new(end),
+                        )),
                     }
                     old += n;
                 }
                 Operation::Insert(_) => match ranges.last_mut() {
-                    Some(last) if old <= last.1 => last.1 = last.1.max(old),
-                    _ => ranges.push((old, old)),
+                    Some(last) if old <= last.end.index() => {
+                        last.end = last.end.max(CharOffset::new(old));
+                    }
+                    _ => ranges.push(ExclusiveRange::new(
+                        CharOffset::new(old),
+                        CharOffset::new(old),
+                    )),
                 },
             }
         }

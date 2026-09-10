@@ -74,7 +74,7 @@ pub(crate) fn cmd_insert_at_line_end(
         // Move to line content-end, then step right onto the \n slot — unless the
         // line is empty, in which case line-end is already the \n and stepping past
         // it would land on the next line.
-        let max = b.len_chars() - 1;
+        let max = b.last_char();
         let at_end = cmd_goto_line_end(b, s, 1, MotionMode::Move);
         at_end.map(|sel| {
             let pos = if sel.ends_on_newline(b) {
@@ -127,7 +127,7 @@ pub(crate) fn cmd_insert_at_selection_end(
 ) -> Result<(), CommandError> {
     apply_focused_motion(state, view, |b, sels| {
         // len_chars() - 1 is safe: the buffer invariant guarantees at least one char.
-        let max = b.len_chars() - 1;
+        let max = b.last_char();
         sels.map(|sel| {
             let pos = if sel.ends_on_newline(b) {
                 sel.end() // selection ends on '\n' — insert before it, not past it

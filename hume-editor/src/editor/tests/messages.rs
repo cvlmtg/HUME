@@ -72,19 +72,23 @@ fn messages_populates_the_extra_highlights_store() {
     assert_eq!(spans.len(), 4);
     assert_eq!(
         (spans[0].start, spans[0].end, spans[0].scope),
-        (0, 9, scope(&ed, "diagnostic.warning.message"))
+        (co(0), co(9), scope(&ed, "diagnostic.warning.message"))
     );
     assert_eq!(
         (spans[1].start, spans[1].end, spans[1].scope),
-        (10, 17, scope(&ed, "diagnostic.warning.message-text"))
+        (
+            co(10),
+            co(17),
+            scope(&ed, "diagnostic.warning.message-text")
+        )
     );
     assert_eq!(
         (spans[2].start, spans[2].end, spans[2].scope),
-        (18, 25, scope(&ed, "diagnostic.error.message"))
+        (co(18), co(25), scope(&ed, "diagnostic.error.message"))
     );
     assert_eq!(
         (spans[3].start, spans[3].end, spans[3].scope),
-        (26, 31, scope(&ed, "diagnostic.error.message-text"))
+        (co(26), co(31), scope(&ed, "diagnostic.error.message-text"))
     );
 }
 
@@ -139,7 +143,8 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
         .extra_highlights_for("messages", bid);
     assert_eq!(spans.len(), 2, "one entry -> one badge + one body span");
     assert_eq!(
-        spans[1].end, 15,
+        spans[1].end,
+        co(15),
         "\"[warning] first\" -> body ends at char 15"
     );
 
@@ -164,5 +169,5 @@ fn repeat_messages_replaces_stale_spans_not_appends() {
     assert_eq!(spans.len(), 4, "two entries -> four spans, not six");
     // "[warning] first\n[error] second\n": last body span ends at char 30
     // ("[warning]"=9 + " "=1 + "first"=5 + "\n"=1 + "[error]"=7 + " "=1 + "second"=6).
-    assert_eq!(spans[3].end, 30);
+    assert_eq!(spans[3].end, co(30));
 }

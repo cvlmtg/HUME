@@ -1,4 +1,5 @@
 use hume_rope::cursor::CharCursor;
+use hume_rope::offset::CharOffset;
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
 use std::ops::Range;
@@ -196,8 +197,19 @@ impl BufferText {
     /// which is the structural `\n` itself — there is no content character to
     /// point at. Callers deleting up to this index must handle the empty
     /// buffer first, or the delete would consume the structural newline.
-    pub fn last_content_char(&self) -> usize {
-        self.len_chars().saturating_sub(2)
+    pub fn last_content_char(&self) -> CharOffset {
+        CharOffset::new(self.len_chars().saturating_sub(2))
+    }
+
+    /// The last addressable char position — `len_chars() - 1`. Every buffer
+    /// has at least the structural trailing `\n`, so this never underflows.
+    pub fn last_char(&self) -> CharOffset {
+        CharOffset::new(self.len_chars().saturating_sub(1))
+    }
+
+    /// One past the last char — the buffer's exclusive end bound.
+    pub fn end(&self) -> CharOffset {
+        CharOffset::new(self.len_chars())
     }
 
     /// Returns `true` if the buffer contains no visible content — i.e., it
@@ -281,8 +293,8 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()`.
-    pub fn line_to_char(&self, line_idx: hume_rope::line::RopeyLine) -> usize {
-        self.rope.line_to_char(line_idx.index())
+    pub fn line_to_char(&self, line_idx: hume_rope::line::RopeyLine) -> CharOffset {
+        CharOffset::new(self.rope.line_to_char(line_idx.index()))
     }
 
     /// Returns the 0-based line number that contains char offset `char_idx`,
@@ -295,7 +307,8 @@ impl BufferText {
     /// own trailing phantom line (`char_idx == len_chars()`, reachable when
     /// probing one past a char offset) wants [`BufferText::ropey_char_to_line`]
     /// instead.
-    pub fn char_to_line(&self, char_idx: usize) -> hume_rope::line::ContentLine {
+    pub fn char_to_line(&self, char_idx: CharOffset) -> hume_rope::line::ContentLine {
+        let char_idx = char_idx.index();
         debug_assert!(
             char_idx < self.len_chars(),
             "char_to_line: char_idx {char_idx} is not a legal cursor position \
@@ -314,8 +327,8 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `char_idx > self.len_chars()`.
-    pub fn ropey_char_to_line(&self, char_idx: usize) -> hume_rope::line::RopeyLine {
-        hume_rope::line::RopeyLine::new(self.rope.char_to_line(char_idx))
+    pub fn ropey_char_to_line(&self, char_idx: CharOffset) -> hume_rope::line::RopeyLine {
+        hume_rope::line::RopeyLine::new(self.rope.char_to_line(char_idx.index()))
     }
 
     /// Returns a slice of the buffer over the given char range.
@@ -357,16 +370,16 @@ impl BufferText {
     /// Used to convert regex match byte offsets (from `regex-cursor`) back to
     /// HUME's native char-offset coordinate system. The byte offset must lie on
     /// a UTF-8 codepoint boundary; behaviour is unspecified otherwise.
-    pub fn byte_to_char(&self, byte_idx: usize) -> usize {
-        self.rope.byte_to_char(byte_idx)
+    pub fn byte_to_char(&self, byte_idx: usize) -> CharOffset {
+        CharOffset::new(self.rope.byte_to_char(byte_idx))
     }
 
     /// Convert a char offset to a byte offset.
     ///
     /// Used to translate HUME's char-indexed cursor positions into the byte
     /// offsets that `regex-cursor` operates on.
-    pub fn char_to_byte(&self, char_idx: usize) -> usize {
-        self.rope.char_to_byte(char_idx)
+    pub fn char_to_byte(&self, char_idx: CharOffset) -> usize {
+        self.rope.char_to_byte(char_idx.index())
     }
 
     /// Total byte length of the buffer content.

@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use hume_rope::offset::CharOffset;
+
 // ---------------------------------------------------------------------------
 // Theme & Style
 // ---------------------------------------------------------------------------
@@ -201,13 +203,13 @@ impl RowKind {
 /// boundary: the editor simply copies its char-offset selections directly.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Selection {
-    pub anchor: usize,
-    pub head: usize,
+    pub anchor: CharOffset,
+    pub head: CharOffset,
 }
 
 impl Selection {
     /// Returns the selection range as (start, end) with start <= end.
-    pub fn range(self) -> (usize, usize) {
+    pub fn range(self) -> (CharOffset, CharOffset) {
         if self.anchor <= self.head {
             (self.anchor, self.head)
         } else {

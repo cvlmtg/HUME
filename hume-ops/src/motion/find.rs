@@ -3,6 +3,7 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::lines::line_break_char;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 // ── Find/till character motions ───────────────────────────────────────────────
 
@@ -11,13 +12,17 @@ use hume_editing::text::BufferText;
 /// Returns the char offset of the first match, or `None` if not found before
 /// the line's terminating `\n`. The newline itself is never matched — it is a
 /// structural boundary, not content.
-pub(super) fn find_char_on_line_forward(text: &BufferText, head: usize, ch: char) -> Option<usize> {
+pub(super) fn find_char_on_line_forward(
+    text: &BufferText,
+    head: CharOffset,
+    ch: char,
+) -> Option<CharOffset> {
     let line = text.char_to_line(head);
     // Exclude the '\n': stop iteration once pos reaches the newline position.
     let newline = line_break_char(text, line);
     let mut pos = next_grapheme_boundary(text, head);
     while pos < newline {
-        if text.char_at(pos) == Some(ch) {
+        if text.char_at(pos.index()) == Some(ch) {
             return Some(pos);
         }
         pos = next_grapheme_boundary(text, pos);
@@ -31,9 +36,9 @@ pub(super) fn find_char_on_line_forward(text: &BufferText, head: usize, ch: char
 /// the line start.
 pub(super) fn find_char_on_line_backward(
     text: &BufferText,
-    head: usize,
+    head: CharOffset,
     ch: char,
-) -> Option<usize> {
+) -> Option<CharOffset> {
     let line = text.char_to_line(head);
     let line_start = text.line_to_char(line.into());
     if head == line_start {
@@ -41,7 +46,7 @@ pub(super) fn find_char_on_line_backward(
     }
     let mut pos = prev_grapheme_boundary(text, head);
     loop {
-        if text.char_at(pos) == Some(ch) {
+        if text.char_at(pos.index()) == Some(ch) {
             return Some(pos);
         }
         if pos == line_start {

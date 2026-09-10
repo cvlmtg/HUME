@@ -16,18 +16,17 @@
 //! viewport-filtered, since it also runs in scroll/cursor math) gates on
 //! `generation` instead (see that field's doc).
 
-use std::ops::Range;
-
 use rustc_hash::FxHashMap;
 
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
 /// char at `pos`.
 pub(crate) struct InlayHintEntry {
-    pub(crate) pos: usize,
+    pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) before: bool,
 }
@@ -47,7 +46,7 @@ pub(crate) struct InlayHintEntry {
 /// `Arc<str>`) for every visible line, every frame — a refcount bump
 /// instead of a fresh allocation per sign per frame.
 pub(crate) struct SignEntry {
-    pub(crate) pos: usize,
+    pub(crate) pos: CharOffset,
     pub(crate) text: std::sync::Arc<str>,
     pub(crate) scope: ScopeId,
 }
@@ -71,7 +70,7 @@ pub(crate) struct SignEntry {
 /// are validated byte offsets naming already-interned `ScopeId`s —
 /// deliberately different shapes, not merely a field rename.
 pub(crate) struct VirtualLineEntry {
-    pub(crate) pos: usize,
+    pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) before: bool,
     pub(crate) scope: ScopeId,
@@ -89,7 +88,7 @@ pub(crate) struct VirtualLineEntry {
 /// `scope` is interned by `host_impl.rs`'s `set_eol_text` at the
 /// `set-eol-text!` boundary.
 pub(crate) struct EolTextEntry {
-    pub(crate) pos: usize,
+    pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) scope: ScopeId,
 }
@@ -98,8 +97,8 @@ pub(crate) struct EolTextEntry {
 /// interned by `host_impl.rs`'s `set_extra_highlights` at the
 /// `set-extra-highlights!` boundary.
 pub(crate) struct ExtraHighlightEntry {
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+    pub(crate) start: CharOffset,
+    pub(crate) end: CharOffset,
     pub(crate) scope: ScopeId,
 }
 
@@ -115,7 +114,7 @@ pub(crate) struct ExtraHighlightEntry {
 /// `scope` is interned by `host_impl.rs`'s `set_line_backgrounds` at the
 /// `set-line-backgrounds!` boundary.
 pub(crate) struct LineBgEntry {
-    pub(crate) pos: usize,
+    pub(crate) pos: CharOffset,
     pub(crate) scope: ScopeId,
 }
 
@@ -124,41 +123,41 @@ pub(crate) struct LineBgEntry {
 /// (`ChangeSet::map_positions`/`map_ranges`) can rely on ascending input,
 /// its documented precondition.
 pub(crate) trait Positioned {
-    fn pos(&self) -> usize;
+    fn pos(&self) -> CharOffset;
 }
 
 impl Positioned for InlayHintEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.pos
     }
 }
 
 impl Positioned for SignEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.pos
     }
 }
 
 impl Positioned for VirtualLineEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.pos
     }
 }
 
 impl Positioned for EolTextEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.pos
     }
 }
 
 impl Positioned for ExtraHighlightEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.start
     }
 }
 
 impl Positioned for LineBgEntry {
-    fn pos(&self) -> usize {
+    fn pos(&self) -> CharOffset {
         self.pos
     }
 }
@@ -171,7 +170,7 @@ pub(crate) trait PointAnchored: Positioned {
     /// Sticky side for an edit landing exactly at this kind's position —
     /// see `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
     const ASSOC: Assoc;
-    fn set_pos(&mut self, pos: usize);
+    fn set_pos(&mut self, pos: CharOffset);
 }
 
 /// `Assoc::Before`: an insertion at the hint's char stays glued to the char
@@ -179,7 +178,7 @@ pub(crate) trait PointAnchored: Positioned {
 /// newly typed text into "before the hint".
 impl PointAnchored for InlayHintEntry {
     const ASSOC: Assoc = Assoc::Before;
-    fn set_pos(&mut self, pos: usize) {
+    fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
@@ -191,28 +190,28 @@ impl PointAnchored for InlayHintEntry {
 /// line instead.
 impl PointAnchored for SignEntry {
     const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: usize) {
+    fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
 
 impl PointAnchored for VirtualLineEntry {
     const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: usize) {
+    fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
 
 impl PointAnchored for EolTextEntry {
     const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: usize) {
+    fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
 
 impl PointAnchored for LineBgEntry {
     const ASSOC: Assoc = Assoc::After;
-    fn set_pos(&mut self, pos: usize) {
+    fn set_pos(&mut self, pos: CharOffset) {
         self.pos = pos;
     }
 }
@@ -222,15 +221,15 @@ impl PointAnchored for LineBgEntry {
 /// `ChangeSet::map_ranges` call. `Positioned::pos()` supplies the range's
 /// start; this supplies the end.
 pub(crate) trait RangeAnchored: Positioned {
-    fn end(&self) -> usize;
-    fn set_range(&mut self, start: usize, end: usize);
+    fn end(&self) -> CharOffset;
+    fn set_range(&mut self, start: CharOffset, end: CharOffset);
 }
 
 impl RangeAnchored for ExtraHighlightEntry {
-    fn end(&self) -> usize {
+    fn end(&self) -> CharOffset {
         self.end
     }
-    fn set_range(&mut self, start: usize, end: usize) {
+    fn set_range(&mut self, start: CharOffset, end: CharOffset) {
         self.start = start;
         self.end = end;
     }
@@ -363,7 +362,7 @@ impl<K, T: Positioned> SourceStore<K, T> {
     pub(crate) fn groups_in_range(
         &self,
         bid: BufferId,
-        range: Range<usize>,
+        range: ExclusiveRange<CharOffset>,
     ) -> impl Iterator<Item = (&K, &[T])> {
         self.groups_for_buffer(bid).map(move |(source, es)| {
             let lo = es.partition_point(|e| e.pos() < range.start);
@@ -377,7 +376,11 @@ impl<K, T: Positioned> SourceStore<K, T> {
     /// build on instead when a caller needs the source name (e.g.
     /// [`DecorationStores::signs_in_range`], to resolve a group's registered
     /// slot once rather than once per entry).
-    pub(crate) fn in_range(&self, bid: BufferId, range: Range<usize>) -> impl Iterator<Item = &T> {
+    pub(crate) fn in_range(
+        &self,
+        bid: BufferId,
+        range: ExclusiveRange<CharOffset>,
+    ) -> impl Iterator<Item = &T> {
         self.groups_in_range(bid, range)
             .flat_map(|(_, es)| es.iter())
     }
@@ -445,21 +448,23 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
                 continue;
             }
             touched = true;
-            let mut ranges: Vec<(usize, usize)> =
-                spans.iter().map(|s| (s.pos(), s.end())).collect();
+            let mut ranges: Vec<ExclusiveRange<CharOffset>> = spans
+                .iter()
+                .map(|s| ExclusiveRange::new(s.pos(), s.end()))
+                .collect();
             cs.map_ranges(&mut ranges);
             debug_assert!(
-                ranges.windows(2).all(|w| w[0].0 <= w[1].0),
+                ranges.windows(2).all(|w| w[0].start <= w[1].start),
                 "map_ranges must preserve sort order"
             );
             let mut idx = 0;
             spans.retain_mut(|s| {
-                let (start, end) = ranges[idx];
+                let range = ranges[idx];
                 idx += 1;
-                if end <= start {
+                if range.end <= range.start {
                     false // collapsed by a covering deletion — drop
                 } else {
-                    s.set_range(start, end);
+                    s.set_range(range.start, range.end);
                     true
                 }
             });
@@ -593,7 +598,7 @@ impl DecorationStores {
     pub(crate) fn inlay_hints_in_range(
         &self,
         bid: BufferId,
-        range: Range<usize>,
+        range: ExclusiveRange<CharOffset>,
     ) -> impl Iterator<Item = &InlayHintEntry> {
         self.inlay_hints.in_range(bid, range)
     }
@@ -624,7 +629,7 @@ impl DecorationStores {
     pub(crate) fn signs_in_range(
         &self,
         bid: BufferId,
-        range: Range<usize>,
+        range: ExclusiveRange<CharOffset>,
     ) -> impl Iterator<Item = (usize, &SignEntry)> {
         self.signs
             .groups_in_range(bid, range)

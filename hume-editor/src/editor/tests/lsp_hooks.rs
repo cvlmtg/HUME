@@ -192,7 +192,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
 
     let bid_b = ed.open_buffer(Buffer::new(
         BufferText::from("x\n"),
-        SelectionSet::single(Selection::collapsed(0)),
+        SelectionSet::single(Selection::collapsed(co(0))),
     ));
     let lang = ed.state.config.languages.intern("python");
     ed.state.buffers.get_mut(bid_b).language = Some(lang);
@@ -256,7 +256,7 @@ fn register_trigger_chars_for_two_languages_under_the_same_source_do_not_clobber
     ed.switch_to_buffer_without_jump(bid_b);
     let mut plain_b = Editor::for_testing(Buffer::new(
         BufferText::from("x\n"),
-        SelectionSet::single(Selection::collapsed(0)),
+        SelectionSet::single(Selection::collapsed(co(0))),
     ));
     ed.feed_key(key('i'));
     ed.settle();

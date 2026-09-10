@@ -139,7 +139,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
 pub(super) fn scroll_cursor_to_row(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_char: usize,
+    cursor_char: hume_rope::offset::CharOffset,
     target_row: usize,
 ) {
     let cursor_pos = rm.locate_row(cursor_char);

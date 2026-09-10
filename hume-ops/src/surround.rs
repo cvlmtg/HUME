@@ -15,6 +15,7 @@ use crate::pair::{find_bracket_pair, find_quote_pair};
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 // ── Pair lookup ──────────────────────────────────────────────────────────────
 
@@ -63,22 +64,19 @@ pub fn wrap_each_selection(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        let end_incl = sel
-            .end_inclusive(text)
-            .min(text.len_chars().saturating_sub(2));
         // When `start` sits on (or past) the structural trailing '\n', there's nothing
         // user-visible to wrap. Skip so `insert_char(close)` is never placed after '\n'.
-        if start >= text.len_chars() - 1 {
+        if start >= text.last_char() {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
-        b.retain(start - b.old_pos());
+        b.retain(start.chars_since(b.old_pos()));
         b.insert_char(open);
-        b.retain(end_incl + 1 - start); // copy selected text through — no String alloc
+        b.retain(sel.content_end_exclusive(text).chars_since(start)); // copy selected text through — no String alloc
         b.insert_char(close);
         // Cursor on the close char. new_pos - 1 is safe: close is always preceded by
         // at least open + one retained char (HUME selections are ≥ 1 char).
-        new_sels.push(Selection::collapsed(b.new_pos() - 1));
+        new_sels.push(Selection::collapsed(b.new_pos().shift(-1)));
     })
 }
 
@@ -125,7 +123,7 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 fn select_surround(
     text: &BufferText,
     sels: SelectionSet,
-    find_pair: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
+    find_pair: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     let primary_idx = sels.primary_index();
     let mut new_sels = Vec::with_capacity(sels.len() * 2);
@@ -135,9 +133,9 @@ fn select_surround(
         if i == primary_idx {
             new_primary = new_sels.len();
         }
-        if let Some((open_pos, close_pos)) = find_pair(text, sel.head()) {
-            new_sels.push(Selection::collapsed(open_pos));
-            new_sels.push(Selection::collapsed(close_pos));
+        if let Some(range) = find_pair(text, sel.head()) {
+            new_sels.push(Selection::collapsed(range.start));
+            new_sels.push(Selection::collapsed(range.end));
         } else {
             new_sels.push(*sel);
         }

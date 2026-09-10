@@ -599,7 +599,7 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
     begin_session(&mut ed, &[("candidate", None)]);
     let bid = ed.focused_buffer_id();
     let anchor = ed.lsp.completion.as_ref().unwrap().anchor();
-    assert!(anchor > 3, "sanity: anchor is deep in the buffer");
+    assert!(anchor > co(3), "sanity: anchor is deep in the buffer");
 
     // `reload_buffer_in_place` (`:e!`) clamps every pane's cursor to the new,
     // much shorter content, but has no notion of an open completion session
@@ -782,8 +782,8 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
             "insertText": "ignored-fallback",
             "textEdit": {
                 "range": {
-                    "start": {"line": 0, "character": (head - 2) as u32},
-                    "end": {"line": 0, "character": head as u32}
+                    "start": {"line": 0, "character": (head.index() - 2) as u32},
+                    "end": {"line": 0, "character": head.index() as u32}
                 },
                 "newText": "STD"
             }
@@ -934,7 +934,7 @@ fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() 
     let mut ed = editor_from("-[foo]> -[bar]>\n");
     ed.feed_key(key('c'));
     // Force the second (higher-offset) cursor to be primary.
-    let heads: Vec<usize> = ed
+    let heads: Vec<_> = ed
         .current_selections()
         .iter_sorted()
         .map(|s| s.head())
@@ -951,7 +951,7 @@ fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() 
     assert_eq!(
         ed.doc()
             .text()
-            .slice(session.anchor()..ed.current_selections().primary().head())
+            .slice(session.anchor().index()..ed.current_selections().primary().head().index())
             .to_string(),
         "st",
         "filter span (anchor..primary head) must be exactly what was typed \

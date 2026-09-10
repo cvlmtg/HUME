@@ -19,6 +19,7 @@ use crate::editor::pane_state::PaneBufferState;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// Shared signature of [`apply_doc_undo`] and [`apply_doc_redo`] — lets a
 /// caller (e.g. `commands/edit.rs`'s `history_step`) pick one by function
@@ -434,7 +435,7 @@ pub(crate) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    edits: &[(usize, usize)],
+    edits: &[ExclusiveRange<CharOffset>],
     cs: &ChangeSet,
     text_pre: &hume_editing::text::BufferText,
 ) {

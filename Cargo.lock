@@ -812,6 +812,7 @@ name = "hume-test-fixtures"
 version = "0.1.0"
 dependencies = [
  "hume-editing",
+ "hume-rope",
  "pretty_assertions",
 ]
 

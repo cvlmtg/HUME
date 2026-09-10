@@ -179,7 +179,7 @@ fn wire_target_inside_a_combining_sequence_snaps_to_the_clusters_start() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "a wire position between a base char and its combining mark must snap to the cluster's start"
     );
 }

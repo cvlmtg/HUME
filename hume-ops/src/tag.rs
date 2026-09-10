@@ -19,6 +19,7 @@
 
 use hume_editing::text::BufferText;
 use hume_rope::cursor::CharCursor;
+use hume_rope::offset::CharOffset;
 
 /// One parsed `<name…>`, `<name…/>`, or `</name>` construct.
 struct Tag {
@@ -316,8 +317,8 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<usize> {
 /// enclosing tag of a *different* name — [`close_after`] and
 /// [`open_before`] each track only the one name they were asked about, so a
 /// stray `</span>` can't drain an unrelated `<div>` off some shared stack.
-pub(crate) fn matching_tag(text: &BufferText, pos: usize) -> Option<usize> {
-    let tag = tag_at(text, pos)?;
+pub(crate) fn matching_tag(text: &BufferText, pos: CharOffset) -> Option<CharOffset> {
+    let tag = tag_at(text, pos.index())?;
     if tag.self_closing {
         return None;
     }
@@ -326,4 +327,5 @@ pub(crate) fn matching_tag(text: &BufferText, pos: usize) -> Option<usize> {
     } else {
         close_after(text, &tag)
     }
+    .map(CharOffset::new)
 }

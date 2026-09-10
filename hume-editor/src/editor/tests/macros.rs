@@ -406,7 +406,7 @@ fn macro_with_find_char() {
     ed.handle_key(key('l')); // step right to 'c'
 
     let before_pos = ed.current_selections().primary().head();
-    let before_char = ed.doc().text().char_at(before_pos);
+    let before_char = ed.doc().text().char_at(before_pos.index());
 
     // Replay: `f x` from 'c' should land on the second 'x'.
     ed.handle_key(key('q'));
@@ -416,7 +416,7 @@ fn macro_with_find_char() {
     let after_pos = ed.current_selections().primary().head();
     assert!(after_pos > before_pos, "cursor should have moved right");
     assert_eq!(
-        ed.doc().text().char_at(after_pos),
+        ed.doc().text().char_at(after_pos.index()),
         Some('x'),
         "cursor should be on 'x' after replay"
     );

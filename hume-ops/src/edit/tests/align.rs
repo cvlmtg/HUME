@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
@@ -171,8 +172,8 @@ fn align_remove_tab_before_selection() {
     let text = hume_editing::text::BufferText::from(" =\n  \t=\n");
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(1), // primary: '=' col 1
-            hume_editing::selection::Selection::collapsed(6), // secondary: '=' col 3
+            hume_editing::selection::Selection::collapsed(CharOffset::new(1)), // primary: '=' col 1
+            hume_editing::selection::Selection::collapsed(CharOffset::new(6)), // secondary: '=' col 3
         ],
         0,
     );
@@ -201,8 +202,8 @@ fn align_accounts_for_a_tab_before_the_alignment_point() {
     let text = hume_editing::text::BufferText::from("a\tx = 1\nbb = 2\n");
     let sels = SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::collapsed(4), // primary: '=' in "a\tx = 1"
-            hume_editing::selection::Selection::collapsed(11), // secondary: '=' in "bb = 2"
+            hume_editing::selection::Selection::collapsed(CharOffset::new(4)), // primary: '=' in "a\tx = 1"
+            hume_editing::selection::Selection::collapsed(CharOffset::new(11)), // secondary: '=' in "bb = 2"
         ],
         0,
     );
@@ -257,12 +258,12 @@ fn align_two_slots_static_text_between() {
     );
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::collapsed(10), // primary: '=' on line 0
-            Selection::collapsed(17), // '//' on line 0
-            Selection::collapsed(37), // '=' on line 1
-            Selection::collapsed(48), // '//' on line 1
-            Selection::collapsed(63), // '=' on line 2
-            Selection::collapsed(69), // '//' on line 2
+            Selection::collapsed(CharOffset::new(10)), // primary: '=' on line 0
+            Selection::collapsed(CharOffset::new(17)), // '//' on line 0
+            Selection::collapsed(CharOffset::new(37)), // '=' on line 1
+            Selection::collapsed(CharOffset::new(48)), // '//' on line 1
+            Selection::collapsed(CharOffset::new(63)), // '=' on line 2
+            Selection::collapsed(CharOffset::new(69)), // '//' on line 2
         ],
         0,
     );

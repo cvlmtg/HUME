@@ -6,6 +6,7 @@ use hume_editing::lines::{line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 
@@ -32,12 +33,12 @@ pub fn join_lines_select_spaces(
         start != end || start < text.last_content_line()
     });
     if !has_work {
-        let mut b = ChangeSetBuilder::new(text.len_chars());
+        let mut b = ChangeSetBuilder::new(text.end());
         b.retain_rest();
         return (text, sels, b.finish());
     }
 
-    let mut space_positions: Vec<usize> = Vec::new();
+    let mut space_positions: Vec<CharOffset> = Vec::new();
 
     let (new_text, fallback_sels, cs) = apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start_line = text.char_to_line(sel.start());
@@ -58,26 +59,28 @@ pub fn join_lines_select_spaces(
             let content_start = {
                 let mut p = next_start;
                 while p < next_end_excl {
-                    match text.char_at(p) {
-                        Some(c) if c == ' ' || c == '\t' => p += 1,
+                    match text.char_at(p.index()) {
+                        Some(c) if c == ' ' || c == '\t' => p = CharOffset::new(p.index() + 1),
                         _ => break,
                     }
                 }
                 p
             };
 
-            let is_blank = content_start >= next_end_excl.saturating_sub(1);
+            let is_blank = content_start.index() >= next_end_excl.index().saturating_sub(1);
 
-            b.retain(nl_pos.saturating_sub(b.old_pos()));
-            b.delete(content_start - nl_pos);
+            b.retain(nl_pos.max(b.old_pos()).chars_since(b.old_pos()));
+            b.delete(content_start.chars_since(nl_pos));
 
             if !is_blank {
                 b.insert(" ");
-                space_positions.push(b.new_pos() - 1);
+                space_positions.push(b.new_pos().shift(-1));
             }
         }
 
-        new_sels.push(Selection::collapsed(b.new_pos().saturating_sub(1)));
+        new_sels.push(Selection::collapsed(CharOffset::new(
+            b.new_pos().index().saturating_sub(1),
+        )));
     });
 
     // Result is the inserted spaces — the command's contract is "select the

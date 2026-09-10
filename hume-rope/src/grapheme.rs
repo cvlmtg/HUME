@@ -142,11 +142,9 @@ pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> C
 /// `> 0` here, but only this function's `saturating_sub` makes that safe to
 /// forget.
 pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: CharOffset) -> CharOffset {
-    // Trusted mint: this module is the grapheme-boundary authority itself
-    // (exempt from the raw-stepping rule other crates follow — see
-    // `no_raw_char_stepping_in_motion_code`'s scoping doc), and the `- 1` is
-    // exactly the documented inclusive/exclusive conversion this function
-    // exists to provide.
+    // Trusted mint: this module is the grapheme-boundary authority itself,
+    // and the `- 1` is exactly the documented inclusive/exclusive
+    // conversion this function exists to provide.
     CharOffset::new(
         next_grapheme_boundary(slice, cluster_start)
             .index()

@@ -1,7 +1,12 @@
 use super::*;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 use hume_test_fixtures::testing::parse_state;
 use pretty_assertions::assert_eq;
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
 
 // ── cmd_split_selection_on_newlines ────────────────────────────────────
 
@@ -27,11 +32,11 @@ fn split_two_line_selection() {
     assert_eq!(sels_out.len(), 2);
     let s: Vec<_> = sels_out.iter_sorted().copied().collect();
     // First: covers "foo" on line 0 (offsets 0–2).
-    assert_eq!(s[0].start(), 0);
-    assert_eq!(s[0].end(), 2);
+    assert_eq!(s[0].start(), co(0));
+    assert_eq!(s[0].end(), co(2));
     // Second: covers "bar" on line 1 (offsets 4–6).
-    assert_eq!(s[1].start(), 4);
-    assert_eq!(s[1].end(), 6);
+    assert_eq!(s[1].start(), co(4));
+    assert_eq!(s[1].end(), co(6));
     // Primary is first piece of original primary (index 0).
     assert_eq!(sels_out.primary_index(), 0);
 }
@@ -44,14 +49,14 @@ fn split_three_line_selection() {
     assert_eq!(sels_out.len(), 3);
     let s: Vec<_> = sels_out.iter_sorted().copied().collect();
     // Line 0: just 'a' at offset 0.
-    assert_eq!(s[0].start(), 0);
-    assert_eq!(s[0].end(), 0);
+    assert_eq!(s[0].start(), co(0));
+    assert_eq!(s[0].end(), co(0));
     // Line 1: just 'b' at offset 2.
-    assert_eq!(s[1].start(), 2);
-    assert_eq!(s[1].end(), 2);
+    assert_eq!(s[1].start(), co(2));
+    assert_eq!(s[1].end(), co(2));
     // Line 2: just 'c' at offset 4.
-    assert_eq!(s[2].start(), 4);
-    assert_eq!(s[2].end(), 4);
+    assert_eq!(s[2].start(), co(4));
+    assert_eq!(s[2].end(), co(4));
 }
 
 #[test]
@@ -61,7 +66,7 @@ fn split_cursor_at_newline_is_noop() {
     let (text, sels) = parse_state("foo-[\n]>bar\n");
     let sels_out = cmd_split_selection_on_newlines(&text, sels, 0, MotionMode::Move);
     assert_eq!(sels_out.len(), 1);
-    assert_eq!(sels_out.primary().head(), 3); // still on \n
+    assert_eq!(sels_out.primary().head(), co(3)); // still on \n
 }
 
 #[test]
@@ -74,14 +79,14 @@ fn split_empty_line_in_middle() {
     assert_eq!(sels_out.len(), 3);
     let s: Vec<_> = sels_out.iter_sorted().copied().collect();
     // Line 0: "foo" → offsets 0–2.
-    assert_eq!(s[0].start(), 0);
-    assert_eq!(s[0].end(), 2);
+    assert_eq!(s[0].start(), co(0));
+    assert_eq!(s[0].end(), co(2));
     // Line 1: empty → cursor on '\n' at offset 4.
-    assert_eq!(s[1].start(), 4);
-    assert_eq!(s[1].end(), 4);
+    assert_eq!(s[1].start(), co(4));
+    assert_eq!(s[1].end(), co(4));
     // Line 2: "bar" → offsets 5–7.
-    assert_eq!(s[2].start(), 5);
-    assert_eq!(s[2].end(), 7);
+    assert_eq!(s[2].start(), co(5));
+    assert_eq!(s[2].end(), co(7));
 }
 
 #[test]
@@ -101,7 +106,7 @@ fn split_backward_multi_line_with_empty_line_preserves_direction() {
     );
     assert!(s[2].anchor() >= s[2].head(), "line 2 should be backward");
     // Empty line: cursor on the lone '\n' at offset 4.
-    assert_eq!(s[1].head(), 4);
+    assert_eq!(s[1].head(), co(4));
 }
 
 #[test]
@@ -143,8 +148,8 @@ fn trim_leading_spaces() {
     // After trim: start advances past the 2 spaces → start=2, end=6.
     let (text, sels) = parse_state("-[  hello]>\n");
     let sels_out = cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels_out.primary().start(), 2); // after the two spaces
-    assert_eq!(sels_out.primary().end(), 6); // 'o' at offset 6
+    assert_eq!(sels_out.primary().start(), co(2)); // after the two spaces
+    assert_eq!(sels_out.primary().end(), co(6)); // 'o' at offset 6
 }
 
 #[test]
@@ -154,8 +159,8 @@ fn trim_trailing_spaces() {
     // After trim: end walks back past 2 spaces → end=4 ('o').
     let (text, sels) = parse_state("-[hello  ]>\n");
     let sels_out = cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels_out.primary().start(), 0);
-    assert_eq!(sels_out.primary().end(), 4); // 'o' at offset 4
+    assert_eq!(sels_out.primary().start(), co(0));
+    assert_eq!(sels_out.primary().end(), co(4)); // 'o' at offset 4
 }
 
 #[test]
@@ -165,7 +170,7 @@ fn trim_all_whitespace_collapses_to_cursor_at_head() {
     let sels_out = cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move);
     assert!(sels_out.primary().is_collapsed());
     // Head was at offset 3 (the `|` position in DSL).
-    assert_eq!(sels_out.primary().head(), 3);
+    assert_eq!(sels_out.primary().head(), co(3));
 }
 
 #[test]
@@ -184,8 +189,8 @@ fn trim_tab_characters() {
     // "\thello\t\n": \t(0),h(1),e(2),l(3),l(4),o(5),\t(6),\n(7).
     let (text, sels) = parse_state("-[\thello]>\t\n");
     let sels_out = cmd_trim_selection_whitespace(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels_out.primary().start(), 1); // past leading tab
-    assert_eq!(sels_out.primary().end(), 5); // 'o'
+    assert_eq!(sels_out.primary().start(), co(1)); // past leading tab
+    assert_eq!(sels_out.primary().end(), co(5)); // 'o'
 }
 
 #[test]
@@ -219,7 +224,10 @@ fn select_matches_basic() {
     let result = sift_matches_within(&text, &sels, &regex).unwrap();
     // Expect 3 selections: (1,2), (3,4), (5,6)
     assert_eq!(result.len(), 3);
-    assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
+    assert_eq!(
+        (result.primary().anchor(), result.primary().head()),
+        (co(1), co(2))
+    );
 }
 
 #[test]
@@ -235,7 +243,7 @@ fn select_matches_bounded_to_selection() {
     // "ab" appears at (0,1) and (4,5) in "abcdab\n", but selection
     // covers only chars 2..3 ("cd") — no matches.
     let text = BufferText::from("abcdab\n");
-    let sels = SelectionSet::single(Selection::new(2, 3));
+    let sels = SelectionSet::single(Selection::new(co(2), co(3)));
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     assert!(sift_matches_within(&text, &sels, &regex).is_none());
 }
@@ -244,8 +252,8 @@ fn select_matches_bounded_to_selection() {
 fn select_matches_multiple_selections() {
     // Two selections, each containing one "ab".
     let text = BufferText::from("ab cd ab\n");
-    let sel0 = Selection::new(0, 1); // "ab"
-    let sel1 = Selection::new(6, 7); // "ab"
+    let sel0 = Selection::new(co(0), co(1)); // "ab"
+    let sel1 = Selection::new(co(6), co(7)); // "ab"
     let sels = SelectionSet::from_vec(vec![sel0, sel1], 0);
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result = sift_matches_within(&text, &sels, &regex).unwrap();
@@ -256,11 +264,14 @@ fn select_matches_multiple_selections() {
 fn select_matches_backward_selection() {
     // Backward selection (anchor > head) should work identically.
     let text = BufferText::from("aababab\n");
-    let sels = SelectionSet::single(Selection::new(6, 0)); // backward
+    let sels = SelectionSet::single(Selection::new(co(6), co(0))); // backward
     let regex = regex_cursor::engines::meta::Regex::new("ab").unwrap();
     let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 3);
-    assert_eq!((result.primary().anchor(), result.primary().head()), (1, 2));
+    assert_eq!(
+        (result.primary().anchor(), result.primary().head()),
+        (co(1), co(2))
+    );
 }
 
 #[test]
@@ -271,8 +282,8 @@ fn select_matches_single_char_match() {
     let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 1);
     let sel = result.primary();
-    assert_eq!(sel.anchor(), 1);
-    assert_eq!(sel.head(), 1);
+    assert_eq!(sel.anchor(), co(1));
+    assert_eq!(sel.head(), co(1));
     assert!(sel.is_collapsed());
 }
 
@@ -282,9 +293,12 @@ fn select_matches_combining_grapheme() {
     // Selection covers the whole word. Matching "é" should produce a
     // selection spanning both codepoints (3,4).
     let text = BufferText::from("caf\u{0065}\u{0301}\n");
-    let sels = SelectionSet::single(Selection::new(0, 4));
+    let sels = SelectionSet::single(Selection::new(co(0), co(4)));
     let regex = regex_cursor::engines::meta::Regex::new("\u{0065}\u{0301}").unwrap();
     let result = sift_matches_within(&text, &sels, &regex).unwrap();
     assert_eq!(result.len(), 1);
-    assert_eq!((result.primary().anchor(), result.primary().head()), (3, 4));
+    assert_eq!(
+        (result.primary().anchor(), result.primary().head()),
+        (co(3), co(4))
+    );
 }

@@ -12,6 +12,7 @@
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::codec::ResponseError;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::{PositionEncoding, wire_to_line_char_col};
 
 use super::LspState;
@@ -81,14 +82,14 @@ fn build_edit_changeset(
     // `.reverse()` would keep ties in *original* order through the sort but
     // then flip that tie order via the whole-`Vec` reverse, applying them
     // backwards).
-    let char_edits: Vec<(usize, usize, &str)> = edits
+    let char_edits: Vec<(ExclusiveRange<CharOffset>, &str)> = edits
         .iter()
         .map(|e| {
-            let (start, end) = super::wire_range_to_chars(rope, &e.range, encoding);
-            (start, end, e.new_text.as_str())
+            let range = super::wire_range_to_chars(rope, &e.range, encoding);
+            (range, e.new_text.as_str())
         })
         .collect();
-    build_changeset_from_char_edits(rope.len_chars(), char_edits)
+    build_changeset_from_char_edits(CharOffset::new(rope.len_chars()), char_edits)
 }
 
 /// Shared tail for [`build_edit_changeset`] (wire positions, converted to
@@ -99,25 +100,26 @@ fn build_edit_changeset(
 /// is under no obligation to use LF, but needs no handling here — the
 /// changeset builder normalizes every insertion.
 fn build_changeset_from_char_edits(
-    len_before: usize,
-    mut char_edits: Vec<(usize, usize, &str)>,
+    len_before: CharOffset,
+    mut char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<ChangeSet, String> {
-    if let Some((start, end, _)) = char_edits.iter().find(|&&(start, end, _)| end < start) {
+    if let Some((range, _)) = char_edits.iter().find(|(r, _)| r.end < r.start) {
         return Err(format!(
-            "text edit has a reversed range (end {end} before start {start})"
+            "text edit has a reversed range (end {:?} before start {:?})",
+            range.end, range.start
         ));
     }
-    char_edits.sort_by_key(|e| e.0);
+    char_edits.sort_by_key(|e| e.0.start);
     for w in char_edits.windows(2) {
-        if w[1].0 < w[0].1 {
+        if w[1].0.start < w[0].0.end {
             return Err("text edits overlap".to_string());
         }
     }
 
     let mut b = ChangeSetBuilder::new(len_before);
-    for (start, end, text) in &char_edits {
-        b.retain(start - b.old_pos());
-        b.delete(end - start);
+    for (range, text) in &char_edits {
+        b.retain(range.start.chars_since(b.old_pos()));
+        b.delete(range.end.chars_since(range.start));
         b.insert(text);
     }
     b.retain_rest();
@@ -213,31 +215,32 @@ pub(crate) fn build_edits_from_earlier_document<'a>(
     cs_forward: &ChangeSet,
     encoding: PositionEncoding,
     edits: &'a [lsp_types::TextEdit],
-) -> Result<Vec<(usize, usize, &'a str)>, String> {
+) -> Result<Vec<(ExclusiveRange<CharOffset>, &'a str)>, String> {
     if edits.is_empty() {
         return Ok(Vec::new());
     }
-    let mut ranges: Vec<(usize, usize)> = edits
+    let mut ranges: Vec<ExclusiveRange<CharOffset>> = edits
         .iter()
         .map(|e| super::wire_range_to_chars(rope_at, &e.range, encoding))
         .collect();
-    if let Some(&(start, end)) = ranges.iter().find(|&&(start, end)| end < start) {
+    if let Some(range) = ranges.iter().find(|r| r.end < r.start) {
         return Err(format!(
-            "text edit has a reversed range (end {end} before start {start})"
+            "text edit has a reversed range (end {:?} before start {:?})",
+            range.end, range.start
         ));
     }
     // `map_ranges` requires sorted-by-start input; sort the (range, text)
     // pairing together so the mapped range still lines up with its own text
     // afterward.
     let mut indexed: Vec<usize> = (0..ranges.len()).collect();
-    indexed.sort_by_key(|&i| ranges[i].0);
-    ranges.sort_by_key(|&(start, _)| start);
+    indexed.sort_by_key(|&i| ranges[i].start);
+    ranges.sort_by_key(|r| r.start);
     cs_forward.map_ranges(&mut ranges);
 
     Ok(indexed
         .into_iter()
         .zip(ranges)
-        .map(|(orig_i, (start, end))| (start, end, edits[orig_i].new_text.as_str()))
+        .map(|(orig_i, range)| (range, edits[orig_i].new_text.as_str()))
         .collect())
 }
 
@@ -252,13 +255,13 @@ pub(crate) fn build_edits_from_earlier_document<'a>(
 pub(crate) fn commit_char_edits(
     state: &mut EditorState,
     bid: BufferId,
-    char_edits: Vec<(usize, usize, &str)>,
+    char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
 ) -> Result<Option<ChangeSet>, String> {
     if char_edits.is_empty() {
         return Ok(None);
     }
     let buf = checked_buffer(state, bid, None)?;
-    let len_before = buf.text().rope().len_chars();
+    let len_before = buf.text().end();
     let cs = build_changeset_from_char_edits(len_before, char_edits)?;
     Ok(Some(commit_changeset(state, bid, cs)))
 }
@@ -420,7 +423,7 @@ fn char_indexed_to_char_pos(
     bid: BufferId,
     line: usize,
     char_col: usize,
-) -> usize {
+) -> CharOffset {
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = hume_rope::line::RopeyLine::clamped(text.rope(), line);
@@ -455,7 +458,7 @@ fn resolve_goto_target(
     lsp: &LspState,
     focused_bid: BufferId,
     target: GotoTarget,
-) -> Result<(BufferId, usize), String> {
+) -> Result<(BufferId, CharOffset), String> {
     match target {
         GotoTarget::Wire {
             uri,
@@ -526,8 +529,7 @@ pub(crate) fn goto_location(
     // must satisfy `head < len_chars()`. Clamp to the last char (the
     // buffer's own trailing `\n`, always present and always its own
     // grapheme boundary, so no snap is needed).
-    let len_chars = state.buffers.get(bid).text().rope().len_chars();
-    let char_pos = char_pos.min(len_chars.saturating_sub(1));
+    let char_pos = char_pos.min(state.buffers.get(bid).text().last_char());
 
     let entry = crate::editor::commands::current_jump_entry(state, view);
 

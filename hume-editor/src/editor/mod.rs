@@ -447,7 +447,7 @@ pub(crate) struct EditorState {
     /// `Editor::detect_buffer_enter`.
     pub(super) last_entered_buffer: Option<BufferId>,
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
-    pub(super) mouse_drag_anchor: Option<usize>,
+    pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
     /// Set by `set_mode` on any exit from Insert — `set_mode` only has

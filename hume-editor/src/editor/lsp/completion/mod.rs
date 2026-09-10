@@ -8,6 +8,7 @@ mod item;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::offset::CharOffset;
 
 use super::LspState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
@@ -28,7 +29,7 @@ pub(crate) struct CompletionSession {
     /// the coordinate system a server's `textEdit` range was computed
     /// against. Unlike the derived `anchor()`, never remapped: it's a fixed
     /// reference point, not a position tracked through edits.
-    anchor_at_begin: usize,
+    anchor_at_begin: CharOffset,
     /// The buffer's rope at `begin()` time — an O(1) clone (ropey is
     /// structurally shared). A server's wire `textEdit` range is computed
     /// against the document as it stood at the completion *request*, which
@@ -103,7 +104,7 @@ impl CompletionSession {
     /// rewrote that whole span, so every character in it was written by this
     /// session, and selecting the freshly completed token is the useful
     /// outcome.
-    pub(crate) fn anchor(&self) -> usize {
+    pub(crate) fn anchor(&self) -> CharOffset {
         let mut positions = [self.anchor_at_begin];
         self.cs_since_begin
             .map_positions(&mut positions, Assoc::Before);

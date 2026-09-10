@@ -3,6 +3,8 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
+use hume_rope::offset::CharOffset;
+
 use crate::providers::Decoration;
 use crate::theme::Theme;
 use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
@@ -115,8 +117,8 @@ impl Default for StyleScratch {
 pub(crate) fn style_row(
     row: &DisplayRow,
     graphemes: &[Grapheme],
-    line_start_char: usize,
-    line_end_char: usize,
+    line_start_char: CharOffset,
+    line_end_char: CharOffset,
     is_head_line: bool,
     line_tint: Option<ScopeId>,
     mode: EditorMode,
@@ -328,8 +330,8 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// "optimize" this into the windowed form without re-deriving that trade-off.
 #[allow(clippy::too_many_arguments)]
 fn collect_selection_spans(
-    line_start_char: usize,
-    line_end_char: usize,
+    line_start_char: CharOffset,
+    line_end_char: CharOffset,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -345,6 +347,9 @@ fn collect_selection_spans(
     let row_first_byte = row_gs.first().map_or(usize::MAX, |g| g.byte_range.start);
     let row_last_byte = row_gs.last().map_or(0, |g| g.byte_range.end);
     // Char-based wrap-segment boundaries for the intersection check below.
+    // `Grapheme.char_offset` is a bare `usize` with its own `usize::MAX`
+    // sentinel (see its doc) — the comparisons below stay in that space
+    // rather than `CharOffset`, which has no sentinel to represent it.
     let row_first_char = row_gs.first().map_or(usize::MAX, |g| g.char_offset);
     // row_last_char_excl: char immediately after the last grapheme on this row.
     // Adding 1 is exact because cursor positions always land on grapheme-cluster
@@ -359,19 +364,26 @@ fn collect_selection_spans(
         if sel.is_collapsed() {
             continue;
         }
-        let (start, end) = sel.range(); // (usize, usize) absolute char offsets
+        let (start, end) = sel.range(); // (CharOffset, CharOffset) absolute char offsets
 
         // Skip if the selection doesn't overlap this line at all.
         if start >= line_end_char || end < line_start_char {
             continue;
         }
 
-        // Clamp the selection to this line's char range.
-        let sel_char_start = start.max(line_start_char);
+        // Clamp the selection to this line's char range. From here down this
+        // function works in `Grapheme.char_offset`'s bare-`usize` space (see
+        // above) since `sel_char_end` must be able to hold that field's
+        // `usize::MAX` sentinel, which `CharOffset` has no representation for.
+        let sel_char_start = start.max(line_start_char).index();
         // `usize::MAX` signals "extends past the end of this row" — the
         // display_col fallback below will then use the last grapheme's
         // trailing column.
-        let sel_char_end = if end < line_end_char { end } else { usize::MAX };
+        let sel_char_end = if end < line_end_char {
+            end.index()
+        } else {
+            usize::MAX
+        };
 
         // For rows with real content, skip if the selection doesn't intersect
         // this wrap segment. Without this check a selection on wrap segment N
@@ -410,8 +422,8 @@ fn collect_selection_spans(
 /// by `primary_idx`) has its head on this row.
 #[allow(clippy::too_many_arguments)]
 fn collect_head_display_cols(
-    line_start_char: usize,
-    line_end_char: usize,
+    line_start_char: CharOffset,
+    line_end_char: CharOffset,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -425,7 +437,9 @@ fn collect_head_display_cols(
         if sel.head < line_start_char || sel.head >= line_end_char {
             continue;
         }
-        if let Some(display_col) = char_offset_to_display_col(sel.head, graphemes, row_range) {
+        if let Some(display_col) =
+            char_offset_to_display_col(sel.head.index(), graphemes, row_range)
+        {
             out.push(display_col);
             if Some(idx) == primary_idx {
                 *primary_head_display_col = Some(display_col);

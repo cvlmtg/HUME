@@ -46,7 +46,7 @@ impl Editor {
     /// [`Self::sync_popup_view`] and [`Self::sync_menu_view`] (unlike the
     /// LSP completion menu, which anchors at the session's token-start
     /// char instead, via a separately-computed `anchor_char`).
-    fn focused_cursor_char(&self) -> usize {
+    fn focused_cursor_char(&self) -> hume_rope::offset::CharOffset {
         let pid = self.state.focused_pane_id;
         self.state.panes.state[pid][self.focused_buffer_id()]
             .selections
@@ -63,7 +63,7 @@ impl Editor {
     fn popup_anchor_and_bounds(
         &mut self,
         ctx: &mut RenderContext,
-        anchor_char: usize,
+        anchor_char: hume_rope::offset::CharOffset,
     ) -> Option<((u16, u16), Rect, u16, u16)> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
@@ -330,7 +330,7 @@ impl Editor {
                 return None;
             }
             let anchor_char = session.anchor();
-            let len = self.state.buffers.get(session.bid()).text().len_chars();
+            let len = self.state.buffers.get(session.bid()).text().end();
             if anchor_char >= len {
                 return None;
             }

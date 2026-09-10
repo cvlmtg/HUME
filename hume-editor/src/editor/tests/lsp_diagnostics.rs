@@ -331,7 +331,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
         "test".to_string(),
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
-            pos: 0,
+            pos: co(0),
             text: "x".to_string(),
             before: true,
         }],
@@ -404,7 +404,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
         "test".to_string(),
         bid,
         vec![crate::editor::decorations::InlayHintEntry {
-            pos: 0,
+            pos: co(0),
             text: "x".to_string(),
             before: true,
         }],
@@ -543,7 +543,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
         "test".to_string(),
         bid,
         vec![crate::editor::decorations::SignEntry {
-            pos: 6,
+            pos: co(6),
             text: "!".into(),
             scope,
         }],
@@ -568,7 +568,8 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     let signs = ed.state.config.decorations.signs_for("test", bid);
     assert_eq!(signs.len(), 1);
     assert_eq!(
-        signs[0].pos, 8,
+        signs[0].pos,
+        co(8),
         "the sign must follow the edit through the stop, not stay anchored \
          at its pre-edit position"
     );

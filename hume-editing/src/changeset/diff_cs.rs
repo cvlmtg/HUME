@@ -91,8 +91,8 @@ fn build_changesets(
     old_offsets: &[usize],
     new_offsets: &[usize],
 ) -> (ChangeSet, ChangeSet) {
-    let mut fwd = ChangeSetBuilder::new(old.len_chars());
-    let mut inv = ChangeSetBuilder::new(new.len_chars());
+    let mut fwd = ChangeSetBuilder::new(old.end());
+    let mut inv = ChangeSetBuilder::new(new.end());
 
     let span = |offsets: &[usize], range: &Range<usize>| offsets[range.end] - offsets[range.start];
     let slice = |text: &BufferText, offsets: &[usize], range: &Range<usize>| {

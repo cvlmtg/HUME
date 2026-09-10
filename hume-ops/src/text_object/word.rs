@@ -10,6 +10,7 @@ use hume_editing::text::BufferText;
 use hume_editing::word::{
     CharClass, WordChars, blank_class, is_uppercase_word_boundary, is_word_boundary,
 };
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use super::apply_text_object_by_mode;
 use crate::{MotionMode, WordCtx};
@@ -21,20 +22,20 @@ use crate::{MotionMode, WordCtx};
 /// to defines the selected run — including whitespace runs and EOL.
 pub fn inner_word_impl(
     text: &BufferText,
-    pos: usize,
+    pos: CharOffset,
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
     chars: WordChars<'_>,
-) -> Option<(usize, usize)> {
-    let class = chars.classify(text.char_at(pos)?);
+) -> Option<InclusiveRange<CharOffset>> {
+    let class = chars.classify(text.char_at(pos.index())?);
 
     // Scan left: walk back by grapheme cluster boundaries while the preceding
     // grapheme belongs to the same class. Using prev_grapheme_boundary ensures
     // we always inspect the *base* codepoint of each grapheme (not a combining
     // codepoint like U+0301 that would be misclassified as Punctuation).
     let mut start = pos;
-    while start > 0 {
+    while start > CharOffset::new(0) {
         let prev_pos = prev_grapheme_boundary(text, start);
-        let prev = chars.classify(text.char_at(prev_pos)?);
+        let prev = chars.classify(text.char_at(prev_pos.index())?);
         if is_boundary(prev, class) {
             break;
         }
@@ -48,10 +49,10 @@ pub fn inner_word_impl(
     let mut end_grapheme_start = pos;
     loop {
         let next_pos = next_grapheme_boundary(text, end_grapheme_start);
-        if next_pos >= text.len_chars() {
+        if next_pos >= text.end() {
             break;
         }
-        let next = chars.classify(text.char_at(next_pos)?);
+        let next = chars.classify(text.char_at(next_pos.index())?);
         if is_boundary(class, next) {
             break;
         }
@@ -62,7 +63,7 @@ pub fn inner_word_impl(
     // U+0301 in "e\u{0301}") is included in the returned range.
     let end = cluster_last_char(text, end_grapheme_start);
 
-    Some((start, end))
+    Some(InclusiveRange::new(start, end))
 }
 
 /// Grow a word/punct span `(start, end)` to include an adjacent whitespace
@@ -88,13 +89,13 @@ pub fn inner_word_impl(
 /// absorbable up to that floor.
 pub fn expand_word_unit(
     text: &BufferText,
-    start: usize,
-    end: usize,
-    min_start: usize,
-) -> (usize, usize) {
-    let min_start_is_bol = min_start == 0
+    start: CharOffset,
+    end: CharOffset,
+    min_start: CharOffset,
+) -> InclusiveRange<CharOffset> {
+    let min_start_is_bol = min_start == CharOffset::new(0)
         || blank_class(
-            text.char_at(prev_grapheme_boundary(text, min_start))
+            text.char_at(prev_grapheme_boundary(text, min_start).index())
                 .expect("min_start > 0 implies a preceding char"),
         ) == Some(CharClass::Eol);
 
@@ -104,7 +105,7 @@ pub fn expand_word_unit(
     let mut hit_eol = false;
     while run_start > min_start {
         let prev_pos = prev_grapheme_boundary(text, run_start);
-        match blank_class(text.char_at(prev_pos).expect("prev_pos < len")) {
+        match blank_class(text.char_at(prev_pos.index()).expect("prev_pos < len")) {
             Some(CharClass::Space) => run_start = prev_pos,
             Some(CharClass::Eol) => {
                 hit_eol = true;
@@ -116,7 +117,7 @@ pub fn expand_word_unit(
     let at_bol = hit_eol || (run_start == min_start && min_start_is_bol);
 
     if run_start < start && !at_bol {
-        return (run_start, end);
+        return InclusiveRange::new(run_start, end);
     }
 
     // Trailing fallback: first word of a line, punctuation immediately
@@ -124,18 +125,20 @@ pub fn expand_word_unit(
     let mut run_end_start = end;
     loop {
         let next_pos = next_grapheme_boundary(text, run_end_start);
-        if next_pos >= text.len_chars() {
+        if next_pos >= text.end() {
             break;
         }
-        if blank_class(text.char_at(next_pos).expect("next_pos < len")) != Some(CharClass::Space) {
+        if blank_class(text.char_at(next_pos.index()).expect("next_pos < len"))
+            != Some(CharClass::Space)
+        {
             break;
         }
         run_end_start = next_pos;
     }
     if run_end_start == end {
-        (start, end)
+        InclusiveRange::new(start, end)
     } else {
-        (start, cluster_last_char(text, run_end_start))
+        InclusiveRange::new(start, cluster_last_char(text, run_end_start))
     }
 }
 
@@ -158,40 +161,40 @@ pub fn expand_word_unit(
 /// `word-selects-whitespace` is on.
 pub fn word_unit_at(
     text: &BufferText,
-    pos: usize,
+    pos: CharOffset,
     is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-    min_start: usize,
+    min_start: CharOffset,
     chars: WordChars<'_>,
-) -> Option<(usize, usize)> {
+) -> Option<InclusiveRange<CharOffset>> {
     // `pos` may be any valid selection endpoint, including the trailing
     // codepoint of a multi-codepoint grapheme cluster — see `anchor_unit`'s
     // doc for why this snap to the cluster start matters before classifying.
     let pos = snap_to_cluster_start(text, pos);
-    let (start, end) = inner_word_impl(text, pos, is_boundary, chars)?;
-    let class = chars.classify(text.char_at(pos)?);
+    let range = inner_word_impl(text, pos, is_boundary, chars)?;
+    let class = chars.classify(text.char_at(pos.index())?);
     if class != CharClass::Space && class != CharClass::Eol {
-        return Some(expand_word_unit(text, start, end, min_start));
+        return Some(expand_word_unit(text, range.start, range.end, min_start));
     }
 
-    // On whitespace: `(start, end)` is the whitespace run — find the word
-    // adjacent to it (following preferred, preceding fallback) and expand
-    // that one by the normal rule instead.
+    // On whitespace: `range` is the whitespace run — find the word adjacent
+    // to it (following preferred, preceding fallback) and expand that one by
+    // the normal rule instead.
     let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
-    let next_pos = next_grapheme_boundary(text, end);
+    let next_pos = next_grapheme_boundary(text, range.end);
     let word_pos =
-        if next_pos < text.len_chars() && is_word(chars.classify(text.char_at(next_pos)?)) {
+        if next_pos < text.end() && is_word(chars.classify(text.char_at(next_pos.index())?)) {
             next_pos
-        } else if start > 0 {
-            let prev_pos = prev_grapheme_boundary(text, start);
-            if !is_word(chars.classify(text.char_at(prev_pos)?)) {
+        } else if range.start > CharOffset::new(0) {
+            let prev_pos = prev_grapheme_boundary(text, range.start);
+            if !is_word(chars.classify(text.char_at(prev_pos.index())?)) {
                 return None;
             }
             prev_pos
         } else {
             return None;
         };
-    let (start, end) = inner_word_impl(text, word_pos, is_boundary, chars)?;
-    Some(expand_word_unit(text, start, end, min_start))
+    let range = inner_word_impl(text, word_pos, is_boundary, chars)?;
+    Some(expand_word_unit(text, range.start, range.end, min_start))
 }
 
 /// Find the nearest word within `[line_start, line_end_excl)` from `head`.
@@ -212,13 +215,13 @@ pub fn word_unit_at(
 /// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`.
 pub fn nearest_word_on_line(
     text: &BufferText,
-    head: usize,
-    line_start: usize,
-    line_end_excl: usize,
+    head: CharOffset,
+    line_start: CharOffset,
+    line_end_excl: CharOffset,
     around: bool,
     chars: WordChars<'_>,
-) -> Option<(usize, usize)> {
-    let unit = |pos: usize| {
+) -> Option<InclusiveRange<CharOffset>> {
+    let unit = |pos: CharOffset| {
         if around {
             word_unit_at(text, pos, is_word_boundary, line_start, chars)
         } else {
@@ -226,7 +229,7 @@ pub fn nearest_word_on_line(
         }
     };
 
-    let class = chars.classify(text.char_at(head)?);
+    let class = chars.classify(text.char_at(head.index())?);
 
     // Fast path: head is already on a word/punct — delegate to inner/around unit.
     if class != CharClass::Space && class != CharClass::Eol {
@@ -239,7 +242,7 @@ pub fn nearest_word_on_line(
         let mut found = None;
         while pos > line_start {
             pos = prev_grapheme_boundary(text, pos);
-            let c = chars.classify(text.char_at(pos)?);
+            let c = chars.classify(text.char_at(pos.index())?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(pos);
                 break;
@@ -257,7 +260,7 @@ pub fn nearest_word_on_line(
             if next_pos >= line_end_excl {
                 break;
             }
-            let c = chars.classify(text.char_at(next_pos)?);
+            let c = chars.classify(text.char_at(next_pos.index())?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(next_pos);
                 break;
@@ -275,8 +278,8 @@ pub fn nearest_word_on_line(
             // Pick the word whose nearest edge is closer to `head`; tie → prev.
             // `p` is the last char of the prev word's run (nearest edge = p itself).
             // `n` is the first char of the next word's run (nearest edge = n itself).
-            let dist_prev = head.saturating_sub(p);
-            let dist_next = n.saturating_sub(head);
+            let dist_prev = head.chars_since(p);
+            let dist_next = n.chars_since(head);
             let anchor = if dist_next < dist_prev { n } else { p };
             unit(anchor)
         }
@@ -291,20 +294,20 @@ pub fn nearest_word_on_line(
 /// wrap-aware path in `cmd_visual_select_word_nearest_on_line`.
 pub fn apply_nearest_word_result(
     sel: Selection,
-    found: Option<(usize, usize)>,
+    found: Option<InclusiveRange<CharOffset>>,
     mode: MotionMode,
 ) -> Selection {
-    let Some((start, end)) = found else {
+    let Some(range) = found else {
         return sel;
     };
     match mode {
         MotionMode::Move => match sel.sticky_display_col() {
-            Some(sticky) => Selection::with_sticky_display_col(start, end, sticky),
-            None => Selection::new(start, end),
+            Some(sticky) => Selection::with_sticky_display_col(range.start, range.end, sticky),
+            None => Selection::new(range.start, range.end),
         },
         MotionMode::Extend => {
             let forward = sel.anchor() <= sel.head();
-            let s = sel.union_span((start, end), forward);
+            let s = sel.union_span(range, forward);
             match sel.sticky_display_col() {
                 Some(sticky) => Selection::with_sticky_display_col(s.anchor(), s.head(), sticky),
                 None => s,
@@ -353,18 +356,19 @@ pub fn cmd_select_word_nearest_on_line(
 }
 
 type IsBoundary = fn(CharClass, CharClass) -> bool;
-type WordUnitFn = fn(&BufferText, usize, IsBoundary, WordChars<'_>) -> Option<(usize, usize)>;
+type WordUnitFn =
+    fn(&BufferText, CharOffset, IsBoundary, WordChars<'_>) -> Option<InclusiveRange<CharOffset>>;
 
 /// [`word_unit_at`] with `min_start` pinned to `0` — the shape every
 /// text-object command below needs, as opposed to the sticky-column motion
 /// path (`motion/word.rs`), which passes a nonzero visual-row floor.
 fn around_unit(
     text: &BufferText,
-    pos: usize,
+    pos: CharOffset,
     is_boundary: IsBoundary,
     chars: WordChars<'_>,
-) -> Option<(usize, usize)> {
-    word_unit_at(text, pos, is_boundary, 0, chars)
+) -> Option<InclusiveRange<CharOffset>> {
+    word_unit_at(text, pos, is_boundary, CharOffset::new(0), chars)
 }
 
 /// Shared dispatch for the four word-object commands below: resolves the

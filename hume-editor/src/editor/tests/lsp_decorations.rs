@@ -77,7 +77,8 @@ fn set_inlay_hints_composes_with_lsp_position_to_offset() {
         .collect();
     assert_eq!(hints.len(), 1);
     assert_eq!(
-        hints[0].pos, 1,
+        hints[0].pos,
+        co(1),
         "wire char 2 (UTF-16) must land right after the emoji, at char index 1"
     );
     assert_eq!(hints[0].text, "hint");
@@ -337,7 +338,7 @@ fn inlay_hints_remap_through_an_edit() {
             .unwrap()
             .pos
     };
-    assert_eq!(hint_pos(&ed), 3);
+    assert_eq!(hint_pos(&ed), co(3));
 
     // Insert two chars before the hint's position — the hint must move with
     // the text it annotates, not stay pinned to the old char index.
@@ -349,7 +350,7 @@ fn inlay_hints_remap_through_an_edit() {
 
     assert_eq!(
         hint_pos(&ed),
-        5,
+        co(5),
         "the hint must remap forward by the 2 inserted chars"
     );
 }
@@ -378,7 +379,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    let before: Vec<(usize, usize)> = ed
+    let before: Vec<_> = ed
         .state
         .config
         .decorations
@@ -387,7 +388,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
         .collect();
     assert_eq!(
         before,
-        vec![(3, 5)],
+        vec![(co(3), co(5))],
         "seed highlight must land before the edit"
     );
 
@@ -398,7 +399,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
     ed.feed_key(key_esc());
     ed.drain_lsp();
 
-    let after: Vec<(usize, usize)> = ed
+    let after: Vec<_> = ed
         .state
         .config
         .decorations
@@ -407,7 +408,7 @@ fn extra_highlights_remap_through_an_edit_on_a_buffer_with_no_lsp_server() {
         .collect();
     assert_eq!(
         after,
-        vec![(5, 7)],
+        vec![(co(5), co(7))],
         "the highlight must remap forward by the 2 inserted chars, even with no attached LSP server"
     );
 }
@@ -553,7 +554,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     type_cmd(&mut ed, ":arm");
     assert_eq!(
         ed.state.config.decorations.signs_for("linter", bid)[0].pos,
-        6,
+        co(6),
         "sanity: line 1's line-start char offset is 6"
     );
 
@@ -561,7 +562,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     // line exactly there: `i` + Enter inserts "\n" at position 6 without
     // touching anything before or after it.
     ed.set_current_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(6),
+        hume_editing::selection::Selection::collapsed(co(6)),
     ));
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
@@ -571,7 +572,8 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
     let text = ed.state.buffers.get(bid).text();
     assert_eq!(
-        pos, 7,
+        pos,
+        co(7),
         "Assoc::After must land the sign just past the inserted newline, at \
          \"bbbb\"'s new position — Assoc::Before would leave it at 6, on the \
          new blank line instead"
@@ -614,7 +616,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
             &*linter_signs[0].text,
             scope_name(&ed, linter_signs[0].scope),
         ),
-        (0, "!", "error"),
+        (co(0), "!", "error"),
         "line 0's line-start char offset is 0 on this fixture"
     );
 
@@ -642,7 +644,7 @@ fn set_signs_virtual_lines_and_extra_highlights_round_trip_and_replace_per_sourc
             highlights[0].end,
             scope_name(&ed, highlights[0].scope)
         ),
-        (0, 3, "unused")
+        (co(0), co(3), "unused")
     );
 
     // Replace semantics: a second set-signs! for the same source clears the first.
@@ -731,7 +733,8 @@ fn set_virtual_lines_anchor_scope_and_segments_round_trip_into_the_store() {
         .virtual_lines_for("git-diff", bid);
     assert_eq!(vlines.len(), 1);
     assert_eq!(
-        vlines[0].pos, 16,
+        vlines[0].pos,
+        co(16),
         "'line 3's line-start char offset on this fixture"
     );
     assert_eq!(vlines[0].text, "- let x = 5");
@@ -775,7 +778,11 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         .eol_text_for_buffer(bid)
         .collect();
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].1.pos, 0, "line 0's line-start char offset is 0");
+    assert_eq!(
+        entries[0].1.pos,
+        co(0),
+        "line 0's line-start char offset is 0"
+    );
     assert_eq!(entries[0].1.text, "[2] first problem");
     assert_eq!(scope_name(&ed, entries[0].1.scope), "diagnostic.error");
 
@@ -793,7 +800,8 @@ fn set_eol_text_round_trips_and_replaces_per_source() {
         "the second set-eol-text! must replace, not append"
     );
     assert_eq!(
-        entries[0].1.pos, 8,
+        entries[0].1.pos,
+        co(8),
         "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
     );
     assert_eq!(entries[0].1.text, "second problem");
@@ -825,7 +833,11 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         .decorations
         .line_backgrounds_for("git-diff", bid);
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].pos, 0, "line 0's line-start char offset is 0");
+    assert_eq!(
+        entries[0].pos,
+        co(0),
+        "line 0's line-start char offset is 0"
+    );
     assert_eq!(scope_name(&ed, entries[0].scope), "diff.plus");
 
     // A second call for the same source must replace wholesale, not append.
@@ -841,7 +853,8 @@ fn set_line_backgrounds_round_trips_and_replaces_per_source() {
         "the second set-line-backgrounds! must replace, not append"
     );
     assert_eq!(
-        entries[0].pos, 8,
+        entries[0].pos,
+        co(8),
         "line 1's line-start char offset on this fixture (\"xabcdef\\n\" is 8 chars)"
     );
     assert_eq!(scope_name(&ed, entries[0].scope), "diff.minus");

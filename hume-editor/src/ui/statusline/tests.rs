@@ -2,6 +2,7 @@ use super::elements::file_path::{
     shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
 };
 use super::*;
+use crate::editor::tests::co;
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rgb;
 
@@ -73,7 +74,7 @@ fn test_editor() -> crate::editor::Editor {
         text::BufferText,
     };
     let text = BufferText::from("hello\n");
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
 
@@ -225,7 +226,7 @@ fn test_editor_with_text(s: &str) -> crate::editor::Editor {
         text::BufferText,
     };
     let text = BufferText::from(s);
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
 
@@ -254,7 +255,7 @@ fn test_editor_with_text_and_cursor(s: &str, head: usize) -> crate::editor::Edit
         text::BufferText,
     };
     let text = BufferText::from(s);
-    let sels = SelectionSet::single(Selection::collapsed(head));
+    let sels = SelectionSet::single(Selection::collapsed(co(head)));
     crate::editor::Editor::for_testing(Buffer::new(text, sels))
 }
 

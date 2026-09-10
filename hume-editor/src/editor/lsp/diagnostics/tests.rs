@@ -3,6 +3,17 @@ use hume_editing::changeset::ChangeSetBuilder;
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::Theme;
 
+fn co(n: usize) -> hume_rope::offset::CharOffset {
+    hume_rope::offset::CharOffset::new(n)
+}
+
+fn ex(
+    start: usize,
+    end: usize,
+) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
+    hume_rope::offset::ExclusiveRange::new(co(start), co(end))
+}
+
 fn make_bid() -> BufferId {
     let mut ev = EngineView::new(Theme::default());
     ev.buffers.insert(())
@@ -22,8 +33,8 @@ fn make_two_bids() -> (BufferId, BufferId) {
 
 fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
     StoredDiag {
-        start,
-        end,
+        start: co(start),
+        end: co(end),
         severity,
         message: "boom".to_string(),
         code: None,
@@ -99,13 +110,13 @@ fn for_range_is_globally_sorted_across_multiple_servers() {
     store.replace(ServerId(0), bid, vec![diag(10, 12, DiagSeverity::Error)]);
     store.replace(ServerId(1), bid, vec![diag(0, 2, DiagSeverity::Warning)]);
 
-    let starts: Vec<usize> = store
+    let starts: Vec<_> = store
         .for_range(bid, 0..100, DiagSeverity::Hint)
         .map(|d| d.start)
         .collect();
     assert_eq!(
         starts,
-        vec![0, 10],
+        vec![co(0), co(10)],
         "results must be globally start-ascending regardless of server insertion order"
     );
 }
@@ -187,11 +198,11 @@ fn for_range_respects_range_bounds() {
             diag(20, 25, DiagSeverity::Error),
         ],
     );
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 8..18, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
-    assert_eq!(kept, vec![(10, 15)]);
+    assert_eq!(kept, vec![(co(10), co(15))]);
 }
 
 #[test]
@@ -204,13 +215,13 @@ fn for_range_keeps_a_diagnostic_that_starts_before_the_range_but_overlaps_it() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(0, 10, DiagSeverity::Error)]);
 
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 8..18, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
         kept,
-        vec![(0, 10)],
+        vec![(co(0), co(10))],
         "a diagnostic starting before the range must survive if it overlaps"
     );
 }
@@ -221,17 +232,17 @@ fn remap_insert_before_shifts_the_range() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
-    let mut b = ChangeSetBuilder::new(20);
+    let mut b = ChangeSetBuilder::new(co(20));
     b.retain(0).insert("XXX").retain_rest();
     store.remap_through(bid, &b.finish());
 
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 0..100, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
         kept,
-        vec![(13, 18)],
+        vec![(co(13), co(18))],
         "an insert before the range shifts it forward"
     );
 }
@@ -242,15 +253,19 @@ fn remap_insert_inside_grows_the_range() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
-    let mut b = ChangeSetBuilder::new(20);
+    let mut b = ChangeSetBuilder::new(co(20));
     b.retain(12).insert("XX").retain_rest();
     store.remap_through(bid, &b.finish());
 
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 0..100, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
-    assert_eq!(kept, vec![(10, 17)], "an insert inside the range grows it");
+    assert_eq!(
+        kept,
+        vec![(co(10), co(17))],
+        "an insert inside the range grows it"
+    );
 }
 
 #[test]
@@ -259,17 +274,17 @@ fn remap_insert_after_leaves_the_range_unchanged() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
-    let mut b = ChangeSetBuilder::new(20);
+    let mut b = ChangeSetBuilder::new(co(20));
     b.retain(18).insert("XX").retain_rest();
     store.remap_through(bid, &b.finish());
 
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 0..100, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
         kept,
-        vec![(10, 15)],
+        vec![(co(10), co(15))],
         "an insert after the range must not move it"
     );
 }
@@ -280,11 +295,11 @@ fn remap_deletion_covering_the_range_drops_it() {
     let bid = make_bid();
     store.replace(ServerId(0), bid, vec![diag(10, 15, DiagSeverity::Error)]);
 
-    let mut b = ChangeSetBuilder::new(20);
+    let mut b = ChangeSetBuilder::new(co(20));
     b.retain(5).delete(15).retain_rest();
     store.remap_through(bid, &b.finish());
 
-    let kept: Vec<(usize, usize)> = store
+    let kept: Vec<_> = store
         .for_range(bid, 0..100, DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
@@ -306,7 +321,7 @@ fn remap_through_drops_a_diagnostic_a_covering_deletion_collapses() {
     store.replace(ServerId(0), bid, vec![diag(2, 5, DiagSeverity::Error)]);
 
     // Delete chars 0..8 of a 10-char document — fully covers [2, 5).
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.delete(8).retain_rest();
     let cs = b.finish();
     store.remap_through(bid, &cs);
@@ -350,7 +365,7 @@ fn map_severity_maps_the_known_wire_values() {
 #[test]
 fn widen_zero_length_widens_forward_mid_line() {
     let rope = Rope::from_str("hello\n");
-    assert_eq!(widen_zero_length(&rope, 2), (2, 3));
+    assert_eq!(widen_zero_length(&rope, co(2)), ex(2, 3));
 }
 
 #[test]
@@ -358,13 +373,13 @@ fn widen_zero_length_widens_backward_at_end_of_line() {
     let rope = Rope::from_str("hello\n");
     // Position 5 is the '\n' — widening forward would cross the line
     // boundary, so it must widen backward instead.
-    assert_eq!(widen_zero_length(&rope, 5), (4, 5));
+    assert_eq!(widen_zero_length(&rope, co(5)), ex(4, 5));
 }
 
 #[test]
 fn widen_zero_length_widens_backward_at_end_of_buffer() {
     let rope = Rope::from_str("hi");
-    assert_eq!(widen_zero_length(&rope, 2), (1, 2));
+    assert_eq!(widen_zero_length(&rope, co(2)), ex(1, 2));
 }
 
 /// On the minimal 1-char "\n" buffer, `pos = 0` has no char to widen
@@ -373,5 +388,5 @@ fn widen_zero_length_widens_backward_at_end_of_buffer() {
 #[test]
 fn widen_zero_length_widens_onto_the_newline_on_the_minimal_buffer() {
     let rope = Rope::from_str("\n");
-    assert_eq!(widen_zero_length(&rope, 0), (0, 1));
+    assert_eq!(widen_zero_length(&rope, co(0)), ex(0, 1));
 }

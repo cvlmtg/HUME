@@ -4,6 +4,7 @@ use hume_editing::grapheme::{next_grapheme_boundary, prev_grapheme_boundary};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
+use hume_rope::offset::CharOffset;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -71,12 +72,12 @@ pub fn insert_pair_close(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, _buf, _i, sel, new_sels| {
         let start = sel.start();
-        b.retain(start - b.old_pos());
+        b.retain(start.chars_since(b.old_pos()));
         // Simple auto-close: insert open + close.
         b.insert_char(open);
         b.insert_char(close);
-        // Cursor on `close`. new_pos - 1 is safe: we just inserted 2 chars.
-        new_sels.push(Selection::collapsed(b.new_pos() - 1));
+        // Cursor on `close`. shift(-1) is safe: we just inserted 2 chars.
+        new_sels.push(Selection::collapsed(b.new_pos().shift(-1)));
     })
 }
 
@@ -108,8 +109,8 @@ pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, Selecti
 
         // Delete from `prev` through `next` (exclusive), covering both the
         // char before the cursor and the char the cursor sits on.
-        b.retain(prev - b.old_pos());
-        b.delete(next - prev);
+        b.retain(prev.chars_since(b.old_pos()));
+        b.delete(next.chars_since(prev));
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
@@ -132,13 +133,13 @@ pub fn delete_pair(text: BufferText, sels: SelectionSet) -> (BufferText, Selecti
 /// function evaluates a single cursor position.
 pub fn should_auto_pair_at(
     text: &BufferText,
-    head: usize,
+    head: CharOffset,
     pair: &Pair,
     ap_pairs: &[Pair],
     chars: WordChars<'_>,
 ) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
-    let next_ok = match text.char_at(head) {
+    let next_ok = match text.char_at(head.index()) {
         None => true,                                     // EOF
         Some(c) if c.is_whitespace() => true,             // space, tab, newline, …
         Some(c) => ap_pairs.iter().any(|p| p.close == c), // a configured close char
@@ -148,10 +149,10 @@ pub fn should_auto_pair_at(
     }
 
     // Check 2 (symmetric pairs only): prev char must NOT be a word char.
-    if pair.is_symmetric() && head > 0 {
+    if pair.is_symmetric() && head > CharOffset::new(0) {
         let prev_pos = prev_grapheme_boundary(text, head);
         if text
-            .char_at(prev_pos)
+            .char_at(prev_pos.index())
             .is_some_and(|c| chars.classify(c) == CharClass::Word)
         {
             return false;

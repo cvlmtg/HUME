@@ -19,6 +19,7 @@ use slotmap::SecondaryMap;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// Default capacity — used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
@@ -224,7 +225,7 @@ impl JumpList {
     pub(crate) fn translate_in_place(
         &mut self,
         buf_id: BufferId,
-        edits: &[(usize, usize)],
+        edits: &[ExclusiveRange<CharOffset>],
         cs: &ChangeSet,
         text_pre: &BufferText,
         text_post: &BufferText,
@@ -374,7 +375,7 @@ impl JumpLists {
     pub(crate) fn translate(
         &mut self,
         buf_id: BufferId,
-        edits: &[(usize, usize)],
+        edits: &[ExclusiveRange<CharOffset>],
         cs: &ChangeSet,
         text_pre: &BufferText,
         text_post: &BufferText,

@@ -513,7 +513,7 @@ fn apply_startup_positions_places_focused_cursor() {
     );
     ed.apply_startup_positions();
 
-    assert_eq!(ed.current_selections().primary().head(), 14);
+    assert_eq!(ed.current_selections().primary().head(), co(14));
 }
 
 /// The `cmd_view_center` call inside `apply_startup_positions` — and its
@@ -586,7 +586,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     let pid = ed.state.focused_pane_id;
     assert_eq!(
         ed.state.panes.state[pid][extra_bid].selections,
-        SelectionSet::single(hume_editing::selection::Selection::collapsed(12)),
+        SelectionSet::single(hume_editing::selection::Selection::collapsed(co(12))),
         "non-focused buffer's parked pane state must hold the requested position"
     );
     assert_eq!(
@@ -596,7 +596,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "the focused buffer, which got no placement, must be untouched"
     );
 }
@@ -626,7 +626,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
 
     assert_eq!(
         ed.current_selections().primary().head(),
-        18,
+        co(18),
         "a line past the buffer's end must clamp to the last content line, not error"
     );
 }

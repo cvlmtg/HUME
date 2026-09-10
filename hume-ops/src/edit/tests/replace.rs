@@ -1,5 +1,6 @@
 use super::super::*;
 use hume_editing::word::WordChars;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
@@ -99,7 +100,13 @@ fn replace_around_cursors_zero_span_matches_insert_str() {
     // agreement here isn't circular against replace_around_cursors's own
     // logic.
     let text = BufferText::from("foo bar\n");
-    let sels = SelectionSet::from_vec(vec![Selection::collapsed(0), Selection::collapsed(4)], 0);
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(0)),
+            Selection::collapsed(CharOffset::new(4)),
+        ],
+        0,
+    );
     let (text_replace, sels_replace, cs_replace) =
         replace_around_cursors(text.clone(), sels.clone(), 0, 0, "X");
     let (text_insert, sels_insert, cs_insert) = insert_str(text, sels, "X");
@@ -117,7 +124,7 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
     // multi-char terminator cluster. Floor back to that cluster's start
     // instead of ceiling through it and deleting the structural newline.
     let text = BufferText::from("ab\n");
-    let sels = SelectionSet::from_vec(vec![Selection::collapsed(0)], 0);
+    let sels = SelectionSet::from_vec(vec![Selection::collapsed(CharOffset::new(0))], 0);
     let (new_text, new_sels, _cs) = replace_around_cursors(text, sels, 0, 10, "X");
     assert_eq!(
         new_text.to_string(),
@@ -125,7 +132,7 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
         "structural trailing newline must survive"
     );
     assert!(
-        new_sels.primary().head() < new_text.len_chars(),
+        new_sels.primary().head() < new_text.end(),
         "cursor must land before the structural newline, not on/after it"
     );
 }
@@ -174,7 +181,7 @@ fn replace_span_around_cursors_skips_typed_chars_before_scanning_each_cursors_pr
             sels,
             move |text, head| word_start_before(
                 text,
-                head.saturating_sub(typed),
+                CharOffset::new(head.index().saturating_sub(typed)),
                 WordChars::default()
             ),
             0,

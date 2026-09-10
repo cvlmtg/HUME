@@ -2,6 +2,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 mod align;
 mod case;
@@ -88,7 +89,7 @@ pub fn repeat_edit(
 
     let cs = composed.unwrap_or_else(|| {
         // count == 0: produce an identity changeset (all Retain).
-        let mut b = ChangeSetBuilder::new(current_text.len_chars());
+        let mut b = ChangeSetBuilder::new(current_text.end());
         b.retain_rest();
         b.finish()
     });
@@ -122,7 +123,7 @@ pub fn apply_edit<F>(
 where
     F: FnMut(&mut ChangeSetBuilder, &BufferText, usize, &Selection, &mut Vec<Selection>),
 {
-    let mut b = ChangeSetBuilder::new(text.len_chars());
+    let mut b = ChangeSetBuilder::new(text.end());
     let mut new_sels = Vec::with_capacity(sels.len());
     let primary_idx = sels.primary_index();
 
@@ -155,18 +156,18 @@ fn delete_one_grapheme(
     b: &mut ChangeSetBuilder,
     text: &BufferText,
     new_sels: &mut Vec<Selection>,
-    p: usize,
+    p: CharOffset,
 ) {
-    if p + 1 >= text.len_chars() {
+    if p >= text.last_char() {
         // Cursor is on the structural trailing '\n' — cannot delete it.
-        b.retain(p - b.old_pos());
+        b.retain(p.chars_since(b.old_pos()));
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
         return;
     }
     let end = next_grapheme_boundary(text, p);
-    b.retain(p - b.old_pos());
-    b.delete(end - p);
+    b.retain(p.chars_since(b.old_pos()));
+    b.delete(end.chars_since(p));
     let sel = Selection::collapsed(b.new_pos());
     new_sels.push(sel);
 }
@@ -175,8 +176,8 @@ fn delete_one_grapheme(
 ///
 /// Uses `sel.end_inclusive()` so that multi-codepoint grapheme clusters
 /// (e.g. `e + \u{0301}`) are deleted atomically. The deletion is capped at
-/// the last content character (`text.len_chars() - 2`) so that the structural
-/// trailing `\n` is never removed — matching the protection in
+/// the last content character (`text.last_content_char()`) so that the
+/// structural trailing `\n` is never removed — matching the protection in
 /// `delete_one_grapheme`.
 ///
 /// **Last-line whole-line special case**: when the selection spans the entire
@@ -201,7 +202,7 @@ fn delete_sel_region(
     // the selection reaches the structural trailing '\n' (i.e. this is the last
     // line). `start > 0` confirms there is a line above to merge into.
     let on_last_line = sel.end_inclusive(text) > text.last_content_char();
-    if on_last_line && is_selection_linewise(text, sel) && start > 0 {
+    if on_last_line && is_selection_linewise(text, sel) && start > CharOffset::new(0) {
         // Consume the preceding '\n' instead of the structural one so the last
         // line disappears rather than becoming an empty trailing line (vim
         // `dd`-on-last-line convention).
@@ -213,19 +214,20 @@ fn delete_sel_region(
             // correct in the multi-cursor case where b.new_pos() != b.old_pos().
             let prev_line = text.char_to_line(del_start);
             let char_col = hume_editing::lines::char_col_in_line(text, prev_line, del_start);
-            b.retain(del_start - b.old_pos());
-            let cursor_new = b.new_pos().saturating_sub(char_col);
+            b.retain(del_start.chars_since(b.old_pos()));
+            let cursor_new = CharOffset::new(b.new_pos().index().saturating_sub(char_col));
             // Delete from the preceding '\n' through the last content char,
-            // keeping the structural trailing '\n'.
-            b.delete(text.last_content_char() + 1 - del_start);
+            // keeping the structural trailing '\n'. `last_char()` is exactly
+            // `last_content_char() + 1` — the buffer's own exclusive content
+            // bound — so no `+ 1` is needed here.
+            b.delete(text.last_char().chars_since(del_start));
             new_sels.push(Selection::collapsed(cursor_new));
             return;
         }
     }
     // Normal path: cap at the last content char so the structural '\n' is never removed.
-    let end_incl = sel.content_end(text);
-    b.retain(start - b.old_pos());
-    b.delete(end_incl + 1 - start); // end_incl inclusive → +1 for exclusive bound
+    b.retain(start.chars_since(b.old_pos()));
+    b.delete(sel.content_end_exclusive(text).chars_since(start));
     new_sels.push(Selection::collapsed(b.new_pos()));
 }
 

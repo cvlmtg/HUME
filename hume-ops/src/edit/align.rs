@@ -6,6 +6,7 @@ use hume_editing::grapheme::display_col_in_line;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 
@@ -82,7 +83,7 @@ pub fn align_selections(
                 display_col_in_line(&text, start_line, sel.anchor(), tab_width);
             let line_start = text.line_to_char(start_line.into());
             let sel_start = sel.start();
-            let rem = (line_start..sel_start)
+            let rem = (line_start.index()..sel_start.index())
                 .rev()
                 .take_while(|&p| matches!(text.char_at(p), Some(' ') | Some('\t')))
                 .count()
@@ -105,7 +106,7 @@ pub fn align_selections(
 
     if n_slots == 0 {
         // Primary is multiline — no slot structure, everything passes through.
-        let mut b = ChangeSetBuilder::new(text.len_chars());
+        let mut b = ChangeSetBuilder::new(text.end());
         b.retain_rest();
         let cs = b.finish();
         return (text, sels, cs);
@@ -194,8 +195,7 @@ pub fn align_selections(
 
     apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let sel_start = sel.start();
-        let sel_end = sel.end_inclusive(text);
-        let content_len = sel_end + 1 - sel_start;
+        let content_len = sel.end_exclusive(text).chars_since(sel_start);
         let forward = sel.anchor() <= sel.head();
         let start_line = text.char_to_line(sel_start);
 
@@ -209,11 +209,11 @@ pub fn align_selections(
                 // Extras + multiline: retain up to sel_start, capture the global
                 // delta (from all edits before this position), retain the
                 // content, push shifted selection.
-                b.retain(sel_start - b.old_pos());
-                let delta = b.new_pos() as isize - b.old_pos() as isize;
+                b.retain(sel_start.chars_since(b.old_pos()));
+                let delta = b.new_pos().index() as isize - b.old_pos().index() as isize;
                 b.retain(content_len);
-                let new_anchor = (sel.anchor() as isize + delta) as usize;
-                let new_head = (sel.head() as isize + delta) as usize;
+                let new_anchor = sel.anchor().shift(delta);
+                let new_head = sel.head().shift(delta);
                 new_sels.push(Selection::new(new_anchor, new_head));
             }
             Some(slot) => {
@@ -230,7 +230,7 @@ pub fn align_selections(
                 let amount = target as isize - anchor_display_col_now as isize;
 
                 if amount > 0 {
-                    b.retain(sel_start - b.old_pos());
+                    b.retain(sel_start.chars_since(b.old_pos()));
                     b.insert(&" ".repeat(amount as usize));
                     line_shift += amount;
                 } else if amount < 0 {
@@ -239,14 +239,14 @@ pub fn align_selections(
                     // b.old_pos() (the already-consumed boundary on this line).
                     let remove = ((-amount) as usize)
                         .min(meta[i].rem)
-                        .min(sel_start.saturating_sub(b.old_pos()));
-                    b.retain((sel_start - remove) - b.old_pos());
+                        .min(sel_start.chars_since(b.old_pos()));
+                    b.retain(CharOffset::new(sel_start.index() - remove).chars_since(b.old_pos()));
                     if remove > 0 {
                         b.delete(remove);
                         line_shift -= remove as isize;
                     }
                 } else {
-                    b.retain(sel_start - b.old_pos());
+                    b.retain(sel_start.chars_since(b.old_pos()));
                 }
 
                 // b.old_pos() is now at sel_start. Record the mapped start, retain
@@ -255,7 +255,7 @@ pub fn align_selections(
                 b.retain(content_len);
                 // Use sel.end() (not end_inclusive) so anchor/head land on the
                 // grapheme boundary rather than on a trailing combining codepoint.
-                let new_end = new_start + (sel.end() - sel_start);
+                let new_end = CharOffset::new(new_start.index() + sel.end().chars_since(sel_start));
                 new_sels.push(Selection::directed(new_start, new_end, forward));
             }
         }

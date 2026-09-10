@@ -6,6 +6,8 @@ pub use single::{
     DisplayColOrigin, Selection, StickyDisplayCol, is_selection_linewise, linewise_classification,
 };
 
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+
 use crate::changeset::{Assoc, ChangeSet, PosMapCursor};
 use crate::error::ValidationError;
 use crate::text::BufferText;
@@ -44,7 +46,7 @@ impl Default for SelectionSet {
     /// a valid state.
     fn default() -> Self {
         Self {
-            selections: vec![Selection::collapsed(0)],
+            selections: vec![Selection::collapsed(CharOffset::new(0))],
             primary: 0,
         }
     }
@@ -238,13 +240,13 @@ impl SelectionSet {
         );
         for (i, sel) in self.selections.iter().enumerate() {
             debug_assert!(
-                sel.head < buf_len,
-                "Selection {i}: head {} >= buf_len {buf_len} — cursor is past the end of the buffer",
+                sel.head.index() < buf_len,
+                "Selection {i}: head {:?} >= buf_len {buf_len} — cursor is past the end of the buffer",
                 sel.head,
             );
             debug_assert!(
-                sel.anchor < buf_len,
-                "Selection {i}: anchor {} >= buf_len {buf_len} — anchor is past the end of the buffer",
+                sel.anchor.index() < buf_len,
+                "Selection {i}: anchor {:?} >= buf_len {buf_len} — anchor is past the end of the buffer",
                 sel.anchor,
             );
         }
@@ -263,19 +265,19 @@ impl SelectionSet {
             return Err(ValidationError::EmptyBuffer);
         }
         for (index, sel) in self.selections.iter().enumerate() {
-            if sel.head >= buf_len {
+            if sel.head.index() >= buf_len {
                 return Err(ValidationError::SelectionOutOfBounds {
                     index,
                     field: "head",
-                    value: sel.head,
+                    value: sel.head.index(),
                     buf_len,
                 });
             }
-            if sel.anchor >= buf_len {
+            if sel.anchor.index() >= buf_len {
                 return Err(ValidationError::SelectionOutOfBounds {
                     index,
                     field: "anchor",
-                    value: sel.anchor,
+                    value: sel.anchor.index(),
                     buf_len,
                 });
             }
@@ -378,7 +380,7 @@ impl SelectionSet {
     /// silently mis-maps every selection.
     pub fn translate_in_place_with(
         &mut self,
-        edits: &[(usize, usize)],
+        edits: &[ExclusiveRange<CharOffset>],
         cs: &ChangeSet,
         text_pre: &BufferText,
     ) {
@@ -402,11 +404,11 @@ impl SelectionSet {
             // exactly `line_start` still counts as touching, so it uses a
             // strict `<` rather than `<=`.
             while edit_idx < edits.len() {
-                let (start, end) = edits[edit_idx];
-                let fully_before = if start == end {
-                    end < line_start
+                let edit = edits[edit_idx];
+                let fully_before = if edit.start == edit.end {
+                    edit.end < line_start
                 } else {
-                    end <= line_start
+                    edit.end <= line_start
                 };
                 if fully_before {
                     edit_idx += 1;
@@ -421,7 +423,7 @@ impl SelectionSet {
             // half-open overlap test; for a point, `start == end` already
             // means `line_start <= start` from the skip, so `start < line_end`
             // gives `line_start <= start < line_end`).
-            if edit_idx < edits.len() && edits[edit_idx].0 < line_end {
+            if edit_idx < edits.len() && edits[edit_idx].start < line_end {
                 sel.sticky_display_col = None;
             }
 

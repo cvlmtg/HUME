@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::lines::line_token_content;
+use hume_rope::offset::CharOffset;
 
 use crate::editor::commands::effective_word_chars;
 use crate::editor::diff_bridge;
@@ -426,7 +427,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(
             self.buffer(id)?
                 .text()
-                .line_to_char(hume_rope::line::RopeyLine::new(line)),
+                .line_to_char(hume_rope::line::RopeyLine::new(line))
+                .index(),
         )
     }
 
@@ -718,7 +720,7 @@ impl<'a> RegisterHost for EditorHostImpl<'a> {
 impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
         let pbs = self.focused_pane_buffer_state()?;
-        self.char_index_to_line(pbs.selections.primary().head())
+        self.char_index_to_line(pbs.selections.primary().head().index())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
@@ -728,7 +730,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
             pbs.selections
                 .iter_sorted()
                 .enumerate()
-                .map(|(i, sel)| (sel.anchor(), sel.head(), i == primary_index))
+                .map(|(i, sel)| (sel.anchor().index(), sel.head().index(), i == primary_index))
                 .collect(),
         )
     }
@@ -743,7 +745,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         // Steel line-index builtin that admits the buffer's own trailing
         // phantom line, so this goes through the ropey domain rather than
         // `char_to_line`'s content-only contract.
-        Some(text.ropey_char_to_line(idx).index() + 1)
+        Some(text.ropey_char_to_line(CharOffset::new(idx)).index() + 1)
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
@@ -752,14 +754,14 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         };
         let text = buf.text();
         let head = sels.primary().head();
-        let Some(ch) = text.char_at(head) else {
+        let Some(ch) = text.char_at(head.index()) else {
             return String::new();
         };
         let chars = effective_word_chars(buf, &self.state.settings);
         if chars.classify(ch) != hume_editing::word::CharClass::Word {
             return String::new();
         }
-        let Some((start, end)) = hume_ops::text_object::inner_word_impl(
+        let Some(range) = hume_ops::text_object::inner_word_impl(
             text,
             head,
             hume_editing::word::is_word_boundary,
@@ -767,7 +769,8 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         ) else {
             return String::new();
         };
-        text.slice(start..end + 1).to_string()
+        text.slice(range.start.index()..range.end.index() + 1)
+            .to_string()
     }
 
     fn selections_linewise(&self, bid: BufferId) -> bool {
@@ -1143,7 +1146,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(pos, hint_text, before)| {
                 validate_offset(text, pos, before, "set-inlay-hints!")?;
                 Ok(crate::editor::decorations::InlayHintEntry {
-                    pos,
+                    pos: CharOffset::new(pos),
                     text: hint_text,
                     before,
                 })
@@ -1254,8 +1257,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .map(|(start, end, scope)| {
                 validate_range(text, start, end, "set-extra-highlights!")?;
                 Ok(crate::editor::decorations::ExtraHighlightEntry {
-                    start,
-                    end,
+                    start: CharOffset::new(start),
+                    end: CharOffset::new(end),
                     scope: self.view.registry.intern_runtime(&scope),
                 })
             })
@@ -1474,7 +1477,7 @@ fn line_start_offset(
     text: &hume_editing::text::BufferText,
     line: usize,
     builtin: &str,
-) -> Result<usize, String> {
+) -> Result<CharOffset, String> {
     let Some(line) = hume_rope::line::ContentLine::checked(text.rope(), line) else {
         return Err(format!(
             "{builtin}: line {line} is out of range (buffer has {} content lines)",
@@ -1511,7 +1514,7 @@ fn validate_offset(
         ));
     }
     if !before {
-        let landing_line = text.ropey_char_to_line(pos + 1);
+        let landing_line = text.ropey_char_to_line(CharOffset::new(pos + 1));
         if landing_line.to_content(text.rope()).is_none() {
             return Err(format!(
                 "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \

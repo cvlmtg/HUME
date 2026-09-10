@@ -1,4 +1,5 @@
 use super::*;
+use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 use hume_test_fixtures::testing::parse_state;
 use pretty_assertions::assert_eq;
@@ -169,12 +170,12 @@ fn remove_primary_two_selections() {
 fn cycle_forward_advances_primary() {
     // Three cursors. After cycling forward, primary should be the next one.
     let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // two cursors, primary at 0
-    assert_eq!(sels.primary().head(), 0);
+    assert_eq!(sels.primary().head(), CharOffset::new(0));
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels.primary().head(), 3);
+    assert_eq!(sels.primary().head(), CharOffset::new(3));
     // Cycle again — wraps back to first.
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels.primary().head(), 0);
+    assert_eq!(sels.primary().head(), CharOffset::new(0));
 }
 
 // ── cmd_cycle_primary_backward ─────────────────────────────────────────
@@ -183,7 +184,7 @@ fn cycle_forward_advances_primary() {
 fn cycle_backward_wraps_to_last() {
     let (text, sels) = parse_state("-[h]>el-[l]>o\n"); // primary at 0
     let sels = cmd_cycle_primary_backward(&text, sels, 0, MotionMode::Move);
-    assert_eq!(sels.primary().head(), 3); // wraps to last
+    assert_eq!(sels.primary().head(), CharOffset::new(3)); // wraps to last
 }
 
 // ── cmd_collapse_selection_to_anchor ──────────────────────────────────
@@ -225,14 +226,14 @@ fn collapse_to_anchor_merges_coincident_anchors() {
     let text = hume_editing::text::BufferText::from("hello\n");
     let sels = hume_editing::selection::SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::new(0, 2), // anchor=0
-            hume_editing::selection::Selection::new(0, 4), // anchor=0
+            hume_editing::selection::Selection::new(CharOffset::new(0), CharOffset::new(2)), // anchor=0
+            hume_editing::selection::Selection::new(CharOffset::new(0), CharOffset::new(4)), // anchor=0
         ],
         0,
     );
     let result = cmd_collapse_selection_to_anchor(&text, sels, 0, MotionMode::Move);
     assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 0
-    assert_eq!(result.primary().head(), 0);
+    assert_eq!(result.primary().head(), CharOffset::new(0));
 }
 
 // ── additional collapse edge cases ─────────────────────────────────────
@@ -253,14 +254,14 @@ fn collapse_two_selections_same_head_merges() {
     let text = hume_editing::text::BufferText::from("hello\n");
     let sels = hume_editing::selection::SelectionSet::from_vec(
         vec![
-            hume_editing::selection::Selection::new(0, 3), // head at 3
-            hume_editing::selection::Selection::new(1, 3), // head at 3
+            hume_editing::selection::Selection::new(CharOffset::new(0), CharOffset::new(3)), // head at 3
+            hume_editing::selection::Selection::new(CharOffset::new(1), CharOffset::new(3)), // head at 3
         ],
         0,
     );
     let result = cmd_collapse_selection_to_head(&text, sels, 0, MotionMode::Move);
     assert_eq!(result.len(), 1); // merged — both collapsed to cursor at 3
-    assert_eq!(result.primary().head(), 3);
+    assert_eq!(result.primary().head(), CharOffset::new(3));
 }
 
 // ── additional flip edge cases ─────────────────────────────────────────
@@ -284,7 +285,7 @@ fn keep_primary_when_primary_is_not_first() {
     let sels = cmd_cycle_primary_forward(&text, sels, 0, MotionMode::Move); // primary now at index 1 (head=3)
     let sels_out = cmd_keep_primary_selection(&text, sels, 0, MotionMode::Move);
     assert_eq!(sels_out.len(), 1);
-    assert_eq!(sels_out.primary().head(), 3); // kept the second one
+    assert_eq!(sels_out.primary().head(), CharOffset::new(3)); // kept the second one
 }
 
 // ── additional remove_primary edge cases ───────────────────────────────
@@ -297,5 +298,5 @@ fn remove_primary_at_end_wraps_to_first() {
     let sels = cmd_cycle_primary_backward(&text, sels, 0, MotionMode::Move); // primary at last (head=6)
     let sels_out = cmd_remove_primary_selection(&text, sels, 1, MotionMode::Move);
     assert_eq!(sels_out.len(), 2);
-    assert_eq!(sels_out.primary().head(), 0); // wrapped to first
+    assert_eq!(sels_out.primary().head(), CharOffset::new(0)); // wrapped to first
 }

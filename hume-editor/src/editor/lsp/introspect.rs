@@ -244,9 +244,7 @@ pub(crate) fn wire_to_char_for_buffer(
 ) -> Option<usize> {
     let rope = state.buffers.try_get(id)?.text().rope();
     let encoding = negotiated_encoding(state, lsp, id)?;
-    Some(hume_rope::position_encoding::wire_to_char(
-        rope, line, character, encoding,
-    ))
+    Some(hume_rope::position_encoding::wire_to_char(rope, line, character, encoding).index())
 }
 
 /// Wire `(line, character)` → char offset, for `lsp-position->offset`.
@@ -352,7 +350,7 @@ pub(crate) fn diagnostics_for_buffer(
             // Landing there instead of the buffer's last content line would
             // hand plugins a `line` that later fails the fail-fast bound
             // check every decoration setter now enforces.
-            let last_content_char = text.len_chars().saturating_sub(1);
+            let last_content_char = text.last_content_char();
             let clamped_start = d.start.min(last_content_char);
             let line = text.char_to_line(clamped_start);
             let char_col = hume_editing::lines::char_col_in_line(text, line, clamped_start);
@@ -363,10 +361,13 @@ pub(crate) fn diagnostics_for_buffer(
             // line rather than the phantom trailing one — the gutter-sign
             // plugin expands `[line, end-line]` inclusive to mark every line
             // a multi-line diagnostic touches.
-            let end_line = text.char_to_line(d.end.saturating_sub(1).min(last_content_char));
+            let end_line = text.char_to_line(
+                hume_rope::offset::CharOffset::new(d.end.index().saturating_sub(1))
+                    .min(last_content_char),
+            );
             serde_json::json!({
-                "start": d.start,
-                "end": d.end,
+                "start": d.start.index(),
+                "end": d.end.index(),
                 "line": line.index(),
                 "end-line": end_line.index(),
                 "char-col": char_col,
@@ -534,17 +535,16 @@ pub(crate) fn location_display_parts(
 fn char_range_to_wire(
     text: &hume_editing::text::BufferText,
     encoding: hume_rope::position_encoding::PositionEncoding,
-    start_c: usize,
-    end_c: usize,
+    start_c: hume_rope::offset::CharOffset,
+    end_c: hume_rope::offset::CharOffset,
 ) -> serde_json::Value {
     let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
-    let ((start_line, start_char), (end_line, end_char)) =
-        hume_rope::position_encoding::char_range_to_wire_range(
-            text.rope(),
-            start_c,
-            end_exclusive,
-            encoding,
-        );
+    let range = hume_rope::position_encoding::char_range_to_wire_range(
+        text.rope(),
+        hume_rope::offset::ExclusiveRange::new(start_c, end_exclusive),
+        encoding,
+    );
+    let ((start_line, start_char), (end_line, end_char)) = range;
     serde_json::json!({
         "start": {"line": start_line, "character": start_char},
         "end": {"line": end_line, "character": end_char},
@@ -599,7 +599,7 @@ pub(crate) fn linewise_ranges_params(
         .filter(|sel| hume_editing::selection::linewise_classification(text, sel) == Some(true))
         .collect();
     let ranges: Vec<_> = linewise
-        .chunk_by(|a, b| b.start() == a.end() + 1)
+        .chunk_by(|a, b| b.start() == a.end_exclusive(text))
         .map(|run| char_range_to_wire(text, encoding, run[0].start(), run[run.len() - 1].end()))
         .collect();
 

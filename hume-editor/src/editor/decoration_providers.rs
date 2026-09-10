@@ -13,6 +13,7 @@ use super::Editor;
 use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::matching_bracket;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One pane's identity plus its on-screen slice, as of the moment
 /// [`Editor::decorated_panes`] was called — every render bridge below reads
@@ -29,7 +30,7 @@ pub(super) struct DecoratedPane {
     /// every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole
     /// buffer.
-    pub(super) chars: Range<usize>,
+    pub(super) chars: ExclusiveRange<CharOffset>,
 }
 
 impl Editor {
@@ -72,11 +73,13 @@ impl Editor {
                     pid,
                     bid,
                     lines: top_line.index()..(bottom + 1).min(text.ropey_line_count().get()),
-                    chars: text.line_to_char(top_line)
-                        ..hume_editing::lines::next_line_start(
+                    chars: ExclusiveRange::new(
+                        text.line_to_char(top_line),
+                        hume_editing::lines::next_line_start(
                             text,
                             hume_rope::line::RopeyLine::new(bottom),
                         ),
+                    ),
                 }
             })
             .collect()
@@ -139,8 +142,8 @@ impl Editor {
                 if start_line.index() >= visible.end {
                     break;
                 }
-                // end_incl is inclusive char offset; +1 makes it exclusive.
-                let end_char = (end_incl + 1).min(text.len_chars());
+                // end_incl is inclusive char offset; shift(1) makes it exclusive.
+                let end_char = end_incl.shift(1).min(text.end());
                 push_match_highlight_lines(text, start, end_char, search_scope, &mut data);
             }
         }
@@ -175,7 +178,10 @@ impl Editor {
                 if let Some(match_pos) = matching_bracket(text, primary) {
                     let (line, byte) = char_to_line_byte(text, match_pos);
                     // Single-char match: byte_end = byte + utf8 length of the char.
-                    let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                    let ch_len = text
+                        .char_at(match_pos.index())
+                        .map(|c| c.len_utf8())
+                        .unwrap_or(1);
                     // Trusted narrow: a bracket match is always a real
                     // selection position, never the buffer's phantom line.
                     let line = hume_rope::line::ContentLine::new(line.index());
@@ -217,14 +223,14 @@ impl Editor {
                     continue;
                 };
 
-                let visible = p.chars.clone();
+                let visible = p.chars;
 
                 let buf = self.state.buffers.get(bid);
                 let text = buf.text();
 
                 {
                     let mut raw = Vec::new();
-                    for d in self.lsp.diagnostics_for_range(bid, visible.clone(), floor) {
+                    for d in self.lsp.diagnostics_for_range(bid, visible, floor) {
                         let start = d.start.max(visible.start);
                         let end = d.end.min(visible.end);
                         // Priority = severity discriminant: Error(0) beats
@@ -298,7 +304,7 @@ impl Editor {
                 continue;
             };
 
-            let visible = p.chars.clone();
+            let visible = p.chars;
             let visible_lines = p.lines.clone();
 
             let signcolumn = self
@@ -403,7 +409,7 @@ impl Editor {
             else {
                 continue;
             };
-            let visible = p.chars.clone();
+            let visible = p.chars;
             let text = self.state.buffers.get(bid).text();
 
             let mut by_line: rustc_hash::FxHashMap<
@@ -414,7 +420,7 @@ impl Editor {
                 .state
                 .config
                 .decorations
-                .inlay_hints_in_range(bid, visible.clone())
+                .inlay_hints_in_range(bid, visible)
             {
                 // `before`: byte offset of the char at `pos` itself, so the
                 // hint text is spliced in immediately before it. `after`:
@@ -426,7 +432,7 @@ impl Editor {
                 let (line, byte_offset) = if entry.before {
                     char_to_line_byte(text, entry.pos)
                 } else {
-                    char_to_line_byte(text, entry.pos + 1)
+                    char_to_line_byte(text, entry.pos.shift(1))
                 };
                 // Trusted narrow: `host_impl.rs`'s `validate_offset` already
                 // rejects an 'after anchor that would land on the phantom
@@ -680,7 +686,7 @@ fn last_writer_per_line<T>(
 /// line backgrounds — all four line-anchored decoration kinds).
 fn resolve_decoration_line(
     text: &hume_editing::text::BufferText,
-    pos: usize,
+    pos: CharOffset,
 ) -> Option<hume_rope::line::ContentLine> {
     text.ropey_char_to_line(pos).to_content(text.rope())
 }
@@ -704,7 +710,7 @@ fn visible_line_anchored<'a, K, E: 'a>(
     text: &'a hume_editing::text::BufferText,
     visible_lines: std::ops::Range<usize>,
     entries: impl Iterator<Item = (K, &'a E)>,
-    pos_of: impl Fn(&E) -> usize,
+    pos_of: impl Fn(&E) -> CharOffset,
 ) -> impl Iterator<Item = (K, hume_rope::line::ContentLine, &'a E)> {
     entries.filter_map(move |(tag, e)| {
         let line = resolve_decoration_line(text, pos_of(e))?;
@@ -720,8 +726,8 @@ fn visible_line_anchored<'a, K, E: 'a>(
 /// [`line_segments`].
 fn push_match_highlight_lines(
     text: &hume_editing::text::BufferText,
-    start: usize,
-    end_char_excl: usize,
+    start: CharOffset,
+    end_char_excl: CharOffset,
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(
         hume_rope::line::ContentLine,
@@ -743,8 +749,8 @@ fn push_match_highlight_lines(
 /// (lower `priority` wins — see that function).
 fn push_priority_highlight_lines(
     text: &hume_editing::text::BufferText,
-    start: usize,
-    end_char_excl: usize,
+    start: CharOffset,
+    end_char_excl: CharOffset,
     priority: u8,
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(

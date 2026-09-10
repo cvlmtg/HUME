@@ -3,6 +3,7 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
+use hume_rope::offset::CharOffset;
 
 use super::CompletionSession;
 use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
@@ -30,13 +31,13 @@ enum ReplaceSpan {
         /// position since `SelectionSet` heads are unique — gets `anchor`
         /// as its token start rather than `head - typed`; see the field
         /// docs on those two for why they can diverge.
-        primary_head: usize,
+        primary_head: CharOffset,
         /// `CompletionSession::anchor()` — tracked independently of live
         /// buffer content, so it stays correct even when `self.filter` was
         /// narrowed via `completion-update-filter!` without a matching real
         /// edit (the primary's head then doesn't reflect `typed` chars at
         /// all, so `head - typed` would be wrong for it specifically).
-        anchor: usize,
+        anchor: CharOffset,
         /// Chars this session has logically consumed since it began — the
         /// same at every cursor, since multi-cursor Insert types
         /// identically everywhere. Skipped before each *non-primary*
@@ -111,10 +112,11 @@ impl CompletionSession {
         let (span, new_text) = match &item.text_edit {
             Some(te) => {
                 let rope_at_begin = &self.rope_at_begin;
-                let (start_b, end_b) = wire_range_to_chars(rope_at_begin, &te.range, encoding);
+                let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
+                let (start_b, end_b) = (range.start, range.end);
                 if end_b < start_b {
                     return Err(format!(
-                        "text edit has a reversed range (end {end_b} before start {start_b})"
+                        "text edit has a reversed range (end {end_b:?} before start {start_b:?})"
                     ));
                 }
                 // Decoded once against the frozen request-time snapshot
@@ -143,7 +145,9 @@ impl CompletionSession {
                 // programmatic/scripted callers, and by tests). Extending
                 // (never shrinking) to cover it here catches that case too,
                 // on top of whatever `cs_since_begin` mapped from real edits.
-                let end_now = end_pos[0].max(self.anchor() + self.filter.chars().count());
+                let end_now = end_pos[0].max(CharOffset::new(
+                    self.anchor().index() + self.filter.chars().count(),
+                ));
                 // The delta model below rests entirely on this containment:
                 // a conforming server's completion range always contains
                 // the request position (LSP spec). An off-spec server, or a
@@ -159,8 +163,8 @@ impl CompletionSession {
                 }
                 (
                     ReplaceSpan::Uniform {
-                        back: head_now - start_now,
-                        forward: end_now - head_now,
+                        back: head_now.chars_since(start_now),
+                        forward: end_now.chars_since(head_now),
                     },
                     te.new_text.clone(),
                 )
@@ -175,7 +179,7 @@ impl CompletionSession {
             None => {
                 let typed = self.filter.chars().count();
                 let anchor = self.anchor();
-                let forward = (anchor + typed).saturating_sub(head_now);
+                let forward = (anchor.index() + typed).saturating_sub(head_now.index());
                 (
                     ReplaceSpan::TokenBefore {
                         primary_head: head_now,
@@ -212,7 +216,10 @@ impl CompletionSession {
         // token-replacement fallback has no server-provided range to
         // overlap in the first place.
         if let ReplaceSpan::Uniform { back, forward } = span {
-            let (start_now, end_now) = (head_now - back, head_now + forward);
+            let (start_now, end_now) = (
+                CharOffset::new(head_now.index() - back),
+                CharOffset::new(head_now.index() + forward),
+            );
             // The half-open overlap test alone (`s < end_now && start_now <
             // e`) misses a *zero-width* additional edit sitting exactly at
             // `end_now`: it inserts before the cursor edit lands, so
@@ -222,9 +229,9 @@ impl CompletionSession {
             // that inserted text instead of the span the server asked for.
             // An insertion at `start_now` is safe (it shifts the whole span
             // uniformly ahead of the edit) and stays excluded.
-            let overlaps = additional_char_edits
-                .iter()
-                .any(|&(s, e, _)| (s < end_now && start_now < e) || (s == e && s == end_now));
+            let overlaps = additional_char_edits.iter().any(|(r, _)| {
+                (r.start < end_now && start_now < r.end) || (r.start == r.end && r.start == end_now)
+            });
             if overlaps {
                 return Err("completion-accept!: textEdit overlaps additionalTextEdits".to_string());
             }
@@ -359,7 +366,11 @@ impl CompletionSession {
                                 if head == primary_head {
                                     word_start_before(text, anchor, chars)
                                 } else {
-                                    word_start_before(text, head.saturating_sub(typed), chars)
+                                    word_start_before(
+                                        text,
+                                        CharOffset::new(head.index().saturating_sub(typed)),
+                                        chars,
+                                    )
                                 }
                             },
                             forward,

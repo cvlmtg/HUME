@@ -17,8 +17,8 @@ fn select_all_matches_creates_selection_per_match() {
         "one selection per 'ab' match"
     );
     let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
-    assert_eq!(sels[0].start(), 0);
-    assert_eq!(sels[1].start(), 6);
+    assert_eq!(sels[0].start(), co(0));
+    assert_eq!(sels[1].start(), co(6));
 }
 
 /// `select-all-matches` with no active search is a no-op.
@@ -94,7 +94,7 @@ fn star_on_partial_selection_expands_to_word() {
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
         matches,
-        vec![(0, 4)],
+        vec![(co(0), co(4))],
         "pattern must match the word it came from"
     );
 }
@@ -169,7 +169,11 @@ fn star_whole_word_skips_substring_matches() {
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
-    assert_eq!(matches, vec![(0, 1)], "only standalone 'as' must match");
+    assert_eq!(
+        matches,
+        vec![(co(0), co(1))],
+        "only standalone 'as' must match"
+    );
 }
 
 /// `*` on a punctuation run adds no word boundaries (regex \\b is meaningless there).
@@ -179,7 +183,7 @@ fn star_punctuation_run_stays_literal() {
     let mut ed = editor_from("-[a]>b\n");
     let text = hume_editing::text::BufferText::from("a -> b\n");
     let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(2),
+        hume_editing::selection::Selection::collapsed(co(2)),
     );
     *ed.doc_mut() = crate::editor::buffer::Buffer::new(text, sels.clone());
     ed.set_current_selections(sels);
@@ -212,7 +216,7 @@ fn search_selection_uses_literal_text() {
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
-    assert_eq!(matches, vec![(1, 3), (6, 8)]);
+    assert_eq!(matches, vec![(co(1), co(3)), (co(6), co(8))]);
 }
 
 /// After `Ctrl+/`, `n` cycles to the next literal occurrence — the full
@@ -240,7 +244,11 @@ fn search_selection_escapes_metacharacters() {
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
-    assert_eq!(matches, vec![(0, 2)], "escaped '.' must not match 'axb'");
+    assert_eq!(
+        matches,
+        vec![(co(0), co(2))],
+        "escaped '.' must not match 'axb'"
+    );
 }
 
 /// `Ctrl+/` on a collapsed cursor searches just that one character literally.

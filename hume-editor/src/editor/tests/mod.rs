@@ -67,10 +67,17 @@ fn pin_no_wrap(ed: &mut Editor) {
 /// offset rather than the marker DSL, with wrapping pinned off.
 fn unwrapped_editor(content: &str, head: usize) -> Editor {
     let text = BufferText::from(content);
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(head));
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(head)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     pin_no_wrap(&mut ed);
     ed
+}
+
+/// Test-only shorthand for a char offset literal — every test in this tree
+/// constructs positions from bare integers, so this is the one place that
+/// wraps them into `CharOffset` rather than every call site doing it inline.
+pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
+    hume_rope::offset::CharOffset::new(n)
 }
 
 /// Attach `name`'s compiled grammar fixture to `ed`, with its own
@@ -326,7 +333,7 @@ fn cell(buf: &hume_grid::Grid, x: u16, y: u16) -> String {
 /// Move the focused pane's primary cursor to char offset `head`.
 fn set_cursor(ed: &mut Editor, head: usize) {
     use hume_editing::selection::Selection;
-    ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
+    ed.set_current_selections(SelectionSet::single(Selection::collapsed(co(head))));
 }
 
 /// Move the focused pane's primary cursor to the start of buffer line `line`.

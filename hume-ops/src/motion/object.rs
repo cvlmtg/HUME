@@ -5,12 +5,14 @@
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
 //! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
 //! caller whose `finder` is a lexical blank-line scan instead — `apply_object_motion`
-//! only cares that `finder` returns `Option<(usize, usize)>` and honors the
-//! strict-progress contract described below, not how the span was found.
+//! only cares that `finder` returns `Option<(CharOffset, CharOffset)>` and
+//! honors the strict-progress contract described below, not how the span was
+//! found.
 
 use super::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 /// Apply structural navigation to every selection in the set, repeated
 /// `count` times.
@@ -70,7 +72,7 @@ pub fn apply_object_motion(
     mode: MotionMode,
     count: usize,
     backward: bool,
-    finder: impl Fn(usize) -> Option<(usize, usize)>,
+    finder: impl Fn(CharOffset) -> Option<(CharOffset, CharOffset)>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
@@ -85,7 +87,9 @@ pub fn apply_object_motion(
             };
             current = match mode {
                 MotionMode::Move => Selection::new(end, start),
-                MotionMode::Extend => current.union_span((start, end), !backward),
+                MotionMode::Extend => {
+                    current.union_span(InclusiveRange::new(start, end), !backward)
+                }
             };
         }
         current

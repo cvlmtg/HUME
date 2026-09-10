@@ -11,6 +11,7 @@ use hume_ops::search::{
     find_next_match, word_search_pattern,
 };
 use hume_ops::text_object::inner_word_impl;
+use hume_rope::offset::CharOffset;
 
 use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
@@ -76,9 +77,9 @@ pub(crate) fn cmd_search_backward(
 /// the match edge that faces the search direction.
 /// `anchor = None` — move mode: cover the matched text exactly.
 pub(crate) fn search_sel(
-    start: usize,
-    end_incl: usize,
-    anchor: Option<usize>,
+    start: CharOffset,
+    end_incl: CharOffset,
+    anchor: Option<CharOffset>,
     direction: SearchDirection,
 ) -> Selection {
     match anchor {
@@ -161,7 +162,7 @@ fn search_jump(
         )
     };
 
-    let mut last_match: Option<(usize, usize)> = None;
+    let mut last_match: Option<(CharOffset, CharOffset)> = None;
     let mut any_wrapped = false;
 
     // When the match cache is populated we binary-search it (O(log M) per
@@ -326,17 +327,17 @@ pub(crate) fn cmd_search_word_under_cursor(
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word — HUME
     // deliberately no-ops rather than adding that scan).
-    match chars.classify(text.char_at(primary.head()).unwrap_or('\n')) {
+    match chars.classify(text.char_at(primary.head().index()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
         _ => {}
     }
-    let Some((start, end_incl)) = inner_word_impl(text, primary.head(), is_word_boundary, chars)
-    else {
+    let Some(range) = inner_word_impl(text, primary.head(), is_word_boundary, chars) else {
         return Ok(());
     };
+    let (start, end_incl) = (range.start, range.end);
     // Computed here (before set_primary_selection) so the immutable `text`/
     // `chars` borrows end before we mutably borrow state.
-    let word = text.slice(start..end_incl + 1).to_string();
+    let word = text.slice(start.index()..end_incl.index() + 1).to_string();
     let pattern = word_search_pattern(&word, chars);
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
@@ -359,7 +360,7 @@ pub(crate) fn cmd_search_selection(
     let text = doc(state, view).text();
     let primary = current_selections(state, view).primary();
     let selected = text
-        .slice(primary.start()..primary.end_inclusive(text) + 1)
+        .slice(primary.start().index()..primary.end_exclusive(text).index())
         .to_string();
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one) —

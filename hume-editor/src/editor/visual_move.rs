@@ -16,6 +16,7 @@ use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
 use hume_ops::{MotionMode, WordCtx};
+use hume_rope::offset::CharOffset;
 
 use super::commands::{
     apply_focused_motion, effective_wrap_mode, focused_buffer_id, pane_row_map, word_chars_owned,
@@ -39,12 +40,12 @@ use crate::editor::error::CommandError;
 /// track 1:1 so the cursor stays at roughly the same relative screen row.
 fn move_vertical(
     rm: &mut RowMap<'_>,
-    head: usize,
+    head: CharOffset,
     down: bool,
     count: usize,
     target_display_col: u32,
     content_only: bool,
-) -> usize {
+) -> CharOffset {
     let start = rm.locate_row(head);
     let mut pos = start;
     let mut last_content = start;
@@ -85,11 +86,11 @@ fn move_vertical(
 fn move_buffer_line(
     rm: &mut RowMap<'_>,
     text: &BufferText,
-    head: usize,
+    head: CharOffset,
     down: bool,
     count: usize,
     target_line_display_col: u32,
-) -> usize {
+) -> CharOffset {
     let line = text.char_to_line(head);
     let target_line = if down {
         // On the last content line, line + count would be the phantom
@@ -494,13 +495,13 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         |text, sels| {
             let new_sels = sels.map(|sel| {
                 let pos = rm.locate_row(sel.anchor());
-                let (line_start, line_end_excl) =
-                    rm.content_row_char_bounds(pos).unwrap_or_else(|| {
-                        let buf_line = text.char_to_line(sel.anchor());
-                        let ls = text.line_to_char(buf_line.into());
-                        let le = hume_editing::lines::next_line_start(text, buf_line.into());
-                        (ls, le)
-                    });
+                let bounds = rm.content_row_char_bounds(pos).unwrap_or_else(|| {
+                    let buf_line = text.char_to_line(sel.anchor());
+                    let ls = text.line_to_char(buf_line.into());
+                    let le = hume_editing::lines::next_line_start(text, buf_line.into());
+                    hume_rope::offset::ExclusiveRange::new(ls, le)
+                });
+                let (line_start, line_end_excl) = (bounds.start, bounds.end);
 
                 let found = nearest_word_on_line(
                     text,

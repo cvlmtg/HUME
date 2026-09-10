@@ -38,19 +38,19 @@ fn transform_case(
         let sel_start = sel.start();
         let sel_end = next_grapheme_boundary(text, sel.end()); // exclusive
 
-        b.retain(sel_start - b.old_pos());
+        b.retain(sel_start.chars_since(b.old_pos()));
         let new_sel_start = b.new_pos();
 
-        let selected = text.slice(sel_start..sel_end).to_string();
+        let selected = text.slice(sel_start.index()..sel_end.index()).to_string();
         let mapped = match kind {
             CaseTransform::Lower => selected.to_lowercase(),
             CaseTransform::Upper => selected.to_uppercase(),
             CaseTransform::Capitalize => capitalize_words(&selected),
         };
-        b.delete(sel_end - sel_start);
+        b.delete(sel_end.chars_since(sel_start));
         b.insert(&mapped);
 
-        let new_sel_end = b.new_pos() - 1;
+        let new_sel_end = b.new_pos().shift(-1);
 
         let forward = sel.anchor() <= sel.head();
         new_sels.push(Selection::directed(new_sel_start, new_sel_end, forward));

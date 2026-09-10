@@ -1,4 +1,6 @@
-use crate::grapheme::cluster_last_char;
+use hume_rope::offset::{CharOffset, InclusiveRange};
+
+use crate::grapheme::{cluster_last_char, next_grapheme_boundary};
 use crate::lines::is_line_start;
 use crate::text::BufferText;
 
@@ -7,8 +9,8 @@ use crate::text::BufferText;
 /// Both origins are `hume_engine::rows::RowMap` quantities — one authority,
 /// so both count tab expansion, wide glyphs and inline decorations (inlay
 /// hints, ghost text) identically. They differ only in what they're measured
-/// *from*: under soft wrap, a continuation row renumbers its columns from its
-/// own left edge (its indent, under `WrapMode::Indent`), so the same
+/// *from*: under soft wrap, a continuation row renumbers its columns from
+/// its own left edge (its indent, under `WrapMode::Indent`), so the same
 /// character has a different `DisplayRow` column than `BufferLine` column —
 /// reading one as the other sends the cursor sideways. With wrapping off a
 /// row *is* the whole line, so the two coincide and either origin reads back
@@ -70,9 +72,9 @@ pub struct StickyDisplayCol {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Selection {
     /// The stationary end of the selection. Stays put when the user extends.
-    pub(crate) anchor: usize,
+    pub(crate) anchor: CharOffset,
     /// The moving end / cursor position.
-    pub(crate) head: usize,
+    pub(crate) head: CharOffset,
     /// Sticky display column for vertical motion. `None` means "not latched
     /// — recompute on next vertical move." Any horizontal motion or edit that
     /// touches this selection's line resets this to `None` by construction
@@ -84,7 +86,7 @@ pub struct Selection {
 
 impl Selection {
     /// A collapsed selection at `pos` (anchor == head == pos). `sticky_display_col: None`.
-    pub fn collapsed(pos: usize) -> Self {
+    pub fn collapsed(pos: CharOffset) -> Self {
         Self {
             anchor: pos,
             head: pos,
@@ -94,7 +96,7 @@ impl Selection {
 
     /// A directional range from `anchor` to `head`. `sticky_display_col: None`.
     /// Passing `anchor == head` produces a single-character selection.
-    pub fn new(anchor: usize, head: usize) -> Self {
+    pub fn new(anchor: CharOffset, head: CharOffset) -> Self {
         Self {
             anchor,
             head,
@@ -112,8 +114,8 @@ impl Selection {
     /// [`Self::new`] or [`Self::collapsed`], which reset
     /// `sticky_display_col` to `None`.
     pub fn with_sticky_display_col(
-        anchor: usize,
-        head: usize,
+        anchor: CharOffset,
+        head: CharOffset,
         sticky_display_col: StickyDisplayCol,
     ) -> Self {
         Self {
@@ -134,7 +136,7 @@ impl Selection {
     /// content-aware bounds (e.g. trimmed whitespace edges, line extents) and
     /// the original direction must be preserved. It avoids leaking
     /// `anchor`/`head` field knowledge into every call site.
-    pub fn directed(start: usize, end: usize, forward: bool) -> Self {
+    pub fn directed(start: CharOffset, end: CharOffset, forward: bool) -> Self {
         if forward {
             Self::new(start, end)
         } else {
@@ -143,9 +145,9 @@ impl Selection {
         }
     }
 
-    /// This selection's extent unioned with `(start, end)` — `min` of both
-    /// starts, `max` of both ends — built with [`Self::directed`] so the
-    /// caller controls which end becomes the anchor.
+    /// This selection's extent unioned with `span` — `min` of both starts,
+    /// `max` of both ends — built with [`Self::directed`] so the caller
+    /// controls which end becomes the anchor.
     ///
     /// Shared by every "extend to cover a newly found match" path:
     /// `hume-ops`'s `text_object::apply_text_object_extend`,
@@ -156,19 +158,19 @@ impl Selection {
     /// replacement would shrink the selection when the found range nests
     /// inside what's already selected; the union absorbs it with no visible
     /// change instead.
-    pub fn union_span(&self, (start, end): (usize, usize), forward: bool) -> Self {
-        let new_start = self.start().min(start);
-        let new_end = self.end().max(end);
+    pub fn union_span(&self, span: InclusiveRange<CharOffset>, forward: bool) -> Self {
+        let new_start = self.start().min(span.start);
+        let new_end = self.end().max(span.end);
         Self::directed(new_start, new_end, forward)
     }
 
     /// The stationary end (the end that stays put when the user extends).
-    pub fn anchor(&self) -> usize {
+    pub fn anchor(&self) -> CharOffset {
         self.anchor
     }
 
     /// The moving end / cursor position.
-    pub fn head(&self) -> usize {
+    pub fn head(&self) -> CharOffset {
         self.head
     }
 
@@ -183,7 +185,7 @@ impl Selection {
     }
 
     /// The smaller of the two offsets — the start of the selected range.
-    pub fn start(&self) -> usize {
+    pub fn start(&self) -> CharOffset {
         self.anchor.min(self.head)
     }
 
@@ -197,7 +199,7 @@ impl Selection {
     ///
     /// In the inclusive cursor model this char IS part of the selection (the
     /// cursor or anchor sits on it). This is NOT an exclusive bound.
-    pub fn end(&self) -> usize {
+    pub fn end(&self) -> CharOffset {
         self.anchor.max(self.head)
     }
 
@@ -210,8 +212,18 @@ impl Selection {
     ///
     /// Use this (not `end()`) when computing char ranges for deletion or
     /// buffer slices — all edit operations should use `end_inclusive`.
-    pub fn end_inclusive(&self, text: &BufferText) -> usize {
+    pub fn end_inclusive(&self, text: &BufferText) -> CharOffset {
         cluster_last_char(text, self.end())
+    }
+
+    /// The char offset one past this selection's last char — the exclusive
+    /// counterpart to [`Self::end_inclusive`], for `text.slice(start..end_exclusive)`
+    /// and delete-range math. Always `next_grapheme_boundary(text, self.end())`:
+    /// `end_inclusive` is defined as that boundary minus one
+    /// (`cluster_last_char`'s doc), so this recovers the true exclusive bound
+    /// without the raw `+ 1` that used to appear at every such call site.
+    pub fn end_exclusive(&self, text: &BufferText) -> CharOffset {
+        next_grapheme_boundary(text, self.end())
     }
 
     /// Returns `true` if the far end of the selection sits on a `\n`.
@@ -219,7 +231,7 @@ impl Selection {
     /// A selection produced by `select-line` always ends on the line's trailing
     /// `\n`. Charwise and word selections end on content characters.
     pub fn ends_on_newline(&self, text: &BufferText) -> bool {
-        text.char_at(self.end()) == Some('\n')
+        text.char_at(self.end().index()) == Some('\n')
     }
 
     /// The last char offset to delete from this selection without touching the
@@ -227,8 +239,16 @@ impl Selection {
     ///
     /// Equivalent to `end_inclusive(text).min(text.last_content_char())`. Use
     /// instead of inlining that expression to make the protection intent clear.
-    pub fn content_end(&self, text: &BufferText) -> usize {
+    pub fn content_end(&self, text: &BufferText) -> CharOffset {
         self.end_inclusive(text).min(text.last_content_char())
+    }
+
+    /// The exclusive counterpart to [`Self::content_end`] — `end_exclusive(text)`
+    /// clamped to `text.last_char()`, so a caller building a
+    /// `text.slice(start..content_end_exclusive)` for a delete never reaches
+    /// past the structural trailing `\n`.
+    pub fn content_end_exclusive(&self, text: &BufferText) -> CharOffset {
+        self.end_exclusive(text).min(text.last_char())
     }
 
     /// Swap anchor and head. A forward selection becomes backward and vice

@@ -257,7 +257,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(1),
+        hume_editing::selection::Selection::collapsed(co(1)),
     );
 
     ed.feed_key(key('i'));
@@ -321,7 +321,7 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(1),
+        hume_editing::selection::Selection::collapsed(co(1)),
     );
 
     ed.feed_key(key('i'));
@@ -395,7 +395,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(5),
+        hume_editing::selection::Selection::collapsed(co(5)),
     );
 
     ed.feed_key(key('i'));
@@ -461,7 +461,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(6),
+        hume_editing::selection::Selection::collapsed(co(6)),
     );
 
     ed.feed_key(key('i'));
@@ -530,7 +530,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(5),
+        hume_editing::selection::Selection::collapsed(co(5)),
     );
 
     ed.feed_key(key('i'));
@@ -595,7 +595,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(1),
+        hume_editing::selection::Selection::collapsed(co(1)),
     );
 
     ed.feed_key(key('i'));
@@ -653,7 +653,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
         .and_then(|by_buf| by_buf.get_mut(bid))
         .expect("pane buffer state must exist");
     pbs.selections = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(1),
+        hume_editing::selection::Selection::collapsed(co(1)),
     );
 
     ed.feed_key(key('i'));

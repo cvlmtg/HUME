@@ -8,7 +8,6 @@
 mod absent_decode;
 mod column_naming;
 mod field_classification;
-mod grapheme;
 mod init_example;
 mod manual_options;
 mod plugin_manifest;
@@ -190,7 +189,7 @@ struct Violation {
 /// identifiers instead of matching literal substrings, which is why this
 /// exists as the more general form underneath both.
 ///
-/// **Opt-out**: a comment containing `marker` (e.g. `"// grapheme-safe:"`)
+/// **Opt-out**: a comment containing `marker` (e.g. `"// column-name-safe:"`)
 /// suppresses a hit on the violation line itself; on the line *above*, only
 /// when the marker starts that line (after trimming) — `cargo fmt` hoists a
 /// trailing comment onto its own line, so the marker often ends up above

@@ -24,7 +24,7 @@ fn after_hint_renders_dimmed_immediately_after_its_char() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 4, // the 'x'
+            pos: co(4), // the 'x'
             text: ": i32".to_string(),
             before: false,
         }],
@@ -48,7 +48,7 @@ fn before_hint_renders_immediately_before_its_char() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 8, // the '5'
+            pos: co(8), // the '5'
             text: "n: ".to_string(),
             before: true,
         }],
@@ -85,7 +85,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     type_text(&mut ed, "x\na\nb");
     let bid = ed.focused_buffer_id();
     ed.set_current_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(4), // 'b', line 2
+        hume_editing::selection::Selection::collapsed(co(4)), // 'b', line 2
     ));
     let pid = ed.state.focused_pane_id;
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
@@ -96,7 +96,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 0, // the 'x'
+            pos: co(0), // the 'x'
             text: "HHH".to_string(),
             before: true, // mid-line insert, so it participates in wrapping
         }],
@@ -137,7 +137,7 @@ fn hint_after_an_emoji_lands_on_the_correct_byte_offset() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 0,
+            pos: co(0),
             text: "<HINT>".to_string(),
             before: false,
         }],
@@ -165,7 +165,7 @@ fn hint_on_a_wrapped_line_pins_current_render_behavior() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 10, // right after the 'a' run
+            pos: co(10), // right after the 'a' run
             text: "[hint]".to_string(),
             before: false,
         }],
@@ -189,7 +189,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 4,
+            pos: co(4),
             text: ": i32".to_string(),
             before: false,
         }],
@@ -255,7 +255,7 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
         "some-other-plugin".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 4,
+            pos: co(4),
             text: ": i32".to_string(),
             before: false,
         }],
@@ -312,7 +312,7 @@ fn deleting_a_line_drops_its_inlay_hint_and_undo_does_not_resurrect_it() {
         "test".to_string(),
         bid,
         vec![InlayHintEntry {
-            pos: 5,
+            pos: co(5),
             text: ": i32".to_string(),
             before: false,
         }],

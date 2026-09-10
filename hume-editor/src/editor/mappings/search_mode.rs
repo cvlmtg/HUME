@@ -151,7 +151,7 @@ impl Editor {
                         SearchDirection::Backward => primary.end_inclusive(text),
                     }
                 }
-                None => 0,
+                None => hume_rope::offset::CharOffset::new(0),
             }
         };
 

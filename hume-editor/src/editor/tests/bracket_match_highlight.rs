@@ -17,7 +17,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
     let pid = ed.state.focused_pane_id;
     // "(x) y\n": '(' 0, 'x' 1, ')' 2, ' ' 3, 'y' 4, '\n' 5 — selection covers
     // ") " with the head on the space (3), same shape as a `w` landing.
-    ed.set_current_selections(SelectionSet::single(Selection::new(2, 3)));
+    ed.set_current_selections(SelectionSet::single(Selection::new(co(2), co(3))));
 
     render(&mut ed);
 

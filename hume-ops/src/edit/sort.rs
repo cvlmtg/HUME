@@ -8,10 +8,12 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::grapheme::prev_grapheme_boundary;
 use hume_editing::lines::{char_col_in_line, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::CharOffset;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -51,7 +53,7 @@ pub fn sort_rows(
     let rows = collect_rows(&text, &sels);
     let groups = group_adjacent(&rows);
 
-    let mut b = ChangeSetBuilder::new(text.len_chars());
+    let mut b = ChangeSetBuilder::new(text.end());
     let mut any_group = false;
     let mut any_edit = false;
     // Old line -> new line, populated only for rows that actually move.
@@ -78,13 +80,13 @@ pub fn sort_rows(
 
         let edit_start = text.line_to_char(rows[group[lo]].line.into());
         let edit_end = next_line_start(&text, rows[group[hi]].line.into());
-        b.retain(edit_start - b.old_pos());
-        b.delete(edit_end - edit_start);
+        b.retain(edit_start.chars_since(b.old_pos()));
+        b.delete(edit_end.chars_since(edit_start));
         for &local in &order[lo..=hi] {
             let line = rows[group[local]].line;
             let start = text.line_to_char(line.into());
             let end = next_line_start(&text, line.into());
-            b.insert(&text.slice(start..end).to_string());
+            b.insert(&text.slice(start.index()..end.index()).to_string());
         }
     }
 
@@ -128,9 +130,12 @@ fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
                 // the line actually selected; on lines in between (a
                 // multi-line span), the whole line's content qualifies.
                 let seg_start = sel.start().max(line_start);
-                let seg_end_incl = sel.end_inclusive(text).min(nl - 1);
+                let seg_end_incl = sel
+                    .end_inclusive(text)
+                    .min(prev_grapheme_boundary(text, nl));
                 if seg_start <= seg_end_incl {
-                    text.slice(seg_start..seg_end_incl + 1).to_string()
+                    text.slice(seg_start.index()..seg_end_incl.index() + 1)
+                        .to_string()
                 } else {
                     String::new()
                 }
@@ -275,8 +280,8 @@ fn remap_selections(
                 let head_char_col = char_col_in_line(old_text, start_line, sel.head());
                 let new_line_start = new_text.line_to_char(new_line.into());
                 Selection::new(
-                    new_line_start + anchor_char_col,
-                    new_line_start + head_char_col,
+                    CharOffset::new(new_line_start.index() + anchor_char_col),
+                    CharOffset::new(new_line_start.index() + head_char_col),
                 )
             })
         } else {

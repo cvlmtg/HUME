@@ -60,8 +60,8 @@ fn drag_extends_selection_from_click_anchor() {
     ed.handle_input(mouse_drag(4, 0)); // head at char 4 ('4')
 
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), 0);
-    assert_eq!(sel.head(), 4, "drag head must resolve to content col 4");
+    assert_eq!(sel.anchor(), co(0));
+    assert_eq!(sel.head(), co(4), "drag head must resolve to content col 4");
 }
 
 /// A drag whose coordinates fall inside a *different* pane's rect (a fast
@@ -155,7 +155,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
         ed.view.panes[pid].viewport.top_line,
         hume_rope::line::ContentLine::new(0)
     );
-    assert_eq!(ed.current_selections().primary().head(), 0);
+    assert_eq!(ed.current_selections().primary().head(), co(0));
 }
 
 // ── Multi-pane hit-testing ────────────────────────────────────────────────
@@ -194,8 +194,16 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     ed.prepare_frame(&mut ctx);
 
     let head = |ed: &Editor, pid| ed.state.panes.state[pid][bid].selections.primary().head();
-    assert_eq!(head(&ed, pid_a), 0, "sanity: both panes start at char 0");
-    assert_eq!(head(&ed, pid_b), 0, "sanity: both panes start at char 0");
+    assert_eq!(
+        head(&ed, pid_a),
+        co(0),
+        "sanity: both panes start at char 0"
+    );
+    assert_eq!(
+        head(&ed, pid_b),
+        co(0),
+        "sanity: both panes start at char 0"
+    );
 
     // Click pane A (unfocused, left half): screen col 7 = rect.x(0) +
     // gutter(0) + content col 7 → the '7' in "0123456789...".
@@ -204,8 +212,12 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
         ed.state.focused_pane_id, pid_a,
         "click in pane A must move focus there"
     );
-    assert_eq!(head(&ed, pid_a), 7, "must land on content col 7 ('7')");
-    assert_eq!(head(&ed, pid_b), 0, "pane B's selection must be untouched");
+    assert_eq!(head(&ed, pid_a), co(7), "must land on content col 7 ('7')");
+    assert_eq!(
+        head(&ed, pid_b),
+        co(0),
+        "pane B's selection must be untouched"
+    );
 
     // Click pane B (now unfocused, right half): screen col 57 = rect.x(50)
     // + gutter(4) + content col 3 → the '3'.
@@ -214,10 +226,10 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
         ed.state.focused_pane_id, pid_b,
         "click in pane B must move focus back there"
     );
-    assert_eq!(head(&ed, pid_b), 3, "must land on content col 3 ('3')");
+    assert_eq!(head(&ed, pid_b), co(3), "must land on content col 3 ('3')");
     assert_eq!(
         head(&ed, pid_a),
-        7,
+        co(7),
         "pane A's selection from the first click must survive untouched"
     );
 
@@ -228,8 +240,16 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
         ed.state.focused_pane_id, pid_b,
         "a click outside every pane rect must not move focus"
     );
-    assert_eq!(head(&ed, pid_a), 7, "statusline click must not move pane A");
-    assert_eq!(head(&ed, pid_b), 3, "statusline click must not move pane B");
+    assert_eq!(
+        head(&ed, pid_a),
+        co(7),
+        "statusline click must not move pane A"
+    );
+    assert_eq!(
+        head(&ed, pid_b),
+        co(3),
+        "statusline click must not move pane B"
+    );
 }
 
 /// The stacked-split analogue: a click's *row* must also be translated by

@@ -1,6 +1,7 @@
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use crate::MotionMode;
 
@@ -35,7 +36,7 @@ pub use word::{
 ///
 /// Unlike motions, which map a single cursor position to a new position, a
 /// text object maps a cursor position to a *range* — the region to select.
-/// `text_object` returns `Some((start, end))` as an inclusive char-offset pair,
+/// `text_object` returns `Some(range)` as an inclusive char-offset span,
 /// or `None` if no match exists (e.g., cursor not inside any bracket pair).
 ///
 /// On `None`, the existing selection is preserved — `mi(` when not inside parens
@@ -47,10 +48,10 @@ pub use word::{
 pub(crate) fn apply_text_object(
     text: &BufferText,
     sels: SelectionSet,
-    text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
+    text_object: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     let result = sels.map(|sel| match text_object(text, sel.head()) {
-        Some((start, end)) => Selection::new(start, end),
+        Some(range) => Selection::new(range.start, range.end),
         None => sel,
     });
     result.debug_assert_valid(text);
@@ -72,7 +73,7 @@ pub(crate) fn apply_text_object(
 pub(crate) fn apply_text_object_extend(
     text: &BufferText,
     sels: SelectionSet,
-    text_object: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
+    text_object: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let forward = sel.anchor() <= sel.head();
@@ -88,7 +89,7 @@ pub(crate) fn apply_text_object_extend(
         // Result was a subset (no growth). Retry from one past the selection end so
         // bracket/quote searches find the enclosing pair rather than the current one.
         let past_end = next_grapheme_boundary(text, sel.end());
-        if past_end < text.len_chars()
+        if past_end < text.end()
             && let Some(found) = text_object(text, past_end)
         {
             return sel.union_span(found, forward);
@@ -113,7 +114,7 @@ pub fn apply_text_object_by_mode(
     text: &BufferText,
     sels: SelectionSet,
     mode: MotionMode,
-    f: impl Fn(&BufferText, usize) -> Option<(usize, usize)>,
+    f: impl Fn(&BufferText, CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     match mode {
         MotionMode::Move => apply_text_object(text, sels, f),

@@ -31,7 +31,7 @@ fn zz_centres_cursor_in_viewport() {
     // Cursor is unchanged.
     assert_eq!(
         ed.current_selections().primary().head(),
-        ed.doc().text().rope().line_to_char(25),
+        co(ed.doc().text().rope().line_to_char(25)),
     );
 }
 
@@ -99,7 +99,7 @@ fn zz_in_wrap_mode_walks_display_rows() {
     let text = BufferText::from(content);
 
     // Cursor on "i" (line 1, char 8 within line; chars 8-11 are sub-row 2).
-    let head = text.rope().line_to_char(1) + 8;
+    let head = co(text.rope().line_to_char(1) + 8);
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
@@ -127,7 +127,7 @@ fn zk_in_wrap_mode_anchors_cursor_row_at_top() {
     let text = BufferText::from(content);
 
     // Cursor on "j" (line 1, char 9; chars 8-11 → sub-row 2).
-    let head = text.rope().line_to_char(1) + 9;
+    let head = co(text.rope().line_to_char(1) + 9);
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {

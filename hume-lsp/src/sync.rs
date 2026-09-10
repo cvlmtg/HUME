@@ -59,8 +59,12 @@ pub fn changeset_to_content_changes(
 /// lsp_types↔tuple adaptation point in this module, so `hume-rope` stays
 /// free of an `lsp_types` dependency.
 fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> Range {
+    let range = hume_rope::offset::ExclusiveRange::new(
+        hume_rope::offset::CharOffset::new(start),
+        hume_rope::offset::CharOffset::new(end),
+    );
     let ((start_line, start_character), (end_line, end_character)) =
-        hume_rope::position_encoding::char_range_to_wire_range(rope, start, end, enc);
+        hume_rope::position_encoding::char_range_to_wire_range(rope, range, enc);
     Range {
         start: Position {
             line: start_line as u32,

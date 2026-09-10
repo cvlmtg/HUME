@@ -9,7 +9,7 @@ use pretty_assertions::assert_eq;
 // the run loop would) and verify the pane reflects the post-operation state.
 
 /// Return the pane's primary cursor as an absolute char offset.
-fn pane_head(ed: &Editor) -> usize {
+fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
     ed.view.panes[ed.state.focused_pane_id].selections[0].head
 }
 
@@ -29,7 +29,7 @@ fn pane_selections_synced_after_change_command() {
     // Cursor must be at char offset 0 (start of "o\n").
     assert_eq!(
         pane_head(&ed),
-        0,
+        co(0),
         "pane head must be at char 0 after 'c' deletes selection"
     );
 }
@@ -47,7 +47,7 @@ fn pane_selections_synced_after_insert_typing() {
     // Text is now "xb\n"; cursor sits after 'x', at byte offset 1.
     assert_eq!(
         pane_head(&ed),
-        1,
+        co(1),
         "pane head must be at char 1 after typing 'x'"
     );
 }
@@ -67,7 +67,7 @@ fn pane_selections_synced_after_exit_insert() {
     // == head) selection's head sits back on 'x' itself, at byte 2.
     assert_eq!(
         pane_head(&ed),
-        2,
+        co(2),
         "pane head must be at char 2 (on 'x') after Esc"
     );
 }
@@ -89,8 +89,8 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     // Primary is index 1 — the "b" cursor, which is LATER in document order.
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::collapsed(0), // at "a" — NOT primary
-            Selection::collapsed(1), // at "b" — IS primary
+            Selection::collapsed(co(0)), // at "a" — NOT primary
+            Selection::collapsed(co(1)), // at "b" — IS primary
         ],
         1,
     );
@@ -102,11 +102,13 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     // Selections are passed in sorted document order; primary_idx identifies the primary.
     let pane = &ed.view.panes[ed.state.focused_pane_id];
     assert_eq!(
-        pane.selections[0].head, 0,
+        pane.selections[0].head,
+        co(0),
         "pane.selections[0] is the earliest in document order (char 0, 'a')"
     );
     assert_eq!(
-        pane.selections[1].head, 1,
+        pane.selections[1].head,
+        co(1),
         "pane.selections[1] is 'b' at char 1"
     );
     assert_eq!(
@@ -143,8 +145,8 @@ fn pane_selections_sorted_by_head_not_start() {
     // even when the SelectionSet hasn't been canonicalized by merge.
     let two_sels = SelectionSet::from_vec_unchecked(
         vec![
-            Selection::new(10, 3), // A — primary
-            Selection::new(0, 8),  // B
+            Selection::new(co(10), co(3)), // A — primary
+            Selection::new(co(0), co(8)),  // B
         ],
         0, // primary is A
     );
@@ -154,8 +156,8 @@ fn pane_selections_sorted_by_head_not_start() {
 
     let pane = &ed.view.panes[ed.state.focused_pane_id];
     // After sort-by-head: [A(head=3), B(head=8)]
-    assert_eq!(pane.selections[0].head, 3, "first in head order is A");
-    assert_eq!(pane.selections[1].head, 8, "second in head order is B");
+    assert_eq!(pane.selections[0].head, co(3), "first in head order is A");
+    assert_eq!(pane.selections[1].head, co(8), "second in head order is B");
     // Primary (A) ends up at index 0 after sorting.
     assert_eq!(
         pane.primary_idx, 0,

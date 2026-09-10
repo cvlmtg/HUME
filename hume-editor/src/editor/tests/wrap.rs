@@ -570,7 +570,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
 
 fn open_second_buffer(ed: &mut Editor) -> BufferId {
     let text = BufferText::from("other buffer\n");
-    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(0));
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let bid = ed.open_buffer(Buffer::new(text, sels));
     ed.switch_to_buffer_with_jump(bid);
     bid

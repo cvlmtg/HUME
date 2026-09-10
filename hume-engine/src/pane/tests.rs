@@ -1,5 +1,6 @@
 use super::*;
 use crate::types::Selection;
+use hume_rope::offset::CharOffset;
 
 #[test]
 fn viewport_state_defaults() {
@@ -300,8 +301,8 @@ fn whitespace_config_defaults() {
 fn make_pane_at_char(head_char: usize) -> Pane {
     Pane {
         selections: vec![Selection {
-            anchor: head_char,
-            head: head_char,
+            anchor: CharOffset::new(head_char),
+            head: CharOffset::new(head_char),
         }],
         ..Pane::new(crate::pipeline::BufferId::default())
     }
@@ -322,7 +323,10 @@ fn primary_head_line_uses_primary_idx() {
     // "aaa\nbbb\nccc": char 0 = line 0, char 8 = line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
     let mut pane = make_pane_at_char(0); // first selection on line 0
-    pane.selections.push(Selection { anchor: 8, head: 8 }); // second on line 2
+    pane.selections.push(Selection {
+        anchor: CharOffset::new(8),
+        head: CharOffset::new(8),
+    }); // second on line 2
     pane.primary_idx = 1;
     assert_eq!(pane.primary_head_line(&rope).index(), 2);
 }

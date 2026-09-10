@@ -1,5 +1,6 @@
 use super::find_tightest_bracket_pair;
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 // These assert find_tightest_bracket_pair's own (open, close) contract
 // directly, rather than only through cmd_inner_argument in
@@ -11,7 +12,8 @@ use hume_editing::text::BufferText;
 // it — asserting the pair directly closes that gap.
 
 fn resolve(text: &str, pos: usize) -> Option<(usize, usize)> {
-    find_tightest_bracket_pair(&BufferText::from(text), pos)
+    find_tightest_bracket_pair(&BufferText::from(text), CharOffset::new(pos))
+        .map(|r| (r.start.index(), r.end.index()))
 }
 
 #[test]

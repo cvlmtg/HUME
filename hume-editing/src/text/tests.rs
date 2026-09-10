@@ -1,5 +1,10 @@
 use super::*;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::offset::CharOffset;
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
 
 #[test]
 fn from_rope_is_raw() {
@@ -192,18 +197,18 @@ fn from_str_unicode() {
 #[test]
 fn line_to_char() {
     let text = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(text.line_to_char(RopeyLine::new(0)), 0); // "hello" starts at 0
-    assert_eq!(text.line_to_char(RopeyLine::new(1)), 6); // "world" starts after "hello\n"
-    assert_eq!(text.line_to_char(RopeyLine::new(2)), 12); // "foo" starts after "world\n"
+    assert_eq!(text.line_to_char(RopeyLine::new(0)), co(0)); // "hello" starts at 0
+    assert_eq!(text.line_to_char(RopeyLine::new(1)), co(6)); // "world" starts after "hello\n"
+    assert_eq!(text.line_to_char(RopeyLine::new(2)), co(12)); // "foo" starts after "world\n"
 }
 
 #[test]
 fn char_to_line() {
     let text = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(text.char_to_line(0), ContentLine::new(0)); // 'h' is on line 0
-    assert_eq!(text.char_to_line(5), ContentLine::new(0)); // '\n' is still line 0
-    assert_eq!(text.char_to_line(6), ContentLine::new(1)); // 'w' is on line 1
-    assert_eq!(text.char_to_line(12), ContentLine::new(2)); // 'f' is on line 2
+    assert_eq!(text.char_to_line(co(0)), ContentLine::new(0)); // 'h' is on line 0
+    assert_eq!(text.char_to_line(co(5)), ContentLine::new(0)); // '\n' is still line 0
+    assert_eq!(text.char_to_line(co(6)), ContentLine::new(1)); // 'w' is on line 1
+    assert_eq!(text.char_to_line(co(12)), ContentLine::new(2)); // 'f' is on line 2
 }
 
 #[test]

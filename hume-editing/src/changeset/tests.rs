@@ -1,11 +1,20 @@
 use super::*;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use pretty_assertions::assert_eq;
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
+
+fn ex(start: usize, end: usize) -> ExclusiveRange<CharOffset> {
+    ExclusiveRange::new(co(start), co(end))
+}
 
 // ── Builder tests ────────────────────────────────────────────────────────
 
 #[test]
 fn builder_simple() {
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);
     b.delete(2);
     b.insert("xyz");
@@ -27,7 +36,7 @@ fn builder_simple() {
 
 #[test]
 fn builder_merges_adjacent_retains() {
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);
     b.retain(5);
     b.retain_rest();
@@ -39,7 +48,7 @@ fn builder_merges_adjacent_retains() {
 
 #[test]
 fn builder_merges_adjacent_deletes() {
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.delete(3);
     b.delete(2);
     b.retain_rest();
@@ -50,7 +59,7 @@ fn builder_merges_adjacent_deletes() {
 
 #[test]
 fn builder_merges_adjacent_inserts() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.insert("ab");
     b.insert("cd");
     b.retain_rest();
@@ -64,7 +73,7 @@ fn builder_merges_adjacent_inserts() {
 
 #[test]
 fn builder_zero_length_noop() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(0);
     b.delete(0);
     b.insert("");
@@ -77,7 +86,7 @@ fn builder_zero_length_noop() {
 
 #[test]
 fn builder_empty_document() {
-    let mut b = ChangeSetBuilder::new(0);
+    let mut b = ChangeSetBuilder::new(co(0));
     b.insert("hello");
     let cs = b.finish();
 
@@ -90,7 +99,7 @@ fn builder_empty_document() {
 fn builder_delete_then_insert_not_merged() {
     // Delete followed by Insert is a "replace" — they must stay separate
     // so that invert and compose work correctly.
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.delete(3);
     b.insert("xyz");
     b.retain_rest();
@@ -108,25 +117,25 @@ fn builder_delete_then_insert_not_merged() {
 
 #[test]
 fn builder_tracks_positions() {
-    let mut b = ChangeSetBuilder::new(10);
-    assert_eq!(b.old_pos(), 0);
-    assert_eq!(b.new_pos(), 0);
+    let mut b = ChangeSetBuilder::new(co(10));
+    assert_eq!(b.old_pos(), co(0));
+    assert_eq!(b.new_pos(), co(0));
 
     b.retain(3);
-    assert_eq!(b.old_pos(), 3);
-    assert_eq!(b.new_pos(), 3);
+    assert_eq!(b.old_pos(), co(3));
+    assert_eq!(b.new_pos(), co(3));
 
     b.delete(2);
-    assert_eq!(b.old_pos(), 5);
-    assert_eq!(b.new_pos(), 3); // didn't advance
+    assert_eq!(b.old_pos(), co(5));
+    assert_eq!(b.new_pos(), co(3)); // didn't advance
 
     b.insert("xyz");
-    assert_eq!(b.old_pos(), 5); // didn't advance
-    assert_eq!(b.new_pos(), 6);
+    assert_eq!(b.old_pos(), co(5)); // didn't advance
+    assert_eq!(b.new_pos(), co(6));
 
     b.retain_rest();
-    assert_eq!(b.old_pos(), 10);
-    assert_eq!(b.new_pos(), 11);
+    assert_eq!(b.old_pos(), co(10));
+    assert_eq!(b.new_pos(), co(11));
 }
 
 #[test]
@@ -135,12 +144,12 @@ fn builder_insert_normalizes_line_endings() {
     // convention a caller hands in, only `\n` gets stored. Expected values
     // are literals, derived from the input by hand rather than by calling
     // the normalizer — an independent oracle.
-    let mut b = ChangeSetBuilder::new(0);
+    let mut b = ChangeSetBuilder::new(co(0));
     b.insert("a\r\nb");
     let cs = b.finish();
     assert_eq!(cs.ops(), &[Operation::Insert("a\nb".to_string())]);
 
-    let mut b = ChangeSetBuilder::new(0);
+    let mut b = ChangeSetBuilder::new(co(0));
     b.insert("a\rb");
     let cs = b.finish();
     assert_eq!(cs.ops(), &[Operation::Insert("a\nb".to_string())]);
@@ -151,39 +160,39 @@ fn builder_insert_counts_positions_in_normalized_chars() {
     // A `\r\n` collapses to one char, so `new_pos` (and `len_after`) must
     // count 3, not 4 — a cursor landed at `new_pos()` after this insert
     // would otherwise sit one char past the text that actually exists.
-    let mut b = ChangeSetBuilder::new(0);
+    let mut b = ChangeSetBuilder::new(co(0));
     b.insert("a\r\nb");
-    assert_eq!(b.new_pos(), 3);
+    assert_eq!(b.new_pos(), co(3));
     let cs = b.finish();
     assert_eq!(cs.len_after(), 3);
 }
 
 #[test]
 fn builder_insert_char_normalizes_a_lone_cr() {
-    let mut b = ChangeSetBuilder::new(0);
+    let mut b = ChangeSetBuilder::new(co(0));
     b.insert_char('\r');
     let cs = b.finish();
     assert_eq!(cs.ops(), &[Operation::Insert("\n".to_string())]);
 }
 
 #[test]
-#[should_panic(expected = "old_pos (3) != doc_len (10)")]
+#[should_panic(expected = "old_pos (3) != doc_len (CharOffset(10))")]
 fn builder_finish_panics_on_unconsumed() {
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);
     b.finish(); // should panic — 7 chars unconsumed
 }
 
 #[test]
 fn is_identity_true_for_identity() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     assert!(b.finish().is_identity());
 }
 
 #[test]
 fn is_identity_false_for_real_changes() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.delete(1);
     b.retain_rest();
     assert!(!b.finish().is_identity());
@@ -195,7 +204,7 @@ fn is_identity_false_for_real_changes() {
 fn apply_identity() {
     // "hello\n" = 6 chars; identity changeset retains all 6.
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.retain_rest();
     let cs = b.finish();
 
@@ -206,7 +215,7 @@ fn apply_identity() {
 fn apply_insert_at_start() {
     // "world\n" = 6 chars; insert "hello " before it.
     let text = BufferText::from("world");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.insert("hello ");
     b.retain_rest();
     let cs = b.finish();
@@ -218,7 +227,7 @@ fn apply_insert_at_start() {
 fn apply_insert_at_end() {
     // "hello\n" = 6 chars; insert " world" before the trailing \n.
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.retain(5); // retain "hello"
     b.insert(" world");
     b.retain_rest(); // retain "\n"
@@ -231,7 +240,7 @@ fn apply_insert_at_end() {
 fn apply_insert_in_middle() {
     // "helo\n" = 5 chars; insert "l" at position 3.
     let text = BufferText::from("helo");
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("l");
     b.retain_rest();
@@ -244,7 +253,7 @@ fn apply_insert_in_middle() {
 fn apply_delete_at_start() {
     // "hello world\n" = 12 chars; delete "hello " (6 chars).
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.delete(6); // delete "hello "
     b.retain_rest();
     let cs = b.finish();
@@ -256,7 +265,7 @@ fn apply_delete_at_start() {
 fn apply_delete_at_end() {
     // "hello world\n" = 12 chars; delete " world" (6 chars at pos 5–10).
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.retain(5);
     b.delete(6); // delete " world"
     b.retain_rest(); // retain "\n"
@@ -269,7 +278,7 @@ fn apply_delete_at_end() {
 fn apply_replace() {
     // "hello world\n" = 12 chars; replace "world" with "rust".
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.retain(6);
     b.delete(5); // delete "world"
     b.insert("rust");
@@ -283,7 +292,7 @@ fn apply_replace() {
 fn apply_multi_edit() {
     // "hello world\n" = 12 chars; two cursors insert "!" at positions 0 and 6.
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.insert("!");
     b.retain(6);
     b.insert("!");
@@ -297,7 +306,7 @@ fn apply_multi_edit() {
 fn apply_delete_entire_buffer() {
     // "hello\n" = 6 chars; delete the content "hello" (5 chars), leaving "\n".
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.delete(5);
     b.retain_rest(); // retain the structural trailing \n
     let cs = b.finish();
@@ -309,7 +318,7 @@ fn apply_delete_entire_buffer() {
 fn apply_empty_buffer_insert() {
     // BufferText::empty() = "\n" (1 char); insert "x" before the trailing \n.
     let text = BufferText::empty();
-    let mut b = ChangeSetBuilder::new(1);
+    let mut b = ChangeSetBuilder::new(co(1));
     b.insert("x");
     b.retain_rest(); // retain "\n"
     let cs = b.finish();
@@ -322,30 +331,30 @@ fn apply_empty_buffer_insert() {
 #[test]
 fn map_pos_inside_retain() {
     // Identity changeset: Retain(5). Every position maps to itself.
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
     for i in 0..=5 {
-        assert_eq!(cs.map_pos(i, Assoc::Before), i);
-        assert_eq!(cs.map_pos(i, Assoc::After), i);
+        assert_eq!(cs.map_pos(co(i), Assoc::Before), co(i));
+        assert_eq!(cs.map_pos(co(i), Assoc::After), co(i));
     }
 }
 
 #[test]
 fn map_pos_after_insert_at_start() {
     // Insert("xx") then Retain(5). "hello" → "xxhello".
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.insert("xx");
     b.retain_rest();
     let cs = b.finish();
 
     // pos=0 is at the insertion point.
-    assert_eq!(cs.map_pos(0, Assoc::Before), 0); // before "xx"
-    assert_eq!(cs.map_pos(0, Assoc::After), 2); // after "xx"
+    assert_eq!(cs.map_pos(co(0), Assoc::Before), co(0)); // before "xx"
+    assert_eq!(cs.map_pos(co(0), Assoc::After), co(2)); // after "xx"
     // pos=1 → shifted by 2.
-    assert_eq!(cs.map_pos(1, Assoc::Before), 3);
-    assert_eq!(cs.map_pos(5, Assoc::Before), 7); // EOF
+    assert_eq!(cs.map_pos(co(1), Assoc::Before), co(3));
+    assert_eq!(cs.map_pos(co(5), Assoc::Before), co(7)); // EOF
 }
 
 #[test]
@@ -353,69 +362,69 @@ fn map_pos_inside_deletion() {
     // Retain(2), Delete(3), Retain(5). "hello world" → "heworld" (wait,
     // that's only 10 chars). Let's use "helloworld" (10 chars).
     // Delete chars 2,3,4 ("llo"). Result: "heworld".
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(2);
     b.delete(3);
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.map_pos(0, Assoc::Before), 0); // before deletion
-    assert_eq!(cs.map_pos(2, Assoc::Before), 2); // at deletion start
-    assert_eq!(cs.map_pos(3, Assoc::Before), 2); // inside deletion → collapse
-    assert_eq!(cs.map_pos(4, Assoc::Before), 2); // inside deletion → collapse
-    assert_eq!(cs.map_pos(5, Assoc::Before), 2); // right after deletion
-    assert_eq!(cs.map_pos(6, Assoc::Before), 3); // shifted back by 3
+    assert_eq!(cs.map_pos(co(0), Assoc::Before), co(0)); // before deletion
+    assert_eq!(cs.map_pos(co(2), Assoc::Before), co(2)); // at deletion start
+    assert_eq!(cs.map_pos(co(3), Assoc::Before), co(2)); // inside deletion → collapse
+    assert_eq!(cs.map_pos(co(4), Assoc::Before), co(2)); // inside deletion → collapse
+    assert_eq!(cs.map_pos(co(5), Assoc::Before), co(2)); // right after deletion
+    assert_eq!(cs.map_pos(co(6), Assoc::Before), co(3)); // shifted back by 3
 }
 
 #[test]
 fn map_pos_at_insert_boundary() {
     // Retain(3), Insert("XX"), Retain(2). "hello" → "helXXlo".
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    assert_eq!(cs.map_pos(3, Assoc::Before), 3); // before "XX"
-    assert_eq!(cs.map_pos(3, Assoc::After), 5); // after "XX"
-    assert_eq!(cs.map_pos(4, Assoc::Before), 6); // 'l' shifted by 2
+    assert_eq!(cs.map_pos(co(3), Assoc::Before), co(3)); // before "XX"
+    assert_eq!(cs.map_pos(co(3), Assoc::After), co(5)); // after "XX"
+    assert_eq!(cs.map_pos(co(4), Assoc::Before), co(6)); // 'l' shifted by 2
 }
 
 #[test]
 fn map_pos_replace_pattern() {
     // Delete(3), Insert("XY"), Retain(2). "hello" → "XYlo".
     // This is a replace of "hel" with "XY".
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.delete(3);
     b.insert("XY");
     b.retain_rest();
     let cs = b.finish();
 
     // pos=0: inside deletion → collapses to 0 (before "XY")
-    assert_eq!(cs.map_pos(0, Assoc::Before), 0);
+    assert_eq!(cs.map_pos(co(0), Assoc::Before), co(0));
     // pos=2: inside deletion → collapses to 0
-    assert_eq!(cs.map_pos(2, Assoc::Before), 0);
+    assert_eq!(cs.map_pos(co(2), Assoc::Before), co(0));
     // pos=3: just after deletion, at insert point.
     // Delete consumed 3, so old=3 after Delete. Insert at old=3.
     // pos==old → Assoc applies.
-    assert_eq!(cs.map_pos(3, Assoc::Before), 0); // before "XY"
-    assert_eq!(cs.map_pos(3, Assoc::After), 2); // after "XY"
+    assert_eq!(cs.map_pos(co(3), Assoc::Before), co(0)); // before "XY"
+    assert_eq!(cs.map_pos(co(3), Assoc::After), co(2)); // after "XY"
     // pos=4: in the final Retain. old=3, new=2 after insert.
     // pos < old + 2 → new + (4-3) = 3.
-    assert_eq!(cs.map_pos(4, Assoc::Before), 3);
+    assert_eq!(cs.map_pos(co(4), Assoc::Before), co(3));
 }
 
 #[test]
 fn map_pos_eof() {
     // Retain(3), Insert("XX"). "abc" → "abcXX".
-    let mut b = ChangeSetBuilder::new(3);
+    let mut b = ChangeSetBuilder::new(co(3));
     b.retain_rest();
     b.insert("XX");
     let cs = b.finish();
 
     // pos=3 (EOF) is at the insertion point.
-    assert_eq!(cs.map_pos(3, Assoc::Before), 3);
-    assert_eq!(cs.map_pos(3, Assoc::After), 5);
+    assert_eq!(cs.map_pos(co(3), Assoc::Before), co(3));
+    assert_eq!(cs.map_pos(co(3), Assoc::After), co(5));
 }
 
 // ── PosMapCursor tests ───────────────────────────────────────────────────
@@ -429,7 +438,7 @@ fn map_pos_eof() {
 fn pos_map_cursor_matches_map_pos_for_ascending_queries() {
     // "helloworld\n" = 11 chars: h0 e1 l2 l3 o4 w5 o6 r7 l8 d9 \n10.
     // Replace "llo" (2..5) with "LLO!", delete "wor" (5..8), retain "ld\n".
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(2);
     b.delete(3);
     b.insert("LLO!");
@@ -443,8 +452,8 @@ fn pos_map_cursor_matches_map_pos_for_ascending_queries() {
     let mut cursor = PosMapCursor::new(cs.ops());
     for &pos in &queries {
         assert_eq!(
-            cursor.map(pos, Assoc::After),
-            cs.map_pos(pos, Assoc::After),
+            cursor.map(co(pos), Assoc::After),
+            cs.map_pos(co(pos), Assoc::After),
             "cursor diverged from map_pos at pos={pos}"
         );
     }
@@ -456,16 +465,25 @@ fn pos_map_cursor_handles_repeated_pos_with_both_assocs() {
     // cursor — once per Assoc — to confirm the first (Before) call doesn't
     // advance state past the insert before the second (After) query at the
     // same position.
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
     let mut cursor = PosMapCursor::new(cs.ops());
-    assert_eq!(cursor.map(3, Assoc::Before), cs.map_pos(3, Assoc::Before));
-    assert_eq!(cursor.map(3, Assoc::After), cs.map_pos(3, Assoc::After));
-    assert_eq!(cursor.map(4, Assoc::After), cs.map_pos(4, Assoc::After));
+    assert_eq!(
+        cursor.map(co(3), Assoc::Before),
+        cs.map_pos(co(3), Assoc::Before)
+    );
+    assert_eq!(
+        cursor.map(co(3), Assoc::After),
+        cs.map_pos(co(3), Assoc::After)
+    );
+    assert_eq!(
+        cursor.map(co(4), Assoc::After),
+        cs.map_pos(co(4), Assoc::After)
+    );
 }
 
 // ── map_anchor tests ─────────────────────────────────────────────────────
@@ -475,7 +493,7 @@ fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
     // Retain(2), Delete(3), Retain(5) on a 10-char doc — same shape as
     // map_pos_inside_deletion. Positions 2..5 (old-doc) name characters the
     // Delete op consumes.
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(2);
     b.delete(3);
     b.retain_rest();
@@ -483,34 +501,34 @@ fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
 
     let mut cursor = PosMapCursor::new(cs.ops());
     assert_eq!(
-        cursor.map_anchor(2, Assoc::Before),
+        cursor.map_anchor(co(2), Assoc::Before),
         MappedPos {
-            pos: 2,
+            pos: co(2),
             anchor_deleted: true
         },
         "position 2 names the deletion's first consumed character"
     );
     let mut cursor = PosMapCursor::new(cs.ops());
     assert_eq!(
-        cursor.map_anchor(3, Assoc::Before),
+        cursor.map_anchor(co(3), Assoc::Before),
         MappedPos {
-            pos: 2,
+            pos: co(2),
             anchor_deleted: true
         },
     );
     let mut cursor = PosMapCursor::new(cs.ops());
     assert_eq!(
-        cursor.map_anchor(4, Assoc::Before),
+        cursor.map_anchor(co(4), Assoc::Before),
         MappedPos {
-            pos: 2,
+            pos: co(2),
             anchor_deleted: true
         },
     );
     let mut cursor = PosMapCursor::new(cs.ops());
     assert_eq!(
-        cursor.map_anchor(5, Assoc::Before),
+        cursor.map_anchor(co(5), Assoc::Before),
         MappedPos {
-            pos: 2,
+            pos: co(2),
             anchor_deleted: false
         },
         "position right after the deletion names a surviving character"
@@ -521,7 +539,7 @@ fn map_anchor_reports_deleted_for_a_position_inside_a_deletion() {
 fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
     // Retain(3), Insert("XX"), Retain(2) — no Delete op at all, so every
     // position's anchor survives regardless of Assoc.
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
@@ -530,7 +548,7 @@ fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
     for &pos in &[0usize, 3, 4] {
         for assoc in [Assoc::Before, Assoc::After] {
             let mut cursor = PosMapCursor::new(cs.ops());
-            assert!(!cursor.map_anchor(pos, assoc).anchor_deleted);
+            assert!(!cursor.map_anchor(co(pos), assoc).anchor_deleted);
         }
     }
 }
@@ -542,7 +560,7 @@ fn map_positions_matches_map_pos_oracle() {
     // Same fixture as the cursor tests above: replace "llo" with "LLO!",
     // delete "wor", retain "ld\n" — covers Retain/Delete/Insert, each with
     // positions before/at/inside/after the op.
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(2);
     b.delete(3);
     b.insert("LLO!");
@@ -550,8 +568,11 @@ fn map_positions_matches_map_pos_oracle() {
     b.retain_rest();
     let cs = b.finish();
 
-    let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11];
-    let expected: Vec<usize> = positions
+    let mut positions: Vec<CharOffset> = vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
+        .into_iter()
+        .map(co)
+        .collect();
+    let expected: Vec<CharOffset> = positions
         .iter()
         .map(|&p| cs.map_pos(p, Assoc::After))
         .collect();
@@ -562,14 +583,14 @@ fn map_positions_matches_map_pos_oracle() {
 
 #[test]
 fn map_positions_before_assoc_matches_oracle() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut positions: Vec<usize> = vec![0, 1, 2, 3, 4, 5];
-    let expected: Vec<usize> = positions
+    let mut positions: Vec<CharOffset> = vec![0, 1, 2, 3, 4, 5].into_iter().map(co).collect();
+    let expected: Vec<CharOffset> = positions
         .iter()
         .map(|&p| cs.map_pos(p, Assoc::Before))
         .collect();
@@ -580,11 +601,11 @@ fn map_positions_before_assoc_matches_oracle() {
 
 #[test]
 fn map_positions_empty_slice_is_noop() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
-    let mut positions: Vec<usize> = vec![];
+    let mut positions: Vec<CharOffset> = vec![];
     cs.map_positions(&mut positions, Assoc::After);
     assert!(positions.is_empty());
 }
@@ -592,11 +613,11 @@ fn map_positions_empty_slice_is_noop() {
 #[test]
 #[should_panic(expected = "sorted ascending")]
 fn map_positions_unsorted_input_panics() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
-    let mut positions = vec![3, 1];
+    let mut positions = vec![co(3), co(1)];
     cs.map_positions(&mut positions, Assoc::After);
 }
 
@@ -606,41 +627,41 @@ fn map_positions_unsorted_input_panics() {
 fn map_ranges_edit_before_range_shifts_uniformly() {
     // Insert("XX") at 0, retain rest. Edit is entirely before the range, so
     // it shifts uniformly by +2.
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(5usize, 8usize)];
+    let mut ranges = vec![ex(5, 8)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(7, 10)]);
+    assert_eq!(ranges, vec![ex(7, 10)]);
 }
 
 #[test]
 fn map_ranges_edit_inside_range_grows_it() {
     // Retain(2), Insert("XX"), retain rest. The insertion point (2) is
     // strictly inside (0,5)'s interior, so the range grows to absorb it.
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(2);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(0usize, 5usize)];
+    let mut ranges = vec![ex(0, 5)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(0, 7)]);
+    assert_eq!(ranges, vec![ex(0, 7)]);
 }
 
 #[test]
 fn map_ranges_edit_spans_range_collapses_to_deletion_point() {
     // Delete(11) — the whole document. Any old range collapses to (0, 0).
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.delete(11);
     let cs = b.finish();
 
-    let mut ranges = vec![(2usize, 6usize)];
+    let mut ranges = vec![ex(2, 6)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(0, 0)]);
+    assert_eq!(ranges, vec![ex(0, 0)]);
 }
 
 #[test]
@@ -648,15 +669,15 @@ fn map_ranges_edit_at_range_start_excludes_insertion() {
     // Retain(3), Insert("XX"), retain rest. Insertion lands exactly at the
     // range's start (3) — Assoc::After pushes the start past it, excluding
     // the inserted text from the front of the shrunk range.
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(3usize, 7usize)];
+    let mut ranges = vec![ex(3, 7)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(5, 9)]);
+    assert_eq!(ranges, vec![ex(5, 9)]);
 }
 
 #[test]
@@ -664,15 +685,15 @@ fn map_ranges_edit_at_range_end_excludes_insertion() {
     // Retain(7), Insert("XX"), retain rest. Insertion lands exactly at the
     // range's end (7) — Assoc::Before holds the end back, excluding the
     // inserted text from the back of the shrunk range.
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(7);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(3usize, 7usize)];
+    let mut ranges = vec![ex(3, 7)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(3, 7)]);
+    assert_eq!(ranges, vec![ex(3, 7)]);
 }
 
 #[test]
@@ -680,21 +701,21 @@ fn map_ranges_zero_width_at_insertion_boundary_never_inverts() {
     // Degenerate point range exactly at an insertion offset: the start maps
     // past the insertion (After) while the end stays put (Before) — without
     // the fixup clamp this would invert to (5, 3).
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(3usize, 3usize)];
+    let mut ranges = vec![ex(3, 3)];
     cs.map_ranges(&mut ranges);
-    assert_eq!(ranges, vec![(5, 5)]);
-    assert!(ranges.iter().all(|&(s, e)| s <= e));
+    assert_eq!(ranges, vec![ex(5, 5)]);
+    assert!(ranges.iter().all(|r| r.start <= r.end));
 }
 
 #[test]
 fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
-    let mut b = ChangeSetBuilder::new(11);
+    let mut b = ChangeSetBuilder::new(co(11));
     b.retain(2);
     b.delete(3);
     b.insert("LLO!");
@@ -702,20 +723,20 @@ fn map_ranges_multiple_disjoint_ranges_matches_map_pos_oracle() {
     b.retain_rest();
     let cs = b.finish();
 
-    let input = [(0usize, 2usize), (5usize, 8usize), (9usize, 11usize)];
-    let expected: Vec<(usize, usize)> = input
+    let input = [ex(0, 2), ex(5, 8), ex(9, 11)];
+    let expected: Vec<ExclusiveRange<CharOffset>> = input
         .iter()
-        .map(|&(s, e)| {
-            let ms = cs.map_pos(s, Assoc::After);
-            let me = cs.map_pos(e, Assoc::Before).max(ms);
-            (ms, me)
+        .map(|r| {
+            let ms = cs.map_pos(r.start, Assoc::After);
+            let me = cs.map_pos(r.end, Assoc::Before).max(ms);
+            ExclusiveRange::new(ms, me)
         })
         .collect();
 
     let mut ranges = input.to_vec();
     cs.map_ranges(&mut ranges);
     assert_eq!(ranges, expected);
-    assert!(ranges.iter().all(|&(s, e)| s <= e));
+    assert!(ranges.iter().all(|r| r.start <= r.end));
 }
 
 #[test]
@@ -727,19 +748,19 @@ fn map_ranges_nested_ranges_do_not_panic_and_match_map_pos_oracle() {
     // narrower warning inside it). Before the fix, walking ends in
     // start-order made the second query go backwards through the resumable
     // cursor, underflowing `pos - self.old`.
-    let mut b = ChangeSetBuilder::new(20);
+    let mut b = ChangeSetBuilder::new(co(20));
     b.retain(2);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
 
-    let input = [(0usize, 20usize), (4usize, 15usize)];
-    let expected: Vec<(usize, usize)> = input
+    let input = [ex(0, 20), ex(4, 15)];
+    let expected: Vec<ExclusiveRange<CharOffset>> = input
         .iter()
-        .map(|&(s, e)| {
-            let ms = cs.map_pos(s, Assoc::After);
-            let me = cs.map_pos(e, Assoc::Before).max(ms);
-            (ms, me)
+        .map(|r| {
+            let ms = cs.map_pos(r.start, Assoc::After);
+            let me = cs.map_pos(r.end, Assoc::Before).max(ms);
+            ExclusiveRange::new(ms, me)
         })
         .collect();
 
@@ -750,11 +771,11 @@ fn map_ranges_nested_ranges_do_not_panic_and_match_map_pos_oracle() {
 
 #[test]
 fn map_ranges_empty_slice_is_noop() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges: Vec<(usize, usize)> = vec![];
+    let mut ranges: Vec<ExclusiveRange<CharOffset>> = vec![];
     cs.map_ranges(&mut ranges);
     assert!(ranges.is_empty());
 }
@@ -762,22 +783,22 @@ fn map_ranges_empty_slice_is_noop() {
 #[test]
 #[should_panic(expected = "sorted by start")]
 fn map_ranges_unsorted_input_panics() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(3usize, 4usize), (1usize, 2usize)];
+    let mut ranges = vec![ex(3, 4), ex(1, 2)];
     cs.map_ranges(&mut ranges);
 }
 
 #[test]
 #[should_panic(expected = "start <= end")]
 fn map_ranges_end_before_start_input_panics() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
 
-    let mut ranges = vec![(4usize, 2usize)];
+    let mut ranges = vec![ex(4, 2)];
     cs.map_ranges(&mut ranges);
 }
 
@@ -785,30 +806,33 @@ fn map_ranges_end_before_start_input_panics() {
 
 #[test]
 fn edited_old_ranges_identity_is_empty() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain_rest();
     let cs = b.finish();
-    assert_eq!(cs.edited_old_ranges(), Vec::<(usize, usize)>::new());
+    assert_eq!(
+        cs.edited_old_ranges(),
+        Vec::<ExclusiveRange<CharOffset>>::new()
+    );
 }
 
 #[test]
 fn edited_old_ranges_single_delete() {
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain(2);
     b.delete(3);
     b.retain_rest();
     let cs = b.finish();
-    assert_eq!(cs.edited_old_ranges(), vec![(2, 5)]);
+    assert_eq!(cs.edited_old_ranges(), vec![ex(2, 5)]);
 }
 
 #[test]
 fn edited_old_ranges_insert_is_a_point() {
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.retain(3);
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
-    assert_eq!(cs.edited_old_ranges(), vec![(3, 3)]);
+    assert_eq!(cs.edited_old_ranges(), vec![ex(3, 3)]);
 }
 
 #[test]
@@ -816,24 +840,24 @@ fn edited_old_ranges_merges_delete_then_insert_at_same_point() {
     // Delete(3), Insert("XY"), Retain(2) — a "replace" pattern. The insert
     // sits exactly at the delete's end (old=3 for both) and must merge into
     // one range rather than producing a separate zero-length entry.
-    let mut b = ChangeSetBuilder::new(5);
+    let mut b = ChangeSetBuilder::new(co(5));
     b.delete(3);
     b.insert("XY");
     b.retain_rest();
     let cs = b.finish();
-    assert_eq!(cs.edited_old_ranges(), vec![(0, 3)]);
+    assert_eq!(cs.edited_old_ranges(), vec![ex(0, 3)]);
 }
 
 #[test]
 fn edited_old_ranges_keeps_disjoint_edits_separate() {
     // Two deletes separated by a retain gap must stay as two ranges.
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.delete(2); // [0,2)
     b.retain(4); // gap
     b.delete(3); // [6,9)
     b.retain_rest();
     let cs = b.finish();
-    assert_eq!(cs.edited_old_ranges(), vec![(0, 2), (6, 9)]);
+    assert_eq!(cs.edited_old_ranges(), vec![ex(0, 2), ex(6, 9)]);
 }
 
 // ── invert tests ─────────────────────────────────────────────────────────
@@ -842,7 +866,7 @@ fn edited_old_ranges_keeps_disjoint_edits_separate() {
 fn invert_identity() {
     // "hello\n" = 6 chars.
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.retain_rest();
     let cs = b.finish();
     let inv = cs.invert(&text);
@@ -857,7 +881,7 @@ fn invert_insert() {
     // Insert "XX" at start of "hello\n" → "XXhello\n" (8 chars).
     // Inverse should delete 2 chars at start.
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.insert("XX");
     b.retain_rest();
     let cs = b.finish();
@@ -873,7 +897,7 @@ fn invert_delete() {
     // Delete first 3 chars of "hello\n" → "lo\n" (3 chars).
     // Inverse should insert "hel" at start.
     let text = BufferText::from("hello");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.delete(3);
     b.retain_rest();
     let cs = b.finish();
@@ -891,7 +915,7 @@ fn invert_delete() {
 fn invert_roundtrip() {
     // "hello world\n" = 12 chars.
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.retain(6);
     b.delete(5);
     b.insert("rust");
@@ -910,7 +934,7 @@ fn invert_roundtrip() {
 fn invert_replace() {
     // "abcde\n" = 6 chars.
     let text = BufferText::from("abcde");
-    let mut b = ChangeSetBuilder::new(6);
+    let mut b = ChangeSetBuilder::new(co(6));
     b.retain(1);
     b.delete(3); // delete "bcd"
     b.insert("XY");
@@ -929,7 +953,7 @@ fn invert_replace() {
 fn invert_multi_edit() {
     // "hello world\n" = 12 chars; two inserts at different positions.
     let text = BufferText::from("hello world");
-    let mut b = ChangeSetBuilder::new(12);
+    let mut b = ChangeSetBuilder::new(co(12));
     b.insert("!");
     b.retain(6);
     b.insert("!");
@@ -949,11 +973,11 @@ fn invert_multi_edit() {
 #[test]
 fn compose_identity_left() {
     // identity ∘ cs = cs
-    let mut id_b = ChangeSetBuilder::new(5);
+    let mut id_b = ChangeSetBuilder::new(co(5));
     id_b.retain_rest();
     let id = id_b.finish();
 
-    let mut cs_b = ChangeSetBuilder::new(5);
+    let mut cs_b = ChangeSetBuilder::new(co(5));
     cs_b.retain(2);
     cs_b.insert("X");
     cs_b.retain_rest();
@@ -969,13 +993,13 @@ fn compose_identity_left() {
 #[test]
 fn compose_identity_right() {
     // cs ∘ identity = cs
-    let mut cs_b = ChangeSetBuilder::new(5);
+    let mut cs_b = ChangeSetBuilder::new(co(5));
     cs_b.retain(2);
     cs_b.insert("X");
     cs_b.retain_rest();
     let cs = cs_b.finish();
 
-    let mut id_b = ChangeSetBuilder::new(6); // len_after of cs
+    let mut id_b = ChangeSetBuilder::new(co(6)); // len_after of cs
     id_b.retain_rest();
     let id = id_b.finish();
 
@@ -991,12 +1015,12 @@ fn compose_two_inserts() {
     // Composed: "abc\n" → "XaYbc\n"
     let text = BufferText::from("abc");
 
-    let mut a_b = ChangeSetBuilder::new(4);
+    let mut a_b = ChangeSetBuilder::new(co(4));
     a_b.insert("X");
     a_b.retain_rest();
     let a = a_b.finish();
 
-    let mut b_b = ChangeSetBuilder::new(5);
+    let mut b_b = ChangeSetBuilder::new(co(5));
     b_b.retain(2);
     b_b.insert("Y");
     b_b.retain_rest();
@@ -1019,12 +1043,12 @@ fn compose_insert_then_delete() {
     // Composed: identity on "abc\n"
     let text = BufferText::from("abc");
 
-    let mut a_b = ChangeSetBuilder::new(4);
+    let mut a_b = ChangeSetBuilder::new(co(4));
     a_b.insert("XY");
     a_b.retain_rest();
     let a = a_b.finish();
 
-    let mut b_b = ChangeSetBuilder::new(6);
+    let mut b_b = ChangeSetBuilder::new(co(6));
     b_b.delete(2);
     b_b.retain_rest();
     let b = b_b.finish();
@@ -1042,12 +1066,12 @@ fn compose_delete_then_insert() {
     // Composed: "hello\n" → "XYlo\n"
     let text = BufferText::from("hello");
 
-    let mut a_b = ChangeSetBuilder::new(6);
+    let mut a_b = ChangeSetBuilder::new(co(6));
     a_b.delete(3);
     a_b.retain_rest();
     let a = a_b.finish();
 
-    let mut b_b = ChangeSetBuilder::new(3);
+    let mut b_b = ChangeSetBuilder::new(co(3));
     b_b.insert("XY");
     b_b.retain_rest();
     let b = b_b.finish();
@@ -1069,14 +1093,14 @@ fn compose_complex() {
     // Composed: "abcde\n" → "ade\n"
     let text = BufferText::from("abcde");
 
-    let mut a_b = ChangeSetBuilder::new(6);
+    let mut a_b = ChangeSetBuilder::new(co(6));
     a_b.retain(2);
     a_b.delete(1);
     a_b.insert("XY");
     a_b.retain_rest();
     let a = a_b.finish();
 
-    let mut b_b = ChangeSetBuilder::new(7);
+    let mut b_b = ChangeSetBuilder::new(co(7));
     b_b.retain(1);
     b_b.delete(3);
     b_b.retain_rest();
@@ -1099,12 +1123,12 @@ fn compose_partial_insert_retain() {
     // Composed: "xyz\n" → "ABxyz\n"
     let text = BufferText::from("xyz");
 
-    let mut a_b = ChangeSetBuilder::new(4);
+    let mut a_b = ChangeSetBuilder::new(co(4));
     a_b.insert("ABCD");
     a_b.retain_rest();
     let a = a_b.finish();
 
-    let mut b_b = ChangeSetBuilder::new(8);
+    let mut b_b = ChangeSetBuilder::new(co(8));
     b_b.retain(2);
     b_b.delete(2);
     b_b.retain_rest();
@@ -1149,7 +1173,7 @@ fn arb_changeset(doc_len: usize) -> impl Strategy<Value = ChangeSet> {
         0..=max_ops,
     )
     .prop_map(move |raw_ops| {
-        let mut builder = ChangeSetBuilder::new(doc_len);
+        let mut builder = ChangeSetBuilder::new(co(doc_len));
         let mut remaining = content_len;
 
         for (action, len, text) in raw_ops {
@@ -1199,7 +1223,7 @@ proptest! {
         let original_content = text.to_string();
 
         let half = doc_len / 2;
-        let mut b = ChangeSetBuilder::new(doc_len);
+        let mut b = ChangeSetBuilder::new(co(doc_len));
         b.delete(half);
         b.insert("X");
         b.retain_rest();
@@ -1221,7 +1245,7 @@ proptest! {
 
         // First changeset: delete first quarter, insert "AB".
         let q1 = doc_len / 4;
-        let mut b1 = ChangeSetBuilder::new(doc_len);
+        let mut b1 = ChangeSetBuilder::new(co(doc_len));
         b1.delete(q1);
         b1.insert("AB");
         b1.retain_rest();
@@ -1232,7 +1256,7 @@ proptest! {
 
         // Second changeset: retain half, insert "CD", retain rest.
         let half = mid_len / 2;
-        let mut b2 = ChangeSetBuilder::new(mid_len);
+        let mut b2 = ChangeSetBuilder::new(co(mid_len));
         b2.retain(half);
         b2.insert("CD");
         b2.retain_rest();
@@ -1282,7 +1306,7 @@ proptest! {
 
         // Build three sequential changesets A→B, B→C, C→D.
         let q = doc_len / 4;
-        let mut b1 = ChangeSetBuilder::new(doc_len);
+        let mut b1 = ChangeSetBuilder::new(co(doc_len));
         b1.delete(q);
         b1.insert("X");
         b1.retain_rest();
@@ -1292,7 +1316,7 @@ proptest! {
         let mid1_len = mid1.len_chars();
 
         let h = mid1_len / 2;
-        let mut b2 = ChangeSetBuilder::new(mid1_len);
+        let mut b2 = ChangeSetBuilder::new(co(mid1_len));
         b2.retain(h);
         b2.insert("YY");
         b2.retain_rest();
@@ -1302,7 +1326,7 @@ proptest! {
         let mid2_len = mid2.len_chars();
 
         let t = mid2_len / 3;
-        let mut b3 = ChangeSetBuilder::new(mid2_len);
+        let mut b3 = ChangeSetBuilder::new(co(mid2_len));
         b3.retain(t);
         b3.delete(1.min(mid2_len - t));
         b3.retain_rest();
@@ -1348,7 +1372,7 @@ fn apply_returns_err_if_trailing_newline_deleted() {
 fn apply_returns_err_on_length_mismatch() {
     // Changeset built for 10 chars, buffer has 3.
     let text = BufferText::from("hi");
-    let mut b = ChangeSetBuilder::new(10);
+    let mut b = ChangeSetBuilder::new(co(10));
     b.retain_rest();
     let cs = b.finish();
 

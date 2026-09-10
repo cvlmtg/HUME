@@ -428,7 +428,8 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     let pane = &ed.view.panes[pid];
     assert_eq!(pane.buffer_id, bid);
     assert_eq!(
-        pane.selections[pane.primary_idx].head, 0,
+        pane.selections[pane.primary_idx].head,
+        co(0),
         "rendered mirror must reflect buffer B's fresh selection, not A's stale head"
     );
 }
@@ -483,7 +484,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
 
     let cursor_char = ed.state.panes.state[pid][bid].selections.primary().head();
     let rope = ed.state.buffers.get(bid).text().rope();
-    let cursor_line = rope.char_to_line(cursor_char);
+    let cursor_line = rope.char_to_line(cursor_char.index());
 
     let pane = &ed.view.panes[pid];
     let top = pane.viewport.top_line.index();

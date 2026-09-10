@@ -378,7 +378,7 @@ fn scroll_test_editor_kitty() -> Editor {
     // Viewport height = 24 → half-page = 12.
     let content = "a\n".repeat(30);
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.kitty_enabled = true;
     ed

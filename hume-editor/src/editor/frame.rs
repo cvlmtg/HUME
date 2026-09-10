@@ -541,7 +541,7 @@ impl Editor {
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
-    cursor_char: usize,
+    cursor_char: hume_rope::offset::CharOffset,
     format_key: hume_engine::rows::line_store::FormatKey,
     scrolloff: usize,
 ) -> Option<(u16, u16)> {

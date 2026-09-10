@@ -8,6 +8,15 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{DecorationSource, VirtualLine};
 use crate::types::ScopeId;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
+
+fn ex(start: usize, end: usize) -> ExclusiveRange<CharOffset> {
+    ExclusiveRange::new(co(start), co(end))
+}
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -766,22 +775,22 @@ fn locate_returns_the_wrap_row_and_column_of_a_char() {
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(0),
+        rm.locate(co(0)),
         (RowPos::new(ContentLine::new(0), 0), 0),
         "'a' — row 0, column 0"
     );
     assert_eq!(
-        rm.locate(2),
+        rm.locate(co(2)),
         (RowPos::new(ContentLine::new(0), 0), 2),
         "'c' — row 0, column 2"
     );
     assert_eq!(
-        rm.locate(4),
+        rm.locate(co(4)),
         (RowPos::new(ContentLine::new(0), 1), 0),
         "'e' — row 1, column 0"
     );
     assert_eq!(
-        rm.locate(5),
+        rm.locate(co(5)),
         (RowPos::new(ContentLine::new(0), 1), 1),
         "'f' — row 1, column 1"
     );
@@ -800,7 +809,7 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.locate(5), (RowPos::new(ContentLine::new(0), 3), 1));
+    assert_eq!(rm.locate(co(5)), (RowPos::new(ContentLine::new(0), 3), 1));
 }
 
 #[test]
@@ -815,7 +824,7 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(1), (RowPos::new(ContentLine::new(0), 0), 3));
+    assert_eq!(rm.locate(co(1)), (RowPos::new(ContentLine::new(0), 0), 3));
 }
 
 #[test]
@@ -835,7 +844,7 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
             99,
             DisplayColTarget::Cell
         ),
-        2
+        co(2)
     );
 }
 
@@ -854,7 +863,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
             99,
             DisplayColTarget::NearestContent
         ),
-        1
+        co(1)
     );
 }
 
@@ -870,7 +879,7 @@ fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
 
-    assert_eq!(rm.locate(5), (RowPos::new(ContentLine::new(0), 1), 0));
+    assert_eq!(rm.locate(co(5)), (RowPos::new(ContentLine::new(0), 1), 0));
 }
 
 #[test]
@@ -905,7 +914,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
             99,
             DisplayColTarget::NearestContent
         ),
-        1,
+        co(1),
         "sticky column must land on 'i', not the newline indicator"
     );
 }
@@ -929,7 +938,7 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
             10,
             DisplayColTarget::NearestContent
         ),
-        1,
+        co(1),
         "sticky column must land on 'i', not the trailing insert or the newline"
     );
 }
@@ -948,7 +957,7 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
             5,
             DisplayColTarget::NearestContent
         ),
-        0
+        co(0)
     );
 }
 
@@ -967,7 +976,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
             3,
             DisplayColTarget::Cell
         ),
-        0,
+        co(0),
         "a click at column 3 hit the tab, so it selects the tab"
     );
     assert_eq!(
@@ -976,7 +985,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
             3,
             DisplayColTarget::NearestContent
         ),
-        1,
+        co(1),
         "a sticky column of 3 is nearer 'x' at column 4 than the tab at 0"
     );
 }
@@ -999,7 +1008,7 @@ fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
             1,
             DisplayColTarget::Cell
         ),
-        0,
+        co(0),
         "clicking the wide glyph's right half must select the glyph itself"
     );
 }
@@ -1022,7 +1031,7 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
             3,
             DisplayColTarget::Cell
         ),
-        1,
+        co(1),
         "a click inside the placeholder's span must select the char it stands in for"
     );
 }
@@ -1047,7 +1056,7 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
             2,
             DisplayColTarget::NearestContent
         ),
-        1,
+        co(1),
         "sticky column 2 must land on 'x' (char 1), not '中' via its continuation cell"
     );
 }
@@ -1075,7 +1084,7 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
             0,
             DisplayColTarget::Cell
         ),
-        rope.line_to_char(1),
+        co(rope.line_to_char(1)),
         "the Before row resolves to line 1's first content row"
     );
     assert_eq!(
@@ -1084,7 +1093,7 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
             0,
             DisplayColTarget::Cell
         ),
-        rope.line_to_char(2),
+        co(rope.line_to_char(2)),
         "the After row resolves to line 2's last content row"
     );
 }
@@ -1106,15 +1115,15 @@ fn content_row_char_bounds_scopes_to_one_wrap_row() {
 
     assert_eq!(
         rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 0)),
-        Some((0, 4))
+        Some(ex(0, 4))
     );
     assert_eq!(
         rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 1)),
-        Some((4, 8))
+        Some(ex(4, 8))
     );
     assert_eq!(
         rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 2)),
-        Some((8, 9)),
+        Some(ex(8, 9)),
         "the wrapped sentinel row covers just the '\\n' itself"
     );
 }
@@ -1137,7 +1146,7 @@ fn content_row_char_bounds_rejects_a_virtual_row() {
     );
     assert_eq!(
         rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 1)),
-        Some((0, 4)),
+        Some(ex(0, 4)),
         "row 1 is the line's first content row"
     );
 }
@@ -1381,7 +1390,11 @@ fn locate_formats_only_as_far_as_the_target_offset() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(5).1, 5, "pure ASCII: column equals char offset");
+    assert_eq!(
+        rm.locate(co(5)).1,
+        5,
+        "pure ASCII: column equals char offset"
+    );
 
     // Dropping the map releases its borrow of the store, letting the test
     // read what the formatter actually emitted — an oracle over `format.rs`'s
@@ -1407,7 +1420,7 @@ fn char_at_formats_only_as_far_as_the_target_column() {
             5,
             DisplayColTarget::Cell
         ),
-        5
+        co(5)
     );
 
     drop(rm);
@@ -1427,8 +1440,8 @@ fn a_wider_offset_on_a_cached_line_reformats() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(3).1, 3);
-    assert_eq!(rm.locate(50).1, 50, "the second query must rescan");
+    assert_eq!(rm.locate(co(3)).1, 3);
+    assert_eq!(rm.locate(co(50)).1, 50, "the second query must rescan");
 }
 
 #[test]
@@ -1440,8 +1453,8 @@ fn a_column_query_after_an_offset_query_reformats() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    let (pos, _) = rm.locate(3);
-    assert_eq!(rm.char_at(pos, 40, DisplayColTarget::Cell), 40);
+    let (pos, _) = rm.locate(co(3));
+    assert_eq!(rm.char_at(pos, 40, DisplayColTarget::Cell), co(40));
 }
 
 #[test]
@@ -1456,7 +1469,7 @@ fn locate_row_answers_without_formatting_in_no_wrap() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.locate_row(5),
+        rm.locate_row(co(5)),
         RowPos::new(ContentLine::new(0), 2),
         "the line's own row sits after the two Before rows above it"
     );
@@ -1493,8 +1506,8 @@ fn locate_row_agrees_with_locate_in_both_wrap_modes() {
         for offset in 0..=rope.len_chars() {
             // `locate_row` first, so it has to be right without a previous
             // `locate` having warmed the scratch.
-            let row = rm.locate_row(offset);
-            let via_locate = rm.locate(offset).0;
+            let row = rm.locate_row(co(offset));
+            let via_locate = rm.locate(co(offset)).0;
             assert_eq!(row, via_locate, "{wrap:?}, offset {offset}");
         }
     }
@@ -1517,8 +1530,8 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for offset in 0..=rope.len_chars() {
-        let expected = rm.locate(offset).1;
-        assert_eq!(rm.line_display_col(offset), expected, "offset {offset}");
+        let expected = rm.locate(co(offset)).1;
+        assert_eq!(rm.line_display_col(co(offset)), expected, "offset {offset}");
     }
 }
 
@@ -1534,11 +1547,11 @@ fn line_display_col_accumulates_across_a_wrap_row() {
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     // Sanity: the row boundary actually falls where the arithmetic assumes.
-    assert_eq!(rm.locate(2).0.row, 1, "third character starts row 1");
+    assert_eq!(rm.locate(co(2)).0.row, 1, "third character starts row 1");
 
     for offset in 0..4 {
         assert_eq!(
-            rm.line_display_col(offset),
+            rm.line_display_col(co(offset)),
             offset as u32 * 2,
             "offset {offset}"
         );
@@ -1561,7 +1574,7 @@ fn line_display_col_excludes_wrap_indent() {
 
     for offset in 0..rope.len_chars() {
         assert_eq!(
-            rm.line_display_col(offset),
+            rm.line_display_col(co(offset)),
             offset as u32,
             "offset {offset}"
         );
@@ -1572,7 +1585,7 @@ fn line_display_col_excludes_wrap_indent() {
     // (`locate`) disagrees with the line-relative one — proving
     // `line_display_col` isn't just forwarding `locate`'s answer verbatim.
     let last = rope.len_chars() - 1;
-    let (pos, row_display_col) = rm.locate(last);
+    let (pos, row_display_col) = rm.locate(co(last));
     assert!(
         pos.row > 0,
         "the line must actually wrap for this test to mean anything"
@@ -1596,9 +1609,9 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.line_display_col(0), 0, "'a' precedes the insert");
+    assert_eq!(rm.line_display_col(co(0)), 0, "'a' precedes the insert");
     assert_eq!(
-        rm.line_display_col(1),
+        rm.line_display_col(co(1)),
         3,
         "'b' is pushed right by the insert's 2 cells"
     );
@@ -1617,10 +1630,10 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
     let mut rm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() - 1 {
-        let col = rm.line_display_col(offset);
+        let col = rm.line_display_col(co(offset));
         assert_eq!(
             rm.char_at_line_display_col(ContentLine::new(0), col, DisplayColTarget::NearestContent),
-            offset,
+            co(offset),
             "offset {offset}, col {col}"
         );
     }
@@ -1640,7 +1653,7 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
 
     assert_eq!(
         rm.char_at_line_display_col(ContentLine::new(1), 5, DisplayColTarget::NearestContent),
-        rope.line_to_char(1) + 1,
+        co(rope.line_to_char(1) + 1),
         "clamps to 'b', not the '\\n'"
     );
 }
@@ -1655,7 +1668,7 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
 
     assert_eq!(
         rm.char_at_line_display_col(ContentLine::new(0), 5, DisplayColTarget::NearestContent),
-        0
+        co(0)
     );
 }
 

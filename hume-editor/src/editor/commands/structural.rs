@@ -78,7 +78,7 @@ impl StructuralBody {
             }
             StructuralBody::Goto { dir, .. } => {
                 apply_object_motion(text, sels, mode, count, dir == Direction::Backward, |p| {
-                    spans.adjacent(p, dir)
+                    spans.adjacent(p, dir).map(|r| (r.start, r.end))
                 })
             }
             StructuralBody::Argument { around: false } => {

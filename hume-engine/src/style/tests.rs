@@ -5,6 +5,11 @@ use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use hume_grid::Rgb;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::offset::CharOffset;
+
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
 
 /// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
 /// (`pipeline::pane_render::render_pane`'s row walk): primary-based
@@ -40,7 +45,7 @@ fn apply_styles(
             let content_line = ContentLine::new(line_idx.index());
             tint = rebuild_line_decorations(content_line, None, &ProviderSet::new(), rope, scratch);
         }
-        let line_start_char = rope.line_to_char(line_idx.index());
+        let line_start_char = co(rope.line_to_char(line_idx.index()));
         let line_end_char = hume_rope::lines::next_line_start(rope, line_idx);
         let is_head_line = scratch
             .primary_idx_in_sorted
@@ -145,8 +150,8 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     style_row(
         &rows[0],
         &graphemes,
-        0,
-        3,
+        co(0),
+        co(3),
         false, // not the cursor line — isolates the tint's own contribution
         Some(tint_scope),
         EditorMode::Normal,
@@ -177,7 +182,10 @@ fn selection_head_overrides_default() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
-    let selections = vec![Selection { anchor: 2, head: 2 }];
+    let selections = vec![Selection {
+        anchor: co(2),
+        head: co(2),
+    }];
 
     // Theme with a cursor style so we can detect the override.
     let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
@@ -237,7 +245,10 @@ fn selection_head_on_newline_is_visible() {
     let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
     // Line selection: anchor=0, head=5 (the '\n').
-    let selections = vec![Selection { anchor: 0, head: 5 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(5),
+    }];
     let mut scratch = StyleScratch::new();
     apply_styles(
         &rows,
@@ -270,7 +281,10 @@ fn selection_range_highlighted() {
     let rope = ropey::Rope::from_str("abc");
     let graphemes = make_graphemes(3);
     let rows = vec![make_row(0..3)];
-    let selections = vec![Selection { anchor: 1, head: 3 }];
+    let selections = vec![Selection {
+        anchor: co(1),
+        head: co(3),
+    }];
 
     let theme = theme_with([("ui.selection", bg(Rgb(255, 0, 0)))]);
 
@@ -312,7 +326,10 @@ fn backward_selection_anchor_cell_highlighted() {
     let rope = ropey::Rope::from_str("foo");
     let graphemes = make_graphemes(3);
     let rows = vec![make_row(0..3)];
-    let selections = vec![Selection { anchor: 2, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(2),
+        head: co(0),
+    }];
 
     let theme = theme_with([
         ("ui.selection", bg(Rgb(0, 0, 255))),
@@ -358,7 +375,10 @@ fn insert_mode_collapsed_selection_not_highlighted() {
     let graphemes = make_graphemes(3);
     let rows = vec![make_row(0..3)];
     // Collapsed selection: head == anchor == char 1 (the 'o').
-    let selections = vec![Selection { anchor: 1, head: 1 }];
+    let selections = vec![Selection {
+        anchor: co(1),
+        head: co(1),
+    }];
 
     let theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
 
@@ -449,7 +469,10 @@ fn cursorline_background_applied_to_cursor_line_only() {
             graphemes: 2..4,
         },
     ];
-    let selections = vec![Selection { anchor: 0, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(0),
+    }];
 
     let theme = theme_with([("ui.cursorline", bg(Rgb(0, 255, 0)))]);
 
@@ -489,7 +512,10 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = make_graphemes(2);
     let rows = vec![make_row(0..2)];
-    let selections = vec![Selection { anchor: 0, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(0),
+    }];
 
     let theme = theme_with([
         ("ui.cursor.insert", fg(Rgb(0, 255, 0))),
@@ -526,9 +552,18 @@ fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
     // head 0 = primary (collapsed), head 4 = secondary (ranged, anchor 2..4),
     // head 6 = secondary (collapsed).
     let selections = vec![
-        Selection { anchor: 0, head: 0 },
-        Selection { anchor: 2, head: 4 },
-        Selection { anchor: 6, head: 6 },
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        },
+        Selection {
+            anchor: co(2),
+            head: co(4),
+        },
+        Selection {
+            anchor: co(6),
+            head: co(6),
+        },
     ];
 
     let theme = theme_with([
@@ -619,8 +654,14 @@ fn cursorline_applies_only_to_primary_head_line() {
         },
     ];
     let selections = vec![
-        Selection { anchor: 0, head: 0 },
-        Selection { anchor: 4, head: 4 },
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        },
+        Selection {
+            anchor: co(4),
+            head: co(4),
+        },
     ];
 
     let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
@@ -689,7 +730,10 @@ fn virtual_rows_keep_default_style() {
             graphemes: 1..2,
         },
     ];
-    let selections = vec![Selection { anchor: 0, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(0),
+    }];
 
     let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
 
@@ -719,8 +763,14 @@ fn primary_head_gets_primary_style() {
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary (display_col 0)
-        Selection { anchor: 2, head: 2 }, // secondary (display_col 2)
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        }, // primary (display_col 0)
+        Selection {
+            anchor: co(2),
+            head: co(2),
+        }, // secondary (display_col 2)
     ];
 
     let theme = theme_with([
@@ -760,8 +810,14 @@ fn primary_selection_gets_primary_style() {
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 2 }, // primary
-        Selection { anchor: 3, head: 5 }, // secondary
+        Selection {
+            anchor: co(0),
+            head: co(2),
+        }, // primary
+        Selection {
+            anchor: co(3),
+            head: co(5),
+        }, // secondary
     ];
 
     let theme = theme_with([
@@ -824,8 +880,14 @@ fn extend_mode_uses_select_cursor_scope() {
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary
-        Selection { anchor: 2, head: 2 }, // secondary
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        }, // primary
+        Selection {
+            anchor: co(2),
+            head: co(2),
+        }, // secondary
     ];
 
     let theme = theme_with([
@@ -868,8 +930,14 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary
-        Selection { anchor: 2, head: 2 }, // secondary
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        }, // primary
+        Selection {
+            anchor: co(2),
+            head: co(2),
+        }, // secondary
     ];
 
     let theme = theme_with([
@@ -910,7 +978,10 @@ fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = make_graphemes(2);
     let rows = vec![make_row(0..2)];
-    let selections = vec![Selection { anchor: 0, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(0),
+    }];
 
     let theme = theme_with([
         ("ui.cursor.primary", fg(Rgb(255, 0, 0))),
@@ -950,7 +1021,10 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
 
     // Forward: anchor 0, head 3 — head cell (col 3) is left bare.
     let rows = vec![make_row(0..5)];
-    let selections = vec![Selection { anchor: 0, head: 3 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(3),
+    }];
     let mut scratch = StyleScratch::new();
     apply_styles(
         &rows,
@@ -973,7 +1047,10 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
     );
 
     // Reverse: anchor 3, head 0 — head cell (col 0) keeps the selection bg.
-    let selections = vec![Selection { anchor: 3, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(3),
+        head: co(0),
+    }];
     let mut scratch = StyleScratch::new();
     apply_styles(
         &rows,
@@ -999,7 +1076,10 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
-    let selections = vec![Selection { anchor: 0, head: 0 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(0),
+    }];
 
     let theme = theme_with([
         ("ui.cursor.primary", fg(Rgb(0, 255, 0))),
@@ -1032,8 +1112,14 @@ fn primary_head_falls_back_when_no_primary_scope() {
     let graphemes = make_graphemes(5);
     let rows = vec![make_row(0..5)];
     let selections = vec![
-        Selection { anchor: 0, head: 0 }, // primary
-        Selection { anchor: 2, head: 2 }, // secondary
+        Selection {
+            anchor: co(0),
+            head: co(0),
+        }, // primary
+        Selection {
+            anchor: co(2),
+            head: co(2),
+        }, // secondary
     ];
 
     let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
@@ -1133,7 +1219,10 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             graphemes: 3..5,
         },
     ];
-    let selections = vec![Selection { anchor: 1, head: 1 }];
+    let selections = vec![Selection {
+        anchor: co(1),
+        head: co(1),
+    }];
 
     let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
@@ -1234,7 +1323,10 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             graphemes: 3..5,
         },
     ];
-    let selections = vec![Selection { anchor: 0, head: 2 }];
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(2),
+    }];
 
     let theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
 
@@ -1547,7 +1639,10 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
 
     let mut theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
     theme.bake(&registry);
-    let selections = vec![Selection { anchor: 2, head: 2 }];
+    let selections = vec![Selection {
+        anchor: co(2),
+        head: co(2),
+    }];
     let mut scratch = StyleScratch::new();
     apply_styles(
         &fmt.display_rows,
@@ -1616,7 +1711,10 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
 
     let mut theme = theme_with([("ui.selection", bg(Rgb(0, 0, 255)))]);
     theme.bake(&registry);
-    let selections = vec![Selection { anchor: 0, head: 1 }]; // 'a' and 'b'
+    let selections = vec![Selection {
+        anchor: co(0),
+        head: co(1),
+    }]; // 'a' and 'b'
     let mut scratch = StyleScratch::new();
     apply_styles(
         &fmt.display_rows,

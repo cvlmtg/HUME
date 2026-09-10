@@ -395,12 +395,16 @@ impl Editor {
         // mid-session, or any other out-of-band cursor move that doesn't
         // route through `handle_insert`'s trie-leaf dismissal. Dismiss
         // rather than slice with an inverted or out-of-range span.
-        let len = self.doc().text().len_chars();
+        let len = self.doc().text().end();
         if head < anchor || head > len {
             self.clear_completion_menu();
             return;
         }
-        let text = self.doc().text().slice(anchor..head).to_string();
+        let text = self
+            .doc()
+            .text()
+            .slice(anchor.index()..head.index())
+            .to_string();
 
         // Phase 2 — disjoint-field destructure (the `client_and_backend`/
         // `LspState` pattern): `update_filter` needs `&mut lsp.completion`
@@ -463,9 +467,9 @@ impl Editor {
     /// All-or-nothing: if even one cursor doesn't match, the whole operation
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
-        self.current_selections()
-            .iter_sorted()
-            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head()) == Some(ch))
+        self.current_selections().iter_sorted().all(|sel| {
+            sel.is_collapsed() && self.doc().text().char_at(sel.head().index()) == Some(ch)
+        })
     }
 
     /// Returns `true` if every selection is a cursor AND the pair
@@ -475,13 +479,13 @@ impl Editor {
     fn is_between_pair(&self, pairs: &[hume_ops::auto_pairs::Pair]) -> bool {
         let text = self.doc().text();
         self.current_selections().iter_sorted().all(|sel| {
-            if !sel.is_collapsed() || sel.head() == 0 {
+            if !sel.is_collapsed() || sel.head() == hume_rope::offset::CharOffset::new(0) {
                 return false;
             }
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
             let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head());
-            match (text.char_at(prev), text.char_at(sel.head())) {
+            match (text.char_at(prev.index()), text.char_at(sel.head().index())) {
                 (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,
             }

@@ -1088,7 +1088,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     ed.feed_key(key_ctrl('o'));
     assert_eq!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "jump-backward must still return to the position recorded before \
          the reload (start of the buffer, before the goto-last-line jump)"
     );

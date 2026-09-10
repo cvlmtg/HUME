@@ -4,7 +4,7 @@ use hume_engine::pipeline::BufferId;
 use hume_scripting::host::{BufferHost, LanguageHost};
 
 use crate::editor::Editor;
-use crate::editor::tests::init_host;
+use crate::editor::tests::{co, init_host};
 
 use super::{line_start_offset, validate_offset, virtual_line_segments_to_bytes};
 
@@ -118,7 +118,7 @@ fn line_start_offset_accepts_the_last_content_line() {
     // "aaa\nbbb\nccc\n": line 2 ("ccc") is the last *content* line.
     let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     let pos = line_start_offset(&text, 2, "test").expect("last content line must be valid");
-    assert_eq!(pos, 8, "line 2's line-start char offset");
+    assert_eq!(pos, co(8), "line 2's line-start char offset");
 }
 
 #[test]

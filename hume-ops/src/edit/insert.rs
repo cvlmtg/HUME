@@ -6,6 +6,7 @@ use hume_editing::lines::{leading_whitespace_end, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::apply_edit;
 
@@ -26,9 +27,9 @@ pub fn insert_char(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        b.retain(start - b.old_pos());
+        b.retain(start.chars_since(b.old_pos()));
         if !sel.is_collapsed() {
-            b.delete(sel.content_end(text) + 1 - start);
+            b.delete(sel.content_end_exclusive(text).chars_since(start));
         }
         b.insert_char(ch);
         // new_pos() is one past the inserted char — the cursor sits on the
@@ -54,9 +55,9 @@ pub fn insert_str(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        b.retain(start - b.old_pos());
+        b.retain(start.chars_since(b.old_pos()));
         if !sel.is_collapsed() {
-            b.delete(sel.content_end(text) + 1 - start);
+            b.delete(sel.content_end_exclusive(text).chars_since(start));
         }
         b.insert(inserted);
         let sel = Selection::collapsed(b.new_pos());
@@ -72,43 +73,47 @@ pub fn insert_str(
 /// non-whitespace char, and every line's char content ends in `\n` (buffer
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
-fn is_blank_indented_line(text: &BufferText, line_start: usize, ws_end: usize) -> bool {
-    ws_end > line_start && text.char_at(ws_end) == Some('\n')
+fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: CharOffset) -> bool {
+    ws_end > line_start && text.char_at(ws_end.index()) == Some('\n')
 }
 
-/// `Some((line_start, ws_end))` if `pos` sits on a blank, auto-indented line
-/// (whitespace only, no content) — `None` otherwise.
+/// `Some(range)` — `[line_start, ws_end)` — if `pos` sits on a blank,
+/// auto-indented line (whitespace only, no content) — `None` otherwise.
 ///
 /// Single source of truth for "is this cursor on a blank indented line",
 /// shared by the editor's command-layer pre-flight check (gating
 /// `clear_blank_line_indent` so exiting Insert mode away from a blank line
 /// doesn't run an identity edit — which would still bump `text_gen` and
 /// record a spurious pending tree-sitter edit) and the edit ops below.
-pub fn blank_line_ws_range(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
+pub fn blank_line_ws_range(
+    text: &BufferText,
+    pos: CharOffset,
+) -> Option<ExclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos);
     let line_start = text.line_to_char(line.into());
     let ws_end = leading_whitespace_end(text, line);
-    is_blank_indented_line(text, line_start, ws_end).then_some((line_start, ws_end))
+    is_blank_indented_line(text, line_start, ws_end)
+        .then_some(ExclusiveRange::new(line_start, ws_end))
 }
 
 /// Shared per-selection prelude for [`insert_newline_indent`] and
-/// [`clear_blank_line_indent`]: `pos`'s line info, or `None` if a prior
-/// selection's blank-line clear already consumed past `pos` (two cursors on
-/// the same whitespace-only line) — in that case the caller should land the
-/// cursor at `b.new_pos()` and emit nothing further, rather than retaining
-/// backwards past what the builder already emitted.
+/// [`clear_blank_line_indent`]: `pos`'s line info as `[line_start, ws_end)`,
+/// or `None` if a prior selection's blank-line clear already consumed past
+/// `pos` (two cursors on the same whitespace-only line) — in that case the
+/// caller should land the cursor at `b.new_pos()` and emit nothing further,
+/// rather than retaining backwards past what the builder already emitted.
 fn line_context_if_unconsumed(
     b: &ChangeSetBuilder,
     text: &BufferText,
-    pos: usize,
-) -> Option<(usize, usize)> {
+    pos: CharOffset,
+) -> Option<ExclusiveRange<CharOffset>> {
     if pos < b.old_pos() {
         return None;
     }
     let line_idx = text.char_to_line(pos);
     let line_start = text.line_to_char(line_idx.into());
     let ws_end = leading_whitespace_end(text, line_idx);
-    Some((line_start, ws_end))
+    Some(ExclusiveRange::new(line_start, ws_end))
 }
 
 /// Attempts the blank-line whitespace-vacate trim for a collapsed selection.
@@ -126,8 +131,8 @@ fn try_trim_blank_line(
     b: &mut ChangeSetBuilder,
     text: &BufferText,
     sel: &Selection,
-    line_start: usize,
-    ws_end: usize,
+    line_start: CharOffset,
+    ws_end: CharOffset,
 ) -> bool {
     if !sel.is_collapsed()
         || !is_blank_indented_line(text, line_start, ws_end)
@@ -135,8 +140,8 @@ fn try_trim_blank_line(
     {
         return false;
     }
-    b.retain(line_start - b.old_pos());
-    b.delete(ws_end - line_start);
+    b.retain(line_start.chars_since(b.old_pos()));
+    b.delete(ws_end.chars_since(line_start));
     true
 }
 
@@ -165,18 +170,18 @@ pub fn insert_newline_indent(
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        let Some((line_start, ws_end)) = line_context_if_unconsumed(b, text, start) else {
+        let Some(line) = line_context_if_unconsumed(b, text, start) else {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         };
 
-        if !(trim_blank && try_trim_blank_line(b, text, sel, line_start, ws_end)) {
-            b.retain(start - b.old_pos());
+        if !(trim_blank && try_trim_blank_line(b, text, sel, line.start, line.end)) {
+            b.retain(start.chars_since(b.old_pos()));
             if !sel.is_collapsed() {
-                b.delete(sel.content_end(text) + 1 - start);
+                b.delete(sel.content_end_exclusive(text).chars_since(start));
             }
         }
-        let indent = text.slice(line_start..ws_end).to_string();
+        let indent = text.slice(line.start.index()..line.end.index()).to_string();
         b.insert_char('\n');
         if !indent.is_empty() {
             b.insert(&indent);
@@ -200,12 +205,12 @@ pub fn clear_blank_line_indent(
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let head = sel.head();
-            let Some((line_start, ws_end)) = line_context_if_unconsumed(b, text, head) else {
+            let Some(line) = line_context_if_unconsumed(b, text, head) else {
                 new_sels.push(Selection::collapsed(b.new_pos()));
                 return;
             };
-            if !try_trim_blank_line(b, text, sel, line_start, ws_end) {
-                b.retain(head - b.old_pos());
+            if !try_trim_blank_line(b, text, sel, line.start, line.end) {
+                b.retain(head.chars_since(b.old_pos()));
             }
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
@@ -221,12 +226,11 @@ pub fn clear_blank_line_indent(
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
-        let end_incl = sel.end_inclusive(text);
-        b.retain(start - b.old_pos());
-        let delta = b.new_pos() as isize - b.old_pos() as isize;
-        b.retain(end_incl + 1 - start);
-        let new_anchor = (sel.anchor() as isize + delta) as usize;
-        let new_head = (sel.head() as isize + delta) as usize;
+        b.retain(start.chars_since(b.old_pos()));
+        let delta = b.new_pos().index() as isize - b.old_pos().index() as isize;
+        b.retain(sel.end_exclusive(text).chars_since(start));
+        let new_anchor = sel.anchor().shift(delta);
+        let new_head = sel.head().shift(delta);
         new_sels.push(Selection::new(new_anchor, new_head));
     })
 }
@@ -260,7 +264,7 @@ pub fn insert_tab(
     let mut display_col_shift: isize = 0;
     apply_edit(text, sels, move |b, text, _i, sel, new_sels| {
         let start = sel.start();
-        b.retain(start - b.old_pos());
+        b.retain(start.chars_since(b.old_pos()));
         let line_idx = text.char_to_line(start);
         if prev_line != Some(line_idx) {
             display_col_shift = 0;
@@ -275,7 +279,7 @@ pub fn insert_tab(
         let start_display_col = display_col_in_line(text, line_idx, start, tab_width);
         let display_col = (start_display_col as isize + display_col_shift).max(0) as usize;
         if !sel.is_collapsed() {
-            let del_end = sel.content_end(text) + 1;
+            let del_end = sel.content_end_exclusive(text);
             // Clamp del_end to the line boundary before computing the display-column
             // width to keep display_col_shift accurate. A multi-line selection
             // (del_end on a different line) would otherwise walk past the '\n'
@@ -285,7 +289,7 @@ pub fn insert_tab(
             let del_end_clamped = del_end.min(line_end);
             let del_width =
                 display_col_in_line(text, line_idx, del_end_clamped, tab_width) - start_display_col;
-            b.delete(del_end - start);
+            b.delete(del_end.chars_since(start));
             display_col_shift -= del_width as isize;
         }
         let n = hume_rope::width::tab_advance(display_col, tab_width);

@@ -101,7 +101,7 @@ fn shift_indent(
         .collect();
     lines.dedup();
 
-    let mut b = ChangeSetBuilder::new(text.len_chars());
+    let mut b = ChangeSetBuilder::new(text.end());
     let mut touched_any = false;
 
     for line_idx in lines {
@@ -113,7 +113,7 @@ fn shift_indent(
         // off the end without finding a non-whitespace char. Skipped
         // untouched — matches Vim's `>>`, so a blank separator line never
         // collects trailing whitespace.
-        if text.char_at(ws_end) == Some('\n') {
+        if text.char_at(ws_end.index()) == Some('\n') {
             continue;
         }
         let new_width = old_width.saturating_add_signed(delta_display_col);
@@ -125,9 +125,9 @@ fn shift_indent(
             continue;
         }
         let new_indent = render_indent(new_width, style, tab_width);
-        let old_len = ws_end - line_start;
+        let old_len = ws_end.chars_since(line_start);
 
-        b.retain(line_start - b.old_pos());
+        b.retain(line_start.chars_since(b.old_pos()));
         // Insert before delete (not the delete-then-insert order every other
         // `hume-ops` edit uses): it puts the new indent's `Insert` op at
         // exactly the old-doc position of the touched line's start, so

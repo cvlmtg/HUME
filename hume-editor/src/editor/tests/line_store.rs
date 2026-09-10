@@ -226,7 +226,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     // 6-column hint makes 12, wrapping it onto a second row — exactly
     // `content_pos_counts_an_inline_hints_extra_wrap_row`'s fixture.
     let text = BufferText::from("abcdef\ny\n");
-    let sels = SelectionSet::single(Selection::collapsed(7));
+    let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.state.settings.scrolloff = 0;
     let pid = ed.state.focused_pane_id;
@@ -289,7 +289,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
     let text: String = (0..6)
         .map(|i| format!("line{i} with enough text to wrap\n"))
         .collect();
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(BufferText::from(text.as_str()), sels));
     let pid = ed.state.focused_pane_id;
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 0 };

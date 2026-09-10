@@ -66,8 +66,10 @@ pub(crate) fn cmd_change(
         let sels = super::current_selections(state, view);
         sels.iter_sorted()
             .map(|sel| {
-                let (start, stop) = change_span(doc.text(), sel);
-                doc.text().slice(start..stop).to_string()
+                let span = change_span(doc.text(), sel);
+                doc.text()
+                    .slice(span.start.index()..span.end.index())
+                    .to_string()
             })
             .collect::<Vec<_>>()
     };
@@ -132,7 +134,7 @@ pub(crate) fn cmd_select_last_insertion(
     let insertion_primary = spans.len() - 1;
     let insertion_sels: Vec<Selection> = spans
         .into_iter()
-        .map(|(anchor, head)| Selection::new(anchor, head))
+        .map(|r| Selection::new(r.start, r.end))
         .collect();
     apply_focused_motion(state, view, move |_b, sels| match mode {
         MotionMode::Move => SelectionSet::from_vec(insertion_sels, insertion_primary),

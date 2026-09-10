@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::offset::CharOffset;
 
 use crate::editor::buffer::Buffer;
 
@@ -230,7 +231,7 @@ impl Editor {
 
         // ── Phase 2: clamp (line, char_col) against the new text ──────────────
         // Borrow `new_doc.text()` immutably, then move `new_text` out below.
-        let post_heads: Vec<(PaneId, usize)> = {
+        let post_heads: Vec<(PaneId, CharOffset)> = {
             let new_text = new_doc.text();
             let last_line = new_text.last_content_line();
             let mut heads = Vec::with_capacity(cursor_coords.len());

@@ -90,7 +90,7 @@ fn p6_replace_buffer_in_place_reseeds() {
         focused,
         bid,
         |b, _sels| {
-            let head = b.len_chars().saturating_sub(2);
+            let head = co(b.len_chars().saturating_sub(2));
             SelectionSet::single(hume_editing::selection::Selection::collapsed(head))
         },
     );
@@ -100,7 +100,7 @@ fn p6_replace_buffer_in_place_reseeds() {
     let sels = ed.current_selections();
     assert_eq!(
         sels.primary().head(),
-        0,
+        co(0),
         "selections reset after replace_buffer_in_place"
     );
     assert_eq!(ed.doc().text().to_string(), "new content\n");
@@ -311,7 +311,7 @@ fn p6_reload_preserves_cursor_same_content() {
     let focused = ed.state.focused_pane_id;
 
     // Place cursor at line 2, col 3 (char offset = 6+6+3 = 15).
-    let expected_head = 15usize;
+    let expected_head = co(15);
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
         &mut ed.state.panes.state,
@@ -352,7 +352,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |_, _| SelectionSet::single(Selection::collapsed(24)),
+        |_, _| SelectionSet::single(Selection::collapsed(co(24))),
     );
 
     // Reload with a 1-line file.
@@ -362,7 +362,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
     // last_line=0, target_line=0, col=0 → head=0.
     assert_eq!(
         ed.current_selections().primary().head(),
-        0,
+        co(0),
         "cursor clamped to line 0 after reload with fewer lines",
     );
 }
@@ -388,7 +388,7 @@ fn p6_reload_clamps_char_col_to_line_end() {
         &mut ed.state.panes.state,
         focused,
         bid,
-        |_, _| SelectionSet::single(Selection::collapsed(10)),
+        |_, _| SelectionSet::single(Selection::collapsed(co(10))),
     );
 
     // Reload with a shorter line "hi\n" (h=0,i=1,\n=2).
@@ -399,7 +399,7 @@ fn p6_reload_clamps_char_col_to_line_end() {
     // onto the '\n' at char 2.
     assert_eq!(
         ed.current_selections().primary().head(),
-        1,
+        co(1),
         "cursor clamped to the last content char when col exceeds new line length",
     );
 }
@@ -428,7 +428,7 @@ fn p6_reload_snaps_char_col_to_grapheme_boundary() {
     // snap_to_grapheme_boundary(text, 0, 4) should land at 3 (start of é).
     assert_eq!(
         ed.current_selections().primary().head(),
-        3,
+        co(3),
         "cursor snapped back to grapheme cluster start",
     );
 }
@@ -448,7 +448,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
 
     // Two selections: primary at line 1 (head=6), secondary at line 2 (head=12).
     ed.set_current_selections(SelectionSet::from_vec(
-        vec![Selection::collapsed(6), Selection::collapsed(12)],
+        vec![Selection::collapsed(co(6)), Selection::collapsed(co(12))],
         0, // primary index
     ));
     assert_eq!(
@@ -468,7 +468,7 @@ fn p6_reload_collapses_multi_selection_to_primary() {
     );
     assert_eq!(
         sels.primary().head(),
-        6,
+        co(6),
         "primary cursor preserved at line 1 col 0",
     );
 }

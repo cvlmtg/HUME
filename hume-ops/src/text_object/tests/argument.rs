@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_rope::offset::InclusiveRange;
 use hume_test_fixtures::assert_state;
 
 // `inner_argument`/`around_argument` register from `register_structural`
@@ -371,8 +372,8 @@ fn cmd_around_from_inner(
     _mode: MotionMode,
 ) -> SelectionSet {
     sels.map(|sel| {
-        let (start, end) = around_from_inner(text, (sel.start(), sel.end()));
-        Selection::new(start, end)
+        let range = around_from_inner(text, InclusiveRange::new(sel.start(), sel.end()));
+        Selection::new(range.start, range.end)
     })
 }
 

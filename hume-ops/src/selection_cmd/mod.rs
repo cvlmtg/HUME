@@ -7,6 +7,7 @@ pub use matching::{
 use super::MotionMode;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 // ── Simple selection-set commands ─────────────────────────────────────────────
 
@@ -73,8 +74,7 @@ pub fn cmd_select_all(
     _count: usize,
     _mode: MotionMode,
 ) -> SelectionSet {
-    let end = text.len_chars().saturating_sub(1);
-    let sels = SelectionSet::single(Selection::new(0, end));
+    let sels = SelectionSet::single(Selection::new(CharOffset::new(0), text.last_char()));
     sels.debug_assert_valid(text);
     sels
 }

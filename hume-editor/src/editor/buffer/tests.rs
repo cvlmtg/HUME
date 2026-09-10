@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::tests::co;
 use hume_ops::edit::{
     delete_char_backward, delete_char_forward, delete_selection, insert_char, paste_after,
     paste_before, repeat_edit,
@@ -302,14 +303,14 @@ fn goto_revision_across_branches_restores_buffer() {
 
     d.apply_edit(|b, _s| {
         use hume_editing::changeset::ChangeSetBuilder;
-        let mut csb = ChangeSetBuilder::new(27);
+        let mut csb = ChangeSetBuilder::new(co(27));
         csb.retain(6);
         csb.delete(6);
         csb.retain_rest();
         let cs = csb.finish();
         let new_text = cs.apply(&b).unwrap();
         use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(6));
+        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
         (new_text, new_sels, cs)
     });
     let b1_id = d.buf.history.current_id();
@@ -317,7 +318,7 @@ fn goto_revision_across_branches_restores_buffer() {
 
     d.apply_edit(|b, _s| {
         use hume_editing::changeset::ChangeSetBuilder;
-        let mut csb = ChangeSetBuilder::new(21);
+        let mut csb = ChangeSetBuilder::new(co(21));
         csb.retain(6);
         csb.delete(5);
         csb.insert("foo");
@@ -325,14 +326,14 @@ fn goto_revision_across_branches_restores_buffer() {
         let cs = csb.finish();
         let new_text = cs.apply(&b).unwrap();
         use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(6));
+        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
         (new_text, new_sels, cs)
     });
     assert_eq!(d.text().to_string(), "Lorem foo sit amet\n");
 
     d.apply_edit(|b, _s| {
         use hume_editing::changeset::ChangeSetBuilder;
-        let mut csb = ChangeSetBuilder::new(19);
+        let mut csb = ChangeSetBuilder::new(co(19));
         csb.retain(10);
         csb.delete(3);
         csb.insert("bar");
@@ -340,7 +341,7 @@ fn goto_revision_across_branches_restores_buffer() {
         let cs = csb.finish();
         let new_text = cs.apply(&b).unwrap();
         use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(10));
+        let new_sels = SelectionSet::single(Selection::collapsed(co(10)));
         (new_text, new_sels, cs)
     });
     let b3_id = d.buf.history.current_id();
@@ -353,14 +354,14 @@ fn goto_revision_across_branches_restores_buffer() {
 
     d.apply_edit(|b, _s| {
         use hume_editing::changeset::ChangeSetBuilder;
-        let mut csb = ChangeSetBuilder::new(21);
+        let mut csb = ChangeSetBuilder::new(co(21));
         csb.retain(6);
         csb.delete(6);
         csb.retain_rest();
         let cs = csb.finish();
         let new_text = cs.apply(&b).unwrap();
         use hume_editing::selection::{Selection, SelectionSet};
-        let new_sels = SelectionSet::single(Selection::collapsed(6));
+        let new_sels = SelectionSet::single(Selection::collapsed(co(6)));
         (new_text, new_sels, cs)
     });
     assert_eq!(d.text().to_string(), "Lorem sit amet\n");

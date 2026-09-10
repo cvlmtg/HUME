@@ -1,3 +1,5 @@
+use hume_rope::offset::CharOffset;
+
 use super::{ChangeSet, Operation, push_merge};
 
 // ── ChangeSetBuilder ─────────────────────────────────────────────────────────
@@ -16,7 +18,7 @@ use super::{ChangeSet, Operation, push_merge};
 /// # Usage pattern
 ///
 /// ```text
-/// let mut b = ChangeSetBuilder::new(text.len_chars());
+/// let mut b = ChangeSetBuilder::new(text.end());
 /// b.retain(5);        // skip first 5 chars
 /// b.delete(3);        // delete next 3
 /// b.insert("hello");  // insert replacement
@@ -25,14 +27,15 @@ use super::{ChangeSet, Operation, push_merge};
 /// ```
 pub struct ChangeSetBuilder {
     ops: Vec<Operation>,
-    doc_len: usize,
+    doc_len: CharOffset,
     old_pos: usize,
     new_pos: usize,
 }
 
 impl ChangeSetBuilder {
-    /// Create a builder for a document of `doc_len` chars.
-    pub fn new(doc_len: usize) -> Self {
+    /// Create a builder for a document of `doc_len` chars — typically
+    /// `text.end()`.
+    pub fn new(doc_len: CharOffset) -> Self {
         Self {
             ops: Vec::new(),
             doc_len,
@@ -47,8 +50,8 @@ impl ChangeSetBuilder {
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
     pub fn retain(&mut self, n: usize) -> &mut Self {
         debug_assert!(
-            self.old_pos + n <= self.doc_len,
-            "ChangeSetBuilder::retain: old_pos ({}) + n ({n}) > doc_len ({})",
+            self.old_pos + n <= self.doc_len.index(),
+            "ChangeSetBuilder::retain: old_pos ({}) + n ({n}) > doc_len ({:?})",
             self.old_pos,
             self.doc_len,
         );
@@ -64,8 +67,8 @@ impl ChangeSetBuilder {
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
     pub fn delete(&mut self, n: usize) -> &mut Self {
         debug_assert!(
-            self.old_pos + n <= self.doc_len,
-            "ChangeSetBuilder::delete: old_pos ({}) + n ({n}) > doc_len ({})",
+            self.old_pos + n <= self.doc_len.index(),
+            "ChangeSetBuilder::delete: old_pos ({}) + n ({n}) > doc_len ({:?})",
             self.old_pos,
             self.doc_len,
         );
@@ -110,22 +113,22 @@ impl ChangeSetBuilder {
     }
 
     /// Current position in the old document (chars consumed so far).
-    pub fn old_pos(&self) -> usize {
-        self.old_pos
+    pub fn old_pos(&self) -> CharOffset {
+        CharOffset::new(self.old_pos)
     }
 
     /// Current position in the new document (chars produced so far).
     ///
     /// After emitting an `insert`, `new_pos()` tells you exactly where a
     /// cursor should land in the result buffer.
-    pub fn new_pos(&self) -> usize {
-        self.new_pos
+    pub fn new_pos(&self) -> CharOffset {
+        CharOffset::new(self.new_pos)
     }
 
     /// Retain all remaining chars from `old_pos` to end of document.
     /// Convenience for finishing the changeset.
     pub fn retain_rest(&mut self) -> &mut Self {
-        let remaining = self.doc_len - self.old_pos;
+        let remaining = self.doc_len.chars_since(CharOffset::new(self.old_pos));
         if remaining > 0 {
             self.retain(remaining);
         }
@@ -140,14 +143,16 @@ impl ChangeSetBuilder {
     /// to `retain_rest()`.
     pub fn finish(self) -> ChangeSet {
         assert_eq!(
-            self.old_pos, self.doc_len,
-            "ChangeSetBuilder::finish: old_pos ({}) != doc_len ({}). \
+            self.old_pos,
+            self.doc_len.index(),
+            "ChangeSetBuilder::finish: old_pos ({}) != doc_len ({:?}). \
              Did you forget to call retain_rest()?",
-            self.old_pos, self.doc_len,
+            self.old_pos,
+            self.doc_len,
         );
         ChangeSet {
             ops: self.ops,
-            len_before: self.doc_len,
+            len_before: self.doc_len.index(),
             len_after: self.new_pos,
         }
     }

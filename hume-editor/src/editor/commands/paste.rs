@@ -149,7 +149,7 @@ fn collapse_if_repeat(
         && sels
             .iter_sorted()
             .zip(values)
-            .all(|(sel, v)| text.slice(sel.start()..sel.end_inclusive(text) + 1) == *v);
+            .all(|(sel, v)| text.slice(sel.start().index()..sel.end_exclusive(text).index()) == *v);
     if !repeats {
         return sels;
     }

@@ -26,7 +26,7 @@ use hume_grid::Rect;
 /// directly on the pane, cursor at line 0's start.
 fn editor_with_before_line() -> Editor {
     let text = BufferText::from("x\ny\n");
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     let pid = ed.state.focused_pane_id;
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
@@ -134,7 +134,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
 
     let content: String = (0..6).map(|i| format!("{i}\n")).collect();
     let text = BufferText::from(content.as_str());
-    let sels = SelectionSet::single(Selection::collapsed(0));
+    let sels = SelectionSet::single(Selection::collapsed(co(0)));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
         let mut ed = Editor::for_testing(Buffer::new(text.clone(), sels.clone()));
@@ -189,7 +189,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     //   row 2  y            ← line 1, pushed down by the hint's wrap row
     let text = BufferText::from("abcdef\ny\n");
     // Cursor on line 1 (char 7), below the wrap the hint causes.
-    let sels = SelectionSet::single(Selection::collapsed(7));
+    let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.state.settings.scrolloff = 0;
     let pid = ed.state.focused_pane_id;

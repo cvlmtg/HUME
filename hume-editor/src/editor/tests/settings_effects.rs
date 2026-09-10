@@ -92,7 +92,7 @@ fn set_option_applies_jump_list_capacity() {
         ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
             buffer_id: bid,
             selections: hume_editing::selection::SelectionSet::single(
-                hume_editing::selection::Selection::collapsed(0),
+                hume_editing::selection::Selection::collapsed(co(0)),
             ),
             primary_line: hume_rope::line::ContentLine::new(i),
         });
@@ -114,7 +114,7 @@ fn set_option_applies_jump_list_capacity() {
     ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
         buffer_id: bid,
         selections: hume_editing::selection::SelectionSet::single(
-            hume_editing::selection::Selection::collapsed(0),
+            hume_editing::selection::Selection::collapsed(co(0)),
         ),
         primary_line: hume_rope::line::ContentLine::new(5),
     });

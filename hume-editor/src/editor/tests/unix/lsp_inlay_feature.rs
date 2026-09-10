@@ -217,7 +217,7 @@ fn hints_land_in_the_store_at_the_correct_char_offset() {
         .inlay_hints_for_buffer(bid)
         .collect();
     assert_eq!(hints.len(), 1);
-    assert_eq!(hints[0].pos, 4);
+    assert_eq!(hints[0].pos, co(4));
     assert_eq!(hints[0].text, ": i32");
     assert!(hints[0].before);
 }

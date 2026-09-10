@@ -270,8 +270,8 @@ fn sift_within_confirm_replaces_selections() {
     );
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);
-    assert_eq!(ed.current_selections().primary().anchor(), 0);
-    assert_eq!(ed.current_selections().primary().head(), 1);
+    assert_eq!(ed.current_selections().primary().anchor(), co(0));
+    assert_eq!(ed.current_selections().primary().head(), co(1));
 }
 
 /// `s` + Esc restores original selections.
@@ -355,8 +355,8 @@ fn sift_within_multiple_selections_finds_matches_in_each() {
     // Replace with two selections: "aa " (0..2) and "aa" (6..7).
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(0, 2), // "aa " — primary
-            Selection::new(6, 7), // "aa"
+            Selection::new(co(0), co(2)), // "aa " — primary
+            Selection::new(co(6), co(7)), // "aa"
         ],
         0,
     );
@@ -372,11 +372,11 @@ fn sift_within_multiple_selections_finds_matches_in_each() {
     assert_eq!(ed.current_selections().len(), 2);
     // First match: chars 0..1 ("aa" in first selection).
     let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
-    assert_eq!(sels[0].start(), 0);
-    assert_eq!(sels[0].end_inclusive(ed.doc().text()), 1);
+    assert_eq!(sels[0].start(), co(0));
+    assert_eq!(sels[0].end_inclusive(ed.doc().text()), co(1));
     // Second match: chars 6..7 ("aa" in second selection).
-    assert_eq!(sels[1].start(), 6);
-    assert_eq!(sels[1].end_inclusive(ed.doc().text()), 7);
+    assert_eq!(sels[1].start(), co(6));
+    assert_eq!(sels[1].end_inclusive(ed.doc().text()), co(7));
 }
 
 /// When one selection has matches and another does not, only the matching
@@ -389,8 +389,8 @@ fn sift_within_drops_selections_with_no_match() {
     let mut ed = editor_from("-[aa bb cc]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(0, 1), // "aa" — primary, has match
-            Selection::new(6, 7), // "cc" — no "aa" here
+            Selection::new(co(0), co(1)), // "aa" — primary, has match
+            Selection::new(co(6), co(7)), // "cc" — no "aa" here
         ],
         0,
     );
@@ -404,12 +404,12 @@ fn sift_within_drops_selections_with_no_match() {
 
     // Only one match (from the first selection).
     assert_eq!(ed.current_selections().len(), 1);
-    assert_eq!(ed.current_selections().primary().start(), 0);
+    assert_eq!(ed.current_selections().primary().start(), co(0));
     assert_eq!(
         ed.current_selections()
             .primary()
             .end_inclusive(ed.doc().text()),
-        1
+        co(1)
     );
 }
 
@@ -418,7 +418,10 @@ fn sift_within_drops_selections_with_no_match() {
 fn sift_within_multiple_selections_no_match_restores_all() {
     use hume_editing::selection::{Selection, SelectionSet};
     let mut ed = editor_from("-[aa bb cc]>\n");
-    let two_sels = SelectionSet::from_vec(vec![Selection::new(0, 1), Selection::new(3, 4)], 0);
+    let two_sels = SelectionSet::from_vec(
+        vec![Selection::new(co(0), co(1)), Selection::new(co(3), co(4))],
+        0,
+    );
     ed.set_current_selections(two_sels.clone());
 
     let original = state(&ed);
@@ -445,8 +448,8 @@ fn sift_within_primary_tracks_original_primary() {
     let mut ed = editor_from("-[aa bb aa]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(0, 1), // first in order, NOT primary
-            Selection::new(6, 7), // second in order, IS primary
+            Selection::new(co(0), co(1)), // first in order, NOT primary
+            Selection::new(co(6), co(7)), // second in order, IS primary
         ],
         1,
     );
@@ -463,7 +466,7 @@ fn sift_within_primary_tracks_original_primary() {
     let primary = ed.current_selections().primary();
     assert_eq!(
         primary.start(),
-        6,
+        co(6),
         "primary should come from the original primary selection"
     );
 }
@@ -479,8 +482,8 @@ fn sift_within_esc_restores_multiple_selections() {
     let mut ed = editor_from("-[aa bb aa]>\n");
     let two_sels = SelectionSet::from_vec(
         vec![
-            Selection::new(0, 4), // "aa bb" — wider than any "aa" match
-            Selection::new(6, 7), // "aa"
+            Selection::new(co(0), co(4)), // "aa bb" — wider than any "aa" match
+            Selection::new(co(6), co(7)), // "aa"
         ],
         0,
     );
@@ -646,8 +649,8 @@ fn search_n_merges_with_overlapping_secondary() {
     // Add a secondary selection manually on the second "ab" (chars 6..7).
     let sels = SelectionSet::from_vec(
         vec![
-            Selection::new(0, 1), // first "ab" — primary
-            Selection::new(6, 7), // second "ab" — secondary
+            Selection::new(co(0), co(1)), // first "ab" — primary
+            Selection::new(co(6), co(7)), // second "ab" — secondary
         ],
         0,
     );
@@ -664,12 +667,12 @@ fn search_n_merges_with_overlapping_secondary() {
         1,
         "overlapping selections must merge"
     );
-    assert_eq!(ed.current_selections().primary().start(), 6);
+    assert_eq!(ed.current_selections().primary().start(), co(6));
     assert_eq!(
         ed.current_selections()
             .primary()
             .end_inclusive(ed.doc().text()),
-        7
+        co(7)
     );
 }
 

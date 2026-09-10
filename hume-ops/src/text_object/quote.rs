@@ -2,15 +2,20 @@
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use super::apply_text_object_by_mode;
 use super::bracket::inner_of_pair;
 use crate::MotionMode;
 use crate::pair::find_quote_pair;
 
-fn inner_quote(text: &BufferText, pos: usize, quote: char) -> Option<(usize, usize)> {
-    let (open, close) = find_quote_pair(text, pos, quote)?;
-    inner_of_pair(open, close)
+fn inner_quote(
+    text: &BufferText,
+    pos: CharOffset,
+    quote: char,
+) -> Option<InclusiveRange<CharOffset>> {
+    let pair = find_quote_pair(text, pos, quote)?;
+    inner_of_pair(pair)
 }
 
 macro_rules! quote_cmds {

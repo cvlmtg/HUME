@@ -8,6 +8,7 @@ use hume_editing::grapheme::{
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{WordChars, is_word_boundary};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use super::{apply_edit, delete_one_grapheme, delete_sel_region};
 use crate::motion::prev_word_start;
@@ -32,7 +33,7 @@ pub fn delete_char_forward(
             // whole-last-line merge special-case removes it by consuming the
             // preceding '\n'. `p > 0` excludes the lone-'\n' buffer where no
             // line above exists and the structural '\n' must stay.
-            if p + 1 >= text.len_chars() && p > 0 {
+            if p >= text.last_char() && p > CharOffset::new(0) {
                 delete_sel_region(b, text, sel, new_sels);
             } else {
                 delete_one_grapheme(b, text, new_sels, p);
@@ -58,7 +59,7 @@ pub fn delete_char_backward(
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         if sel.is_collapsed() {
             let p = sel.head();
-            if p == 0 {
+            if p == CharOffset::new(0) {
                 // At start of buffer — nothing to delete to the left.
                 let sel = Selection::collapsed(b.new_pos());
                 new_sels.push(sel);
@@ -73,8 +74,8 @@ pub fn delete_char_backward(
                 new_sels.push(sel);
                 return;
             }
-            b.retain(prev - b.old_pos());
-            b.delete(p - prev);
+            b.retain(prev.chars_since(b.old_pos()));
+            b.delete(p.chars_since(prev));
             let sel = Selection::collapsed(b.new_pos());
             new_sels.push(sel);
         } else {
@@ -118,12 +119,12 @@ pub fn dedent_tab_backward(
         if target >= p {
             // Nothing to delete (cursor already at or past its tab stop, or
             // immediately adjacent to the prior cursor's delete).
-            b.retain(p - b.old_pos());
+            b.retain(p.chars_since(b.old_pos()));
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         }
-        b.retain(target - b.old_pos());
-        b.delete(p - target);
+        b.retain(target.chars_since(b.old_pos()));
+        b.delete(p.chars_since(target));
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
@@ -147,7 +148,7 @@ pub fn delete_word_backward(
             // Determine how far back to delete. Three no-op cases:
             // (1) cursor at buffer start, (2) prior same-word cursor already consumed
             // past word_start — retain to `p` so this cursor lands at its own position.
-            let word_start = if p > 0 {
+            let word_start = if p > CharOffset::new(0) {
                 let ws = prev_word_start(text, p, is_word_boundary, chars);
                 // `ws < b.old_pos()` means a prior cursor in the same word already
                 // consumed past `ws`. Treat as no-op so the cursor lands at `p`.
@@ -155,9 +156,9 @@ pub fn delete_word_backward(
             } else {
                 p // at buffer start — nothing to delete
             };
-            b.retain(word_start - b.old_pos());
+            b.retain(word_start.chars_since(b.old_pos()));
             if word_start < p {
-                b.delete(p - word_start);
+                b.delete(p.chars_since(word_start));
             }
             new_sels.push(Selection::collapsed(b.new_pos()));
         } else {
@@ -197,20 +198,18 @@ pub fn delete_selection(
 
 /// Exclusive upper bound for the content `c` should delete from `sel`.
 ///
-/// Returns `(start, stop)` where `start..stop` is the range to delete.
-/// A trailing `\n` at `sel.end()` is excluded — `c` clears line content but
-/// keeps the line. A collapsed selection on a lone `\n` (empty line) returns
-/// `(pos, pos)`, a zero-length no-op.
-pub fn change_span(text: &BufferText, sel: &Selection) -> (usize, usize) {
+/// Returns `[start, stop)`, the range to delete. A trailing `\n` at
+/// `sel.end()` is excluded — `c` clears line content but keeps the line. A
+/// collapsed selection on a lone `\n` (empty line) returns `[pos, pos)`, a
+/// zero-length no-op.
+pub fn change_span(text: &BufferText, sel: &Selection) -> ExclusiveRange<CharOffset> {
     let start = sel.start();
     let stop = if sel.ends_on_newline(text) {
         sel.end() // stop before the '\n': `c` clears line content but keeps the line
     } else {
-        // end_inclusive accounts for multi-codepoint grapheme clusters; +1 converts
-        // to exclusive upper bound for deletion.
-        sel.end_inclusive(text) + 1
+        sel.end_exclusive(text)
     };
-    (start, stop)
+    ExclusiveRange::new(start, stop)
 }
 
 /// Delete the content of each selection, excluding a trailing `\n` (normal-mode `c`).
@@ -231,10 +230,10 @@ pub fn delete_selection_content(
     sels: SelectionSet,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
-        let (start, stop) = change_span(text, sel);
-        b.retain(start - b.old_pos());
-        if stop > start {
-            b.delete(stop - start);
+        let span = change_span(text, sel);
+        b.retain(span.start.chars_since(b.old_pos()));
+        if span.end > span.start {
+            b.delete(span.end.chars_since(span.start));
         }
         new_sels.push(Selection::collapsed(b.new_pos()));
     })

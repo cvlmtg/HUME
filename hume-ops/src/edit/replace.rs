@@ -8,6 +8,7 @@ use hume_editing::grapheme::{
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
+use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 
@@ -19,11 +20,13 @@ use super::apply_edit;
 /// treated as one token — matching every other word operation, including
 /// what the LSP completion fallback this backs is replacing on the buffer's
 /// behalf.
-pub fn word_start_before(text: &BufferText, pos: usize, chars: WordChars<'_>) -> usize {
+pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_>) -> CharOffset {
     let mut cursor = pos;
-    while cursor > 0 {
+    while cursor > CharOffset::new(0) {
         let prev = prev_grapheme_boundary(text, cursor);
-        let Some(ch) = text.char_at(prev) else { break };
+        let Some(ch) = text.char_at(prev.index()) else {
+            break;
+        };
         if chars.classify(ch) != CharClass::Word {
             break;
         }
@@ -52,7 +55,7 @@ pub fn word_start_before(text: &BufferText, pos: usize, chars: WordChars<'_>) ->
 pub fn replace_span_around_cursors(
     text: BufferText,
     sels: SelectionSet,
-    start_of: impl Fn(&BufferText, usize) -> usize,
+    start_of: impl Fn(&BufferText, CharOffset) -> CharOffset,
     forward: usize,
     replacement: &str,
 ) -> (BufferText, SelectionSet, ChangeSet) {
@@ -68,28 +71,30 @@ pub fn replace_span_around_cursors(
         // Capped at `len_chars()` (not `len_chars() - 1`) so the boundary
         // lookups below never see an out-of-range offset; the structural
         // newline itself is protected by the overshoot check just after.
-        let raw_end = (head + forward).min(text.len_chars()).max(start);
-        let ceiled = if raw_end == 0 {
-            0
+        let raw_end = CharOffset::new(head.index() + forward)
+            .min(text.end())
+            .max(start);
+        let ceiled = if raw_end == CharOffset::new(0) {
+            CharOffset::new(0)
         } else {
             // Ceil is `start`'s mirror: `prev` then `next` is identity when
             // `raw_end` is already a boundary, otherwise the start of the
             // next cluster.
             next_grapheme_boundary(text, prev_grapheme_boundary(text, raw_end))
         };
-        // `len_chars() - 1` is the buffer's structural trailing `\n` — never
+        // `last_char()` is the buffer's structural trailing `\n` — never
         // consume it. The cap above must not run *after* the ceil: `raw_end`
-        // reaching `len_chars()` always ceils one cluster past `last` (the
+        // reaching `text.end()` always ceils one cluster past `last` (the
         // `\n`'s own single-char cluster), which would otherwise consume the
         // structural newline. Floor back to that cluster's own start instead.
-        let last = text.len_chars() - 1;
+        let last = text.last_char();
         let end = if ceiled > last {
             prev_grapheme_boundary(text, ceiled).max(start)
         } else {
             ceiled
         };
-        b.retain(start - b.old_pos());
-        b.delete(end - start);
+        b.retain(start.chars_since(b.old_pos()));
+        b.delete(end.chars_since(start));
         b.insert(replacement);
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
@@ -114,7 +119,7 @@ pub fn replace_around_cursors(
     replace_span_around_cursors(
         text,
         sels,
-        |_buf, head| head.saturating_sub(back),
+        |_buf, head| CharOffset::new(head.index().saturating_sub(back)),
         forward,
         replacement,
     )
@@ -146,7 +151,7 @@ pub fn replace_selections(
         // and the replacement is a pair character, resolve open/close based on
         // what's currently under the cursor.  See `surround::smart_replace_char`.
         let effective_ch = if sel.is_collapsed() {
-            if let Some(current) = text.char_at(sel_start) {
+            if let Some(current) = text.char_at(sel_start.index()) {
                 crate::surround::smart_replace_char(ch, current, i)
             } else {
                 ch
@@ -158,7 +163,7 @@ pub fn replace_selections(
         // Retain everything up to this selection (handles the gap from the
         // previous selection or the buffer start). Record the start position
         // in result-buffer coordinates for later selection reconstruction.
-        b.retain(sel_start - b.old_pos());
+        b.retain(sel_start.chars_since(b.old_pos()));
         let new_sel_start = b.new_pos();
 
         let mut pos = sel_start;
@@ -166,14 +171,14 @@ pub fn replace_selections(
             let next = next_grapheme_boundary(text, pos);
             // `\n` graphemes are skipped (retained) to preserve line structure.
             // This also naturally protects the structural trailing '\n'.
-            if text.char_at(pos) == Some('\n') {
-                b.retain(next - pos);
+            if text.char_at(pos.index()) == Some('\n') {
+                b.retain(next.chars_since(pos));
             } else {
                 // After the initial `retain` above, b.old_pos() == sel_start == pos.
                 // Each subsequent delete advances b.old_pos() by the cluster size,
                 // landing exactly at the next grapheme start — so the builder stays
                 // in sync without additional retain calls between graphemes.
-                b.delete(next - pos);
+                b.delete(next.chars_since(pos));
                 b.insert_char(effective_ch);
             }
             if pos >= sel_end {
@@ -183,7 +188,7 @@ pub fn replace_selections(
         }
         // new_pos() is one past the last written char — the final grapheme of the
         // replaced range. -1 gives the cursor position (inclusive last char).
-        let new_sel_end = b.new_pos() - 1;
+        let new_sel_end = b.new_pos().shift(-1);
 
         // Reconstruct the selection with its original direction.
         // `Selection::directed` is the canonical constructor for this pattern:

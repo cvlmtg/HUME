@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::tests::co;
 use crate::editor::tests::doubles::{VirtualRows, no_providers, providers_with_before_line};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
@@ -54,7 +55,7 @@ fn nowrap_click_first_char() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(0));
+    assert_eq!(got, Some(co(0)));
 }
 
 /// Click on column 2 of line 0 → char 2.
@@ -71,7 +72,7 @@ fn nowrap_click_mid_first_line() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(2));
+    assert_eq!(got, Some(co(2)));
 }
 
 /// Click on screen row 1, column 0 → start of second line (char 4).
@@ -88,7 +89,7 @@ fn nowrap_click_second_line() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(4)); // 'd' is char 4
+    assert_eq!(got, Some(co(4))); // 'd' is char 4
 }
 
 /// Click in the gutter (screen_x < gutter_w) returns None.
@@ -127,7 +128,7 @@ fn nowrap_click_past_line_end() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(2));
+    assert_eq!(got, Some(co(2)));
 }
 
 /// Viewport scrolled down: screen_y=0 refers to top_line, not line 0.
@@ -146,7 +147,7 @@ fn nowrap_viewport_scrolled() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(4));
+    assert_eq!(got, Some(co(4)));
 }
 
 /// Horizontal scroll: content_x = screen_x - gutter_w + h_offset.
@@ -165,7 +166,7 @@ fn nowrap_horizontal_scroll() {
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
     );
-    assert_eq!(got, Some(2));
+    assert_eq!(got, Some(co(2)));
 }
 
 // ── screen_to_char_offset (wrap) ─────────────────────────────────────────
@@ -182,10 +183,10 @@ fn wrap_click_first_and_second_visual_row() {
     let mut s = PaneLineStore::new();
 
     let row0 = screen_to_char_offset(0, 0, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
-    assert_eq!(row0, Some(0));
+    assert_eq!(row0, Some(co(0)));
 
     let row1 = screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
-    assert_eq!(row1, Some(4));
+    assert_eq!(row1, Some(co(4)));
 }
 
 /// Click on column 2 in the second wrap row → char 6 ('g').
@@ -198,7 +199,7 @@ fn wrap_click_mid_second_row() {
     let mut s = PaneLineStore::new();
 
     let got = screen_to_char_offset(2, 1, 0, &v, &mut map(&rope, wrap, &providers, 10, &mut s));
-    assert_eq!(got, Some(6)); // 'g' is char 6
+    assert_eq!(got, Some(co(6))); // 'g' is char 6
 }
 
 /// Click below the last line is clamped to the last real line.
@@ -227,7 +228,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     // Cursor at char 2 = start of line 1 ('b').
-    let cursor_char = rope.line_to_char(1);
+    let cursor_char = co(rope.line_to_char(1));
 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
@@ -276,7 +277,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
-        Some(rope.line_to_char(1)),
+        Some(co(rope.line_to_char(1))),
         "a click on the virtual row clamps to line 1's own first char"
     );
 
@@ -284,7 +285,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
         screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
-        Some(rope.line_to_char(1)),
+        Some(co(rope.line_to_char(1))),
         "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
     );
 
@@ -292,7 +293,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
         screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
-        Some(rope.line_to_char(2)),
+        Some(co(rope.line_to_char(2))),
         "row 3 must resolve to line 2, correctly accounting for the stolen row"
     );
 }
@@ -305,7 +306,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
-    let cursor_char = rope.line_to_char(1);
+    let cursor_char = co(rope.line_to_char(1));
 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
@@ -343,7 +344,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
-        Some(rope.line_to_char(1)),
+        Some(co(rope.line_to_char(1))),
         "a click on the virtual row clamps to line 1's own first char"
     );
 
@@ -351,7 +352,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
         screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
-        Some(rope.line_to_char(1)),
+        Some(co(rope.line_to_char(1))),
         "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
     );
 
@@ -359,7 +360,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
         screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
-        Some(rope.line_to_char(2)),
+        Some(co(rope.line_to_char(2))),
         "row 3 must resolve to line 2, correctly accounting for the stolen row"
     );
 }
@@ -373,7 +374,7 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
 fn content_pos_accounts_for_before_line_0() {
     let rope = Rope::from_str("a\nb\n");
     let v = vp(0, 80, 10);
-    let cursor_char = 0; // start of line 0
+    let cursor_char = co(0); // start of line 0
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::uniform(
         VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
@@ -403,7 +404,7 @@ fn content_pos_accounts_for_before_line_0() {
 #[test]
 fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
-    let cursor_char = rope.line_to_char(1); // start of the last real line
+    let cursor_char = co(rope.line_to_char(1)); // start of the last real line
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
         VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
@@ -446,7 +447,7 @@ fn content_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
     let mut v = vp(0, 80, 10);
     v.top_row_offset = 2; // past line 0's 2-row block (before=1, content=1)
-    let cursor_char = 0; // 'a' — line 0's own content row, address (0, 1)
+    let cursor_char = co(0); // 'a' — line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
     let mut s = PaneLineStore::new();
 
@@ -474,7 +475,7 @@ fn content_pos_zero_height_returns_none() {
     let pos = content_pos(
         &v,
         &mut map(&rope, WrapMode::None, &providers, 80, &mut s),
-        0,
+        co(0),
     );
     assert_eq!(pos, None);
 }
@@ -488,7 +489,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
     let v = vp(0, 80, 2); // only rows for lines 0-1 are visible
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = rope.line_to_char(5); // 'f' — 5 rows below the top
+    let cursor_char = co(rope.line_to_char(5)); // 'f' — 5 rows below the top
 
     let pos = content_pos(
         &v,

@@ -7,6 +7,7 @@ use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::Selection;
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::offset::CharOffset;
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
@@ -382,7 +383,10 @@ impl Pane {
             buffer_id,
             viewport: ViewportState::new(80, 24),
             saved_scrolls: SecondaryMap::new(),
-            selections: vec![Selection { anchor: 0, head: 0 }],
+            selections: vec![Selection {
+                anchor: CharOffset::new(0),
+                head: CharOffset::new(0),
+            }],
             primary_idx: 0,
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
@@ -491,8 +495,8 @@ pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Ro
         .expect("pane selections empty or primary_idx out of range")
         .head;
     debug_assert!(
-        head_char <= rope.len_chars(),
-        "stale selection mirror: head {head_char} beyond rope len {} — \
+        head_char.index() <= rope.len_chars(),
+        "stale selection mirror: head {head_char:?} beyond rope len {} — \
          pane.selections is out of sync with pane.buffer_id",
         rope.len_chars()
     );
@@ -502,7 +506,7 @@ pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Ro
     // it doesn't ask this function to repair that case, so this mints the
     // line as-is rather than validating it against `rope`'s own invariant
     // (which a bare `ropey::Rope` in a unit test may not even uphold).
-    ContentLine::new(rope.char_to_line(head_char))
+    ContentLine::new(rope.char_to_line(head_char.index()))
 }
 
 // ---------------------------------------------------------------------------

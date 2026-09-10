@@ -1,6 +1,7 @@
 use hume_editing::grapheme::snap_to_cluster_start;
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
+use hume_rope::offset::CharOffset;
 
 use crate::pair::matching_bracket;
 use crate::tag::matching_tag;
@@ -24,7 +25,7 @@ use crate::tag::matching_tag;
 /// grapheme boundary by the buffer invariant, so snapping it is a
 /// guaranteed-identity round trip through two `GraphemeCursor` runs, wasted
 /// on the most common outcome of a mis-pressed `#`.
-pub(super) fn goto_matching_pair(text: &BufferText, sel: &Selection) -> usize {
+pub(super) fn goto_matching_pair(text: &BufferText, sel: &Selection) -> CharOffset {
     matching_bracket(text, *sel)
         .or_else(|| matching_tag(text, sel.head()))
         .map(|target| snap_to_cluster_start(text, target))
