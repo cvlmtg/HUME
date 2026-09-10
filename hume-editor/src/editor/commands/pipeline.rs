@@ -13,8 +13,8 @@ use crate::editor::doc_ops;
 use crate::editor::jump_list::JumpEntry;
 use crate::editor::registry::{CmdMeta, MappableCommand, SelectionBody, SelectionTracking};
 use crate::editor::replay::{RepeatableAction, SelectionStep};
+use crate::editor::settings::ObjectJumpAlign;
 use crate::editor::{EditorState, Mode};
-use crate::settings::ObjectJumpAlign;
 use hume_ops::{MotionMode, WordCtx};
 
 use crate::editor::syntax::ensure_syntax_current;

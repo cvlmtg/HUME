@@ -286,8 +286,8 @@ pub(crate) fn style_display_line(
 
 /// Pick the Tier-0 cursor cell style for a selection head, by mode and
 /// primary-ness. This is the themed cell color/attrs a head is painted with —
-/// unrelated to `hume_editor::settings::CursorShape`, which is the real
-/// terminal hardware cursor's appearance during Insert mode.
+/// unrelated to `hume_editor`'s internal `CursorShape` setting, which is the
+/// real terminal hardware cursor's appearance during Insert mode.
 ///
 /// `Insert` uses the insert chain; `Extend` — HUME's name for Helix's Select
 /// mode — uses the select chain; every other mode, including HUME's own

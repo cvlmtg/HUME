@@ -12,8 +12,8 @@ use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction,
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
+use crate::editor::settings::EditorSettings;
 use crate::lock_ext::LockExt;
-use crate::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
 use hume_treesitter::parse_worker::ParseBackend;
@@ -62,6 +62,7 @@ mod registry;
 mod replay;
 pub(super) mod scroll;
 pub(crate) mod search;
+pub(crate) mod settings;
 pub(crate) mod settings_ops;
 pub(crate) mod syntax;
 mod theme;
@@ -597,11 +598,11 @@ impl EditorState {
     /// and `resolve_pane_settings`' `cursor_is_block` read, so the real
     /// terminal cursor and the grid's painted heads can never disagree about
     /// which shape is in effect outside a prompt.
-    pub(crate) fn cursor_shape(&self) -> crate::settings::CursorShape {
+    pub(crate) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
         if self.mode == Mode::Insert {
             self.settings.cursor_shape_insert
         } else {
-            crate::settings::CursorShape::Block
+            crate::editor::settings::CursorShape::Block
         }
     }
 

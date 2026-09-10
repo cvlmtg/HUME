@@ -4,8 +4,8 @@ use hume_platform::io::FileMeta;
 use super::super::Editor;
 use super::super::Severity;
 use crate::editor::error::CommandError;
+use crate::editor::settings::WRAP_MODE_KEY;
 use crate::editor::settings_ops;
-use crate::settings::WRAP_MODE_KEY;
 
 /// Shared by every stale-write refusal — `write_buffer_by_id`'s no-arg `:w`
 /// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`
@@ -153,7 +153,7 @@ pub(crate) fn typed_set(
     arg: Option<&str>,
     _force: bool,
 ) -> Result<(), CommandError> {
-    use crate::settings::{LANGUAGE_KEY, Scope};
+    use crate::editor::settings::{LANGUAGE_KEY, Scope};
 
     const USAGE: &str = "Usage: :set global|buffer|pane key=value";
     let Some(arg) = arg else {
@@ -201,7 +201,7 @@ pub(crate) fn typed_set(
     // Every other setting declares its valid `:set` scopes on its
     // `define_settings!` line — one data-driven check instead of per-scope
     // special-casing.
-    let scopes = crate::settings::setting_scopes(key);
+    let scopes = crate::editor::settings::setting_scopes(key);
     if scopes.is_empty() {
         return Err(CommandError::transient(format!("unknown setting '{key}'")));
     }

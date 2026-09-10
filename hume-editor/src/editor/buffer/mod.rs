@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use super::search::{SearchMatches, SearchPattern};
 use crate::editor::pane_state::EditGroup;
-use crate::settings::BufferOverrides;
+use crate::editor::settings::BufferOverrides;
 use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
@@ -95,7 +95,7 @@ pub(crate) struct Buffer {
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
     pub(crate) search_matches: SearchMatches,
     /// Per-buffer setting overrides. `None` fields inherit from
-    /// [`crate::settings::EditorSettings`].
+    /// [`crate::editor::settings::EditorSettings`].
     pub(crate) overrides: BufferOverrides,
     /// Detected or explicitly set language identity (e.g. `rust`, `json`).
     /// `None` for unrecognised filetypes and scratch buffers.

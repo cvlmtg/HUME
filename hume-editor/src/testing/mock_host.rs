@@ -17,7 +17,7 @@
 //! # Design rule: delegate, record, or faithfully mirror — never approximate
 //!
 //! Every method here is (a) a thin wrapper over a *real* production
-//! structure/function it holds (`self.settings`, `hume::settings::
+//! structure/function it holds (`self.settings`, `hume::editor::settings::
 //! setting_value`, `hume_ops::register::is_valid_register_name`),
 //! (b) pure recording of whatever the test already told it (`dispatched_
 //! native`, `native_names`), or (c) a reduced but faithful mirror of a real
@@ -43,7 +43,7 @@ use hume_scripting::host::{
 };
 
 pub struct MockHost {
-    pub settings: hume::settings::EditorSettings,
+    pub settings: hume::editor::settings::EditorSettings,
     /// Grammar names attached via `(register-grammar! …)`.
     pub grammars: rustc_hash::FxHashSet<String>,
     /// Commands registered via `(define-command! …)` during evals.
@@ -64,7 +64,7 @@ pub struct MockHost {
 impl MockHost {
     pub fn new() -> Self {
         Self {
-            settings: hume::settings::EditorSettings::default(),
+            settings: hume::editor::settings::EditorSettings::default(),
             grammars: rustc_hash::FxHashSet::default(),
             registered_cmds: Vec::new(),
             registered_typed_cmds: Vec::new(),
@@ -178,7 +178,7 @@ impl SettingsHost for MockHost {
         // MockHost models no editor state to resync derived state against
         // (no history rings, no buffers, no view) — write_global is the
         // effect-free raw writer, and it's the only one that fits here.
-        hume::settings::write_global(key, value, &mut self.settings)
+        hume::editor::settings_ops::write_global_for_test(key, value, &mut self.settings)
     }
     fn set_buffer_option(
         &mut self,
@@ -192,7 +192,7 @@ impl SettingsHost for MockHost {
     fn get_option(&self, key: &str, _bid: BufferId) -> Result<OptionValue, String> {
         // MockHost models no buffers, so there is no per-buffer override to
         // resolve — every key reads its global value.
-        hume::settings::setting_value(key, &self.settings, None)
+        hume::editor::settings::setting_value(key, &self.settings, None)
             .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
     }
     fn configure_statusline(
@@ -211,8 +211,8 @@ impl SettingsHost for MockHost {
             center: parse_statusline_section(center, "center")?,
             right: parse_statusline_section(right, "right")?,
         };
-        let wire = hume::settings::format_statusline(&cfg);
-        hume::settings::write_global("statusline", &wire, &mut self.settings)
+        let wire = hume::editor::settings::format_statusline(&cfg);
+        hume::editor::settings_ops::write_global_for_test("statusline", &wire, &mut self.settings)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64

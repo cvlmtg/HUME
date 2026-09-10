@@ -7,7 +7,7 @@ use super::super::Severity;
 use super::{current_jump_entry, record_jump_if_moved};
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
-use crate::settings::THEME_KEY;
+use crate::editor::settings::THEME_KEY;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────

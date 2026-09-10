@@ -930,7 +930,7 @@ fn insert_block_shape_paints_the_head_in_both_panes() {
 
     let mut ed = editor_from("-[a]>bc\n");
     ed.view.theme = crate::ui::theme::build_snapshot_theme();
-    ed.state.settings.cursor_shape_insert = crate::settings::CursorShape::Block;
+    ed.state.settings.cursor_shape_insert = crate::editor::settings::CursorShape::Block;
     ed.execute_typed("vsplit", None).unwrap();
 
     ed.feed_key(key('i'));

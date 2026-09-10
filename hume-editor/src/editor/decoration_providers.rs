@@ -378,7 +378,7 @@ impl Editor {
             *sign_map.write_or_panic() = by_line;
 
             let width = match signcolumn.mode {
-                crate::settings::SignColumnMode::Auto if !has_signs => 0,
+                crate::editor::settings::SignColumnMode::Auto if !has_signs => 0,
                 _ => SignColumn::width_for_slots(slots),
             };
             self.view.panes[pid].providers.sync_sign_column_width(width);

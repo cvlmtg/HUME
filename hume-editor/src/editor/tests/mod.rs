@@ -10,7 +10,7 @@ use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
-use crate::settings::EditorSettings;
+use crate::editor::settings::EditorSettings;
 use crate::ui::highlight_providers::{PaneHighlights, ScopedHighlightRanges};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;

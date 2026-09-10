@@ -31,7 +31,7 @@ use super::register_ops;
 use super::register_ops::RegisterPrefix;
 use super::search::SearchPattern;
 use super::{EditorState, Severity};
-use crate::settings::EditorSettings;
+use crate::editor::settings::EditorSettings;
 
 // ── EditorState helpers ───────────────────────────────────────────────────────
 

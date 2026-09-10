@@ -454,7 +454,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
 
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
         let overrides = self.state.buffers.try_get(bid).map(|b| &b.overrides);
-        crate::settings::setting_value(key, &self.state.settings, overrides)
+        crate::editor::settings::setting_value(key, &self.state.settings, overrides)
             .ok_or_else(|| format!("get-option: unknown setting '{key}'"))
     }
 
@@ -474,7 +474,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
             center: crate::ui::statusline::parse_statusline_section(center, "center")?,
             right: crate::ui::statusline::parse_statusline_section(right, "right")?,
         };
-        let wire = crate::settings::format_statusline(&cfg);
+        let wire = crate::editor::settings::format_statusline(&cfg);
 
         crate::editor::settings_ops::apply_global(self.state, self.view, "statusline", &wire)
     }

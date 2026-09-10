@@ -183,7 +183,7 @@ impl BufferStore {
     /// hook) doesn't outlive the config that set it.
     pub(crate) fn clear_overrides_all(&mut self) {
         for buf in self.buffers.values_mut() {
-            buf.overrides = crate::settings::BufferOverrides::default();
+            buf.overrides = crate::editor::settings::BufferOverrides::default();
         }
     }
 

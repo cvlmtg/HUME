@@ -3,7 +3,6 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_
 pub mod cli;
 pub(crate) mod editor;
 mod lock_ext;
-pub mod settings;
 pub mod ui;
 
 // `extern crate self as hume` lets files that are #[path]-included into both

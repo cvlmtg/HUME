@@ -70,7 +70,7 @@ fn resync_derived_state_arms_all_declare_resync_true() {
 
     let undeclared: Vec<String> = resync_derived_state_arm_keys(&src)
         .into_iter()
-        .filter(|key| !crate::settings::has_declared_resync(key))
+        .filter(|key| !crate::editor::settings::has_declared_resync(key))
         .collect();
 
     assert!(

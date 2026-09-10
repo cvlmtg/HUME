@@ -30,10 +30,11 @@ fn user_manual_option_tables_match_all_setting_keys() {
     let mut documented = global_documented.clone();
     documented.extend(buffer_documented.clone());
 
-    let mut code_keys: std::collections::BTreeSet<String> = crate::settings::all_setting_keys()
-        .iter()
-        .map(|k| k.to_string())
-        .collect();
+    let mut code_keys: std::collections::BTreeSet<String> =
+        crate::editor::settings::all_setting_keys()
+            .iter()
+            .map(|k| k.to_string())
+            .collect();
     // "language" has no define_settings! entry by design (see
     // settings.rs's module doc) but is documented in the Buffer options
     // table, so it's added here rather than to all_setting_keys() itself.
@@ -46,17 +47,17 @@ fn user_manual_option_tables_match_all_setting_keys() {
     // one — a name-set diff alone can't catch a row filed under the
     // wrong heading. Cross-check each documented key's own table
     // against its declared scope.
-    use crate::settings::Scope;
+    use crate::editor::settings::Scope;
     let misplaced: Vec<String> = global_documented
         .iter()
         .filter(|k| k.as_str() != "language")
-        .filter(|k| !crate::settings::setting_scopes(k).contains(&Scope::Global))
+        .filter(|k| !crate::editor::settings::setting_scopes(k).contains(&Scope::Global))
         .map(|k| format!("'{k}' is under Global options but its scope list has no Global"))
         .chain(
             buffer_documented
                 .iter()
                 .filter(|k| k.as_str() != "language") // buffer-only by special case, no scope entry
-                .filter(|k| !crate::settings::setting_scopes(k).contains(&Scope::Buffer))
+                .filter(|k| !crate::editor::settings::setting_scopes(k).contains(&Scope::Buffer))
                 .map(|k| format!("'{k}' is under Buffer options but its scope list has no Buffer")),
         )
         .collect();

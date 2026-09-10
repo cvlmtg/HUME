@@ -2,7 +2,7 @@ use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
 use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
-use crate::settings::{
+use crate::editor::settings::{
     LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
 };
@@ -45,14 +45,14 @@ fn prefix_completions<'a>(items: impl Iterator<Item = &'a str>, prefix: &str) ->
 fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
     // Bool keys are derived from `define_settings!`'s `parser: bool` — not
     // hand-listed — so a new bool setting gets value completion for free.
-    if crate::settings::is_bool_setting(key) {
+    if crate::editor::settings::is_bool_setting(key) {
         return Some(&["true", "false"]);
     }
     Some(match key {
         "tab-style" => TabStyle::VALUES,
         "line-number-style" => LineNumberStyle::VALUES,
-        "object-jump-align" => crate::settings::ObjectJumpAlign::VALUES,
-        "cursor-shape-insert" => crate::settings::CursorShape::VALUES,
+        "object-jump-align" => crate::editor::settings::ObjectJumpAlign::VALUES,
+        "cursor-shape-insert" => crate::editor::settings::CursorShape::VALUES,
         WRAP_MODE_KEY => WrapMode::VALUES,
         "whitespace-space" | "whitespace-tab" => WhitespaceRender::VALUES,
         "whitespace-newline" => SHOW_NEWLINE_VALUES,

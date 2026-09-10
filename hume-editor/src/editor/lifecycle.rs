@@ -52,7 +52,7 @@ impl Editor {
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
-        use crate::settings::EditorSettings;
+        use crate::editor::settings::EditorSettings;
         use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::BufferText;
@@ -445,7 +445,7 @@ impl Editor {
                 // everything but this one bool would repeat, for the
                 // focused pane specifically, work `render_frame` already
                 // does for every pane this same frame.
-                if self.state.cursor_shape() == crate::settings::CursorShape::Block {
+                if self.state.cursor_shape() == crate::editor::settings::CursorShape::Block {
                     None
                 } else {
                     // Non-block shape (only Insert can be, via
@@ -507,18 +507,18 @@ impl Editor {
             // DECSCUSR ignores it, and a genuine I/O failure here would
             // already have surfaced from `screen.present` above.
             let shape = if self.state.minibuf.is_some() {
-                crate::settings::CursorShape::Bar
+                crate::editor::settings::CursorShape::Bar
             } else {
                 self.state.cursor_shape()
             };
             let cursor_style = match shape {
-                crate::settings::CursorShape::Block => {
+                crate::editor::settings::CursorShape::Block => {
                     hume_platform::terminal::CursorStyle::SteadyBlock
                 }
-                crate::settings::CursorShape::Bar => {
+                crate::editor::settings::CursorShape::Bar => {
                     hume_platform::terminal::CursorStyle::SteadyBar
                 }
-                crate::settings::CursorShape::Underline => {
+                crate::editor::settings::CursorShape::Underline => {
                     hume_platform::terminal::CursorStyle::SteadyUnderline
                 }
             };

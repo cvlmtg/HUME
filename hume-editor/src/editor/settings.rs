@@ -613,11 +613,15 @@ macro_rules! define_settings {
         /// and runs those effects; calling this directly would silently skip
         /// them.
         ///
-        /// `pub(crate)`: the only other caller, `testing::MockHost` (which has
-        /// no editor state to resync effects against), is a real module of
-        /// this crate — never text spliced into a foreign crate — so it
-        /// reaches this directly without needing wider visibility.
-        pub(crate) fn write_global(
+        /// `pub(in crate::editor)`: `crate::editor::settings_ops::apply_global`
+        /// is the one production caller, with editor state to resync
+        /// against. `testing::MockHost` needs the raw write too (it has no
+        /// `EditorState`/`EngineView` to resync effects against) but lives
+        /// outside `crate::editor`, so it goes through
+        /// `settings_ops::write_global_for_test` — a test-only pass-through
+        /// kept inside this visibility boundary — rather than this
+        /// function's visibility being widened back out to admit it.
+        pub(in crate::editor) fn write_global(
             key: &str,
             value: &str,
             settings: &mut EditorSettings,
@@ -640,7 +644,12 @@ macro_rules! define_settings {
         ///
         /// Returns `Err(message)` on unknown key, a global-only key, or an
         /// invalid value.
-        pub(crate) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
+        ///
+        /// `pub(in crate::editor)`: `crate::editor::settings_ops::apply_buffer`
+        /// is the only caller — `testing::MockHost` models no buffers, so it
+        /// has no per-buffer override to write and needs no forwarding shim
+        /// here (contrast [`write_global`]'s `write_global_for_test`).
+        pub(in crate::editor) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
             match key {
                 $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
                 $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*

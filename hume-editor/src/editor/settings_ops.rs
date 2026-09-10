@@ -7,7 +7,7 @@
 //!
 //! [`apply_global`]/[`apply_buffer`] are the only places production code
 //! should write a setting: they write the raw value via
-//! [`crate::settings::write_global`]/[`crate::settings::write_buffer`] and
+//! [`crate::editor::settings::write_global`]/[`crate::editor::settings::write_buffer`] and
 //! then resync whatever derived state depends on it (the undo-tree cap on
 //! every open buffer, the minibuffer prompt-history capacity, every open
 //! pane's jump-list capacity, the loaded theme). Calling `write_global`/
@@ -17,8 +17,8 @@
 use hume_engine::pipeline::{BufferId, EngineView};
 
 use crate::editor::EditorState;
+use crate::editor::settings::THEME_KEY;
 use crate::editor::theme;
-use crate::settings::THEME_KEY;
 
 /// Write a global setting and resync every piece of derived state that
 /// depends on it.
@@ -32,7 +32,7 @@ pub(crate) fn apply_global(
     // the only one that needs a value to roll back to.
     let prev_theme = (key == THEME_KEY).then(|| state.settings.theme.clone());
 
-    crate::settings::write_global(key, value, &mut state.settings)?;
+    crate::editor::settings::write_global(key, value, &mut state.settings)?;
 
     if !resync_derived_state(state, view, key)
         && let Some(prev) = prev_theme
@@ -57,6 +57,26 @@ pub(crate) fn apply_global(
     Ok(())
 }
 
+/// Write a global setting's raw value with no resync — [`crate::editor::settings::write_global`]
+/// itself, exposed at crate visibility for `testing::MockHost` only.
+///
+/// `write_global` is `pub(in crate::editor)`: every production write goes
+/// through [`apply_global`] above, which has the `EditorState`/`EngineView`
+/// this function's resync needs. `MockHost` models neither — it has no
+/// history rings, buffers, or view to resync derived state against — so it
+/// needs the raw writer directly, the same way `apply_global` does before
+/// its own resync step, but from outside `crate::editor` where `MockHost`
+/// lives. This is that one forwarding call, not a second implementation of
+/// the write itself.
+#[cfg(any(test, feature = "test-util"))]
+pub(crate) fn write_global_for_test(
+    key: &str,
+    value: &str,
+    settings: &mut crate::editor::settings::EditorSettings,
+) -> Result<(), String> {
+    crate::editor::settings::write_global(key, value, settings)
+}
+
 /// Reset every global setting to its compiled-in default and rerun every
 /// `resync: true` effect against the reset values — called by
 /// `:reload-config`'s reset so a runtime `:set global`/`:theme` change (or
@@ -69,17 +89,17 @@ pub(crate) fn apply_global(
 /// to the same compiled-in default `Editor::open` uses instead of relying
 /// on that arm.
 pub(crate) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
-    state.settings = crate::settings::EditorSettings::default();
+    state.settings = crate::editor::settings::EditorSettings::default();
     view.theme = crate::ui::theme::build_default_theme();
-    for &key in crate::settings::all_setting_keys() {
-        if crate::settings::has_declared_resync(key) {
+    for &key in crate::editor::settings::all_setting_keys() {
+        if crate::editor::settings::has_declared_resync(key) {
             resync_derived_state(state, view, key);
         }
     }
 }
 
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
-/// derived-state effect today (see [`crate::settings::write_buffer`]'s doc),
+/// derived-state effect today (see [`crate::editor::settings::write_buffer`]'s doc),
 /// so unlike [`apply_global`] there is nothing to resync here.
 pub(crate) fn apply_buffer(
     state: &mut EditorState,
@@ -87,10 +107,10 @@ pub(crate) fn apply_buffer(
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    crate::settings::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
+    crate::editor::settings::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
 }
 
-/// Resync derived state after a successful [`crate::settings::write_global`]
+/// Resync derived state after a successful [`crate::editor::settings::write_global`]
 /// for `key`. Returns `false` if an effect failed (theme load only) — the
 /// caller rolls the setting back so a bad value never persists.
 ///
@@ -129,7 +149,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, key: &st
         THEME_KEY => true,
         _ => {
             debug_assert!(
-                !crate::settings::has_declared_resync(key),
+                !crate::editor::settings::has_declared_resync(key),
                 "'{key}' declares `resync: true` in define_settings! but \
                  resync_derived_state has no matching arm for it"
             );

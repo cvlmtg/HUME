@@ -71,7 +71,7 @@ impl Editor {
             EditorMode::Normal
         };
         let cursor_is_block =
-            !is_focused || self.state.cursor_shape() == crate::settings::CursorShape::Block;
+            !is_focused || self.state.cursor_shape() == crate::editor::settings::CursorShape::Block;
         PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),

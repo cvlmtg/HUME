@@ -37,7 +37,7 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
 
 #[test]
 fn set_option_applies_history_capacity() {
-    // Fail oracle: revert set_global_option to call crate::settings::write_global
+    // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
     // directly (bypassing settings_ops::apply_global's resync step).
     // settings.history_capacity still updates — write_global's own job — so
     // that assertion stays green; state.history's actual capacity never
@@ -79,7 +79,7 @@ fn set_option_applies_history_capacity() {
 
 #[test]
 fn set_option_applies_jump_list_capacity() {
-    // Fail oracle: revert set_global_option to call crate::settings::write_global
+    // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
     // directly (bypassing settings_ops::apply_global's resync step).
     // settings.jump_list_capacity still updates — write_global's own job —
     // so that assertion stays green; the live jump list's actual capacity
@@ -666,7 +666,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
     assert_eq!(ed.state.mode(), Mode::Normal, "sanity: starts in Normal");
     assert_eq!(
         ed.state.cursor_shape(),
-        crate::settings::CursorShape::Block,
+        crate::editor::settings::CursorShape::Block,
         "Normal is hardwired to a block regardless of the setting"
     );
 
@@ -674,7 +674,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: entered Insert");
     assert_eq!(
         ed.state.cursor_shape(),
-        crate::settings::CursorShape::Bar,
+        crate::editor::settings::CursorShape::Bar,
         "Insert is the one mode the setting reaches"
     );
 }
@@ -730,7 +730,7 @@ fn insert_block_shape_suppresses_the_terminal_cursor() {
 
     assert_eq!(
         ed.state.cursor_shape(),
-        crate::settings::CursorShape::Block,
+        crate::editor::settings::CursorShape::Block,
         "block is what `Editor::run` tests to decide the cursor is not drawn"
     );
 }
