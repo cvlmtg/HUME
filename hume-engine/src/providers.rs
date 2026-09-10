@@ -9,7 +9,7 @@ use crate::render::Canvas;
 
 use crate::builtins::line_number::{LineNumberColumn, LineNumberStyle};
 use crate::builtins::sign_column::SignColumn;
-use crate::types::{EditorMode, RowKind, Scope, ScopeId};
+use crate::types::{DisplayLineKind, EditorMode, Scope, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Provider ID
@@ -63,12 +63,12 @@ pub trait SyntaxSpans {
 // Gutter column
 // ---------------------------------------------------------------------------
 
-/// Context passed to `GutterColumn::render_row` for buffer/syntax access.
+/// Context passed to `GutterColumn::render_cells` for buffer/syntax access.
 ///
 /// Gutter rendering (~100 calls/frame) should stay cheap to build, so this
 /// struct does not precompute per-line data — providers that need e.g.
 /// `line_to_byte` call it themselves.
-pub struct GutterRowCtx<'a> {
+pub struct GutterCtx<'a> {
     pub mode: EditorMode,
     pub primary_head_line: hume_rope::line::ContentLine,
     pub rope: &'a ropey::Rope,
@@ -83,11 +83,11 @@ pub trait GutterColumn {
     /// digit wider than content strictly requires (see `layout::compute_viewport`).
     fn width(&self, last_line_idx: hume_rope::line::RopeyLine) -> u8;
 
-    /// Produce content for one display row as a sequence of cells.
+    /// Produce content for one display line as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
     /// Multi-cell columns (like `SignColumn` sized past one slot, `signcolumn=
     /// always`/`auto` included) return multiple cells, one per sign slot.
-    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell>;
+    fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell>;
 
     /// Downcast support for per-frame config sync (e.g. updating `LineNumberStyle`).
     ///
@@ -162,9 +162,9 @@ impl GutterCell {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum VirtualLineAnchor {
-    /// Insert before the first display row of buffer line `n`.
+    /// Insert before the first display line of buffer line `n`.
     Before(hume_rope::line::ContentLine),
-    /// Insert after the last display row (including wraps) of buffer line `n`.
+    /// Insert after the last display line (including wraps) of buffer line `n`.
     After(hume_rope::line::ContentLine),
 }
 
@@ -178,10 +178,10 @@ impl VirtualLineAnchor {
     }
 }
 
-/// A virtual (non-buffer) display row injected by a provider.
+/// A virtual (non-buffer) display line injected by a provider.
 ///
 /// Providers supply plain `text` + scoped byte-range `segments` rather than
-/// pre-built `Grapheme`s: `rows::RowMap` does the grapheme segmentation and
+/// pre-built `Grapheme`s: `display_lines::DisplayLineMap` does the grapheme segmentation and
 /// width/display-column bookkeeping itself, the same as it does for real buffer lines, so
 /// providers can't get that arithmetic wrong. Virtual
 /// lines own their own layout — `text` is not subject to the buffer's wrap
@@ -199,14 +199,15 @@ pub struct VirtualLine {
     ///
     /// Same span shape as `Decoration::Highlight`/`SyntaxSpans`: sorted by
     /// `byte_start`, non-overlapping. Providers are plugin code, so the
-    /// engine does not trust this — it re-sorts at intake (`RowMap::block`)
+    /// engine does not trust this — it re-sorts at intake (`DisplayLineMap::block`)
     /// before resolving scopes with a monotonic cursor, the same posture
     /// `style::rebuild_line_decorations` takes for highlight spans.
     pub segments: Vec<(usize, usize, ScopeId)>,
-    /// Scope for bytes no `segments` entry covers, and the row's background:
-    /// its `bg` fills the row's gutter and trailing cells past the text (the
-    /// virtual-row counterpart of `Decoration::LineBg`). `None` → the render
-    /// stage's `ui.virtual_text` fallback, and no row fill.
+    /// Scope for bytes no `segments` entry covers, and the display line's
+    /// background: its `bg` fills the display line's gutter and trailing
+    /// cells past the text (the virtual-display-line counterpart of
+    /// `Decoration::LineBg`). `None` → the render stage's `ui.virtual_text`
+    /// fallback, and no fill.
     pub base_scope: Option<ScopeId>,
 }
 
@@ -221,7 +222,7 @@ pub struct VirtualLine {
 /// `scope` is an already-interned [`ScopeId`], not a [`Scope`] name: providers
 /// intern their scopes at construction time (same contract as every
 /// `DecorationSource`), since the per-grapheme hot path in
-/// `format_buffer_line`/`style_row` must stay index-based, never touching the
+/// `format_buffer_line`/`style_display_line` must stay index-based, never touching the
 /// raw scope-name map.
 #[derive(Clone, Debug)]
 pub struct InlineInsert {
@@ -273,8 +274,8 @@ bitflags! {
 impl DecorationKinds {
     /// Kinds the paint stage queries in one pass (`style::rebuild_line_decorations`)
     /// — render-only, never consulted by layout. The layout stage has no
-    /// analogous combined constant: `rows::RowMap` queries `VIRTUAL_LINE` and
-    /// `INLINE` separately, at different points in the row walk (`block()`
+    /// analogous combined constant: `display_lines::DisplayLineMap` queries `VIRTUAL_LINE` and
+    /// `INLINE` separately, at different points in the display-line walk (`block()`
     /// for virtual lines, `ensure_formatted()` for inline inserts), so a `LAYOUT`
     /// union would have no correct caller.
     pub const PAINT: Self = Self::HIGHLIGHT.union(Self::LINE_BG);
@@ -286,7 +287,7 @@ impl DecorationKinds {
 /// provider, when order matters — see call sites), providers only append.
 ///
 /// Implementations must be cheap per-line lookups into their own state:
-/// `rows::RowMap` queries a single line whenever it needs that line's block
+/// `display_lines::DisplayLineMap` queries a single line whenever it needs that line's block
 /// shape, which is scroll, cursor, and movement math as well as render — so
 /// this can run far more often than once per frame.
 pub trait DecorationSource {
@@ -357,10 +358,10 @@ pub trait BottomBandProvider {
 /// Complete set of providers for a pane. Allocated once at startup.
 ///
 /// Each list stores `(ProviderId, Box<dyn Trait>)` pairs — the id is still
-/// load-bearing even with no unregistration path: virtual rows are stamped
-/// with their producing provider's id (`rows::RowMap::block`) so
-/// `RowKind::Virtual { provider_id }` can be attributed back to it (e.g. by a
-/// gutter column rendering which provider owns a row).
+/// load-bearing even with no unregistration path: virtual display lines are stamped
+/// with their producing provider's id (`display_lines::DisplayLineMap::block`) so
+/// `DisplayLineKind::Virtual { provider_id }` can be attributed back to it (e.g. by a
+/// gutter column rendering which provider owns a display line).
 #[derive(Default)]
 pub struct ProviderSet {
     pub(crate) decorations: Vec<(ProviderId, DecorationKinds, Box<dyn DecorationSource>)>,
@@ -405,7 +406,7 @@ impl ProviderSet {
     }
 
     /// Decoration sources whose declared [`DecorationKinds`] intersect
-    /// `want` — the kind-routing chokepoint: the layout stage (`rows::RowMap`)
+    /// `want` — the kind-routing chokepoint: the layout stage (`display_lines::DisplayLineMap`)
     /// queries `VIRTUAL_LINE` and `INLINE` separately, the paint stage
     /// (`style::rebuild_line_decorations`) queries `DecorationKinds::PAINT`
     /// (`HIGHLIGHT | LINE_BG`) in one pass, so no stage pays for a provider

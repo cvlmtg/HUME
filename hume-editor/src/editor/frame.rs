@@ -49,7 +49,7 @@ impl Editor {
     /// `format` is [`EditorState::format_key`](super::EditorState::format_key)
     /// — the single source of truth for wrap_mode / tab_width / whitespace
     /// across all render paths, so this and the scroll pass
-    /// (`commands::pane_row_map`) resolve a bit-identical key for the same
+    /// (`commands::pane_display_lines`) resolve a bit-identical key for the same
     /// pane. `mode` is a per-focus fact: only the focused pane owns the real
     /// terminal cursor, so it alone gets the live editor mode; other panes are
     /// forced to `Normal` so they don't take Insert's or Extend's cursor
@@ -379,8 +379,8 @@ impl Editor {
         //    returns) reads this mirror against the pane's *current* buffer.
         self.sync_all_pane_mirrors();
 
-        // 3. Sync everything that decides row counts/columns for step 4's
-        //    `RowMap`-driven scroll, in this order because none of them
+        // 3. Sync everything that decides display-line counts/columns for
+        //    step 4's `DisplayLineMap`-driven scroll, in this order because none of them
         //    depends on this frame's viewport (a gutter/decoration change
         //    must be visible to the scroll math that positions the cursor
         //    against it, not just to the renderer one step later):
@@ -388,18 +388,18 @@ impl Editor {
         //          gutter width, which decides `Pane::content_width`, which
         //          decides the wrap column.
         //      3b/3c/3d. inlay hints / virtual lines / EOL text — each a
-        //          `RowMap` provider
+        //          `DisplayLineMap` provider
         //          (`inline_decorations` or `virtual_lines`) that
-        //          `RowMap::ensure_formatted`/`block` reads, so they change wrap
-        //          row counts and columns the moment they appear.
+        //          `DisplayLineMap::ensure_formatted`/`block` reads, so they change wrap
+        //          display-line counts and columns the moment they appear.
         //    All four read this one `decorated_panes()` snapshot (see its
         //    doc), taken here rather than after step 4 — so a same-frame
         //    scroll can leave a newly-exposed line's hints/signs unsynced
         //    until next frame. That's a one-frame cosmetic lag that
         //    self-corrects; syncing after scroll instead would let step 4's
-        //    `RowMap` see row counts/columns the providers haven't caught up
-        //    to yet — the scroll/render/caret disagreement this ordering
-        //    avoids.
+        //    `DisplayLineMap` see display-line counts/columns the providers
+        //    haven't caught up to yet — the scroll/render/caret disagreement
+        //    this ordering avoids.
         let panes = self.decorated_panes();
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
@@ -455,7 +455,7 @@ impl Editor {
         // 5. Sync highlight data (search matches, bracket matches, diagnostic
         //    underlines, extra highlights) and line-background tints to
         //    shared Arc buffers read by the highlight/line-bg providers
-        //    during rendering. Render-only — no `RowMap` consumer reads
+        //    during rendering. Render-only — no `DisplayLineMap` consumer reads
         //    either one, only the paint stage. A fresh `decorated_panes()`
         //    snapshot here (distinct from step 3's) is what gives these two
         //    the *current* viewport, post-scroll.
@@ -530,37 +530,38 @@ impl Editor {
 
 /// Scroll the pane viewport so `cursor_char` stays within the visible area, and
 /// report where the cursor ended up on screen (pane-relative, before the
-/// gutter). `None` for a viewport with no rows to place it in.
+/// gutter). `None` for a viewport with no display lines to place it in.
 ///
 /// Calls the clamp and both the vertical and horizontal `ensure_cursor_visible`
-/// helpers in one shot, over a single row map — so the three agree on the row
-/// list by construction, and a line's format is reused across them. The cursor
-/// is resolved exactly once here, for all three plus the terminal-cursor
-/// placement: scrolling only ever *writes* the viewport, and the row map holds
-/// no viewport, so no arm below can change what `locate` already answered.
+/// helpers in one shot, over a single display-line map — so the three agree
+/// on the display-line list by construction, and a line's format is reused
+/// across them. The cursor is resolved exactly once here, for all three
+/// plus the terminal-cursor placement: scrolling only ever *writes* the
+/// viewport, and the display-line map holds no viewport, so no arm below
+/// can change what `locate` already answered.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor_char: hume_rope::offset::CharOffset,
-    format_key: hume_engine::rows::line_store::FormatKey,
+    format_key: hume_engine::display_lines::line_store::FormatKey,
     scrolloff: usize,
 ) -> Option<(u16, u16)> {
     use super::scroll;
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done — both work through this pane's one store.
-    let (mut rm, viewport) = super::commands::pane_row_map(doc, pane, format_key);
+    let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
     // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
     // logic below reads it — see `clamp_viewport_top`'s doc.
-    scroll::clamp_viewport_top(viewport, &mut rm);
+    scroll::clamp_viewport_top(viewport, &mut dlm);
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise scan the cursor's line
     // for an answer no one can use.
     if viewport.height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
-    let screen_row = scroll::ensure_cursor_visible(viewport, &mut rm, cursor_pos, scrolloff);
-    scroll::ensure_cursor_visible_horizontal(viewport, &mut rm, cursor_display_col);
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    let screen_row = scroll::ensure_cursor_visible(viewport, &mut dlm, cursor_pos, scrolloff);
+    scroll::ensure_cursor_visible_horizontal(viewport, &mut dlm, cursor_display_col);
     screen_row.map(|row| super::cursor::place(viewport, cursor_display_col, row))
 }

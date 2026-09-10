@@ -20,13 +20,13 @@
 //! [`Editor::handle_mouse`] — matching `handle_key`'s any-key dismissal
 //! (`editor/mappings/mod.rs`).
 
+use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::pane::ViewportState;
 use hume_engine::pipeline::PaneId;
-use hume_engine::rows::RowMap;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
-use super::commands::pane_row_map;
+use super::commands::pane_display_lines;
 use super::cursor;
 use super::scroll;
 use super::visual_move::{VerticalUnit, apply_visual_vertical};
@@ -140,26 +140,26 @@ impl Editor {
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         let vp_before = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
-            (vp.top_line, vp.top_row_offset)
+            (vp.top_line, vp.top_slot)
         };
         {
             let pid = self.state.focused_pane_id;
             let buf_id = self.focused_buffer_id();
             let key = self.state.format_key(&self.view.panes[pid]);
-            let (mut rm, viewport) = pane_row_map(
+            let (mut dlm, viewport) = pane_display_lines(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
                 key,
             );
             if down {
-                scroll_viewport_down(viewport, &mut rm, scroll_lines);
+                scroll_viewport_down(viewport, &mut dlm, scroll_lines);
             } else {
-                scroll_viewport_up(viewport, &mut rm, scroll_lines);
+                scroll_viewport_up(viewport, &mut dlm, scroll_lines);
             }
         }
         let vp_after = {
             let vp = &self.view.panes[self.state.focused_pane_id].viewport;
-            (vp.top_line, vp.top_row_offset)
+            (vp.top_line, vp.top_slot)
         };
         // Only move cursors if the viewport actually moved (file may already be
         // at the top, or may fit entirely in the pane).
@@ -170,7 +170,7 @@ impl Editor {
                 scroll_lines,
                 down,
                 MotionMode::Move,
-                VerticalUnit::ScreenRow,
+                VerticalUnit::AnyDisplayLine,
             );
         }
     }
@@ -208,12 +208,12 @@ impl Editor {
             )
         };
         let key = self.state.format_key(&self.view.panes[pid]);
-        let (mut rm, viewport) = pane_row_map(
+        let (mut dlm, viewport) = pane_display_lines(
             self.state.buffers.get(buf_id),
             &mut self.view.panes[pid],
             key,
         );
-        cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut rm)
+        cursor::screen_to_char_offset(x, y, gutter_w, viewport, &mut dlm)
     }
 }
 
@@ -235,7 +235,7 @@ fn rect_relative(rect: Rect, x: u16, y: u16) -> Option<(u16, u16)> {
 /// the pane's content area, past the `gutter_w`-wide gutter — into an
 /// absolute terminal cell. The inverse of [`rect_relative`], for the two
 /// call sites (the popup/menu anchor, the Insert-mode bar cursor) that need
-/// to go the other way: a content-relative position `pane_row_map`'s cursor
+/// to go the other way: a content-relative position `pane_display_lines`'s cursor
 /// walk already resolved, placed onto the screen.
 pub(super) fn content_pos_to_screen(
     content_x: u16,
@@ -250,27 +250,26 @@ pub(super) fn content_pos_to_screen(
 // Viewport scroll helpers (no cursor movement)
 // ---------------------------------------------------------------------------
 
-/// Scroll the viewport up by `rows` display rows, saturating at the top of the
+/// Scroll the viewport up by `count` display lines, saturating at the top of the
 /// document.
-fn scroll_viewport_up(viewport: &mut ViewportState, rm: &mut RowMap<'_>, rows: usize) {
+fn scroll_viewport_up(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'_>, count: usize) {
     let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, rm.advance(top, -(rows as isize)));
+    scroll::set_top(viewport, dlm.advance(top, -(count as isize)));
 }
 
-/// Scroll the viewport down by `rows` display rows.
+/// Scroll the viewport down by `count` display lines.
 ///
-/// Saturates at the document's last display row rather than at "last line on
-/// the last screen row": scrolling past EOF is allowed (the vim/Helix
-/// convention `scroll_cursor_to_row` already follows), and an
+/// Saturates at the document's last display line rather than at "last line on
+/// the last screen row": scrolling past EOF is allowed (/// convention `scroll_cursor_to_display_line` already follows), and an
 /// `After(last_line)` virtual block would otherwise be permanently unreachable.
-fn scroll_viewport_down(viewport: &mut ViewportState, rm: &mut RowMap<'_>, rows: usize) {
-    // Nothing to scroll when the whole document — virtual rows included —
-    // already fits on screen.
-    if rm.fits_in(viewport.height) {
+fn scroll_viewport_down(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'_>, count: usize) {
+    // Nothing to scroll when the whole document — virtual display lines
+    // included — already fits on screen.
+    if dlm.fits_in(viewport.height) {
         return;
     }
     let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, rm.advance(top, rows as isize));
+    scroll::set_top(viewport, dlm.advance(top, count as isize));
 }
 
 // ---------------------------------------------------------------------------

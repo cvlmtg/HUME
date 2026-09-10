@@ -544,7 +544,7 @@ pub(crate) fn goto_location(
     pane_state::write_cursor(&mut state.panes.state, &state.buffers, pid, bid, char_pos);
     crate::editor::commands::record_jump_if_moved(state, view, entry);
 
-    // Center by display row, the same way `zz` does — not by buffer line,
+    // Center by display line, the same way `zz` does — not by buffer line,
     // which only agrees with it when nothing wraps.
     crate::editor::commands::view_center(state, view);
 

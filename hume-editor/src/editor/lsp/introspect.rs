@@ -626,8 +626,13 @@ pub(crate) fn linewise_ranges_params(
 /// instead of a degenerate empty range.
 pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
     let first_line = pane.viewport.top_line.index();
-    let visible_rows = pane.viewport.height.max(1) as usize;
-    let end_line = (first_line + visible_rows).min(content_lines);
+    // Terminal-row count added to a buffer-line index: under wrap one buffer
+    // line can span multiple display lines (and therefore fewer terminal
+    // rows than buffer lines), so this over-estimates how many buffer lines
+    // are visible. Safe here — the range only needs to cover every buffer
+    // line that *could* be visible, not name the true last one exactly.
+    let height_rows = pane.viewport.height.max(1) as usize;
+    let end_line = (first_line + height_rows).min(content_lines);
     first_line..end_line
 }
 

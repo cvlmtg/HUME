@@ -3,7 +3,7 @@
 //! `decorations_for_line` is a plain map lookup per queried line.
 //!
 //! Unlike the popup/menu widgets, this provider is consulted by *scroll and
-//! cursor math* through `rows::RowMap`, not just rendering — so the per-line
+//! cursor math* through `display_lines::DisplayLineMap`, not just rendering — so the per-line
 //! lookup must stay cheap (a `FxHashMap` get + `Vec` clone-out, no per-frame
 //! allocation-heavy work).
 

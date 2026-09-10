@@ -30,7 +30,7 @@ remaining work below ships.
   would feed the same drain→store path as the spawn source. Build only if the
   fd-fallback posture proves inadequate in practice. Also tracked in
   `docs/ROADMAP.md`.
-- **Steel-side display row formatter** — `#:truncate 'head|'tail` (see
+- **Steel-side list row formatter** — `#:truncate 'head|'tail` (see
   `user-manual/docs/plugins.md`'s "Custom pickers") only chooses which end of
   an over-long row is clipped; a plugin that wants to elide differently (e.g.
   `core:pickers`' git-modified rows, `M  src/foo.rs`, whose `M `/`??` status

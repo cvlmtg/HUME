@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
-use crate::types::{DisplayRow, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
+use crate::types::{DisplayLine, EditorMode, Grapheme, ResolvedStyle, ScopeId, Selection};
 
 // ---------------------------------------------------------------------------
 // Scratch storage
@@ -28,9 +28,9 @@ pub struct StyleScratch {
     pub decorations: Vec<Decoration>,
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
-    /// Selection display-column spans for the current row (all selections, including primary).
+    /// Selection display-column spans for the current display line (all selections, including primary).
     pub sel_spans: Vec<(DisplayLineCol, DisplayLineCol)>,
-    /// Display columns of each selection head on the current row (all selections, including primary).
+    /// Display columns of each selection head on the current display line (all selections, including primary).
     pub head_display_cols: Vec<DisplayLineCol>,
     /// Sorted copy of selections; populated once per frame or batch call.
     pub sorted_sels: Vec<Selection>,
@@ -42,9 +42,9 @@ pub struct StyleScratch {
     /// display concern — it would bleed UI logic into the core model. Using an index also avoids
     /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
-    /// Display column of the primary selection's head on the current row. `None` if not on this row.
+    /// Display column of the primary selection's head on the current display line. `None` if not on this display line.
     pub primary_head_display_col: Option<DisplayLineCol>,
-    /// Display-column span of the primary selection on the current row. `None` if not on this row.
+    /// Display-column span of the primary selection on the current display line. `None` if not on this display line.
     pub primary_sel_span: Option<(DisplayLineCol, DisplayLineCol)>,
 }
 
@@ -105,18 +105,18 @@ impl Default for StyleScratch {
 // Public entry points
 // ---------------------------------------------------------------------------
 
-/// Resolve per-grapheme styles for one display row.
+/// Resolve per-grapheme styles for one display line.
 ///
-/// `styles_out` must be pre-sized to at least `row.graphemes.end` (parallel
-/// to `graphemes`). Writes into the row's slice of `styles_out`; entries
-/// outside `row.graphemes` are untouched.
+/// `styles_out` must be pre-sized to at least `display_line.graphemes.end` (parallel
+/// to `graphemes`). Writes into the display line's slice of `styles_out`; entries
+/// outside `display_line.graphemes` are untouched.
 ///
 /// Call [`rebuild_line_decorations`] for the current buffer line before
 /// this, and pass its returned tint through as `line_tint`.
 /// `scratch.sorted_sels` must be pre-populated and sorted by the caller.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn style_row(
-    row: &DisplayRow,
+pub(crate) fn style_display_line(
+    display_line: &DisplayLine,
     graphemes: &[Grapheme],
     line_start_char: CharOffset,
     line_end_char: CharOffset,
@@ -129,9 +129,9 @@ pub(crate) fn style_row(
 ) {
     let primary_idx = scratch.primary_idx_in_sorted;
     // Whether the primary selection runs backward (head before anchor) — the
-    // one piece of per-row context the unpainted-primary-head carve-out below
-    // needs. A property of the selection itself, not of this row, so it's
-    // computed once here rather than per grapheme.
+    // one piece of per-display-line context the unpainted-primary-head
+    // carve-out below needs. A property of the selection itself, not of
+    // this display line, so it's computed once here rather than per grapheme.
     let primary_is_reverse = primary_idx
         .map(|idx| scratch.sorted_sels[idx].head < scratch.sorted_sels[idx].anchor)
         .unwrap_or(false);
@@ -141,7 +141,7 @@ pub(crate) fn style_row(
         &scratch.sorted_sels,
         primary_idx,
         graphemes,
-        &row.graphemes,
+        &display_line.graphemes,
         &mut scratch.sel_spans,
         &mut scratch.primary_sel_span,
     );
@@ -151,15 +151,15 @@ pub(crate) fn style_row(
         &scratch.sorted_sels,
         primary_idx,
         graphemes,
-        &row.graphemes,
+        &display_line.graphemes,
         &mut scratch.head_display_cols,
         &mut scratch.primary_head_display_col,
     );
 
     let mut hl = HighlightStack::new(&scratch.tier_bufs);
 
-    // Tiers 4 and 3 are properties of the *row*, not of any grapheme in it,
-    // so they resolve once here rather than per grapheme below.
+    // Tiers 4 and 3 are properties of the *display line*, not of any
+    // grapheme in it, so they resolve once here rather than per grapheme below.
     //
     // Tier 4: provider line-background tint (lowest) — a full-row
     // *background* a `DecorationSource` requested for this line (e.g.
@@ -178,19 +178,19 @@ pub(crate) fn style_row(
     // Tier 3: selection-head-line background tint, applied to every grapheme
     // on the line that contains a selection head. `theme.ui` fields are O(1)
     // struct-field reads — no HashMap lookup.
-    let mut row_base = theme.default;
+    let mut base_style = theme.default;
     if let Some(scope) = line_tint {
-        row_base = row_base.layer(ResolvedStyle {
+        base_style = base_style.layer(ResolvedStyle {
             bg: theme.resolve(scope).bg,
             ..ResolvedStyle::default()
         });
     }
     if is_head_line {
-        row_base = row_base.layer(theme.ui.cursorline);
+        base_style = base_style.layer(theme.ui.cursorline);
     }
 
-    for (g_idx, g) in graphemes[row.graphemes.clone()].iter().enumerate() {
-        let g_idx = row.graphemes.start + g_idx;
+    for (g_idx, g) in graphemes[display_line.graphemes.clone()].iter().enumerate() {
+        let g_idx = display_line.graphemes.start + g_idx;
 
         // WidthContinuation cells get the same style as their primary cell.
         if matches!(g.content, crate::types::CellContent::WidthContinuation) {
@@ -200,7 +200,7 @@ pub(crate) fn style_row(
             continue;
         }
 
-        let mut style = row_base;
+        let mut style = base_style;
 
         // Tier 2a–2d: highlights layered in ascending priority.
         // Each theme.resolve(id) is an O(1) Vec index.
@@ -310,16 +310,16 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 // Selection helpers
 // ---------------------------------------------------------------------------
 
-/// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `row`.
+/// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `grapheme_range`.
 ///
 /// `line_start_char` / `line_end_char` are the half-open absolute-char range of
 /// the buffer line being rendered (from `rope.line_to_char`). Selections use
 /// absolute char offsets.
 ///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
-/// `sorted_sels`) has a visible span on this row.
+/// `sorted_sels`) has a visible span on this display line.
 ///
-/// Rescans all of `sorted_sels` on every call — O(display_rows × selections)
+/// Rescans all of `sorted_sels` on every call — O(display_lines × selections)
 /// per frame. Intentional: realistic selection counts are single digits, so
 /// this is nil in practice. The alternative (binding the window of selections
 /// overlapping one line via two `partition_point` calls, hoisted per buffer
@@ -336,26 +336,26 @@ fn collect_selection_spans(
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
-    row_range: &std::ops::Range<usize>,
+    grapheme_range: &std::ops::Range<usize>,
     out: &mut Vec<(DisplayLineCol, DisplayLineCol)>,
     primary_sel_span: &mut Option<(DisplayLineCol, DisplayLineCol)>,
 ) {
     out.clear();
     *primary_sel_span = None;
 
-    let row_gs = &graphemes[row_range.clone()];
+    let gs = &graphemes[grapheme_range.clone()];
     // Use byte_range to detect the empty-line sentinel (byte_range 0..0 = no real content).
-    let row_first_byte = row_gs.first().map_or(usize::MAX, |g| g.byte_range.start);
-    let row_last_byte = row_gs.last().map_or(0, |g| g.byte_range.end);
+    let first_byte = gs.first().map_or(usize::MAX, |g| g.byte_range.start);
+    let last_byte = gs.last().map_or(0, |g| g.byte_range.end);
     // Char-based wrap-segment boundaries for the intersection check below.
     // `Grapheme.char_offset` is a bare `usize` with its own `usize::MAX`
     // sentinel (see its doc) — the comparisons below stay in that space
     // rather than `CharOffset`, which has no sentinel to represent it.
-    let row_first_char = row_gs.first().map_or(usize::MAX, |g| g.char_offset);
-    // row_last_char_excl: char immediately after the last grapheme on this row.
+    let first_char = gs.first().map_or(usize::MAX, |g| g.char_offset);
+    // last_char_excl: char immediately after the last grapheme on this display line.
     // Adding 1 is exact because cursor positions always land on grapheme-cluster
     // boundaries — a selection can never start inside a multi-char cluster.
-    let row_last_char_excl = row_gs.last().map_or(0, |g| g.char_offset.saturating_add(1));
+    let last_char_excl = gs.last().map_or(0, |g| g.char_offset.saturating_add(1));
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
         // A collapsed selection (anchor == head) has no extent to paint — the
@@ -377,7 +377,7 @@ fn collect_selection_spans(
         // above) since `sel_char_end` must be able to hold that field's
         // `usize::MAX` sentinel, which `CharOffset` has no representation for.
         let sel_char_start = start.max(line_start_char).index();
-        // `usize::MAX` signals "extends past the end of this row" — the
+        // `usize::MAX` signals "extends past the end of this display line" — the
         // display_col fallback below will then use the last grapheme's
         // trailing column.
         let sel_char_end = if end < line_end_char {
@@ -386,29 +386,33 @@ fn collect_selection_spans(
             usize::MAX
         };
 
-        // For rows with real content, skip if the selection doesn't intersect
-        // this wrap segment. Without this check a selection on wrap segment N
-        // would incorrectly highlight all other wrap segments of the same line.
-        if row_first_byte < row_last_byte {
-            let ends_before_row = sel_char_end != usize::MAX && sel_char_end <= row_first_char;
-            let starts_after_row = sel_char_start >= row_last_char_excl;
-            if ends_before_row || starts_after_row {
+        // For display lines with real content, skip if the selection doesn't
+        // intersect this wrap segment. Without this check a selection on
+        // wrap segment N would incorrectly highlight all other wrap segments
+        // of the same line.
+        if first_byte < last_byte {
+            let ends_before = sel_char_end != usize::MAX && sel_char_end <= first_char;
+            let starts_after = sel_char_start >= last_char_excl;
+            if ends_before || starts_after {
                 continue;
             }
         }
 
-        let display_col_start = char_offset_to_display_col(sel_char_start, graphemes, row_range)
-            .unwrap_or(DisplayLineCol::new(0));
+        let display_col_start =
+            char_offset_to_display_col(sel_char_start, graphemes, grapheme_range)
+                .unwrap_or(DisplayLineCol::new(0));
         // Selections are inclusive at both ends, so the exclusive upper bound is
         // the right edge of the end grapheme (display_col + width), not its
         // left edge (display_col). Using the left edge caused backward
         // selections to silently drop their anchor cell from the highlighted span.
-        let display_col_end = char_offset_to_end_display_col(sel_char_end, graphemes, row_range)
-            .unwrap_or_else(|| {
-                row_gs.last().map_or(DisplayLineCol::new(0), |g| {
-                    g.display_col.advance(g.width as u32)
-                })
-            });
+        let display_col_end =
+            char_offset_to_end_display_col(sel_char_end, graphemes, grapheme_range).unwrap_or_else(
+                || {
+                    gs.last().map_or(DisplayLineCol::new(0), |g| {
+                        g.display_col.advance(g.width as u32)
+                    })
+                },
+            );
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
@@ -418,13 +422,13 @@ fn collect_selection_spans(
     }
 }
 
-/// Collect the display column of each selection head on this line within `row_range`.
+/// Collect the display column of each selection head on this line within `grapheme_range`.
 ///
 /// `line_start_char` / `line_end_char` are the half-open absolute-char range of
 /// the buffer line. Heads outside this range are skipped.
 ///
 /// Also sets `primary_head_display_col` when the primary selection (identified
-/// by `primary_idx`) has its head on this row.
+/// by `primary_idx`) has its head on this display line.
 #[allow(clippy::too_many_arguments)]
 fn collect_head_display_cols(
     line_start_char: CharOffset,
@@ -432,7 +436,7 @@ fn collect_head_display_cols(
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
-    row_range: &std::ops::Range<usize>,
+    grapheme_range: &std::ops::Range<usize>,
     out: &mut Vec<DisplayLineCol>,
     primary_head_display_col: &mut Option<DisplayLineCol>,
 ) {
@@ -443,7 +447,7 @@ fn collect_head_display_cols(
             continue;
         }
         if let Some(display_col) =
-            char_offset_to_display_col(sel.head.index(), graphemes, row_range)
+            char_offset_to_display_col(sel.head.index(), graphemes, grapheme_range)
         {
             out.push(display_col);
             if Some(idx) == primary_idx {
@@ -453,65 +457,61 @@ fn collect_head_display_cols(
     }
 }
 
-/// Binary-search for the grapheme in `row_range` whose `char_offset` equals or
+/// Binary-search for the grapheme in `grapheme_range` whose `char_offset` equals or
 /// immediately follows `char_offset`, returning `(display_col, width)`.
 ///
 /// Returns `None` when `char_offset` is the sentinel `usize::MAX` (meaning
-/// "extend to end of row"), or when it falls before this row's first grapheme
-/// (it belongs to an earlier wrap segment and must not be claimed for this row).
+/// "extend to end of display line"), or when it falls before this display
+/// line's first grapheme (it belongs to an earlier wrap segment and must
+/// not be claimed for this display line).
 ///
-/// Rows are non-decreasing in `char_offset` (inline-insert `Virtual` cells
+/// A display line's graphemes are non-decreasing in `char_offset` (inline-insert `Virtual` cells
 /// carry the offset of the real grapheme they precede, pushed just before it),
 /// so `partition_point` can land on an insert rather than the real grapheme at
 /// that offset — the loop below skips forward past any such ties.
 ///
-/// `pub(crate)`: also the resolver `rows::RowMap::locate_in_line` uses, so the
+/// `pub(crate)`: also the resolver `display_lines::DisplayLineMap::locate_in_line` uses, so the
 /// two column-lookup paths (selection styling, cursor placement) can't drift
 /// on how they treat a `Virtual` tie.
 pub(crate) fn resolve_grapheme_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
-    row_range: &std::ops::Range<usize>,
+    grapheme_range: &std::ops::Range<usize>,
 ) -> Option<(DisplayLineCol, u32)> {
     if char_offset == usize::MAX {
-        // Sentinel: "extend to end of row" — let the caller use the fallback.
+        // Sentinel: "extend to end of display line" — let the caller use the fallback.
         return None;
     }
-    let row_graphemes = &graphemes[row_range.clone()];
-    let idx = row_graphemes.partition_point(|g| g.char_offset < char_offset);
-    // If char_offset falls before this row's first grapheme, the position
-    // belongs to an earlier wrap segment — don't claim it for this row.
-    if idx == 0
-        && row_graphemes
-            .first()
-            .is_some_and(|g| char_offset < g.char_offset)
-    {
+    let gs = &graphemes[grapheme_range.clone()];
+    let idx = gs.partition_point(|g| g.char_offset < char_offset);
+    // If char_offset falls before this display line's first grapheme, the
+    // position belongs to an earlier wrap segment — don't claim it for this
+    // display line.
+    if idx == 0 && gs.first().is_some_and(|g| char_offset < g.char_offset) {
         return None;
     }
     // The cursor/selection must land on the real character, not an inline-insert
     // decoration sharing its offset — skip forward past any `Virtual` cells.
     let mut idx = idx;
-    while row_graphemes.get(idx).is_some_and(|g| {
+    while gs.get(idx).is_some_and(|g| {
         g.char_offset == char_offset
             && matches!(g.content, crate::types::CellContent::Virtual { .. })
     }) {
         idx += 1;
     }
-    row_graphemes
-        .get(idx)
-        .map(|g| (g.display_col, g.width as u32))
+    gs.get(idx).map(|g| (g.display_col, g.width as u32))
 }
 
-/// Left edge (`g.display_col`) of the grapheme at `char_offset` in this row.
+/// Left edge (`g.display_col`) of the grapheme at `char_offset` in this display line.
 ///
 /// Returns `None` for the usize::MAX sentinel or for positions on an earlier
 /// wrap segment. Callers use a fallback when `None`.
 fn char_offset_to_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
-    row_range: &std::ops::Range<usize>,
+    grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
-    resolve_grapheme_display_col(char_offset, graphemes, row_range)
+    resolve_grapheme_display_col(char_offset, graphemes, grapheme_range)
         .map(|(display_col, _)| display_col)
 }
 
@@ -523,9 +523,9 @@ fn char_offset_to_display_col(
 fn char_offset_to_end_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
-    row_range: &std::ops::Range<usize>,
+    grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
-    resolve_grapheme_display_col(char_offset, graphemes, row_range)
+    resolve_grapheme_display_col(char_offset, graphemes, grapheme_range)
         .map(|(display_col, width)| display_col.advance(width))
 }
 

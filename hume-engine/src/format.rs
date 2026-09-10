@@ -6,32 +6,32 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 use crate::providers::InlineInsert;
-use crate::types::{CellContent, DisplayRow, Grapheme, RowKind, ScopeId};
+use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Formatted output
 // ---------------------------------------------------------------------------
 
-/// One buffer line's formatted display rows.
+/// One buffer line's formatted display lines.
 ///
-/// Every index inside is line-local — `DisplayRow::graphemes` indexes
+/// Every index inside is line-local — `DisplayLine::graphemes` indexes
 /// `graphemes`, `Grapheme::byte_range` indexes `line_texts` from 0, and
 /// `CellContent`'s arena `(start, len)` pairs index `virtual_texts`. That is
 /// what lets one of these be held alongside others, or handed between the
 /// passes that walk a line, without rebasing anything.
 ///
-/// Lives in a [`crate::rows::line_store::PaneLineStore`], which owns them for as
+/// Lives in a [`crate::display_lines::line_store::PaneLineStore`], which owns them for as
 /// long as the lines they describe are being walked and reuses their
 /// allocations afterwards — so a line formatted on one frame costs the
 /// allocator nothing on the next.
 pub struct LineFormat {
-    /// `DisplayRow`s produced for this buffer line.
-    pub display_rows: Vec<DisplayRow>,
-    /// `Grapheme`s for this line; rows index into this.
+    /// `DisplayLine`s produced for this buffer line.
+    pub display_lines: Vec<DisplayLine>,
+    /// `Grapheme`s for this line; display lines index into this.
     pub graphemes: Vec<Grapheme>,
     /// Pre-materialised text for this line. Written by
-    /// [`format_buffer_line`]; read by `rows::RowMap`'s render accessors as
-    /// `RenderRow::line_text`.
+    /// [`format_buffer_line`]; read by `display_lines::DisplayLineMap`'s render accessors as
+    /// `RenderDisplayLine::line_text`.
     pub line_texts: String,
     /// Arena backing this line's `CellContent::Virtual` (inline inserts) and
     /// `Whitespace` (indicator glyphs) text ranges, none of which can be
@@ -40,19 +40,19 @@ pub struct LineFormat {
     pub virtual_texts: String,
     /// How much of the line the buffers above actually cover, or `None` when
     /// nothing has been formatted into them yet — the state a line sits in
-    /// while only its virtual rows and block shape are known.
+    /// while only its virtual display lines and block shape are known.
     ///
     /// A bounded scan stops early, so a later query wanting more has to
     /// reformat; see [`FormatBound::covers`].
     pub extent: Option<FormatBound>,
-    /// The horizontal clip this format was cut to, if any — `RowMap`'s own
+    /// The horizontal clip this format was cut to, if any — `DisplayLineMap`'s own
     /// `h_window` at the moment this ran. Not a formatting input in the sense
-    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::rows::line_store::FormatKey`
+    /// `wrap_mode`/`tab_width`/etc. are (those live on `crate::display_lines::line_store::FormatKey`
     /// and invalidate the whole entry on change): a windowed format *drops*
     /// leading graphemes rather than truncating, so it answers a different
     /// question from an unclipped one over the same line. Recording it here
     /// instead lets the entry's window-independent fields (block shape,
-    /// virtual rows) survive a window change; only [`LineFormat::covers`]
+    /// virtual display lines) survive a window change; only [`LineFormat::covers`]
     /// needs to tell the two formats apart.
     pub h_window: Option<Range<DisplayLineCol>>,
 }
@@ -68,7 +68,7 @@ pub struct LineFormat {
 /// for the pane's whole life, reversing the free list's own memory bound,
 /// since retained allocations are exactly what the free list keeps to avoid
 /// reallocating.
-const DISPLAY_ROWS_CEILING: usize = 256;
+const DISPLAY_LINES_CEILING: usize = 256;
 const GRAPHEMES_CEILING: usize = 8192;
 const LINE_TEXTS_CEILING: usize = 8192;
 const VIRTUAL_TEXTS_CEILING: usize = 4096;
@@ -80,11 +80,11 @@ impl LineFormat {
     /// formats — and under `WrapMode::None` block shape is known without
     /// formatting, so most of them never fill. Reserving up front would charge
     /// every walked line for buffers only a rendered one uses; the free list
-    /// (see [`crate::rows::line_store::PaneLineStore`]) is what makes growing
+    /// (see [`crate::display_lines::line_store::PaneLineStore`]) is what makes growing
     /// on demand free after the first frame anyway.
     pub fn new() -> Self {
         Self {
-            display_rows: Vec::new(),
+            display_lines: Vec::new(),
             graphemes: Vec::new(),
             line_texts: String::new(),
             virtual_texts: String::new(),
@@ -96,7 +96,7 @@ impl LineFormat {
     /// Empty every buffer, retaining allocated capacity, ready to be
     /// formatted into again.
     pub fn reset(&mut self) {
-        self.display_rows.clear();
+        self.display_lines.clear();
         self.graphemes.clear();
         self.line_texts.clear();
         self.virtual_texts.clear();
@@ -106,7 +106,7 @@ impl LineFormat {
 
     /// [`Self::reset`] plus reclaiming any buffer grown past its ceiling —
     /// the frame-boundary counterpart to `reset`, and the exact shape
-    /// [`VirtualRowScratch::clear_and_shrink`] takes for the same reason.
+    /// [`VirtualLineScratch::clear_and_shrink`] takes for the same reason.
     ///
     /// `reset` alone runs when the same line is about to be reformatted,
     /// where shrinking would only force an immediate re-grow. This one runs
@@ -138,7 +138,7 @@ impl LineFormat {
                 }
             };
         }
-        shrink!(self.display_rows, DISPLAY_ROWS_CEILING);
+        shrink!(self.display_lines, DISPLAY_LINES_CEILING);
         shrink!(self.graphemes, GRAPHEMES_CEILING);
         shrink!(self.line_texts, LINE_TEXTS_CEILING);
         shrink!(self.virtual_texts, VIRTUAL_TEXTS_CEILING);
@@ -158,46 +158,47 @@ impl Default for LineFormat {
     }
 }
 
-/// Scratch for laying out one virtual (non-buffer) display row.
+/// Scratch for laying out one virtual (non-buffer) display line.
 ///
 /// A dedicated buffer, not a reuse of `LineFormat`'s content-line fields:
-/// a `Before` virtual row renders ahead of its line's content rows, and
-/// those may already be formatted and cached (`rows::RowMap::block` runs the
-/// formatter in wrapping mode to count wrap rows) — clobbering the shared
-/// buffers to lay out the virtual row would destroy that cached format and
-/// force a redundant reformat of the content rows that follow.
-pub struct VirtualRowScratch {
-    /// The one row laid out here. `None` before the first use.
-    pub row: Option<DisplayRow>,
-    /// Graphemes for `row`.
+/// a `Before` virtual display line renders ahead of its line's content
+/// display lines, and those may already be formatted and cached
+/// (`display_lines::DisplayLineMap::block` runs the formatter in wrapping mode to count
+/// wrap display lines) — clobbering the shared buffers to lay out the
+/// virtual display line would destroy that cached format and force a
+/// redundant reformat of the content display lines that follow.
+pub struct VirtualLineScratch {
+    /// The one display line laid out here. `None` before the first use.
+    pub display_line: Option<DisplayLine>,
+    /// Graphemes for `display_line`.
     pub graphemes: Vec<Grapheme>,
-    /// Arena backing this row's `CellContent::Virtual` text ranges —
-    /// entirely the provider's `VirtualLine::text`, unlike
+    /// Arena backing this display line's `CellContent::Virtual` text ranges
+    /// — entirely the provider's `VirtualLine::text`, unlike
     /// `LineFormat::virtual_texts` which backs a content line's inline
     /// decorations.
     pub texts: String,
 }
 
-/// Ceilings for [`VirtualRowScratch`], in the same sense as
+/// Ceilings for [`VirtualLineScratch`], in the same sense as
 /// [`GRAPHEMES_CEILING`] and friends: a size a scratch may keep between
 /// frames, not one it starts at.
 ///
-/// Lower than the content-line ceilings because a virtual row's text is a
-/// display string a provider *built* (an inlay hint, a blame line, a
+/// Lower than the content-line ceilings because a virtual display line's
+/// text is a display string a provider *built* (an inlay hint, a blame line, a
 /// diagnostic), not a line read off disk — the megabytes-wide minified-JS
 /// case that sets the content-line ceilings has no counterpart here.
-const VIRTUAL_ROW_GRAPHEMES_CEILING: usize = 2048;
-const VIRTUAL_ROW_TEXTS_CEILING: usize = 2048;
+const VIRTUAL_LINE_GRAPHEMES_CEILING: usize = 2048;
+const VIRTUAL_LINE_TEXTS_CEILING: usize = 2048;
 
-impl VirtualRowScratch {
+impl VirtualLineScratch {
     /// Empty, with nothing allocated yet.
     ///
     /// One of these exists per pane whether or not that pane has any virtual
-    /// rows at all, so it grows on first use rather than charging every pane
-    /// up front — the same reasoning as [`LineFormat::new`].
+    /// display lines at all, so it grows on first use rather than charging
+    /// every pane up front — the same reasoning as [`LineFormat::new`].
     pub fn new() -> Self {
         Self {
-            row: None,
+            display_line: None,
             graphemes: Vec::new(),
             texts: String::new(),
         }
@@ -205,7 +206,7 @@ impl VirtualRowScratch {
 
     /// Reset to empty, retaining allocated capacity.
     pub fn clear(&mut self) {
-        self.row = None;
+        self.display_line = None;
         self.graphemes.clear();
         self.texts.clear();
     }
@@ -214,23 +215,23 @@ impl VirtualRowScratch {
     ///
     /// Split from `clear` on the same line `LineFormat` draws between
     /// [`LineFormat::reset`] and [`LineFormat::reset_and_shrink`]: `clear`
-    /// runs before laying out each virtual row and is followed immediately by
-    /// filling it again, where shrinking would only force a re-grow. This one
-    /// runs at the frame boundary, when the next user may be a different row
-    /// or no row at all — the point where an outsized allocation is worth
-    /// paying to give back.
+    /// runs before laying out each virtual display line and is followed
+    /// immediately by filling it again, where shrinking would only force a
+    /// re-grow. This one runs at the frame boundary, when the next user may
+    /// be a different display line or no display line at all — the point
+    /// where an outsized allocation is worth paying to give back.
     pub fn clear_and_shrink(&mut self) {
         self.clear();
-        if self.graphemes.capacity() > VIRTUAL_ROW_GRAPHEMES_CEILING {
-            self.graphemes.shrink_to(VIRTUAL_ROW_GRAPHEMES_CEILING);
+        if self.graphemes.capacity() > VIRTUAL_LINE_GRAPHEMES_CEILING {
+            self.graphemes.shrink_to(VIRTUAL_LINE_GRAPHEMES_CEILING);
         }
-        if self.texts.capacity() > VIRTUAL_ROW_TEXTS_CEILING {
-            self.texts.shrink_to(VIRTUAL_ROW_TEXTS_CEILING);
+        if self.texts.capacity() > VIRTUAL_LINE_TEXTS_CEILING {
+            self.texts.shrink_to(VIRTUAL_LINE_TEXTS_CEILING);
         }
     }
 }
 
-impl Default for VirtualRowScratch {
+impl Default for VirtualLineScratch {
     fn default() -> Self {
         Self::new()
     }
@@ -250,7 +251,7 @@ impl Default for VirtualRowScratch {
 /// **The stop is a pure optimization, never a correctness mechanism.** A
 /// bounded scan emits a strict *prefix* of what `Full` emits: it only
 /// truncates, no emitted cell differs, and `clipped` suppresses only the
-/// end-of-line tail. Every consumer is prefix-stable — `rows::RowMap::locate`
+/// end-of-line tail. Every consumer is prefix-stable — `display_lines::DisplayLineMap::locate`
 /// resolves by binary search and never reads past its target,
 /// `char_at`/`Cell` takes the first cell containing the column, and
 /// `char_at`/`NearestContent` takes the first column-nearest cell. So
@@ -258,8 +259,8 @@ impl Default for VirtualRowScratch {
 /// `Full` stand in for any bound.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FormatBound {
-    /// Scan the whole line. Required whenever the row *count* matters (any
-    /// wrapping mode) or the caller reads the line's tail.
+    /// Scan the whole line. Required whenever the display line *count*
+    /// matters (any wrapping mode) or the caller reads the line's tail.
     Full,
     /// Stop after the grapheme containing this line-relative byte offset.
     ToByte(usize),
@@ -302,7 +303,7 @@ impl FormatBound {
     }
 }
 
-/// Format one buffer line, appending zero or more `DisplayRow`s.
+/// Format one buffer line, appending zero or more `DisplayLine`s.
 ///
 /// `h_window` clips emitted graphemes to a horizontal column range — used only
 /// by the fused render pipeline in `WrapMode::None`, where a single line can be
@@ -321,8 +322,8 @@ impl FormatBound {
 /// erroring.
 ///
 /// `bound` stops the scan once the requesting query's answer is determined —
-/// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the row count or
-/// the line's tail matters.
+/// see [`FormatBound`]. Pass [`FormatBound::Full`] whenever the display line
+/// count or the line's tail matters.
 #[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
@@ -335,7 +336,7 @@ pub fn format_buffer_line(
     inline_inserts: &[InlineInsert],
     out: &mut LineFormat,
 ) {
-    // The caller (`rows::RowMap::ensure_formatted`) resets `out` right before
+    // The caller (`display_lines::DisplayLineMap::ensure_formatted`) resets `out` right before
     // this call, so `text_start` is always 0 — kept as a variable (not
     // assumed) so `line_str` below stays correct if that contract ever
     // changes. Rope chunks are valid UTF-8.
@@ -366,7 +367,7 @@ pub fn format_buffer_line(
     // it's compared against `current_display_col`, which now tracks a document column
     // that can exceed a `u16`. `None` means no wrap.
     let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
-    // For indent-wrap, continuation rows start at this column.
+    // For indent-wrap, continuation display lines start at this column.
     let indent_display_cols: DisplayLineCol = if matches!(wrap_mode, WrapMode::Indent { .. }) {
         DisplayLineCol::new(hume_rope::width::indent_stop(
             indent_depth as u32,
@@ -379,27 +380,27 @@ pub fn format_buffer_line(
     // the exact wrap column.
     let word_break = matches!(wrap_mode, WrapMode::Word { .. } | WrapMode::Indent { .. });
 
-    // ── Row / column state ────────────────────────────────────────────────
+    // ── Display line / column state ─────────────────────────────────────
     // Aliases into the output buffers so the rest of the function can use
-    // the original `rows_out` / `graphemes_out` names without further changes.
-    let rows_out = &mut out.display_rows;
+    // the original `lines_out` / `graphemes_out` names without further changes.
+    let lines_out = &mut out.display_lines;
     let graphemes_out = &mut out.graphemes;
     let virtual_texts_out = &mut out.virtual_texts;
 
     let mut insert_idx = 0usize;
     let mut wrap = WrapState {
         current_display_col: DisplayLineCol::new(0),
-        wrap_row: 0,
-        row_g_start: graphemes_out.len(),
-        // Word-wrap state: remember the last whitespace position in the current row.
+        wrap_index: 0,
+        line_g_start: graphemes_out.len(),
+        // Word-wrap state: remember the last whitespace position in the current display line.
         last_ws_g_idx: graphemes_out.len(), // grapheme index of last ws boundary
         word_break,
     };
 
-    // Push the first row.
-    rows_out.push(DisplayRow {
-        kind: RowKind::LineStart { line_idx },
-        graphemes: wrap.row_g_start..0, // closed later
+    // Push the first display line.
+    lines_out.push(DisplayLine {
+        kind: DisplayLineKind::LineStart { line_idx },
+        graphemes: wrap.line_g_start..0, // closed later
     });
 
     let mut in_leading_ws = true;
@@ -452,7 +453,7 @@ pub fn format_buffer_line(
                 }
             } else {
                 // `wrap_width`/`h_window` are mutually exclusive
-                // (`RowMap::with_h_window`'s own debug_assert: h_window is a
+                // (`DisplayLineMap::with_h_window`'s own debug_assert: h_window is a
                 // `WrapMode::None`-only clip), so exactly one of the two
                 // branches below ever does anything to `ins_width`:
                 // `maybe_wrap` moves `current_display_col` only when
@@ -474,7 +475,7 @@ pub fn format_buffer_line(
                         indent_display_cols,
                         line_idx,
                         indent_depth,
-                        rows_out,
+                        lines_out,
                         graphemes_out,
                     );
                     let visible = h_window.as_ref().is_none_or(|w| {
@@ -541,11 +542,11 @@ pub fn format_buffer_line(
             indent_display_cols,
             line_idx,
             indent_depth,
-            rows_out,
+            lines_out,
             graphemes_out,
         );
 
-        // A tab deferred whole to a continuation row expands from its new
+        // A tab deferred whole to a continuation display line expands from its new
         // (post-wrap) column, not the one `grapheme_display` computed it at —
         // tab width is column-dependent, unlike every other grapheme's.
         let width = if grapheme_str == "\t" {
@@ -561,7 +562,7 @@ pub fn format_buffer_line(
         // ── Emit grapheme ─────────────────────────────────────────────────
         let char_count = grapheme_str.chars().count();
         // Read after `maybe_wrap`, which rewrites `current_display_col` when it moves
-        // this grapheme to a continuation row. Shared by the pushed cell and
+        // this grapheme to a continuation display line. Shared by the pushed cell and
         // the `bound` check below so the two cannot disagree.
         let start_display_col = wrap.current_display_col;
         let byte_range = byte_offset..byte_offset + grapheme_str.len();
@@ -585,7 +586,7 @@ pub fn format_buffer_line(
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
         if width == 2 && visible {
-            // Both cells of a double-wide char always stay on the same row.
+            // Both cells of a double-wide char always stay on the same display line.
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
                 byte_range: byte_range.clone(),
@@ -607,7 +608,8 @@ pub fn format_buffer_line(
         // continuation cell; recording the boundary before either was pushed
         // (as a bare `+ 1`) assumed one cell per whitespace grapheme and left
         // a split at this boundary stranding the continuation as the next
-        // row's first cell while the tab itself stayed on the previous row.
+        // display line's first cell while the tab itself stayed on the
+        // previous display line.
         if is_ws && !in_leading_ws {
             wrap.last_ws_g_idx = graphemes_out.len();
         }
@@ -616,7 +618,7 @@ pub fn format_buffer_line(
         // satisfies the bound is emitted whole — with any inline inserts that
         // precede it and its own width-continuation cell. Stopping earlier
         // (inside the insert-injection loop) could leave a run of `Virtual`
-        // cells as the last thing on the row, and `NearestContent` excludes
+        // cells as the last thing on the display line, and `NearestContent` excludes
         // those, so the real grapheme they decorate would go missing.
         if bound.reached(&byte_range, start_display_col) {
             clipped = true;
@@ -639,19 +641,20 @@ pub fn format_buffer_line(
         // For truly empty lines (just "\n") this is the only grapheme (display_col 0).
         // For non-empty lines it sits one column past the last visible character.
         if had_newline {
-            // A row that fits exactly `wrap_width` columns of real content
-            // has no column left for the sentinel itself — wrap it onto a
-            // fresh continuation row (its own `maybe_wrap` call, same as any
-            // other cell) rather than letting it land one column past the
-            // pane's own right edge, where the cursor it stands in for would
-            // render invisible or bleed into the divider seam.
+            // A display line that fits exactly `wrap_width` columns of real
+            // content has no column left for the sentinel itself — wrap it
+            // onto a fresh continuation display line (its own `maybe_wrap`
+            // call, same as any other cell) rather than letting it land one
+            // column past the pane's own right edge, where the cursor it
+            // stands in for would render invisible or bleed into the divider
+            // seam.
             wrap.maybe_wrap(
                 1,
                 wrap_width,
                 indent_display_cols,
                 line_idx,
                 indent_depth,
-                rows_out,
+                lines_out,
                 graphemes_out,
             );
             graphemes_out.push(Grapheme {
@@ -684,7 +687,7 @@ pub fn format_buffer_line(
 
         // ── Newline indicator ───────────────────────────────────────────────
         // Emitted at the end of the line (after all content and trailing inserts)
-        // on the last wrap row. A newline is inherently always at end-of-line,
+        // on the last wrap display line. A newline is inherently always at end-of-line,
         // so there's no "trailing vs interior" distinction here — just on/off.
         if had_newline && whitespace.newline {
             let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
@@ -704,8 +707,8 @@ pub fn format_buffer_line(
         }
     }
 
-    // Close the last row.
-    close_row_at(rows_out, wrap.row_g_start, graphemes_out.len());
+    // Close the last display line.
+    close_display_line_at(lines_out, wrap.line_g_start, graphemes_out.len());
 }
 
 // ---------------------------------------------------------------------------
@@ -718,13 +721,13 @@ pub fn format_buffer_line(
 /// parameters through `maybe_wrap`.
 struct WrapState {
     current_display_col: DisplayLineCol,
-    wrap_row: u16,
-    /// Index into `graphemes_out` where the current display row began.
-    row_g_start: usize,
+    wrap_index: u16,
+    /// Index into `graphemes_out` where the current display line began.
+    line_g_start: usize,
     /// Grapheme index of the last seen whitespace boundary in the current
-    /// row (for word-wrap backtracking) — `== row_g_start` means none has
-    /// been seen yet, since a split resets both to the same value in the
-    /// same `maybe_wrap` call.
+    /// display line (for word-wrap backtracking) — `== line_g_start` means
+    /// none has been seen yet, since a split resets both to the same value
+    /// in the same `maybe_wrap` call.
     last_ws_g_idx: usize,
     /// Whether to backtrack to the last whitespace boundary on overflow.
     /// True for `Word`/`Indent`; false for `Soft`, which always splits at the
@@ -734,10 +737,11 @@ struct WrapState {
 
 impl WrapState {
     /// If adding `width` columns to `current_display_col` would overflow `wrap_width`,
-    /// close the current row and start a new one. Implements word-wrap
-    /// backtracking: when `word_break` is set and a whitespace boundary has
-    /// been seen in the current row, the row splits there; otherwise it
-    /// splits at the current grapheme (soft break, may split a word).
+    /// close the current display line and start a new one. Implements
+    /// word-wrap backtracking: when `word_break` is set and a whitespace
+    /// boundary has been seen in the current display line, the display line
+    /// splits there; otherwise it splits at the current grapheme (soft
+    /// break, may split a word).
     #[allow(clippy::too_many_arguments)]
     fn maybe_wrap(
         &mut self,
@@ -746,7 +750,7 @@ impl WrapState {
         indent_display_cols: DisplayLineCol,
         line_idx: hume_rope::line::RopeyLine,
         indent_depth: u8,
-        rows_out: &mut Vec<DisplayRow>,
+        lines_out: &mut Vec<DisplayLine>,
         graphemes_out: &mut [Grapheme],
     ) {
         let Some(wrap_width) = wrap_width else {
@@ -764,20 +768,20 @@ impl WrapState {
         // Determine split point: backtrack to last whitespace only when word
         // breaking is enabled (Word/Indent); Soft always splits at the current
         // grapheme, mid-word if necessary.
-        let split_at = if self.word_break && self.last_ws_g_idx > self.row_g_start {
+        let split_at = if self.word_break && self.last_ws_g_idx > self.line_g_start {
             self.last_ws_g_idx
         } else {
             graphemes_out.len() // soft break: split here
         };
 
-        // Close current row at split_at.
-        close_row_at(rows_out, self.row_g_start, split_at);
+        // Close current display line at split_at.
+        close_display_line_at(lines_out, self.line_g_start, split_at);
 
-        // Start new row.
-        self.wrap_row += 1;
-        self.row_g_start = split_at;
+        // Start new display line.
+        self.wrap_index += 1;
+        self.line_g_start = split_at;
 
-        // Recalculate `current_display_col` for graphemes in [split_at..] on the new row.
+        // Recalculate `current_display_col` for graphemes in [split_at..] on the new display line.
         let mut new_display_col = indent_display_cols;
         for g in &mut graphemes_out[split_at..] {
             g.display_col = new_display_col;
@@ -787,26 +791,26 @@ impl WrapState {
         self.current_display_col = new_display_col;
         self.last_ws_g_idx = split_at;
 
-        rows_out.push(DisplayRow {
-            kind: RowKind::Wrap {
+        lines_out.push(DisplayLine {
+            kind: DisplayLineKind::Wrap {
                 line_idx,
-                wrap_row: self.wrap_row,
+                wrap_index: self.wrap_index,
             },
-            graphemes: self.row_g_start..0, // closed later
+            graphemes: self.line_g_start..0, // closed later
         });
     }
 }
 
 // ---------------------------------------------------------------------------
-// Row closing helpers
+// Display line closing helpers
 // ---------------------------------------------------------------------------
 
-/// Close the last row in `rows_out`, spanning `[row_g_start, split_at)`.
-/// `split_at` is either a mid-row wrap boundary or, for the final row on a
-/// line, `graphemes_out.len()` (every grapheme emitted for the line so far).
-fn close_row_at(rows_out: &mut [DisplayRow], row_g_start: usize, split_at: usize) {
-    if let Some(row) = rows_out.last_mut() {
-        row.graphemes = row_g_start..split_at;
+/// Close the last display line in `lines_out`, spanning `[line_g_start, split_at)`.
+/// `split_at` is either a mid-line wrap boundary or, for the final display
+/// line on a line, `graphemes_out.len()` (every grapheme emitted for the line so far).
+fn close_display_line_at(lines_out: &mut [DisplayLine], line_g_start: usize, split_at: usize) {
+    if let Some(dline) = lines_out.last_mut() {
+        dline.graphemes = line_g_start..split_at;
     }
 }
 
@@ -892,7 +896,7 @@ fn grapheme_display(
 }
 
 /// Push `text` into a per-frame text arena (`LineFormat::virtual_texts`
-/// or `VirtualRowScratch::texts`), returning a `(start, len)` range cheap
+/// or `VirtualLineScratch::texts`), returning a `(start, len)` range cheap
 /// enough to store in a `Copy` `CellContent`. A single line's pushed text
 /// realistically never approaches the `u32`/`u16` bounds; `debug_assert`
 /// catches an overflow in tests, while release saturates rather than
@@ -918,26 +922,26 @@ pub(crate) fn push_arena_text(arena: &mut String, text: &str) -> (u32, u16) {
 /// One run of virtual text to lay out, plus the buffer identity every cell it
 /// produces shares. The identity is what separates the two kinds of run:
 /// an inline insert decorates a real buffer grapheme and carries that
-/// grapheme's position, while a virtual row has no buffer position at all
-/// (`char_offset: usize::MAX`, `indent_depth: 0`).
+/// grapheme's position, while a virtual display line has no buffer position
+/// at all (`char_offset: usize::MAX`, `indent_depth: 0`).
 pub(crate) struct VirtualRun<'a> {
     pub text: &'a str,
     /// A virtual cell occupies no buffer bytes, so this is never a real span
     /// — just the one position each of `push_virtual_cells`'s output
     /// `Grapheme`s reuses for both ends of their own (always-empty)
-    /// `byte_range`. That value still matters: `RowMap`'s `NearestContent`
+    /// `byte_range`. That value still matters: `DisplayLineMap`'s `NearestContent`
     /// filter reads emptiness to tell a `Whitespace`/`Placeholder` cell that
-    /// is real content from one that only decorates, and `style_row` reads
+    /// is real content from one that only decorates, and `style_display_line` reads
     /// it as the byte position highlighting layers against.
     pub byte_offset: usize,
     /// For an inline insert, the char offset of the real grapheme it
-    /// precedes (not `usize::MAX`): keeps the row non-decreasing in
+    /// precedes (not `usize::MAX`): keeps the display line non-decreasing in
     /// `char_offset`, which `resolve_grapheme_display_col`'s partition_point
     /// requires. Mid-line inserts are pushed before that grapheme, so ties
     /// resolve to the insert first — `resolve_grapheme_display_col` skips
     /// forward past `Virtual` cells to reach the real one. Trailing inserts
     /// share the EOL sentinel's offset (the `\n` position) since there is no
-    /// later real grapheme on the row to precede.
+    /// later real grapheme on the display line to precede.
     pub char_offset: usize,
     pub indent_depth: u8,
 }
@@ -951,17 +955,17 @@ pub(crate) struct VirtualRun<'a> {
 /// character.
 ///
 /// The single emitter behind both kinds of virtual text — `format_buffer_line`'s
-/// mid-line and end-of-line inline inserts, and `RowMap::segment_virtual_row`'s
-/// standalone provider rows. They differ only in the identity their cells
-/// carry (`run`) and in how each cell's scope resolves (`scope_at`, a
-/// constant for an insert, an interval cursor for a virtual row), so
-/// everything column-related — tab expansion, the control-character policy,
-/// double-width continuation cells — lives here once and cannot drift
-/// between them.
+/// mid-line and end-of-line inline inserts, and `DisplayLineMap::segment_virtual_line`'s
+/// standalone provider display lines. They differ only in the identity
+/// their cells carry (`run`) and in how each cell's scope resolves
+/// (`scope_at`, a constant for an insert, an interval cursor for a virtual
+/// display line), so everything column-related — tab expansion, the
+/// control-character policy, double-width continuation cells — lives here
+/// once and cannot drift between them.
 ///
 /// Widths are measured against the live `display_col`, not the run's starting
 /// column, so a tab expands to the stop it actually lands on even when the
-/// caller wrapped the run onto a continuation row after measuring it.
+/// caller wrapped the run onto a continuation display line after measuring it.
 pub(crate) fn push_virtual_cells(
     arena: &mut String,
     graphemes_out: &mut Vec<Grapheme>,
@@ -1018,7 +1022,7 @@ pub(crate) fn push_virtual_cells(
         // For a double-width cluster: a placeholder so the second cell is
         // addressable and styled with the first, matching what
         // `format_buffer_line` emits for a real buffer grapheme. Both cells
-        // of a double-wide glyph always stay on the same row.
+        // of a double-wide glyph always stay on the same display line.
         if width == 2 {
             graphemes_out.push(Grapheme {
                 byte_range: run.byte_offset..run.byte_offset,

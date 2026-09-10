@@ -10,12 +10,12 @@ use crate::providers::GutterColumn;
 /// The output of the Layout stage: the pane geometry the Format/Render stages
 /// should use.
 ///
-/// Which *rows* are visible is not decided here — `rows::RowMap` walks them
+/// Which *display lines* are visible is not decided here — `display_lines::DisplayLineMap` walks them
 /// from the viewport's top address, so the walk is the layout and no estimate
 /// of "how many lines fill the screen" is needed.
 #[derive(Debug, Clone)]
 pub struct PaneGeometry {
-    /// Available display rows in the content area.
+    /// Available terminal rows for content, in the content area.
     pub content_height: u16,
     /// Available columns in the content area (viewport width − gutter width).
     pub content_width: u16,

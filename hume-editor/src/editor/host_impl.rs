@@ -670,7 +670,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 // `count` came from `parse_count_extend`, which decodes a
                 // Steel-side count of 0 to `None` — the script's way of asking
                 // for "as if no count was typed" (move-down/move-up read this
-                // as visual-row movement instead of buffer-line movement).
+                // as visual-line movement instead of buffer-line movement).
                 count,
                 extend,
             },
@@ -1377,7 +1377,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 /// only decodes shape. See `VirtualLineSpec::segments`'s doc.
 ///
 /// Grapheme boundaries, not merely char boundaries: the engine
-/// (`hume-engine/src/rows.rs`'s `segment_virtual_row`) resolves each virtual
+/// (`hume-engine/src/display_lines.rs`'s `segment_virtual_line`) resolves each virtual
 /// grapheme's scope once per cluster, at the cluster's start byte. A segment
 /// edge that splits a multi-codepoint cluster (e.g. `e` + combining acute)
 /// would still pass a char-boundary check, but the engine's per-cluster
@@ -1471,7 +1471,7 @@ fn buffer_text<'s>(
 /// the buffer invariant (every buffer ends with a structural `\n`) means
 /// that last line is always the empty phantom line the trailing `\n`
 /// produces — zero-width, at `pos == len_chars()`, nothing to decorate.
-/// `RowMap::last_line()` never lays it out, so admitting it would hand a
+/// `DisplayLineMap::last_line()` never lays it out, so admitting it would hand a
 /// caller a position no render pass can resolve to a real line.
 fn line_start_offset(
     text: &hume_editing::text::BufferText,

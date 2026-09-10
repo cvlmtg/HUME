@@ -12,7 +12,7 @@ fn dc(n: u32) -> DisplayLineCol {
 // math — see `hume_rope::width::tests::tab_advance_*`. What's left to cover
 // here is `format_buffer_line`'s use of it, below.
 
-fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>) {
+fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayLine>, Vec<Grapheme>) {
     let rope = Rope::from_str(text);
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
@@ -30,17 +30,17 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
             &mut scratch,
         );
     }
-    (scratch.display_rows, scratch.graphemes)
+    (scratch.display_lines, scratch.graphemes)
 }
 
 #[test]
 fn single_line_no_wrap() {
     // No trailing newline → ropey sees exactly 1 line.
-    let (rows, graphemes) = do_format("hello", WrapMode::None);
-    assert_eq!(rows.len(), 1);
+    let (lines, graphemes) = do_format("hello", WrapMode::None);
+    assert_eq!(lines.len(), 1);
     assert_eq!(
-        rows[0].kind,
-        RowKind::LineStart {
+        lines[0].kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0)
         }
     );
@@ -51,13 +51,13 @@ fn single_line_no_wrap() {
 fn eol_sentinel_emitted_on_non_empty_line() {
     // "hello\n" — the non-empty line must get an eol sentinel at the `\n`
     // position so the cursor is visible when a line-selection head lands on `\n`.
-    let (rows, graphemes) = do_format("hello\n", WrapMode::None);
+    let (lines, graphemes) = do_format("hello\n", WrapMode::None);
     // "hello\n" has two ropey lines: "hello\n" and "" (trailing).
-    assert_eq!(rows.len(), 2);
-    let row0_gs = &graphemes[rows[0].graphemes.clone()];
+    assert_eq!(lines.len(), 2);
+    let line0_gs = &graphemes[lines[0].graphemes.clone()];
     // 5 content graphemes + 1 eol sentinel.
-    assert_eq!(row0_gs.len(), 6, "5 content + eol sentinel");
-    let sentinel = &row0_gs[5];
+    assert_eq!(line0_gs.len(), 6, "5 content + eol sentinel");
+    let sentinel = &line0_gs[5];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
@@ -72,12 +72,12 @@ fn a_cr_is_line_content_not_a_line_break() {
     // here. A live buffer can't hold a `\r` at all (`BufferText::from`
     // normalizes it away), and `do_format` builds a `Rope::from_str`
     // directly, so this pins the raw-rope contract — the `\r` sits in the
-    // row like any other char instead of ending it.
-    let (rows, graphemes) = do_format("a\rb\n", WrapMode::None);
-    assert_eq!(rows.len(), 2, "\"a\\rb\\n\", \"\" (trailing)");
-    let row0_gs = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0_gs.len(), 4, "3 content graphemes + eol sentinel");
-    let sentinel = &row0_gs[3];
+    // display line like any other char instead of ending it.
+    let (lines, graphemes) = do_format("a\rb\n", WrapMode::None);
+    assert_eq!(lines.len(), 2, "\"a\\rb\\n\", \"\" (trailing)");
+    let line0_gs = &graphemes[lines[0].graphemes.clone()];
+    assert_eq!(line0_gs.len(), 4, "3 content graphemes + eol sentinel");
+    let sentinel = &line0_gs[3];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
@@ -90,54 +90,54 @@ fn empty_line_produces_empty_sentinel_grapheme() {
     // "a\n\nb" has 3 lines: "a", "", "b".
     // The middle empty line must produce exactly 1 sentinel grapheme with
     // CellContent::Empty so the selection head has something to render on.
-    let (rows, graphemes) = do_format("a\n\nb", WrapMode::None);
-    assert_eq!(rows.len(), 3, "three lines");
-    let empty_row = &rows[1];
+    let (lines, graphemes) = do_format("a\n\nb", WrapMode::None);
+    assert_eq!(lines.len(), 3, "three lines");
+    let empty_line = &lines[1];
     assert_eq!(
-        empty_row.kind,
-        RowKind::LineStart {
+        empty_line.kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(1)
         }
     );
-    let row_gs = &graphemes[empty_row.graphemes.clone()];
-    assert_eq!(row_gs.len(), 1, "exactly one sentinel grapheme");
+    let line_gs = &graphemes[empty_line.graphemes.clone()];
+    assert_eq!(line_gs.len(), 1, "exactly one sentinel grapheme");
     assert!(
-        matches!(row_gs[0].content, CellContent::Empty),
+        matches!(line_gs[0].content, CellContent::Empty),
         "sentinel must be Empty"
     );
-    assert_eq!(row_gs[0].display_col, dc(0));
-    assert_eq!(row_gs[0].width, 1);
+    assert_eq!(line_gs[0].display_col, dc(0));
+    assert_eq!(line_gs[0].width, 1);
 }
 
 #[test]
 fn two_lines_no_wrap() {
     // No trailing newline → ropey sees exactly 2 lines.
-    // "ab\n" has a trailing \n so its row gets the eol sentinel (3 graphemes).
+    // "ab\n" has a trailing \n so its display line gets the eol sentinel (3 graphemes).
     // "cd" has no trailing \n, so no sentinel (2 graphemes).
-    let (rows, graphemes) = do_format("ab\ncd", WrapMode::None);
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].graphemes.len(), 3); // 'a', 'b', eol sentinel
-    assert_eq!(rows[1].graphemes.len(), 2); // 'c', 'd'
+    let (lines, graphemes) = do_format("ab\ncd", WrapMode::None);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0].graphemes.len(), 3); // 'a', 'b', eol sentinel
+    assert_eq!(lines[1].graphemes.len(), 2); // 'c', 'd'
     assert_eq!(graphemes.len(), 5);
 }
 
 #[test]
-fn soft_wrap_produces_continuation_rows() {
-    // 10 chars, wrapped at width 4: rows "hell", "o wo", "rld"
-    let (rows, _) = do_format("hello world\n", WrapMode::Soft { width: 4 });
+fn soft_wrap_produces_continuation_display_lines() {
+    // 10 chars, wrapped at width 4: lines "hell", "o wo", "rld"
+    let (lines, _) = do_format("hello world\n", WrapMode::Soft { width: 4 });
     assert!(
-        rows.len() >= 2,
-        "expected at least 2 rows, got {}",
-        rows.len()
+        lines.len() >= 2,
+        "expected at least 2 lines, got {}",
+        lines.len()
     );
     assert_eq!(
-        rows[0].kind,
-        RowKind::LineStart {
+        lines[0].kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0)
         }
     );
     assert!(
-        matches!(rows[1].kind, RowKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
+        matches!(lines[1].kind, DisplayLineKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
     );
 }
 
@@ -146,179 +146,189 @@ fn soft_wrap_splits_at_exact_column_not_whitespace() {
     // "hello world" (11 chars) wrapped at width 7. Soft must split mid-word
     // at column 7 → "hello w" (the 'w' is the 7th grapheme), NOT backtrack
     // to the space at index 5 ("hello").
-    let (rows, graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
-    assert!(rows.len() >= 2);
-    let row0 = &graphemes[rows[0].graphemes.clone()];
+    let (lines, graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
+    assert!(lines.len() >= 2);
+    let line0 = &graphemes[lines[0].graphemes.clone()];
     assert_eq!(
-        row0.len(),
+        line0.len(),
         7,
         "soft wrap must split at the exact wrap column, got {} graphemes",
-        row0.len()
+        line0.len()
     );
     // The 7th grapheme (index 6) must be 'w', proving the split is mid-word.
     assert_eq!(
-        row0[6].char_offset, 6,
-        "last grapheme of row 0 is 'w' at char 6"
+        line0[6].char_offset, 6,
+        "last grapheme of display line 0 is 'w' at char 6"
     );
 }
 
 #[test]
 fn soft_and_word_differ_at_same_width() {
     // Same input/width as above; Word backtracks to the space, keeping it
-    // as row0's last cell ("hello ", 6 graphemes — the space ends the row
-    // it was seen on, not the continuation row's first cell),
+    // as line0's last cell ("hello ", 6 graphemes — the space ends the display line
+    // it was seen on, not the continuation display line's first cell),
     // while Soft splits mid-word ("hello w", 7 graphemes). This is the
     // regression guard: before the fix both produced identical output.
-    let (soft_rows, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
-    let (word_rows, word_graphemes) = do_format("hello world", WrapMode::Word { width: 7 });
-    let soft_row0 = &soft_graphemes[soft_rows[0].graphemes.clone()];
-    let word_row0 = &word_graphemes[word_rows[0].graphemes.clone()];
+    let (soft_lines, soft_graphemes) = do_format("hello world", WrapMode::Soft { width: 7 });
+    let (word_lines, word_graphemes) = do_format("hello world", WrapMode::Word { width: 7 });
+    let soft_line0 = &soft_graphemes[soft_lines[0].graphemes.clone()];
+    let word_line0 = &word_graphemes[word_lines[0].graphemes.clone()];
     assert_ne!(
-        soft_row0.len(),
-        word_row0.len(),
-        "soft and word must differ; soft row0 = {}, word row0 = {}",
-        soft_row0.len(),
-        word_row0.len()
+        soft_line0.len(),
+        word_line0.len(),
+        "soft and word must differ; soft line0 = {}, word line0 = {}",
+        soft_line0.len(),
+        word_line0.len()
     );
     assert_eq!(
-        word_row0.len(),
+        word_line0.len(),
         6,
-        "word wrap backtracks to the space, which stays on row0 → \"hello \""
+        "word wrap backtracks to the space, which stays on line0 → \"hello \""
     );
     assert_eq!(
-        soft_row0.len(),
+        soft_line0.len(),
         7,
         "soft wrap splits mid-word → \"hello w\""
     );
 }
 
 #[test]
-fn soft_wrap_defers_wide_char_whole_to_next_row_when_it_would_straddle_column() {
+fn soft_wrap_defers_wide_char_whole_to_next_display_line_when_it_would_straddle_column() {
     // width=5: "abcd" fills cols 0..4 (current_display_col=4). The next grapheme
     // '中' (CJK, display width 2) would need cols 4..6, straddling the
     // wrap column — `maybe_wrap` checks *before* placing a grapheme, so
-    // it must defer '中' whole to the next row rather than splitting its
-    // two display cells across rows.
-    let (rows, graphemes) = do_format("abcd\u{4e2d}ef", WrapMode::Soft { width: 5 });
-    assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
+    // it must defer '中' whole to the next display line rather than splitting its
+    // two display cells across lines.
+    let (lines, graphemes) = do_format("abcd\u{4e2d}ef", WrapMode::Soft { width: 5 });
+    assert_eq!(lines.len(), 2, "must wrap into exactly 2 lines");
 
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0.len(), 4, "row 0 holds only \"abcd\", not a split '中'");
-    assert_eq!(row0[3].char_offset, 3, "row 0's last grapheme is 'd'");
-
-    let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
-    assert_eq!(row1[0].char_offset, 4, "row 1 starts with '中'");
-    assert_eq!(row1[0].width, 2, "'中' keeps its full display width");
+    let line0 = &graphemes[lines[0].graphemes.clone()];
     assert_eq!(
-        row1[0].display_col,
+        line0.len(),
+        4,
+        "display line 0 holds only \"abcd\", not a split '中'"
+    );
+    assert_eq!(
+        line0[3].char_offset, 3,
+        "display line 0's last grapheme is 'd'"
+    );
+
+    let line1 = &graphemes[lines[1].graphemes.clone()];
+    assert_eq!(line1.len(), 4, "'中' + its width continuation + 'e' + 'f'");
+    assert_eq!(line1[0].char_offset, 4, "display line 1 starts with '中'");
+    assert_eq!(line1[0].width, 2, "'中' keeps its full display width");
+    assert_eq!(
+        line1[0].display_col,
         dc(0),
-        "'中' starts at column 0 of the new row"
+        "'中' starts at column 0 of the new display line"
     );
     assert!(
-        matches!(row1[1].content, CellContent::WidthContinuation),
-        "second cell of '中' stays paired with it on the same row"
+        matches!(line1[1].content, CellContent::WidthContinuation),
+        "second cell of '中' stays paired with it on the same display line"
     );
-    assert_eq!(row1[2].char_offset, 5, "'e' follows on row 1");
-    assert_eq!(row1[3].char_offset, 6, "'f' follows on row 1");
+    assert_eq!(line1[2].char_offset, 5, "'e' follows on display line 1");
+    assert_eq!(line1[3].char_offset, 6, "'f' follows on display line 1");
 }
 
 #[test]
-fn soft_wrap_defers_tab_whole_to_next_row_when_it_would_straddle_column() {
+fn soft_wrap_defers_tab_whole_to_next_display_line_when_it_would_straddle_column() {
     // "abcd" fills cols 0..4, tab-stop-aligned, so the tab's full
     // 4-column expansion (cols 4..8) straddles wrap_width=6. Soft wrap
-    // must defer the whole tab to the next row rather than truncating
+    // must defer the whole tab to the next display line rather than truncating
     // its expansion mid-tab. Column 4 keeps the tab tab-stop-aligned
     // both pre- and post-wrap, so this doesn't also exercise the
     // (separate) post-wrap width recompute — see
     // `soft_wrap_recomputes_tab_width_at_post_wrap_column` for that.
-    let (rows, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
-    assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
+    let (lines, graphemes) = do_format("abcd\tef", WrapMode::Soft { width: 6 });
+    assert_eq!(lines.len(), 2, "must wrap into exactly 2 lines");
 
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0.len(), 4, "row 0 holds only \"abcd\"");
+    let line0 = &graphemes[lines[0].graphemes.clone()];
+    assert_eq!(line0.len(), 4, "display line 0 holds only \"abcd\"");
 
-    let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row1.len(), 3, "tab + 'e' + 'f'");
+    let line1 = &graphemes[lines[1].graphemes.clone()];
+    assert_eq!(line1.len(), 3, "tab + 'e' + 'f'");
     assert_eq!(
-        row1[0].display_col,
+        line1[0].display_col,
         dc(0),
-        "tab starts at column 0 of the new row"
+        "tab starts at column 0 of the new display line"
     );
-    assert_eq!(row1[0].width, 4, "tab keeps its full 4-column expansion");
-    assert_eq!(row1[1].char_offset, 5, "'e' follows the tab");
-    assert_eq!(row1[2].char_offset, 6, "'f' follows 'e'");
+    assert_eq!(line1[0].width, 4, "tab keeps its full 4-column expansion");
+    assert_eq!(line1[1].char_offset, 5, "'e' follows the tab");
+    assert_eq!(line1[2].char_offset, 6, "'f' follows 'e'");
 }
 
 #[test]
 fn soft_wrap_recomputes_tab_width_at_post_wrap_column() {
     // Pre-wrap col=2 ("ab"): the tab would need cols 2..4 there (width 2,
     // its distance to the next tab stop from col 2). Deferred to a new
-    // row, it starts at col 0 instead and must expand its full 4-column
+    // display line, it starts at col 0 instead and must expand its full 4-column
     // tab stop — not keep the stale pre-wrap width of 2.
-    let (rows, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
-    assert!(rows.len() >= 2, "tab must overflow onto a new row");
-    let row1 = &graphemes[rows[1].graphemes.clone()];
+    let (lines, graphemes) = do_format("ab\tc", WrapMode::Soft { width: 3 });
+    assert!(
+        lines.len() >= 2,
+        "tab must overflow onto a new display line"
+    );
+    let line1 = &graphemes[lines[1].graphemes.clone()];
     assert_eq!(
-        row1[0].display_col,
+        line1[0].display_col,
         dc(0),
-        "tab starts at column 0 of the new row"
+        "tab starts at column 0 of the new display line"
     );
     assert_eq!(
-        row1[0].width, 4,
+        line1[0].width, 4,
         "tab must expand its full post-wrap tab stop (4), not the stale pre-wrap width (2)"
     );
 }
 
 #[test]
-fn soft_wrap_exact_fit_row_wraps_the_eol_sentinel_to_a_continuation_row() {
+fn soft_wrap_exact_fit_display_line_wraps_the_eol_sentinel_to_a_continuation_display_line() {
     // "abcde\n" wrapped at width 5 fits exactly, so no content wrap
     // triggers — but the EOL sentinel needs a column of its own, and there
-    // isn't one left on a row that's already full. It wraps the same way
-    // any other cell that wouldn't fit does: onto a fresh continuation row,
-    // at that row's column 0, rather than landing one column past the
+    // isn't one left on a display line that's already full. It wraps the same way
+    // any other cell that wouldn't fit does: onto a fresh continuation display line,
+    // at that display line's column 0, rather than landing one column past the
     // pane's own right edge.
     //
-    // Row 2 here is the trailing empty ropey line's own sentinel (same
-    // as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`),
+    // Display line 2 here is the trailing empty ropey line's own sentinel
+    // (same as plain "hello\n" in `eol_sentinel_emitted_on_non_empty_line`),
     // not a further continuation of line 0.
-    let (rows, graphemes) = do_format("abcde\n", WrapMode::Soft { width: 5 });
+    let (lines, graphemes) = do_format("abcde\n", WrapMode::Soft { width: 5 });
     assert_eq!(
-        rows.len(),
+        lines.len(),
         3,
-        "line 0's row + its wrapped sentinel row + the phantom trailing line"
+        "line 0's own display line + its wrapped sentinel display line + line 1's display line"
     );
     assert_eq!(
-        rows[0].kind,
-        RowKind::LineStart {
+        lines[0].kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0)
         }
     );
     assert_eq!(
-        rows[1].kind,
-        RowKind::Wrap {
+        lines[1].kind,
+        DisplayLineKind::Wrap {
             line_idx: RopeyLine::new(0),
-            wrap_row: 1
+            wrap_index: 1
         },
-        "the sentinel's row is a continuation of line 0"
+        "the sentinel's display line is a continuation of line 0"
     );
     assert_eq!(
-        rows[2].kind,
-        RowKind::LineStart {
+        lines[2].kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(1)
         }
     );
 
-    let row0 = &graphemes[rows[0].graphemes.clone()];
+    let line0 = &graphemes[lines[0].graphemes.clone()];
     assert_eq!(
-        row0.len(),
+        line0.len(),
         5,
         "exactly the 5 content graphemes, no sentinel"
     );
 
-    let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row1.len(), 1, "the sentinel alone");
-    let sentinel = &row1[0];
+    let line1 = &graphemes[lines[1].graphemes.clone()];
+    assert_eq!(line1.len(), 1, "the sentinel alone");
+    let sentinel = &line1[0];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "sentinel must be Empty"
@@ -326,7 +336,7 @@ fn soft_wrap_exact_fit_row_wraps_the_eol_sentinel_to_a_continuation_row() {
     assert_eq!(
         sentinel.display_col,
         dc(0),
-        "sentinel sits at its own row's first column"
+        "sentinel sits at its own display line's first column"
     );
     assert_eq!(sentinel.char_offset, 5, "sentinel at the \\n char offset");
 }
@@ -347,7 +357,7 @@ fn grapheme_display_cols_are_correct() {
 
 // ── Whitespace indicators ─────────────────────────────────────────────
 
-fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Grapheme>, String) {
+fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayLine>, Vec<Grapheme>, String) {
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
@@ -365,7 +375,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
         );
     }
     (
-        scratch.display_rows,
+        scratch.display_lines,
         scratch.graphemes,
         scratch.virtual_texts,
     )
@@ -389,26 +399,26 @@ fn newline_indicator_all_mode() {
         newline_char: "⏎",
         ..WhitespaceConfig::default()
     };
-    let (rows, graphemes, arena) = do_format_ws("abc\n", ws);
+    let (lines, graphemes, arena) = do_format_ws("abc\n", ws);
     // "abc\n" has 2 ropey lines: "abc\n" (line 0) and "" (line 1, trailing).
     // Line 0: 3 content graphemes + 1 eol sentinel + 1 newline indicator = 5.
     // Line 1: 1 Empty sentinel (eol sentinel for empty trailing line).
-    assert_eq!(rows.len(), 2);
-    let row0_gs = &graphemes[rows[0].graphemes.clone()];
+    assert_eq!(lines.len(), 2);
+    let line0_gs = &graphemes[lines[0].graphemes.clone()];
     assert_eq!(
-        row0_gs.len(),
+        line0_gs.len(),
         5,
         "line 0: 3 content + eol sentinel + newline indicator"
     );
     // Sentinel is at index 3, newline indicator at index 4.
-    let sentinel = &row0_gs[3];
+    let sentinel = &line0_gs[3];
     assert!(
         matches!(sentinel.content, CellContent::Empty),
         "index 3 is the eol sentinel"
     );
     assert_eq!(sentinel.display_col, dc(3));
     assert_eq!(sentinel.char_offset, 3); // char offset of the '\n'
-    let nl_indicator = &row0_gs[4];
+    let nl_indicator = &line0_gs[4];
     assert_eq!(cell_text(&arena, &nl_indicator.content), "⏎");
     assert_eq!(nl_indicator.display_col, dc(3));
 }
@@ -594,111 +604,115 @@ fn tab_indicator_trailing_mode_interior() {
 
 #[test]
 fn word_wrap_breaks_at_whitespace() {
-    // "ab cd ef" with width 5: "ab cd" fits, then "ef" on next row.
-    let (rows, graphemes) = do_format("ab cd ef", WrapMode::Word { width: 5 });
-    assert!(rows.len() >= 2);
+    // "ab cd ef" with width 5: "ab cd" fits, then "ef" on next display line.
+    let (lines, graphemes) = do_format("ab cd ef", WrapMode::Word { width: 5 });
+    assert!(lines.len() >= 2);
     assert_eq!(
-        rows[0].kind,
-        RowKind::LineStart {
+        lines[0].kind,
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0)
         }
     );
     assert!(
-        matches!(rows[1].kind, RowKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
+        matches!(lines[1].kind, DisplayLineKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
     );
-    // The first row must not contain 'e' or 'f'.
-    let row0_graphemes = &graphemes[rows[0].graphemes.clone()];
-    assert!(row0_graphemes.len() <= 5);
+    // The first display line must not contain 'e' or 'f'.
+    let line0_graphemes = &graphemes[lines[0].graphemes.clone()];
+    assert!(line0_graphemes.len() <= 5);
 }
 
 #[test]
-fn word_wrap_space_ends_previous_row_not_starts_continuation() {
+fn word_wrap_space_ends_previous_display_line_not_starts_continuation() {
     // "a b" at width 2 (a boundary case): 'a' fits at col0; the space
     // fits exactly at col1 (current_display_col becomes 2); 'b' then overflows
     // (2+1>2), backtracking to the space. The space (char offset 1) must
-    // end row0 ("a "), not become row1's leading cell — splitting so the
-    // new row would start with the space, rather than after it, was the
+    // end line0 ("a "), not become line1's leading cell — splitting so the
+    // new display line would start with the space, rather than after it, was the
     // bug. Independent oracle: char_offset is the input's own char index,
     // computed by hand from "a b" (a=0, space=1, b=2), not derived from
     // any wrap-logic internals.
-    let (rows, graphemes) = do_format("a b", WrapMode::Word { width: 2 });
-    assert_eq!(rows.len(), 2, "must wrap into exactly 2 rows");
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    let row1 = &graphemes[rows[1].graphemes.clone()];
-    assert_eq!(row0.len(), 2, "row0 is \"a \" (a + trailing space)");
-    assert_eq!(row0[0].char_offset, 0, "row0[0] is 'a'");
-    assert_eq!(row0[1].char_offset, 1, "row0[1] is the space");
-    assert_eq!(row1.len(), 1, "row1 is \"b\" only");
-    assert_eq!(row1[0].char_offset, 2, "row1[0] is 'b'");
+    let (lines, graphemes) = do_format("a b", WrapMode::Word { width: 2 });
+    assert_eq!(lines.len(), 2, "must wrap into exactly 2 lines");
+    let line0 = &graphemes[lines[0].graphemes.clone()];
+    let line1 = &graphemes[lines[1].graphemes.clone()];
+    assert_eq!(line0.len(), 2, "line0 is \"a \" (a + trailing space)");
+    assert_eq!(line0[0].char_offset, 0, "line0[0] is 'a'");
+    assert_eq!(line0[1].char_offset, 1, "line0[1] is the space");
+    assert_eq!(line1.len(), 1, "line1 is \"b\" only");
+    assert_eq!(line1[0].char_offset, 2, "line1[0] is 'b'");
 }
 
 #[test]
-fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_row() {
+fn word_wrap_keeps_a_two_column_tabs_continuation_cell_on_its_own_display_line() {
     // "ab\tXXXXXXXXXXXX" at width 10, tab_width 4: the tab at display col 2
     // expands to columns 2-3 (advance 2, so it also gets a
     // `WidthContinuation` cell like a CJK character does). Word wrap
     // backtracks to the last whitespace boundary on overflow — that boundary
     // must include the tab's continuation cell, not just the tab's own cell,
-    // or the continuation strands itself as the next row's first cell while
-    // its primary stays behind on the previous row.
-    let (rows, graphemes) = do_format("ab\tXXXXXXXXXXXX", WrapMode::Word { width: 10 });
-    assert!(rows.len() >= 2, "the line must wrap");
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    let row1 = &graphemes[rows[1].graphemes.clone()];
+    // or the continuation strands itself as the next display line's first cell while
+    // its primary stays behind on the previous display line.
+    let (lines, graphemes) = do_format("ab\tXXXXXXXXXXXX", WrapMode::Word { width: 10 });
+    assert!(lines.len() >= 2, "the line must wrap");
+    let line0 = &graphemes[lines[0].graphemes.clone()];
+    let line1 = &graphemes[lines[1].graphemes.clone()];
 
-    let (tab_idx, _) = row0
+    let (tab_idx, _) = line0
         .iter()
         .enumerate()
         .find(|(_, g)| matches!(g.content, CellContent::TabFill))
-        .expect("the tab's own TabFill cell must be on row0");
+        .expect("the tab's own TabFill cell must be on line0");
     assert!(
-        tab_idx + 1 < row0.len()
-            && matches!(row0[tab_idx + 1].content, CellContent::WidthContinuation),
-        "the tab's WidthContinuation cell must stay on row0, right after the tab"
+        tab_idx + 1 < line0.len()
+            && matches!(line0[tab_idx + 1].content, CellContent::WidthContinuation),
+        "the tab's WidthContinuation cell must stay on line0, right after the tab"
     );
     assert!(
-        !matches!(row1[0].content, CellContent::WidthContinuation),
-        "row1 must not start with the tab's stranded continuation cell"
+        !matches!(line1[0].content, CellContent::WidthContinuation),
+        "line1 must not start with the tab's stranded continuation cell"
     );
 }
 
 #[test]
-fn placeholder_wraps_whole_to_a_new_row_when_it_would_straddle_the_wrap_boundary() {
-    // "abc" fills display cols 0-2 of a width-6 row, leaving 3 columns —
+fn placeholder_wraps_whole_to_a_new_display_line_when_it_would_straddle_the_wrap_boundary() {
+    // "abc" fills display cols 0-2 of a width-6 display line, leaving 3 columns —
     // not the 6 a zero-width space's `<200b>` placeholder needs (6 chars,
     // `needs_placeholder` reports it via its own byte length). `maybe_wrap`
     // sees the placeholder's real width before it's ever split into cells,
-    // so it must move the whole thing to a fresh row rather than letting it
+    // so it must move the whole thing to a fresh display line rather than letting it
     // straddle the boundary.
-    let (rows, graphemes) = do_format("abc\u{200b}", WrapMode::Soft { width: 6 });
-    assert!(rows.len() >= 2, "the line must wrap before the placeholder");
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    let row1 = &graphemes[rows[1].graphemes.clone()];
+    let (lines, graphemes) = do_format("abc\u{200b}", WrapMode::Soft { width: 6 });
     assert!(
-        row0.iter()
-            .all(|g| !matches!(g.content, CellContent::Placeholder { .. })),
-        "the placeholder must not be split onto row0"
+        lines.len() >= 2,
+        "the line must wrap before the placeholder"
     );
-    let ph = row1
+    let line0 = &graphemes[lines[0].graphemes.clone()];
+    let line1 = &graphemes[lines[1].graphemes.clone()];
+    assert!(
+        line0
+            .iter()
+            .all(|g| !matches!(g.content, CellContent::Placeholder { .. })),
+        "the placeholder must not be split onto line0"
+    );
+    let ph = line1
         .first()
-        .expect("row1 must have at least the placeholder");
+        .expect("line1 must have at least the placeholder");
     assert!(matches!(ph.content, CellContent::Placeholder { .. }));
     assert_eq!(
         ph.display_col,
         dc(0),
-        "wrapped placeholder starts at its new row's own column 0"
+        "wrapped placeholder starts at its new display line's own column 0"
     );
 }
 
 #[test]
 fn indent_wrap_continuation_starts_at_indent_display_col() {
     // "    long" with 4 spaces of indent (depth=1, tab_width=4), width=6.
-    // First row: "    lo", continuation row starts at display col 4.
-    let (rows, graphemes) = do_format("    long text here", WrapMode::Indent { width: 6 });
-    assert!(rows.len() >= 2);
-    let wrap_row_graphemes = &graphemes[rows[1].graphemes.clone()];
-    // The first grapheme on the continuation row should be at display col 4 (indent level).
-    assert_eq!(wrap_row_graphemes[0].display_col, dc(4));
+    // First display line: "    lo", continuation display line starts at display col 4.
+    let (lines, graphemes) = do_format("    long text here", WrapMode::Indent { width: 6 });
+    assert!(lines.len() >= 2);
+    let wrap_line_graphemes = &graphemes[lines[1].graphemes.clone()];
+    // The first grapheme on the continuation display line should be at display col 4 (indent level).
+    assert_eq!(wrap_line_graphemes[0].display_col, dc(4));
 }
 
 // ── CJK double-width ─────────────────────────────────────────────────
@@ -745,7 +759,7 @@ fn do_format_windowed(
     text: &str,
     wrap_mode: WrapMode,
     h_window: Option<Range<DisplayLineCol>>,
-) -> (Vec<DisplayRow>, Vec<Grapheme>) {
+) -> (Vec<DisplayLine>, Vec<Grapheme>) {
     let rope = Rope::from_str(text);
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
@@ -763,7 +777,7 @@ fn do_format_windowed(
             &mut scratch,
         );
     }
-    (scratch.display_rows, scratch.graphemes)
+    (scratch.display_lines, scratch.graphemes)
 }
 
 #[test]
@@ -772,8 +786,8 @@ fn long_line_no_wrap_clips_to_window_without_panic() {
     // (`current_display_col`) long before reaching the end. With a window of
     // [0, 80+slack) only a small prefix should be pushed.
     let text: String = "a".repeat(70_000);
-    let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(dc(0)..dc(80)));
-    assert_eq!(rows.len(), 1);
+    let (lines, graphemes) = do_format_windowed(&text, WrapMode::None, Some(dc(0)..dc(80)));
+    assert_eq!(lines.len(), 1);
     assert!(
         graphemes.len() <= 90,
         "expected a small clipped prefix, got {} graphemes",
@@ -790,8 +804,9 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
     // (independent oracle) for every grapheme actually emitted around the
     // window.
     let text: String = "a".repeat(70_000);
-    let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, Some(dc(65_000)..dc(65_080)));
-    assert_eq!(rows.len(), 1);
+    let (lines, graphemes) =
+        do_format_windowed(&text, WrapMode::None, Some(dc(65_000)..dc(65_080)));
+    assert_eq!(lines.len(), 1);
     assert!(!graphemes.is_empty(), "window should still emit graphemes");
     for g in &graphemes {
         assert_eq!(
@@ -807,10 +822,10 @@ fn long_line_no_wrap_window_scrolled_right_has_correct_display_cols() {
 // ── Inline-insert char_offset partition invariant ─────────────────────
 
 #[test]
-fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
-    // Inserts at several offsets, including one at byte 0 (row-start) and
-    // one past the last real char (trailing). `resolve_grapheme_display_col`'s
-    // partition_point requires the whole row sorted by char_offset.
+fn display_line_char_offsets_are_non_decreasing_with_inline_inserts() {
+    // Inserts at several offsets, including one at byte 0 (display-line-start)
+    // and one past the last real char (trailing). `resolve_grapheme_display_col`'s
+    // partition_point requires the whole display line sorted by char_offset.
     let rope = Rope::from_str("abcdef");
     let inserts = vec![
         InlineInsert {
@@ -846,7 +861,7 @@ fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
             .graphemes
             .windows(2)
             .all(|w| w[0].char_offset <= w[1].char_offset),
-        "char_offset must be non-decreasing across the row: {:?}",
+        "char_offset must be non-decreasing across the display line: {:?}",
         scratch
             .graphemes
             .iter()
@@ -961,7 +976,7 @@ fn control_characters_in_an_inline_insert_render_as_their_codepoint() {
     // ": \tFoo\nBar" — cols 0,1 are ": ", the tab at col 2 runs to the next
     // stop (4) and so occupies 2 columns, which earns it a
     // `WidthContinuation` like any other width-2 cell (see
-    // `rows::tests::render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop`).
+    // `display_lines::tests::render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop`).
     // "Foo" then occupies 4..7, and the `\n` renders as `<a>` from col 7.
     let tab_cell = insert_cells[2];
     assert_eq!(tab_cell.display_col, dc(2));
@@ -1119,7 +1134,7 @@ fn an_invisible_cluster_in_an_inline_insert_renders_as_its_codepoint() {
 fn wide_grapheme_in_an_inline_insert_gets_a_width_continuation_cell() {
     // A double-width cluster in an inlay hint must emit the same
     // primary-plus-continuation pair a real buffer grapheme does: the second
-    // cell is what makes that column addressable (`RowMap`'s
+    // cell is what makes that column addressable (`DisplayLineMap`'s
     // `NearestContent`) and styled with the first (`style`'s continuation
     // arm). Without it the two columns of one glyph disagree.
     let scratch = format_with_insert("x", 0, "漢");
@@ -1194,8 +1209,8 @@ fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
     // index, never saturating at `u16::MAX` (65,535). Independent oracle:
     // every char is 1 column wide, so display_col == index.
     let text: String = "a".repeat(70_000);
-    let (rows, graphemes) = do_format_windowed(&text, WrapMode::None, None);
-    assert_eq!(rows.len(), 1);
+    let (lines, graphemes) = do_format_windowed(&text, WrapMode::None, None);
+    assert_eq!(lines.len(), 1);
     assert_eq!(graphemes.len(), 70_000, "no window: every char is scanned");
     assert_eq!(
         graphemes.last().unwrap().display_col,
@@ -1208,51 +1223,55 @@ fn no_window_caller_reaches_true_column_past_former_u16_ceiling() {
 fn wrapping_modes_unaffected_by_h_window_none() {
     // Regression: passing None (the only value wrapping modes ever get)
     // must reproduce the existing wrap test's output exactly.
-    let (rows, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
-    let row0 = &graphemes[rows[0].graphemes.clone()];
-    assert_eq!(row0.len(), 7, "soft wrap still splits mid-word at column 7");
+    let (lines, graphemes) = do_format_windowed("hello world", WrapMode::Soft { width: 7 }, None);
+    let line0 = &graphemes[lines[0].graphemes.clone()];
+    assert_eq!(
+        line0.len(),
+        7,
+        "soft wrap still splits mid-word at column 7"
+    );
 }
 
-/// A virtual row far wider than any ordinary one — a provider emitting a
+/// A virtual display line far wider than any ordinary one — a provider emitting a
 /// pathological string — must not pin its capacity in the pane's scratch for
 /// the rest of the session. The frame boundary is where that is given back;
-/// `clear` alone (run before laying out *each* row, and followed immediately
+/// `clear` alone (run before laying out *each* display line, and followed immediately
 /// by filling it again) deliberately does not shrink.
 #[test]
-fn clear_and_shrink_reclaims_an_oversized_virtual_row() {
-    let mut vrow = VirtualRowScratch::new();
-    vrow.texts.push_str(&"x".repeat(50_000));
-    let grown = vrow.texts.capacity();
+fn clear_and_shrink_reclaims_an_oversized_virtual_display_line() {
+    let mut vline = VirtualLineScratch::new();
+    vline.texts.push_str(&"x".repeat(50_000));
+    let grown = vline.texts.capacity();
     assert!(grown >= 50_000, "sanity: the push must have grown it");
 
-    vrow.clear();
+    vline.clear();
     assert_eq!(
-        vrow.texts.capacity(),
+        vline.texts.capacity(),
         grown,
         "clear runs mid-frame before an immediate refill — shrinking there \
          would only force a re-grow"
     );
 
-    vrow.clear_and_shrink();
+    vline.clear_and_shrink();
     assert!(
-        vrow.texts.capacity() < grown,
+        vline.texts.capacity() < grown,
         "the frame boundary must hand back a pathologically grown buffer"
     );
 }
 
 /// Below the ceiling, the scratch keeps its capacity across frames — the
-/// whole point of holding one per pane rather than allocating per row.
+/// whole point of holding one per pane rather than allocating per display line.
 #[test]
-fn clear_and_shrink_keeps_an_ordinary_virtual_row() {
-    let mut vrow = VirtualRowScratch::new();
-    vrow.texts.push_str(&"x".repeat(200));
-    let grown = vrow.texts.capacity();
+fn clear_and_shrink_keeps_an_ordinary_virtual_display_line() {
+    let mut vline = VirtualLineScratch::new();
+    vline.texts.push_str(&"x".repeat(200));
+    let grown = vline.texts.capacity();
 
-    vrow.clear_and_shrink();
+    vline.clear_and_shrink();
 
     assert_eq!(
-        vrow.texts.capacity(),
+        vline.texts.capacity(),
         grown,
-        "an ordinary virtual row's capacity must survive the frame boundary"
+        "an ordinary virtual display line's capacity must survive the frame boundary"
     );
 }

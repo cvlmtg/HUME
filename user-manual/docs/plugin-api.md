@@ -178,7 +178,7 @@ Not LSP-specific — any plugin can populate these — but LSP diagnostics and i
 | `(set-virtual-lines! source bid lines)` | Replace `source`'s virtual (ghost) lines for `bid` — `lines`: list of hashmaps with `'line`/`'text` required, optional `'anchor` (`'before`/`'after`), `'scope`, `'segments` |
 | `(set-eol-text! source bid lines)` | Replace `source`'s end-of-line text for `bid` — `lines`: list of `(line text scope)` |
 | `(set-extra-highlights! source bid spans)` | Replace `source`'s extra syntax highlights for `bid` — `spans`: list of `(start end scope)` char ranges |
-| `(set-line-backgrounds! source bid entries)` | Replace `source`'s full-row background tints for `bid` — `entries`: list of `(line scope)` |
+| `(set-line-backgrounds! source bid entries)` | Replace `source`'s full-line background tints for `bid` — `entries`: list of `(line scope)` |
 
 `diagnostics-for-buffer` and the hook that feeds it are shown in [Hooks](plugins.md#hooks). A sign source's gutter slot is reserved the first time it registers for a buffer — even before placing any sign — which is what keeps the gutter's width stable as signs come and go; there's no `unregister-sign-source!`, and re-registering the same `name` for the same `bid` just replaces its priority. Line backgrounds have no priority: same-line entries from different sources break ties by source name instead.
 

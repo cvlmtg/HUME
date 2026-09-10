@@ -41,7 +41,7 @@ new_key_type! {
 /// The Format stage's buffers are not here — they live on each
 /// [`Pane`], one [`crate::format::LineFormat`] per line
 /// visited, since sharing them between every walk of a pane is the whole
-/// point of that store (see `rows::line_store`'s module doc).
+/// point of that store (see `display_lines::line_store`'s module doc).
 pub struct FrameScratch {
     /// Buffers for the Style stage (Stage 3).
     pub style: StyleScratch,
@@ -105,7 +105,7 @@ pub struct RenderContext {
     /// Where the focused pane's cursor landed within the pane's content area
     /// (pane-relative, *before* the gutter and pane origin are added — not a
     /// terminal-absolute screen cell), resolved by the scroll step that
-    /// already had the row map open. `None` until that step runs, and reset
+    /// already had the display-line map open. `None` until that step runs, and reset
     /// every frame — a `RenderContext` outlives the frame that filled it, so
     /// a leftover value must never read as the current one. Callers that need
     /// the real screen cell add the gutter width and the pane rect's origin
@@ -244,7 +244,7 @@ impl EngineView {
     /// them.
     ///
     /// Once per frame, and a correctness requirement rather than hygiene: see
-    /// `rows::line_store`'s module doc. A pane created since the last frame
+    /// `display_lines::line_store`'s module doc. A pane created since the last frame
     /// starts empty, which is what a rewind would produce anyway, so there is
     /// no ordering hazard against `:split`.
     pub fn begin_frame(&mut self) {
@@ -452,9 +452,10 @@ impl EngineView {
             collect_seam_arms(&ctx.seams, &mut ctx.seam_arms);
 
             // `theme.default` (ui.text's color) is the base layer here for the
-            // same reason it's the base for a content row (`style_row`'s
-            // `row_base`) and a virtual row (`base_scope` in
-            // `pane_render.rs`): a scope that leaves `fg` unset should fall
+            // same reason it's the base for a content display line
+            // (`style_display_line`'s `base_style`) and a virtual display
+            // line (`base_scope` in `pane_render.rs`): a scope that leaves
+            // `fg` unset should fall
             // back to the theme's own base text color everywhere, not just on
             // some rendered surfaces — the seam is chrome HUME draws itself,
             // it isn't Helix's own border (which leaves an unset fg as
@@ -462,7 +463,7 @@ impl EngineView {
             // it to be the one exception.
             //
             // Only `ui.background`'s *background* is layered, never its whole
-            // style — the same constraint `style_row`'s Tier 4 and
+            // style — the same constraint `style_display_line`'s Tier 4 and
             // `render.rs`'s `row_bg` apply. A background scope has no business
             // contributing a foreground, and letting it would give a theme
             // that sets `ui.background = { fg, bg }` a seam glyph in that fg
@@ -536,10 +537,10 @@ impl EngineView {
 
 /// Per-pane render settings supplied by the editor at render time.
 ///
-/// `format` bundles everything the render pass's `RowMap` resolves a line's
+/// `format` bundles everything the render pass's `DisplayLineMap` resolves a line's
 /// layout from — wrap mode, tab width, whitespace config, buffer identity —
-/// as one [`FormatKey`](crate::rows::line_store::FormatKey), unresolved (the
-/// pane's own `content_width` resolves it, inside `RowMap::new`). `tab_width`
+/// as one [`FormatKey`](crate::display_lines::line_store::FormatKey), unresolved (the
+/// pane's own `content_width` resolves it, inside `DisplayLineMap::new`). `tab_width`
 /// and `whitespace` inside it are document facts — resolved from per-buffer
 /// overrides against global settings, identical for every pane viewing the
 /// same buffer — while `wrap_mode` is genuinely per-pane (two panes on the
@@ -547,17 +548,17 @@ impl EngineView {
 /// pins one); the editor resolves pane override → buffer override → global
 /// default (see `commands::effective_wrap_mode`) and folds the result into
 /// the same key alongside the document facts, since the render pass's
-/// `RowMap` and the scroll pass's must resolve a bit-identical key to share
+/// `DisplayLineMap` and the scroll pass's must resolve a bit-identical key to share
 /// this pane's line store — see `FormatKey`'s own doc. `mode` and
 /// `cursor_is_block` are both per-focus facts rather than document facts —
 /// see `Editor::resolve_pane_settings` (`hume-editor`) for exactly what each
 /// resolves to and why. `mode` picks which cursor-scope ladder applies;
-/// `cursor_is_block` gates both selection heads in `style::style_row`'s
+/// `cursor_is_block` gates both selection heads in `style::style_display_line`'s
 /// Tier 1/0.
 #[derive(Copy, Clone)]
 pub struct PaneRenderSettings {
     pub mode: EditorMode,
-    pub format: crate::rows::line_store::FormatKey,
+    pub format: crate::display_lines::line_store::FormatKey,
     pub show_indent_guides: bool,
     pub cursor_is_block: bool,
 }

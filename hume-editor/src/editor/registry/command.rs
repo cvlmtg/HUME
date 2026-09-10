@@ -173,7 +173,7 @@ pub(in crate::editor) type EditorCmdFn = fn(
 /// family — the four `w`/`W`/`b`/`B` motions and six word-tagged selections —
 /// gets a second body shape here in the registry. The four motions
 /// specifically stay `Motion` rather than joining `select-word-nearest-on-line`
-/// as an `EditorCmd` (which also resolves settings, via a `RowMap`) because
+/// as an `EditorCmd` (which also resolves settings, via a `DisplayLineMap`) because
 /// `MappableCommand::meta` only ever sets `CmdMeta::is_motion` true for the
 /// `Motion` variant, and Move mode's jump-list/dot-repeat handling depends on
 /// that flag.

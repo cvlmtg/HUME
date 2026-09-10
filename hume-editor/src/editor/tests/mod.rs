@@ -52,10 +52,10 @@ fn editor_from_kitty(input: &str) -> Editor {
     ed
 }
 
-/// Pin the focused pane to `WrapMode::None`, so a display row is a buffer
+/// Pin the focused pane to `WrapMode::None`, so a display line is a buffer
 /// line regardless of the global default, which wraps (`DEFAULT_WRAP_STYLE`,
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
-/// buffer-line columns or viewport rows rather than display-row wrapping.
+/// buffer-line columns or viewport rows rather than display-line wrapping.
 fn pin_no_wrap(ed: &mut Editor) {
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::None),

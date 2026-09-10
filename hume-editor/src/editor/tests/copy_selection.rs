@@ -2,7 +2,7 @@
 //! selection onto the lines above/below it, landing each copy on the
 //! *display* column of the original (`hume-editor::editor::visual_move::
 //! copy_selection_vertically`) rather than a raw char offset — the same
-//! `RowMap` authority `9j`/`9k` use, and why these tests live here instead
+//! `DisplayLineMap` authority `9j`/`9k` use, and why these tests live here instead
 //! of in `hume-ops`'s pure `(&BufferText, SelectionSet) -> SelectionSet`
 //! suite.
 //!
@@ -14,7 +14,7 @@ use super::*;
 use pretty_assertions::assert_eq;
 
 /// `editor_from` plus `pin_no_wrap` — `9j`/`9k`-style buffer-line placement,
-/// not a display-row walk.
+/// not a display-line walk.
 fn copy_test_editor(initial: &str) -> Editor {
     let mut ed = editor_from(initial);
     pin_no_wrap(&mut ed);
@@ -32,7 +32,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
 
 /// Build an editor from `initial`, run the copy command, and compare the
 /// resulting buffer+selections against `expected` — the `Editor`-driven
-/// counterpart of `assert_state!` for a command whose `RowMap` dependency
+/// counterpart of `assert_state!` for a command whose `DisplayLineMap` dependency
 /// keeps it out of `hume-test-fixtures`' pure-fn signature. Used for cases
 /// that don't need to distinguish which selection ends up primary.
 fn assert_copy_state(initial: &str, down: bool, count: usize, expected: &str) {
@@ -283,16 +283,16 @@ fn copy_next_line_preserves_display_column_across_a_wrapped_source_line() {
     use hume_editing::selection::Selection;
 
     // Reuses the fixture from `visual_move.rs`'s
-    // `wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_column`:
-    // line 0 and line 1 are both long enough to wrap into two display rows
+    // `wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as_a_line_column`:
+    // line 0 and line 1 are both long enough to wrap into two display lines
     // each under `Indent { width: 76 }`. `copy_selection_vertically` always
-    // measures in the buffer-line domain (`line_display_col`/
-    // `char_at_line_display_col`), which sums across a line's own wrapped
-    // rows rather than reading whichever row the cursor happens to sit on —
-    // so with the cursor on line 0's second display row (buffer-line col
-    // 79), the copy must land on line 1's second display row at the *same*
-    // buffer-line col 79 (char 160), not wherever col 79 counted from line
-    // 1's own row 0 would be.
+    // measures in the buffer-line domain (`buffer_line_col`/
+    // `char_at_buffer_line_col`), which sums across a line's own wrapped
+    // display lines rather than reading whichever display line the cursor
+    // happens to sit on — so with the cursor on line 0's second display
+    // line (buffer-line col 79), the copy must land on line 1's second
+    // display line at the *same* buffer-line col 79 (char 160), not
+    // wherever col 79 counted from line 1's own display line 0 would be.
     let line0: String = "a".repeat(80);
     let line1: String = "b".repeat(100);
     let content = format!("{line0}\n{line1}\n");

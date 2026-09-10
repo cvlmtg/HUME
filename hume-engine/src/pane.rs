@@ -20,11 +20,13 @@ use ropey::Rope;
 pub struct ViewportState {
     /// First fully-visible buffer line.
     pub top_line: ContentLine,
-    /// How many display rows of `top_line`'s visual block — virtual `before`
-    /// rows, the line's own wrap rows, then virtual `after` rows, in that
-    /// order — have already scrolled past. Every row in the block is an
+    /// How many display lines of `top_line`'s visual block — virtual
+    /// `before` lines, the line's own wrap display lines, then virtual
+    /// `after` lines, in that order — have already scrolled past. The
+    /// `slot` half of the `DisplayLinePos { line: top_line, slot:
+    /// top_slot }` this pair encodes. Every display line in the block is an
     /// equally skippable unit; nothing about `before`/`after` is special.
-    pub top_row_offset: u16,
+    pub top_slot: u16,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
     /// column, not a terminal cell — widened past `u16` alongside
     /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
@@ -40,7 +42,7 @@ impl ViewportState {
     pub fn new(width: u16, height: u16) -> Self {
         Self {
             top_line: ContentLine::new(0),
-            top_row_offset: 0,
+            top_slot: 0,
             horizontal_offset: DisplayLineCol::new(0),
             width,
             height,
@@ -59,7 +61,7 @@ impl ViewportState {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ScrollPosition {
     pub top_line: ContentLine,
-    pub top_row_offset: u16,
+    pub top_slot: u16,
     pub horizontal_offset: DisplayLineCol,
 }
 
@@ -81,7 +83,7 @@ pub enum WrapMode {
     Soft { width: u16 },
     /// Break at whitespace boundaries; prefer not to split words (`0` = content width sentinel).
     Word { width: u16 },
-    /// Word wrap + indent continuation rows to match the line's indent level (`0` = content width sentinel).
+    /// Word wrap + indent continuation display lines to match the line's indent level (`0` = content width sentinel).
     Indent { width: u16 },
 }
 
@@ -291,7 +293,7 @@ impl std::fmt::Display for WhitespaceRender {
 
 /// Configuration for whitespace indicator rendering.
 ///
-/// `PartialEq`/`Eq` so it can sit in `rows::line_store`'s scope key — a
+/// `PartialEq`/`Eq` so it can sit in `display_lines::line_store`'s scope key — a
 /// whitespace change alters how a line formats, so a cached format from
 /// before the change must not be served after it.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -356,12 +358,12 @@ pub struct Pane {
     /// [`WrapOverride`]. Read/written through [`Pane::wrap`]/[`Pane::set_wrap`]
     /// rather than directly, mirroring `saved_scrolls`/`remember_scroll`.
     pub wraps: SecondaryMap<BufferId, WrapOverride>,
-    /// What every walk of this pane's display rows has learned about the
-    /// lines it visited — see [`crate::rows::line_store`].
+    /// What every walk of this pane's display lines has learned about the
+    /// lines it visited — see [`crate::display_lines::line_store`].
     ///
     /// Per pane rather than one shared store, because two panes can show the
     /// same buffer at the same width and resolve a bit-identical
-    /// [`FormatKey`](crate::rows::line_store::FormatKey): with nothing naming
+    /// [`FormatKey`](crate::display_lines::line_store::FormatKey): with nothing naming
     /// the pane in that key, one pane's cache hit would skip querying the
     /// other's providers entirely. And *every* pane's scroll step runs before
     /// *any* pane's render pass, so a single store would hold only the last
@@ -370,7 +372,7 @@ pub struct Pane {
     /// On the pane rather than beside it in a `PaneId`-keyed map so its
     /// lifetime *is* the pane's: closing a pane drops its entries, with no
     /// sweep for a future pane-close path to remember.
-    pub line_store: crate::rows::line_store::PaneLineStore,
+    pub line_store: crate::display_lines::line_store::PaneLineStore,
 }
 
 impl Pane {
@@ -391,7 +393,7 @@ impl Pane {
             primary_idx: 0,
             providers: ProviderSet::new(),
             wraps: SecondaryMap::new(),
-            line_store: crate::rows::line_store::PaneLineStore::new(),
+            line_store: crate::display_lines::line_store::PaneLineStore::new(),
         }
     }
 
@@ -445,7 +447,7 @@ impl Pane {
             self.buffer_id,
             ScrollPosition {
                 top_line: self.viewport.top_line,
-                top_row_offset: self.viewport.top_row_offset,
+                top_slot: self.viewport.top_slot,
                 horizontal_offset: self.viewport.horizontal_offset,
             },
         );
@@ -461,7 +463,7 @@ impl Pane {
     pub fn recall_scroll(&mut self, id: BufferId, last_content_line: ContentLine) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
         self.viewport.top_line = sp.top_line.min(last_content_line);
-        self.viewport.top_row_offset = sp.top_row_offset;
+        self.viewport.top_slot = sp.top_slot;
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }
 

@@ -193,10 +193,10 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
     if text.contains(['\n', '\r']) {
         steel::stop!(Generic =>
             "set-virtual-lines!: 'text must not contain a newline — virtual lines render as a \
-             single row");
+             single line");
     }
     // A tab renders like a real buffer line's tab — the engine expands it to
-    // the next tab stop (`hume_engine::rows::segment_virtual_row`), so
+    // the next tab stop (`hume_engine::display_lines::segment_virtual_line`), so
     // callers no longer need to expand it themselves. Any other unrenderable
     // character (a control character, an invisible one) is left verbatim:
     // `push_virtual_cells` substitutes it with its codepoint placeholder,

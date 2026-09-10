@@ -74,7 +74,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
 }
 
 #[test]
-fn line_background_tint_survives_every_wrap_row_of_a_wrapped_line() {
+fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_snapshot_theme();

@@ -606,7 +606,7 @@ impl EditorState {
     }
 
     /// Everything about a buffer that changes how its lines format, in the
-    /// form `hume_engine::rows::line_store`'s scope key carries it: which
+    /// form `hume_engine::display_lines::line_store`'s scope key carries it: which
     /// buffer, at which content generation, with which decorations.
     ///
     /// The three travel side by side rather than hashed together — the key
@@ -629,7 +629,7 @@ impl EditorState {
     pub(crate) fn buffer_tag(
         &self,
         bid: hume_engine::pipeline::BufferId,
-    ) -> hume_engine::rows::line_store::BufferTag {
+    ) -> hume_engine::display_lines::line_store::BufferTag {
         [
             // Not `{:?}`-formatted: this is a value to compare, not one to
             // show, and `as_ffi` folds the key's index and version — the two
@@ -642,15 +642,15 @@ impl EditorState {
     }
 
     /// Every input `pane`'s line formats depend on, as one
-    /// `hume_engine::rows::line_store::FormatKey`: [`Self::buffer_tag`] for
+    /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::buffer_tag`] for
     /// the buffer it currently views, plus that buffer's effective wrap
     /// mode, tab width and whitespace config — each resolved through the
     /// same override chain (`commands::effective_wrap_mode`,
     /// `BufferOverrides::tab_width`/`whitespace`) every other reader of
     /// these settings goes through.
     ///
-    /// The single composition every `RowMap` in this crate is built from.
-    /// The frame's scroll pass (`commands::pane_row_map`) and its render
+    /// The single composition every `DisplayLineMap` in this crate is built from.
+    /// The frame's scroll pass (`commands::pane_display_lines`) and its render
     /// pass (`frame.rs`'s `resolve_pane_settings`) each call this on `pane`'s
     /// current state, and their sharing that pane's line store depends
     /// entirely on the two resolving a bit-identical key — one function
@@ -659,9 +659,9 @@ impl EditorState {
     pub(crate) fn format_key(
         &self,
         pane: &hume_engine::pane::Pane,
-    ) -> hume_engine::rows::line_store::FormatKey {
+    ) -> hume_engine::display_lines::line_store::FormatKey {
         let doc = self.buffers.get(pane.buffer_id);
-        hume_engine::rows::line_store::FormatKey {
+        hume_engine::display_lines::line_store::FormatKey {
             buffer_tag: self.buffer_tag(pane.buffer_id),
             wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
             tab_width: doc.overrides.tab_width(&self.settings),

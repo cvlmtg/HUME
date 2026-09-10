@@ -3,7 +3,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::visual_move::{VerticalUnit, apply_visual_vertical};
-use super::{current_selections, focused_buffer_id, pane_row_map, viewport};
+use super::{current_selections, focused_buffer_id, pane_display_lines, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -11,7 +11,7 @@ use crate::editor::error::CommandError;
 // Uses `view.height` (or half of it) as the move count rather than the user's
 // numeric prefix. Calls `apply_visual_vertical` directly (not the registry, to
 // avoid a runtime string lookup; not the `cmd_visual_move_*` wrappers, since a
-// scroll count is always a display-row count, never "N buffer lines").
+// scroll count is always a display-line count, never "N buffer lines").
 
 fn scroll_page(
     state: &mut EditorState,
@@ -22,7 +22,7 @@ fn scroll_page(
 ) -> Result<(), CommandError> {
     let height = viewport(state, view).height as usize;
     let count = if half { (height / 2).max(1) } else { height };
-    apply_visual_vertical(state, view, count, down, mode, VerticalUnit::ScreenRow);
+    apply_visual_vertical(state, view, count, down, mode, VerticalUnit::AnyDisplayLine);
     Ok(())
 }
 
@@ -61,13 +61,14 @@ pub(crate) fn cmd_half_page_up(
 
 // ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
 
-fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target_row: usize) {
+fn cmd_view_scroll_to_display_line(state: &mut EditorState, view: &mut EngineView, target_display_line: usize) {
     let cursor_char = current_selections(state, view).primary().head();
     let pid = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
     let key = state.format_key(&view.panes[pid]);
-    let (mut rm, viewport) = pane_row_map(state.buffers.get(buf_id), &mut view.panes[pid], key);
-    super::super::scroll::scroll_cursor_to_row(viewport, &mut rm, cursor_char, target_row);
+    let (mut dlm, viewport) =
+        pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
+    super::super::scroll::scroll_cursor_to_display_line(viewport, &mut dlm, cursor_char, target_display_line);
 }
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by
@@ -77,13 +78,13 @@ fn cmd_view_scroll_to_row(state: &mut EditorState, view: &mut EngineView, target
 /// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
 pub(crate) fn view_center(state: &mut EditorState, view: &mut EngineView) {
     let target = (viewport(state, view).height as usize) / 2;
-    cmd_view_scroll_to_row(state, view, target);
+    cmd_view_scroll_to_display_line(state, view, target);
 }
 
-/// Pin the head at the viewport's top row, like `z k`. Infallible core
+/// Pin the head at the viewport's top display line, like `z k`. Infallible core
 /// shared by [`cmd_view_top`] and `step_align_view`'s `Top` arm.
 pub(crate) fn view_top(state: &mut EditorState, view: &mut EngineView) {
-    cmd_view_scroll_to_row(state, view, 0);
+    cmd_view_scroll_to_display_line(state, view, 0);
 }
 
 pub(crate) fn cmd_view_center(
@@ -113,6 +114,6 @@ pub(crate) fn cmd_view_bottom(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let target = (viewport(state, view).height as usize).saturating_sub(1);
-    cmd_view_scroll_to_row(state, view, target);
+    cmd_view_scroll_to_display_line(state, view, target);
     Ok(())
 }

@@ -395,7 +395,7 @@ pub(crate) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
         .min(pane_rect.right().saturating_sub(width))
 }
 
-/// One wrapped display row's content, as contiguous same-style runs — the
+/// One wrapped popup row's content, as contiguous same-style runs — the
 /// styled counterpart of a `wrap_text` row (a `Vec<StyledRun>` instead of a
 /// bare `String`).
 pub(crate) type StyledRun = (String, ResolvedStyle);

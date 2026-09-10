@@ -5,13 +5,13 @@
 //! styles the grapheme at each selection head.
 //!
 //! Both directions of the screen ↔ buffer mapping are thin consumers of
-//! `hume_engine::rows::RowMap`, so neither can disagree with the renderer
-//! about which display row a position is on.
+//! `hume_engine::display_lines::DisplayLineMap`, so neither can disagree with the renderer
+//! about which display line a position is on.
 
+use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::layout::gutter_width_for_line;
 use hume_engine::pane::ViewportState;
 use hume_engine::providers::GutterColumn;
-use hume_engine::rows::{DisplayColTarget, RowMap};
 use hume_rope::column::DisplayLineCol;
 
 use super::scroll::top_pos;
@@ -32,24 +32,25 @@ use super::scroll::top_pos;
 /// `scroll::ensure_cursor_visible_horizontal`).
 pub(crate) fn content_pos(
     viewport: &ViewportState,
-    rm: &mut RowMap<'_>,
+    dlm: &mut DisplayLineMap<'_>,
     cursor_char: hume_rope::offset::CharOffset,
 ) -> Option<(u16, u16)> {
     let height = viewport.height;
     if height == 0 {
         return None;
     }
-    let (cursor_pos, cursor_display_col) = rm.locate(cursor_char);
-    // Clamp the top the same way `pane_render.rs` does before its row walk:
-    // a write site that doesn't validate `top_row_offset` against the block
-    // it addresses (`recall_scroll`, an LSP jump — see `clamp_viewport_top`'s
-    // doc) can leave it stale for a frame, and walking from the raw address
-    // would disagree with the renderer about which row is on screen.
-    let top = rm.clamp(top_pos(viewport));
+    let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
+    // Clamp the top the same way `pane_render.rs` does before its
+    // display-line walk: a write site that doesn't validate `top_slot`
+    // against the block it addresses (`recall_scroll`, an LSP jump — see
+    // `clamp_viewport_top`'s doc) can leave it stale for a frame, and
+    // walking from the raw address would disagree with the renderer about
+    // which display line is on screen.
+    let top = dlm.clamp(top_pos(viewport));
     // Capping the walk one row short of the viewport's height makes an
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
-    let screen_row = rm.distance(top, cursor_pos, height as usize - 1)?;
+    let screen_row = dlm.distance(top, cursor_pos, height as usize - 1)?;
     Some(place(viewport, cursor_display_col, screen_row))
 }
 
@@ -58,7 +59,7 @@ pub(crate) fn content_pos(
 ///
 /// Split out from [`content_pos`] so the scroll step — which necessarily resolves
 /// both while deciding where to scroll — can produce the same answer without
-/// re-walking the row list. The two must not drift: this is the only place the
+/// re-walking the display-line list. The two must not drift: this is the only place the
 /// horizontal-offset subtraction and the `u16` narrowing happen.
 pub(crate) fn place(
     viewport: &ViewportState,
@@ -100,7 +101,7 @@ pub(crate) fn gutter_width<'a>(
 ///
 /// `gutter_w` is the width of the gutter in terminal columns (from
 /// [`gutter_width`]). Clicks in the gutter return `None`; every other click
-/// resolves, clamped to the document's last row if it lands past the end.
+/// resolves, clamped to the document's last display line if it lands past the end.
 ///
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is
 /// the top-left cell of the pane. `MouseEvent.column`/`.row` are
@@ -112,7 +113,7 @@ pub(crate) fn screen_to_char_offset(
     content_y: u16,
     gutter_w: u16,
     viewport: &ViewportState,
-    rm: &mut RowMap<'_>,
+    dlm: &mut DisplayLineMap<'_>,
 ) -> Option<hume_rope::offset::CharOffset> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
     if content_x < gutter_w {
@@ -125,12 +126,12 @@ pub(crate) fn screen_to_char_offset(
         .horizontal_offset
         .advance((content_x - gutter_w) as u32);
 
-    let top = rm.clamp(top_pos(viewport));
-    let clicked = rm.advance(top, content_y as isize);
+    let top = dlm.clamp(top_pos(viewport));
+    let clicked = dlm.advance(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
-    // the row's last cell rather than its last *content* cell — landing on the
-    // line's `\n`, a real cursor position in HUME's inclusive model.
-    Some(rm.char_at(clicked, display_col, DisplayColTarget::Cell))
+    // the display line's last cell rather than its last *content* cell —
+    // landing on the line's `\n`, a real cursor position in HUME's inclusive model.
+    Some(dlm.char_at(clicked, display_col, DisplayColTarget::Cell))
 }
 
 // ---------------------------------------------------------------------------

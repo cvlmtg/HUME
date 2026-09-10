@@ -172,13 +172,13 @@ pub struct UiScopes {
     /// Secondary selection-head highlight in Insert mode. Named `cursor_insert`
     /// for Helix theme compat. Falls back through `ui.cursor.insert` →
     /// `ui.cursor` → `ui.selection`. Painted only when `cursor-shape-insert` is
-    /// `block` — see the Tier 1/0 comment in `style::style_row`.
+    /// `block` — see the Tier 1/0 comment in `style::style_display_line`.
     pub cursor_insert: ResolvedStyle,
     /// Selection highlight.
     pub selection: ResolvedStyle,
     /// Background tint applied to every grapheme on the primary selection head's line.
     pub cursorline: ResolvedStyle,
-    /// Style for virtual / filler text (tilde rows, virtual lines).
+    /// Style for virtual / filler text (tilde display lines, virtual display lines).
     pub virtual_text: ResolvedStyle,
     /// Indent-guide column markers.
     pub indent_guide: ResolvedStyle,

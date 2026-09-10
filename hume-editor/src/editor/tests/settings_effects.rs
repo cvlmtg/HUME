@@ -681,7 +681,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
 
 /// The focused pane's `cursor_is_block` is exactly "the resolved shape for
 /// the live mode is Block", so flipping the setting flips it — and with it
-/// whether `style_row` paints either selection head at all. An *unfocused*
+/// whether `style_display_line` paints either selection head at all. An *unfocused*
 /// pane is always `true` regardless: no real terminal cursor sits there to
 /// stand in for the painted one, so its heads must be drawn either way.
 #[test]

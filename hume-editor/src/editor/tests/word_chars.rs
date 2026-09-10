@@ -127,7 +127,7 @@ fn select_word_nearest_on_line_follows_word_chars() {
 /// branch selects "bar" alone; losing the sub-row bound absorbs row 0's
 /// trailing space.
 #[test]
-fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_row() {
+fn select_word_nearest_on_line_follows_word_chars_across_a_wrapped_display_line() {
     let mut ed = editor_from("hello world foo-b-[a]>r\n");
     ed.state.settings.word_chars = "-".into();
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {

@@ -334,7 +334,7 @@ pub(crate) fn lookup_plugin_proc(ctx: &mut SteelCtx, name: String) -> SteelResul
 /// `decode(0)` is `None` — the Scheme spelling of "no count typed" (a bare
 /// keypress), since Scheme has no `Option` to pass across the builtin-call
 /// boundary and `0` is otherwise unreachable as an explicit count. `None`
-/// makes `move-down`/`move-up` move by visual row instead of buffer line
+/// makes `move-down`/`move-up` move by visual line instead of buffer line
 /// (see `EditorHost::run_command_sync`); every other native command treats
 /// it the same as `Some(1)`. Negative counts clamp to `Some(1)`; counts above
 /// [`MAX_COUNT`] clamp there — a script has no digit-by-digit accumulator to

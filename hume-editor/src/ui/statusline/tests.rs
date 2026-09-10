@@ -268,7 +268,7 @@ fn position_element_single_line_pads_to_min_field() {
 }
 
 #[test]
-fn position_element_two_digit_row_stays_in_min_field() {
+fn position_element_two_digit_line_stays_in_min_field() {
     // 14 empty lines, then a 3-char line so the cursor lands at line 14, col 3.
     let s = format!("{}abc\n", "\n".repeat(13));
     let head = 13 + 2; // start of line 14 (char 13) + 2 chars ('a','b') before 'c'
@@ -279,7 +279,7 @@ fn position_element_two_digit_row_stays_in_min_field() {
 }
 
 #[test]
-fn position_element_three_digit_row_and_col() {
+fn position_element_three_digit_line_and_col() {
     // 142 empty lines, then a 49-char line (line 143), then 7 more empty
     // lines so the buffer has 150 lines total; cursor lands at line 143, col 49.
     let s = format!("{}{}\n{}", "\n".repeat(142), "a".repeat(49), "\n".repeat(7));
@@ -327,7 +327,7 @@ fn position_element_widens_field_past_1000_lines() {
 }
 
 #[test]
-fn position_element_width_stable_across_row_digit_growth() {
+fn position_element_width_stable_across_line_digit_growth() {
     // Cursor on line 9 vs line 10 must render to the same width, so
     // downstream statusline elements (e.g. FilePath) don't shift.
     let s = "\n".repeat(20);

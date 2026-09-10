@@ -27,7 +27,7 @@ fn zz_centres_cursor_in_viewport() {
         ed.viewport().top_line,
         hume_rope::line::ContentLine::new(13)
     );
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
     // Cursor is unchanged.
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -70,7 +70,7 @@ fn zk_puts_cursor_at_top() {
         ed.viewport().top_line,
         hume_rope::line::ContentLine::new(25)
     );
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
 #[test]
@@ -81,13 +81,13 @@ fn zj_puts_cursor_at_bottom() {
     ed.handle_key(key('j'));
     // height=24, target=23; cursor on line 25 → top_line = 25 - 23 = 2.
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(2));
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
 // ── Wrap mode ─────────────────────────────────────────────────────────────────
 
 #[test]
-fn zz_in_wrap_mode_walks_display_rows() {
+fn zz_in_wrap_mode_walks_display_lines() {
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
@@ -115,11 +115,11 @@ fn zz_in_wrap_mode_walks_display_rows() {
 
     // From (line=1, sub=2), walking backward 2 rows lands at (line=1, sub=0).
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
 #[test]
-fn zk_in_wrap_mode_anchors_cursor_row_at_top() {
+fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
 
@@ -139,9 +139,9 @@ fn zk_in_wrap_mode_anchors_cursor_row_at_top() {
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
 
-    // target_row = 0 → top_line = cursor_line, top_row_offset = cursor_sub.
+    // target_row = 0 → top_line = cursor_line, top_slot = cursor_sub.
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
-    assert_eq!(ed.viewport().top_row_offset, 2);
+    assert_eq!(ed.viewport().top_slot, 2);
 }
 
 // ── Keymap wiring ─────────────────────────────────────────────────────────────

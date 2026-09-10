@@ -275,7 +275,7 @@ pub trait CommandHost {
     /// `command_is_native` (though doing so avoids a wasted lookup).
     ///
     /// `count`: `None` means "as if no count was typed" — for `move-down`/`move-up`
-    /// this selects visual-row movement instead of buffer-line movement (every other
+    /// this selects visual-line movement instead of buffer-line movement (every other
     /// native command treats `None` the same as `Some(1)`). `parse_count_extend`
     /// decodes a Steel-side count of `0` to `None`.
     ///

@@ -10,10 +10,10 @@ pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
 use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
-use crate::providers::{GutterColumn, GutterRowCtx, ProviderId};
+use crate::providers::{GutterColumn, GutterCtx, ProviderId};
 use crate::theme::Theme;
 use crate::types::{
-    CellContent, DisplayRow, EditorMode, Grapheme, ResolvedStyle, RowKind, ScopeId,
+    CellContent, DisplayLine, DisplayLineKind, EditorMode, Grapheme, ResolvedStyle, ScopeId,
 };
 
 // ---------------------------------------------------------------------------
@@ -21,11 +21,11 @@ use crate::types::{
 // ---------------------------------------------------------------------------
 
 /// Glyph drawn at each inner indent-guide tab stop. Single source of truth —
-/// referenced by `compose_row` and by tests, so the glyph only ever needs to
+/// referenced by `compose_display_line` and by tests, so the glyph only ever needs to
 /// change in one place.
 pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
 
-/// Per-frame constants needed by `compose_row`. Bundle these once per pane
+/// Per-frame constants needed by `compose_display_line`. Bundle these once per pane
 /// and pass them through without repeating at each call site.
 pub(crate) struct ComposeCtx<'a> {
     pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
@@ -47,7 +47,7 @@ pub(crate) struct ComposeCtx<'a> {
     /// on this struct — `theme` is already here, so a copy would only be
     /// another place that value could drift from it.
     pub theme: &'a Theme,
-    /// Buffer rope, passed to `GutterColumn::render_row` via `GutterRowCtx`
+    /// Buffer rope, passed to `GutterColumn::render_cells` via `GutterCtx`
     /// so gutter providers (git-signs, diagnostics) can query buffer content
     /// without pre-owning it.
     pub rope: &'a ropey::Rope,
@@ -87,18 +87,19 @@ fn gutter_cell_style(
     }
 }
 
-/// Write one row's gutter cells (all columns) at screen row `y`.
+/// Write one display line's gutter cells (all columns) at screen row `y`.
 ///
-/// Shared by `compose_row` (real buffer/wrap/virtual rows) and
-/// `render_tilde_fillers` (`RowKind::Filler` rows) so a filler row's gutter
-/// is never silently blank — a custom column must be consulted for filler
-/// rows too, not just `LineNumberColumn`'s blank-for-Filler default.
+/// Shared by `compose_display_line` (real buffer/wrap/virtual display
+/// lines) and `render_tilde_fillers` (`DisplayLineKind::Filler` display
+/// lines) so a filler display line's gutter is never silently blank — a
+/// custom column must be consulted for filler display lines too, not just
+/// `LineNumberColumn`'s blank-for-Filler default.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per
-/// gutter column) — see `compose_row`'s doc comment for why it isn't folded
+/// gutter column) — see `compose_display_line`'s doc comment for why it isn't folded
 /// into `ComposeCtx`.
 fn compose_gutter(
-    row_kind: RowKind,
+    line_kind: DisplayLineKind,
     lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
     row_bg: Option<Rgb>,
@@ -114,7 +115,7 @@ fn compose_gutter(
     // drawn next to it in the shared terminal buffer (a neighbouring pane,
     // most commonly).
     let pane_right_edge = compose_ctx.pane_rect.right();
-    let gutter_ctx = GutterRowCtx {
+    let gutter_ctx = GutterCtx {
         mode: compose_ctx.mode,
         primary_head_line: compose_ctx.primary_head_line,
         rope: compose_ctx.rope,
@@ -133,7 +134,7 @@ fn compose_gutter(
             continue;
         }
         let lane_width = lane_width.min(pane_right_edge - lane_x);
-        let cells = lane_provider.render_row_cells(row_kind, &gutter_ctx);
+        let cells = lane_provider.render_cells(line_kind, &gutter_ctx);
         // Distribute `lane_width` across `cells.len()` sub-cells. Only the
         // column's right padding (1 cell) is reserved — no separators between
         // sub-cells. `usable_per_cell` is how much of each sub-cell's text
@@ -209,16 +210,17 @@ fn compose_gutter(
     }
 }
 
-/// Render a single display row at `screen_row` into the frame grid.
+/// Render a single display line at `screen_row` into the frame grid.
 ///
-/// `line_str` is the pre-materialised text of the buffer line that owns this
-/// row (used to resolve `CellContent::Grapheme` byte ranges). Pass `""` for
-/// virtual/filler rows that have no backing buffer line.
+/// `line_str` is the pre-materialised text of the buffer line that owns
+/// this display line (used to resolve `CellContent::Grapheme` byte
+/// ranges). Pass `""` for virtual/filler display lines that have no
+/// backing buffer line.
 ///
-/// `virtual_texts` is the per-frame arena backing this row's
+/// `virtual_texts` is the per-frame arena backing this display line's
 /// `CellContent::Whitespace`/`Placeholder`/`Virtual` ranges
-/// (`LineFormat::virtual_texts` for a content row, `virtual_row.texts`
-/// for a provider's virtual row) — same lifetime/borrow rationale as
+/// (`LineFormat::virtual_texts` for a content display line, `virtual_line.texts`
+/// for a provider's virtual display line) — same lifetime/borrow rationale as
 /// `line_str`.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per gutter
@@ -226,8 +228,8 @@ fn compose_gutter(
 /// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
 /// creating a conflicting borrow.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compose_row(
-    row: &DisplayRow,
+pub(crate) fn compose_display_line(
+    display_line: &DisplayLine,
     graphemes: &[Grapheme],
     styles: &[ResolvedStyle],
     line_str: &str,
@@ -245,12 +247,20 @@ pub(crate) fn compose_row(
     let y = compose_ctx.pane_rect.y + screen_row;
     let right_edge = compose_ctx.pane_rect.right();
 
-    // Filler rows are rendered exclusively by `render_tilde_fillers`, never
-    // routed through here — it has its own gutter + tilde + background
-    // handling since a filler row has no backing graphemes to iterate.
-    debug_assert!(!matches!(row.kind, RowKind::Filler));
+    // Filler display lines are rendered exclusively by
+    // `render_tilde_fillers`, never routed through here — it has its own
+    // gutter + tilde + background handling since a filler display line has
+    // no backing graphemes to iterate.
+    debug_assert!(!matches!(display_line.kind, DisplayLineKind::Filler));
 
-    compose_gutter(row.kind, lane_widths, compose_ctx, row_bg, y, canvas);
+    compose_gutter(
+        display_line.kind,
+        lane_widths,
+        compose_ctx,
+        row_bg,
+        y,
+        canvas,
+    );
 
     // ── Content ───────────────────────────────────────────────────────
     let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
@@ -265,10 +275,10 @@ pub(crate) fn compose_row(
         row_bg.or(compose_ctx.theme.ui.background.bg),
     );
 
-    let row_graphemes = &graphemes[row.graphemes.start..row.graphemes.end];
-    let row_styles = &styles[row.graphemes.start..row.graphemes.end];
+    let line_graphemes = &graphemes[display_line.graphemes.start..display_line.graphemes.end];
+    let line_styles = &styles[display_line.graphemes.start..display_line.graphemes.end];
 
-    for (g, style) in row_graphemes.iter().zip(row_styles.iter()) {
+    for (g, style) in line_graphemes.iter().zip(line_styles.iter()) {
         // Skip WidthContinuation — already handled by the primary cell.
         if matches!(g.content, CellContent::WidthContinuation) {
             continue;
@@ -279,7 +289,7 @@ pub(crate) fn compose_row(
             continue;
         }
         // Clip cells that start before the viewport edge. `g.display_col` is
-        // a row column (`DisplayLineCol`), which with wrapping off spans the
+        // a display-line column (`DisplayLineCol`), which with wrapping off spans the
         // whole unwrapped line, but this render path always runs behind
         // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
         // above sits within one viewport width of `h_offset` — safely
@@ -295,7 +305,7 @@ pub(crate) fn compose_row(
         );
         let screen_x = content_x_origin + content_x as u16;
         if screen_x >= right_edge {
-            break; // past right edge — done with this row
+            break; // past right edge — done with this display line
         }
 
         let cell_style = *style;
@@ -306,7 +316,7 @@ pub(crate) fn compose_row(
         // it — but `content_x` above already clamped to 0, so
         // rendering the glyph there would draw its *full* width at
         // the viewport's left edge instead of the fraction that's
-        // actually scrolled into view, shifting the row. Render
+        // actually scrolled into view, shifting the display line. Render
         // spaces for the visible remainder instead (matches Helix).
         // Impossible for width-1 cells: straddling needs
         // `g.display_col < h_offset < g.display_col + g.width`, which has no
@@ -394,18 +404,21 @@ pub(crate) fn compose_row(
     }
 
     // ── Indent guides ─────────────────────────────────────────────────
-    // Draw guides only on line-start rows (not wrap/virtual/filler) so
-    // that continuation rows don't clobber content at guide positions.
-    // Drawn after content so they appear on top of leading-whitespace cells.
-    if compose_ctx.show_indent_guides && matches!(row.kind, RowKind::LineStart { .. }) {
-        let depth = row_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
+    // Draw guides only on line-start display lines (not wrap/virtual/filler)
+    // so that continuation display lines don't clobber content at guide
+    // positions. Drawn after content so they appear on top of
+    // leading-whitespace cells.
+    if compose_ctx.show_indent_guides
+        && matches!(display_line.kind, DisplayLineKind::LineStart { .. })
+    {
+        let depth = line_graphemes.first().map(|g| g.indent_depth).unwrap_or(0);
         let tw = hume_rope::width::indent_stop(1, compose_ctx.tab_width);
         // `indent_stop` counts buffer columns from the *line's* column 0 —
-        // not the row's, when a leading inline insert (an inlay hint at
-        // byte 0) precedes the real text. A virtual cell carries an empty
-        // `byte_range`, so the first non-empty one marks where the buffer
-        // line's own columns actually begin on screen.
-        let indent_origin = row_graphemes
+        // not the display line's, when a leading inline insert (an inlay
+        // hint at byte 0) precedes the real text. A virtual cell carries an
+        // empty `byte_range`, so the first non-empty one marks where the
+        // buffer line's own columns actually begin on screen.
+        let indent_origin = line_graphemes
             .iter()
             .find(|g| !g.byte_range.is_empty())
             .map_or(DisplayLineCol::new(0), |g| g.display_col);
@@ -477,7 +490,14 @@ pub(crate) fn render_tilde_fillers(
         // fg on top of that, matching editor convention: `~` sits at the
         // pane's left edge, ignoring/overriding the line-number gutter, never
         // shifted into the content area.
-        compose_gutter(RowKind::Filler, lane_widths, compose_ctx, None, y, canvas);
+        compose_gutter(
+            DisplayLineKind::Filler,
+            lane_widths,
+            compose_ctx,
+            None,
+            y,
+            canvas,
+        );
         let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
         canvas.fill_row_bg(
             content_x_origin,

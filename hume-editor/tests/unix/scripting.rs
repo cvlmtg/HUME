@@ -37,19 +37,19 @@ fn file_module_private_helpers_are_isolated() {
     let a_abs = dir.path().join("a.scm").canonicalize().unwrap();
     let b_abs = dir.path().join("b.scm").canonicalize().unwrap();
 
-    let mut engine = Engine::new();
-    engine
+    let mut steel = Engine::new();
+    steel
         .compile_and_run_raw_program(format!("(require \"{}\")", a_abs.display()))
         .expect("require a.scm failed");
     // Loading B last: if helpers collide, a-result would return "B".
-    engine
+    steel
         .compile_and_run_raw_program(format!("(require \"{}\")", b_abs.display()))
         .expect("require b.scm failed");
 
-    let a_vals = engine
+    let a_vals = steel
         .compile_and_run_raw_program("(a-result)".to_owned())
         .expect("a-result failed");
-    let b_vals = engine
+    let b_vals = steel
         .compile_and_run_raw_program("(b-result)".to_owned())
         .expect("b-result failed");
 
@@ -90,12 +90,12 @@ fn file_module_relative_require_resolves_from_module_dir() {
     // Process CWD is the workspace root — NOT the plugin dir.  The require
     // must still succeed because Steel resolves relative paths from the
     // requiring module's own path, not from CWD.
-    let mut engine = Engine::new();
-    engine
+    let mut steel = Engine::new();
+    steel
         .compile_and_run_raw_program(format!("(require \"{}\")", plugin_abs.display()))
         .expect("require plugin.scm failed");
 
-    let vals = engine
+    let vals = steel
         .compile_and_run_raw_program("(plugin-result)".to_owned())
         .expect("plugin-result failed");
 
@@ -120,11 +120,11 @@ fn global_define_syntax_is_visible_inside_required_module() {
 
     let dir = tempfile::tempdir().unwrap();
 
-    let mut engine = Engine::new();
+    let mut steel = Engine::new();
 
     // Define a macro globally, simulating what the prelude does.
     // id-macro! is the identity macro: (id-macro! x) => x.
-    engine
+    steel
         .compile_and_run_raw_program(
             "(define-syntax id-macro! (syntax-rules () ((_ x) x)))".to_owned(),
         )
@@ -141,11 +141,11 @@ fn global_define_syntax_is_visible_inside_required_module() {
     .unwrap();
     let abs = dir.path().join("mod.scm").canonicalize().unwrap();
 
-    engine
+    steel
         .compile_and_run_raw_program(format!("(require \"{}\")", abs.display()))
         .expect("require failed — id-macro! not visible inside the module");
 
-    let vals = engine
+    let vals = steel
         .compile_and_run_raw_program("(get-result)".to_owned())
         .expect("get-result must be callable after require");
 

@@ -13,7 +13,7 @@
   `spawn-async!`), debounced per buffer, pushed to the `"git-branch"` statusline element
   via `set-statusline-text!`.
 - `render.scm` — pure `hunks → decoration records` functions, one per rendering (gutter
-  signs, virtual deleted lines + word highlights, row background tint), each ending in a
+  signs, virtual deleted lines + word highlights, line background tint), each ending in a
   setter call.
 
 No native diff algorithm lives here — `diff-buffer-lines`/`diff-words` already wrap

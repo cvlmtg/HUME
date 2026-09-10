@@ -297,7 +297,7 @@ fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<
 ///
 /// Used by `insert_tab` (Soft style: insert spaces to the next tab stop) and
 /// dedent-on-Backspace (compute the previous tab stop). Vertical motion uses
-/// `hume_engine::rows::RowMap` instead, which measures through the
+/// `hume_engine::display_lines::DisplayLineMap` instead, which measures through the
 /// decoration layer this rope-only function can't see.
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
@@ -340,7 +340,7 @@ pub fn display_col_in_line(
 /// The walk never leaves the line: a `target_display_col` beyond the line's
 /// width stops on the line's `\n`. A caller that wants a cursor position
 /// clamped back onto the last real character instead — vertical motion's
-/// case — wants `hume_engine::rows::RowMap::char_at_line_display_col`, which
+/// case — wants `hume_engine::display_lines::DisplayLineMap::char_at_buffer_line_col`, which
 /// also sees the decoration layer this rope-only function can't.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,

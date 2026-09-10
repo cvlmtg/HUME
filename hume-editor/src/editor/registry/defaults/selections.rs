@@ -83,7 +83,7 @@ impl CommandRegistry {
             composes
         );
         // EditorCmd, not the `selection!` macro (`MappableCommand::Selection`):
-        // the display-column placement of each copy needs a `RowMap`, which
+        // the display-column placement of each copy needs a `DisplayLineMap`, which
         // that signature has no channel for. See
         // `visual_move.rs::copy_selection_vertically`. `.extendable()`
         // restores the extendability `Selection` carries implicitly — without

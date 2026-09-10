@@ -3,7 +3,7 @@
 //! The one sign source wraps an `Arc<RwLock<FxHashMap<line_idx, Vec<Sign>>>>`
 //! that the editor writes once per frame, from `prepare_frame`'s step 3,
 //! *before* scrolling (`Editor::update_sign_providers`'s doc — the resolved
-//! width feeds `Pane::content_width`, which the scroll step's `RowMap`
+//! width feeds `Pane::content_width`, which the scroll step's `DisplayLineMap`
 //! wraps against). `signs_for_line` is then a cheap map lookup, matching
 //! `SignSource`'s per-row-per-frame contract.
 
@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 use crate::lock_ext::LockExt;
 
 use hume_engine::builtins::sign_column::{Sign, SignSource};
-use hume_engine::providers::GutterRowCtx;
+use hume_engine::providers::GutterCtx;
 use hume_rope::line::ContentLine;
 
 /// Shared per-frame sign data: at most one `Sign` per resolved slot per
@@ -36,7 +36,7 @@ impl SharedSignSource {
 }
 
 impl SignSource for SharedSignSource {
-    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterRowCtx) -> Vec<Sign> {
+    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterCtx) -> Vec<Sign> {
         self.data
             .read_or_panic()
             .get(&line_idx)

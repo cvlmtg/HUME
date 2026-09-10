@@ -14,7 +14,7 @@
 // from the Steel bridge (that path is exercised separately in
 // `lsp_virtual_lines.rs`).
 
-use super::doubles::{InlineHint, VirtualRows};
+use super::doubles::{InlineHint, VirtualLineBlock};
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -35,7 +35,7 @@ fn editor_with_before_line() -> Editor {
     });
     ed.view.panes[pid]
         .providers
-        .add_decoration_source(Box::new(VirtualRows::uniform(
+        .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
             1,
             "V",
@@ -46,12 +46,11 @@ fn editor_with_before_line() -> Editor {
 #[test]
 fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // Cursor on line 0, `Before(0)` block above it, viewport resting at its
-    // default (top_line=0, top_row_offset=0, cursor already comfortably
-    // visible — no auto-scroll needed). This is exactly the scenario
-    // `pane_render.rs` and `cursor.rs` used to disagree about: the renderer
-    // draws the block at screen row 0 regardless of which line it's
-    // anchored to, so 'x' (line 0's own content) must land at row 1, not
-    // row 0.
+    // default (top_line=0, top_slot=0, cursor already comfortably
+    // visible — no auto-scroll needed). `pane_render.rs` and `cursor.rs`
+    // must agree here: the renderer draws the block at screen row 0
+    // regardless of which line it's anchored to, so 'x' (line 0's own
+    // content) must land at row 1, not row 0.
     let mut ed = editor_with_before_line();
     ed.state.settings.scrolloff = 0; // isolate this from margin-triggered auto-scroll
     // Height 4: the engine reserves row 3 for the statusline, leaving 3 rows
@@ -72,10 +71,13 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
-    let (mut rm, _) =
-        crate::editor::commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
+    let (mut dlm, _) = crate::editor::commands::pane_display_lines(
+        state.buffers.get(bid),
+        &mut view.panes[pid],
+        key,
+    );
 
-    let pos = crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char);
+    let pos = crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -84,12 +86,11 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
 }
 
 #[test]
-fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
+fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // Wheel scrolling (`scroll_viewport_down`) must walk through the
-    // 2-row block ([V, x]) one display row per notch — not skip the whole
-    // block in a single notch (the atomic-scroll behavior this fix removed).
-    // Viewport height 2 is shorter than the 3-row total content (V, x, y),
-    // so there's genuinely something to scroll.
+    // 2-row block ([V, x]) one display row per notch — never skip the whole
+    // block in a single notch. Viewport height 2 is shorter than the 3-row
+    // total content (V, x, y), so there's genuinely something to scroll.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
     ed.view.panes[ed.state.focused_pane_id].viewport.height = 2;
@@ -97,16 +98,12 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     let scroll_down = || mouse_wheel(true);
 
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
-    assert_eq!(
-        ed.viewport().top_row_offset,
-        0,
-        "sanity: starts at block row 0"
-    );
+    assert_eq!(ed.viewport().top_slot, 0, "sanity: starts at block row 0");
 
     ed.handle_input(scroll_down());
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
     assert_eq!(
-        ed.viewport().top_row_offset,
+        ed.viewport().top_slot,
         1,
         "one notch skips exactly the virtual row, not the whole 2-row block"
     );
@@ -117,15 +114,15 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
         hume_rope::line::ContentLine::new(1),
         "second notch exhausts line 0's block, landing on line 1"
     );
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
-/// Screen-relative cursor-follow (`VerticalUnit::ScreenRow` — mouse wheel,
+/// Screen-relative cursor-follow (`VerticalUnit::AnyDisplayLine` — mouse wheel,
 /// page/half-page scroll) must count virtual rows toward its display-row
 /// budget: moving "5 display rows" down through a 3-row `After(1)` block
 /// only advances the cursor 2 REAL lines (0 → 1 → 2), not 5 — matching
 /// where the viewport itself would land, in either wrap mode. Plain `j`/`k`
-/// (`VerticalUnit::ContentRow`, exercised elsewhere) are unaffected: virtual
+/// (`VerticalUnit::ContentDisplayLine`, exercised elsewhere) are unaffected: virtual
 /// rows stay free for those.
 #[test]
 fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
@@ -145,7 +142,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
         });
         ed.view.panes[pid]
             .providers
-            .add_decoration_source(Box::new(VirtualRows::numbered(
+            .add_decoration_source(Box::new(VirtualLineBlock::numbered(
                 VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
                 3,
             )));
@@ -156,7 +153,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
             5,
             true,
             MotionMode::Move,
-            VerticalUnit::ScreenRow,
+            VerticalUnit::AnyDisplayLine,
         );
         let cursor_line = ed
             .doc()
@@ -175,12 +172,11 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
 // The other axis of the same "counted rows must equal rendered rows"
 // requirement. An inline insert takes columns, so it participates in
 // wrapping: a line that fits on one row without it can need two with it.
-// Row counting that formats without inserts (as it did before `RowMap`)
-// reports one row where the renderer draws two, and everything below the
-// hint lands one row off.
+// Row counting that formats without inserts reports one row where the
+// renderer draws two, and everything below the hint lands one row off.
 
 #[test]
-fn content_pos_counts_an_inline_hints_extra_wrap_row() {
+fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     // Line 0 is "abcdef" — 6 columns, which fits the 10-column content width
     // on its own. The 6-column hint makes 12, wrapping it onto a second row:
     //
@@ -217,10 +213,13 @@ fn content_pos_counts_an_inline_hints_extra_wrap_row() {
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
-    let (mut rm, _) =
-        crate::editor::commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
+    let (mut dlm, _) = crate::editor::commands::pane_display_lines(
+        state.buffers.get(bid),
+        &mut view.panes[pid],
+        key,
+    );
     assert_eq!(
-        crate::editor::cursor::content_pos(&vp, &mut rm, cursor_char).map(|(_, row)| row),
+        crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char).map(|(_, row)| row),
         Some(2),
         "content_pos must count the hint's wrap row, as the renderer does"
     );

@@ -46,17 +46,17 @@
 //! (bounded by a rope's line count), a column past a line's actual content is
 //! simply where the cursor would sit if the line were that long. Every
 //! resolver that turns one back into a [`CharOffset`](crate::offset::CharOffset)
-//! (`RowMap::char_at`, `RowMap::char_at_line_display_col`) clamps internally.
+//! (`DisplayLineMap::char_at`, `DisplayLineMap::char_at_buffer_line_col`) clamps internally.
 //! [`DisplayLineCol::new`]/[`BufferLineCol::new`] are the only mints.
 
 /// A display column measured from its display line's left edge — what
-/// `hume_engine::rows::RowMap::locate` returns. See the module doc's
+/// `hume_engine::display_lines::DisplayLineMap::locate` returns. See the module doc's
 /// "Display columns have an origin" section.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
 pub struct DisplayLineCol(u32);
 
 /// A display column measured from its buffer line's start — what
-/// `hume_engine::rows::RowMap::line_display_col` returns, and what a
+/// `hume_engine::display_lines::DisplayLineMap::buffer_line_col` returns, and what a
 /// numeric-prefixed vertical move (`9j`/`9k`) latches, since it targets the
 /// same buffer-line column on its landing line regardless of which display
 /// line it lands on. See the module doc's "Display columns have an origin"
@@ -73,7 +73,7 @@ macro_rules! display_col_methods {
         impl $ty {
             /// Mint a column already known to be valid — e.g. one just read
             /// back from another value of this type, or the result of
-            /// `hume_engine::rows::RowMap` walking a formatted line. See the
+            /// `hume_engine::display_lines::DisplayLineMap` walking a formatted line. See the
             /// module doc for why there is no `checked`/`clamped` form.
             pub fn new(col: u32) -> Self {
                 Self(col)
@@ -141,12 +141,12 @@ impl BufferLineCol {
     /// This column read as a display-line-relative one — sound only where
     /// the buffer line occupies a single display line, where the two
     /// origins coincide (see the module doc). Two callers rely on that:
-    /// `RowMap::char_at_line_display_col`
+    /// `DisplayLineMap::char_at_buffer_line_col`
     /// (while wrapping, `ensure_formatted` promotes the format bound to
     /// `Full` and never consults the column this produces, so the
     /// non-coincident case is never actually reached there) and
     /// `hume-editor`'s vertical-motion sticky column, which resolves a
-    /// `Line`-family latch through the no-wrap-only `line_display_col` in
+    /// `Line`-family latch through the no-wrap-only `buffer_line_col` in
     /// the first place — the same coincidence, from the other direction.
     pub fn as_display_line_unwrapped(self) -> DisplayLineCol {
         DisplayLineCol(self.0)

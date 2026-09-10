@@ -10,9 +10,9 @@ use crate::ui::theme::EditorColors;
 pub(in crate::ui::statusline) struct PositionElement;
 
 impl StatuslineElement for PositionElement {
-    /// 1-based (line, grapheme_col, max_row). `max_row` is the highest row
-    /// index the cursor can reach in the buffer, used to size the padding
-    /// field.
+    /// 1-based (line, grapheme_col, max_line). `max_line` is the highest
+    /// line number the cursor can reach in the buffer, used to size the
+    /// padding field.
     type Data = (usize, usize, usize);
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
@@ -21,21 +21,22 @@ impl StatuslineElement for PositionElement {
         let head_line = text.char_to_line(head);
         let grapheme_col = grapheme_col_in_line(text, head_line, head);
         // Largest 1-based line number this buffer can display.
-        let max_row = text.content_line_count().get();
-        (head_line.number(), grapheme_col.number(), max_row)
+        let max_line = text.content_line_count().get();
+        (head_line.number(), grapheme_col.number(), max_line)
     }
 
     fn format(
-        (line, grapheme_col, max_row): Self::Data,
+        (line, grapheme_col, max_line): Self::Data,
         colors: &EditorColors,
     ) -> (Cow<'static, str>, ResolvedStyle) {
-        // Right-align into a field sized for the largest row this buffer can
-        // show (min 3 digits) and a fixed 3-digit column budget, so the
-        // element's right edge stays put as the cursor moves and elements
-        // after it (e.g. FilePath) don't jitter left-right. A column past
-        // the 3-digit budget just overflows the field rather than shifting it.
-        let row_digits = hume_engine::builtins::line_number::digit_count(max_row).max(3) as usize;
-        let width = row_digits + 1 + 3;
+        // Right-align into a field sized for the largest line number this
+        // buffer can show (min 3 digits) and a fixed 3-digit column budget,
+        // so the element's right edge stays put as the cursor moves and
+        // elements after it (e.g. FilePath) don't jitter left-right. A
+        // column past the 3-digit budget just overflows the field rather
+        // than shifting it.
+        let line_digits = hume_engine::builtins::line_number::digit_count(max_line).max(3) as usize;
+        let width = line_digits + 1 + 3;
         (
             Cow::Owned(format!("{:>width$}", format!("{line}:{grapheme_col}"))),
             colors.statusline,

@@ -7,7 +7,7 @@ use crate::text::BufferText;
 
 /// A display column together with the frame it was measured in.
 ///
-/// Both variants are `hume_engine::rows::RowMap` quantities — one authority,
+/// Both variants are `hume_engine::display_lines::DisplayLineMap` quantities — one authority,
 /// so both count tab expansion, wide glyphs and inline decorations (inlay
 /// hints, ghost text) identically. They differ only in what they're measured
 /// *from*: under soft wrap, a continuation display line renumbers its
@@ -22,21 +22,21 @@ use crate::text::BufferText;
 /// latch tagged with the other variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StickyDisplayCol {
-    /// Column within the current display line (`RowMap::locate`) — what
+    /// Column within the current display line (`DisplayLineMap::locate`) — what
     /// `j`/`k`, page/half-page scroll, and the mouse wheel latch.
     DisplayLine {
         display_col: DisplayLineCol,
         /// The wrap column `display_col` was measured against
-        /// (`RowMap::resolved_wrap_width`). A pane resize changes what
+        /// (`DisplayLineMap::resolved_wrap_width`). A pane resize changes what
         /// column a display-line-relative latch's number means (the same
         /// display-line-relative column addresses a different buffer
         /// position once display lines re-flow at a new width), so a reader
-        /// compares this against the row map's *current* resolved width and
+        /// compares this against `DisplayLineMap`'s *current* resolved width and
         /// re-derives on a mismatch instead of reusing a column measured for
         /// a wrap geometry that no longer exists.
         wrap_width: Option<u16>,
     },
-    /// Column within the buffer line (`RowMap::line_display_col`) — what an
+    /// Column within the buffer line (`DisplayLineMap::buffer_line_col`) — what an
     /// explicit numeric prefix (`9j`/`9k`) latches. Carries no wrap width:
     /// a buffer-line column counts a line's own characters and never
     /// depends on wrap geometry, unlike the `DisplayLine` variant above.
@@ -102,9 +102,9 @@ impl Selection {
 
     /// A directional selection with a preserved sticky display column.
     ///
-    /// Used by `editor::visual_move`'s vertical motion (row-domain `j`/`k`/
-    /// scroll/wheel, and buffer-line `9j`/`9k` — all three units share one
-    /// path there) to carry the column across consecutive vertical moves,
+    /// Used by `editor::visual_move`'s vertical motion (display-line-domain
+    /// `j`/`k`/scroll/wheel, and buffer-line `9j`/`9k` — all three units
+    /// share one path there) to carry the column across consecutive vertical moves,
     /// and by word-snap (`text_object::apply_nearest_word_result`) to pass
     /// an existing latch through unchanged. All other code uses
     /// [`Self::new`] or [`Self::collapsed`], which reset

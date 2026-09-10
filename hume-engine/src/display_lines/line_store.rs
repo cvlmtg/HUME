@@ -1,9 +1,10 @@
-//! What a [`RowMap`](super::RowMap) knows about the lines it is walking.
+//! What a [`DisplayLineMap`](super::DisplayLineMap) knows about the lines it is walking.
 //!
-//! One store holds one entry per line visited: the line's virtual rows and
-//! block shape, plus its formatted content rows once anything has needed
-//! them. A `RowMap` borrows a store for its lifetime and reads everything
-//! through it — there is no second copy of a line anywhere.
+//! One store holds one entry per line visited: the line's virtual display
+//! lines and block shape, plus its formatted content display lines once
+//! anything has needed them. A `DisplayLineMap` borrows a store for its
+//! lifetime and reads everything through it — there is no second copy of a
+//! line anywhere.
 //!
 //! # One store per pane, shared by everything that walks it
 //!
@@ -28,10 +29,10 @@
 //! [`LineEntry`] carries its block shape from the moment it exists, and its
 //! [`LineFormat`] only once something formats the line. The gap is real
 //! rather than an artefact: under `WrapMode::None` a line's block shape is
-//! known without formatting anything (one content row, whatever its length),
-//! so an entry sits metadata-only until a render walk reaches it. Under a
-//! wrapping mode the row *count* is the formatter's output, so the format
-//! arrives with the shape.
+//! known without formatting anything (one content display line, whatever
+//! its length), so an entry sits metadata-only until a render walk reaches
+//! it. Under a wrapping mode the display-line *count* is the formatter's
+//! output, so the format arrives with the shape.
 //!
 //! # Scope key
 //!
@@ -44,8 +45,9 @@
 //! - `WrapMode::None`: the render pass clips to an `h_window` and the scroll
 //!   pass does not. A windowed format *drops* leading graphemes rather than
 //!   truncating, so a windowed and an unwindowed format are not
-//!   interchangeable — but block shape (virtual rows, `before`/`after`) does
-//!   not depend on the window, so both passes still share *that*. `h_window`
+//!   interchangeable — but block shape (virtual display lines,
+//!   `before`/`after`) does not depend on the window, so both passes still
+//!   share *that*. `h_window`
 //!   is recorded on [`LineFormat`] instead of on `FormatKey`, and
 //!   [`LineFormat::covers`](crate::format::LineFormat::covers) is what keeps
 //!   a windowed and an unwindowed format from answering for each other,
@@ -64,15 +66,15 @@
 //! than hygiene. The per-pane inlay-hint and
 //! EOL-text mirrors are rebuilt each frame *filtered to the viewport that
 //! frame shows*, without bumping the decoration store's generation — so a
-//! line scrolling into view can gain inline inserts that change its wrap-row
-//! count while both the buffer's content generation and the decoration
-//! generation stay put. Nothing in [`FormatKey`] can see that, and nothing
+//! line scrolling into view can gain inline inserts that change its
+//! wrap-display-line count while both the buffer's content generation and
+//! the decoration generation stay put. Nothing in [`FormatKey`] can see that, and nothing
 //! needs to while entries never outlive the frame that made them. Reusing
 //! them across frames would need the visible window in the key.
 
 use rustc_hash::FxHashMap;
 
-use crate::format::{LineFormat, VirtualRowScratch};
+use crate::format::{LineFormat, VirtualLineScratch};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::VirtualLine;
 use hume_rope::line::ContentLine;
@@ -91,9 +93,9 @@ pub type BufferTag = [u64; 3];
 /// Everything a line's block shape depends on besides the line's own text.
 ///
 /// Deliberately excludes the horizontal clip (`h_window`) a `WrapMode::None`
-/// render applies: block shape doesn't depend on it, only the formatted rows
-/// do, so that lives on `LineFormat` instead — see the module doc's "Scope
-/// key" section.
+/// render applies: block shape doesn't depend on it, only the formatted
+/// display lines do, so that lives on `LineFormat` instead — see the module
+/// doc's "Scope key" section.
 ///
 /// Also excludes the pane's content width, which reaches formatting through
 /// `wrap_mode` and nowhere else: the mode is stored already resolved (see
@@ -104,8 +106,8 @@ pub type BufferTag = [u64; 3];
 ///
 /// One value rather than four loose ones, built once by the caller
 /// (`hume-editor`'s `EditorState::format_key`) and threaded unchanged through
-/// `RowMap::new`: the frame's scroll pass and render pass each resolve this
-/// from a different composition (`commands::pane_row_map` vs.
+/// `DisplayLineMap::new`: the frame's scroll pass and render pass each resolve this
+/// from a different composition (`commands::pane_display_lines` vs.
 /// `frame.rs::resolve_pane_settings`), and their sharing this pane's store
 /// depends entirely on the two agreeing bit for bit — a single constructor is
 /// what makes disagreement a compile-time impossibility rather than a
@@ -120,7 +122,7 @@ pub struct FormatKey {
 
 impl FormatKey {
     /// Replace `wrap_mode`'s `width: 0` sentinel with `content_width` —
-    /// [`WrapMode::resolve`]'s own contract. Applied once, by [`RowMap::new`](super::RowMap::new),
+    /// [`WrapMode::resolve`]'s own contract. Applied once, by [`DisplayLineMap::new`](super::DisplayLineMap::new),
     /// so every other holder of a `FormatKey` (the store's own `scope`, a
     /// caller comparing two keys) sees one already resolved against the
     /// pane geometry it was built for.
@@ -132,19 +134,19 @@ impl FormatKey {
     }
 }
 
-/// One line's block shape, and its formatted rows once it has them.
+/// One line's block shape, and its formatted display lines once it has them.
 pub struct LineEntry {
     /// The line this describes. Held so an entry index alone addresses a
     /// line: every caller working from one reads the line back here rather
     /// than carrying it alongside and risking the two disagreeing.
     pub line: ContentLine,
-    /// This line's virtual rows, `Before` ones first — the order
+    /// This line's virtual display lines, `Before` ones first — the order
     /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes, so the
-    /// `i`th `After` row is at index `before + i`.
+    /// `i`th `After` one is at index `before + i`.
     pub virtual_lines: Vec<VirtualLine>,
     pub before: usize,
-    /// The line's content rows. `format.extent` is `None` until something
-    /// formats them.
+    /// The line's content display lines. `format.extent` is `None` until
+    /// something formats them.
     pub format: LineFormat,
 }
 
@@ -158,8 +160,8 @@ impl LineEntry {
         }
     }
 
-    /// Virtual rows anchored `After` this line — whatever `before` doesn't
-    /// claim, since `virtual_lines` holds the two groups back to back.
+    /// Virtual display lines anchored `After` this line — whatever `before`
+    /// doesn't claim, since `virtual_lines` holds the two groups back to back.
     pub fn after(&self) -> usize {
         self.virtual_lines.len() - self.before
     }
@@ -171,10 +173,10 @@ impl LineEntry {
     /// past its ceiling, shrank) it. `virtual_lines` is different —
     /// `rewind` deliberately leaves it alone (nothing there needs shrinking,
     /// so touching it would only cost a pass over every spare for no
-    /// reason), so a slot can still be holding the *previous* line's rows
-    /// from the last time it was live. [`super::RowMap::block_entry`]'s
-    /// intake takes this field as scratch and pushes the new line's rows
-    /// onto whatever is already in it — clearing here is what makes that
+    /// reason), so a slot can still be holding the *previous* line's
+    /// display lines from the last time it was live. [`super::DisplayLineMap::block_entry`]'s
+    /// intake takes this field as scratch and pushes the new line's display
+    /// lines onto whatever is already in it — clearing here is what makes that
     /// start from empty rather than appending onto a stale block. `before`
     /// gets no such treatment: `block_entry` overwrites it unconditionally
     /// right after this call returns, before anything reads it.
@@ -184,7 +186,7 @@ impl LineEntry {
     }
 }
 
-/// The lines one [`RowMap`](super::RowMap) is working with.
+/// The lines one [`DisplayLineMap`](super::DisplayLineMap) is working with.
 ///
 /// `entries` is a free list: [`PaneLineStore::rewind`] drops what is live but
 /// keeps each entry's allocation — bar one grown past
@@ -201,10 +203,10 @@ pub struct PaneLineStore {
     live: usize,
     /// Buffer line -> index into `entries`.
     index: FxHashMap<ContentLine, usize>,
-    /// The virtual row currently being laid out. Separate from any entry's
-    /// `format`: a `Before` row renders ahead of its line's content rows, so
-    /// laying it out must not disturb them.
-    virtual_row: VirtualRowScratch,
+    /// The virtual display line currently being laid out. Separate from any
+    /// entry's `format`: a `Before` display line renders ahead of its
+    /// line's content display lines, so laying it out must not disturb them.
+    virtual_line: VirtualLineScratch,
 }
 
 impl PaneLineStore {
@@ -239,7 +241,7 @@ impl PaneLineStore {
         }
         self.live = 0;
         self.index.clear();
-        self.virtual_row.clear_and_shrink();
+        self.virtual_line.clear_and_shrink();
     }
 
     /// The entry for `line`, if this store has one.
@@ -273,13 +275,14 @@ impl PaneLineStore {
         &mut self.entries[idx]
     }
 
-    /// An entry alongside the virtual-row scratch, which laying one of its
-    /// virtual rows out needs at the same time. Split here because they are
-    /// disjoint fields of this struct and only this struct can say so.
-    pub(super) fn entry_and_virtual_row(
+    /// An entry alongside the virtual-display-line scratch, which laying
+    /// one of its virtual display lines out needs at the same time. Split
+    /// here because they are disjoint fields of this struct and only this
+    /// struct can say so.
+    pub(super) fn entry_and_virtual_line(
         &mut self,
         idx: usize,
-    ) -> (&LineEntry, &mut VirtualRowScratch) {
-        (&self.entries[idx], &mut self.virtual_row)
+    ) -> (&LineEntry, &mut VirtualLineScratch) {
+        (&self.entries[idx], &mut self.virtual_line)
     }
 }

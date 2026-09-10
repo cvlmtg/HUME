@@ -1,10 +1,10 @@
 use super::*;
 use crate::editor::tests::co;
-use crate::editor::tests::doubles::{VirtualRows, no_providers, providers_with_before_line};
+use crate::editor::tests::doubles::{VirtualLineBlock, no_providers, providers_with_before_line};
+use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
 use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
-use hume_engine::rows::RowMap;
-use hume_engine::rows::line_store::{FormatKey, PaneLineStore};
 use ropey::Rope;
 
 fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
@@ -23,8 +23,8 @@ fn map<'a>(
     providers: &'a ProviderSet,
     content_width: u16,
     store: &'a mut PaneLineStore,
-) -> RowMap<'a> {
-    RowMap::new(
+) -> DisplayLineMap<'a> {
+    DisplayLineMap::new(
         rope,
         providers,
         content_width,
@@ -175,7 +175,7 @@ fn nowrap_horizontal_scroll() {
 /// Click at screen (0, 0) → char 0 ('a').
 /// Click at screen (0, 1) → char 4 ('e').
 #[test]
-fn wrap_click_first_and_second_visual_row() {
+fn wrap_click_first_and_second_visual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
@@ -191,7 +191,7 @@ fn wrap_click_first_and_second_visual_row() {
 
 /// Click on column 2 in the second wrap row → char 6 ('g').
 #[test]
-fn wrap_click_mid_second_row() {
+fn wrap_click_mid_second_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let v = vp(0, 10, 10);
     let wrap = WrapMode::Soft { width: 4 };
@@ -264,7 +264,7 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
 /// anchor-line mapping isn't implemented yet). See the `_no_wrap` sibling
 /// below — row math is wrap-mode-agnostic.
 #[test]
-fn screen_to_char_offset_accounts_for_a_stolen_virtual_row() {
+fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
@@ -331,9 +331,9 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     );
 }
 
-/// No-wrap mirror of `screen_to_char_offset_accounts_for_a_stolen_virtual_row`.
+/// No-wrap mirror of `screen_to_char_offset_accounts_for_a_stolen_virtual_display_line`.
 #[test]
-fn screen_to_char_offset_accounts_for_a_stolen_virtual_row_no_wrap() {
+fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
@@ -376,7 +376,7 @@ fn content_pos_accounts_for_before_line_0() {
     let v = vp(0, 80, 10);
     let cursor_char = co(0); // start of line 0
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(VirtualRows::uniform(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
         1,
         "V",
@@ -406,7 +406,7 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
     let cursor_char = co(rope.line_to_char(1)); // start of the last real line
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(VirtualRows::numbered(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
         3,
     )));
@@ -427,14 +427,14 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     }
 }
 
-/// `content_pos` must clamp a stale `top_row_offset` the same way
-/// `pane_render.rs`'s row walk clamps its own start address (`RowMap::clamp`)
+/// `content_pos` must clamp a stale `top_slot` the same way
+/// `pane_render.rs`'s row walk clamps its own start address (`DisplayLineMap::clamp`)
 /// before drawing — a write site that never validates the offset against the
 /// block it addresses (`recall_scroll`, an LSP jump) can leave it pointing
 /// past a line's current block, e.g. after a `Before` block shrinks.
 ///
 /// Line 0's block is `Before(0)` (1 row) + content (1 row) = 2 rows total,
-/// valid addresses 0..2. `top_row_offset = 2` is one past the end — stale,
+/// valid addresses 0..2. `top_slot = 2` is one past the end — stale,
 /// as if the block used to be taller. The cursor sits on line 0's own
 /// content row (address `(0, 1)`), which the clamped top (`(0, 1)`) resolves
 /// to directly (distance 0); walking forward from the raw, unclamped
@@ -443,10 +443,10 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
 /// permanently overshoots the cursor, since `distance` only walks forward —
 /// yielding `None` instead of the clamped answer.
 #[test]
-fn content_pos_clamps_a_top_row_offset_past_the_lines_current_block() {
+fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
     let mut v = vp(0, 80, 10);
-    v.top_row_offset = 2; // past line 0's 2-row block (before=1, content=1)
+    v.top_slot = 2; // past line 0's 2-row block (before=1, content=1)
     let cursor_char = co(0); // 'a' — line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
     let mut s = PaneLineStore::new();

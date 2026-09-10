@@ -1,7 +1,7 @@
-//! `:sort` — permute whole rows, keyed by the selected text on each row.
+//! `:sort` — permute whole lines, keyed by the selected text on each line.
 //!
 //! Unlike Helix's `:sort` (which permutes *text between selection slots* and
-//! leaves row boundaries untouched) this permutes the rows themselves, keyed
+//! leaves line boundaries untouched) this permutes the lines themselves, keyed
 //! by whatever text a selection covers on them — closer to `sort -k`. Also
 //! rejects Kakoune's `|sort` (pipes each selection through the shell), since
 //! that makes N one-line selections an N-way no-op — there's nothing for a
@@ -22,7 +22,7 @@ pub struct SortOpts {
     pub insensitive: bool,
 }
 
-/// Why [`sort_rows`] declined to produce an edit.
+/// Why [`sort_lines`] declined to produce an edit.
 ///
 /// A distinct type (not an identity `ChangeSet`) is load-bearing: the caller
 /// (`:sort`'s typed-command handler) reports *why* nothing happened —
@@ -30,33 +30,33 @@ pub struct SortOpts {
 /// alone can't distinguish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SortRefusal {
-    /// No selection spans two or more line-adjacent rows.
-    NoAdjacentRows,
-    /// Every contiguous group of rows is already in order.
+    /// No selection spans two or more line-adjacent lines.
+    NoAdjacentLines,
+    /// Every contiguous group of lines is already in order.
     AlreadySorted,
 }
 
-/// One buffer row touched by a selection, keyed by the selected text on it.
-struct Row {
+/// One buffer line touched by a selection, keyed by the selected text on it.
+struct SortEntry {
     line: ContentLine,
     key: String,
 }
 
-/// Sort each maximal run of line-adjacent rows touched by a selection, keyed by
-/// the selected text on that row. Groups sort independently — text never moves
-/// between groups.
-pub fn sort_rows(
+/// Sort each maximal run of line-adjacent entries touched by a selection,
+/// keyed by the selected text on that line. Groups sort independently — text
+/// never moves between groups.
+pub fn sort_lines(
     text: BufferText,
     sels: SelectionSet,
     opts: SortOpts,
 ) -> Result<(BufferText, SelectionSet, ChangeSet), SortRefusal> {
-    let rows = collect_rows(&text, &sels);
-    let groups = group_adjacent(&rows);
+    let entries = collect_entries(&text, &sels);
+    let groups = group_adjacent(&entries);
 
     let mut b = ChangeSetBuilder::new(text.end());
     let mut any_group = false;
     let mut any_edit = false;
-    // Old line -> new line, populated only for rows that actually move.
+    // Old line -> new line, populated only for entries that actually move.
     let mut line_map = rustc_hash::FxHashMap::<ContentLine, ContentLine>::default();
 
     for group in &groups {
@@ -65,11 +65,11 @@ pub fn sort_rows(
         }
         any_group = true;
 
-        let order = sort_order(&rows, group, opts);
+        let order = sort_order(&entries, group, opts);
         let inv = invert(&order);
         for (local, &new_local) in inv.iter().enumerate() {
             if new_local != local {
-                line_map.insert(rows[group[local]].line, rows[group[new_local]].line);
+                line_map.insert(entries[group[local]].line, entries[group[new_local]].line);
             }
         }
 
@@ -78,12 +78,12 @@ pub fn sort_rows(
         };
         any_edit = true;
 
-        let edit_start = text.line_to_char(rows[group[lo]].line.into());
-        let edit_end = next_line_start(&text, rows[group[hi]].line.into());
+        let edit_start = text.line_to_char(entries[group[lo]].line.into());
+        let edit_end = next_line_start(&text, entries[group[hi]].line.into());
         b.retain(edit_start.chars_since(b.old_pos()));
         b.delete(edit_end.chars_since(edit_start));
         for &local in &order[lo..=hi] {
-            let line = rows[group[local]].line;
+            let line = entries[group[local]].line;
             let start = text.line_to_char(line.into());
             let end = next_line_start(&text, line.into());
             b.insert(&text.slice(start.index()..end.index()).to_string());
@@ -91,7 +91,7 @@ pub fn sort_rows(
     }
 
     if !any_group {
-        return Err(SortRefusal::NoAdjacentRows);
+        return Err(SortRefusal::NoAdjacentLines);
     }
     if !any_edit {
         return Err(SortRefusal::AlreadySorted);
@@ -108,15 +108,16 @@ pub fn sort_rows(
     Ok((new_text, new_sels, cs))
 }
 
-/// Walk every selection and build one [`Row`] per distinct line it touches,
-/// keyed by the selected text on that line (excluding the trailing `\n`). A
-/// line touched by two selections gets a compound key — never discards one.
+/// Walk every selection and build one [`SortEntry`] per distinct line it
+/// touches, keyed by the selected text on that line (excluding the trailing
+/// `\n`). A line touched by two selections gets a compound key — never
+/// discards one.
 ///
-/// Rows come out sorted ascending and deduplicated by construction: selections
-/// are visited via `iter_sorted()` (ascending, non-overlapping), and each one
-/// walks its own lines in order.
-fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
-    let mut rows: Vec<Row> = Vec::new();
+/// Entries come out sorted ascending and deduplicated by construction:
+/// selections are visited via `iter_sorted()` (ascending, non-overlapping),
+/// and each one walks its own lines in order.
+fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
+    let mut entries: Vec<SortEntry> = Vec::new();
     for sel in sels.iter_sorted() {
         let start_line = text.char_to_line(sel.start());
         let end_line = text.char_to_line(sel.end_inclusive(text));
@@ -142,29 +143,29 @@ fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
             } else {
                 String::new() // blank line: no content to key on
             };
-            match rows.last_mut() {
+            match entries.last_mut() {
                 Some(last) if last.line == line => last.key.push_str(&fragment),
-                _ => rows.push(Row {
+                _ => entries.push(SortEntry {
                     line,
                     key: fragment,
                 }),
             }
         }
     }
-    rows
+    entries
 }
 
-/// Split `rows` (ascending, unique lines) into maximal runs of consecutive
-/// line numbers. Each inner `Vec` holds indices into `rows`.
-fn group_adjacent(rows: &[Row]) -> Vec<Vec<usize>> {
+/// Split `entries` (ascending, unique lines) into maximal runs of consecutive
+/// line numbers. Each inner `Vec` holds indices into `entries`.
+fn group_adjacent(entries: &[SortEntry]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut prev_line: Option<ContentLine> = None;
-    for (idx, row) in rows.iter().enumerate() {
+    for (idx, entry) in entries.iter().enumerate() {
         match (groups.last_mut(), prev_line) {
-            (Some(g), Some(prev)) if prev.down(1) == row.line => g.push(idx),
+            (Some(g), Some(prev)) if prev.down(1) == entry.line => g.push(idx),
             _ => groups.push(vec![idx]),
         }
-        prev_line = Some(row.line);
+        prev_line = Some(entry.line);
     }
     groups
 }
@@ -179,8 +180,8 @@ enum Keys {
     Text(Vec<String>),
 }
 
-fn classify_keys(rows: &[Row], group: &[usize], insensitive: bool) -> Keys {
-    let raw: Vec<&str> = group.iter().map(|&i| rows[i].key.as_str()).collect();
+fn classify_keys(entries: &[SortEntry], group: &[usize], insensitive: bool) -> Keys {
+    let raw: Vec<&str> = group.iter().map(|&i| entries[i].key.as_str()).collect();
     if let Some(ints) = raw
         .iter()
         .map(|s| s.trim().parse::<i64>().ok())
@@ -209,11 +210,11 @@ fn classify_keys(rows: &[Row], group: &[usize], insensitive: bool) -> Keys {
 }
 
 /// The permutation for one group: `order[slot]` is the group-local index of
-/// the row that ends up at `slot`. Stable — equal keys keep document order,
+/// the entry that ends up at `slot`. Stable — equal keys keep document order,
 /// including under `-r` (the comparator is flipped, not the result vector, so
 /// ties are never reversed).
-fn sort_order(rows: &[Row], group: &[usize], opts: SortOpts) -> Vec<usize> {
-    let keys = classify_keys(rows, group, opts.insensitive);
+fn sort_order(entries: &[SortEntry], group: &[usize], opts: SortOpts) -> Vec<usize> {
+    let keys = classify_keys(entries, group, opts.insensitive);
     let mut order: Vec<usize> = (0..group.len()).collect();
     order.sort_by(|&a, &b| {
         let ord = match &keys {
@@ -226,8 +227,8 @@ fn sort_order(rows: &[Row], group: &[usize], opts: SortOpts) -> Vec<usize> {
     order
 }
 
-/// Invert a permutation: `inv[i]` is the slot that group-local row `i` ends up
-/// in (the slot `j` such that `order[j] == i`).
+/// Invert a permutation: `inv[i]` is the slot that group-local entry `i` ends
+/// up in (the slot `j` such that `order[j] == i`).
 fn invert(order: &[usize]) -> Vec<usize> {
     let mut inv = vec![0; order.len()];
     for (slot, &local) in order.iter().enumerate() {
@@ -250,18 +251,18 @@ fn trimmed_window(order: &[usize]) -> Option<(usize, usize)> {
     Some((lo, hi))
 }
 
-/// Selections follow their row: a selection confined to a single moved row is
-/// shifted by the same char column offset onto the row's new home. A
-/// selection spanning multiple rows keeps its char range unchanged — the
-/// group's total length is invariant under a row permutation (rows move
+/// Selections follow their line: a selection confined to a single moved line
+/// is shifted by the same char column offset onto the line's new home. A
+/// selection spanning multiple lines keeps its char range unchanged — the
+/// group's total length is invariant under a line permutation (lines move
 /// verbatim), so the range still points at valid text, just reordered
 /// underneath it.
 ///
 /// Adds the column to the new line start directly rather than going through
 /// `place_char_column`: that helper *clamps* a column past the line's content
 /// onto the last real character, which is right when moving between lines of
-/// different lengths but wrong here. A row lands intact at its new home, so
-/// every column on it is still valid — including a head sitting on the row's
+/// different lengths but wrong here. A line lands intact at its new home, so
+/// every column on it is still valid — including a head sitting on the line's
 /// own `\n` (what `x` selects), which the clamp would silently pull back onto
 /// the last character.
 fn remap_selections(

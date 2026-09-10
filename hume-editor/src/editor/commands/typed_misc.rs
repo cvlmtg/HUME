@@ -8,7 +8,7 @@ use super::{current_jump_entry, record_jump_if_moved};
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::settings::THEME_KEY;
-use hume_ops::edit::{SortOpts, SortRefusal, sort_rows};
+use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ pub(crate) fn typed_messages(
 ///
 /// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
 /// dirty (`+`) flag, short name, and home-shortened absolute path.
-/// Cursor is placed on the row corresponding to the currently focused buffer.
+/// Cursor is placed on the line corresponding to the currently focused buffer.
 pub(crate) fn typed_list_buffers(
     ed: &mut Editor,
     _arg: Option<&str>,
@@ -67,17 +67,17 @@ pub(crate) fn typed_list_buffers(
     // appear in its own listing. All other buffers — including [messages] and
     // [plugin-status] — are listed normally.
     let buffers_view_id = ed.state.buffers.find_by_label("[buffers]");
-    // `row` counts emitted rows (1-based, offset by the header at rope line 0).
+    // `line` counts emitted lines (1-based, offset by the header at rope line 0).
     // Tracked independently from the slotmap iteration index because [buffers]
-    // may be skipped without a row being emitted.
-    let mut row: usize = 0;
+    // may be skipped without a line being emitted.
+    let mut line: usize = 0;
     let mut current_rope_line: usize = 1;
 
     for (id, buf) in ed.state.buffers.iter() {
         if buffers_view_id == Some(id) {
             continue;
         }
-        row += 1;
+        line += 1;
 
         let cur_marker = if id == current {
             '%'
@@ -97,11 +97,11 @@ pub(crate) fn typed_list_buffers(
 
         out.push_str(&format!(
             "{:>4}  {}{}  {:<32}  {}\n",
-            row, cur_marker, dirty_marker, name, path
+            line, cur_marker, dirty_marker, name, path
         ));
 
         if id == current {
-            current_rope_line = row; // rope line = header(0) + emitted rows(1-based)
+            current_rope_line = line; // rope line = header(0) + emitted lines(1-based)
         }
     }
 
@@ -472,15 +472,18 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
     Ok(opts)
 }
 
-/// `:sort` — sort each maximal run of adjacent rows touched by a selection,
-/// keyed by the selected text on that row. Flags: `-r`/`--reverse`,
+/// `:sort` — sort each maximal run of adjacent lines touched by a selection,
+/// keyed by the selected text on that line. Flags: `-r`/`--reverse`,
 /// `-i`/`--insensitive`.
 ///
 /// Diverges deliberately from Helix's `:sort`, which permutes text *between*
-/// selection slots and leaves row boundaries untouched — this permutes the
-/// rows themselves, closer to `sort -k`. See `hume_ops::edit::sort` for the
+/// selection slots and leaves line boundaries untouched — this permutes the
+/// lines themselves, closer to `sort -k`. See `hume_ops::edit::sort` for the
 /// full semantics (grouping, numeric auto-detection, selection remapping)
-/// and its rejection of Kakoune's `|sort` too.
+/// and its rejection of Kakoune's `|sort` too. The error text below still
+/// says "rows" — that's the user-facing vocabulary (see
+/// `user-manual/docs/command-mode.md`), deliberately left as-is even though
+/// the internal type is `SortEntry`/lines.
 pub(crate) fn typed_sort(
     ed: &mut Editor,
     arg: Option<&str>,
@@ -502,14 +505,14 @@ pub(crate) fn typed_sort(
     // Computing the sort before touching the buffer is what lets a refusal
     // (`SortRefusal`) leave the buffer untouched — an identity edit would
     // still record an undo revision and mark the buffer dirty.
-    let result = sort_rows(
+    let result = sort_lines(
         ed.doc().text().clone(),
         ed.current_selections().clone(),
         opts,
     );
     let triple = match result {
         Ok(triple) => triple,
-        Err(SortRefusal::NoAdjacentRows) => {
+        Err(SortRefusal::NoAdjacentLines) => {
             ed.report(
                 Severity::Info,
                 "sort needs at least two adjacent rows".to_string(),
@@ -528,11 +531,11 @@ pub(crate) fn typed_sort(
         debug_assert_eq!(
             text.len_chars(),
             pre_len,
-            "sort_rows must run against the same buffer just read"
+            "sort_lines must run against the same buffer just read"
         );
         debug_assert_eq!(
             sels, pre_sels,
-            "sort_rows must run against the same selections just read"
+            "sort_lines must run against the same selections just read"
         );
         triple
     });

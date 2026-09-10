@@ -11,7 +11,7 @@ use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 
-/// Align selections into slots, using the primary's row as a baseline.
+/// Align selections into slots, using the primary's line as a baseline.
 ///
 /// **Slot model** — the primary's line determines the slot count `N`: one
 /// slot per single-line selection on that line (in left-to-right order). Every
@@ -22,7 +22,7 @@ use super::apply_edit;
 /// **Target per slot** — `target[k] = max(baseline[k], fit_need[k])`:
 /// - `baseline[k]` = anchor display column (`tab_width`-expanded, wide
 ///   graphemes counted at their true screen width) of the primary line's
-///   k-th selection (the primary row's positions are a floor).
+///   k-th selection (the primary line's positions are a floor).
 /// - `fit_need[k]` = the minimum anchor display column such that every
 ///   line's slot-`k` selection can reach it. A selection can only compress
 ///   the contiguous space/tab run immediately before its left edge (down to

@@ -357,14 +357,14 @@ pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) ->
 /// clamping to the last content character and snapping to a grapheme
 /// boundary.
 ///
-/// Callers are those with no `RowMap` to resolve a display column through:
+/// Callers are those with no `DisplayLineMap` to resolve a display column through:
 /// buffer reload, which re-places every cursor against the new text before
 /// any pane/viewport exists to build one; and `goto-location!`'s char-indexed
 /// target shape. Every command that places a cursor through the decoration
 /// layer (inline hints, tab expansion) instead uses a display-column model —
-/// `RowMap::char_at_line_display_col` — including vertical motion (`9j`/`9k`)
+/// `DisplayLineMap::char_at_buffer_line_col` — including vertical motion (`9j`/`9k`)
 /// and vertical selection copy (`copy-selection-on-next/prev-line`), both of
-/// which need `hume-editor`'s `RowMap` and so live there rather than as a
+/// which need `hume-editor`'s `DisplayLineMap` and so live there rather than as a
 /// pure `hume-ops` fn over this char-only one.
 ///
 /// `line` takes the ropey domain — a scripted `goto-location!` target can

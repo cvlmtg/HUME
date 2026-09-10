@@ -102,7 +102,7 @@ fn virtual_line_segments_to_bytes_rejects_segment_splitting_a_grapheme_cluster()
     // "e" (1 byte) + combining acute accent U+0301 (2 bytes) is 2 chars but
     // one grapheme cluster spanning bytes 0..3. Char offset 1 falls between
     // the two chars but not on the cluster boundary — the engine
-    // (`rows.rs`'s `segment_virtual_row`) resolves scope once per cluster at
+    // (`display_lines.rs`'s `segment_virtual_line`) resolves scope once per cluster at
     // its start byte, so a segment edge here would silently mis-apply
     // instead of erroring under a mere char-boundary check.
     let err = virtual_line_segments_to_bytes("e\u{301}", vec![seg(0, 1, "x")]).unwrap_err();
@@ -124,7 +124,7 @@ fn line_start_offset_accepts_the_last_content_line() {
 #[test]
 fn line_start_offset_rejects_the_trailing_phantom_line() {
     // Same fixture: line 3 is the empty line the trailing '\n' produces —
-    // `RowMap::last_line()` (hume-engine/src/rows.rs) agrees line 2 is the
+    // `DisplayLineMap::last_line()` (hume-engine/src/display_lines.rs) agrees line 2 is the
     // last renderable line, so line 3 has no row to decorate.
     let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     let err = line_start_offset(&text, 3, "test").unwrap_err();
@@ -165,7 +165,7 @@ fn validate_offset_accepts_after_on_the_last_real_content_char() {
 fn validate_offset_rejects_after_on_the_trailing_newline() {
     // "abc\n" — an 'after hint anchored on the trailing '\n' itself (offset
     // 3) would render at offset 4, the start of the buffer's trailing
-    // phantom line — a position `RowMap::last_line()` never lays out, so
+    // phantom line — a position `DisplayLineMap::last_line()` never lays out, so
     // the hint would be silently accepted and then silently never render
     // (the same failure class `line_start_offset` already rejects for the
     // line-anchored kinds, reachable here through a char offset instead).

@@ -1089,7 +1089,7 @@ fn dot_repeat_after_select_last_insertion_still_repeats_the_insert() {
 
 /// `select-word-nearest-on-line` is the wrap-aware `EditorCmd` twin of
 /// `select-word` (`mm`, a `Selection` → `Establishes`) — same in-place
-/// establishing semantics, `EditorCmd` only because it needs a `RowMap`.
+/// establishing semantics, `EditorCmd` only because it needs a `DisplayLineMap`.
 /// Unbound by default, so this drives it directly via `execute_keymap_command`
 /// rather than a keypress. It must be replayable: `.` re-runs the selection
 /// step before repeating the edit, not just re-delete whatever selection

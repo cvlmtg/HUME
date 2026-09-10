@@ -2,28 +2,28 @@ use super::super::*;
 use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
 
-// ── sort_rows ─────────────────────────────────────────────────────────────────
+// ── sort_lines ─────────────────────────────────────────────────────────────────
 
 #[test]
 fn sort_whole_lines_selected_as_one_multiline_span() {
-    // Multi-row selection: keeps its char range unchanged — the group's total
-    // length is invariant under a row permutation, so the same bracket
+    // Multi-line selection: keeps its char range unchanged — the group's total
+    // length is invariant under a line permutation, so the same bracket
     // positions still bound the (now reordered) block.
     assert_state!(
         "-[banana\napple\ncherry\n]>",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[apple\nbanana\ncherry\n]>"
     );
 }
 
 #[test]
-fn sort_swaps_whole_rows_keyed_by_a_single_char_each() {
-    // The motivating case: two 1-char selections on adjacent rows swap the
-    // whole rows they sit on, even though the surrounding text (`C`/`D` vs
+fn sort_swaps_whole_lines_keyed_by_a_single_char_each() {
+    // The motivating case: two 1-char selections on adjacent lines swap the
+    // whole lines they sit on, even though the surrounding text (`C`/`D` vs
     // `F`/`G`) has nothing to do with the sort order.
     assert_state!(
         "C -[B]> D\nF -[A]> G\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "F -[A]> G\nC -[B]> D\n"
     );
 }
@@ -34,19 +34,19 @@ fn sort_groups_are_independent_across_a_gap() {
     // independently — the gap line is untouched and no text crosses it.
     assert_state!(
         "-[b]>\n-[a]>\nx\n-[d]>\n-[c]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[a]>\n-[b]>\nx\n-[c]>\n-[d]>\n"
     );
 }
 
 #[test]
-fn sort_single_row_group_is_refused() {
-    // Validity: a single-row group can't be permuted — flip this to a
-    // 2-adjacent-row selection and the refusal disappears.
+fn sort_single_line_group_is_refused() {
+    // Validity: a single-line group can't be permuted — flip this to a
+    // 2-adjacent-line selection and the refusal disappears.
     let (text, sels) = hume_test_fixtures::testing::parse_state("-[a]>\nx\n-[b]>\n");
     assert_eq!(
-        sort_rows(text, sels, SortOpts::default()),
-        Err(SortRefusal::NoAdjacentRows)
+        sort_lines(text, sels, SortOpts::default()),
+        Err(SortRefusal::NoAdjacentLines)
     );
 }
 
@@ -57,7 +57,7 @@ fn sort_already_ordered_input_is_refused() {
     // refusal is what lets the caller skip applying anything.
     let (text, sels) = hume_test_fixtures::testing::parse_state("-[a]>\n-[b]>\n");
     assert_eq!(
-        sort_rows(text, sels, SortOpts::default()),
+        sort_lines(text, sels, SortOpts::default()),
         Err(SortRefusal::AlreadySorted)
     );
 }
@@ -66,7 +66,7 @@ fn sort_already_ordered_input_is_refused() {
 fn sort_reverse_flips_the_order() {
     assert_state!(
         "-[a]>\n-[b]>\n",
-        |(text, sels)| sort_rows(
+        |(text, sels)| sort_lines(
             text,
             sels,
             SortOpts {
@@ -84,7 +84,7 @@ fn sort_insensitive_folds_case_for_comparison_only() {
     // `-i` only changes the comparison — the output keeps the original case.
     assert_state!(
         "-[Banana]>\n-[apple]>\n",
-        |(text, sels)| sort_rows(
+        |(text, sels)| sort_lines(
             text,
             sels,
             SortOpts {
@@ -101,7 +101,7 @@ fn sort_insensitive_folds_case_for_comparison_only() {
 fn sort_numeric_auto_detects_and_orders_correctly() {
     assert_state!(
         "-[2]>\n-[10]>\n-[1]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[1]>\n-[2]>\n-[10]>\n"
     );
 
@@ -118,7 +118,7 @@ fn sort_numeric_auto_detects_and_orders_correctly() {
 fn sort_decimal_keys_order_numerically() {
     assert_state!(
         "-[9.5]>\n-[10.2]>\n-[2.75]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[2.75]>\n-[9.5]>\n-[10.2]>\n"
     );
 
@@ -141,7 +141,7 @@ fn sort_non_finite_float_keys_fall_back_to_lexicographic() {
     // not just a coincidentally-matching one.
     assert_state!(
         "-[2.5]>\n-[inf]>\n-[10.5]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[10.5]>\n-[2.5]>\n-[inf]>\n"
     );
 }
@@ -152,41 +152,41 @@ fn sort_mixed_numeric_and_text_keys_falls_back_to_lexicographic() {
     // comparison — the group falls back to plain string order.
     assert_state!(
         "-[2]>\n-[a]>\n-[1]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[1]>\n-[2]>\n-[a]>\n"
     );
 }
 
 #[test]
 fn sort_is_stable_for_equal_keys() {
-    // Two rows share the key "b" (the trailing digit is outside the
+    // Two lines share the key "b" (the trailing digit is outside the
     // selection, so it never enters the key); they keep their original
     // relative order after the sort.
     assert_state!(
         "-[b]>1\n-[a]>\n-[b]>2\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[a]>\n-[b]>1\n-[b]>2\n"
     );
 }
 
 #[test]
 fn sort_follows_a_selection_at_a_nonzero_char_column() {
-    // The row moves verbatim, so a selection partway through its line keeps
+    // The line moves verbatim, so a selection partway through its line keeps
     // the same char column offset on its new line.
     assert_state!(
         "xx-[b]>\nyy-[a]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "yy-[a]>\nxx-[b]>\n"
     );
 }
 
 #[test]
-fn sort_compound_key_from_two_selections_on_one_row() {
-    // Two selections on the same row concatenate into one key, in document
+fn sort_compound_key_from_two_selections_on_one_line() {
+    // Two selections on the same line concatenate into one key, in document
     // order — neither selection is discarded.
     assert_state!(
         "-[b]> -[2]> x\n-[a1]> y\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[a1]> y\n-[b]> -[2]> x\n"
     );
 }
@@ -198,20 +198,20 @@ fn sort_preserves_combining_grapheme_clusters_through_remap() {
     // the post-sort remap both cover the whole grapheme, not just 'e'.
     assert_state!(
         "-[e]>\u{0301}\n-[a]>\n",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[a]>\n-[e]>\u{0301}\n"
     );
 }
 
 #[test]
 fn sort_blank_line_inside_a_run_gets_an_empty_key_and_sorts_first() {
-    // One multi-line selection spans all three rows ("b", the blank line,
-    // "a"). The blank row has no content to key on — its key is "" — so it
-    // sorts ahead of both letters. The selection spans multiple rows, so it
+    // One multi-line selection spans all three lines ("b", the blank line,
+    // "a"). The blank line has no content to key on — its key is "" — so it
+    // sorts ahead of both letters. The selection spans multiple lines, so it
     // keeps its char range unchanged and still wraps the whole reordered block.
     assert_state!(
         "-[b\n\na\n]>",
-        |(text, sels)| sort_rows(text, sels, SortOpts::default()).unwrap(),
+        |(text, sels)| sort_lines(text, sels, SortOpts::default()).unwrap(),
         "-[\na\nb\n]>"
     );
 }

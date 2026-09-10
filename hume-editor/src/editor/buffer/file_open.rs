@@ -352,7 +352,7 @@ impl Editor {
         }
         // Drop stale saved scrolls for the reloaded buffer on every pane —
         // `recall_scroll` clamps `top_line` to the buffer's current last
-        // line, but a saved `top_row_offset`/`horizontal_offset` for a
+        // line, but a saved `top_slot`/`horizontal_offset` for a
         // scroll position that no longer exists is still worth discarding
         // outright rather than recalling a clamped-but-arbitrary spot. The
         // jump list was already remapped through `reload_cs` above (Phase 2b)

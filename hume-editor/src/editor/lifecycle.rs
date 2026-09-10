@@ -451,9 +451,9 @@ impl Editor {
                     // Non-block shape (only Insert can be, via
                     // `cursor-shape-insert`): place the terminal cursor at the
                     // document head, where `prepare_frame`'s scroll step already
-                    // resolved it — the row map that decided *where to scroll*
-                    // had to answer this question anyway, so re-deriving it here
-                    // would walk the same rows a second time.
+                    // resolved it — the display-line map that decided *where to
+                    // scroll* had to answer this question anyway, so re-deriving
+                    // it here would walk the same display lines a second time.
                     //
                     // `prepare_frame` ran earlier this iteration and stored the
                     // terminal area; recompute the focused pane's origin from it

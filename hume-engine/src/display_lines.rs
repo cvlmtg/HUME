@@ -1,26 +1,28 @@
-//! The single authority on the document's display-row list.
+//! The single authority on the document's display-line list.
 //!
-//! A document's rows come from two independent sources: a buffer line's own
-//! content rows (one per wrap row — exactly one when wrapping is off), and
-//! virtual rows contributed by [`DecorationSource`](crate::providers::DecorationSource)
-//! providers, anchored `Before` or `After` a line. Rendering, scrolling,
-//! cursor placement, mouse mapping and visual movement all need the same
+//! A document's display lines come from two independent sources: a buffer
+//! line's own content display lines (one per wrap display line — exactly
+//! one when wrapping is off), and virtual display lines contributed by
+//! [`DecorationSource`](crate::providers::DecorationSource) providers,
+//! anchored `Before` or `After` a line. Rendering, scrolling, cursor
+//! placement, mouse mapping and visual movement all need the same
 //! flattened view of those two sources, and any two implementations of that
-//! view which disagree by a single row produce a cursor that draws in the
-//! wrong place or a viewport that scrolls past content.
+//! view which disagree by a single display line produce a cursor that
+//! draws in the wrong place or a viewport that scrolls past content.
 //!
-//! [`RowMap`] is that one implementation. It bundles everything the row list
-//! depends on — rope, resolved wrap mode, tab width, whitespace config,
-//! providers, content width — so consumers hold one `&mut RowMap` instead of
-//! threading eight-to-eleven parameters through every walk. What it learns
-//! about each line it visits goes in the pane's own
-//! [`line_store::PaneLineStore`], which every walk of that pane shares so
-//! none repeats another's work.
+//! [`DisplayLineMap`] is that one implementation. It bundles everything the
+//! display-line list depends on — rope, resolved wrap mode, tab width,
+//! whitespace config, providers, content width — so consumers hold one
+//! `&mut DisplayLineMap` instead of threading eight-to-eleven parameters
+//! through every walk. What it learns about each line it visits goes in
+//! the pane's own [`line_store::PaneLineStore`], which every walk of that
+//! pane shares so none repeats another's work.
 //!
-//! Addresses are [`RowPos`]: a buffer line plus a row index into that line's
-//! *visual block*, which runs `before`-virtuals, then content/wrap rows, then
-//! `after`-virtuals. `ViewportState`'s `top_line`/`top_row_offset` pair is the
-//! persisted form of exactly that address.
+//! Addresses are [`DisplayLinePos`]: a buffer line plus a slot index into
+//! that line's *visual block*, which runs `before`-virtuals, then
+//! content/wrap display lines, then `after`-virtuals. `ViewportState`'s
+//! `top_line`/`top_slot` pair is the persisted form of exactly that
+//! address.
 
 use std::ops::Range;
 
@@ -28,7 +30,7 @@ use ropey::Rope;
 
 use crate::format::{FormatBound, LineFormat, format_buffer_line};
 use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
-use crate::types::{CellContent, DisplayRow, Grapheme, ScopeId};
+use crate::types::{CellContent, DisplayLine, Grapheme, ScopeId};
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -41,33 +43,35 @@ use line_store::{FormatKey, PaneLineStore};
 // Addresses
 // ---------------------------------------------------------------------------
 
-/// The address of one display row: `row` indexes into `line`'s visual block
-/// (`before`-virtuals, content/wrap rows, `after`-virtuals — in that order).
+/// The address of one display line: `slot` indexes into `line`'s visual
+/// block (`before`-virtuals, content/wrap display lines, `after`-virtuals —
+/// in that order).
 ///
-/// `Ord` is lexicographic on `(line, row)`, which is document order, so
+/// `Ord` is lexicographic on `(line, slot)`, which is document order, so
 /// comparing two addresses answers "which comes first on screen".
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RowPos {
+pub struct DisplayLinePos {
     pub line: ContentLine,
-    pub row: usize,
+    pub slot: usize,
 }
 
-impl RowPos {
-    pub fn new(line: ContentLine, row: usize) -> Self {
-        Self { line, row }
+impl DisplayLinePos {
+    pub fn new(line: ContentLine, slot: usize) -> Self {
+        Self { line, slot }
     }
 }
 
-/// Which slot of a line's visual block a display row falls in — virtual rows
-/// anchored before it, its own wrap/content rows, or virtual rows anchored
-/// after. The payload is the row's index within its own group, so
-/// `Content(2)` is a line's third content row and `Before(0)` is the first
-/// virtual row above it.
+/// Which slot of a line's visual block a display line falls in — virtual
+/// display lines anchored before it, its own wrap/content display lines, or
+/// virtual display lines anchored after. The payload is the display line's
+/// index within its own group, so `Content(2)` is a line's third content
+/// display line and `Before(0)` is the first virtual display line above it.
 ///
-/// Named `BlockSlot` rather than `RowKind` to stay distinct from
-/// [`crate::types::RowKind`] (`LineStart`/`Wrap`/`Virtual`/`Filler`) — a
-/// different question about the same row: that one classifies how a row was
-/// produced, this one where it sits within its line's block.
+/// Named `BlockSlot` rather than `DisplayLineKind` to stay distinct from
+/// [`crate::types::DisplayLineKind`] (`LineStart`/`Wrap`/`Virtual`/`Filler`)
+/// — a different question about the same display line: that one classifies
+/// how a display line was produced, this one where it sits within its
+/// line's block.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BlockSlot {
     Before(usize),
@@ -75,24 +79,24 @@ pub enum BlockSlot {
     After(usize),
 }
 
-/// Display-row breakdown of one buffer line's visual block: virtual rows
-/// anchored `Before` it, its own wrap/content rows, and virtual rows anchored
-/// `After` it.
+/// Display-line breakdown of one buffer line's visual block: virtual
+/// display lines anchored `Before` it, its own wrap/content display lines,
+/// and virtual display lines anchored `After` it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RowsBreakdown {
+pub struct BlockBreakdown {
     pub before: usize,
     pub content: usize,
     pub after: usize,
 }
 
-impl RowsBreakdown {
-    /// Total screen rows this line's whole visual block occupies.
+impl BlockBreakdown {
+    /// Total display lines this line's whole visual block occupies.
     pub fn total(&self) -> usize {
         self.before + self.content + self.after
     }
 }
 
-/// Which grapheme a display column resolves to in [`RowMap::char_at`].
+/// Which grapheme a display column resolves to in [`DisplayLineMap::char_at`].
 ///
 /// The two variants are different questions, not different implementations —
 /// a click and a sticky-column vertical move optimise different things, and
@@ -107,38 +111,38 @@ pub enum DisplayColTarget {
     Cell,
     /// The real grapheme whose start column is *nearest* this one — what a
     /// sticky-column `j`/`k` asks, since it minimises display column drift.
-    /// The end-of-line sentinel is skipped unless it is the row's only
-    /// grapheme (an empty line), so vertical movement stays on content.
+    /// The end-of-line sentinel is skipped unless it is the display line's
+    /// only grapheme (an empty line), so vertical movement stays on content.
     NearestContent,
 }
 
 // ---------------------------------------------------------------------------
-// Row map
+// Display-line map
 // ---------------------------------------------------------------------------
 
-/// Everything the render stage needs to style and compose one display row.
-pub struct RenderRow<'m> {
-    pub row: &'m DisplayRow,
-    /// The graphemes `row.graphemes` indexes into.
+/// Everything the render stage needs to style and compose one display line.
+pub struct RenderDisplayLine<'m> {
+    pub display_line: &'m DisplayLine,
+    /// The graphemes `display_line.graphemes` indexes into.
     pub graphemes: &'m [Grapheme],
-    /// Buffer-line text that the row's real graphemes index by byte range.
-    /// Empty for virtual rows, which have no buffer text.
+    /// Buffer-line text that the display line's real graphemes index by byte
+    /// range. Empty for virtual display lines, which have no buffer text.
     pub line_text: &'m str,
     /// Arena backing `Whitespace`/`Placeholder`/`Virtual` cell text.
     pub virtual_texts: &'m str,
-    /// The row's own background scope (`VirtualLine::base_scope`) — `None`
-    /// for content rows, which get their background from
+    /// The display line's own background scope (`VirtualLine::base_scope`)
+    /// — `None` for content display lines, which get their background from
     /// `Decoration::LineBg`/cursorline instead (`pane_render.rs`'s
     /// `LineStyle::tint`).
     pub base_scope: Option<ScopeId>,
 }
 
-/// The single authority on the document's display-row list. See the module doc.
-pub struct RowMap<'a> {
+/// The single authority on the document's display-line list. See the module doc.
+pub struct DisplayLineMap<'a> {
     rope: &'a Rope,
     /// Everything this map's formats depend on besides the line's own text —
     /// wrap mode (always resolved against `content_width`: `WrapMode::wrap_width`
-    /// panics on the `width: 0` sentinel, and [`RowMap::new`] is the one
+    /// panics on the `width: 0` sentinel, and [`DisplayLineMap::new`] is the one
     /// funnel every consumer passes through, so it resolves there rather
     /// than trusting callers to), tab width, whitespace config, and the
     /// buffer's identity/generation — and, verbatim, this map's store-scope
@@ -162,7 +166,7 @@ pub struct RowMap<'a> {
     decorations: Vec<Decoration>,
 }
 
-impl<'a> RowMap<'a> {
+impl<'a> DisplayLineMap<'a> {
     pub fn new(
         rope: &'a Rope,
         providers: &'a ProviderSet,
@@ -172,13 +176,13 @@ impl<'a> RowMap<'a> {
     ) -> Self {
         debug_assert!(
             hume_rope::lines::ends_with_newline(rope),
-            "RowMap requires a trailing '\\n' (the buffer invariant) — \
+            "DisplayLineMap requires a trailing '\\n' (the buffer invariant) — \
              without it `last_line`'s content-line derivation drops the \
              rope's actual last content line"
         );
         debug_assert!(
             content_width >= 1,
-            "RowMap requires content_width >= 1 — a 0 here leaves \
+            "DisplayLineMap requires content_width >= 1 — a 0 here leaves \
              WrapMode::resolve's width:0 sentinel unresolved, and \
              wrap_width() then panics far from this call site. Callers pass \
              pane_width.max(1) (see Pane::content_width)."
@@ -200,7 +204,7 @@ impl<'a> RowMap<'a> {
     /// The format of a named entry.
     ///
     /// Every format read goes through here on an index its caller was handed
-    /// by [`RowMap::ensure_formatted`], so "the caller ensured this line" is
+    /// by [`DisplayLineMap::ensure_formatted`], so "the caller ensured this line" is
     /// carried by a value rather than by the two calls happening in order.
     fn format_at(&self, idx: usize) -> &LineFormat {
         &self.store.entry(idx).format
@@ -209,21 +213,22 @@ impl<'a> RowMap<'a> {
     /// Clip `WrapMode::None` formatting to a horizontal column window — the
     /// render path's bound on arbitrarily long unwrapped lines.
     ///
-    /// Row counts are unaffected (no-wrap is one content row however wide the
-    /// line is), so this changes only which graphemes the render accessors
-    /// emit. Editor-side consumers want whole lines and leave it `None`.
+    /// Display-line counts are unaffected (no-wrap is one content display
+    /// line however wide the line is), so this changes only which graphemes
+    /// the render accessors emit. Editor-side consumers want whole lines and
+    /// leave it `None`.
     ///
     /// Does not re-scope the store: `h_window` is not part of [`FormatKey`],
     /// only recorded on the [`LineFormat`] a later `ensure_format_at` produces,
-    /// so an entry's block shape and virtual rows survive this call and only
-    /// its format is subject to being recut. That is also what keeps the
+    /// so an entry's block shape and virtual display lines survive this call
+    /// and only its format is subject to being recut. That is also what keeps the
     /// frame's two passes from sharing a *format* in `WrapMode::None`, where
     /// only the render pass clips — they still share the block shape.
     pub fn with_h_window(mut self, h_window: Option<Range<DisplayLineCol>>) -> Self {
         debug_assert!(
             h_window.is_none() || !self.key.wrap_mode.is_wrapping(),
-            "with_h_window is a WrapMode::None-only clip — a wrapping RowMap \
-             would silently under-count content rows, since ensure_format_at \
+            "with_h_window is a WrapMode::None-only clip — a wrapping DisplayLineMap \
+             would silently under-count content display lines, since ensure_format_at \
              passes h_window through to the formatter even while wrapping"
         );
         self.h_window = h_window;
@@ -234,12 +239,12 @@ impl<'a> RowMap<'a> {
         self.key.wrap_mode.is_wrapping()
     }
 
-    /// The wrap column display rows are actually laid out against — `None`
+    /// The wrap column display lines are actually laid out against — `None`
     /// for `WrapMode::None`, otherwise the *resolved* width (the mode's own
     /// explicit width, or `content_width` when the mode used the `0`
-    /// sentinel). Distinct from [`RowMap::content_width`]: an explicit wrap
+    /// sentinel). Distinct from [`DisplayLineMap::content_width`]: an explicit wrap
     /// width doesn't move when the pane resizes, so a resize-driven
-    /// staleness check (a `DisplayRow`-relative sticky column surviving a
+    /// staleness check (a `DisplayLine`-relative sticky column surviving a
     /// wrap-width change) must compare this, not the raw content width, or
     /// it invalidates latches a resize never actually affected.
     pub fn resolved_wrap_width(&self) -> Option<u16> {
@@ -247,7 +252,7 @@ impl<'a> RowMap<'a> {
     }
 
     /// Width available for content — the same `content_width` the caller
-    /// passed to [`RowMap::new`] (gutter already subtracted). The one column
+    /// passed to [`DisplayLineMap::new`] (gutter already subtracted). The one column
     /// bound `locate`'s columns are relative to, so a caller sizing anything
     /// against display columns (horizontal scroll) reads it here rather than
     /// re-deriving it from the pane and risking the two drifting apart.
@@ -257,21 +262,21 @@ impl<'a> RowMap<'a> {
 
     // ── Block shape ──────────────────────────────────────────────────────
 
-    /// The display-row breakdown of `line`'s visual block.
-    pub fn block(&mut self, line: ContentLine) -> RowsBreakdown {
+    /// The display-line breakdown of `line`'s visual block.
+    pub fn block(&mut self, line: ContentLine) -> BlockBreakdown {
         let idx = self.block_entry(line);
         self.breakdown(idx)
     }
 
     /// The breakdown of an entry already in hand.
     ///
-    /// Split out so [`RowMap::resolve`] can compute a slot from the same
+    /// Split out so [`DisplayLineMap::resolve`] can compute a slot from the same
     /// breakdown it needs to walk, without re-finding the entry `block`
     /// already holds.
-    fn breakdown(&mut self, idx: usize) -> RowsBreakdown {
-        let content = self.content_rows(idx);
+    fn breakdown(&mut self, idx: usize) -> BlockBreakdown {
+        let content = self.content_display_lines(idx);
         let entry = self.store.entry(idx);
-        RowsBreakdown {
+        BlockBreakdown {
             before: entry.before,
             content,
             after: entry.after(),
@@ -282,8 +287,8 @@ impl<'a> RowMap<'a> {
     /// first time this store has seen it.
     ///
     /// Only the *shape* — the format arrives separately, from whoever first
-    /// needs the line's rows. Under `WrapMode::None` that may be much later,
-    /// or never.
+    /// needs the line's display lines. Under `WrapMode::None` that may be
+    /// much later, or never.
     fn block_entry(&mut self, line: ContentLine) -> usize {
         if let Some(idx) = self.store.find(line) {
             return idx;
@@ -313,21 +318,22 @@ impl<'a> RowMap<'a> {
                 }
             }
             // Never trust a provider's self-reported id: it could name another
-            // provider's rows, which the gutter would then attribute wrongly.
+            // provider's display lines, which the gutter would then attribute wrongly.
             for vl in &mut virtual_lines[start..] {
                 vl.provider_id = id;
             }
         }
-        // A row anchored outside the queried line is a provider bug. Drop it
-        // rather than count it against a line it does not belong to.
+        // A display line anchored outside the queried line is a provider
+        // bug. Drop it rather than count it against a line it does not
+        // belong to.
         virtual_lines.retain(|vl| match vl.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n == line,
         });
-        // `Before` rows ahead of `After` rows; stable, so provider
-        // registration order survives within each group.
+        // `Before` display lines ahead of `After` display lines; stable, so
+        // provider registration order survives within each group.
         virtual_lines.sort_by_key(|vl| vl.anchor.sort_key());
         // Providers are plugin code and the trait makes no ordering promise
-        // enforceable at the boundary — sort here so `segment_virtual_row`'s
+        // enforceable at the boundary — sort here so `segment_virtual_line`'s
         // cursor scan (which requires sorted, non-overlapping input) never
         // has to trust it, same posture as `rebuild_line_decorations` takes
         // for highlight spans.
@@ -346,7 +352,7 @@ impl<'a> RowMap<'a> {
         idx
     }
 
-    /// How many content rows `line`'s block occupies.
+    /// How many content display lines `line`'s block occupies.
     ///
     /// `WrapMode::None` is always exactly one, and formatting cannot return
     /// another answer there — so counting never runs the formatter. That is
@@ -354,17 +360,17 @@ impl<'a> RowMap<'a> {
     /// line megabytes wide. Under a wrapping mode the count *is* the
     /// formatter's output, so the line gets formatted here if it wasn't
     /// already.
-    fn content_rows(&mut self, idx: usize) -> usize {
+    fn content_display_lines(&mut self, idx: usize) -> usize {
         if !self.key.wrap_mode.is_wrapping() {
             return 1;
         }
-        // `Full`: the row count is the output, so nothing may be clipped.
+        // `Full`: the display-line count is the output, so nothing may be clipped.
         self.ensure_format_at(idx, FormatBound::Full);
         let entry = self.store.entry(idx);
-        let content = entry.format.display_rows.len();
+        let content = entry.format.display_lines.len();
         debug_assert!(
             content >= 1,
-            "line {} counted zero content rows; every line occupies at least one",
+            "line {} counted zero content display lines; every line occupies at least one",
             entry.line.index()
         );
         content
@@ -376,9 +382,9 @@ impl<'a> RowMap<'a> {
     }
 
     /// The content line a char offset resolves to, clamping the buffer's own
-    /// trailing phantom line down to [`RowMap::last_line`] — reachable when
+    /// trailing phantom line down to [`DisplayLineMap::last_line`] — reachable when
     /// `char_offset == len_chars()` (the debug_assert in every caller below
-    /// admits it), and there is no display row to address on a line that
+    /// admits it), and there is no display line to address on a line that
     /// doesn't exist. Same posture as `hume_rope::lines::place_char_column`
     /// on a phantom `line` argument: land on the last real line instead of
     /// an address no render pass can lay out.
@@ -388,82 +394,88 @@ impl<'a> RowMap<'a> {
             .unwrap_or_else(|| self.last_line())
     }
 
-    /// Pull `pos` into the document: `line` into `0..=last_line()`, then `row`
-    /// into that line's block.
-    pub fn clamp(&mut self, pos: RowPos) -> RowPos {
+    /// Pull `pos` into the document: `line` into `0..=last_line()`, then
+    /// `slot` into that line's block.
+    pub fn clamp(&mut self, pos: DisplayLinePos) -> DisplayLinePos {
         let line = pos.line.min(self.last_line());
         let total = self.block(line).total();
-        RowPos::new(line, pos.row.min(total.saturating_sub(1)))
+        DisplayLinePos::new(line, pos.slot.min(total.saturating_sub(1)))
     }
 
     /// Which block slot `pos` addresses.
-    pub fn slot(&mut self, pos: RowPos) -> BlockSlot {
+    pub fn slot(&mut self, pos: DisplayLinePos) -> BlockSlot {
         self.resolve(pos).1
     }
 
     /// The entry index and block slot `pos` addresses, in one walk — for a
-    /// caller (`render_row`) that needs both without resolving the line's
+    /// caller (`render_display_line`) that needs both without resolving the line's
     /// block twice.
-    fn resolve(&mut self, pos: RowPos) -> (usize, BlockSlot) {
+    fn resolve(&mut self, pos: DisplayLinePos) -> (usize, BlockSlot) {
         let idx = self.block_entry(pos.line);
         let b = self.breakdown(idx);
         debug_assert!(
-            pos.row < b.total(),
-            "row {} is past line {}'s block of {}",
-            pos.row,
+            pos.slot < b.total(),
+            "slot {} is past line {}'s block of {}",
+            pos.slot,
             pos.line.index(),
             b.total()
         );
-        let slot = if pos.row < b.before {
-            BlockSlot::Before(pos.row)
-        } else if pos.row < b.before + b.content {
-            BlockSlot::Content(pos.row - b.before)
+        let slot = if pos.slot < b.before {
+            BlockSlot::Before(pos.slot)
+        } else if pos.slot < b.before + b.content {
+            BlockSlot::Content(pos.slot - b.before)
         } else {
-            BlockSlot::After(pos.row - b.before - b.content)
+            BlockSlot::After(pos.slot - b.before - b.content)
         };
         (idx, slot)
     }
 
     // ── Stepping ─────────────────────────────────────────────────────────
 
-    /// The next display row, crossing into the next line's block as needed.
-    /// `None` only at the document's very last row.
-    pub fn next(&mut self, pos: RowPos) -> Option<RowPos> {
+    /// The next display line, crossing into the next line's block as needed.
+    /// `None` only at the document's very last display line.
+    pub fn next(&mut self, pos: DisplayLinePos) -> Option<DisplayLinePos> {
         let total = self.block(pos.line).total();
-        if pos.row + 1 < total {
-            return Some(RowPos::new(pos.line, pos.row + 1));
+        if pos.slot + 1 < total {
+            return Some(DisplayLinePos::new(pos.line, pos.slot + 1));
         }
-        (pos.line < self.last_line()).then(|| RowPos::new(pos.line.down(1), 0))
+        (pos.line < self.last_line()).then(|| DisplayLinePos::new(pos.line.down(1), 0))
     }
 
-    /// The previous display row. `None` only at the document's first row.
-    pub fn prev(&mut self, pos: RowPos) -> Option<RowPos> {
-        if pos.row > 0 {
-            return Some(RowPos::new(pos.line, pos.row - 1));
+    /// The previous display line. `None` only at the document's first display line.
+    pub fn prev(&mut self, pos: DisplayLinePos) -> Option<DisplayLinePos> {
+        if pos.slot > 0 {
+            return Some(DisplayLinePos::new(pos.line, pos.slot - 1));
         }
         if pos.line.index() == 0 {
             return None;
         }
         let prev_line = pos.line.up(1);
         let total = self.block(prev_line).total();
-        Some(RowPos::new(prev_line, total.saturating_sub(1)))
+        Some(DisplayLinePos::new(prev_line, total.saturating_sub(1)))
     }
 
-    /// Step `delta` rows from `pos`, saturating at either end of the document.
+    /// Step `delta` display lines from `pos`, saturating at either end of the document.
     /// The starting address is clamped first, so a stale viewport self-heals.
-    pub fn advance(&mut self, pos: RowPos, delta: isize) -> RowPos {
+    pub fn advance(&mut self, pos: DisplayLinePos, delta: isize) -> DisplayLinePos {
         self.advance_counted(pos, delta).0
     }
 
-    /// [`RowMap::advance`], plus how many rows it actually stepped — fewer than
-    /// `delta.unsigned_abs()` only when the document's edge stopped the walk.
+    /// [`DisplayLineMap::advance`], plus how many display lines it actually
+    /// stepped — fewer than `delta.unsigned_abs()` only when the document's
+    /// edge stopped the walk.
     ///
-    /// Since [`RowMap::next`] and [`RowMap::prev`] are exact inverses, the count
-    /// is also the distance back: after stepping `n` rows *backward* from `pos`,
-    /// `distance(result, pos) == n`. That lets a caller that scrolled backward
-    /// from the cursor learn the cursor's resulting screen row without walking
-    /// the same rows forward again.
-    pub fn advance_counted(&mut self, pos: RowPos, delta: isize) -> (RowPos, usize) {
+    /// Since [`DisplayLineMap::next`] and [`DisplayLineMap::prev`] are exact
+    /// inverses, the count is also the distance back: after stepping `n`
+    /// display lines *backward* from `pos`, `distance(result, pos) == n`.
+    /// That lets a caller that scrolled backward from the cursor learn the
+    /// cursor's resulting screen row without walking the same display lines
+    /// forward again.
+    pub fn advance_counted(
+        &mut self,
+        pos: DisplayLinePos,
+        delta: isize,
+    ) -> (DisplayLinePos, usize) {
         let mut cur = self.clamp(pos);
         let mut taken = 0;
         for _ in 0..delta.unsigned_abs() {
@@ -481,64 +493,70 @@ impl<'a> RowMap<'a> {
         (cur, taken)
     }
 
-    /// Rows from `from` forward to `to`, or `None` if `to` is behind `from` or
-    /// more than `cap` rows ahead.
+    /// Display lines from `from` forward to `to`, or `None` if `to` is
+    /// behind `from` or more than `cap` display lines ahead.
     ///
     /// Callers pass the viewport height as `cap`, which keeps this O(height)
     /// however large the document is. Both "behind" and "too far" collapse to
     /// `None` because every caller asks the same question — is `to` visible
     /// from `from` — and neither case is.
-    pub fn distance(&mut self, from: RowPos, to: RowPos, cap: usize) -> Option<usize> {
+    pub fn distance(
+        &mut self,
+        from: DisplayLinePos,
+        to: DisplayLinePos,
+        cap: usize,
+    ) -> Option<usize> {
         if to < from {
             return None;
         }
-        // Every line's block occupies at least one row (`block`'s own
-        // `content >= 1` assert), so crossing `to.line - from.line` lines
-        // costs at least that many steps — a line delta beyond `cap` already
-        // proves the walk below would return `None`, without formatting a
-        // single line under wrap to find out.
+        // Every line's block occupies at least one display line (`block`'s
+        // own `content >= 1` assert), so crossing `to.line - from.line`
+        // lines costs at least that many steps — a line delta beyond `cap`
+        // already proves the walk below would return `None`, without
+        // formatting a single line under wrap to find out.
         if to.line.index().saturating_sub(from.line.index()) > cap {
             return None;
         }
         let mut cur = from;
-        for rows in 0..=cap {
+        for steps in 0..=cap {
             if cur == to {
-                return Some(rows);
+                return Some(steps);
             }
             cur = self.next(cur)?;
         }
         None
     }
 
-    /// Whether the whole document fits in `height` rows.
+    /// Whether the whole document fits in `height` display lines.
     ///
-    /// Walks at most `height + 1` rows, so this stays cheap on a huge buffer
-    /// where the answer is obviously "no".
+    /// Walks at most `height + 1` display lines, so this stays cheap on a
+    /// huge buffer where the answer is obviously "no".
     pub fn fits_in(&mut self, height: u16) -> bool {
-        // Every document has at least one row (RowPos::default()), which
-        // cannot fit in a zero-height viewport — short-circuit before the
-        // loop below, which never compares its `rows = 1` starting count
-        // against `height` if the walk ends on the very first `next()`.
+        // Every document has at least one display line
+        // (DisplayLinePos::default()), which cannot fit in a zero-height
+        // viewport — short-circuit before the loop below, which never
+        // compares its `lines = 1` starting count against `height` if the
+        // walk ends on the very first `next()`.
         if height == 0 {
             return false;
         }
-        let mut cur = RowPos::default();
-        let mut rows = 1usize;
+        let mut cur = DisplayLinePos::default();
+        let mut lines = 1usize;
         while let Some(next) = self.next(cur) {
             cur = next;
-            rows += 1;
-            if rows > height as usize {
+            lines += 1;
+            if lines > height as usize {
                 return false;
             }
         }
         true
     }
 
-    // ── Char offsets ↔ rows ──────────────────────────────────────────────
+    // ── Char offsets ↔ display lines ──────────────────────────────────────
 
-    /// Locate `char_offset`: its display row, and its display column in that
-    /// row.
-    pub fn locate(&mut self, char_offset: CharOffset) -> (RowPos, DisplayLineCol) {
+    /// Locate `char_offset`: its display line, and its display column in
+    /// that display line.
+    pub fn locate(&mut self, char_offset: CharOffset) -> (DisplayLinePos, DisplayLineCol) {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "locate: char_offset {char_offset:?} is out of range for a buffer \
@@ -556,12 +574,12 @@ impl<'a> RowMap<'a> {
         // this one offset sits.
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
         let (sub, display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
-        (RowPos::new(line, before + sub), display_col)
+        (DisplayLinePos::new(line, before + sub), display_col)
     }
 
-    /// Which content sub-row of `idx`'s line holds `target_byte`
+    /// Which content display line of `idx`'s line holds `target_byte`
     /// (line-relative, resolved by the caller), and at what column. `idx` must
-    /// come from an [`RowMap::ensure_formatted`] bounded at least as far as
+    /// come from an [`DisplayLineMap::ensure_formatted`] bounded at least as far as
     /// `ToByte(target_byte)`.
     fn locate_in_line(
         &self,
@@ -571,16 +589,16 @@ impl<'a> RowMap<'a> {
     ) -> (usize, DisplayLineCol) {
         let entry = self.store.entry(idx);
         let format = &entry.format;
-        let rows = &format.display_rows;
+        let lines = &format.display_lines;
         let graphemes = &format.graphemes;
 
-        for (i, row) in rows.iter().enumerate() {
-            if row.graphemes.is_empty() {
+        for (i, dline) in lines.iter().enumerate() {
+            if dline.graphemes.is_empty() {
                 continue;
             }
-            let first = &graphemes[row.graphemes.start];
-            let last = &graphemes[row.graphemes.end - 1];
-            let is_last = i + 1 == rows.len();
+            let first = &graphemes[dline.graphemes.start];
+            let last = &graphemes[dline.graphemes.end - 1];
+            let is_last = i + 1 == lines.len();
             if target_byte >= first.byte_range.start
                 && (target_byte < last.byte_range.end || is_last)
             {
@@ -592,10 +610,10 @@ impl<'a> RowMap<'a> {
                 let display_col = crate::style::resolve_grapheme_display_col(
                     char_offset,
                     graphemes,
-                    &row.graphemes,
+                    &dline.graphemes,
                 )
                 .map_or_else(
-                    // Past every grapheme on the row (end of line).
+                    // Past every grapheme on the display line (end of line).
                     || last.display_col.advance(last.width as u32),
                     |(display_col, _)| display_col,
                 );
@@ -603,85 +621,86 @@ impl<'a> RowMap<'a> {
             }
         }
 
-        // No row claimed the offset: answer with the end of the last row.
-        // Every content row has at least one grapheme (an empty line still
-        // gets its EOL sentinel), and the last row's `is_last` branch above
-        // matches any `target_byte` at or past its own start — so reaching
-        // here means either `rows` is empty or every row was skipped for
-        // having no graphemes, both of which indicate a formatting bug
-        // rather than a normal input.
+        // No display line claimed the offset: answer with the end of the
+        // last one. Every content display line has at least one grapheme
+        // (an empty line still gets its EOL sentinel), and the last one's
+        // `is_last` branch above matches any `target_byte` at or past its
+        // own start — so reaching here means either `lines` is empty or
+        // every display line was skipped for having no graphemes, both of
+        // which indicate a formatting bug rather than a normal input.
         debug_assert!(
-            !rows.is_empty(),
+            !lines.is_empty(),
             "locate_in_line: line {}, char_offset {char_offset} matched \
-             no row — every content row should claim some byte range of the \
-             line",
+             no display line — every content display line should claim \
+             some byte range of the line",
             entry.line.index()
         );
-        let last_row = rows.len().saturating_sub(1);
-        let display_col = rows
-            .get(last_row)
+        let last_dline = lines.len().saturating_sub(1);
+        let display_col = lines
+            .get(last_dline)
             .filter(|r| !r.graphemes.is_empty())
             .map_or(DisplayLineCol::new(0), |r| {
                 let lg = &graphemes[r.graphemes.end - 1];
                 lg.display_col.advance(lg.width as u32)
             });
-        (last_row, display_col)
+        (last_dline, display_col)
     }
 
-    /// The display row `char_offset` sits on, without resolving its column.
+    /// The display line `char_offset` sits on, without resolving its column.
     ///
-    /// In `WrapMode::None` a line is exactly one content row (see
-    /// [`RowMap::block`]), so the sub-row is always 0 and the answer falls out
-    /// of the block breakdown with no formatting at all — the difference
-    /// between O(1) and O(offset into the line) for the callers that only want
-    /// the row.
-    pub fn locate_row(&mut self, char_offset: CharOffset) -> RowPos {
+    /// In `WrapMode::None` a line is exactly one content display line (see
+    /// [`DisplayLineMap::block`]), so the sub-index is always 0 and the
+    /// answer falls out of the block breakdown with no formatting at all —
+    /// the difference between O(1) and O(offset into the line) for the
+    /// callers that only want the display line.
+    pub fn locate_display_line(&mut self, char_offset: CharOffset) -> DisplayLinePos {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
-            "locate_row: char_offset {char_offset:?} is out of range for a \
-             buffer of {} chars — see the debug_assert in RowMap::locate",
+            "locate_display_line: char_offset {char_offset:?} is out of range for a \
+             buffer of {} chars — see the debug_assert in DisplayLineMap::locate",
             self.rope.len_chars()
         );
         if self.key.wrap_mode.is_wrapping() {
-            // Wrapping needs the sub-row, which only formatting can answer —
-            // and `block` has already formatted the line to count its rows.
+            // Wrapping needs the sub-index, which only formatting can
+            // answer — and `block` has already formatted the line to count
+            // its display lines.
             return self.locate(char_offset).0;
         }
         let line = self.content_line_of(hume_rope::line::RopeyLine::new(
             self.rope.char_to_line(char_offset.index()),
         ));
-        RowPos::new(line, self.block(line).before)
+        DisplayLinePos::new(line, self.block(line).before)
     }
 
-    /// The char offset `target_display_col` resolves to on `pos`'s row, under
-    /// `target`'s policy.
+    /// The char offset `target_display_col` resolves to on `pos`'s display
+    /// line, under `target`'s policy.
     ///
-    /// A virtual row is not buffer content, so `pos` landing on one clamps to
-    /// the nearest content sub-row of the same line — the first for a `Before`
-    /// row, the last for an `After` row.
+    /// A virtual display line is not buffer content, so `pos` landing on
+    /// one clamps to the nearest content sub-line of the same line — the
+    /// first for a `Before` display line, the last for an `After` one.
     pub fn char_at(
         &mut self,
-        pos: RowPos,
+        pos: DisplayLinePos,
         target_display_col: DisplayLineCol,
         target: DisplayColTarget,
     ) -> CharOffset {
         let b = self.block(pos.line);
         let sub = pos
-            .row
+            .slot
             .saturating_sub(b.before)
             .min(b.content.saturating_sub(1));
         // Only up to the target column: no cell further right can be the one
         // this column resolves to, under either policy.
         let idx = self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
-        CharOffset::new(self.resolve_in_row(idx, sub, target_display_col, target))
+        CharOffset::new(self.resolve_in_display_line(idx, sub, target_display_col, target))
     }
 
-    /// Shared core of [`RowMap::char_at`] and [`RowMap::char_at_line_display_col`]:
-    /// which char offset on content row `sub` of `idx`'s line resolves to
-    /// `target_display_col`, under `target`'s policy. `idx` must come from an
-    /// [`RowMap::ensure_formatted`] bounded at least up to
-    /// `target_display_col`.
-    fn resolve_in_row(
+    /// Shared core of [`DisplayLineMap::char_at`] and [`DisplayLineMap::char_at_buffer_line_col`]:
+    /// which char offset on content display line `sub` of `idx`'s line
+    /// resolves to `target_display_col`, under `target`'s policy. `idx`
+    /// must come from an [`DisplayLineMap::ensure_formatted`] bounded at
+    /// least up to `target_display_col`.
+    fn resolve_in_display_line(
         &self,
         idx: usize,
         sub: usize,
@@ -691,10 +710,10 @@ impl<'a> RowMap<'a> {
         let entry = self.store.entry(idx);
         let line_start = self.rope.line_to_char(entry.line.index());
         let format = &entry.format;
-        let Some(row) = format.display_rows.get(sub) else {
+        let Some(dline) = format.display_lines.get(sub) else {
             return line_start;
         };
-        let graphemes = &format.graphemes[row.graphemes.clone()];
+        let graphemes = &format.graphemes[dline.graphemes.clone()];
         if graphemes.is_empty() {
             return line_start;
         }
@@ -723,8 +742,8 @@ impl<'a> RowMap<'a> {
                 // content, so it only answers when nothing else can (an empty
                 // line) — gated on `admit_eol`. `Virtual` (inline-insert)
                 // carries the real grapheme's `char_offset` it precedes, so
-                // minimising distance against it elsewhere on the row would
-                // land on a character that cell isn't at — excluded outright,
+                // minimising distance against it elsewhere on the display
+                // line would land on a character that cell isn't at — excluded outright,
                 // not just deprioritised. `Whitespace`/`TabFill` cover
                 // tab/space glyphs and blank tab fill, which *are* real
                 // content, except the newline indicator, which shares the
@@ -739,10 +758,11 @@ impl<'a> RowMap<'a> {
                 let nearest = |admit_eol: bool| {
                     graphemes
                         .iter()
-                        // Virtual-row cells (segmented separately by
-                        // `segment_virtual_row`) have no buffer position at
-                        // all; unreachable from `char_at`, which only ever
-                        // formats content rows, but guarded defensively.
+                        // Virtual display line cells (segmented separately
+                        // by `segment_virtual_line`) have no buffer position
+                        // at all; unreachable from `char_at`, which only
+                        // ever formats content display lines, but guarded
+                        // defensively.
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| match g.content {
                             CellContent::Grapheme => true,
@@ -767,20 +787,21 @@ impl<'a> RowMap<'a> {
         }
     }
 
-    /// `(indent, span)` for content row `sub` of `idx`'s line.
-    /// `indent` is the display column the row's first cell starts
-    /// at — 0 on a line's own first row, `indent_display_cols` on a wrap
-    /// continuation row (see [`crate::types::Grapheme::display_col`]).
-    /// `span` is the row's own content width with that indent excluded, so
-    /// summing `span` across every row before `sub`, plus the indent-excluded
-    /// offset within `sub`, converts a row-relative column into one relative
-    /// to the whole buffer line.
-    fn row_shape(&self, idx: usize, sub: usize) -> (DisplayLineCol, u32) {
+    /// `(indent, span)` for content display line `sub` of `idx`'s line.
+    /// `indent` is the display column the display line's first cell starts
+    /// at — 0 on a line's own first display line, `indent_display_cols` on
+    /// a wrap continuation display line (see
+    /// [`crate::types::Grapheme::display_col`]). `span` is the display
+    /// line's own content width with that indent excluded, so summing
+    /// `span` across every display line before `sub`, plus the
+    /// indent-excluded offset within `sub`, converts a display-line-relative
+    /// column into one relative to the whole buffer line.
+    fn display_line_shape(&self, idx: usize, sub: usize) -> (DisplayLineCol, u32) {
         let format = self.format_at(idx);
-        let Some(row) = format.display_rows.get(sub) else {
+        let Some(dline) = format.display_lines.get(sub) else {
             return (DisplayLineCol::new(0), 0);
         };
-        let graphemes = &format.graphemes[row.graphemes.clone()];
+        let graphemes = &format.graphemes[dline.graphemes.clone()];
         let Some(first) = graphemes.first() else {
             return (DisplayLineCol::new(0), 0);
         };
@@ -794,105 +815,114 @@ impl<'a> RowMap<'a> {
     }
 
     /// The display column `char_offset` sits at, measured from its own
-    /// buffer line's start rather than from its display row's — the column a
-    /// numeric-prefixed vertical move (`9j`/`9k`) latches, since it targets
-    /// the same buffer-line column on its landing line regardless of which
-    /// row of that (possibly wrapped) line it lands on.
+    /// buffer line's start rather than from its display line's — the
+    /// column a numeric-prefixed vertical move (`9j`/`9k`) latches, since it
+    /// targets the same buffer-line column on its landing line regardless
+    /// of which display line of that (possibly wrapped) line it lands on.
     ///
-    /// Continuation-row indent is excluded (see `RowMap::row_shape`) and
-    /// inline virtual cells (inlay hints, ghost text) are included, same as
-    /// [`RowMap::locate`] — the two differ only in what they're measured
-    /// from, and coincide under `WrapMode::None`, where a line is exactly one
-    /// row with no indent.
-    pub fn line_display_col(&mut self, char_offset: CharOffset) -> BufferLineCol {
+    /// Continuation-display-line indent is excluded (see
+    /// `DisplayLineMap::display_line_shape`) and inline virtual cells
+    /// (inlay hints, ghost text) are included, same as
+    /// [`DisplayLineMap::locate`] — the two differ only in what they're
+    /// measured from, and coincide under `WrapMode::None`, where a line is
+    /// exactly one display line with no indent.
+    pub fn buffer_line_col(&mut self, char_offset: CharOffset) -> BufferLineCol {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
-            "line_display_col: char_offset {char_offset:?} is out of range for \
-             a buffer of {} chars — see the debug_assert in RowMap::locate",
+            "buffer_line_col: char_offset {char_offset:?} is out of range for \
+             a buffer of {} chars — see the debug_assert in DisplayLineMap::locate",
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
         let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, row_display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
-        let (row_indent, _) = self.row_shape(idx, sub);
-        let preceding: u32 = (0..sub).map(|j| self.row_shape(idx, j).1).sum();
-        BufferLineCol::new(preceding + row_display_col.cells_since(row_indent))
+        let (sub, dline_display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
+        let (dline_indent, _) = self.display_line_shape(idx, sub);
+        let preceding: u32 = (0..sub).map(|j| self.display_line_shape(idx, j).1).sum();
+        BufferLineCol::new(preceding + dline_display_col.cells_since(dline_indent))
     }
 
-    /// Inverse of [`RowMap::line_display_col`]: the char offset
+    /// Inverse of [`DisplayLineMap::buffer_line_col`]: the char offset
     /// `target_line_display_col` resolves to on `line`, under `target`'s
     /// policy.
     ///
-    /// A line-relative column past the line's total width clamps to its last
-    /// row, where `target`'s own clamp rule (see [`DisplayColTarget`])
-    /// applies — the same "stick to the last real character, land on `\n`
-    /// only when the line is empty" rule bare `j`/`k` already gets from
-    /// [`RowMap::char_at`].
-    pub fn char_at_line_display_col(
+    /// A line-relative column past the line's total width clamps to its
+    /// last display line, where `target`'s own clamp rule (see
+    /// [`DisplayColTarget`]) applies — the same "stick to the last real
+    /// character, land on `\n` only when the line is empty" rule bare
+    /// `j`/`k` already gets from [`DisplayLineMap::char_at`].
+    pub fn char_at_buffer_line_col(
         &mut self,
         line: ContentLine,
         target_line_display_col: BufferLineCol,
         target: DisplayColTarget,
     ) -> CharOffset {
-        let content_rows = self.block(line).content;
+        let content_display_lines = self.block(line).content;
         // Only up to the target column: while wrapping, `ensure_formatted`
-        // promotes this to `Full` regardless (a row-relative bound can't
-        // usefully clip a line-relative target), and without wrapping
-        // `content_rows == 1` so the two columns coincide — sound to read as
-        // row-relative here for exactly that reason (see
-        // `BufferLineCol::as_display_line_unwrapped`'s own doc).
+        // promotes this to `Full` regardless (a display-line-relative bound
+        // can't usefully clip a line-relative target), and without wrapping
+        // `content_display_lines == 1` so the two columns coincide — sound
+        // to read as display-line-relative here for exactly that reason
+        // (see `BufferLineCol::as_display_line_unwrapped`'s own doc).
         let idx = self.ensure_formatted(
             line,
             FormatBound::ToDisplayCol(target_line_display_col.as_display_line_unwrapped()),
         );
         let mut remaining = target_line_display_col.get();
         let mut sub = 0;
-        let mut row_indent = DisplayLineCol::new(0);
-        for j in 0..content_rows {
-            let (indent, span) = self.row_shape(idx, j);
+        let mut dline_indent = DisplayLineCol::new(0);
+        for j in 0..content_display_lines {
+            let (indent, span) = self.display_line_shape(idx, j);
             sub = j;
-            row_indent = indent;
-            if j + 1 == content_rows || remaining < span {
+            dline_indent = indent;
+            if j + 1 == content_display_lines || remaining < span {
                 break;
             }
             remaining -= span;
         }
-        CharOffset::new(self.resolve_in_row(idx, sub, row_indent.advance(remaining), target))
+        CharOffset::new(self.resolve_in_display_line(
+            idx,
+            sub,
+            dline_indent.advance(remaining),
+            target,
+        ))
     }
 
-    /// The char range one content row covers, as `(start, end_exclusive)`.
-    /// `None` when `pos` is not a content row.
+    /// The char range one content display line covers, as `(start, end_exclusive)`.
+    /// `None` when `pos` is not a content display line.
     ///
-    /// Lets a caller scope a line-oriented search (nearest word) to the head's
-    /// own visual row instead of the whole buffer line.
-    pub fn content_row_char_bounds(&mut self, pos: RowPos) -> Option<ExclusiveRange<CharOffset>> {
+    /// Lets a caller scope a line-oriented search (nearest word) to the
+    /// head's own display line instead of the whole buffer line.
+    pub fn content_display_line_char_bounds(
+        &mut self,
+        pos: DisplayLinePos,
+    ) -> Option<ExclusiveRange<CharOffset>> {
         let b = self.block(pos.line);
-        let sub = pos.row.checked_sub(b.before)?;
+        let sub = pos.slot.checked_sub(b.before)?;
         if sub >= b.content {
             return None;
         }
-        // `Full`: this reads the *next* row's first char to bound the current
-        // one, so it needs every row the line produces.
+        // `Full`: this reads the *next* display line's first char to bound
+        // the current one, so it needs every display line the line produces.
         let idx = self.ensure_formatted(pos.line, FormatBound::Full);
 
         let format = self.format_at(idx);
-        let rows = &format.display_rows;
+        let lines = &format.display_lines;
         let graphemes = &format.graphemes;
         // Filtering out `usize::MAX` (`Grapheme.char_offset`'s own sentinel
         // for "no buffer position") before this closure's result is used
         // makes the surviving `usize` a genuine position again, safe to mint.
-        let first_char_of = |row: &DisplayRow| {
-            graphemes[row.graphemes.clone()]
+        let first_char_of = |dline: &DisplayLine| {
+            graphemes[dline.graphemes.clone()]
                 .iter()
                 .filter(|g| g.char_offset != usize::MAX)
                 .map(|g| g.char_offset)
                 .min()
         };
 
-        let start = CharOffset::new(first_char_of(rows.get(sub)?)?);
-        let end = rows
+        let start = CharOffset::new(first_char_of(lines.get(sub)?)?);
+        let end = lines
             .get(sub + 1)
             .and_then(first_char_of)
             .map(CharOffset::new)
@@ -904,55 +934,59 @@ impl<'a> RowMap<'a> {
 
     /// Borrow what the render stage needs to style and compose `pos`.
     ///
-    /// Content rows come from the cached format, so a line is formatted once
-    /// however many of its rows get rendered. Virtual rows are segmented here
-    /// — the same grapheme/width/column bookkeeping `format_buffer_line` does
-    /// for real lines, so a provider handing over plain text and scoped byte
-    /// ranges cannot get that arithmetic wrong.
-    pub fn render_row(&mut self, pos: RowPos) -> RenderRow<'_> {
+    /// Content display lines come from the cached format, so a line is
+    /// formatted once however many of its display lines get rendered.
+    /// Virtual display lines are segmented here — the same
+    /// grapheme/width/column bookkeeping `format_buffer_line` does for real
+    /// lines, so a provider handing over plain text and scoped byte ranges
+    /// cannot get that arithmetic wrong.
+    pub fn render_display_line(&mut self, pos: DisplayLinePos) -> RenderDisplayLine<'_> {
         let (idx, slot) = self.resolve(pos);
         match slot {
             BlockSlot::Content(sub) => {
-                // `Full`: the render stage emits whole rows, and its own
-                // clipping is the map's `h_window`, applied inside the format.
+                // `Full`: the render stage emits whole display lines, and
+                // its own clipping is the map's `h_window`, applied inside
+                // the format.
                 self.ensure_format_at(idx, FormatBound::Full);
                 let format = self.format_at(idx);
-                RenderRow {
-                    row: &format.display_rows[sub],
+                RenderDisplayLine {
+                    display_line: &format.display_lines[sub],
                     graphemes: &format.graphemes,
                     line_text: &format.line_texts,
                     virtual_texts: &format.virtual_texts,
                     base_scope: None,
                 }
             }
-            BlockSlot::Before(i) => self.segment_virtual_row(idx, i),
+            BlockSlot::Before(i) => self.segment_virtual_line(idx, i),
             // `resolve` already walked this line's block, so its `before`
             // count is on the entry it handed back — no need to walk it again.
             BlockSlot::After(i) => {
                 let before = self.store.entry(idx).before;
-                self.segment_virtual_row(idx, before + i)
+                self.segment_virtual_line(idx, before + i)
             }
         }
     }
 
-    /// Lay one virtual row out into its own scratch and borrow it back.
+    /// Lay one virtual display line out into its own scratch and borrow it
+    /// back.
     ///
-    /// Uses the store's `virtual_row`, not the line's own format: a `Before`
-    /// row renders ahead of its line's content rows, which are very likely
-    /// already formatted (`block` runs the formatter in wrapping mode to
-    /// count wrap rows) — laying the virtual row out over them would destroy
-    /// that and force a reformat of the content rows that follow.
-    fn segment_virtual_row(&mut self, idx: usize, vl_idx: usize) -> RenderRow<'_> {
+    /// Uses the store's `virtual_line`, not the line's own format: a
+    /// `Before` display line renders ahead of its line's content display
+    /// lines, which are very likely already formatted (`block` runs the
+    /// formatter in wrapping mode to count wrap display lines) — laying the
+    /// virtual display line out over them would destroy that and force a
+    /// reformat of the content display lines that follow.
+    fn segment_virtual_line(&mut self, idx: usize, vl_idx: usize) -> RenderDisplayLine<'_> {
         let tab_width = self.key.tab_width;
-        // The entry's virtual rows and the scratch they lay out into are
-        // disjoint parts of the store, borrowed together so the row's text
-        // can be read while its cells are written.
-        let (entry, vrow) = self.store.entry_and_virtual_row(idx);
+        // The entry's virtual display lines and the scratch they lay out
+        // into are disjoint parts of the store, borrowed together so the
+        // display line's text can be read while its cells are written.
+        let (entry, vline) = self.store.entry_and_virtual_line(idx);
         let vl = &entry.virtual_lines[vl_idx];
         let anchor_line = entry.line.into();
         let provider_id = vl.provider_id;
         let base_scope = vl.base_scope;
-        vrow.clear();
+        vline.clear();
 
         // `vl.segments` was sorted by `block()` at intake, and
         // `grapheme_indices` yields byte offsets in ascending order, so a
@@ -961,8 +995,8 @@ impl<'a> RowMap<'a> {
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
         let mut display_col = DisplayLineCol::new(0);
         crate::format::push_virtual_cells(
-            &mut vrow.texts,
-            &mut vrow.graphemes,
+            &mut vline.texts,
+            &mut vline.graphemes,
             &crate::format::VirtualRun {
                 text: &vl.text,
                 byte_offset: 0, // no buffer position
@@ -974,41 +1008,41 @@ impl<'a> RowMap<'a> {
             |byte_offset| scope_cursor.scope_at(byte_offset).or(base_scope),
         );
 
-        let row = vrow.row.insert(DisplayRow {
-            kind: crate::types::RowKind::Virtual {
+        let display_line = vline.display_line.insert(DisplayLine {
+            kind: crate::types::DisplayLineKind::Virtual {
                 provider_id,
                 anchor_line,
             },
-            graphemes: 0..vrow.graphemes.len(),
+            graphemes: 0..vline.graphemes.len(),
         });
 
-        RenderRow {
-            row,
-            graphemes: &vrow.graphemes,
-            // A virtual row has no buffer text — every cell resolves out of
+        RenderDisplayLine {
+            display_line,
+            graphemes: &vline.graphemes,
+            // A virtual display line has no buffer text — every cell resolves out of
             // `virtual_texts` instead: `Virtual` text itself, or the
             // `Placeholder` a control character becomes. A tab needs no
             // arena lookup at all — it's `TabFill`, drawn as blanks directly.
             line_text: "",
-            virtual_texts: &vrow.texts,
+            virtual_texts: &vline.texts,
             base_scope,
         }
     }
 
     // ── Formatting ───────────────────────────────────────────────────────
 
-    /// Guarantee `line`'s entry holds its content rows, formatted at least
-    /// as far as `bound` reaches. Returns the entry it resolved, so a read
-    /// accessor can be handed the line by value.
+    /// Guarantee `line`'s entry holds its content display lines, formatted
+    /// at least as far as `bound` reaches. Returns the entry it resolved,
+    /// so a read accessor can be handed the line by value.
     fn ensure_formatted(&mut self, line: ContentLine, bound: FormatBound) -> usize {
         let idx = self.block_entry(line);
         self.ensure_format_at(idx, bound);
         idx
     }
 
-    /// [`RowMap::ensure_formatted`] for an entry already in hand.
+    /// [`DisplayLineMap::ensure_formatted`] for an entry already in hand.
     ///
-    /// Split out so [`RowMap::content_rows`] can format while counting
+    /// Split out so [`DisplayLineMap::content_display_lines`] can format while counting
     /// without re-finding the entry it is already holding.
     fn ensure_format_at(&mut self, idx: usize, bound: FormatBound) {
         debug_assert!(
@@ -1018,9 +1052,9 @@ impl<'a> RowMap<'a> {
         );
         let line = self.store.entry(idx).line;
         // Any wrapping mode needs the whole line: a clipped scan would emit
-        // fewer rows than the count `block` already committed to. Applied
-        // before the check *and* the record below, so a wrapping query never
-        // stores a bound narrower than what it actually ran.
+        // fewer display lines than the count `block` already committed to.
+        // Applied before the check *and* the record below, so a wrapping
+        // query never stores a bound narrower than what it actually ran.
         let bound = if self.key.wrap_mode.is_wrapping() {
             FormatBound::Full
         } else {
@@ -1039,9 +1073,9 @@ impl<'a> RowMap<'a> {
         }
 
         // Inline inserts are queried here, not just at render time: they
-        // participate in wrapping, so counting rows without them makes the row
-        // list disagree with what the renderer emits the moment an inlay hint
-        // pushes a line past the wrap column.
+        // participate in wrapping, so counting display lines without them
+        // makes the display-line list disagree with what the renderer
+        // emits the moment an inlay hint pushes a line past the wrap column.
         self.inline_inserts.clear();
         self.decorations.clear();
         for (_, provider) in self.providers.decoration_sources(DecorationKinds::INLINE) {

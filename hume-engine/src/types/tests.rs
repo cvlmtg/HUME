@@ -19,31 +19,31 @@ fn selection_range_ordered() {
 }
 
 #[test]
-fn row_kind_line_idx() {
+fn display_line_kind_line_idx() {
     assert_eq!(
-        RowKind::LineStart {
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(7)
         }
         .line_idx(),
         Some(RopeyLine::new(7))
     );
     assert_eq!(
-        RowKind::Wrap {
+        DisplayLineKind::Wrap {
             line_idx: RopeyLine::new(7),
-            wrap_row: 1
+            wrap_index: 1
         }
         .line_idx(),
         Some(RopeyLine::new(7))
     );
     assert_eq!(
-        RowKind::Virtual {
+        DisplayLineKind::Virtual {
             provider_id: 0,
             anchor_line: RopeyLine::new(7)
         }
         .line_idx(),
         None
     );
-    assert_eq!(RowKind::Filler.line_idx(), None);
+    assert_eq!(DisplayLineKind::Filler.line_idx(), None);
 }
 
 #[test]

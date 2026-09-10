@@ -1,7 +1,7 @@
 # core:git-diff
 
 Live, VSCode-style inline git diff — compares the buffer against a git ref (default `HEAD`)
-as it's edited, rendering gutter `+`/`-`/`~` signs, deleted lines as virtual rows,
+as it's edited, rendering gutter `+`/`-`/`~` signs, deleted lines as virtual lines,
 added/changed lines with a background tint, and word-level highlights inside changed lines.
 Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer — place it
 yourself, no config needed.
@@ -22,7 +22,7 @@ plugin"](https://cvlmtg.github.io/HUME/plugins.html#depending-on-another-plugin)
 `declare-plugin` above resolves `manifest.scm`, activating on the first buffer opened or the
 first `:toggle-git-signs`/`:toggle-inline-diff` typed; an explicit
 `#:commands`/`#:events`/`#:languages` bypasses it. `"signs"` defaults on (cheap, no
-line-shifting side effects); `"inline"` defaults off (it moves virtual rows into the
+line-shifting side effects); `"inline"` defaults off (it moves virtual lines into the
 buffer's visual flow). See
 [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff) for value
 semantics and key-binding examples — no default key bindings ship with this plugin.
@@ -47,4 +47,4 @@ Design and implementation notes, for contributors reading this plugin's source:
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | File layout, the signs+inline design choice, the per-buffer state model, ref handling |
 | [`docs/pipeline.md`](docs/pipeline.md) | The fetch/diff pipeline (cache states, severity tiers, debounce) and branch tracking |
-| [`docs/rendering.md`](docs/rendering.md) | Signs, virtual deleted lines + word highlights, row background tint, the flag→renderer dispatch |
+| [`docs/rendering.md`](docs/rendering.md) | Signs, virtual deleted lines + word highlights, line background tint, the flag→renderer dispatch |

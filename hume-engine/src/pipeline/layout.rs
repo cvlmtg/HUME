@@ -41,7 +41,7 @@ pub enum LayoutTree {
     Split {
         direction: Direction,
         /// Fraction (0.0–1.0) allocated to the first child. Derived by
-        /// `equalize` from the two children's `slots_along` counts —
+        /// `equalize` from the two children's `shares_along` counts —
         /// not chosen by whatever split produced this node — so every pane
         /// sharing a split axis stays equal-sized regardless of split order.
         /// Kept as stored (not derived-on-read) state because `LayoutTree`
@@ -220,16 +220,21 @@ impl LayoutTree {
         }
     }
 
-    /// How many side-by-side slots this subtree occupies along `direction`'s
+    /// How many side-by-side shares this subtree occupies along `direction`'s
     /// axis — the unit [`Self::equalize`] balances a split's two children in.
-    /// A leaf is always one slot. A split *on* `direction`'s axis is the sum
-    /// of its children's slots, since each becomes its own share of that
+    /// Named `share`, not `slot`: `slot` is reserved, workspace-wide, for
+    /// `DisplayLinePos`/`ViewportState::top_slot`'s display-line-within-a-block
+    /// index (see `CLAUDE.md`'s "Buffer lines, display lines, and rows"
+    /// invariant) — an unrelated concept that happens to live in the same
+    /// crate, so the two must not share a name.
+    /// A leaf is always one share. A split *on* `direction`'s axis is the sum
+    /// of its children's shares, since each becomes its own share of that
     /// axis. A split on the *other* axis (a stacked or side-by-side group)
-    /// counts as a single slot when measured across its own axis — matching
+    /// counts as a single share when measured across its own axis — matching
     /// the `CTRL-W =` convention most terminal multiplexers use, where a
     /// group of stacked panes shares one column's width rather than each
     /// stacked pane claiming its own.
-    fn slots_along(&self, direction: Direction) -> u32 {
+    fn shares_along(&self, direction: Direction) -> u32 {
         match self {
             LayoutTree::Leaf(_) => 1,
             LayoutTree::Split {
@@ -237,18 +242,18 @@ impl LayoutTree {
                 children,
                 ..
             } if *split_dir == direction => {
-                children.0.slots_along(direction) + children.1.slots_along(direction)
+                children.0.shares_along(direction) + children.1.shares_along(direction)
             }
             LayoutTree::Split { .. } => 1,
         }
     }
 
     /// Re-derive every split's `ratio` from its two children's
-    /// [`Self::slots_along`] counts on that split's own axis, so every pane
+    /// [`Self::shares_along`] counts on that split's own axis, so every pane
     /// sharing a split axis ends up the same size regardless of the order
     /// splits and closes happened in. Recurses into both children first so a
     /// nested split's ratio is set from its own children before this level
-    /// reads `slots_along` on it.
+    /// reads `shares_along` on it.
     fn equalize(&mut self) {
         if let LayoutTree::Split {
             direction,
@@ -258,9 +263,9 @@ impl LayoutTree {
         {
             children.0.equalize();
             children.1.equalize();
-            let slots0 = children.0.slots_along(*direction);
-            let slots1 = children.1.slots_along(*direction);
-            *ratio = slots0 as f32 / (slots0 + slots1) as f32;
+            let shares0 = children.0.shares_along(*direction);
+            let shares1 = children.1.shares_along(*direction);
+            *ratio = shares0 as f32 / (shares0 + shares1) as f32;
         }
     }
 

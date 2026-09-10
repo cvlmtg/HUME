@@ -88,7 +88,7 @@ impl RopeyLine {
     /// Narrow to the content domain, or `None` if `self` is the phantom
     /// trailing line (or past it).
     pub fn to_content(self, rope: &Rope) -> Option<ContentLine> {
-        (self.0 < content_line_count(rope).0).then(|| ContentLine(self.0))
+        (self.0 < content_line_count(rope).0).then_some(ContentLine(self.0))
     }
 }
 
@@ -108,7 +108,7 @@ impl ContentLine {
 
     /// `idx` if it names a real content line of `rope`, else `None`.
     pub fn checked(rope: &Rope, idx: usize) -> Option<Self> {
-        (idx < content_line_count(rope).0).then(|| Self(idx))
+        (idx < content_line_count(rope).0).then_some(Self(idx))
     }
 
     /// Clamp `idx` to `rope`'s last content line.

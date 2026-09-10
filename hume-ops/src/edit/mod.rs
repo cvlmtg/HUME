@@ -30,7 +30,7 @@ pub use paste::{paste_after, paste_before};
 pub use replace::{
     replace_around_cursors, replace_selections, replace_span_around_cursors, word_start_before,
 };
-pub use sort::{SortOpts, SortRefusal, sort_rows};
+pub use sort::{SortOpts, SortRefusal, sort_lines};
 
 // ── Edit scaffolding ──────────────────────────────────────────────────────────
 //

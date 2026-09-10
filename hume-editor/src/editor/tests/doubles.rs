@@ -1,20 +1,21 @@
 //! Synthetic [`DecorationSource`]s for tests that need a pane to contribute
-//! display rows or columns the buffer text alone doesn't account for.
+//! display lines or columns the buffer text alone doesn't account for.
 //!
-//! Two of them decorate: one emits whole virtual rows, the other inline
-//! inserts. Both are deliberately general — parameterised on everything any
-//! caller varies and on nothing else — because the alternative is what this
-//! module replaced: eight near-identical `struct Foo; impl DecorationSource
-//! for Foo` blocks whose differences (a text string, an anchor side, a row
-//! count) were invisible next to twenty lines of identical `VirtualLine
-//! { .. }` construction.
+//! Two of them decorate: one emits whole virtual display lines, the other
+//! inline inserts. Both are deliberately general — parameterised on
+//! everything any caller varies and on nothing else — because the
+//! alternative is what this module replaced: eight near-identical `struct
+//! Foo; impl DecorationSource for Foo` blocks whose differences (a text
+//! string, an anchor side, a display-line count) were invisible next to
+//! twenty lines of identical `VirtualLine { .. }` construction.
 //!
 //! The third, [`FormatProbe`], decorates nothing. It registers as an INLINE
 //! source purely to be *asked*, because being asked is the observable
-//! signature of a format: the row map queries every INLINE source exactly
-//! once per `format_buffer_line` run and nowhere else. Emitting nothing is
-//! what lets it measure the layout an undecorated line produces, which is
-//! why it stays a separate double rather than a mode on [`InlineHint`].
+//! signature of a format: the display-line map queries every INLINE source
+//! exactly once per `format_buffer_line` run and nowhere else. Emitting
+//! nothing is what lets it measure the layout an undecorated line produces,
+//! which is why it stays a separate double rather than a mode on
+//! [`InlineHint`].
 //!
 //! Lives under `tests/` rather than beside the code it fakes so the `lints/`
 //! harness skips it — `collect_source_rs` excludes `tests/` directories, and a
@@ -31,48 +32,48 @@ use hume_engine::providers::{
 };
 use hume_engine::types::ScopeId;
 
-/// What each of a [`VirtualRows`] block's rows says.
-enum RowText {
-    /// Every row carries the same text — for tests that only count rows.
+/// What each of a [`VirtualLineBlock`] block's display lines says.
+enum BlockText {
+    /// Every display line carries the same text — for tests that only count them.
     Same(&'static str),
-    /// Rows read "1", "2", … — for tests that assert *which* row of a block
-    /// landed on a given screen line, which identical text cannot show.
+    /// Display lines read "1", "2", … — for tests that assert *which* one of
+    /// a block landed on a given screen line, which identical text cannot show.
     Ordinal,
 }
 
-/// A VIRTUAL_LINE source emitting `count` rows at one anchor, and nothing for
-/// any other line.
-pub(crate) struct VirtualRows {
+/// A VIRTUAL_LINE source emitting `count` display lines at one anchor, and
+/// nothing for any other line.
+pub(crate) struct VirtualLineBlock {
     anchor: VirtualLineAnchor,
     count: usize,
-    text: RowText,
+    text: BlockText,
     calls: Option<Rc<Cell<usize>>>,
 }
 
-impl VirtualRows {
-    /// `count` rows at `anchor`, every one texted `text`.
+impl VirtualLineBlock {
+    /// `count` display lines at `anchor`, every one texted `text`.
     pub(crate) fn uniform(anchor: VirtualLineAnchor, count: usize, text: &'static str) -> Self {
         Self {
             anchor,
             count,
-            text: RowText::Same(text),
+            text: BlockText::Same(text),
             calls: None,
         }
     }
 
-    /// `count` rows at `anchor`, texted "1", "2", … so a test can tell which
-    /// row of the block it is looking at.
+    /// `count` display lines at `anchor`, texted "1", "2", … so a test can
+    /// tell which one of the block it is looking at.
     pub(crate) fn numbered(anchor: VirtualLineAnchor, count: usize) -> Self {
         Self {
             anchor,
             count,
-            text: RowText::Ordinal,
+            text: BlockText::Ordinal,
             calls: None,
         }
     }
 
-    /// Count queries — the observable proxy for "did the row map treat this
-    /// line as already known rather than re-querying it".
+    /// Count queries — the observable proxy for "did the display-line map
+    /// treat this line as already known rather than re-querying it".
     ///
     /// Counts only queries for this double's *own* line. A frame queries every
     /// line it walks, including whichever one the cursor happens to sit on, so
@@ -90,7 +91,7 @@ impl VirtualRows {
     }
 }
 
-impl DecorationSource for VirtualRows {
+impl DecorationSource for VirtualLineBlock {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
@@ -109,13 +110,13 @@ impl DecorationSource for VirtualRows {
         for i in 0..self.count {
             out.push(Decoration::VirtualLine(VirtualLine {
                 anchor: self.anchor,
-                // Ignored downstream: `RowMap::block_entry` overwrites a
+                // Ignored downstream: `DisplayLineMap::block_entry` overwrites a
                 // self-reported id with the real one, so there is nothing
                 // here worth parameterising.
                 provider_id: 0,
                 text: match self.text {
-                    RowText::Same(t) => t.to_string(),
-                    RowText::Ordinal => (i + 1).to_string(),
+                    BlockText::Same(t) => t.to_string(),
+                    BlockText::Ordinal => (i + 1).to_string(),
                 },
                 segments: Vec::new(),
                 base_scope: None,
@@ -183,10 +184,11 @@ impl DecorationSource for InlineHint {
 
 /// Counts how many times `line` is formatted, and decorates nothing.
 ///
-/// `RowMap` queries every registered INLINE-kind source exactly once per
+/// `DisplayLineMap` queries every registered INLINE-kind source exactly once per
 /// `format_buffer_line` run and nowhere else, so being asked is a count of
-/// formats that depends on nothing the row map reports about itself. Emitting
-/// no insert keeps the line's layout the one it would have had unobserved.
+/// formats that depends on nothing the display-line map reports about
+/// itself. Emitting no insert keeps the line's layout the one it would have
+/// had unobserved.
 pub(crate) struct FormatProbe {
     line: hume_rope::line::ContentLine,
     formats: Rc<Cell<usize>>,
@@ -226,7 +228,7 @@ pub(crate) fn no_providers() -> ProviderSet {
 /// One `Before(line)` row, the shape most virtual-line tests want.
 pub(crate) fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
-    p.add_decoration_source(Box::new(VirtualRows::uniform(
+    p.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(line)),
         1,
         "V",

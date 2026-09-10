@@ -1,4 +1,5 @@
 pub mod builtins;
+pub mod display_lines;
 pub mod format;
 pub mod interval_sweep;
 pub mod layout;
@@ -6,7 +7,6 @@ pub mod pane;
 pub mod pipeline;
 pub mod providers;
 pub mod render;
-pub mod rows;
 pub mod style;
 #[cfg(test)]
 mod test_support;

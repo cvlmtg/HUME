@@ -321,9 +321,9 @@ fn virtual_line_spec_rejects_bad_anchor_symbol() {
 
 #[test]
 fn virtual_line_spec_rejects_newline_in_text() {
-    // A virtual line renders as a single row (`rows.rs`'s
-    // `segment_virtual_row`); a raw newline would become one garbled
-    // `CellContent::Virtual` cell instead of splitting the row.
+    // A virtual line renders as a single display line (`display_lines.rs`'s
+    // `segment_virtual_line`); a raw newline would become one garbled
+    // `CellContent::Virtual` cell instead of splitting the display line.
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),
         ("text", SteelVal::StringV("- deleted a\n- deleted b".into())),
@@ -349,7 +349,7 @@ fn virtual_line_spec_rejects_carriage_return_in_text() {
 #[test]
 fn virtual_line_spec_keeps_a_literal_tab_in_text() {
     // The engine expands a tab in a virtual row's text to the next tab
-    // stop (`hume_engine::rows::segment_virtual_row`) — this builtin no
+    // stop (`hume_engine::display_lines::segment_virtual_line`) — this builtin no
     // longer expands it, or rejects it, itself.
     let entry = hashmap(vec![
         ("line", SteelVal::IntV(0)),

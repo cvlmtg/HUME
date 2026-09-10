@@ -1,7 +1,9 @@
 use super::*;
 use crate::pane::ViewportState;
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, Grapheme, Modifiers, ResolvedStyle, RowKind, ScopeId};
+use crate::types::{
+    CellContent, DisplayLine, DisplayLineKind, Grapheme, Modifiers, ResolvedStyle, ScopeId,
+};
 use hume_grid::{Grid, Rect, Rgb};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -32,9 +34,9 @@ fn poke(buf: &mut Grid, x: u16, y: u16, text: &str) {
     );
 }
 
-fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
-    DisplayRow {
-        kind: RowKind::LineStart {
+fn simple_display_line(graphemes: std::ops::Range<usize>) -> DisplayLine {
+    DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes,
@@ -57,7 +59,7 @@ fn simple_grapheme(display_col: u32, byte_start: usize, ch_len: usize) -> Graphe
 #[test]
 fn renders_simple_text() {
     let graphemes = vec![simple_grapheme(0, 0, 1), simple_grapheme(1, 1, 1)];
-    let rows = [simple_row(0..2)];
+    let dls = [simple_display_line(0..2)];
     let styles = vec![ResolvedStyle::default(); 2];
     let visible = PaneGeometry {
         content_height: 5,
@@ -92,8 +94,8 @@ fn renders_simple_text() {
         default_gutter_scope: ScopeId(0),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "hi",
@@ -111,7 +113,7 @@ fn renders_simple_text() {
 
 #[test]
 fn filler_rows_have_tilde() {
-    // Only render_tilde_fillers (not compose_row) draws tildes — verify
+    // Only render_tilde_fillers (not compose_display_line) draws tildes — verify
     // it fills every requested row from the given start row onward.
     let visible = PaneGeometry {
         content_height: 5, // 5 rows requested; caller already rendered row 0
@@ -158,13 +160,13 @@ fn filler_rows_have_tilde() {
     }
 }
 
-/// Render one row via `compose_row` directly (stage isolation — no batch
+/// Render one row via `compose_display_line` directly (stage isolation — no batch
 /// orchestration) at screen row 0 and return the buffer.
 #[allow(clippy::too_many_arguments)]
-fn do_compose_row(
+fn do_compose_display_line(
     line_str: &str,
     virtual_texts: &str,
-    row: &DisplayRow,
+    display_line: &DisplayLine,
     graphemes: &[Grapheme],
     styles: &[ResolvedStyle],
     visible: PaneGeometry,
@@ -199,8 +201,8 @@ fn do_compose_row(
         default_gutter_scope: ScopeId(0),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        row,
+    compose_display_line(
+        display_line,
         graphemes,
         styles,
         line_str,
@@ -227,7 +229,7 @@ fn horizontal_scroll_clips_left_columns() {
             scope: None,
         })
         .collect();
-    let rows = [simple_row(0..5)];
+    let dls = [simple_display_line(0..5)];
     let styles = vec![ResolvedStyle::default(); 5];
     let visible = PaneGeometry {
         content_height: 5,
@@ -237,8 +239,8 @@ fn horizontal_scroll_clips_left_columns() {
     };
     let mut viewport = ViewportState::new(20, 5);
     viewport.horizontal_offset = dc(2); // skip columns 0 and 1
-    let buf = do_compose_row(
-        "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "abcde", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     // With h_offset=2, screen_x 0 shows 'c' (buf display_col 2).
     assert_eq!(buf.cell(0, 0).unwrap().text(), "c");
@@ -285,7 +287,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
             scope: None,
         },
     ];
-    let rows = [simple_row(0..3)];
+    let dls = [simple_display_line(0..3)];
     let styles = vec![ResolvedStyle::default(); 3];
     let visible = PaneGeometry {
         content_height: 5,
@@ -295,8 +297,8 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     };
     let mut viewport = ViewportState::new(20, 5);
     viewport.horizontal_offset = dc(1);
-    let buf = do_compose_row(
-        "中X", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "中X", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
         buf.cell(0, 0).unwrap().text(),
@@ -326,7 +328,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default(); 1];
     let visible = PaneGeometry {
         content_height: 5,
@@ -335,8 +337,8 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(5, 5);
-    let buf = do_compose_row(
-        "中", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 5, 5,
+    let buf = do_compose_display_line(
+        "中", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 5, 5,
     );
     assert_eq!(
         buf.cell(4, 0).unwrap().text(),
@@ -379,7 +381,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
             scope: None,
         },
     ];
-    let rows = [simple_row(0..2)];
+    let dls = [simple_display_line(0..2)];
     let styles = vec![hint_style; 2];
     let visible = PaneGeometry {
         content_height: 5,
@@ -388,8 +390,8 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "", arena, &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
         buf.cell(1, 0).unwrap().style().bg,
@@ -413,8 +415,8 @@ fn indent_guide_drawn_at_inner_tab_stops() {
             scope: None,
         })
         .collect();
-    let rows = [DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes: 0..11,
@@ -427,10 +429,10 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
+    let buf = do_compose_display_line(
         "        foo", // 8 spaces + "foo"
         "",
-        &rows[0],
+        &dls[0],
         &graphemes,
         &styles,
         visible,
@@ -476,7 +478,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         indent_depth: 2,
         scope: None,
     }));
-    let row = simple_row(0..graphemes.len());
+    let display_line = simple_display_line(0..graphemes.len());
     let styles = vec![ResolvedStyle::default(); graphemes.len()];
     let visible = PaneGeometry {
         content_height: 5,
@@ -485,8 +487,8 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "  foo", "abcdef", &row, &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "  foo", "abcdef", &display_line, &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     for (x, expected) in [(0, "a"), (1, "b"), (2, "c"), (3, "d"), (4, "e"), (5, "f")] {
         assert_eq!(
@@ -519,8 +521,8 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
             scope: None,
         })
         .collect();
-    let rows = [DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes: 0..11,
@@ -559,8 +561,8 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         default_gutter_scope: ScopeId(0),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "        foo",
@@ -571,7 +573,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         &mut canvas,
         None,
     );
-    // No guide anywhere on the row, including the display_col-4 tab stop that
+    // No guide anywhere on the display line, including the display_col-4 tab stop that
     // indent_guide_drawn_at_inner_tab_stops proves is drawn when enabled.
     for x in 0..11 {
         assert_ne!(
@@ -583,11 +585,12 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
 }
 
 #[test]
-fn indent_guide_not_drawn_on_wrap_rows() {
+fn indent_guide_not_drawn_on_wrap_display_lines() {
     // depth=1 means no inner guides (guides at k in 1..1 — empty range)
-    // in general, but this test specifically pins that a Wrap row draws
-    // no guide even when it would otherwise qualify — so render only the
-    // Wrap row (a continuation of line 0, graphemes 4..8 of "    text").
+    // in general, but this test specifically pins that a Wrap display line
+    // draws no guide even when it would otherwise qualify — so render only
+    // the Wrap display line (a continuation of line 0, graphemes 4..8 of
+    // "    text").
     let graphemes: Vec<Grapheme> = (0..8u32)
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
@@ -599,10 +602,10 @@ fn indent_guide_not_drawn_on_wrap_rows() {
             scope: None,
         })
         .collect();
-    let rows = [DisplayRow {
-        kind: RowKind::Wrap {
+    let dls = [DisplayLine {
+        kind: DisplayLineKind::Wrap {
             line_idx: RopeyLine::new(0),
-            wrap_row: 1,
+            wrap_index: 1,
         },
         graphemes: 4..8,
     }];
@@ -614,8 +617,8 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "    text", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "    text", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_ne!(buf.cell(0, 0).unwrap().text(), INDENT_GUIDE_GLYPH);
 }
@@ -633,7 +636,7 @@ fn indicator_content_fills_tab_width() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 5,
@@ -642,8 +645,8 @@ fn indicator_content_fills_tab_width() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "\t", "→", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "\t", "→", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(buf.cell(0, 0).unwrap().text(), "→");
     assert_eq!(buf.cell(1, 0).unwrap().text(), " ");
@@ -666,7 +669,7 @@ fn tab_fill_blanks_its_whole_width() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 5,
@@ -675,8 +678,8 @@ fn tab_fill_blanks_its_whole_width() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "\t", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "\t", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     for x in 0..4 {
         assert_eq!(buf.cell(x, 0).unwrap().text(), " ");
@@ -704,7 +707,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         },
         simple_grapheme(2, 0, 1), // real 'c', shifted right by the insert's width
     ];
-    let rows = [simple_row(0..2)];
+    let dls = [simple_display_line(0..2)];
     let styles = vec![ResolvedStyle::default(); 2];
     let visible = PaneGeometry {
         content_height: 5,
@@ -713,8 +716,8 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
-    let buf = do_compose_row(
-        "c", arena, &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
+    let buf = do_compose_display_line(
+        "c", arena, &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
     assert_eq!(
         buf.cell(0, 0).unwrap().text(),
@@ -735,10 +738,10 @@ impl GutterColumn for OverlongGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         4
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed(
@@ -758,7 +761,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     // cols) must truncate to "TOO", not spill "LONG" into the content
     // area (which starts right after the gutter, at x=4).
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(OverlongGutter))];
@@ -798,8 +801,8 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         default_gutter_scope,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "X",
@@ -832,7 +835,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     // the whole buffer with a marker glyph so any write past this pane's
     // own right edge is directly observable.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> =
         vec![(0, Box::new(OverlongGutter))];
@@ -875,8 +878,8 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         default_gutter_scope,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "X",
@@ -908,10 +911,10 @@ impl GutterColumn for LeftoverGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         6
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         ["1", "2", "3", "4"]
             .iter()
@@ -934,10 +937,10 @@ impl GutterColumn for ExactFillGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         2
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
@@ -963,7 +966,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     // usable_per_cell = (6-1)/4 = 1, so the per-cell loop only advances
     // gutter_x to 2+5=7, one short of the column's right edge at 8.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![
         (0, Box::new(ExactFillGutter)),
@@ -1008,8 +1011,8 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         default_gutter_scope,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "X",
@@ -1051,10 +1054,10 @@ impl GutterColumn for HugeGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         20
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("N")),
@@ -1074,7 +1077,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     // the pane's right edge into whatever the shared terminal buffer holds
     // next to it — typically a neighbouring pane.
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, Box::new(HugeGutter))];
     let visible = PaneGeometry {
@@ -1116,8 +1119,8 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         default_gutter_scope,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "X",
@@ -1146,10 +1149,10 @@ impl GutterColumn for OwnedIconGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         3
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             // Built at call time (e.g. `format!`) rather than a literal —
@@ -1173,10 +1176,10 @@ impl GutterColumn for StaticIconGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         3
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        _: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        _: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         vec![crate::providers::GutterCell {
             content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Borrowed("AB")),
@@ -1192,7 +1195,7 @@ impl GutterColumn for StaticIconGutter {
 fn owned_gutter_icon_renders_identically_to_static_one() {
     fn render_with(lane: Box<dyn GutterColumn>) -> Grid {
         let graphemes = vec![simple_grapheme(0, 0, 1)];
-        let rows = [simple_row(0..1)];
+        let dls = [simple_display_line(0..1)];
         let styles = vec![ResolvedStyle::default()];
         let gutter_columns: Vec<(ProviderId, Box<dyn GutterColumn>)> = vec![(0, lane)];
         let visible = PaneGeometry {
@@ -1231,8 +1234,8 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             default_gutter_scope,
         };
         let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-        compose_row(
-            &rows[0],
+        compose_display_line(
+            &dls[0],
             &graphemes,
             &styles,
             "X",
@@ -1259,21 +1262,21 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
 
 // ── GutterColumn gets buffer context ──────────────────────────────────
 
-/// Gutter column that reads the first character of the row's own buffer
-/// line straight out of `ctx.rope` — exercises the `GutterRowCtx`
+/// Gutter column that reads the first character of the display line's own
+/// buffer line straight out of `ctx.rope` — exercises the `GutterCtx`
 /// plumbing end to end through `compose_gutter`.
 struct FirstCharGutter;
 impl GutterColumn for FirstCharGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         2
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        kind: RowKind,
-        ctx: &crate::providers::GutterRowCtx,
+        kind: DisplayLineKind,
+        ctx: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         let cell = match kind {
-            RowKind::LineStart { line_idx } => {
+            DisplayLineKind::LineStart { line_idx } => {
                 let first_char = ctx
                     .rope
                     .line(line_idx.index())
@@ -1298,13 +1301,13 @@ impl GutterColumn for FirstCharGutter {
 
 #[test]
 fn gutter_column_reads_rope_via_ctx() {
-    // "apple\nbanana\n": rendering the row for line 1 must show 'b' —
-    // proving the column reached the buffer through `GutterRowCtx.rope`,
+    // "apple\nbanana\n": rendering the display line for line 1 must show 'b' —
+    // proving the column reached the buffer through `GutterCtx.rope`,
     // not some pre-owned/stale copy.
     let rope = ropey::Rope::from_str("apple\nbanana\n");
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(1),
         },
         graphemes: 0..1,
@@ -1347,8 +1350,8 @@ fn gutter_column_reads_rope_via_ctx() {
         default_gutter_scope,
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "X",
@@ -1419,12 +1422,12 @@ fn fill_row_bg_none_empty_range_no_panic() {
 
 /// `dim` on `Canvas` must blend each written cell's fg/bg toward the
 /// target inline. Verifies the same lerp oracle (255→0 at 0.5 ⇒ 128) holds
-/// through `compose_row`.
+/// through `compose_display_line`.
 #[test]
-fn compose_row_dims_cells_inline() {
+fn compose_display_line_dims_cells_inline() {
     use Rgb;
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle {
         fg: Some(Rgb(255, 255, 255)),
         bg: Some(Rgb(0, 0, 0)),
@@ -1463,8 +1466,8 @@ fn compose_row_dims_cells_inline() {
         default_gutter_scope: ScopeId(0),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "x",
@@ -1485,9 +1488,9 @@ fn compose_row_dims_cells_inline() {
 /// A cell with no colour of its own has nothing to blend: the dim leaves it
 /// at the terminal's default rather than inventing a value to darken.
 #[test]
-fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
+fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
     let graphemes = vec![simple_grapheme(0, 0, 1)];
-    let rows = [simple_row(0..1)];
+    let dls = [simple_display_line(0..1)];
     let styles = vec![ResolvedStyle::default()];
     let visible = PaneGeometry {
         content_height: 1,
@@ -1522,8 +1525,8 @@ fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
         default_gutter_scope: ScopeId(0),
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
-    compose_row(
-        &rows[0],
+    compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "x",

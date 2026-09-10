@@ -583,7 +583,7 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
 // any other source (a `:e!` reload, a pane switching to a different buffer)
 // bypasses it entirely and can leave `anchor` pointing past the
 // currently-focused buffer's end, and `sync_completion_menu_view` must not
-// panic walking `RowMap::locate` with it.
+// panic walking `DisplayLineMap::locate` with it.
 
 #[test]
 fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
@@ -634,7 +634,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
     assert!(ed.lsp.completion.is_some(), "sanity: session open");
 
     // Switch focus to a different buffer without dismissing the session —
-    // `sync_completion_menu_view` builds its `RowMap` over whichever buffer
+    // `sync_completion_menu_view` builds its `DisplayLineMap` over whichever buffer
     // is focused *now*, not the one the session was opened against.
     let other = ed.open_buffer(Buffer::new(
         BufferText::from("other\n"),
@@ -657,7 +657,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
 //
 // `popup_anchor_and_bounds` takes a fast path when its `anchor_char` is the
 // focused cursor: it reuses `ctx.cursor_content_pos`, resolved by `scroll_into_view`
-// earlier in `prepare_frame`, instead of re-walking the row list. Pins that
+// earlier in `prepare_frame`, instead of re-walking the display-line list. Pins that
 // the reused cell agrees with a full, independent walk — in wrap mode, where
 // that walk is a per-line format, so a wrong cache would show up as a
 // silently-misplaced popup, not a panic.
@@ -695,7 +695,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
         (state.rect.x, state.rect.y)
     };
 
-    // Independent oracle: re-derive the same cell via a fresh `RowMap` and
+    // Independent oracle: re-derive the same cell via a fresh `DisplayLineMap` and
     // `cursor::content_pos` — the exact primitives the fast path's slow
     // fallback uses — entirely bypassing `ctx.cursor_content_pos`.
     let bid = ed.focused_buffer_id();
@@ -710,9 +710,10 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     // back out of the same split.
     let Editor { state, view, .. } = &mut ed;
     let key = state.format_key(&view.panes[pid]);
-    let (mut rm, vp) = commands::pane_row_map(state.buffers.get(bid), &mut view.panes[pid], key);
+    let (mut dlm, vp) =
+        commands::pane_display_lines(state.buffers.get(bid), &mut view.panes[pid], key);
     let (content_x, row) =
-        cursor::content_pos(vp, &mut rm, cursor_char).expect("cursor is visible");
+        cursor::content_pos(vp, &mut dlm, cursor_char).expect("cursor is visible");
     let expected_x = content_x + gutter_w + pane_rect.x;
     let expected_y = row + pane_rect.y + 1; // resolve_popup_geometry: room below → anchor_y + 1
 

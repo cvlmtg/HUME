@@ -56,20 +56,21 @@ pub struct Grapheme {
     /// Absolute char offset from the start of the buffer.
     ///
     /// Populated by the format stage so the style stage can resolve selection
-    /// head positions without any rope lookups. A content row's inline-insert
-    /// (`Virtual`) cells and its newline indicator still carry the real char
-    /// offset of the buffer position they sit at or precede — `usize::MAX` is
-    /// reserved for a virtual-*row*'s cells, which have no buffer position at
-    /// all (see [`crate::rows::RowMap::render_row`]).
+    /// head positions without any rope lookups. A content display line's
+    /// inline-insert (`Virtual`) cells and its newline indicator still carry
+    /// the real char offset of the buffer position they sit at or precede —
+    /// `usize::MAX` is reserved for a virtual display line's cells, which
+    /// have no buffer position at all (see [`crate::display_lines::DisplayLineMap::render_display_line`]).
     pub char_offset: usize,
-    /// Display column within the row this grapheme ended up on (0-based,
-    /// accounting for the widths before it). Row-relative: when a line wraps,
-    /// the graphemes carried onto the continuation row are renumbered from
-    /// that row's own left edge (its indent, under `WrapMode::Indent`).
+    /// Display column within the display line this grapheme ended up on
+    /// (0-based, accounting for the widths before it). Display-line-relative:
+    /// when a buffer line wraps, the graphemes carried onto the continuation
+    /// display line are renumbered from that display line's own left edge
+    /// (its indent, under `WrapMode::Indent`).
     ///
-    /// With wrapping off a row *is* the whole line, so the same value is also
-    /// the line's own display column and may run far past the viewport's
-    /// width — which is why the render path subtracts
+    /// With wrapping off a display line *is* the whole buffer line, so the
+    /// same value is also the line's own display column and may run far past
+    /// the viewport's width — which is why the render path subtracts
     /// `ViewportState::horizontal_offset` from it rather than treating it as
     /// a screen cell.
     pub display_col: DisplayLineCol,
@@ -90,12 +91,12 @@ pub struct Grapheme {
 ///
 /// `Whitespace`, `Placeholder`, and `Virtual` reference a range in a per-frame text arena in
 /// `LineFormat` (`virtual_texts` for a content line's inline decorations,
-/// `virtual_row.texts` for a provider's virtual row — see
-/// `rows::RenderRow::virtual_texts`) rather than borrowing a string directly
+/// `virtual_line.texts` for a provider's virtual display line — see
+/// `display_lines::RenderDisplayLine::virtual_texts`) rather than borrowing a string directly
 /// — their source text (Steel-configured whitespace glyphs, LSP inlay hints,
 /// provider-built virtual lines) is never truly `'static`, and `CellContent`
 /// must stay `Copy` on the per-cell hot path (pushed and matched once per
-/// grapheme in `format_buffer_line`/`style_row`). `(start: u32, len: u16)`
+/// grapheme in `format_buffer_line`/`style_display_line`). `(start: u32, len: u16)`
 /// keeps the variant small; a single line's arena realistically never
 /// approaches either bound (see `format::push_arena_text`).
 #[derive(Copy, Clone, Debug)]
@@ -133,58 +134,64 @@ pub enum CellContent {
 }
 
 // ---------------------------------------------------------------------------
-// Display Row
+// Display Line
 // ---------------------------------------------------------------------------
 
-/// One horizontal row in the content area.
-/// A single buffer line may produce multiple DisplayRows when wrapping.
+/// One horizontal line in the content area.
+/// A single buffer line may produce multiple DisplayLines when wrapping.
 #[derive(Clone, Debug)]
-pub struct DisplayRow {
-    /// What kind of content this row represents.
-    pub kind: RowKind,
+pub struct DisplayLine {
+    /// What kind of content this display line represents.
+    pub kind: DisplayLineKind,
     /// Index range into its `LineFormat::graphemes` buffer.
     pub graphemes: Range<usize>,
 }
 
-/// Classifies a display row's origin.
+/// Classifies a display line's origin.
 ///
 /// `line_idx`/`anchor_line` are ropey domain, not content domain: every
-/// *production* row comes from [`crate::rows::RowMap`], which never walks
-/// past [`crate::rows::RowMap::last_line`] — but [`crate::format::format_buffer_line`]
-/// is also exercised directly, one ropey line at a time, by its own unit
-/// tests (`hume-engine/src/format/tests.rs`), including on the buffer's
-/// trailing phantom line — see e.g. `wrap_sentinel_and_phantom_line_are_distinct_rows`.
+/// *production* display line comes from [`crate::display_lines::DisplayLineMap`], which never
+/// walks past [`crate::display_lines::DisplayLineMap::last_line`] — but
+/// [`crate::format::format_buffer_line`] is also exercised directly, one
+/// ropey line at a time, by its own unit tests
+/// (`hume-engine/src/format/tests.rs`), including on the buffer's trailing
+/// phantom line — every `do_format`-driven test there iterates
+/// `hume_rope::lines::ropey_lines`, which includes it, so this is exercised
+/// broadly rather than by one dedicated test.
 /// A `ContentLine` has no representation for that line, so the field has to
 /// be the wider domain; every real caller (`GutterColumn` implementations)
 /// narrows it back via [`hume_rope::line::RopeyLine::to_content`], clamping
 /// to the last content line — a no-op in practice, since it's never actually
 /// reached with a phantom index outside these tests.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum RowKind {
-    /// The first display row of a buffer line.
+pub enum DisplayLineKind {
+    /// The first display line of a buffer line.
     LineStart {
         line_idx: hume_rope::line::RopeyLine,
     },
-    /// A continuation row produced by wrapping.
+    /// A continuation display line produced by wrapping.
     Wrap {
         line_idx: hume_rope::line::RopeyLine,
-        wrap_row: u16,
+        wrap_index: u16,
     },
-    /// A virtual row injected by a provider (no buffer line).
+    /// A virtual display line injected by a provider (no buffer line).
     Virtual {
         provider_id: u16,
         anchor_line: hume_rope::line::RopeyLine,
     },
-    /// A tilde filler row past end of buffer.
+    /// A tilde filler display line past end of buffer.
     Filler,
 }
 
-impl RowKind {
-    /// Returns the buffer line index if this row corresponds to a real line.
+impl DisplayLineKind {
+    /// Returns the buffer line index if this display line corresponds to a
+    /// real line.
     pub fn line_idx(self) -> Option<hume_rope::line::RopeyLine> {
         match self {
-            RowKind::LineStart { line_idx } | RowKind::Wrap { line_idx, .. } => Some(line_idx),
-            RowKind::Virtual { .. } | RowKind::Filler => None,
+            DisplayLineKind::LineStart { line_idx } | DisplayLineKind::Wrap { line_idx, .. } => {
+                Some(line_idx)
+            }
+            DisplayLineKind::Virtual { .. } | DisplayLineKind::Filler => None,
         }
     }
 }

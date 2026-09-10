@@ -2,7 +2,7 @@ use std::any::Any;
 use std::str::FromStr;
 
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn};
-use crate::types::{RowKind, ScopeId};
+use crate::types::{DisplayLineKind, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Line number style
@@ -62,7 +62,7 @@ impl std::fmt::Display for LineNumberStyle {
 /// one space of padding on the right.
 pub struct LineNumberColumn {
     pub style: LineNumberStyle,
-    /// Interned `"ui.linenr"` — every row but the primary head line.
+    /// Interned `"ui.linenr"` — every display line but the primary head line.
     default_scope: ScopeId,
     /// Interned `"ui.linenr.selected"` — the primary selection's head line.
     selected_scope: ScopeId,
@@ -120,21 +120,21 @@ impl GutterColumn for LineNumberColumn {
         digit_count(last_line_idx.index() + 1).saturating_add(1)
     }
 
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        kind: RowKind,
-        ctx: &crate::providers::GutterRowCtx,
+        kind: DisplayLineKind,
+        ctx: &crate::providers::GutterCtx,
     ) -> Vec<GutterCell> {
-        // Widened from the content domain: `RowKind::LineStart`'s own field is
+        // Widened from the content domain: `DisplayLineKind::LineStart`'s own field is
         // ropey domain (see its doc), so the comparison needs both sides in
         // the same one. The widening is a no-op in practice — a real render
-        // walk (`RowMap`) never emits a `LineStart` for the phantom line.
+        // walk (`DisplayLineMap`) never emits a `LineStart` for the phantom line.
         let primary_head_line: hume_rope::line::RopeyLine = ctx.primary_head_line.into();
         let cell = match kind {
-            RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
-                GutterCell::blank(self.default_scope)
-            }
-            RowKind::LineStart { line_idx } => {
+            DisplayLineKind::Filler
+            | DisplayLineKind::Virtual { .. }
+            | DisplayLineKind::Wrap { .. } => GutterCell::blank(self.default_scope),
+            DisplayLineKind::LineStart { line_idx } => {
                 let scope = if line_idx == primary_head_line {
                     self.selected_scope
                 } else {

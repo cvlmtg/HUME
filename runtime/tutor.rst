@@ -173,11 +173,11 @@ Scrolling moves the viewport without changing the cursor position.
 To reposition the viewport around the cursor:
 
 +----+--------------------------------------+
-| zk | place the cursor row at the top      |
+| zk | place the cursor's line at the top      |
 +----+--------------------------------------+
 | zz | center the viewport on the cursor    |
 +----+--------------------------------------+
-| zj | place the cursor row at the bottom   |
+| zj | place the cursor's line at the bottom   |
 +----+--------------------------------------+
 
 ``k`` is up and ``j`` is down, the same axis the motion keys use.

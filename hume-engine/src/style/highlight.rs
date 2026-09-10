@@ -8,7 +8,7 @@ use crate::types::{ResolvedStyle, ScopeId};
 /// Walks a sorted, non-overlapping slice of `(byte_start, byte_end, ScopeId)`
 /// intervals in order. Queries must be monotonically non-decreasing.
 ///
-/// `pub(crate)`: also used by `rows::segment_virtual_row` to resolve
+/// `pub(crate)`: also used by `display_lines::segment_virtual_line` to resolve
 /// per-grapheme scopes for virtual lines, the same interval shape as
 /// `Decoration::Highlight`/`SyntaxSpans`.
 pub(crate) struct IntervalCursor<'a> {
@@ -120,8 +120,8 @@ impl TierBufs {
 /// `DecorationSource` for one buffer line, returning the line's background
 /// tint (`Decoration::LineBg`), if any provider requested one.
 ///
-/// Must be called once per buffer line before calling [`super::style_row`] for
-/// that line's display rows. Clears and re-fills `tier_bufs`.
+/// Must be called once per buffer line before calling [`super::style_display_line`] for
+/// that line's display lines. Clears and re-fills `tier_bufs`.
 ///
 /// `syntax` is the buffer's syntax span source (if a language is
 /// configured). Its spans for this line are merged into the `Syntax`
@@ -163,7 +163,7 @@ pub(crate) fn rebuild_line_decorations(
             Decoration::VirtualLine(_) | Decoration::Inline(_) => {
                 // A provider that declared PAINT but emitted a
                 // VIRTUAL_LINE/INLINE kind is a provider bug — ignored, not
-                // a panic, same posture `rows::RowMap` takes for the
+                // a panic, same posture `display_lines::DisplayLineMap` takes for the
                 // reverse case.
             }
         }

@@ -40,8 +40,8 @@ fn map<'a>(
     wrap: WrapMode,
     providers: &'a ProviderSet,
     store: &'a mut PaneLineStore,
-) -> RowMap<'a> {
-    RowMap::new(
+) -> DisplayLineMap<'a> {
+    DisplayLineMap::new(
         rope,
         providers,
         80,
@@ -72,7 +72,7 @@ fn is_unformatted(store: &PaneLineStore, line: ContentLine) -> bool {
         .is_some_and(|i| store.entry(i).format.extent.is_none())
 }
 
-/// Emits `count` identical rows at one fixed anchor. Self-reports
+/// Emits `count` identical display lines at one fixed anchor. Self-reports
 /// `provider_id: 0` so the id-stamping test has something wrong to correct.
 struct FixedAnchor {
     anchor: VirtualLineAnchor,
@@ -131,16 +131,16 @@ impl DecorationSource for FixedAnchor {
 
 /// A VIRTUAL_LINE-kind source that never emits anything — registered only to
 /// consume a `ProviderId` so the next provider's real id is not 0.
-struct NoRows;
+struct NoVirtualLines;
 
-impl DecorationSource for NoRows {
+impl DecorationSource for NoVirtualLines {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
     fn decorations_for_line(&self, _line_idx: ContentLine, _out: &mut Vec<Decoration>) {}
 }
 
-/// A call-counting source emitting one `Before(0)` row, so the entry whose
+/// A call-counting source emitting one `Before(0)` display line, so the entry whose
 /// re-query the counter is watching has a non-trivial block shape.
 fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
     let calls = Rc::new(Cell::new(0));
@@ -208,11 +208,11 @@ fn with_counting_insert(
     (providers, calls)
 }
 
-/// Reconstruct the text a rendered row puts on screen, cell by cell. Derived
+/// Reconstruct the text a rendered display line puts on screen, cell by cell. Derived
 /// from the `Grapheme`/`CellContent` contract rather than from anything
-/// `RowMap` computed, so it is an independent check of the render accessors.
-fn row_text(r: &RenderRow<'_>) -> String {
-    r.graphemes[r.row.graphemes.clone()]
+/// `DisplayLineMap` computed, so it is an independent check of the render accessors.
+fn display_line_text(r: &RenderDisplayLine<'_>) -> String {
+    r.graphemes[r.display_line.graphemes.clone()]
         .iter()
         .filter_map(|g| match g.content {
             CellContent::Virtual { start, len }
@@ -222,7 +222,7 @@ fn row_text(r: &RenderRow<'_>) -> String {
                 Some(r.virtual_texts[start..start + len as usize].to_string())
             }
             // No arena entry — blank across its whole reserved width, same
-            // as `render::compose_row`'s `TabFill` arm draws it on screen.
+            // as `render::compose_display_line`'s `TabFill` arm draws it on screen.
             CellContent::TabFill => Some(" ".repeat(g.width as usize)),
             CellContent::Grapheme => Some(r.line_text[g.byte_range.clone()].to_string()),
             CellContent::WidthContinuation | CellContent::Empty => None,
@@ -230,13 +230,13 @@ fn row_text(r: &RenderRow<'_>) -> String {
         .collect()
 }
 
-/// Walk the whole document forward from its first row.
-fn walk_forward(rm: &mut RowMap<'_>) -> Vec<RowPos> {
-    let mut rows = vec![RowPos::default()];
-    while let Some(next) = rm.next(*rows.last().expect("seeded above")) {
-        rows.push(next);
+/// Walk the whole document forward from its first display line.
+fn walk_forward(dlm: &mut DisplayLineMap<'_>) -> Vec<DisplayLinePos> {
+    let mut positions = vec![DisplayLinePos::default()];
+    while let Some(next) = dlm.next(*positions.last().expect("seeded above")) {
+        positions.push(next);
     }
-    rows
+    positions
 }
 
 // ---------------------------------------------------------------------------
@@ -248,11 +248,11 @@ fn block_without_providers_is_content_only() {
     let rope = Rope::from_str("hello\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.block(ContentLine::new(0)),
-        RowsBreakdown {
+        dlm.block(ContentLine::new(0)),
+        BlockBreakdown {
             before: 0,
             content: 1,
             after: 0,
@@ -261,22 +261,22 @@ fn block_without_providers_is_content_only() {
 }
 
 #[test]
-fn block_counts_one_content_row_per_wrap_row() {
-    // "abcdefgh" is 8 columns wrapped at 4 → "abcd" / "efgh" = 2 rows, and
-    // "efgh" exactly fills its row, so the trailing '\n's own sentinel wraps
-    // onto a third row rather than landing past the pane's edge.
+fn block_counts_one_content_display_line_per_wrap_display_line() {
+    // "abcdefgh" is 8 columns wrapped at 4 → "abcd" / "efgh" = 2 display lines, and
+    // "efgh" exactly fills its display line, so the trailing '\n's own sentinel wraps
+    // onto a third display line rather than landing past the pane's edge.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.block(ContentLine::new(0)).content, 3);
+    assert_eq!(dlm.block(ContentLine::new(0)).content, 3);
 }
 
 #[test]
-fn block_counts_before_and_after_virtual_rows() {
-    // Line 5 of "a\nb\nc\nd\ne\nf\n" gets 2 Before rows and 1 After row from
-    // two separate providers, on top of its own single unwrapped content row.
+fn block_counts_before_and_after_virtual_lines() {
+    // Line 5 of "a\nb\nc\nd\ne\nf\n" gets 2 Before display lines and 1 After display line from
+    // two separate providers, on top of its own single unwrapped content display line.
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -288,12 +288,12 @@ fn block_counts_before_and_after_virtual_rows() {
         1,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    let block = rm.block(ContentLine::new(5));
+    let block = dlm.block(ContentLine::new(5));
     assert_eq!(
         block,
-        RowsBreakdown {
+        BlockBreakdown {
             before: 2,
             content: 1,
             after: 1,
@@ -303,7 +303,7 @@ fn block_counts_before_and_after_virtual_rows() {
 }
 
 #[test]
-fn block_ignores_virtual_rows_anchored_to_other_lines() {
+fn block_ignores_virtual_lines_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -311,10 +311,10 @@ fn block_ignores_virtual_rows_anchored_to_other_lines() {
         3,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.block(ContentLine::new(5)).before, 0);
-    assert_eq!(rm.block(ContentLine::new(5)).after, 0);
+    assert_eq!(dlm.block(ContentLine::new(5)).before, 0);
+    assert_eq!(dlm.block(ContentLine::new(5)).after, 0);
 }
 
 #[test]
@@ -327,9 +327,9 @@ fn layout_stage_never_queries_a_paint_only_kind() {
     providers.add_decoration_source(Box::new(CountingLineBg(Rc::clone(&calls))));
     let rope = Rope::from_str("abcdef\n");
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    rm.block(ContentLine::new(0));
+    dlm.block(ContentLine::new(0));
     assert_eq!(
         calls.get(),
         0,
@@ -340,10 +340,10 @@ fn layout_stage_never_queries_a_paint_only_kind() {
 #[test]
 fn block_counts_inline_inserts_toward_wrapping() {
     // The bug this fixes: an inlay hint participates in wrapping, so a line
-    // that fits without it can need two rows with it, and row counting that
+    // that fits without it can need two display lines with it, and display line counting that
     // ignores inserts disagrees with what the renderer emits.
     //
-    // "abcdef" is 6 columns; wrapped at 8 that is one row. A 4-column insert
+    // "abcdef" is 6 columns; wrapped at 8 that is one display line. A 4-column insert
     // at the head of the line makes 10 columns, which is two.
     let rope = Rope::from_str("abcdef\n");
     let wrap = WrapMode::Soft { width: 8 };
@@ -355,7 +355,7 @@ fn block_counts_inline_inserts_toward_wrapping() {
             .block(ContentLine::new(0))
             .content,
         1,
-        "6 columns fit on one row at width 8"
+        "6 columns fit on one display line at width 8"
     );
 
     let (providers, _calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
@@ -371,32 +371,32 @@ fn block_counts_inline_inserts_toward_wrapping() {
 
 #[test]
 fn no_wrap_block_counts_without_running_the_formatter() {
-    // `WrapMode::None` is always one content row, so counting must not format
-    // — that is what keeps a row query O(1) instead of O(line length) on a
+    // `WrapMode::None` is always one content display line, so counting must not format
+    // — that is what keeps a display line query O(1) instead of O(line length) on a
     // minified line megabytes wide. Querying decorations is what formatting
     // does first, so a zero call count is the observable proxy.
     let rope = Rope::from_str("abcdef\n");
     let (providers, calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
     let mut s = PaneLineStore::new();
 
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
-    assert_eq!(rm.block(ContentLine::new(0)).content, 1);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+    assert_eq!(dlm.block(ContentLine::new(0)).content, 1);
     assert_eq!(calls.get(), 0, "no-wrap counting must not format");
 
-    // The same query while wrapping has to format, because the row count
+    // The same query while wrapping has to format, because the display line count
     // genuinely depends on the content.
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
-    rm.block(ContentLine::new(0));
-    assert!(calls.get() > 0, "wrapping must format to count rows");
+    let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
+    dlm.block(ContentLine::new(0));
+    assert!(calls.get() > 0, "wrapping must format to count display lines");
 }
 
 // ---------------------------------------------------------------------------
 // slot() / clamp() / last_line()
 // ---------------------------------------------------------------------------
 
-/// Line 0 wrapped into 2 content rows, with 2 Before rows and 1 After row:
-/// a 5-row block whose every row slot is hand-known.
+/// Line 0 wrapped into 2 content display lines, with 2 Before display lines and 1 After display line:
+/// a 5-display-line block whose every display line slot is hand-known.
 fn mixed_block_providers() -> ProviderSet {
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -411,18 +411,18 @@ fn mixed_block_providers() -> ProviderSet {
 }
 
 #[test]
-fn slot_classifies_every_row_of_a_mixed_block() {
-    // "abcdefgh\n" at width 4 supplies 3 content rows, not 2: "efgh" exactly
+fn slot_classifies_every_display_line_of_a_mixed_block() {
+    // "abcdefgh\n" at width 4 supplies 3 content display lines, not 2: "efgh" exactly
     // fills the wrap width, so the trailing '\n's own sentinel wraps onto a
-    // row of its own (see `content_row_char_bounds_scopes_to_one_wrap_row`).
+    // display line of its own (see `content_display_line_char_bounds_scopes_to_one_wrap_display_line`).
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.block(ContentLine::new(0)).total(), 6);
+    assert_eq!(dlm.block(ContentLine::new(0)).total(), 6);
     let slots: Vec<BlockSlot> = (0..6)
-        .map(|row| rm.slot(RowPos::new(ContentLine::new(0), row)))
+        .map(|slot_idx| dlm.slot(DisplayLinePos::new(ContentLine::new(0), slot_idx)))
         .collect();
     assert_eq!(
         slots,
@@ -438,25 +438,25 @@ fn slot_classifies_every_row_of_a_mixed_block() {
 }
 
 #[test]
-fn clamp_pulls_line_and_row_into_the_document() {
+fn clamp_pulls_line_and_slot_into_the_document() {
     let rope = Rope::from_str("abcdefgh\n");
     let providers = mixed_block_providers();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.clamp(RowPos::new(ContentLine::new(0), 99)),
-        RowPos::new(ContentLine::new(0), 5),
-        "row clamps to the block's last row"
+        dlm.clamp(DisplayLinePos::new(ContentLine::new(0), 99)),
+        DisplayLinePos::new(ContentLine::new(0), 5),
+        "display line clamps to the block's last display line"
     );
     assert_eq!(
-        rm.clamp(RowPos::new(ContentLine::new(99), 99)),
-        RowPos::new(ContentLine::new(0), 5),
-        "line clamps to the last real line, then row to its block"
+        dlm.clamp(DisplayLinePos::new(ContentLine::new(99), 99)),
+        DisplayLinePos::new(ContentLine::new(0), 5),
+        "line clamps to the last real line, then display line to its block"
     );
     assert_eq!(
-        rm.clamp(RowPos::new(ContentLine::new(0), 2)),
-        RowPos::new(ContentLine::new(0), 2),
+        dlm.clamp(DisplayLinePos::new(ContentLine::new(0), 2)),
+        DisplayLinePos::new(ContentLine::new(0), 2),
         "an address already inside the document is untouched"
     );
 }
@@ -469,16 +469,16 @@ fn last_line_excludes_the_phantom_trailing_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.last_line(), ContentLine::new(2));
+    assert_eq!(dlm.last_line(), ContentLine::new(2));
 }
 
 #[test]
-fn clamp_reaches_the_documents_very_last_row() {
-    // "a\nb\nc\n" has 3 real lines; line 2 carries 1 After row, so the
-    // document's last row is that virtual row at (2, 1). `clamp` is the
-    // documented way to reach it (RowMap has no dedicated accessor).
+fn clamp_reaches_the_documents_very_last_display_line() {
+    // "a\nb\nc\n" has 3 real lines; line 2 carries 1 After display line, so the
+    // document's last display line is that virtual display line at (2, 1). `clamp` is the
+    // documented way to reach it (DisplayLineMap has no dedicated accessor).
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -486,11 +486,14 @@ fn clamp_reaches_the_documents_very_last_row() {
         1,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.clamp(RowPos::new(ContentLine::new(usize::MAX), usize::MAX)),
-        RowPos::new(ContentLine::new(2), 1)
+        dlm.clamp(DisplayLinePos::new(
+            ContentLine::new(usize::MAX),
+            usize::MAX
+        )),
+        DisplayLinePos::new(ContentLine::new(2), 1)
     );
 }
 
@@ -498,8 +501,8 @@ fn clamp_reaches_the_documents_very_last_row() {
 // Stepping
 // ---------------------------------------------------------------------------
 
-/// "a\nb\nc\n" with 2 Before rows on line 1 and 1 After row on line 2. Hand-
-/// written row list, in document order:
+/// "a\nb\nc\n" with 2 Before display lines on line 1 and 1 After display line on line 2. Hand-
+/// written display line list, in document order:
 ///
 /// ```text
 ///   (0,0)  line 0 content
@@ -509,7 +512,7 @@ fn clamp_reaches_the_documents_very_last_row() {
 ///   (2,0)  line 2 content
 ///   (2,1)  line 2 After #0
 /// ```
-fn three_line_doc() -> (Rope, ProviderSet, Vec<RowPos>) {
+fn three_line_doc() -> (Rope, ProviderSet, Vec<DisplayLinePos>) {
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -521,33 +524,33 @@ fn three_line_doc() -> (Rope, ProviderSet, Vec<RowPos>) {
         1,
     )));
     let expected = vec![
-        RowPos::new(ContentLine::new(0), 0),
-        RowPos::new(ContentLine::new(1), 0),
-        RowPos::new(ContentLine::new(1), 1),
-        RowPos::new(ContentLine::new(1), 2),
-        RowPos::new(ContentLine::new(2), 0),
-        RowPos::new(ContentLine::new(2), 1),
+        DisplayLinePos::new(ContentLine::new(0), 0),
+        DisplayLinePos::new(ContentLine::new(1), 0),
+        DisplayLinePos::new(ContentLine::new(1), 1),
+        DisplayLinePos::new(ContentLine::new(1), 2),
+        DisplayLinePos::new(ContentLine::new(2), 0),
+        DisplayLinePos::new(ContentLine::new(2), 1),
     ];
     (rope, providers, expected)
 }
 
 #[test]
-fn next_walks_the_documents_rows_in_order() {
+fn next_walks_the_documents_display_lines_in_order() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(walk_forward(&mut rm), expected);
+    assert_eq!(walk_forward(&mut dlm), expected);
 }
 
 #[test]
 fn prev_is_the_inverse_of_next() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let mut backward = vec![*expected.last().expect("non-empty")];
-    while let Some(prev) = rm.prev(*backward.last().expect("seeded above")) {
+    while let Some(prev) = dlm.prev(*backward.last().expect("seeded above")) {
         backward.push(prev);
     }
     backward.reverse();
@@ -558,19 +561,19 @@ fn prev_is_the_inverse_of_next() {
 fn next_and_prev_stop_exactly_at_the_documents_edges() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
     assert_eq!(
-        rm.prev(first),
+        dlm.prev(first),
         None,
-        "no row precedes the document's first row"
+        "no display line precedes the document's first display line"
     );
     assert_eq!(
-        rm.next(last),
+        dlm.next(last),
         None,
-        "no row follows the document's last row"
+        "no display line follows the document's last display line"
     );
 }
 
@@ -578,13 +581,13 @@ fn next_and_prev_stop_exactly_at_the_documents_edges() {
 fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for (i, &from) in expected.iter().enumerate() {
         for (j, &to) in expected.iter().enumerate() {
             let delta = j as isize - i as isize;
             assert_eq!(
-                rm.advance(from, delta),
+                dlm.advance(from, delta),
                 to,
                 "advance({from:?}, {delta}) should reach {to:?}"
             );
@@ -593,21 +596,21 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
 
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
-    assert_eq!(rm.advance(first, -10), first, "saturates at the first row");
-    assert_eq!(rm.advance(last, 10), last, "saturates at the last row");
+    assert_eq!(dlm.advance(first, -10), first, "saturates at the first display line");
+    assert_eq!(dlm.advance(last, 10), last, "saturates at the last display line");
 }
 
 #[test]
 fn advance_counted_reports_how_far_it_actually_stepped() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     // In bounds: the count matches the requested delta exactly.
     for (i, &from) in expected.iter().enumerate() {
         for (j, &to) in expected.iter().enumerate() {
             let delta = j as isize - i as isize;
-            let (pos, taken) = rm.advance_counted(from, delta);
+            let (pos, taken) = dlm.advance_counted(from, delta);
             assert_eq!(pos, to, "advance_counted({from:?}, {delta}) position");
             assert_eq!(
                 taken,
@@ -622,35 +625,35 @@ fn advance_counted_reports_how_far_it_actually_stepped() {
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
     assert_eq!(
-        rm.advance_counted(first, -10),
+        dlm.advance_counted(first, -10),
         (first, 0),
-        "no rows exist before the first row"
+        "no display lines exist before the first display line"
     );
     assert_eq!(
-        rm.advance_counted(last, 10),
+        dlm.advance_counted(last, 10),
         (last, 0),
-        "no rows exist past the last row"
+        "no display lines exist past the last display line"
     );
 
     // The documented "count is also the distance back" property
-    // `scroll::scroll_back_from` relies on: having stepped `n` rows backward
+    // `scroll::scroll_back_from` relies on: having stepped `n` display lines backward
     // from `pos`, `distance` from the landing spot back to `pos` is that
     // same `n`.
     let pos = expected[4];
-    let (landed, taken) = rm.advance_counted(pos, -3);
-    assert_eq!(rm.distance(landed, pos, expected.len()), Some(taken));
+    let (landed, taken) = dlm.advance_counted(pos, -3);
+    assert_eq!(dlm.distance(landed, pos, expected.len()), Some(taken));
 }
 
 #[test]
-fn distance_counts_rows_forward_and_rejects_backward_or_distant() {
+fn distance_counts_display_lines_forward_and_rejects_backward_or_distant() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for (i, &from) in expected.iter().enumerate() {
         for (j, &to) in expected.iter().enumerate().skip(i) {
             assert_eq!(
-                rm.distance(from, to, 16),
+                dlm.distance(from, to, 16),
                 Some(j - i),
                 "distance({from:?} → {to:?})"
             );
@@ -658,49 +661,49 @@ fn distance_counts_rows_forward_and_rejects_backward_or_distant() {
     }
 
     assert_eq!(
-        rm.distance(expected[3], expected[1], 16),
+        dlm.distance(expected[3], expected[1], 16),
         None,
-        "a row behind the start is not reachable forward"
+        "a display line behind the start is not reachable forward"
     );
     assert_eq!(
-        rm.distance(expected[0], expected[5], 2),
+        dlm.distance(expected[0], expected[5], 2),
         None,
-        "5 rows away is beyond a cap of 2"
+        "5 display lines away is beyond a cap of 2"
     );
     assert_eq!(
-        rm.distance(expected[0], expected[2], 2),
+        dlm.distance(expected[0], expected[2], 2),
         Some(2),
         "exactly at the cap still resolves"
     );
 }
 
 #[test]
-fn fits_in_counts_virtual_rows_toward_the_height() {
-    // The hand-written list above is 6 rows: 3 content + 3 virtual.
+fn fits_in_counts_virtual_lines_toward_the_height() {
+    // The hand-written list above is 6 display lines: 3 content + 3 virtual.
     let (rope, providers, expected) = three_line_doc();
     assert_eq!(expected.len(), 6);
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert!(rm.fits_in(6), "6 rows fit in 6");
-    assert!(!rm.fits_in(5), "6 rows do not fit in 5");
+    assert!(dlm.fits_in(6), "6 display lines fit in 6");
+    assert!(!dlm.fits_in(5), "6 display lines do not fit in 5");
     assert!(
-        !rm.fits_in(3),
-        "counting content rows alone would wrongly fit 3 lines in 3 rows"
+        !dlm.fits_in(3),
+        "counting content display lines alone would wrongly fit 3 lines in 3 display lines"
     );
 }
 
 #[test]
 fn fits_in_zero_height_never_fits() {
-    // Every document has at least one row (even a single empty line), so a
+    // Every document has at least one display line (even a single empty line), so a
     // zero-height viewport can never fit it — regardless of how short the
     // document is.
     let rope = Rope::from_str("x\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert!(!rm.fits_in(0));
+    assert!(!dlm.fits_in(0));
 }
 
 #[test]
@@ -710,19 +713,19 @@ fn degenerate_single_empty_line_document() {
     let rope = Rope::from_str("\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.last_line(), ContentLine::new(0));
+    assert_eq!(dlm.last_line(), ContentLine::new(0));
     assert_eq!(
-        rm.clamp(RowPos::new(ContentLine::new(99), 99)),
-        RowPos::new(ContentLine::new(0), 0),
-        "the only row in a one-line document is (0, 0)"
+        dlm.clamp(DisplayLinePos::new(ContentLine::new(99), 99)),
+        DisplayLinePos::new(ContentLine::new(0), 0),
+        "the only display line in a one-line document is (0, 0)"
     );
     assert!(
-        rm.fits_in(1),
-        "the document's single row fits a height of 1"
+        dlm.fits_in(1),
+        "the document's single display line fits a height of 1"
     );
-    assert!(!rm.fits_in(0));
+    assert!(!dlm.fits_in(0));
 }
 
 #[test]
@@ -732,7 +735,7 @@ fn new_panics_on_zero_content_width() {
     let rope = Rope::from_str("x\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    RowMap::new(
+    DisplayLineMap::new(
         &rope,
         &providers,
         0,
@@ -747,14 +750,14 @@ fn new_panics_on_zero_content_width() {
 }
 
 #[test]
-fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
-    // One grapheme per row at wrap width 1, plus a 5th row for the trailing
-    // '\n's own sentinel: every row at width 1 exactly fills, so the
-    // sentinel always wraps onto a row of its own here.
+fn wrap_width_one_emits_one_grapheme_per_display_line_without_hanging() {
+    // One grapheme per display line at wrap width 1, plus a 5th display line for the trailing
+    // '\n's own sentinel: every display line at width 1 exactly fills, so the
+    // sentinel always wraps onto a display line of its own here.
     let rope = Rope::from_str("abcd\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = RowMap::new(
+    let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
         80,
@@ -767,7 +770,7 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
         &mut s,
     );
 
-    let breakdown = rm.block(ContentLine::new(0));
+    let breakdown = dlm.block(ContentLine::new(0));
     assert_eq!(breakdown.content, 5);
 }
 
@@ -776,39 +779,39 @@ fn wrap_width_one_emits_one_grapheme_per_row_without_hanging() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn locate_returns_the_wrap_row_and_column_of_a_char() {
-    // "abcdefgh\n" at width 4: row 0 holds chars 0..3, row 1 holds 4..7.
+fn locate_returns_the_wrap_display_line_and_column_of_a_char() {
+    // "abcdefgh\n" at width 4: display line 0 holds chars 0..3, display line 1 holds 4..7.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(co(0)),
-        (RowPos::new(ContentLine::new(0), 0), dc(0)),
-        "'a' — row 0, column 0"
+        dlm.locate(co(0)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(0)),
+        "'a' — display line 0, column 0"
     );
     assert_eq!(
-        rm.locate(co(2)),
-        (RowPos::new(ContentLine::new(0), 0), dc(2)),
-        "'c' — row 0, column 2"
+        dlm.locate(co(2)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(2)),
+        "'c' — display line 0, column 2"
     );
     assert_eq!(
-        rm.locate(co(4)),
-        (RowPos::new(ContentLine::new(0), 1), dc(0)),
-        "'e' — row 1, column 0"
+        dlm.locate(co(4)),
+        (DisplayLinePos::new(ContentLine::new(0), 1), dc(0)),
+        "'e' — display line 1, column 0"
     );
     assert_eq!(
-        rm.locate(co(5)),
-        (RowPos::new(ContentLine::new(0), 1), dc(1)),
-        "'f' — row 1, column 1"
+        dlm.locate(co(5)),
+        (DisplayLinePos::new(ContentLine::new(0), 1), dc(1)),
+        "'f' — display line 1, column 1"
     );
 }
 
 #[test]
-fn locate_offsets_the_row_by_the_lines_before_block() {
-    // Same line, now with 2 Before rows above it: 'f' keeps its column but
-    // its block row shifts from 1 to 3.
+fn locate_offsets_the_display_line_by_the_lines_before_block() {
+    // Same line, now with 2 Before display lines above it: 'f' keeps its column but
+    // its block display line shifts from 1 to 3.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -816,11 +819,11 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
         2,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(co(5)),
-        (RowPos::new(ContentLine::new(0), 3), dc(1))
+        dlm.locate(co(5)),
+        (DisplayLinePos::new(ContentLine::new(0), 3), dc(1))
     );
 }
 
@@ -834,11 +837,11 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     let rope = Rope::from_str("ab\n");
     let (providers, _calls) = with_counting_insert(ContentLine::new(0), 1, "XY");
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(co(1)),
-        (RowPos::new(ContentLine::new(0), 0), dc(3))
+        dlm.locate(co(1)),
+        (DisplayLinePos::new(ContentLine::new(0), 0), dc(3))
     );
 }
 
@@ -851,11 +854,11 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(99),
             DisplayColTarget::Cell
         ),
@@ -865,16 +868,16 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
 
 #[test]
 fn char_at_nearest_content_stays_off_the_eol_sentinel() {
-    // The same row asked the other question: a sticky column past the end of
+    // The same display line asked the other question: a sticky column past the end of
     // the text resolves to the last real character, never the '\n'.
     let rope = Rope::from_str("hi\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(99),
             DisplayColTarget::NearestContent
         ),
@@ -883,20 +886,20 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
 }
 
 #[test]
-fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
-    // "abcde\n" at wrap width 5 fits exactly — no room left on row 0 for the
-    // sentinel, so `format.rs` wraps it onto row 1's own column 0.
+fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_display_line() {
+    // "abcde\n" at wrap width 5 fits exactly — no room left on display line 0 for the
+    // sentinel, so `format.rs` wraps it onto display line 1's own column 0.
     // The cursor addressing this same head position must resolve to that
-    // same row/column, not to row 0's one-past-the-end column (which would
+    // same display line/column, not to display line 0's one-past-the-end column (which would
     // land the cursor on the seam past the pane's right edge).
     let rope = Rope::from_str("abcde\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(co(5)),
-        (RowPos::new(ContentLine::new(0), 1), dc(0))
+        dlm.locate(co(5)),
+        (DisplayLinePos::new(ContentLine::new(0), 1), dc(0))
     );
 }
 
@@ -913,7 +916,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     let mut s = PaneLineStore::new();
     let mut whitespace = ws();
     whitespace.newline = true;
-    let mut rm = RowMap::new(
+    let mut dlm = DisplayLineMap::new(
         &rope,
         &providers,
         80,
@@ -927,8 +930,8 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     );
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(99),
             DisplayColTarget::NearestContent
         ),
@@ -948,11 +951,11 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
     let rope = Rope::from_str("hi\n");
     let (providers, _calls) = with_counting_insert(ContentLine::new(0), 2, "ZZZ");
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(10),
             DisplayColTarget::NearestContent
         ),
@@ -967,11 +970,11 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
     let rope = Rope::from_str("\nx\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(5),
             DisplayColTarget::NearestContent
         ),
@@ -986,11 +989,11 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
     let rope = Rope::from_str("\tx\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(3),
             DisplayColTarget::Cell
         ),
@@ -998,8 +1001,8 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
         "a click at column 3 hit the tab, so it selects the tab"
     );
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(3),
             DisplayColTarget::NearestContent
         ),
@@ -1018,11 +1021,11 @@ fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
     let rope = Rope::from_str("中x\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(1),
             DisplayColTarget::Cell
         ),
@@ -1041,11 +1044,11 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
     let rope = Rope::from_str("a\u{200b}b\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(3),
             DisplayColTarget::Cell
         ),
@@ -1066,11 +1069,11 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
     let rope = Rope::from_str("中x\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(2),
             DisplayColTarget::NearestContent
         ),
@@ -1080,9 +1083,9 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
 }
 
 #[test]
-fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
-    // A virtual row carries no buffer position, so an address on one resolves
-    // against the nearest content row of the line it is anchored to.
+fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
+    // A virtual display line carries no buffer position, so an address on one resolves
+    // against the nearest content display line of the line it is anchored to.
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -1094,60 +1097,60 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
         1,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(1), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(1), 0),
             dc(0),
             DisplayColTarget::Cell
         ),
         co(rope.line_to_char(1)),
-        "the Before row resolves to line 1's first content row"
+        "the Before display line resolves to line 1's first content display line"
     );
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(2), 1),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(2), 1),
             dc(0),
             DisplayColTarget::Cell
         ),
         co(rope.line_to_char(2)),
-        "the After row resolves to line 2's last content row"
+        "the After display line resolves to line 2's last content display line"
     );
 }
 
 // ---------------------------------------------------------------------------
-// content_row_char_bounds()
+// content_display_line_char_bounds()
 // ---------------------------------------------------------------------------
 
 #[test]
-fn content_row_char_bounds_scopes_to_one_wrap_row() {
-    // "abcdefgh\n" at width 4: row 0 covers chars 0..4, row 1 covers 4..8.
+fn content_display_line_char_bounds_scopes_to_one_wrap_display_line() {
+    // "abcdefgh\n" at width 4: display line 0 covers chars 0..4, display line 1 covers 4..8.
     // Row 1 ("efgh") exactly fills the wrap width, so the trailing '\n's own
-    // sentinel wraps onto a row of its own (char 8, the '\n' itself) instead
-    // of being folded into row 1's bounds.
+    // sentinel wraps onto a display line of its own (char 8, the '\n' itself) instead
+    // of being folded into display line 1's bounds.
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 0)),
+        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 0)),
         Some(ex(0, 4))
     );
     assert_eq!(
-        rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 1)),
+        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 1)),
         Some(ex(4, 8))
     );
     assert_eq!(
-        rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 2)),
+        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 2)),
         Some(ex(8, 9)),
-        "the wrapped sentinel row covers just the '\\n' itself"
+        "the wrapped sentinel display line covers just the '\\n' itself"
     );
 }
 
 #[test]
-fn content_row_char_bounds_rejects_a_virtual_row() {
+fn content_display_line_char_bounds_rejects_a_virtual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -1155,17 +1158,17 @@ fn content_row_char_bounds_rejects_a_virtual_row() {
         1,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 0)),
+        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 0)),
         None,
-        "row 0 is the Before row, not content"
+        "display line 0 is the Before display line, not content"
     );
     assert_eq!(
-        rm.content_row_char_bounds(RowPos::new(ContentLine::new(0), 1)),
+        dlm.content_display_line_char_bounds(DisplayLinePos::new(ContentLine::new(0), 1)),
         Some(ex(0, 4)),
-        "row 1 is the line's first content row"
+        "display line 1 is the line's first content display line"
     );
 }
 
@@ -1174,78 +1177,78 @@ fn content_row_char_bounds_rejects_a_virtual_row() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn render_row_yields_a_content_lines_wrap_rows() {
+fn render_display_line_yields_a_content_lines_wrap_display_lines() {
     let rope = Rope::from_str("abcdefgh\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    let row0 = rm.render_row(RowPos::new(ContentLine::new(0), 0));
+    let dl0 = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
     assert_eq!(
-        row0.row.kind,
-        crate::types::RowKind::LineStart {
+        dl0.display_line.kind,
+        crate::types::DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0)
         }
     );
-    assert_eq!(row_text(&row0), "abcd");
+    assert_eq!(display_line_text(&dl0), "abcd");
 
-    let row1 = rm.render_row(RowPos::new(ContentLine::new(0), 1));
+    let dl1 = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1));
     assert_eq!(
-        row1.row.kind,
-        crate::types::RowKind::Wrap {
+        dl1.display_line.kind,
+        crate::types::DisplayLineKind::Wrap {
             line_idx: RopeyLine::new(0),
-            wrap_row: 1,
+            wrap_index: 1,
         }
     );
-    assert_eq!(row_text(&row1), "efgh");
+    assert_eq!(display_line_text(&dl1), "efgh");
 }
 
 #[test]
-fn render_row_segments_a_virtual_rows_text() {
+fn render_display_line_segments_a_virtual_lines_text() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     // Consume id 0 so the emitting provider's real id is 1 — it self-reports
     // 0, which must be overwritten.
-    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(FixedAnchor::texted(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "deleted line",
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    let virtual_row = rm.render_row(RowPos::new(ContentLine::new(0), 0));
+    let virtual_line = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
     assert_eq!(
-        virtual_row.row.kind,
-        crate::types::RowKind::Virtual {
+        virtual_line.display_line.kind,
+        crate::types::DisplayLineKind::Virtual {
             provider_id: 1,
             anchor_line: RopeyLine::new(0),
         },
         "the registry's id replaces the provider's self-reported one"
     );
-    assert_eq!(row_text(&virtual_row), "deleted line");
+    assert_eq!(display_line_text(&virtual_line), "deleted line");
 }
 
 #[test]
-fn render_row_expands_a_tab_in_a_virtual_lines_text() {
-    // A virtual row must be tab-aware exactly like a real buffer line — this
+fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
+    // A virtual display line must be tab-aware exactly like a real buffer line — this
     // is what lets `set-virtual-lines!` accept a literal `\t` in `'text`
     // instead of requiring the caller to expand it by hand (previously the
     // git-diff plugin's job, and the source of its column-counting bug).
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(FixedAnchor::texted(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "\tx",
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
 
-    let virtual_row = rm.render_row(RowPos::new(ContentLine::new(0), 0));
-    let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
+    let virtual_line = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
+    let cells = &virtual_line.graphemes[virtual_line.display_line.graphemes.clone()];
     assert_eq!(cells.len(), 2, "one cell for the tab, one for 'x'");
     assert_eq!(cells[0].display_col, dc(0));
     assert_eq!(
@@ -1264,24 +1267,24 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
 }
 
 #[test]
-fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
+fn render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     // A wide CJK grapheme before a tab must shift the tab's stop by its full
     // 2-column width, matching a real buffer line — the exact case
     // `git-diff/render.scm` used to get wrong when it counted one Steel char
     // (not one display column) per preceding character.
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(NoRows));
+    providers.add_decoration_source(Box::new(NoVirtualLines));
     providers.add_decoration_source(Box::new(FixedAnchor::texted(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "\u{6F22}\tx",
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s); // tab_width == 4, see `map`
 
-    let virtual_row = rm.render_row(RowPos::new(ContentLine::new(0), 0));
-    let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
+    let virtual_line = dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
+    let cells = &virtual_line.graphemes[virtual_line.display_line.graphemes.clone()];
     // 漢(w2) + its WidthContinuation, then the tab (tab_advance(2, 4) == 2,
     // so it also occupies 2 columns and gets its own WidthContinuation —
     // same as any width-2 cell, tab or not), then 'x'.
@@ -1300,49 +1303,49 @@ fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
 }
 
 #[test]
-fn h_window_clips_an_unwrapped_rows_graphemes_without_changing_its_row_count() {
+fn h_window_clips_an_unwrapped_display_lines_graphemes_without_changing_its_display_line_count() {
     // The render path's bound on arbitrarily long unwrapped lines: only the
-    // window's columns are emitted, but the line is still one row.
+    // window's columns are emitted, but the line is still one display line.
     let rope = Rope::from_str("abcdefghij\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s).with_h_window(Some(dc(2)..dc(5)));
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s).with_h_window(Some(dc(2)..dc(5)));
 
     assert_eq!(
-        rm.block(ContentLine::new(0)).content,
+        dlm.block(ContentLine::new(0)).content,
         1,
-        "clipping never adds or drops rows"
+        "clipping never adds or drops display lines"
     );
     assert_eq!(
-        row_text(&rm.render_row(RowPos::new(ContentLine::new(0), 0))),
+        display_line_text(&dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0))),
         "cde",
         "columns 2..5 of the line, and nothing else"
     );
 }
 
 #[test]
-fn render_row_formats_a_line_once_however_many_rows_are_drawn() {
-    // Both wrap rows of one line come from a single format pass.
+fn render_display_line_formats_a_line_once_however_many_display_lines_are_drawn() {
+    // Both wrap display lines of one line come from a single format pass.
     let rope = Rope::from_str("abcdef\n");
     let (providers, calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
 
-    assert_eq!(rm.block(ContentLine::new(0)).content, 2);
+    assert_eq!(dlm.block(ContentLine::new(0)).content, 2);
     let after_count = calls.get();
-    rm.render_row(RowPos::new(ContentLine::new(0), 0));
-    rm.render_row(RowPos::new(ContentLine::new(0), 1));
+    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
+    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1));
     assert_eq!(
         calls.get(),
         after_count,
-        "rendering rows of an already-counted line must not re-format it"
+        "rendering display lines of an already-counted line must not re-format it"
     );
 }
 
 #[test]
-fn render_row_does_not_reformat_a_line_because_of_its_virtual_rows() {
-    // A Before row is laid out and rendered before its line's content rows —
-    // it must not disturb the already-formatted content row/grapheme/arena
+fn render_display_line_does_not_reformat_a_line_because_of_its_virtual_lines() {
+    // A Before display line is laid out and rendered before its line's content display lines —
+    // it must not disturb the already-formatted content display line/grapheme/arena
     // state that follows it in the same block.
     let rope = Rope::from_str("abcdef\n");
     let (mut providers, calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
@@ -1351,23 +1354,23 @@ fn render_row_does_not_reformat_a_line_because_of_its_virtual_rows() {
         1,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
 
-    assert_eq!(rm.block(ContentLine::new(0)).content, 2);
+    assert_eq!(dlm.block(ContentLine::new(0)).content, 2);
     let after_count = calls.get();
-    rm.render_row(RowPos::new(ContentLine::new(0), 0)); // the Before row
-    rm.render_row(RowPos::new(ContentLine::new(0), 1)); // content row 0
-    rm.render_row(RowPos::new(ContentLine::new(0), 2)); // content row 1
+    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0)); // the Before display line
+    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1)); // content display line 0
+    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 2)); // content display line 1
     assert_eq!(
         calls.get(),
         after_count,
-        "rendering a line's Before row must not force its content rows to re-format"
+        "rendering a line's Before display line must not force its content display lines to re-format"
     );
 }
 
 #[test]
-fn render_row_yields_correct_content_rows_after_a_virtual_row() {
-    // A virtual row's layout must not disturb the content rows that follow
+fn render_display_line_yields_correct_content_display_lines_after_a_virtual_display_line() {
+    // A virtual display line's layout must not disturb the content display lines that follow
     // it in the same block: they must still come back correct.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
@@ -1377,18 +1380,18 @@ fn render_row_yields_correct_content_rows_after_a_virtual_row() {
         "V",
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     assert_eq!(
-        row_text(&rm.render_row(RowPos::new(ContentLine::new(0), 0))),
+        display_line_text(&dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0))),
         "V"
     );
     assert_eq!(
-        row_text(&rm.render_row(RowPos::new(ContentLine::new(0), 1))),
+        display_line_text(&dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 1))),
         "abcd"
     );
     assert_eq!(
-        row_text(&rm.render_row(RowPos::new(ContentLine::new(0), 2))),
+        display_line_text(&dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), 2))),
         "efgh"
     );
 }
@@ -1408,18 +1411,18 @@ fn locate_formats_only_as_far_as_the_target_offset() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.locate(co(5)).1,
+        dlm.locate(co(5)).1,
         dc(5),
         "pure ASCII: column equals char offset"
     );
 
     // Dropping the map releases its borrow of the store, letting the test
     // read what the formatter actually emitted — an oracle over `format.rs`'s
-    // output rather than anything `RowMap` reports about itself.
-    drop(rm);
+    // output rather than anything `DisplayLineMap` reports about itself.
+    drop(dlm);
     assert_eq!(
         stored_graphemes(&s, ContentLine::new(0)),
         6,
@@ -1432,18 +1435,18 @@ fn char_at_formats_only_as_far_as_the_target_column() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at(
-            RowPos::new(ContentLine::new(0), 0),
+        dlm.char_at(
+            DisplayLinePos::new(ContentLine::new(0), 0),
             dc(5),
             DisplayColTarget::Cell
         ),
         co(5)
     );
 
-    drop(rm);
+    drop(dlm);
     assert_eq!(
         stored_graphemes(&s, ContentLine::new(0)),
         7,
@@ -1458,10 +1461,10 @@ fn a_wider_offset_on_a_cached_line_reformats() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(co(3)).1, dc(3));
-    assert_eq!(rm.locate(co(50)).1, dc(50), "the second query must rescan");
+    assert_eq!(dlm.locate(co(3)).1, dc(3));
+    assert_eq!(dlm.locate(co(50)).1, dc(50), "the second query must rescan");
 }
 
 #[test]
@@ -1471,14 +1474,14 @@ fn a_column_query_after_an_offset_query_reformats() {
     let rope = long_unwrapped_line();
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    let (pos, _) = rm.locate(co(3));
-    assert_eq!(rm.char_at(pos, dc(40), DisplayColTarget::Cell), co(40));
+    let (pos, _) = dlm.locate(co(3));
+    assert_eq!(dlm.char_at(pos, dc(40), DisplayColTarget::Cell), co(40));
 }
 
 #[test]
-fn locate_row_answers_without_formatting_in_no_wrap() {
+fn locate_display_line_answers_without_formatting_in_no_wrap() {
     let rope = long_unwrapped_line();
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FixedAnchor::new(
@@ -1486,30 +1489,30 @@ fn locate_row_answers_without_formatting_in_no_wrap() {
         2,
     )));
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.locate_row(co(5)),
-        RowPos::new(ContentLine::new(0), 2),
-        "the line's own row sits after the two Before rows above it"
+        dlm.locate_display_line(co(5)),
+        DisplayLinePos::new(ContentLine::new(0), 2),
+        "the line's own display line sits after the two Before display lines above it"
     );
 
     // The entry exists — `block` built its shape — but carries no format at
-    // all, which is exactly the claim: the row came from the breakdown.
-    drop(rm);
+    // all, which is exactly the claim: the display line came from the breakdown.
+    drop(dlm);
     assert!(
         is_unformatted(&s, ContentLine::new(0)),
-        "a no-wrap row comes from the block breakdown, with no formatting"
+        "a no-wrap display line comes from the block breakdown, with no formatting"
     );
 }
 
 #[test]
-fn locate_row_agrees_with_locate_in_both_wrap_modes() {
+fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     // `locate` is the oracle here, which is not circular: the claim *is* that
     // the two agree, and `locate`'s own answers are pinned independently by
     // the `locate_*` tests above.
     //
-    // "a\n\nébc\n" covers an empty line, a line with Before rows above it, a
+    // "a\n\nébc\n" covers an empty line, a line with Before display lines above it, a
     // multi-byte grapheme, and the phantom line past the last `\n`.
     let rope = Rope::from_str("a\n\nébc\n");
     let mut providers = ProviderSet::new();
@@ -1520,39 +1523,39 @@ fn locate_row_agrees_with_locate_in_both_wrap_modes() {
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {
         let mut s = PaneLineStore::new();
-        let mut rm = map(&rope, wrap, &providers, &mut s);
+        let mut dlm = map(&rope, wrap, &providers, &mut s);
         // Inclusive upper bound is defensive — the buffer invariant keeps a
         // cursor at `head < len_chars()`.
         for offset in 0..=rope.len_chars() {
-            // `locate_row` first, so it has to be right without a previous
+            // `locate_display_line` first, so it has to be right without a previous
             // `locate` having warmed the scratch.
-            let row = rm.locate_row(co(offset));
-            let via_locate = rm.locate(co(offset)).0;
-            assert_eq!(row, via_locate, "{wrap:?}, offset {offset}");
+            let pos = dlm.locate_display_line(co(offset));
+            let via_locate = dlm.locate(co(offset)).0;
+            assert_eq!(pos, via_locate, "{wrap:?}, offset {offset}");
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// line_display_col / char_at_line_display_col
+// buffer_line_col / char_at_buffer_line_col
 // ---------------------------------------------------------------------------
 
 #[test]
 fn line_display_col_matches_locate_column_in_no_wrap() {
-    // No-wrap: a line is exactly one row, so the line-relative column and
-    // `locate`'s row-relative one must agree everywhere — the invariant
+    // No-wrap: a line is exactly one display line, so the buffer-line-relative
+    // column and `locate`'s display-line-relative one must agree everywhere — the invariant
     // `BufferLineCol::as_display_line_unwrapped` relies on to treat the two origins
     // as interchangeable there. `locate` is the oracle, pinned independently
     // by the `locate_*` tests above.
     let rope = Rope::from_str("hello\tworld\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     for offset in 0..=rope.len_chars() {
-        let expected = rm.locate(co(offset)).1;
+        let expected = dlm.locate(co(offset)).1;
         assert_eq!(
-            rm.line_display_col(co(offset)).get(),
+            dlm.buffer_line_col(co(offset)).get(),
             expected.get(),
             "offset {offset}"
         );
@@ -1560,22 +1563,22 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
 }
 
 #[test]
-fn line_display_col_accumulates_across_a_wrap_row() {
+fn buffer_line_col_accumulates_across_a_wrap_display_line() {
     // "永永永永\n": 4 CJK graphemes, each exactly 2 columns wide regardless of
-    // position (unlike a tab), wrapped 2-per-row at width 4. The line-relative
+    // position (unlike a tab), wrapped 2-per-display-line at width 4. The line-relative
     // column is then just 2x the char offset — an oracle independent of the
-    // wrap point, which this asserts crosses the row boundary (offsets 2, 3).
+    // wrap point, which this asserts crosses the display-line boundary (offsets 2, 3).
     let rope = Rope::from_str("永永永永\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    // Sanity: the row boundary actually falls where the arithmetic assumes.
-    assert_eq!(rm.locate(co(2)).0.row, 1, "third character starts row 1");
+    // Sanity: the display-line boundary actually falls where the arithmetic assumes.
+    assert_eq!(dlm.locate(co(2)).0.slot, 1, "third character starts display line 1");
 
     for offset in 0..4 {
         assert_eq!(
-            rm.line_display_col(co(offset)),
+            dlm.buffer_line_col(co(offset)),
             ldc(offset as u32 * 2),
             "offset {offset}"
         );
@@ -1586,38 +1589,38 @@ fn line_display_col_accumulates_across_a_wrap_row() {
 fn line_display_col_excludes_wrap_indent() {
     // "    ab cd\n": 4 leading spaces register one tab-stop of indent
     // (`indent_depth` truncates to whole tab-stops at tab_width 4), so
-    // `WrapMode::Indent` opens the continuation row 4 columns in. Every
+    // `WrapMode::Indent` opens the continuation display line 4 columns in. Every
     // grapheme here is exactly one cell wide with no tabs past the leading
     // run, so a position's TRUE line-relative column is trivially its own
-    // char offset — an oracle independent of both `RowMap` and exactly where
+    // char offset — an oracle independent of both `DisplayLineMap` and exactly where
     // the line wraps.
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() {
         assert_eq!(
-            rm.line_display_col(co(offset)),
+            dlm.buffer_line_col(co(offset)),
             ldc(offset as u32),
             "offset {offset}"
         );
     }
 
     // Sanity: the line really did wrap, and the last position really is on
-    // the indented continuation row, where the row-relative column
-    // (`locate`) disagrees with the line-relative one — proving
-    // `line_display_col` isn't just forwarding `locate`'s answer verbatim.
+    // the indented continuation display line, where the display-line-relative
+    // column (`locate`) disagrees with the buffer-line-relative one — proving
+    // `buffer_line_col` isn't just forwarding `locate`'s answer verbatim.
     let last = rope.len_chars() - 1;
-    let (pos, row_display_col) = rm.locate(co(last));
+    let (pos, display_line_col) = dlm.locate(co(last));
     assert!(
-        pos.row > 0,
+        pos.slot > 0,
         "the line must actually wrap for this test to mean anything"
     );
     assert_ne!(
-        row_display_col,
+        display_line_col,
         dc(last as u32),
-        "row-relative column must differ from the line-relative one on an indented row"
+        "display-line-relative column must differ from the buffer-line-relative one on an indented display line"
     );
 }
 
@@ -1628,19 +1631,15 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     // line-relative column is 3, not its char offset (1) — exactly the
     // quantity the rope-only mirror this API replaces (`place_display_column`)
     // could never see, since inline inserts live only in the decoration layer
-    // `RowMap` formats through.
+    // `DisplayLineMap` formats through.
     let rope = Rope::from_str("ab\n");
     let (providers, _calls) = with_counting_insert(ContentLine::new(0), 1, "XY");
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
+    assert_eq!(dlm.buffer_line_col(co(0)), ldc(0), "'a' precedes the insert");
     assert_eq!(
-        rm.line_display_col(co(0)),
-        ldc(0),
-        "'a' precedes the insert"
-    );
-    assert_eq!(
-        rm.line_display_col(co(1)),
+        dlm.buffer_line_col(co(1)),
         ldc(3),
         "'b' is pushed right by the insert's 2 cells"
     );
@@ -1656,12 +1655,12 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
     let rope = Rope::from_str("    ab cd\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::Indent { width: 7 }, &providers, &mut s);
 
     for offset in 0..rope.len_chars() - 1 {
-        let col = rm.line_display_col(co(offset));
+        let col = dlm.buffer_line_col(co(offset));
         assert_eq!(
-            rm.char_at_line_display_col(ContentLine::new(0), col, DisplayColTarget::NearestContent),
+            dlm.char_at_buffer_line_col(ContentLine::new(0), col, DisplayColTarget::NearestContent),
             co(offset),
             "offset {offset}, col {col:?}"
         );
@@ -1678,10 +1677,10 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
     let rope = Rope::from_str("hello\nab\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at_line_display_col(
+        dlm.char_at_buffer_line_col(
             ContentLine::new(1),
             ldc(5),
             DisplayColTarget::NearestContent
@@ -1697,10 +1696,10 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
     let rope = Rope::from_str("\nx\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at_line_display_col(
+        dlm.char_at_buffer_line_col(
             ContentLine::new(0),
             ldc(5),
             DisplayColTarget::NearestContent
@@ -1711,8 +1710,8 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
 
 #[test]
 fn char_at_line_display_col_matches_char_at_in_no_wrap() {
-    // No-wrap: line-relative and row-relative columns coincide, so
-    // `char_at_line_display_col` must agree with `char_at` (row 0)
+    // No-wrap: buffer-line-relative and display-line-relative columns coincide,
+    // so `char_at_buffer_line_col` must agree with `char_at` (display line 0)
     // everywhere — `char_at` is the oracle here, pinned independently by the
     // `char_at_*` tests above. Covers, via that agreement rather than by
     // duplicating hardcoded expectations, the same tab/CJK/width-boundary
@@ -1734,10 +1733,10 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
             for target in [DisplayColTarget::Cell, DisplayColTarget::NearestContent] {
                 for col in 0..12u32 {
                     let mut s = PaneLineStore::new();
-                    let mut rm = map(rope, WrapMode::None, &providers, &mut s);
-                    let expected = rm.char_at(RowPos::new(line, 0), dc(col), target);
+                    let mut dlm = map(rope, WrapMode::None, &providers, &mut s);
+                    let expected = dlm.char_at(DisplayLinePos::new(line, 0), dc(col), target);
                     assert_eq!(
-                        rm.char_at_line_display_col(line, ldc(col), target),
+                        dlm.char_at_buffer_line_col(line, ldc(col), target),
                         expected,
                         "line {}, col {col}, {target:?}",
                         line.index()
@@ -1753,7 +1752,7 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
 // ---------------------------------------------------------------------------
 
 /// The frame's two passes over one pane — the editor's scroll step and the
-/// render pass — each build their own `RowMap`, but over the same store. Under
+/// render pass — each build their own `DisplayLineMap`, but over the same store. Under
 /// a wrapping mode each formats the lines it walks, so sharing the store must
 /// collapse that to one format per line: `CountingInsert` counts INLINE
 /// queries, which happen once per format and nowhere else.
@@ -1765,18 +1764,18 @@ fn two_passes_over_one_pane_format_each_line_once() {
     let lines = 0..5;
 
     // Pass 1 (stands in for the scroll step).
-    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
+    let mut dlm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
     for line in lines.clone() {
-        rm.block(ContentLine::new(line));
+        dlm.block(ContentLine::new(line));
     }
-    drop(rm);
+    drop(dlm);
     let after_first = calls.get();
     assert_eq!(after_first, 5, "the first pass formats each line once");
 
-    // Pass 2 (stands in for the render pass): a cold `RowMap`, same store.
-    let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
+    // Pass 2 (stands in for the render pass): a cold `DisplayLineMap`, same store.
+    let mut dlm = map(&r, WrapMode::Soft { width: 80 }, &providers, &mut store);
     for line in lines {
-        rm.block(ContentLine::new(line));
+        dlm.block(ContentLine::new(line));
     }
 
     assert_eq!(
@@ -1786,37 +1785,38 @@ fn two_passes_over_one_pane_format_each_line_once() {
     );
 }
 
-/// A line read back from the store must produce the row list the formatter
+/// A line read back from the store must produce the display line list the formatter
 /// would have. The line carries a tab and an inline insert so both the
 /// `line_texts` slices (`Grapheme::byte_range`) and the `virtual_texts` arena
 /// (`CellContent`'s `(start, len)`) are exercised — those offsets are
 /// line-local, which is what makes an entry readable on its own.
 #[test]
-fn a_stored_format_reproduces_the_rows_it_replaced() {
+fn a_stored_format_reproduces_the_display_lines_it_replaced() {
     let r = Rope::from_str("ab\tcdefghij\n");
     let (providers, _) = with_counting_insert(ContentLine::new(0), 4, "HINT");
     let wrap = WrapMode::Soft { width: 6 };
 
-    let rows_of = |rm: &mut RowMap<'_>| -> Vec<(crate::types::RowKind, String)> {
-        let total = rm.block(ContentLine::new(0)).total();
+    let display_lines_of = |dlm: &mut DisplayLineMap<'_>| -> Vec<(crate::types::DisplayLineKind, String)> {
+        let total = dlm.block(ContentLine::new(0)).total();
         (0..total)
-            .map(|row| {
-                let rendered = rm.render_row(RowPos::new(ContentLine::new(0), row));
-                (rendered.row.kind, row_text(&rendered))
+            .map(|slot_idx| {
+                let rendered =
+                    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), slot_idx));
+                (rendered.display_line.kind, display_line_text(&rendered))
             })
             .collect()
     };
 
     // A store that has never seen the line: the formatter runs.
     let mut fresh = PaneLineStore::new();
-    let expected = rows_of(&mut map(&r, wrap, &providers, &mut fresh));
+    let expected = display_lines_of(&mut map(&r, wrap, &providers, &mut fresh));
 
     // A store one pass already filled: the second reads it back.
     let mut shared = PaneLineStore::new();
     let mut warm = map(&r, wrap, &providers, &mut shared);
     warm.block(ContentLine::new(0));
     drop(warm);
-    let actual = rows_of(&mut map(&r, wrap, &providers, &mut shared));
+    let actual = display_lines_of(&mut map(&r, wrap, &providers, &mut shared));
 
     assert!(expected.len() > 1, "the fixture must actually wrap");
     assert_eq!(actual, expected);
@@ -1836,14 +1836,14 @@ fn an_h_window_map_does_not_read_an_unclipped_format() {
     let mut store = PaneLineStore::new();
 
     let mut unclipped = map(&r, WrapMode::None, &providers, &mut store);
-    unclipped.render_row(RowPos::new(ContentLine::new(0), 0));
+    unclipped.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
     drop(unclipped);
     let after_first = calls.get();
     assert_eq!(after_first, 1, "no-wrap formats on render, not on block");
 
     let mut clipped =
         map(&r, WrapMode::None, &providers, &mut store).with_h_window(Some(dc(6)..dc(20)));
-    clipped.render_row(RowPos::new(ContentLine::new(0), 0));
+    clipped.render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
 
     assert_eq!(
         calls.get(),
@@ -1852,9 +1852,9 @@ fn an_h_window_map_does_not_read_an_unclipped_format() {
     );
 }
 
-/// Block shape (virtual rows, `before`/`after`) does not depend on the
+/// Block shape (virtual display lines, `before`/`after`) does not depend on the
 /// horizontal window a `WrapMode::None` render clips to — only the formatted
-/// rows do. An `h_window` change must not force `block_entry` to re-query
+/// display lines do. An `h_window` change must not force `block_entry` to re-query
 /// providers for a line the store already has.
 #[test]
 fn an_h_window_change_keeps_the_block_shape() {
@@ -1886,7 +1886,7 @@ fn a_changed_key_drops_the_scope() {
     let mut store = PaneLineStore::new();
     let wrap = WrapMode::Soft { width: 80 };
 
-    RowMap::new(
+    DisplayLineMap::new(
         &r,
         &providers,
         80,
@@ -1902,7 +1902,7 @@ fn a_changed_key_drops_the_scope() {
     let after_first = calls.get();
 
     // Same store, same line, different buffer tag.
-    RowMap::new(
+    DisplayLineMap::new(
         &r,
         &providers,
         80,
@@ -1949,9 +1949,9 @@ fn rewind_drops_the_previous_frames_entries() {
 }
 
 /// A line whose *block shape* is all anyone asked for must not pay for format
-/// buffers it never fills. Under `WrapMode::None` — the default — `content_rows`
+/// buffers it never fills. Under `WrapMode::None` — the default — `content_display_lines`
 /// answers 1 without running the formatter, so a walk that only asks for shape
-/// (a half-page motion stepping row by row, once per selection) touches many
+/// (a half-page motion stepping display line by display line, once per selection) touches many
 /// lines and formats none of them. Their entries have to cost bookkeeping
 /// rather than a buffer apiece.
 #[test]
@@ -1960,7 +1960,7 @@ fn a_shape_only_entry_allocates_no_format_buffers() {
     let providers = ProviderSet::new();
     let mut store = PaneLineStore::new();
 
-    let breakdown = RowMap::new(
+    let breakdown = DisplayLineMap::new(
         &r,
         &providers,
         80,
@@ -2037,7 +2037,7 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
     let providers = ProviderSet::new();
     let mut store = PaneLineStore::new();
 
-    RowMap::new(
+    DisplayLineMap::new(
         &r,
         &providers,
         80,
@@ -2049,7 +2049,7 @@ fn grapheme_capacity_across_rewind(width: usize) -> (usize, usize) {
         },
         &mut store,
     )
-    .render_row(RowPos::new(ContentLine::new(0), 0));
+    .render_display_line(DisplayLinePos::new(ContentLine::new(0), 0));
     let before = store.entry(0).format.graphemes.capacity();
 
     store.rewind();

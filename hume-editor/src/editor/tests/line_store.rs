@@ -1,11 +1,11 @@
 // `EditorState::buffer_tag` and `Pane::line_store` lifetime — the scope key
-// `hume_engine::rows::line_store` uses to decide whether a cached line format
+// `hume_engine::display_lines::line_store` uses to decide whether a cached line format
 // still describes the buffer it was built from, and the per-frame rewind that
 // catches what the key cannot see.
 
 use std::rc::Rc;
 
-use super::doubles::{FormatProbe, InlineHint, VirtualRows};
+use super::doubles::{FormatProbe, InlineHint, VirtualLineBlock};
 use super::*;
 use hume_editing::selection::Selection;
 use hume_engine::pipeline::RenderContext;
@@ -100,7 +100,7 @@ fn line_store_does_not_leak_between_panes() {
     ed.view.panes[pid_a]
         .providers
         .add_decoration_source(Box::new(
-            VirtualRows::uniform(
+            VirtualLineBlock::uniform(
                 VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
                 1,
                 "V",
@@ -115,7 +115,7 @@ fn line_store_does_not_leak_between_panes() {
     ed.execute_typed("split", None).unwrap();
     // `:split` alone leaves the new pane's viewport at its zero-value
     // default — a real frame is what sizes it against the layout tree, and
-    // an unsized pane B walks a different row list from pane A's, which
+    // an unsized pane B walks a different display-line list from pane A's, which
     // would mask the isolation this test exists to check.
     ed.sync_viewport_dims(80, 24);
     let pid_b = ed.state.focused_pane_id;
@@ -125,7 +125,7 @@ fn line_store_does_not_leak_between_panes() {
     ed.view.panes[pid_b]
         .providers
         .add_decoration_source(Box::new(
-            VirtualRows::uniform(
+            VirtualLineBlock::uniform(
                 VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
                 1,
                 "V",
@@ -159,7 +159,7 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 
     let calls = Rc::new(Cell::new(0));
     ed.view.panes[pid].providers.add_decoration_source(Box::new(
-        VirtualRows::uniform(
+        VirtualLineBlock::uniform(
             VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
             1,
             "V",
@@ -270,9 +270,9 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 /// render pass walk the same visible lines, and the second must find what the
 /// first formatted.
 ///
-/// Both passes reach the engine through their own `RowMap`, each built from
+/// Both passes reach the engine through their own `DisplayLineMap`, each built from
 /// `EditorState::format_key` on the same pane — the scroll step through
-/// `commands::pane_row_map`, the render pass through `frame.rs`'s
+/// `commands::pane_display_lines`, the render pass through `frame.rs`'s
 /// `resolve_pane_settings` — so the two share an entry by construction: one
 /// composition, called twice, cannot itself disagree with itself. This test
 /// still pins the outcome rather than the mechanism, so a future call site
@@ -282,7 +282,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
 /// every other test still green.
 ///
 /// Wrapping, because that is where the cost is: under `WrapMode::None` the
-/// scroll pass counts rows without formatting at all.
+/// scroll pass counts display lines without formatting at all.
 #[test]
 fn the_two_frame_passes_format_each_visible_line_once() {
     const PROBED: usize = 0;

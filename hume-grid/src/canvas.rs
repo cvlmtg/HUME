@@ -9,7 +9,7 @@ use crate::style::ResolvedStyle;
 ///
 /// Wraps the frame's [`Grid`] and, when set, a dim target: fg/bg is blended
 /// toward it on every write. This is the single chokepoint for the non-focused
-/// pane dim effect — `compose_row` / `render_tilde_fillers` (`hume-engine`)
+/// pane dim effect — `compose_display_line` / `render_tilde_fillers` (`hume-engine`)
 /// never touch the grid directly, so a future write site cannot forget to
 /// dim: the blend happens exactly once per cell, inline in the single write,
 /// never a separate sweep over an already-drawn rect. Chrome (menus,
@@ -29,7 +29,7 @@ pub struct Canvas<'a> {
     dim: Option<(Rgb, f32)>,
     /// Layered onto a [`Canvas::write_text_run`] placeholder cell so it reads
     /// distinctly from ordinary text (buffer text gets this same layering
-    /// via `style_row`'s Tier 2d½; chrome has no per-cell style tiers of its
+    /// via `style_display_line`'s Tier 2d½; chrome has no per-cell style tiers of its
     /// own, so the canvas carries the one style every write needs for it).
     invisible_style: ResolvedStyle,
 }
@@ -52,7 +52,7 @@ impl<'a> Canvas<'a> {
     /// [`Canvas::write_text_run`] follows for a multi-cluster run.
     ///
     /// The frame's lowest-level writer, for a caller drawing exactly one
-    /// pre-measured glyph rather than a run: `compose_row`/`compose_gutter`'s
+    /// pre-measured glyph rather than a run: `compose_display_line`/`compose_gutter`'s
     /// (`hume-engine`) per-cell fills and straddle fallbacks. `Grid::set_glyph`
     /// itself has no `right_edge` — only the grid's own physical edge — which
     /// is what made a bare `set_cell` call unsafe to expose before this bound
@@ -103,14 +103,14 @@ impl<'a> Canvas<'a> {
     ///
     /// The frame's single text writer for anything measured beforehand: UI
     /// chrome (statusline, menus, pickers, the drawer), gutter cells, and —
-    /// inside `compose_row`, for a `CellContent::Whitespace`/`Placeholder`
+    /// inside `compose_display_line`, for a `CellContent::Whitespace`/`Placeholder`
     /// cell — a pane-content whitespace glyph or unrenderable-cluster
     /// stand-in. That last case still measures against `CHROME_TAB_WIDTH`
     /// (this method's fixed tab width, not the pane's real one) safely: the
     /// resolved string is always a pre-built glyph (`→`, `<200b>`) that
     /// itself never contains a literal `\t` needing the pane's own tab-stop
     /// math to re-measure — a real buffer tab's cell is written directly by
-    /// `compose_row`'s own tab-arm, never routed through here.
+    /// `compose_display_line`'s own tab-arm, never routed through here.
     /// Writes through [`Canvas::write_cell`] rather than `Grid::set_glyph`
     /// directly — `write_cell` is the primitive this method is built on,
     /// one layer too low on its own for anything measured beforehand.
@@ -134,7 +134,7 @@ impl<'a> Canvas<'a> {
     /// already sized the run for that placeholder, so it spans exactly the
     /// columns reserved for it. That placeholder is drawn in this canvas's
     /// `invisible_style` rather than `style`, so it reads distinctly from
-    /// ordinary text — buffer text gets the same layering via `style_row`'s
+    /// ordinary text — buffer text gets the same layering via `style_display_line`'s
     /// Tier 2d½; chrome has no per-cell style tiers, so this is its
     /// equivalent.
     ///

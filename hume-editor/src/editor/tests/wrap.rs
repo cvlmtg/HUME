@@ -1,4 +1,4 @@
-use super::doubles::VirtualRows;
+use super::doubles::VirtualLineBlock;
 use super::*;
 use hume_grid::Rect;
 
@@ -366,7 +366,7 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
 }
 
 /// A wrap-mode change zeroes horizontal scroll (meaningless once wrapped) but
-/// leaves `top_row_offset` alone — see `pane_state::toggle_focused_wrap`'s doc.
+/// leaves `top_slot` alone — see `pane_state::toggle_focused_wrap`'s doc.
 #[test]
 fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
@@ -377,7 +377,7 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
             saved: None,
         });
         pane.viewport.horizontal_offset = hume_rope::column::DisplayLineCol::new(12);
-        pane.viewport.top_row_offset = 3;
+        pane.viewport.top_slot = 3;
     }
     ed.execute_typed("wrap", None).unwrap(); // on
     let pane = focused_pane(&ed);
@@ -386,8 +386,8 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
         hume_rope::column::DisplayLineCol::new(0)
     );
     assert_eq!(
-        pane.viewport.top_row_offset, 3,
-        "top_row_offset is a row address valid in either wrap mode — a mode \
+        pane.viewport.top_slot, 3,
+        "top_slot is a row address valid in either wrap mode — a mode \
          change must not discard it"
     );
 }
@@ -427,25 +427,25 @@ fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged(
     );
 }
 
-/// Turning wrap *off* must not force-reset `top_row_offset`: it addresses a
+/// Turning wrap *off* must not force-reset `top_slot`: it addresses a
 /// row inside `top_line`'s block in either wrap mode (`scroll::set_top`
 /// writes it unconditionally). If the new (no-wrap) block is shorter than
 /// the old one, the offset is now stale — but `scroll::clamp_viewport_top`
 /// repairs that once per pane per frame, not `toggle_focused_wrap` itself,
 /// so the raw value must survive the `:set` call untouched.
 #[test]
-fn wrap_toggle_off_leaves_top_row_offset_for_the_next_frame_to_clamp() {
+fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
-        pane.viewport.top_row_offset = 3;
+        pane.viewport.top_slot = 3;
     }
     ed.execute_typed("wrap", None).unwrap(); // off
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
-        pane.viewport.top_row_offset, 3,
+        pane.viewport.top_slot, 3,
         "toggle_focused_wrap itself must not reset a still-unvalidated offset"
     );
 
@@ -454,36 +454,36 @@ fn wrap_toggle_off_leaves_top_row_offset_for_the_next_frame_to_clamp() {
     // self-heal must pull the stale offset down to it.
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
-        focused_pane(&ed).viewport.top_row_offset,
+        focused_pane(&ed).viewport.top_slot,
         0,
         "clamp_viewport_top, not the wrap-mode change, is what repairs staleness"
     );
 }
 
 /// Changing the wrap style/width while already wrapping (`:set pane
-/// wrap-mode=` to a different variant) must likewise leave `top_row_offset`
+/// wrap-mode=` to a different variant) must likewise leave `top_slot`
 /// for `clamp_viewport_top` to repair, not reset it inline — the old offset
 /// was measured against the previous width and may no longer be a valid
 /// sub-row index once the width changes.
 #[test]
-fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_frame_to_clamp() {
+fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft:80").expect(":set pane wrap-mode=soft:80 failed");
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
-        pane.viewport.top_row_offset = 3;
+        pane.viewport.top_slot = 3;
     }
     run_set(&mut ed, "pane wrap-mode=soft:20").expect(":set pane wrap-mode=soft:20 failed");
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::Soft { width: 20 }));
     assert_eq!(
-        pane.viewport.top_row_offset, 3,
+        pane.viewport.top_slot, 3,
         "the raw offset survives the width change untouched"
     );
 
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
-        focused_pane(&ed).viewport.top_row_offset,
+        focused_pane(&ed).viewport.top_slot,
         0,
         "line 0's block is 1 row under either width here, so clamp pulls the stale offset to it"
     );
@@ -491,7 +491,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_row_offset_for_the_next_f
 
 /// The scenario the fix is actually for: a `Before` block on the top line
 /// that the pre-fix reset would blow past. Wrap on, scrolled so `top_line`
-/// sits inside a 3-row `Before(0)` block (`top_row_offset = 1`, one row
+/// sits inside a 3-row `Before(0)` block (`top_slot = 1`, one row
 /// already scrolled past, two still showing); `:set wrap-mode=none` must not
 /// jump the viewport back up to the top of that block — the address is
 /// still valid (a `Before` block occupies the same rows regardless of wrap
@@ -502,7 +502,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     ed.view.panes[ed.state.focused_pane_id]
         .providers
-        .add_decoration_source(Box::new(VirtualRows::uniform(
+        .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             hume_engine::providers::VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
             3,
             "V",
@@ -510,14 +510,14 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
         pane.viewport.top_line = hume_rope::line::ContentLine::new(0);
-        pane.viewport.top_row_offset = 1; // inside the Before(0) block
+        pane.viewport.top_slot = 1; // inside the Before(0) block
     }
 
     ed.execute_typed("wrap", None).unwrap(); // off
     let pane = focused_pane(&ed);
     assert_eq!(pane.wrap().mode, Some(WrapMode::None));
     assert_eq!(
-        pane.viewport.top_row_offset, 1,
+        pane.viewport.top_slot, 1,
         "still-valid address inside the Before block must not be discarded"
     );
 }
@@ -666,18 +666,18 @@ fn closing_a_buffer_drops_its_wrap_override() {
 
 /// A soft-wrapped buffer scrolled off its first line — the one shape the
 /// snapshot suite had no coverage of, and the shape the scroll and render
-/// passes must agree on: both walk the same wrapped rows from the same
-/// viewport top, and the frame's shared line-format cache hands the second
-/// pass what the first formatted. A disagreement between them shows up here
-/// as rows drawn from the wrong line.
+/// passes must agree on: both walk the same wrapped display lines from the
+/// same viewport top, and the frame's shared line-format cache hands the
+/// second pass what the first formatted. A disagreement between them shows
+/// up here as display lines drawn from the wrong line.
 #[test]
-fn wrapped_and_scrolled_frame_pins_the_rendered_rows() {
+fn wrapped_and_scrolled_frame_pins_the_rendered_display_lines() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.view.theme = crate::ui::theme::build_snapshot_theme();
     type_cmd(&mut ed, ":set global wrap-mode=soft");
-    // Ten lines that each wrap into several rows at this width, typed in one
-    // go so the cursor finishes on the last line and the viewport has to
-    // scroll to follow it.
+    // Ten lines that each wrap into several display lines at this width,
+    // typed in one go so the cursor finishes on the last line and the
+    // viewport has to scroll to follow it.
     let text: String = (0..10)
         .map(|i| format!("line{i} with enough text to wrap several times\n"))
         .collect();

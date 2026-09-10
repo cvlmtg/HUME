@@ -51,7 +51,7 @@ impl CommandRegistry {
             cmd_inner_word,
             word
         );
-        // `EditorCmd`, not `selection!`: needs a `RowMap` for wrap-aware
+        // `EditorCmd`, not `selection!`: needs a `DisplayLineMap` for wrap-aware
         // nearest-word placement (see `visual_move.rs::cmd_visual_select_word_nearest_on_line`).
         // `.establishes_selection()`: same in-place establishing semantics
         // as `select-word` (`mm`, a plain `Selection`) — replayable on its

@@ -77,15 +77,15 @@ pub fn inner_word_impl(
 ///
 /// `min_start` is a hard lower bound on the leading scan, never crossed.
 /// Buffer-line callers pass `0` (no floor beyond the buffer itself). The wrap
-/// path passes the visual sub-row's start so a word beginning a continuation
-/// row never absorbs the inter-word space that lives at the end of the
-/// previous display row.
+/// path passes the visual sub-line's start so a word beginning a continuation
+/// display line never absorbs the inter-word space that lives at the end of
+/// the previous display line.
 ///
 /// Reaching `min_start` only counts as indentation (blocking absorption) when
 /// `min_start` is itself a genuine line start — the buffer start, or right
-/// after a real newline. A wrap sub-row boundary is neither: it falls
+/// after a real newline. A wrap sub-line boundary is neither: it falls
 /// mid-line, so a leading run that reaches it is ordinary inter-word spacing
-/// that happens to sit at the row split, not indentation, and stays
+/// that happens to sit at the display-line split, not indentation, and stays
 /// absorbable up to that floor.
 pub fn expand_word_unit(
     text: &BufferText,
@@ -210,7 +210,7 @@ pub fn word_unit_at(
 /// - Returns `None` when no word exists within the bounds.
 ///
 /// Callers supply bounds explicitly so this helper can be scoped to either a
-/// buffer line (no-wrap path) or a visual sub-row (wrap path). `around`
+/// buffer line (no-wrap path) or a visual sub-line (wrap path). `around`
 /// mirrors the effective `word-selects-whitespace` setting — see
 /// `cmd_select_word_nearest_on_line` and `cmd_visual_select_word_nearest_on_line`.
 pub fn nearest_word_on_line(
@@ -326,7 +326,7 @@ pub fn apply_nearest_word_result(
 /// when unset, only the inner word is selected.
 ///
 /// In wrap mode, `cmd_visual_select_word_nearest_on_line` (in `editor/visual_move.rs`)
-/// should be used instead — it scopes the search to the current visual sub-row,
+/// should be used instead — it scopes the search to the current visual sub-line,
 /// preventing the snap from reaching across a wrap boundary.
 ///
 /// In `Extend` mode the matched word range is unioned with the existing
@@ -361,7 +361,7 @@ type WordUnitFn =
 
 /// [`word_unit_at`] with `min_start` pinned to `0` — the shape every
 /// text-object command below needs, as opposed to the sticky-column motion
-/// path (`motion/word.rs`), which passes a nonzero visual-row floor.
+/// path (`motion/word.rs`), which passes a nonzero visual-line floor.
 fn around_unit(
     text: &BufferText,
     pos: CharOffset,

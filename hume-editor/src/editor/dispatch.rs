@@ -17,7 +17,7 @@ use super::{Editor, Severity, commands};
 #[derive(Debug, Clone)]
 pub(crate) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed" — a bare
-    /// keyboard press, which visual-move commands read as one visual row
+    /// keyboard press, which visual-move commands read as one visual line
     /// (`state.explicit_count`, set from this by `run_native_body`). Producible
     /// by the keymap trie leaves / WaitChar arm, and also by Steel: a script
     /// passes a count of `0` (`parse_count_extend` decodes it to `None`) to ask
@@ -150,7 +150,7 @@ impl Editor {
         // Injected into the lambda's `count` param verbatim — `0` is the Scheme
         // spelling of `None` ("no count was typed"), so a wrapper that forwards
         // this value straight into `(call! "move-down" count extend)` round-trips
-        // a bare keypress back to visual-row movement (`parse_count_extend`
+        // a bare keypress back to visual-line movement (`parse_count_extend`
         // decodes `0` back to `None` on the way in).
         let count = ctx.count.unwrap_or(0);
         let extend = ctx.extend;

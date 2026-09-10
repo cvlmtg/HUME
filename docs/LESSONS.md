@@ -534,10 +534,10 @@ input reaches the diverging branch; each path's actual input shape (one
 cluster vs. one codepoint) has to be traced, not assumed from the
 surrounding code's structure.
 
-**Files:** `hume-scripting/src/builtins/decorations.rs`
-(`segment_virtual_row`) — `push_insert_cells` no longer resolves anywhere in
-the tree; [symbol renamed or removed since, the width-clamp divergence this
-lesson describes needs re-verification against current code].
+**Files:** `hume-engine/src/display_lines.rs` (`segment_virtual_line`, renamed
+from `segment_virtual_row`) — `push_insert_cells` no longer resolves anywhere
+in the tree; the width-clamp divergence this lesson describes needs
+re-verification against current code.
 
 ---
 

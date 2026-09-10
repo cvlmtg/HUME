@@ -2,7 +2,7 @@ use super::*;
 use crate::providers::ProviderSet;
 use crate::test_support::{bg, fg, theme_with};
 use crate::theme::Theme;
-use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
+use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme, ResolvedStyle, Selection};
 use hume_grid::Rgb;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -17,12 +17,13 @@ fn dc(n: u32) -> DisplayLineCol {
 }
 
 /// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
-/// (`pipeline::pane_render::render_pane`'s row walk): primary-based
+/// (`pipeline::pane_render::render_pane`'s display-line walk): primary-based
 /// `is_head_line`, `rebuild_line_decorations` once per buffer line,
-/// `style_row` per display row.
+/// `style_display_line` per display line.
 /// No highlight providers or tree — these tests cover cursor/selection styling only.
+#[allow(clippy::too_many_arguments)] // mirrors the live pipeline stage's own arity
 fn apply_styles(
-    rows: &[DisplayRow],
+    lines: &[DisplayLine],
     graphemes: &[Grapheme],
     selections: &[Selection],
     mode: EditorMode,
@@ -37,13 +38,13 @@ fn apply_styles(
         .resize(graphemes.len(), ResolvedStyle::default());
     let mut current_line: Option<hume_rope::line::RopeyLine> = None;
     let mut tint = None;
-    for row in rows {
-        let Some(line_idx) = row.kind.line_idx() else {
-            continue; // virtual row: styles stay default
+    for dline in lines {
+        let Some(line_idx) = dline.kind.line_idx() else {
+            continue; // virtual display line: styles stay default
         };
         if current_line != Some(line_idx) {
             current_line = Some(line_idx);
-            // Trusted mint, not `RopeyLine::to_content`: these fixture rows
+            // Trusted mint, not `RopeyLine::to_content`: these fixture lines
             // are hand-built with small real-content indices, and several
             // fixture ropes here don't even uphold the trailing-newline
             // invariant `to_content` would check.
@@ -56,8 +57,8 @@ fn apply_styles(
             .primary_idx_in_sorted
             .and_then(|i| scratch.sorted_sels.get(i))
             .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
-        style_row(
-            row,
+        style_display_line(
+            dline,
             graphemes,
             line_start_char,
             line_end_char,
@@ -85,9 +86,9 @@ fn make_graphemes(count: usize) -> Vec<Grapheme> {
         .collect()
 }
 
-fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
-    DisplayRow {
-        kind: RowKind::LineStart {
+fn make_display_line(graphemes: std::ops::Range<usize>) -> DisplayLine {
+    DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes,
@@ -98,10 +99,10 @@ fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
 fn no_selections_yields_default_style() {
     let rope = ropey::Rope::from_str("abc");
     let graphemes = make_graphemes(3);
-    let rows = vec![make_row(0..3)];
+    let lines = vec![make_display_line(0..3)];
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &[],
         EditorMode::Normal,
@@ -132,7 +133,7 @@ fn no_selections_yields_default_style() {
 #[test]
 fn line_tint_applies_only_background_not_fg_or_modifiers() {
     let graphemes = make_graphemes(3);
-    let rows = [make_row(0..3)];
+    let lines = [make_display_line(0..3)];
     let mut scratch = StyleScratch::new();
 
     let mut registry = crate::theme::ScopeRegistry::new();
@@ -152,8 +153,8 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     scratch
         .styles
         .resize(graphemes.len(), ResolvedStyle::default());
-    style_row(
-        &rows[0],
+    style_display_line(
+        &lines[0],
         &graphemes,
         co(0),
         co(3),
@@ -186,7 +187,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
 fn selection_head_overrides_default() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![Selection {
         anchor: co(2),
         head: co(2),
@@ -197,7 +198,7 @@ fn selection_head_overrides_default() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -245,7 +246,7 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
 fn selection_head_on_newline_is_visible() {
     let rope = ropey::Rope::from_str("hello\n");
     let graphemes = make_graphemes_with_sentinel();
-    let rows = vec![make_row(0..6)]; // all 6 graphemes in one row
+    let lines = vec![make_display_line(0..6)]; // all 6 graphemes in one display line
 
     let theme = theme_with([("ui.cursor", fg(Rgb(255, 0, 0)))]);
 
@@ -256,7 +257,7 @@ fn selection_head_on_newline_is_visible() {
     }];
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -285,7 +286,7 @@ fn selection_range_highlighted() {
     // Graphemes at cols 0,1,2. Selection spans chars 1..3 (cols 1 and 2).
     let rope = ropey::Rope::from_str("abc");
     let graphemes = make_graphemes(3);
-    let rows = vec![make_row(0..3)];
+    let lines = vec![make_display_line(0..3)];
     let selections = vec![Selection {
         anchor: co(1),
         head: co(3),
@@ -295,7 +296,7 @@ fn selection_range_highlighted() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -330,7 +331,7 @@ fn backward_selection_anchor_cell_highlighted() {
     // Expected: display_col 0 painted as cursor (head), cols 1 and 2 painted as selection.
     let rope = ropey::Rope::from_str("foo");
     let graphemes = make_graphemes(3);
-    let rows = vec![make_row(0..3)];
+    let lines = vec![make_display_line(0..3)];
     let selections = vec![Selection {
         anchor: co(2),
         head: co(0),
@@ -343,7 +344,7 @@ fn backward_selection_anchor_cell_highlighted() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -378,7 +379,7 @@ fn backward_selection_anchor_cell_highlighted() {
 fn insert_mode_collapsed_selection_not_highlighted() {
     let rope = ropey::Rope::from_str("foo");
     let graphemes = make_graphemes(3);
-    let rows = vec![make_row(0..3)];
+    let lines = vec![make_display_line(0..3)];
     // Collapsed selection: head == anchor == char 1 (the 'o').
     let selections = vec![Selection {
         anchor: co(1),
@@ -389,7 +390,7 @@ fn insert_mode_collapsed_selection_not_highlighted() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -460,15 +461,15 @@ fn cursorline_background_applied_to_cursor_line_only() {
         scope: None,
     };
     let graphemes = vec![g0, g1, g2, g3];
-    let rows = vec![
-        DisplayRow {
-            kind: RowKind::LineStart {
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             graphemes: 0..2,
         },
-        DisplayRow {
-            kind: RowKind::LineStart {
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(1),
             },
             graphemes: 2..4,
@@ -483,7 +484,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -516,7 +517,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
 fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = make_graphemes(2);
-    let rows = vec![make_row(0..2)];
+    let lines = vec![make_display_line(0..2)];
     let selections = vec![Selection {
         anchor: co(0),
         head: co(0),
@@ -529,7 +530,7 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -547,13 +548,13 @@ fn insert_mode_block_primary_head_never_uses_the_secondary_insert_scope() {
 }
 
 /// Pins the non-block fall-through this project departs from Helix on — see
-/// the Tier 1/0 comment in `style_row` for the why: a collapsed secondary
+/// the Tier 1/0 comment in `style_display_line` for the why: a collapsed secondary
 /// head goes bare, a ranged one falls through to plain `ui.selection`.
 #[test]
 fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
     let rope = ropey::Rope::from_str("abcdefg");
     let graphemes = make_graphemes(7);
-    let rows = vec![make_row(0..7)];
+    let lines = vec![make_display_line(0..7)];
     // head 0 = primary (collapsed), head 4 = secondary (ranged, anchor 2..4),
     // head 6 = secondary (collapsed).
     let selections = vec![
@@ -579,7 +580,7 @@ fn insert_bar_shape_hides_both_heads_and_keeps_selection_styling() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -638,21 +639,21 @@ fn cursorline_applies_only_to_primary_head_line() {
             scope: None,
         },
     ];
-    let rows = vec![
-        DisplayRow {
-            kind: RowKind::LineStart {
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             graphemes: 0..1,
         },
-        DisplayRow {
-            kind: RowKind::LineStart {
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(1),
             },
             graphemes: 1..2,
         },
-        DisplayRow {
-            kind: RowKind::LineStart {
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(2),
             },
             graphemes: 2..3,
@@ -673,7 +674,7 @@ fn cursorline_applies_only_to_primary_head_line() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -698,7 +699,7 @@ fn cursorline_applies_only_to_primary_head_line() {
 }
 
 #[test]
-fn virtual_rows_keep_default_style() {
+fn virtual_display_lines_keep_default_style() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = vec![
         Grapheme {
@@ -720,15 +721,15 @@ fn virtual_rows_keep_default_style() {
             scope: None,
         },
     ];
-    let rows = vec![
-        DisplayRow {
-            kind: RowKind::LineStart {
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             graphemes: 0..1,
         },
-        DisplayRow {
-            kind: RowKind::Virtual {
+        DisplayLine {
+            kind: DisplayLineKind::Virtual {
                 provider_id: 0,
                 anchor_line: RopeyLine::new(0),
             },
@@ -744,7 +745,7 @@ fn virtual_rows_keep_default_style() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -754,7 +755,7 @@ fn virtual_rows_keep_default_style() {
         &mut scratch,
     );
 
-    // Virtual row grapheme stays at default style.
+    // Virtual display line grapheme stays at default style.
     assert_eq!(scratch.styles[1], ResolvedStyle::default());
 }
 
@@ -766,7 +767,7 @@ fn primary_head_gets_primary_style() {
     // selections slice (display_col 0). Theme has distinct styles for primary vs secondary.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![
         Selection {
             anchor: co(0),
@@ -785,7 +786,7 @@ fn primary_head_gets_primary_style() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -813,7 +814,7 @@ fn primary_selection_gets_primary_style() {
     // Two selections on the same line. Primary is first (bytes 0..2), secondary is bytes 3..5.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![
         Selection {
             anchor: co(0),
@@ -832,7 +833,7 @@ fn primary_selection_gets_primary_style() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -883,7 +884,7 @@ fn extend_mode_uses_select_cursor_scope() {
     // plain block scope.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![
         Selection {
             anchor: co(0),
@@ -904,7 +905,7 @@ fn extend_mode_uses_select_cursor_scope() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Extend,
@@ -933,7 +934,7 @@ fn extend_mode_uses_select_cursor_scope() {
 fn insert_mode_distinguishes_primary_from_secondary_head() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![
         Selection {
             anchor: co(0),
@@ -952,7 +953,7 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -982,7 +983,7 @@ fn insert_mode_distinguishes_primary_from_secondary_head() {
 fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = make_graphemes(2);
-    let rows = vec![make_row(0..2)];
+    let lines = vec![make_display_line(0..2)];
     let selections = vec![Selection {
         anchor: co(0),
         head: co(0),
@@ -996,7 +997,7 @@ fn prompt_modes_use_the_normal_cursor_scope_for_document_heads() {
     for mode in [EditorMode::Command, EditorMode::Search, EditorMode::Sift] {
         let mut scratch = StyleScratch::new();
         apply_styles(
-            &rows,
+            &lines,
             &graphemes,
             &selections,
             mode,
@@ -1025,14 +1026,14 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
     let theme = theme_with([("ui.selection.primary", bg(Rgb(255, 0, 255)))]);
 
     // Forward: anchor 0, head 3 — head cell (col 3) is left bare.
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![Selection {
         anchor: co(0),
         head: co(3),
     }];
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -1058,7 +1059,7 @@ fn insert_mode_bar_primary_head_geometry_depends_on_selection_direction() {
     }];
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Insert,
@@ -1080,7 +1081,7 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
     // into Normal mode.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![Selection {
         anchor: co(0),
         head: co(0),
@@ -1093,7 +1094,7 @@ fn normal_mode_still_uses_plain_cursor_scope_not_select() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -1115,7 +1116,7 @@ fn primary_head_falls_back_when_no_primary_scope() {
     // Theme does not define ui.cursor.primary — both heads should get ui.cursor.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = make_graphemes(5);
-    let rows = vec![make_row(0..5)];
+    let lines = vec![make_display_line(0..5)];
     let selections = vec![
         Selection {
             anchor: co(0),
@@ -1131,7 +1132,7 @@ fn primary_head_falls_back_when_no_primary_scope() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -1156,10 +1157,10 @@ fn primary_head_falls_back_when_no_primary_scope() {
 
 #[test]
 fn head_on_wrapped_line_only_on_correct_segment() {
-    // Simulate a wrapped line: line 0 has two display rows.
+    // Simulate a wrapped line: line 0 has two display lines.
     // First segment: graphemes at byte ranges 0..1 (display_col 0), 1..2 (display_col 1), 2..3 (display_col 2).
     // Second segment: graphemes at byte ranges 3..4 (display_col 0), 4..5 (display_col 1).
-    // Cursor head is at char_offset=1 (first segment). It must appear only on row 0.
+    // Cursor head is at char_offset=1 (first segment). It must appear only on display line 0.
     // "abcde" has no newlines so all chars are on line 0 with absolute char offsets 0..5.
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = vec![
@@ -1209,17 +1210,17 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             scope: None,
         },
     ];
-    let rows = vec![
-        DisplayRow {
-            kind: RowKind::LineStart {
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             graphemes: 0..3,
         },
-        DisplayRow {
-            kind: RowKind::Wrap {
+        DisplayLine {
+            kind: DisplayLineKind::Wrap {
                 line_idx: RopeyLine::new(0),
-                wrap_row: 1,
+                wrap_index: 1,
             },
             graphemes: 3..5,
         },
@@ -1233,7 +1234,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -1313,17 +1314,17 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             scope: None,
         },
     ];
-    let rows = vec![
-        DisplayRow {
-            kind: RowKind::LineStart {
+    let lines = vec![
+        DisplayLine {
+            kind: DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             graphemes: 0..3,
         },
-        DisplayRow {
-            kind: RowKind::Wrap {
+        DisplayLine {
+            kind: DisplayLineKind::Wrap {
                 line_idx: RopeyLine::new(0),
-                wrap_row: 1,
+                wrap_index: 1,
             },
             graphemes: 3..5,
         },
@@ -1337,7 +1338,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &rows,
+        &lines,
         &graphemes,
         &selections,
         EditorMode::Normal,
@@ -1408,7 +1409,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
@@ -1467,7 +1468,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
@@ -1527,7 +1528,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
@@ -1587,7 +1588,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
 
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &[],
         EditorMode::Normal,
@@ -1610,11 +1611,11 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
 
 // ── Inline-insert char_offset partition invariant ───────────────────────
 
-/// Drive the real formatter with a mid-row insert, then style the result —
+/// Drive the real formatter with a mid-display-line insert, then style the result —
 /// end-to-end coverage that `resolve_grapheme_display_col`'s partition_point lands
 /// on the real grapheme, not the insert sharing its char_offset.
 #[test]
-fn insert_mid_row_head_resolves_to_real_grapheme_col() {
+fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
     // "abcdef", width-2 insert before 'c' (byte offset 2). Layout by hand:
     // a(col0) b(col1) [insert XY](col2..4) c(col4) d(col5) e(col6) f(col7).
     // The insert and 'c' share char_offset 2 (the insert is pushed first,
@@ -1650,7 +1651,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     }];
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &selections,
         EditorMode::Normal,
@@ -1689,8 +1690,8 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
 }
 
 #[test]
-fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
-    // Insert at byte 0 — the row starts with a virtual cell at display_col 0,
+fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() {
+    // Insert at byte 0 — the display line starts with a virtual cell at display_col 0,
     // then 'a' at display_col 1, 'b' at display_col 2, etc. A selection over chars 0..1
     // ('a','b') must start its highlighted span at 'a's display_col (1), not the
     // insert's display_col (0).
@@ -1723,7 +1724,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
     }]; // 'a' and 'b'
     let mut scratch = StyleScratch::new();
     apply_styles(
-        &fmt.display_rows,
+        &fmt.display_lines,
         &fmt.graphemes,
         &selections,
         EditorMode::Normal,
@@ -1741,7 +1742,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
     assert_eq!(fmt.graphemes[insert_idx].display_col, dc(0));
     assert_eq!(
         scratch.styles[insert_idx].bg, None,
-        "the row-start insert cell must not be painted as part of the selection"
+        "the display-line-start insert cell must not be painted as part of the selection"
     );
 
     let a_idx = fmt

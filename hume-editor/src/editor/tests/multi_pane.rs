@@ -1574,7 +1574,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
         bid2,
         ScrollPosition {
             top_line: hume_rope::line::ContentLine::new(42),
-            top_row_offset: 0,
+            top_slot: 0,
             horizontal_offset: hume_rope::column::DisplayLineCol::new(0),
         },
     );

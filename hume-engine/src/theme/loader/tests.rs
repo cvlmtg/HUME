@@ -50,10 +50,7 @@ fn attributed_file(err: &ThemeError) -> &Path {
 /// matches on the payload regardless of file attribution; the returned
 /// reference is the original (possibly `InFile`-wrapped) entry, so a caller
 /// that also wants the attributed path can pass it to `attributed_file`.
-fn the_warning<'a>(
-    loaded: &'a LoadedTheme,
-    predicate: impl Fn(&ThemeError) -> bool,
-) -> &'a ThemeError {
+fn the_warning(loaded: &LoadedTheme, predicate: impl Fn(&ThemeError) -> bool) -> &ThemeError {
     let matches: Vec<&ThemeError> = loaded
         .warnings
         .iter()

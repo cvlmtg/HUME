@@ -277,7 +277,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     render(&mut ed);
 
     let rope = ed.state.buffers.get(bid).text().rope().clone();
-    let gutter_ctx = hume_engine::providers::GutterRowCtx {
+    let gutter_ctx = hume_engine::providers::GutterCtx {
         mode: hume_engine::types::EditorMode::Normal,
         primary_head_line: hume_rope::line::ContentLine::new(0),
         rope: &rope,
@@ -287,8 +287,8 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         .gutter_columns()
         .next()
         .expect("sign column registered first");
-    let cells = col.render_row_cells(
-        hume_engine::types::RowKind::LineStart {
+    let cells = col.render_cells(
+        hume_engine::types::DisplayLineKind::LineStart {
             line_idx: hume_rope::line::RopeyLine::new(0),
         },
         &gutter_ctx,

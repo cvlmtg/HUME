@@ -36,7 +36,7 @@ impl GutterColumn for DummyGutter {
     fn width(&self, _: hume_rope::line::RopeyLine) -> u8 {
         0
     }
-    fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
+    fn render_cells(&self, _: crate::types::DisplayLineKind, _: &GutterCtx) -> Vec<GutterCell> {
         vec![GutterCell::blank(ScopeId(0))]
     }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {

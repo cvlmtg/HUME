@@ -71,8 +71,8 @@ fn pane_id_display() {
 /// With them, this eval correctly reports `(#t #f)`.
 #[test]
 fn equal_compares_by_value_through_a_real_steel_eval() {
-    let mut engine = steel::steel_vm::engine::Engine::new();
-    crate::builtins::register_all(&mut engine);
+    let mut steel = steel::steel_vm::engine::Engine::new();
+    crate::builtins::register_all(&mut steel);
     let id = BufferId::default();
     let other = {
         // A distinct slotmap key: allocate through a fresh slotmap so it
@@ -82,11 +82,11 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
     };
     assert_ne!(id, other, "test setup: need two distinct BufferIds");
 
-    engine.register_value("a", SteelBufferId(id).into_steelval().unwrap());
-    engine.register_value("b", SteelBufferId(id).into_steelval().unwrap());
-    engine.register_value("c", SteelBufferId(other).into_steelval().unwrap());
+    steel.register_value("a", SteelBufferId(id).into_steelval().unwrap());
+    steel.register_value("b", SteelBufferId(id).into_steelval().unwrap());
+    steel.register_value("c", SteelBufferId(other).into_steelval().unwrap());
 
-    let results = engine
+    let results = steel
         .compile_and_run_raw_program("(list (equal? a b) (equal? a c))")
         .expect("eval must succeed");
     let list = results.into_iter().next().unwrap();
@@ -107,13 +107,13 @@ fn equal_compares_by_value_through_a_real_steel_eval() {
 /// same entry — the concrete capability per-buffer plugin state needs.
 #[test]
 fn buffer_id_is_usable_as_a_steel_hash_key() {
-    let mut engine = steel::steel_vm::engine::Engine::new();
-    crate::builtins::register_all(&mut engine);
+    let mut steel = steel::steel_vm::engine::Engine::new();
+    crate::builtins::register_all(&mut steel);
     let id = BufferId::default();
-    engine.register_value("a", SteelBufferId(id).into_steelval().unwrap());
-    engine.register_value("b", SteelBufferId(id).into_steelval().unwrap());
+    steel.register_value("a", SteelBufferId(id).into_steelval().unwrap());
+    steel.register_value("b", SteelBufferId(id).into_steelval().unwrap());
 
-    let results = engine
+    let results = steel
         .compile_and_run_raw_program("(hash-ref (hash-insert (hash) a 42) b)")
         .expect("eval must succeed");
     assert_eq!(results.into_iter().next().unwrap(), SteelVal::IntV(42));

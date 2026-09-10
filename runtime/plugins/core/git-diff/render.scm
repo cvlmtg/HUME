@@ -133,7 +133,7 @@
     (set-virtual-lines! git-diff/*source* bid virtual-lines)
     (set-extra-highlights! git-diff/*source* bid spans)))
 
-;; ── Row background tint ──────────────────────────────────────────────────────
+;; ── Line background tint ─────────────────────────────────────────────────────
 
 (define (git-diff/hunk->line-bgs hunk)
   (let* ([old-count (list-ref hunk 1)]

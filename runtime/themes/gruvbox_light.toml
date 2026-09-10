@@ -43,7 +43,7 @@ purple1 = "#8f3f71"
 aqua1 = "#427b58"
 orange1 = "#af3a03"
 
-# HUME addition — diff row backgrounds authored fresh for this palette;
+# HUME addition — diff line backgrounds authored fresh for this palette;
 # gruvbox dark's diff backgrounds read as near-black against this bg0.
 diff_plus_bg       = "#E3ECC0"
 diff_plus_word_bg  = "#C7DA84"

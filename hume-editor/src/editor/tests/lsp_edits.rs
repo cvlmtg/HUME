@@ -618,20 +618,21 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
 }
 
 /// `goto_location` must center the jump the same way `zz` does — by display
-/// row, via `scroll::scroll_cursor_to_row` — not by re-deriving a
+/// row, via `scroll::scroll_cursor_to_display_line` — not by re-deriving a
 /// buffer-line-based centering of its own. The two only agree when nothing
 /// wraps; under wrap they diverge, and a hand-rolled line-based centering
-/// leaves `top_row_offset` untouched entirely (`clamp_viewport_top`'s own
+/// leaves `top_slot` untouched entirely (`clamp_viewport_top`'s own
 /// doc names this exact call site as why it has to self-heal).
 #[test]
-fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
-    // Each line is 25 'x's, wrapped at width 10 into three display rows —
+fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
+    // Each line is 25 'x's, wrapped at width 10 into three display lines —
     // 10 + 10 + 5, the last one short of the wrap width so it doesn't also
-    // trigger the trailing '\n' sentinel's own wrap onto a further row
-    // (`format_buffer_line`'s end-of-line sentinel handling). A jump deep
-    // into the file makes buffer-line and display-row centering diverge
-    // sharply: line-based would center on line 20 directly; display-row
-    // must center on line 20's own first row, three times as far down.
+    // trigger the trailing '\n' sentinel's own wrap onto a further display
+    // line (`format_buffer_line`'s end-of-line sentinel handling). A jump
+    // deep into the file makes buffer-line and display-line centering
+    // diverge sharply: line-based would center on line 20 directly;
+    // display-line must center on line 20's own first display line, three
+    // times as far down.
     let content: String = (0..30).map(|_| format!("{}\n", "x".repeat(25))).collect();
     let text = hume_editing::text::BufferText::from(content.as_str());
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
@@ -653,15 +654,15 @@ fn goto_location_centers_by_display_row_not_buffer_line_under_wrap() {
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.focused_buffer_id();
     let key = ed.state.format_key(&ed.view.panes[pid]);
-    let (mut rm, viewport) = crate::editor::commands::pane_row_map(
+    let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
         ed.state.buffers.get(bid),
         &mut ed.view.panes[pid],
         key,
     );
     let top = crate::editor::scroll::top_pos(viewport);
-    let cursor_pos = rm.locate_row(cursor_char);
+    let cursor_pos = dlm.locate_display_line(cursor_char);
     assert_eq!(
-        rm.distance(top, cursor_pos, 20),
+        dlm.distance(top, cursor_pos, 20),
         Some(5),
         "the cursor must land exactly height/2 (5) DISPLAY rows below the new top"
     );

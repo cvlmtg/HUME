@@ -281,7 +281,7 @@ settings_enum!(ObjectJumpAlign, "object-jump-align", [
 /// `editor.cursor-shape.insert`, minus the `hidden` variant Helix offers
 /// mainly for IME positioning. Applies to every selection head, not just the
 /// primary (HUME's own departure from Helix) — see the Tier 1/0 comment in
-/// `hume_engine::style::style_row` for why and how.
+/// `hume_engine::style::style_display_line` for why and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorShape {
     /// Every selection head is painted from its own themed scope (the

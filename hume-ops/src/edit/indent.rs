@@ -80,7 +80,7 @@ fn render_indent(width: usize, style: TabStyle, tab_width: u8) -> String {
 ///
 /// Iterates lines directly rather than going through [`super::apply_edit`]
 /// (built for one edit per *selection*, not per *line*) — same reason
-/// `sort_rows` drives a [`ChangeSetBuilder`] by hand instead.
+/// `sort_lines` drives a [`ChangeSetBuilder`] by hand instead.
 fn shift_indent(
     text: BufferText,
     sels: SelectionSet,
@@ -91,7 +91,7 @@ fn shift_indent(
     // Every distinct line touched by any selection, ascending — `iter_sorted()`
     // is ascending/non-overlapping and each selection's own line range is
     // ascending, so a plain consecutive-dedup is enough (mirrors
-    // `sort::collect_rows`).
+    // `sort::collect_entries`).
     let mut lines: Vec<usize> = sels
         .iter_sorted()
         .flat_map(|sel| {

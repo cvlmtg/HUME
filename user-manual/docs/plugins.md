@@ -163,7 +163,7 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
 :::
 
-When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-row and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
+When forwarding a `count` argument to another command, a count of `0` means "as if no count was typed" — this is how `move-down`/`move-up` decide between visual-line and buffer-line movement, and it lets a key-bound command that forwards its own `count` behave the same way a native keybinding would.
 
 ### Reading selections
 

@@ -15,7 +15,7 @@ Buffer (text + config)
          │  → visible line range, column widths
          ▼
   Stage 2: Format        ← "where does each character appear on screen?"
-         │  → one display row per visual line; one entry per grapheme with its display column
+         │  → one entry per display line; one entry per grapheme with its display column
          ▼
   Stage 3: Style         ← "what colour and decoration does each character get?"
          │  → one style value per grapheme
@@ -34,9 +34,9 @@ feature:
   Stage 4 — they draw in the gutter columns laid out by Stage 1.
 - **Syntax highlighting, search matches, bracket highlighting** plug into
   Stage 3 — they add or override style on individual graphemes.
-- **Virtual lines** (a general mechanism any plugin can inject rows through —
-  diff context, code lenses) plug into Stage 2 — they inject rows that don't
-  correspond to buffer lines.
+- **Virtual lines** (a general mechanism any plugin can inject display lines
+  through — diff context, code lenses) plug into Stage 2 — they inject
+  display lines that don't correspond to buffer lines.
 - **Floating overlays** (completion popup, hover) plug into Stage 4 — they
   draw over the composed output.
 
@@ -50,11 +50,11 @@ about layout or composition — those stages are untouched.
 and how much horizontal space the gutter occupies. The output is a visible
 range plus per-column widths.
 
-**Stage 2 (Format)** turns buffer text into *display rows*. One display row
+**Stage 2 (Format)** turns buffer text into *display lines*. One display line
 is one visual line on screen — in soft-wrap mode, a long buffer line produces
-multiple display rows (a "line start" row plus one or more "continuation"
-rows). Each display row is a sequence of *cells*, and each cell is one of a
-small set:
+multiple display lines (a "line start" display line plus one or more
+"continuation" display lines). Each display line is a sequence of *cells*,
+and each cell is one of a small set:
 
 - a **grapheme** — a real character, annotated with its display column and
   visual width (most are 1 column; CJK double-width characters are 2);
@@ -71,21 +71,21 @@ small set:
 - a **width continuation** — the empty second cell of a 2-wide CJK character,
   which inherits its neighbour's style;
 - a **virtual** cell — text injected by a provider that isn't backed by
-  buffer content, the in-row cousin of a virtual row (inlay hints, ghost text);
+  buffer content, the in-line cousin of a virtual line (inlay hints, ghost text);
 - an **empty** cell — a placeholder at the end of every line, so the cursor
   has a cell to land on when it sits on the newline (and the sole cell of an
   empty line).
 
-Virtual rows (whole rows injected by providers, not backed by buffer text)
-also appear here. The cell vocabulary is what lets a single rendering loop
-draw real text, visible whitespace, and inlay hints through the same
-machinery. (Tilde filler rows below the last buffer line are the one
-exception — they carry no content at all and are painted by a small
-dedicated path.)
+Virtual lines (whole display lines injected by providers, not backed by
+buffer text) also appear here. The cell vocabulary is what lets a single
+rendering loop draw real text, visible whitespace, and inlay hints through
+the same machinery. (Tilde filler display lines below the last buffer line
+are the one exception — they carry no content at all and are painted by a
+small dedicated path.)
 
 A parallel extension point — inline decorations — injects cells at byte
-offsets *inside* a row rather than as separate rows. This is how inlay hints
-are rendered, sitting inline with the code they annotate.
+offsets *inside* a display line rather than as separate display lines. This
+is how inlay hints are rendered, sitting inline with the code they annotate.
 
 **Stage 3 (Style)** walks the cells and assigns a resolved style to
 each one — foreground colour, background colour, bold/italic/underline. Style
@@ -104,7 +104,7 @@ counterparts, so a multi-cursor view always shows which cursor is focused.
 
 **Stage 4 (Compose)** writes styled grapheme text into the terminal's screen
 buffer. Gutter columns are drawn to the left, the content area to the right.
-On the first row of every buffer line, indent guides — thin vertical rules at
+On the first display line of every buffer line, indent guides — thin vertical rules at
 each inner tab stop of the leading whitespace — are drawn so nested blocks
 stay visually aligned even when the user has tabs turning into spaces or vice
 versa. Overlays (like the completion popup) are drawn last, on top of
@@ -114,18 +114,18 @@ rows above or below the content rather than overlaying it.
 
 ## The fused loop
 
-Instead of materialising all rows for the full visible range before styling, the
-pipeline fuses stages 2–4 into a single loop over buffer lines:
+Instead of materialising all display lines for the full visible range before
+styling, the pipeline fuses stages 2–4 into a single loop over buffer lines:
 
 ```
 for each buffer line in the visible range:
     drain any virtual lines anchored above this line   ← virtual content first
-    format this buffer line once (Stage 2)              → produces all its display rows
-    for each display row of this line:
-        style this row  (Stage 3)
+    format this buffer line once (Stage 2)              → produces all its display lines
+    for each display line of this line:
+        style this display line  (Stage 3)
         compose to screen (Stage 4)
     drain any virtual lines anchored below this line
-fill remaining rows with empty filler (tilde rows, or blank)
+fill remaining display lines with empty filler (tilde lines, or blank)
 ```
 
 Work is measured and remembered one buffer line at a time, so what a frame

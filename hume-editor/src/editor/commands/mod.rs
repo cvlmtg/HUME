@@ -19,10 +19,10 @@ pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
+use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::pane::{Pane, ViewportState};
 use hume_engine::pipeline::{BufferId, EngineView};
-use hume_engine::rows::RowMap;
-use hume_engine::rows::line_store::FormatKey;
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -267,10 +267,10 @@ pub(super) fn effective_wrap_mode(
         .unwrap_or_else(|| doc.overrides.wrap_mode(settings))
 }
 
-/// A [`RowMap`] over `pane`'s view of `doc` — the display-row list every
-/// scroll, cursor and movement consumer reads instead of walking rows itself
-/// — together with the pane's viewport, for the scroll consumers that write
-/// it while reading the map.
+/// A [`DisplayLineMap`] over `pane`'s view of `doc` — the display-line list every
+/// scroll, cursor and movement consumer reads instead of walking display
+/// lines itself — together with the pane's viewport, for the scroll
+/// consumers that write it while reading the map.
 ///
 /// Takes the pane mutably and splits it here: `providers`, `line_store` and
 /// `viewport` are disjoint fields, which only a function holding the whole
@@ -284,13 +284,13 @@ pub(super) fn effective_wrap_mode(
 /// *before* this call takes `pane` mutably: everything `key` needs lives on
 /// `pane` itself, but a `&Pane` used to build it cannot coexist with the
 /// `&mut Pane` this function requires. A caller with no viewport to write
-/// (the movement consumers, which read the row list and rewrite selections
-/// instead) destructures `(mut rm, _)`.
-pub(super) fn pane_row_map<'a>(
+/// (the movement consumers, which read the display-line list and rewrite
+/// selections instead) destructures `(mut dlm, _)`.
+pub(super) fn pane_display_lines<'a>(
     doc: &'a Buffer,
     pane: &'a mut Pane,
     key: FormatKey,
-) -> (RowMap<'a>, &'a mut ViewportState) {
+) -> (DisplayLineMap<'a>, &'a mut ViewportState) {
     let content_width = pane.content_width(doc.text().last_ropey_line());
     let Pane {
         providers,
@@ -298,8 +298,8 @@ pub(super) fn pane_row_map<'a>(
         viewport,
         ..
     } = pane;
-    let rm = RowMap::new(doc.text().rope(), providers, content_width, key, line_store);
-    (rm, viewport)
+    let dlm = DisplayLineMap::new(doc.text().rope(), providers, content_width, key, line_store);
+    (dlm, viewport)
 }
 
 /// Snapshot the focused pane's current cursor as a `JumpEntry`.
@@ -414,7 +414,7 @@ pub(in crate::editor) use pipeline::{
     run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
 };
 
-// RowMap-dependent commands live in visual_move.rs; re-export for the registry glob.
+// DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.
 pub(super) use super::visual_move::{
     cmd_copy_selection_on_next_line, cmd_copy_selection_on_prev_line, cmd_visual_move_down,
     cmd_visual_move_up, cmd_visual_select_word_nearest_on_line,

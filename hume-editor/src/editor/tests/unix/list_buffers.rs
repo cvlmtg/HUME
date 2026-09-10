@@ -34,7 +34,7 @@ fn ls_two_buffers_marks_current_and_alternate() {
 }
 
 #[test]
-fn ls_cursor_on_current_row() {
+fn ls_cursor_on_current_line() {
     let (p1, _t1) = temp_file("file1\n");
     let (p2, _t2) = temp_file("file2\n");
     let mut ed = editor_from("-[h]>ello\n");

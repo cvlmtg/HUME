@@ -151,7 +151,7 @@
 # `ui.cursor.match` bracket-match highlight above.
 "ui.cursor.match.search" = { fg = "bg0", bg = "orange1" }
 
-# Base virtual text (tilde rows, EOF marker) and its dot-fallback parent for
+# Base virtual text (tilde filler, EOF marker) and its dot-fallback parent for
 # `ui.virtual.indent-guide`, which this theme leaves undefined on purpose.
 "ui.virtual" = { fg = "gray" }
 # The `<200b>` stand-in for a character the terminal must not be shown.
@@ -192,7 +192,7 @@
 "diff.minus.line" = { fg = "fg1", bg = "diff_minus_bg" }
 "diff.delta.line" = { bg = "diff_delta_bg" }
 # Word-level segments mark the exact changed span inside a
-# `diff.plus.line`/`diff.minus.line`-tinted row.
+# `diff.plus.line`/`diff.minus.line`-tinted line.
 "diff.plus.word" = { fg = "fg1", bg = "diff_plus_word_bg", modifiers = ["bold"] }
 "diff.minus.word" = { fg = "fg1", bg = "diff_minus_word_bg", modifiers = ["bold", "crossed_out"] }
 
@@ -237,7 +237,7 @@ aqua1 = "#8ec07c"
 orange0 = "#d65d0e"
 orange1 = "#fe8019"
 
-# HUME additions — diff row backgrounds (`diff.*.line` and `diff.*.word` above).
+# HUME additions — diff line backgrounds (`diff.*.line` and `diff.*.word` above).
 diff_plus_bg       = "#424228"
 diff_plus_word_bg  = "#5F6027"
 diff_minus_bg      = "#4E2E2A"

@@ -44,8 +44,8 @@ impl Editor {
     /// `prepare_frame` calls this **twice** — once before the scroll step,
     /// once after — rather than sharing one snapshot across both groups: the
     /// sign/inlay-hint/virtual-line/EOL-text bridges deliberately read the
-    /// *previous* frame's viewport (their output decides row counts/columns
-    /// the scroll step's `RowMap` resolves against, so it must already be
+    /// *previous* frame's viewport (their output decides display-line counts/columns
+    /// the scroll step's `DisplayLineMap` resolves against, so it must already be
     /// visible before that math runs), while the highlight/line-background
     /// bridges are paint-only and want the *current* one. Two snapshots make
     /// that straddle a property of *where* each is taken, not something each
@@ -289,7 +289,7 @@ impl Editor {
     /// from `prepare_frame`'s step 3, against the pre-scroll snapshot (see
     /// [`Self::decorated_panes`]) because the sign column's width feeds
     /// `Pane::content_width`, which decides the wrap column the scroll
-    /// step's `RowMap` resolves against.
+    /// step's `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::builtins::sign_column::{Sign, SignColumn};
 
@@ -459,8 +459,8 @@ impl Editor {
     /// clone or scope resolution runs, same as the sign/line-bg bridges
     /// above, so the per-frame cost is one entry per *visible* EOL line, not
     /// per EOL line in the whole buffer. Both write into a pane's
-    /// `inline_decorations` providers, which `RowMap::ensure_formatted` reads, so
-    /// this feeds wrap row counts and columns exactly like inlay hints do —
+    /// `inline_decorations` providers, which `DisplayLineMap::ensure_formatted` reads, so
+    /// this feeds wrap display-line counts and columns exactly like inlay hints do —
     /// called from `prepare_frame`'s step 3, against the pre-scroll snapshot
     /// (see [`Self::decorated_panes`]).
     pub(super) fn update_eol_text_providers(&mut self, panes: &[DecoratedPane]) {
@@ -520,11 +520,11 @@ impl Editor {
 
     /// Sync per-pane virtual-line decorations from the
     /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
-    /// Arc — a `RowMap::block` provider, so this feeds row *counts* the same
+    /// Arc — a `DisplayLineMap::block` provider, so this feeds row *counts* the same
     /// way inlay hints/EOL text feed wrap columns. Unlike those two, this
     /// only rebuilds when `decorations.generation(bid)` changed since the
     /// pane's last sync, or the pane's buffer changed — a whole-buffer
-    /// rebuild (not viewport-filtered, since `RowMap::block` needs every
+    /// rebuild (not viewport-filtered, since `DisplayLineMap::block` needs every
     /// anchor regardless of scroll position) with a `text`/`segments` clone
     /// per entry is costlier to redo unconditionally every frame than the
     /// other bridges' viewport-filtered passes. The stamp is per-buffer (not
@@ -537,7 +537,7 @@ impl Editor {
     /// anchored to the same line stack rather than collapse (unlike the
     /// four line-anchored kinds `last_writer_per_line` folds) —
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
-    /// ascending by name, and `RowMap::block`'s anchor sort is stable, so
+    /// ascending by name, and `DisplayLineMap::block`'s anchor sort is stable, so
     /// they render in alphabetical-by-source order, not registration order.
     ///
     /// Each entry becomes `Before(line)` or `After(line)` per its `before`
@@ -546,7 +546,7 @@ impl Editor {
     /// (`host_impl.rs`) — becomes `VirtualLine::base_scope`: the engine
     /// falls back to it for bytes `segments` doesn't cover, and reads its
     /// `bg` to fill the row past the last grapheme (see
-    /// `segment_virtual_row`/`pane_render.rs`'s virtual-row `row_bg`).
+    /// `segment_virtual_line`/`pane_render.rs`'s virtual-display-line `row_bg`).
     /// Always `Some`, never left as the engine's own `None` fallback, so a
     /// theme that puts a `bg` on `ui.virtual` reaches the row fill exactly
     /// the same way an explicit `scope` would.

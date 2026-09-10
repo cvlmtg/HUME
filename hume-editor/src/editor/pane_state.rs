@@ -392,19 +392,20 @@ impl Editor {
     /// next render (including several existing tests) expects it already
     /// zero.
     ///
-    /// `top_row_offset`, by contrast, is left alone here on purpose: it
-    /// addresses a row inside `top_line`'s whole visual block (`before` +
-    /// content rows + `after`) in *either* wrap mode (`scroll::set_top`
-    /// writes it unconditionally) — a mode change can leave it past the new
-    /// block's row count (off→on starts a narrower block; on→on width/style
-    /// changes can shrink it), and that out-of-range case is exactly what
-    /// `scroll::clamp_viewport_top` repairs once per pane per frame, so
-    /// there's no need to throw the address away here. What clamping
-    /// *cannot* catch: only a `content`-side change (not this function)
-    /// grows the block, so an offset that addressed an `after` row in
-    /// no-wrap can still be in range once wrapping grows `content` —
-    /// landing on a wrap row of the line's own text instead of the virtual
-    /// row it used to point at. Silent, not a bug this function fixes.
+    /// `top_slot`, by contrast, is left alone here on purpose: it
+    /// addresses a display line inside `top_line`'s whole visual block
+    /// (`before` + content display lines + `after`) in *either* wrap mode
+    /// (`scroll::set_top` writes it unconditionally) — a mode change can
+    /// leave it past the new block's display-line count (off→on starts a
+    /// narrower block; on→on width/style changes can shrink it), and that
+    /// out-of-range case is exactly what `scroll::clamp_viewport_top`
+    /// repairs once per pane per frame, so there's no need to throw the
+    /// address away here. What clamping *cannot* catch: only a
+    /// `content`-side change (not this function) grows the block, so a slot
+    /// that addressed an `after` display line in no-wrap can still be in
+    /// range once wrapping grows `content` — landing on a wrap display line
+    /// of the line's own text instead of the virtual display line it used
+    /// to point at. Silent, not a bug this function fixes.
     pub(crate) fn toggle_focused_wrap(&mut self) -> bool {
         use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
 

@@ -1,8 +1,8 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx};
-use crate::types::{RowKind, ScopeId};
+use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterCtx};
+use crate::types::{DisplayLineKind, ScopeId};
 use hume_rope::line::ContentLine;
 
 /// One sign a `SignSource` renders for a buffer line (diagnostic marker, git
@@ -14,7 +14,7 @@ pub struct Sign {
     /// `Arc<str>`, not `Cow<'static, str>`: the editor's per-frame sign
     /// bridge builds a `Sign` straight from its decoration-store entry's own
     /// `Arc<str>` text (`Editor::update_sign_providers` in `hume-editor`),
-    /// and `render_row_cells` below moves it into a
+    /// and `render_cells` below moves it into a
     /// `GutterCellContent::Shared` unchanged — every hop from the store to
     /// the rendered cell is a refcount bump, never a `String` allocation.
     pub text: Arc<str>,
@@ -26,7 +26,7 @@ pub struct Sign {
     /// buffer, resolved upstream from the registered sign sources (see
     /// `Editor::update_sign_providers`), not recomputed here from this
     /// line's signs alone. A slot `>=` the column's configured slot count is
-    /// silently dropped by `SignColumn::render_row_cells`.
+    /// silently dropped by `SignColumn::render_cells`.
     pub slot: u8,
 }
 
@@ -39,14 +39,10 @@ pub struct Sign {
 /// sources each returning one.
 pub trait SignSource {
     /// Signs for one buffer line. Order doesn't matter — each sign carries
-    /// its own `slot`. Called per `LineStart` row per frame — implementations
-    /// should be cheap lookups into their own state (same contract as
-    /// `DecorationSource`).
-    fn signs_for_line(
-        &self,
-        line_idx: hume_rope::line::ContentLine,
-        ctx: &GutterRowCtx,
-    ) -> Vec<Sign>;
+    /// its own `slot`. Called per `LineStart` display line per frame —
+    /// implementations should be cheap lookups into their own state (same
+    /// contract as `DecorationSource`).
+    fn signs_for_line(&self, line_idx: hume_rope::line::ContentLine, ctx: &GutterCtx) -> Vec<Sign>;
 }
 
 /// A source with no signs at all — used wherever a test needs an inert
@@ -56,7 +52,7 @@ impl SignSource for () {
     fn signs_for_line(
         &self,
         _line_idx: hume_rope::line::ContentLine,
-        _ctx: &GutterRowCtx,
+        _ctx: &GutterCtx,
     ) -> Vec<Sign> {
         Vec::new()
     }
@@ -77,7 +73,7 @@ pub struct SignColumn {
     width: u8,
     /// Interned `"ui.linenr"` — unfilled sign slots render blank under this
     /// scope, same fallback `LineNumberColumn` uses for its own non-content
-    /// rows. Interned by the caller at pane construction.
+    /// display lines. Interned by the caller at pane construction.
     blank_scope: ScopeId,
 }
 
@@ -85,7 +81,7 @@ impl SignColumn {
     /// Gutter width for `slots` sign slots: one cell per slot plus one
     /// column of right-padding, matching every other gutter column's
     /// separator convention (see `render::compose_gutter`). The single place
-    /// this arithmetic direction is written — `render_row_cells`'s
+    /// this arithmetic direction is written — `render_cells`'s
     /// `width.saturating_sub(1)` is its inverse, computing slots from a
     /// stored width instead.
     pub const fn width_for_slots(slots: u8) -> u8 {
@@ -134,10 +130,10 @@ impl GutterColumn for SignColumn {
         self.width
     }
 
-    fn render_row_cells(&self, kind: RowKind, ctx: &GutterRowCtx) -> Vec<GutterCell> {
+    fn render_cells(&self, kind: DisplayLineKind, ctx: &GutterCtx) -> Vec<GutterCell> {
         let max_signs = self.width.saturating_sub(1) as usize;
-        let RowKind::LineStart { line_idx } = kind else {
-            // Wrap/Virtual/Filler rows never carry a sign — one blank cell
+        let DisplayLineKind::LineStart { line_idx } = kind else {
+            // Wrap/Virtual/Filler display lines never carry a sign — one blank cell
             // per configured slot so `compose_gutter`'s cell count matches
             // the column's width.
             return vec![GutterCell::blank(self.blank_scope); max_signs];
@@ -147,7 +143,7 @@ impl GutterColumn for SignColumn {
         }
 
         let mut cells = vec![GutterCell::blank(self.blank_scope); max_signs];
-        // `line_idx` is `RowKind::LineStart`'s ropey-domain field (see its
+        // `line_idx` is `DisplayLineKind::LineStart`'s ropey-domain field (see its
         // doc), but `SignSource` deals only in real content — a sign can't
         // meaningfully attach to the phantom line. Trusted mint, not
         // `RopeyLine::to_content`: a real render walk never emits a

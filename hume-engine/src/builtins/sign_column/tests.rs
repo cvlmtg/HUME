@@ -8,8 +8,8 @@ use hume_grid::{Grid, Rect, Rgb};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 
-fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
-    GutterRowCtx {
+fn ctx(rope: &ropey::Rope) -> GutterCtx<'_> {
+    GutterCtx {
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         rope,
@@ -27,7 +27,7 @@ struct FixedSign {
 }
 
 impl SignSource for FixedSign {
-    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterRowCtx) -> Vec<Sign> {
+    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterCtx) -> Vec<Sign> {
         if line_idx == self.line {
             self.signs.clone()
         } else {
@@ -53,8 +53,8 @@ fn sign_renders_in_its_own_resolved_slot() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(
-        RowKind::LineStart {
+    let cells = lane.render_cells(
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(3),
         },
         &ctx(&rope),
@@ -75,8 +75,8 @@ fn no_sign_fires_renders_blank() {
     let lane = SignColumn::new(Box::new(()), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
-        .render_row_cells(
-            RowKind::LineStart {
+        .render_cells(
+            DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             &ctx(&rope),
@@ -88,7 +88,7 @@ fn no_sign_fires_renders_blank() {
 }
 
 #[test]
-fn sign_absent_on_wrap_virtual_and_filler_rows() {
+fn sign_absent_on_wrap_virtual_and_filler_display_lines() {
     let mut registry = ScopeRegistry::new();
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
@@ -104,18 +104,18 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
     let rope = ropey::Rope::new();
 
     for kind in [
-        RowKind::Wrap {
+        DisplayLineKind::Wrap {
             line_idx: RopeyLine::new(0),
-            wrap_row: 1,
+            wrap_index: 1,
         },
-        RowKind::Virtual {
+        DisplayLineKind::Virtual {
             provider_id: 0,
             anchor_line: RopeyLine::new(0),
         },
-        RowKind::Filler,
+        DisplayLineKind::Filler,
     ] {
         let cell = lane
-            .render_row_cells(kind, &ctx(&rope))
+            .render_cells(kind, &ctx(&rope))
             .into_iter()
             .next()
             .unwrap();
@@ -157,7 +157,7 @@ fn set_width_overrides_the_configured_width() {
 
 #[test]
 fn sign_text_truncates_to_column_width_end_to_end() {
-    // Full compose path (not just SignColumn::render_row in isolation):
+    // Full compose path (not just SignColumn::render_display_line in isolation):
     // a 3-glyph sign in a width-2 column must come out clipped by
     // `render::compose_gutter`'s gutter clipping, same as every
     // other gutter column — SignColumn adds no truncation of its own.
@@ -183,8 +183,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [crate::types::DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes: 0..1,
@@ -225,8 +225,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
-    crate::render::compose_row(
-        &rows[0],
+    crate::render::compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "x",
@@ -275,8 +275,8 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [crate::types::DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes: 0..1,
@@ -318,8 +318,8 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
-    crate::render::compose_row(
-        &rows[0],
+    crate::render::compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "x",
@@ -360,8 +360,8 @@ fn sign_scope_resolves_via_baked_theme() {
     let lane = SignColumn::new(Box::new(source), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
-        .render_row_cells(
-            RowKind::LineStart {
+        .render_cells(
+            DisplayLineKind::LineStart {
                 line_idx: RopeyLine::new(0),
             },
             &ctx(&rope),
@@ -404,8 +404,8 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(
-        RowKind::LineStart {
+    let cells = lane.render_cells(
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         &ctx(&rope),
@@ -432,8 +432,8 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(
-        RowKind::LineStart {
+    let cells = lane.render_cells(
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         &ctx(&rope),
@@ -460,8 +460,8 @@ fn width_one_column_keeps_no_signs() {
     let lane = SignColumn::with_width(1, Box::new(source), blank_scope); // 0 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(
-        RowKind::LineStart {
+    let cells = lane.render_cells(
+        DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         &ctx(&rope),
@@ -470,7 +470,7 @@ fn width_one_column_keeps_no_signs() {
 }
 
 /// Multi-slot sign columns must render through the full `compose_gutter`
-/// path, not just `render_row_cells` in isolation. This test catches the
+/// path, not just `render_cells` in isolation. This test catches the
 /// bug where the `usable_per_cell` formula was wrong, causing all signs
 /// to be truncated to empty.
 #[test]
@@ -506,8 +506,8 @@ fn multi_slot_column_renders_through_compose_gutter() {
         indent_depth: 0,
         scope: None,
     }];
-    let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart {
+    let dls = [crate::types::DisplayLine {
+        kind: DisplayLineKind::LineStart {
             line_idx: RopeyLine::new(0),
         },
         graphemes: 0..1,
@@ -548,8 +548,8 @@ fn multi_slot_column_renders_through_compose_gutter() {
         default_gutter_scope: blank_scope,
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
-    crate::render::compose_row(
-        &rows[0],
+    crate::render::compose_display_line(
+        &dls[0],
         &graphemes,
         &styles,
         "x",

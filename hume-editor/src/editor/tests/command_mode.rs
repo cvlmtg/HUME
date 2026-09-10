@@ -1327,11 +1327,11 @@ fn sort_long_flags_through_the_minibuffer() {
 }
 
 #[test]
-fn sort_no_adjacent_rows_reports_info_without_logging() {
+fn sort_no_adjacent_lines_reports_info_without_logging() {
     let mut ed = editor_from("-[h]>ello\n");
     let before = state(&ed);
     ed.execute_typed("sort", None)
-        .expect("a single row is refused, not an error");
+        .expect("a single line is refused, not an error");
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some("sort needs at least two adjacent rows")
@@ -1339,7 +1339,7 @@ fn sort_no_adjacent_rows_reports_info_without_logging() {
     assert_eq!(
         ed.state.message_log.totals(),
         (0, 0),
-        "NoAdjacentRows is Severity::Info — a boundary condition, not a failure worth \
+        "NoAdjacentLines is Severity::Info — a boundary condition, not a failure worth \
          keeping in message_log"
     );
     assert_eq!(state(&ed), before, "a refusal must not touch the buffer");
@@ -1443,7 +1443,7 @@ fn sort_undo_restores_text_and_selections_in_one_step() {
 
 #[test]
 fn sort_on_already_sorted_input_leaves_buffer_clean() {
-    // Validity: this is the test that pins `sort_rows` returning a
+    // Validity: this is the test that pins `sort_lines` returning a
     // `SortRefusal` instead of a successful identity edit — replace step 4's
     // refusal with an always-successful edit and `is_dirty()` starts
     // reporting `true` here.

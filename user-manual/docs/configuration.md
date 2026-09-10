@@ -151,7 +151,7 @@ Accepted values:
 - `none` — no wrapping; long lines scroll horizontally.
 - `soft` — break at the pane width, splitting at any character (may split a word in the middle).
 - `word` — break at the pane width but prefer whitespace, so words aren't split.
-- `indent` — like `word`, but continuation rows are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
+- `indent` — like `word`, but wrapped continuation lines are indented to match the line's leading whitespace, so nested code stays visually nested (this is the default).
 - `:N` suffix — wrap at column `N` instead of the pane's content width (e.g. `word:80`). `0` or omitted means content width.
 
 ## Themes
@@ -217,9 +217,9 @@ These have no Helix equivalent:
   `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also
   colors the ghost text of a deleted line, since nothing is left in the buffer to color).
   Falls back to nothing if left undefined — an unmodified Helix theme colors the gutter
-  marker (below) but paints no row tint, which is the deliberate trade-off rather than a bug
+  marker (below) but paints no line tint, which is the deliberate trade-off rather than a bug
 - `diff.plus.word` / `diff.minus.word` — word-level highlight inside a changed line
-  (`core:git-diff`'s inline diff), inside the row-level `.line` tint above
+  (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
 - `diagnostic.error.message` / `.warning.message` / `.info.message` / `.hint.message` and
   their `.message-text` counterparts — the `:messages` log's severity badge and body text,
   a HUME-only feature

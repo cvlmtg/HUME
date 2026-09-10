@@ -63,23 +63,23 @@ later line is exactly its predecessor's length plus one `\n` further along.
 One paired `(old-line . new-line)` becomes a `(virtual-line . spans)` pair from a single
 `diff-words` call shared by both sides — the sanctioned two-setter exception described
 below starts here. Within a hunk, old-lines `[0, paired-count)` have a same-index
-new-line counterpart to word-diff against; any remainder gets a plain whole-line row. The
+new-line counterpart to word-diff against; any remainder gets a plain whole-line virtual line. The
 three-list walk (old-lines, new-lines, offsets) advances via `cdr`, not `list-ref` by
 index — Steel lists are linked, so indexing would make this quadratic in `paired-count`.
 
 A pure addition (`old-count` zero) contributes nothing to the inline pass — nothing was
-removed to show as a virtual row; `render-line-bgs!` alone covers its new-side tint.
+removed to show as a virtual line; `render-line-bgs!` alone covers its new-side tint.
 
 `render-inline!` makes two setter calls (`set-virtual-lines!`/`set-extra-highlights!`)
 instead of this file's usual one: a single `diff-words` pass inherently produces two
-decoration kinds — old-side virtual rows and new-side highlight spans — and splitting it
+decoration kinds — old-side virtual lines and new-side highlight spans — and splitting it
 into two renderers to keep one setter each would call `diff-words` twice for no benefit.
 
-## Row background tint
+## Line background tint
 
 One hunk becomes `(line scope)` entries, one per new-side line: pure add → `diff.plus.line`,
 change → `diff.delta.line`. A pure delete contributes nothing — `render-inline!`'s virtual
-rows already cover the removed content, tinted via `diff.minus.line` on the virtual line's
+lines already cover the removed content, tinted via `diff.minus.line` on the virtual line's
 own `base_scope` instead. No priority field on this setter (unlike `set-signs!`) — this
 plugin is the only tint producer for its own scopes.
 

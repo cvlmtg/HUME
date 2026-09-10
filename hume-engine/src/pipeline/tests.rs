@@ -10,7 +10,7 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
 };
-use crate::types::{ResolvedStyle, RowKind};
+use crate::types::{DisplayLineKind, ResolvedStyle};
 use hume_rope::line::{ContentLine, RopeyLine};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -32,7 +32,7 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
 /// The line store is built per call and so is always cold. These tests assert
 /// on drawn cells, and a store shared between them would make one test's
 /// output depend on which ran first — the sharing itself is covered in
-/// `rows::tests`, against the store directly.
+/// `display_lines::tests`, against the store directly.
 fn render_test_pane(
     pane: &Pane,
     rope: &ropey::Rope,
@@ -43,7 +43,7 @@ fn render_test_pane(
 ) -> Grid {
     let settings = PaneRenderSettings {
         mode: EditorMode::Normal,
-        format: crate::rows::line_store::FormatKey {
+        format: crate::display_lines::line_store::FormatKey {
             buffer_tag: [0; 3],
             wrap_mode,
             tab_width: 4,
@@ -69,16 +69,16 @@ fn render_test_pane(
     render_pane(
         &pane_ctx,
         &mut FrameScratch::new(),
-        &mut crate::rows::line_store::PaneLineStore::new(),
+        &mut crate::display_lines::line_store::PaneLineStore::new(),
         &mut buf,
     );
     buf
 }
 
-// ── Virtual-row scope styling ────────────────────────────────────────
+// ── Virtual display line scope styling ──────────────────────────────
 
-/// Emits one `Before(0)` row whose first grapheme carries `scope` and whose
-/// second carries none.
+/// Emits one `Before(0)` display line whose first grapheme carries `scope`
+/// and whose second carries none.
 struct ScopedVirtualLine {
     scope: crate::types::ScopeId,
 }
@@ -103,7 +103,7 @@ impl DecorationSource for ScopedVirtualLine {
 }
 
 #[test]
-fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
+fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     // Two graphemes: one carries an interned scope (must resolve to that
     // scope's fg), one carries no scope (must fall back to ui.virtual_text).
     let mut registry = ScopeRegistry::new();
@@ -146,10 +146,10 @@ fn virtual_row_resolves_grapheme_scope_and_falls_back_to_virtual_text() {
     );
 }
 
-/// Emits one `Before(0)` row whose four graphemes each carry a distinct
+/// Emits one `Before(0)` display line whose four graphemes each carry a distinct
 /// scope, with `segments` built in the *reverse* of byte order — the engine
-/// contract (`VirtualLine::segments` doc) promises `RowMap::block` sorts
-/// this at intake, and `segment_virtual_row`'s cursor scan requires that:
+/// contract (`VirtualLine::segments` doc) promises `DisplayLineMap::block` sorts
+/// this at intake, and `segment_virtual_line`'s cursor scan requires that:
 /// without the sort, a monotonic cursor started against descending-start
 /// input never backs up, so every offset but the last resolves to `None`.
 struct UnsortedScopedVirtualLine {
@@ -179,7 +179,7 @@ impl DecorationSource for UnsortedScopedVirtualLine {
 }
 
 #[test]
-fn virtual_row_resolves_scopes_from_unsorted_segments() {
+fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
     let mut registry = ScopeRegistry::new();
     let scope_names = ["scope-a", "scope-b", "scope-c", "scope-d"];
     let scopes: [crate::types::ScopeId; 4] =
@@ -257,32 +257,31 @@ impl DecorationSource for FixedVirtualLineSource {
 }
 
 /// Build a pane viewing a rope whose line 0 is "aaaabbbbcccc" — under
-/// `WrapMode::Soft { width: 4 }` this wraps into exactly 3 rows: "aaaa",
-/// "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the exact
-/// column with no backtracking). `top_row_offset` controls how many of
-/// those wrap rows are already scrolled past.
-fn render_wrapped_pane_with_virtual_line(top_row_offset: u16, anchor: VirtualLineAnchor) -> Grid {
+/// `WrapMode::Soft { width: 4 }` this wraps into exactly 3 display lines:
+/// "aaaa", "bbbb", "cccc" (each grapheme is 1 column, so Soft splits at the
+/// exact column with no backtracking). `top_slot` controls how many of
+/// those wrap display lines are already scrolled past.
+fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAnchor) -> Grid {
     let rope = ropey::Rope::from_str("aaaabbbbcccc\nz\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(10, 6);
-    pane.viewport.top_row_offset = top_row_offset;
+    pane.viewport.top_slot = top_slot;
     pane.providers
         .add_decoration_source(Box::new(FixedVirtualLineSource { anchor }));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
-    let buf = render_test_pane(
+    render_test_pane(
         &pane,
         &rope,
         &theme,
         pane_rect,
         WrapMode::Soft { width: 4 },
         crate::types::ScopeId(0),
-    );
-    buf
+    )
 }
 
 fn cell_symbol(buf: &Grid, x: u16, y: u16) -> String {
@@ -290,28 +289,29 @@ fn cell_symbol(buf: &Grid, x: u16, y: u16) -> String {
 }
 
 #[test]
-fn before_virtual_line_skipped_one_row_at_a_time() {
+fn before_virtual_line_skipped_one_display_line_at_a_time() {
     // Line 0's block under Before(0) is [V, aaaa, bbbb, cccc, <eol>] — 5
-    // rows: "aaaabbbbcccc" wraps into three content rows at width 4, and
-    // "cccc" exactly fills the last one, so the trailing '\n's own sentinel
-    // wraps onto a row of its own. `top_row_offset` walks through the whole
-    // block uniformly, the same as it would a plain wrap row: each unit of
-    // offset drops exactly one block row, virtual or real.
+    // display lines: "aaaabbbbcccc" wraps into three content display lines
+    // at width 4, and "cccc" exactly fills the last one, so the trailing
+    // '\n's own sentinel wraps onto a display line of its own. `top_slot`
+    // walks through the whole
+    // block uniformly, the same as it would a plain wrap display line: each
+    // unit of offset drops exactly one block display line, virtual or real.
     let offset1 =
         render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset1, 0, 0),
         "a",
-        "offset 1 skips V only, wrap row 0 shows"
+        "offset 1 skips V only, wrap display line 0 shows"
     );
-    assert_eq!(cell_symbol(&offset1, 0, 1), "b", "wrap row 1 follows");
+    assert_eq!(cell_symbol(&offset1, 0, 1), "b", "wrap display line 1 follows");
 
     let offset2 =
         render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset2, 0, 0),
         "b",
-        "offset 2 skips V and wrap row 0"
+        "offset 2 skips V and wrap display line 0"
     );
 
     let offset3 =
@@ -319,7 +319,7 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     assert_eq!(
         cell_symbol(&offset3, 0, 0),
         "c",
-        "offset 3 reaches wrap row 2"
+        "offset 3 reaches wrap display line 2"
     );
 
     let offset4 =
@@ -327,30 +327,30 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     assert_eq!(
         cell_symbol(&offset4, 0, 0),
         " ",
-        "offset 4 reaches the block's last row, the wrapped eol sentinel"
+        "offset 4 reaches the block's last display line, the wrapped eol sentinel"
     );
 
-    // Offset 5 is past the end of a 5-row block: not an address in the
-    // document, so it clamps to the block's last row — the same address
+    // Offset 5 is past the end of a 5-display-line block: not an address in
+    // the document, so it clamps to the block's last display line — the same address
     // `scroll::clamp_viewport_top` resolves to, which is the point (production
     // never reaches this case directly, since the clamp runs every frame
     // before render).
     //
-    // Fail oracle: treating an over-large offset as rows-to-skip instead of
-    // clamping would carry over into line 1, disagreeing with the clamp's
-    // own "line 0's last row" answer.
+    // Fail oracle: treating an over-large offset as display-lines-to-skip
+    // instead of clamping would carry over into line 1, disagreeing with the
+    // clamp's own "line 0's last display line" answer.
     let past_end =
         render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&past_end, 0, 0),
         " ",
-        "an offset past the block clamps to its last row, as the clamp does"
+        "an offset past the block clamps to its last display line, as the clamp does"
     );
 }
 
 #[test]
 fn before_virtual_line_renders_when_not_skipped() {
-    // top_row_offset=0: the Before(0) virtual line renders at screen row
+    // top_slot=0: the Before(0) virtual line renders at screen row
     // 0, pushing wrap row 0 ("aaaa") down to screen row 1.
     let buf =
         render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(ContentLine::new(0)));
@@ -358,17 +358,18 @@ fn before_virtual_line_renders_when_not_skipped() {
     assert_eq!(
         cell_symbol(&buf, 0, 1),
         "a",
-        "wrap row 0 pushed to screen row 1"
+        "wrap display line 0 pushed to screen row 1"
     );
 }
 
 #[test]
-fn after_virtual_line_renders_below_skipped_rows() {
-    // top_row_offset=1 skips wrap row 0. The After(0) virtual line sits
-    // below all of line 0's wrap rows — two more content rows plus the
-    // trailing '\n's own wrapped sentinel row — none of which are skipped
-    // (the budget is exhausted by wrap row 0 alone) — it must still render,
-    // after wrap rows 1, 2, and the sentinel.
+fn after_virtual_line_renders_below_skipped_display_lines() {
+    // top_slot=1 skips wrap display line 0. The After(0) virtual line sits
+    // below all of line 0's wrap display lines — two more content display
+    // lines plus the trailing '\n's own wrapped sentinel display line — none
+    // of which are skipped (the budget is exhausted by wrap display line 0
+    // alone) — it must still render, after wrap display lines 1, 2, and the
+    // sentinel.
     let buf =
         render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(ContentLine::new(0)));
     assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap row 1");
@@ -385,9 +386,10 @@ fn after_virtual_line_renders_below_skipped_rows() {
     );
 }
 
-/// Emits `self.0` distinct `Before(0)` virtual rows, texted "1".."9" — a
-/// virtual block taller than a small viewport, to prove every row in it is
-/// individually reachable by scrolling, not just the rows nearest the edge.
+/// Emits `self.0` distinct `Before(0)` virtual display lines, texted "1".."9"
+/// — a virtual block taller than a small viewport, to prove every display
+/// line in it is individually reachable by scrolling, not just the display
+/// lines nearest the edge.
 struct MultiBeforeLine(usize);
 
 impl DecorationSource for MultiBeforeLine {
@@ -409,38 +411,39 @@ impl DecorationSource for MultiBeforeLine {
     }
 }
 
-/// Line 0 is "x" (one unwrapped row) with `n` `Before(0)` virtual rows
-/// stacked above it, viewed through a viewport `height` rows tall.
-fn render_pane_with_n_before_lines(top_row_offset: u16, n: usize, height: u16) -> Grid {
+/// Line 0 is "x" (one unwrapped display line) with `n` `Before(0)` virtual
+/// display lines stacked above it, viewed through a viewport `height` rows
+/// tall.
+fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid {
     let rope = ropey::Rope::from_str("x\ny\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(10, height);
-    pane.viewport.top_row_offset = top_row_offset;
+    pane.viewport.top_slot = top_slot;
     pane.providers
         .add_decoration_source(Box::new(MultiBeforeLine(n)));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, height);
-    let buf = render_test_pane(
+    render_test_pane(
         &pane,
         &rope,
         &theme,
         pane_rect,
         WrapMode::Soft { width: 10 },
         crate::types::ScopeId(0),
-    );
-    buf
+    )
 }
 
 #[test]
-fn virtual_before_block_taller_than_viewport_exposes_every_row() {
-    // Line 0's block is [1, 2, 3, x] — 4 rows — in a viewport only 2 rows
-    // tall, so the block can never be shown in full. Every row must still be
-    // individually reachable: walking `top_row_offset` through the block one
-    // unit at a time surfaces each row at the top of the viewport in turn,
+fn virtual_before_block_taller_than_viewport_exposes_every_display_line() {
+    // Line 0's block is [1, 2, 3, x] — 4 display lines — in a viewport only
+    // 2 rows tall, so the block can never be shown in full. Every display
+    // line must still be individually reachable: walking `top_slot` through
+    // the block one unit at a time surfaces each display line at the top of
+    // the viewport in turn,
     // with none permanently stuck outside it.
     let expected = ["1", "2", "3", "x"];
     for (offset, expect) in expected.iter().enumerate() {
@@ -448,7 +451,7 @@ fn virtual_before_block_taller_than_viewport_exposes_every_row() {
         assert_eq!(
             cell_symbol(&buf, 0, 0),
             *expect,
-            "offset {offset}: block row {offset} must be the top visible row"
+            "offset {offset}: block display line {offset} must be the top visible row"
         );
     }
 }
@@ -481,7 +484,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
     }
 }
 
-/// Renders the `RowKind::Virtual` provider_id as gutter text, so the test
+/// Renders the `DisplayLineKind::Virtual` provider_id as gutter text, so the test
 /// can observe what actually reached `compose` after collection.
 struct ProviderIdReportingGutter;
 
@@ -489,13 +492,13 @@ impl crate::providers::GutterColumn for ProviderIdReportingGutter {
     fn width(&self, _: RopeyLine) -> u8 {
         5
     }
-    fn render_row_cells(
+    fn render_cells(
         &self,
-        kind: RowKind,
-        _: &crate::providers::GutterRowCtx,
+        kind: DisplayLineKind,
+        _: &crate::providers::GutterCtx,
     ) -> Vec<crate::providers::GutterCell> {
         let cell = match kind {
-            RowKind::Virtual { provider_id, .. } => crate::providers::GutterCell {
+            DisplayLineKind::Virtual { provider_id, .. } => crate::providers::GutterCell {
                 content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                     provider_id.to_string(),
                 )),
@@ -548,18 +551,19 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     );
 }
 
-// ── CJK line-row estimate feeds the viewport ──────────────────────────
+// ── CJK display-line estimate feeds the viewport ───────────────────────
 
 #[test]
 fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     // Two lines of 20 '中' chars each (true width 40 per line). At
-    // WrapMode::Soft { width: 20 } each line wraps into two content rows of
-    // exactly 20 columns — and since the second row exactly fills the wrap
-    // width, the trailing '\n's own sentinel wraps onto a row of its own
-    // rather than landing past the pane's edge. Line 0 therefore supplies 3
-    // rows (content, content, blank sentinel) before line 1 begins — a
-    // 4-row viewport shows those three plus line 1's own first row, with
-    // nothing left over for tilde fillers.
+    // WrapMode::Soft { width: 20 } each line wraps into two content display
+    // lines of exactly 20 columns — and since the second display line
+    // exactly fills the wrap width, the trailing '\n's own sentinel wraps
+    // onto a display line of its own rather than landing past the pane's
+    // edge. Line 0 therefore supplies 3 display lines (content, content,
+    // blank sentinel) before line 1 begins — a 4-row viewport shows those
+    // three plus line 1's own first display line, with nothing left over
+    // for tilde fillers.
     let line: String = "中".repeat(20);
     let rope = ropey::Rope::from_str(&format!("{line}\n{line}\n"));
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
@@ -593,8 +597,8 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
 fn scrolled_pane_renders_from_top_line_onward() {
     // "ab\ncd\n": scrolling to top_line=1 must show "cd" at screen row 0.
     // The fused pipeline's scroll mechanism in `WrapMode::None` is
-    // `viewport.top_line`, not `top_row_offset` (which only sub-scrolls
-    // within a wrapped `top_line`'s own rows).
+    // `viewport.top_line`, not `top_slot` (which only sub-scrolls
+    // within a wrapped `top_line`'s own display lines).
     let rope = ropey::Rope::from_str("ab\ncd\n");
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
@@ -619,23 +623,24 @@ fn scrolled_pane_renders_from_top_line_onward() {
 }
 
 #[test]
-fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
-    // Filler rows past EOF must still get their gutter column consulted
-    // — before the fix, only compose_row's gutter loop ran for real
-    // rows; render_tilde_fillers never called it, so a filler row's
-    // gutter area was silently blank regardless of what a custom
-    // GutterColumn would render for RowKind::Filler.
+fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
+    // Filler display lines past EOF must still get their gutter column
+    // consulted — before the fix, only compose_display_line's gutter loop
+    // ran for real display lines; render_tilde_fillers never called it, so a
+    // filler display line's gutter area was silently blank regardless of
+    // what a custom
+    // GutterColumn would render for DisplayLineKind::Filler.
     struct MarkerGutter;
     impl crate::providers::GutterColumn for MarkerGutter {
         fn width(&self, _: RopeyLine) -> u8 {
             3
         }
-        fn render_row_cells(
+        fn render_cells(
             &self,
-            kind: RowKind,
-            _: &crate::providers::GutterRowCtx,
+            kind: DisplayLineKind,
+            _: &crate::providers::GutterCtx,
         ) -> Vec<crate::providers::GutterCell> {
-            let text = if matches!(kind, RowKind::Filler) {
+            let text = if matches!(kind, DisplayLineKind::Filler) {
                 "~g"
             } else {
                 "ln"
@@ -657,7 +662,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real row + 2 filler rows
+    pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real display line + 2 filler display lines
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
 
     let mut registry = crate::theme::ScopeRegistry::new();
@@ -674,8 +679,9 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
         default_gutter_scope,
     );
 
-    // Row 1 is a Filler row (past the single real line) — its gutter
-    // must show the column's own Filler rendering ("~g"), not blank.
+    // Display line 1 is a Filler display line (past the single real line) —
+    // its gutter must show the column's own Filler rendering ("~g"), not
+    // blank.
     assert_eq!(cell_symbol(&buf, 0, 1), "~");
     assert_eq!(cell_symbol(&buf, 1, 1), "g");
 }
@@ -1269,7 +1275,7 @@ fn split_leaf_thrice_gives_equal_thirds() {
 }
 
 #[test]
-fn split_leaf_counts_perpendicular_subtree_as_one_slot() {
+fn split_leaf_counts_perpendicular_subtree_as_one_share() {
     let [a, b, c, d] = pane_ids();
     let mut tree = LayoutTree::Split {
         direction: Direction::Horizontal,

@@ -35,7 +35,7 @@ use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 /// keyboard press (no count typed) or for a Steel `call!` that explicitly asked
 /// for the same treatment (a script-side count of `0`, decoded by
 /// `parse_count_extend`). Visual-move commands (`move-down`/`move-up`) read
-/// `explicit_count == false` as "move by visual row" rather than buffer line.
+/// `explicit_count == false` as "move by visual line" rather than buffer line.
 /// Save/restore (not a plain set) so a Steel command's body dispatching its own
 /// native command via `call!` — which nests inside this same function while the
 /// outer call's stack frame is still live — gets its own value instead of

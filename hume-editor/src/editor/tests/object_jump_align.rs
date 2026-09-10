@@ -39,7 +39,7 @@ fn goto_next_paragraph_centers_view_by_default() {
         ed.viewport().top_line,
         hume_rope::line::ContentLine::new(18)
     );
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn object_jump_align_top_setting() {
         ed.viewport().top_line,
         hume_rope::line::ContentLine::new(30)
     );
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 
     // The next frame's per-pane scroll (`scrolloff`) pulls the cursor back
     // down from row 0 to row `scrolloff`, exactly as `z k` already settles
@@ -198,7 +198,7 @@ fn goto_next_function_centers_view_by_default() {
     );
     // height=24, target=height/2=12 → top_line = 21 - 12 = 9.
     assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(9));
-    assert_eq!(ed.viewport().top_row_offset, 0);
+    assert_eq!(ed.viewport().top_slot, 0);
 }
 
 #[test]

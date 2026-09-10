@@ -74,22 +74,22 @@ impl Editor {
         // `content_pos` runs below — nothing between steps 6 and 10 moves the
         // cursor or the viewport, so the two callers anchored at the live
         // cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
-        // re-walking the row list (a full per-line format in wrap mode).
+        // re-walking the display-line list (a full per-line format in wrap mode).
         let (content_x, row) = match ctx.cursor_content_pos {
             Some(cell) if anchor_char == self.focused_cursor_char() => cell,
             _ => {
                 // Every read of `self` the map needs resolves before the pane
                 // is borrowed mutably; the viewport comes back out of
-                // `pane_row_map`'s own split rather than being held across it.
+                // `pane_display_lines`'s own split rather than being held across it.
                 let bid = self.focused_buffer_id();
                 let key = self.state.format_key(&self.view.panes[focused]);
                 let Editor { state, view, .. } = self;
-                let (mut rm, vp) = super::commands::pane_row_map(
+                let (mut dlm, vp) = super::commands::pane_display_lines(
                     state.buffers.get(bid),
                     &mut view.panes[focused],
                     key,
                 );
-                super::cursor::content_pos(vp, &mut rm, anchor_char)?
+                super::cursor::content_pos(vp, &mut dlm, anchor_char)?
             }
         };
         let anchor = super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
@@ -266,7 +266,7 @@ impl Editor {
         }
 
         // Hoisted out of the `and_then` below: resolving the anchor takes
-        // `&mut self` (it may walk the pane's row map), which cannot overlap
+        // `&mut self` (it may walk the pane's display-line map), which cannot overlap
         // the `&self.state.config.menu` that closure's receiver holds.
         let anchor_char = self.focused_cursor_char();
         let bounds = self.popup_anchor_and_bounds(ctx, anchor_char);
@@ -316,7 +316,7 @@ impl Editor {
         // began; it isn't remapped through edits, so an out-of-band shrink
         // (LSP applyEdit, file reload) or a pane switch since can leave it
         // pointing past the focused buffer's current end, or at a buffer
-        // that isn't even the one on screen. `RowMap::locate` (reached via
+        // that isn't even the one on screen. `DisplayLineMap::locate` (reached via
         // `popup_anchor_and_bounds`) has no way to tell a stale offset from
         // a live one, so check both here.
         //
