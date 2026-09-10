@@ -407,7 +407,7 @@ pub fn format_buffer_line(
 
     // Running absolute char position within the buffer. Populated per grapheme
     // so the style stage can resolve selection positions without rope lookups.
-    let mut char_pos = rope.line_to_char(line_idx.index());
+    let mut char_pos = hume_rope::lines::line_start_char(rope, line_idx).index();
 
     // Set when the scan stopped early — either `h_window` reached its right
     // edge, or `bound` was satisfied. Everything past that point — the EOL

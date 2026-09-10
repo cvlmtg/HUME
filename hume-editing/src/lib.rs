@@ -25,6 +25,8 @@
 //! [`grapheme::prev_grapheme_boundary`] for all position arithmetic in motion
 //! or selection code.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 pub mod changeset;
 pub mod diff;
 pub mod error;

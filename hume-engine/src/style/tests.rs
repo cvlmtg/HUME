@@ -51,7 +51,7 @@ fn apply_styles(
             let content_line = ContentLine::new(line_idx.index());
             tint = rebuild_line_decorations(content_line, None, &ProviderSet::new(), rope, scratch);
         }
-        let line_start_char = co(rope.line_to_char(line_idx.index()));
+        let line_start_char = co(hume_rope::lines::line_start_char(rope, line_idx).index());
         let line_end_char = hume_rope::lines::next_line_start(rope, line_idx);
         let is_head_line = scratch
             .primary_idx_in_sorted

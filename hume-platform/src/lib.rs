@@ -20,6 +20,8 @@
 //! hidden behind private sub-modules; every public function has a uniform
 //! signature across platforms.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 #[cfg(unix)]
 mod unix;
 

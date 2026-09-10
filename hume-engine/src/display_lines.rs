@@ -670,9 +670,8 @@ impl<'a> DisplayLineMap<'a> {
             // its display lines.
             return self.locate(char_offset).0;
         }
-        let line = self.content_line_of(hume_rope::line::RopeyLine::new(
-            self.rope.char_to_line(char_offset.index()),
-        ));
+        let line =
+            self.content_line_of(hume_rope::lines::char_to_ropey_line(self.rope, char_offset));
         DisplayLinePos::new(line, self.block(line).before)
     }
 
@@ -712,7 +711,7 @@ impl<'a> DisplayLineMap<'a> {
         target: DisplayColTarget,
     ) -> usize {
         let entry = self.store.entry(idx);
-        let line_start = self.rope.line_to_char(entry.line.index());
+        let line_start = hume_rope::lines::line_start_char(self.rope, entry.line.into()).index();
         let format = &entry.format;
         let Some(dline) = format.display_lines.get(sub) else {
             return line_start;

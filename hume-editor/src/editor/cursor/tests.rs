@@ -228,7 +228,8 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line() {
     let v = vp(0, 80, 10);
     let wrap = WrapMode::Soft { width: 80 };
     // Cursor at char 2 = start of line 1 ('b').
-    let cursor_char = co(rope.line_to_char(1));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(1)).index());
 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
@@ -277,7 +278,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
-        Some(co(rope.line_to_char(1))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(1)
+        )
+        .index())),
         "a click on the virtual row clamps to line 1's own first char"
     );
 
@@ -285,7 +290,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
         screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
-        Some(co(rope.line_to_char(1))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(1)
+        )
+        .index())),
         "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
     );
 
@@ -293,7 +302,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line() {
         screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
-        Some(co(rope.line_to_char(2))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(2)
+        )
+        .index())),
         "row 3 must resolve to line 2, correctly accounting for the stolen row"
     );
 }
@@ -306,7 +319,8 @@ fn content_pos_accounts_for_a_virtual_before_line_on_the_cursors_line_no_wrap() 
     let rope = Rope::from_str("a\nb\nc\n");
     let v = vp(0, 80, 10);
     let wrap = WrapMode::None;
-    let cursor_char = co(rope.line_to_char(1));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(1)).index());
 
     let bare = no_providers();
     let mut s = PaneLineStore::new();
@@ -344,7 +358,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
         screen_to_char_offset(0, 1, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_virtual_row,
-        Some(co(rope.line_to_char(1))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(1)
+        )
+        .index())),
         "a click on the virtual row clamps to line 1's own first char"
     );
 
@@ -352,7 +370,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
         screen_to_char_offset(0, 2, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_pushed_down_content,
-        Some(co(rope.line_to_char(1))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(1)
+        )
+        .index())),
         "row 2 must resolve to line 1 (pushed down by the virtual row), not line 2"
     );
 
@@ -360,7 +382,11 @@ fn screen_to_char_offset_accounts_for_a_stolen_virtual_display_line_no_wrap() {
         screen_to_char_offset(0, 3, 0, &v, &mut map(&rope, wrap, &providers, 80, &mut s));
     assert_eq!(
         on_next_line,
-        Some(co(rope.line_to_char(2))),
+        Some(co(hume_rope::lines::line_start_char(
+            &rope,
+            hume_rope::line::RopeyLine::new(2)
+        )
+        .index())),
         "row 3 must resolve to line 2, correctly accounting for the stolen row"
     );
 }
@@ -404,7 +430,8 @@ fn content_pos_accounts_for_before_line_0() {
 #[test]
 fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let rope = Rope::from_str("a\nb\n");
-    let cursor_char = co(rope.line_to_char(1)); // start of the last real line
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(1)).index()); // start of the last real line
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
@@ -489,7 +516,8 @@ fn content_pos_cursor_below_viewport_returns_none() {
     let v = vp(0, 80, 2); // only rows for lines 0-1 are visible
     let providers = no_providers();
     let mut s = PaneLineStore::new();
-    let cursor_char = co(rope.line_to_char(5)); // 'f' — 5 rows below the top
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&rope, hume_rope::line::RopeyLine::new(5)).index()); // 'f' — 5 rows below the top
 
     let pos = content_pos(
         &v,

@@ -1116,7 +1116,7 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
             dc(0),
             DisplayColTarget::Cell
         ),
-        co(rope.line_to_char(1)),
+        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index()),
         "the Before display line resolves to line 1's first content display line"
     );
     assert_eq!(
@@ -1125,7 +1125,7 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
             dc(0),
             DisplayColTarget::Cell
         ),
-        co(rope.line_to_char(2)),
+        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(2)).index()),
         "the After display line resolves to line 2's last content display line"
     );
 }
@@ -1704,7 +1704,7 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
             ldc(5),
             DisplayColTarget::NearestContent
         ),
-        co(rope.line_to_char(1) + 1),
+        co(hume_rope::lines::line_start_char(&rope, RopeyLine::new(1)).index() + 1),
         "clamps to 'b', not the '\\n'"
     );
 }

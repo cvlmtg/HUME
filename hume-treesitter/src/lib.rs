@@ -7,6 +7,8 @@
 //! live `Editor`) stays in `hume-editor`; this crate only knows about
 //! buffers, ropes, and grammars.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 mod edits;
 pub mod grammar;
 pub mod highlight;

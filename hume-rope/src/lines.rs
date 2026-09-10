@@ -1,3 +1,10 @@
+// This module is `clippy.toml`'s named exception for `ropey::Rope`'s own
+// `len_lines`/`line_to_char`/`char_to_line` — every raw call site outside
+// this file routes through [`ropey_line_count`]/[`line_start_char`]/
+// [`char_to_ropey_line`], or through one of this file's own line/column
+// functions that resolve a line's start or count the same way.
+#![allow(clippy::disallowed_methods)]
+
 use ropey::{Rope, RopeSlice};
 
 use crate::column::{ByteCol, CharCol, GraphemeCol};
@@ -21,8 +28,20 @@ pub fn ends_with_newline(rope: &Rope) -> bool {
 /// this is that raw count, phantom line included. Valid on any rope;
 /// always `>= 1` (ropey defines an empty rope as having one, empty, line).
 pub fn ropey_line_count(rope: &Rope) -> RopeyLineCount {
-    #[allow(clippy::disallowed_methods)] // the sanctioned wrapper — see clippy.toml
     RopeyLineCount::new(rope.len_lines())
+}
+
+/// Char offset of the first char on `line` — `ropey::Rope::line_to_char`,
+/// typed. The ropey-domain counterpart to [`content_line_count`]'s own
+/// typing: valid for `line` up to and including the phantom trailing line
+/// (its "start" is `rope.len_chars()`, one past every real char).
+pub fn line_start_char(rope: &Rope, line: RopeyLine) -> CharOffset {
+    CharOffset::new(rope.line_to_char(line.index()))
+}
+
+/// The ropey line `char_pos` falls on — `ropey::Rope::char_to_line`, typed.
+pub fn char_to_ropey_line(rope: &Rope, char_pos: CharOffset) -> RopeyLine {
+    RopeyLine::new(rope.char_to_line(char_pos.index()))
 }
 
 /// Index of the last ropey line — the phantom trailing line, under the

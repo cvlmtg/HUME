@@ -173,7 +173,8 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     let mut v = ViewportState::new(3, 8);
     v.top_line = hume_rope::line::ContentLine::new(3);
     v.top_slot = 0;
-    let cursor_char = co(r.line_to_char(3));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
@@ -189,7 +190,8 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let mut v = ViewportState::new(3, 8);
     v.top_line = hume_rope::line::ContentLine::new(0);
     v.top_slot = 0;
-    let cursor_char = co(r.line_to_char(7));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(7)).index());
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
@@ -212,7 +214,8 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
     // 50 lines, no wrap, height=24, scrolloff=3. Cursor on line 25.
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char = co(r.line_to_char(25));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
     let providers = no_providers();
 
     // 1) view-top: target_display_line = 0 → top_line = cursor_line.
@@ -249,7 +252,8 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
     // height=24, scrolloff=3. Cursor on line 25, target = height-1 = 23.
     let r = rope(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
-    let cursor_char = co(r.line_to_char(25));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
     let providers = no_providers();
 
     let mut s = PaneLineStore::new();
@@ -300,7 +304,8 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_display_line() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(2);
-    let cursor_char = co(r.line_to_char(3));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
@@ -325,7 +330,8 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(2);
-    let cursor_char = co(r.line_to_char(3));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(3)).index());
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
@@ -362,7 +368,8 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
         VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
         3,
     )));
-    let cursor_char = co(r.line_to_char(2));
+    let cursor_char =
+        co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(2)).index());
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         // Height 20 (not 10): `ensure_cursor_visible` caps the margin at
@@ -530,7 +537,8 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
         for height in [1u16, 2, 5, 8] {
             for top in [0usize, 2, 5, 9] {
                 for line in hume_rope::lines::content_lines(&r) {
-                    let cursor_char = co(r.line_to_char(line.index()));
+                    let cursor_char =
+                        co(hume_rope::lines::line_start_char(&r, line.into()).index());
                     let mut v = viewport(top, height, 80);
 
                     let mut s = PaneLineStore::new();

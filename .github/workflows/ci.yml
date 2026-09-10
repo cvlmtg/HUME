@@ -53,6 +53,20 @@ jobs:
 
       - run: cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
 
+  # Same reasoning as `clippy` above: platform-independent, so it runs once.
+  # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
+  # actually evaluates those links, since the attribute alone is inert
+  # without a `cargo doc` run to check it against.
+  doc:
+    name: Doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo doc --workspace --no-deps
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

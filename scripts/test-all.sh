@@ -22,6 +22,11 @@ bash scripts/fetch-test-grammars.sh
 # separate decision, not a side effect of this one.
 cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
 
+# Every crate root denies `rustdoc::broken_intra_doc_links` — this is what
+# actually evaluates those links, since the attribute alone is inert without
+# a `cargo doc` run to check it against.
+cargo doc --workspace --no-deps
+
 cargo test --all-targets
 # --all-targets excludes doctests — run them separately so a broken example
 # doesn't rot unnoticed.

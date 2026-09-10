@@ -28,11 +28,16 @@ disallowed-methods = [
     # Line counts and ranges go through `hume-rope`'s domain-typed
     # `RopeyLine`/`ContentLine`/`RopeyLineCount`/`ContentLineCount`
     # (`hume-rope/src/line.rs`) — see CLAUDE.md's "Line counts and ranges".
-    # Those types can't stop a raw `Rope::len_lines()` call from reaching a
-    # bare `usize`, so the ban lives here instead; `hume-rope/src/lines.rs`
-    # carries the sanctioned wrapper's `#[allow(clippy::disallowed_methods)]`,
+    # Those types can't stop a raw `Rope::len_lines()`/`line_to_char()`/
+    # `char_to_line()` call from reaching a bare `usize`, so the ban lives
+    # here instead; `hume-rope/src/lines.rs` carries a file-level
+    # `#[allow(clippy::disallowed_methods)]` for its own sanctioned wrappers
+    # (`ropey_line_count`, `line_start_char`, `char_to_ropey_line`, and every
+    # other function in that file resolving a line's start the same way),
     # and `hume-rope/src/lines/tests.rs` carries a second for its independent
-    # oracle (pinning ropey's own `len_lines()`, not our wrapper).
+    # oracle (pinning ropey's own methods, not our wrappers).
     "ropey::Rope::len_lines",
     "ropey::RopeSlice::len_lines",
+    "ropey::Rope::line_to_char",
+    "ropey::Rope::char_to_line",
 ]

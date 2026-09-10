@@ -243,7 +243,7 @@ fn leading_whitespace_end_whitespace_only_line() {
     // "   \n" — whole line is whitespace; end is the line's exclusive end
     // (the '\n', offset 3), not the buffer end.
     let buf = rope("   \n");
-    let line_start = buf.line_to_char(0);
+    let line_start = line_start_char(&buf, RopeyLine::new(0)).index();
     assert_eq!(
         leading_whitespace_end(&buf, ContentLine::new(0)),
         co(line_start + 3)
@@ -255,7 +255,7 @@ fn leading_whitespace_end_empty_line_equals_line_start() {
     // "a\n\nb\n" — line 1 is empty ("\n" only); end equals line_start (no
     // whitespace to skip, not line_start + 1).
     let buf = rope("a\n\nb\n");
-    let line_start = buf.line_to_char(1);
+    let line_start = line_start_char(&buf, RopeyLine::new(1)).index();
     assert_eq!(
         leading_whitespace_end(&buf, ContentLine::new(1)),
         co(line_start)
@@ -717,8 +717,8 @@ fn line_segments_yields_one_triple_per_line_covered() {
     // "abc\ndef\nghi\n" — a range spanning all of line 0's "abc" through
     // line 2's "gh" covers content on three lines.
     let buf = rope("abc\ndef\nghi\n");
-    let start = co(buf.line_to_char(0));
-    let end = co(buf.line_to_char(2) + 2); // through "gh" on line 2
+    let start = line_start_char(&buf, RopeyLine::new(0));
+    let end = co(line_start_char(&buf, RopeyLine::new(2)).index() + 2); // through "gh" on line 2
     let segs: Vec<_> = line_segments(&buf, start, end)
         .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
@@ -734,8 +734,8 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
     // (3, 3) triple for line 0 would sort its end before its own start once
     // downstream flattening builds start/end events from it.
     let buf = rope("abc\ndef\n");
-    let start = co(buf.line_to_char(0) + 3); // line 0's own '\n'
-    let end = co(buf.line_to_char(1) + 2); // through "de" on line 1
+    let start = co(line_start_char(&buf, RopeyLine::new(0)).index() + 3); // line 0's own '\n'
+    let end = co(line_start_char(&buf, RopeyLine::new(1)).index() + 2); // through "de" on line 1
     let segs: Vec<_> = line_segments(&buf, start, end)
         .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();

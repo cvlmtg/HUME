@@ -375,7 +375,11 @@ fn set_cursor(ed: &mut Editor, head: usize) {
 /// Move the focused pane's primary cursor to the start of buffer line `line`.
 /// Avoids depending on a specific motion command.
 fn seek_to_line(ed: &mut Editor, line: usize) {
-    let head = ed.doc().text().rope().line_to_char(line);
+    let head = hume_rope::lines::line_start_char(
+        ed.doc().text().rope(),
+        hume_rope::line::RopeyLine::new(line),
+    )
+    .index();
     set_cursor(ed, head);
 }
 

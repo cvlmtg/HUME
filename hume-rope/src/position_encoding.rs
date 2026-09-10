@@ -45,11 +45,11 @@ pub struct WirePos {
 /// `len_chars()`) — mirrors [`wire_to_char`]'s clamp-don't-error convention.
 pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> (usize, usize) {
     let char_idx = char_idx.index().min(text.len_chars());
-    let line = text.char_to_line(char_idx);
+    let line = crate::lines::char_to_ropey_line(text, CharOffset::new(char_idx)).index();
     let character = match enc {
         PositionEncoding::Utf8 => text.char_to_byte(char_idx) - text.line_to_byte(line),
         PositionEncoding::Utf16 => {
-            let line_start = text.line_to_char(line);
+            let line_start = crate::lines::line_start_char(text, RopeyLine::new(line)).index();
             text.char_to_utf16_cu(char_idx) - text.char_to_utf16_cu(line_start)
         }
     };
@@ -103,7 +103,7 @@ pub fn wire_to_line_char_col(
     enc: PositionEncoding,
 ) -> (RopeyLine, CharCol) {
     let line = RopeyLine::clamped(text, pos.line);
-    let line_start = text.line_to_char(line.index());
+    let line_start = crate::lines::line_start_char(text, line).index();
     let content = text.slice(line_start..line_terminator_start(text, line).index());
     (
         line,
@@ -120,9 +120,9 @@ pub fn wire_to_line_char_col(
 /// wants that function directly, not this one.
 pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
     let (line, char_col) = wire_to_line_char_col(text, pos, enc);
-    // `line_to_char(line) + char_col`: a line-start offset plus a validated
-    // in-line column — not a raw stepping hazard.
-    CharOffset::new(text.line_to_char(line.index()) + char_col.index())
+    // `line_start + char_col`: a line-start offset plus a validated in-line
+    // column — not a raw stepping hazard.
+    CharOffset::new(crate::lines::line_start_char(text, line).index() + char_col.index())
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,

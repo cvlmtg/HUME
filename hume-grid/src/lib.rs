@@ -32,6 +32,8 @@
 //! with `==` and still never emit half a glyph. See `Grid::set_glyph`
 //! (`pub(crate)` — reached from outside this crate only through [`Canvas`]).
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 pub mod box_glyphs;
 mod canvas;
 mod cell;

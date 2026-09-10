@@ -37,6 +37,8 @@
 //! - `builtins/`: `set-option!`, `bind-key!`, `define-command!`, multi-buffer ops,
 //!   `(configure-statusline! …)`, `(hume/yield!)` step-budget interruption.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 // ── Public submodules ─────────────────────────────────────────────────────────
 pub mod attribution;
 pub(crate) mod builtins;

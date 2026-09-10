@@ -44,7 +44,8 @@ fn ls_cursor_on_current_line() {
 
     // After :ls the [buffers] view is focused; cursor position is in pane_state.
     let cursor_char = ed.current_selections().primary().head();
-    let cursor_line = ed.doc().text().rope().char_to_line(cursor_char.index());
+    let cursor_line =
+        hume_rope::lines::char_to_ropey_line(ed.doc().text().rope(), cursor_char).index();
     let content = ed.doc().text().rope().to_string();
     let p2_name = p2.file_name().unwrap().to_str().unwrap();
     // Line 0 is the header; we need the 0-indexed line that contains p2's name.

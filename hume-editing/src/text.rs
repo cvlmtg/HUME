@@ -288,7 +288,7 @@ impl BufferText {
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()`.
     pub fn line_to_char(&self, line_idx: hume_rope::line::RopeyLine) -> CharOffset {
-        CharOffset::new(self.rope.line_to_char(line_idx.index()))
+        hume_rope::lines::line_start_char(&self.rope, line_idx)
     }
 
     /// Returns the 0-based line number that contains char offset `char_idx`,
@@ -302,15 +302,17 @@ impl BufferText {
     /// probing one past a char offset) wants [`BufferText::ropey_char_to_line`]
     /// instead.
     pub fn char_to_line(&self, char_idx: CharOffset) -> hume_rope::line::ContentLine {
-        let char_idx = char_idx.index();
         debug_assert!(
-            char_idx < self.len_chars(),
-            "char_to_line: char_idx {char_idx} is not a legal cursor position \
+            char_idx.index() < self.len_chars(),
+            "char_to_line: char_idx {} is not a legal cursor position \
              (buffer has {} chars) — use ropey_char_to_line for a position that \
              may land on the phantom trailing line",
+            char_idx.index(),
             self.len_chars()
         );
-        hume_rope::line::ContentLine::new(self.rope.char_to_line(char_idx))
+        hume_rope::line::ContentLine::new(
+            hume_rope::lines::char_to_ropey_line(&self.rope, char_idx).index(),
+        )
     }
 
     /// Returns the 0-based ropey line that contains char offset `char_idx`,
@@ -323,7 +325,7 @@ impl BufferText {
     /// # Panics
     /// Panics if `char_idx > self.len_chars()`.
     pub fn ropey_char_to_line(&self, char_idx: CharOffset) -> hume_rope::line::RopeyLine {
-        hume_rope::line::RopeyLine::new(self.rope.char_to_line(char_idx.index()))
+        hume_rope::lines::char_to_ropey_line(&self.rope, char_idx)
     }
 
     /// Returns a slice of the buffer over the given char range.

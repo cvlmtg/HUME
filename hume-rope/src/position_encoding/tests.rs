@@ -236,7 +236,7 @@ fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
                 wire_to_line_char_col(&text, WirePos { line, character }, enc);
             assert_eq!(clamped_line.index(), line);
             assert_eq!(
-                co(text.line_to_char(clamped_line.index()) + char_col.index()),
+                co(crate::lines::line_start_char(&text, clamped_line).index() + char_col.index()),
                 wire_to_char(&text, WirePos { line, character }, enc)
             );
         }

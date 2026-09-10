@@ -509,7 +509,7 @@ pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Ro
     // it doesn't ask this function to repair that case, so this mints the
     // line as-is rather than validating it against `rope`'s own invariant
     // (which a bare `ropey::Rope` in a unit test may not even uphold).
-    ContentLine::new(rope.char_to_line(head_char.index()))
+    ContentLine::new(hume_rope::lines::char_to_ropey_line(rope, head_char).index())
 }
 
 // ---------------------------------------------------------------------------

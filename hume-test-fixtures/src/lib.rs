@@ -9,6 +9,8 @@
 //! upstream grammar repo is a monorepo — callers never need to parse
 //! `grammar-sources.scm` for subpaths.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 use std::path::{Path, PathBuf};
 
 pub mod testing;

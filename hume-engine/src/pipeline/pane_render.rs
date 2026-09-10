@@ -280,7 +280,7 @@ impl LineStyle {
             pane_ctx.rope,
             style,
         );
-        let start_char = CharOffset::new(pane_ctx.rope.line_to_char(line_idx.index()));
+        let start_char = hume_rope::lines::line_start_char(pane_ctx.rope, line_idx.into());
         let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
         // Cursorline highlights only the primary cursor's line.
         let is_head_line = style
