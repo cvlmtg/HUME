@@ -6,7 +6,6 @@
 //! shared string/source-scanning helpers live in this module.
 
 mod absent_decode;
-mod dispatch_funnel;
 mod init_example;
 mod manual_options;
 mod plugin_manifest;

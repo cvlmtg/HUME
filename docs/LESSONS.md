@@ -7,7 +7,8 @@ Patterns that bit us; rules to prevent recurrence.
 Scan this at session start; read a lesson body only when its rule fires.
 
 - **L1** — A forked dispatch path needs a parity test on the whole bookkeeping
-  cluster, plus a single-funnel lint. Two identical `match cmd` arms is an SSOT bug.
+  cluster, plus a compiler-enforced single funnel. Two identical `match cmd`
+  arms is an SSOT bug.
 - **L2** — When A/B pairing can't be enforced by types, make B idempotent and
   self-triggering at the one place the state is read — never at N write sites.
   Merge B into A instead when A has no external callers.
@@ -40,6 +41,9 @@ Scan this at session start; read a lesson body only when its rule fires.
   research — re-derive it against the project's ownership rules.
 - **L14** — Check a crate's latest release before writing, and especially before
   *extending*, a workaround for its bug.
+- **L17** — Narrowing an enum's own visibility does not fence its variants'
+  payloads: variants inherit the enum's visibility and cannot be narrowed
+  individually. Fence a payload with a newtype, not a visibility change.
 
 ---
 
@@ -63,19 +67,21 @@ Cursor/text assertions passed.  Nine bookkeeping regressions shipped.
    `BookkeepingSnapshot`-style helper that captures the whole cluster).  Never
    assert only the primary effect.
 
-2. **Single-funnel lint** — all execution of native-command `fun` fields must
-   go through `run_native_body` in `commands/pipeline.rs` (wrapped by
-   `run_dispatch_pipeline` for bookkeeping).  The lint
-   `single_native_dispatch_funnel` in `lints/dispatch_funnel.rs` enforces this: any second
-   `match cmd` that binds a native variant's `fun` outside that file fails the
-   build.
+2. **Single funnel, compiler-enforced** — all execution of native-command
+   `fun` fields must go through `run_native_body` in `commands/pipeline.rs`
+   (wrapped by `run_dispatch_pipeline` for bookkeeping). Every native
+   variant's `fun` is wrapped in `NativeBody<F>` (`commands/pipeline.rs`), a
+   newtype whose field is private to that file — destructuring still binds
+   `fun` everywhere, but the value is opaque and uncallable outside
+   `run_native_body`. A text-scanning lint tried this first and was too weak
+   (see L17); the newtype closes the same gap the compiler, not a scan.
 
 3. **Duplicate-match smell** — two identical `match cmd { Motion { fun } | … }`
    arms in different files is a SSOT violation.  Collapse to one funnel.
 
-**Files:** `hume-editor/src/editor/commands/pipeline.rs` (funnel),
-`hume-editor/src/editor/lints/dispatch_funnel.rs` (lint), `hume-editor/src/editor/tests/mod.rs`
-(snapshot helper), `hume-editor/src/editor/tests/sync_dispatch.rs` (parity tests).
+**Files:** `hume-editor/src/editor/commands/pipeline.rs` (funnel + `NativeBody`),
+`hume-editor/src/editor/tests/mod.rs` (snapshot helper),
+`hume-editor/src/editor/tests/sync_dispatch.rs` (parity tests).
 
 ---
 
@@ -744,3 +750,53 @@ point of *extending* a workaround rather than merely writing one.
 **Files:** `hume-platform/src/unix.rs`, `hume-platform/src/lib.rs`,
 `hume-editor/src/lib.rs`, `hume-platform/Cargo.toml` (and the other three
 crates' `termina` deps).
+
+---
+
+## L17 — A visibility narrowing was mistaken for closing an enforcement gap it didn't touch (2026-09-10)
+
+**Root cause:** L1's `single_native_dispatch_funnel` lint (a line-based grep
+for `Motion { fun` and its three siblings outside `commands/pipeline.rs`) was
+deleted twice, on two different justifications. The first replaced it with
+`NativeBody<F>`, a newtype wrapping each native variant's body with a field
+private to `pipeline.rs` — a real compiler-enforced fence, but on a branch
+that was later abandoned and never reached `main`. The second, on `main`,
+narrowed `MappableCommand` (and friends) from `pub(crate)` to
+`pub(in crate::editor)` and deleted the lint on the claim that the narrowing
+"closes off every module that was previously exposed." It doesn't: enum
+variants inherit their enum's visibility and cannot be narrowed individually,
+so every one of the ~279 files already under `crate::editor` could still
+write `MappableCommand::Motion { fun, .. }` and call `fun` directly, skipping
+`run_dispatch_pipeline`'s entire bookkeeping cluster — the exact regression
+L1 exists to catch. The enforcement delta from the visibility change, checked
+against the pre-change state, was zero: `editor/mod.rs` already declared
+`mod registry;` private, so the type was already unnameable from outside
+`crate::editor` before the narrowing.
+
+**Concrete instance:** `45f07532` (`NativeBody`, branch `old`, abandoned) →
+`7875cf1c` (visibility narrowing, `main`, wrongly framed as replacing the
+same lint) → `f6686a3d` (lint restored, correctly, but without noticing that
+a real fence for the same problem already existed on the abandoned branch) →
+this lesson (`NativeBody` finally ported to `main`, lint deleted for good).
+Three deletions/restorations of the same guard because each session re-judged
+the trade-off without a durable record of what had already been tried and why
+it did or didn't work.
+
+**Prevention rule:** When a scanning-style lint (L1, and the ones
+`docs/LESSONS.md`'s siblings-in-spirit replaced: line-count, grapheme-stepping,
+column-naming, statusline-writes, pane-focus, text-writer) is proposed for
+deletion, the replacement must be checked against what the lint actually
+caught, not against what the refactor intended to catch. A visibility change
+enforces reachability of a *type name*; it cannot enforce anything about a
+value already reachable through a variant already in scope. Enum variant
+payloads need a newtype with a private field (the pattern already used for
+`CharOffset`, `RopeyLine`/`ContentLine`, the column types, `Focus`,
+`ResyncKey`) — never a visibility annotation on the enum itself. When a lint
+is deleted in favor of a type-level fence, verify the fence with the lint's
+own fail oracle *and* against a surface the lint never scanned (its `tests/`
+blind spot, in this case) — the delta between the two is exactly what the
+newtype has to prove it closes.
+
+**Files:** `hume-editor/src/editor/commands/pipeline.rs` (`NativeBody`),
+`hume-editor/src/editor/registry/command.rs` (`MappableCommand`'s `fun`
+fields).

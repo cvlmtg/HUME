@@ -24,7 +24,7 @@ macro_rules! motion {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             aligns_view: true,
         })
@@ -33,7 +33,7 @@ macro_rules! motion {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             aligns_view: false,
         })
@@ -43,7 +43,7 @@ macro_rules! motion {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Word($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
             jump: false,
             aligns_view: false,
         })
@@ -52,7 +52,7 @@ macro_rules! motion {
         $reg.register(MappableCommand::Motion {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             aligns_view: false,
         })
@@ -63,7 +63,7 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
         })
@@ -72,7 +72,7 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: true,
             selection_tracking: SelectionTracking::Establishes,
         })
@@ -83,7 +83,7 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Plain($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Plain($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Composes,
         })
@@ -94,7 +94,7 @@ macro_rules! selection {
         $reg.register(MappableCommand::Selection {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: SelectionBody::Word($fun),
+            fun: crate::editor::commands::NativeBody::new(SelectionBody::Word($fun)),
             jump: false,
             selection_tracking: SelectionTracking::Establishes,
         })
@@ -105,7 +105,7 @@ macro_rules! edit {
         $reg.register(MappableCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
+            fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: false,
         })
     };
@@ -113,7 +113,7 @@ macro_rules! edit {
         $reg.register(MappableCommand::Edit {
             name: Cow::Borrowed($name),
             doc: Cow::Borrowed($doc),
-            fun: $fun,
+            fun: crate::editor::commands::NativeBody::new($fun),
             repeatable: true,
         })
     };

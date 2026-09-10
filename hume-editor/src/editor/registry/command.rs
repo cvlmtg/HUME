@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use crate::editor::commands::NativeBody;
 use crate::editor::error::CommandError;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
@@ -211,22 +212,25 @@ pub(in crate::editor) enum StructuralBody {
 /// The keymap trie stores command *names*; the registry resolves names to
 /// `MappableCommand` values at dispatch time.
 ///
-/// `pub(in crate::editor)`, not `pub(crate)`: every native variant's `fun`
-/// must execute only through `commands::pipeline::run_native_body`, the one
-/// place that destructures a variant to call its function pointer — a second
-/// dispatch path would silently drop `run_dispatch_pipeline`'s bookkeeping
-/// (jump list, dot-repeat, paste session). `crate::editor` is the narrowest
-/// scope Rust's visibility can express here: `registry::command` (where this
-/// is defined) and `commands::pipeline` (the one legitimate caller) are
-/// sibling modules, so any restriction has to name their common ancestor.
-/// Matches [`StructuralBody::apply`]'s own visibility for the same reason.
+/// `pub(in crate::editor)`, not `pub(crate)`: ordinary minimum-reach
+/// visibility hygiene — every usage site already lives under `crate::editor`,
+/// same as [`StructuralBody::apply`]. It is not what stops a second dispatch
+/// path: enum variants inherit their enum's visibility and cannot be narrowed
+/// individually, so this alone would not stop any file under `crate::editor`
+/// from destructuring a native variant's `fun` and calling it directly,
+/// skipping `run_dispatch_pipeline`'s bookkeeping (jump list, dot-repeat,
+/// paste session). Every native variant's `fun` is wrapped in
+/// [`NativeBody`](crate::editor::commands::NativeBody) instead — its private
+/// field, readable only from `commands::pipeline::run_native_body`, is what
+/// actually closes that off.
 #[derive(Clone)]
 pub(in crate::editor) enum MappableCommand {
     /// Motion that repeats `count` times.
     ///
-    /// `fun` is a [`SelectionBody`] — `Plain(fn(&BufferText, SelectionSet,
-    /// usize, MotionMode) -> SelectionSet)` for almost every motion, `Word`
-    /// for the word family.
+    /// `fun` is a [`SelectionBody`] wrapped in
+    /// [`NativeBody`](crate::editor::commands::NativeBody) — `Plain(fn(&BufferText,
+    /// SelectionSet, usize, MotionMode) -> SelectionSet)` for almost every
+    /// motion, `Word` for the word family.
     ///
     /// Motions are always extendable. The `mode` parameter selects Move or Extend
     /// semantics at dispatch time — no separate extend-variant functions needed.
@@ -235,7 +239,7 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: SelectionBody,
+        fun: NativeBody<SelectionBody>,
         /// Whether this motion always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for goto commands.
         jump: bool,
@@ -255,7 +259,7 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: SelectionBody,
+        fun: NativeBody<SelectionBody>,
         /// Whether this command always records a jump list entry before executing,
         /// regardless of how far the cursor moves. Used for `select-all` (`%`).
         jump: bool,
@@ -277,7 +281,7 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
+        fun: NativeBody<fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet)>,
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
         /// for internal primitives like `delete-char-backward`.
@@ -299,7 +303,7 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: EditorCmdFn,
+        fun: NativeBody<EditorCmdFn>,
         /// Whether this command defers the paste-session commit.
         /// `true` only for ring-cycle commands (`[` / `]`).
         /// See [`CmdMeta::defers_paste_commit`] for the full rationale.

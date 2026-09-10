@@ -22,6 +22,34 @@ use crate::editor::syntax::ensure_syntax_current;
 use super::structural::object_spans;
 use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 
+// ── Native dispatch funnel ──────────────────────────────────────────────────
+
+/// Wraps a native `MappableCommand` variant's body (`SelectionBody`, the
+/// `Edit` fn pointer, or [`EditorCmdFn`](crate::editor::registry::EditorCmdFn))
+/// so that destructuring `MappableCommand::Motion { fun, .. }` (or any of its
+/// three siblings) anywhere outside this file yields an opaque value with no
+/// way to call it. `.0` is readable only here, where it's defined — the one
+/// place a native variant's body may actually run, wrapped by every
+/// post-dispatch bookkeeping step [`run_dispatch_pipeline`] composes around it
+/// (paste-session commit, jump-list update, dot-repeat recording). A second
+/// naked match on `fun` elsewhere would silently drop that whole cluster.
+///
+/// No public accessor by design: [`Self::new`] is the only part of this type
+/// that registration code outside `commands` (`registry/defaults/`) ever
+/// touches. This replaces the `single_native_dispatch_funnel` lint that used
+/// to grep for the destructuring pattern: a line-based scan misses a pattern
+/// `rustfmt` wraps across lines and skips `tests/` directories by
+/// construction, where a private field is enforced by the compiler
+/// everywhere, tests included.
+#[derive(Clone, Copy)]
+pub(in crate::editor) struct NativeBody<F>(F);
+
+impl<F> NativeBody<F> {
+    pub(in crate::editor) fn new(body: F) -> Self {
+        Self(body)
+    }
+}
+
 // ── Native command body execution ───────────────────────────────────────────
 
 /// Run the body of a native command (Motion/Selection/Edit/EditorCmd) with
@@ -57,7 +85,8 @@ pub(in crate::editor) fn run_native_body(
     let buf = focused_buffer_id(state, view);
     let focused = state.focused_pane_id;
     match cmd {
-        MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => match fun {
+        MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => match fun.0
+        {
             SelectionBody::Plain(fun) => {
                 doc_ops::apply_doc_motion(
                     &state.buffers,
@@ -117,11 +146,11 @@ pub(in crate::editor) fn run_native_body(
                 &mut state.panes.jumps,
                 focused,
                 buf,
-                fun,
+                fun.0,
             );
         }
         MappableCommand::EditorCmd { fun, .. } => {
-            if let Err(e) = fun(state, view, count, motion_mode) {
+            if let Err(e) = fun.0(state, view, count, motion_mode) {
                 // Reported at the error's own severity (e.g. search's "no
                 // match" is transient — statusline only; an I/O failure is
                 // logged) — see `CommandError::new` vs `::transient`. Every

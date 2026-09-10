@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use crate::editor::commands::NativeBody;
 use crate::editor::registry::{CommandRegistry, EditorCmdFn, MappableCommand, SelectionTracking};
 
 // Builder for EditorCmd registration. Each method sets one field (a bool,
@@ -75,7 +76,7 @@ impl EditorCmdBuilder {
         r.register(MappableCommand::EditorCmd {
             name: Cow::Borrowed(self.name),
             doc: Cow::Borrowed(self.doc),
-            fun: self.fun,
+            fun: NativeBody::new(self.fun),
             defers_paste_commit: self.defers_paste_commit,
             repeatable: self.repeatable,
             jump: self.jump,

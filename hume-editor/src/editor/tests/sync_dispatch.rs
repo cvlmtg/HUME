@@ -992,9 +992,10 @@ fn parity_jump_bookkeeping_keypress_vs_steel() {
 /// This test exercises the **Steel branch's own AFTER stages** (the hand-composed
 /// sequence in `mod.rs:dispatch`), which the other tests leave untouched.
 ///
-/// The `single_native_dispatch_funnel` lint only guards the body funnel; it
-/// cannot detect a stage added to one pipeline and forgotten in the other.
-/// Pinning the full cluster here means any such omission causes a divergence.
+/// `NativeBody` only guards the body funnel itself (calling a native `fun`
+/// outside `run_native_body`); it cannot detect a bookkeeping stage added to
+/// one pipeline and forgotten in the other. Pinning the full cluster here
+/// means any such omission causes a divergence.
 ///
 /// Fail oracle (dot-repeat): delete the `step_stamp_repeatable` call in the Steel
 ///   AFTER block of `Editor::dispatch` → `steel.last_repeatable` is `None` while

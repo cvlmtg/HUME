@@ -414,7 +414,7 @@ pub(in crate::editor) use pane::{fits_split, split_pane_onto};
 #[cfg(test)]
 pub(in crate::editor) use pane::open_pane;
 pub(in crate::editor) use pipeline::{
-    run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
+    NativeBody, run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
 };
 
 // DisplayLineMap-dependent commands live in visual_move.rs; re-export for the registry glob.

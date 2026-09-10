@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use crate::editor::commands::NativeBody;
 use crate::editor::registry::{
     CommandRegistry, MappableCommand, SelectionBody, SelectionTracking, StructuralBody,
 };
@@ -162,24 +163,24 @@ impl CommandRegistry {
             self.register(MappableCommand::Selection {
                 name: Cow::Borrowed(obj.inner),
                 doc: Cow::Borrowed(obj.inner_doc),
-                fun: SelectionBody::Structural(inner_body),
+                fun: NativeBody::new(SelectionBody::Structural(inner_body)),
                 jump: false,
                 selection_tracking: SelectionTracking::Establishes,
             });
             self.register(MappableCommand::Selection {
                 name: Cow::Borrowed(obj.around),
                 doc: Cow::Borrowed(obj.around_doc),
-                fun: SelectionBody::Structural(around_body),
+                fun: NativeBody::new(SelectionBody::Structural(around_body)),
                 jump: false,
                 selection_tracking: SelectionTracking::Establishes,
             });
             self.register(MappableCommand::Motion {
                 name: Cow::Borrowed(obj.next),
                 doc: Cow::Owned(format!("Select the next {}.", obj.noun)),
-                fun: SelectionBody::Structural(StructuralBody::Goto {
+                fun: NativeBody::new(SelectionBody::Structural(StructuralBody::Goto {
                     kind: obj.kind,
                     dir: Direction::Forward,
-                }),
+                })),
                 jump: true,
                 // Same forward-object-jump problem as `}` — see
                 // `CmdMeta::aligns_view`'s doc.
@@ -188,10 +189,10 @@ impl CommandRegistry {
             self.register(MappableCommand::Motion {
                 name: Cow::Borrowed(obj.prev),
                 doc: Cow::Owned(format!("Select the previous {}.", obj.noun)),
-                fun: SelectionBody::Structural(StructuralBody::Goto {
+                fun: NativeBody::new(SelectionBody::Structural(StructuralBody::Goto {
                     kind: obj.kind,
                     dir: Direction::Backward,
-                }),
+                })),
                 jump: true,
                 aligns_view: false,
             });
