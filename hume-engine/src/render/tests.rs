@@ -1655,6 +1655,23 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
 }
 
 #[test]
+fn write_cell_drops_a_wide_glyph_at_the_right_edge() {
+    // advance 2 at x=0 needs columns 0-1, but right_edge 1 only admits
+    // column 0 — dropped whole, the same rule `write_text_run` follows for
+    // a multi-cluster run (`write_cell` is what that method is built on).
+    let mut buf = make_test_buf(10, 1);
+    let style = ResolvedStyle::default();
+    let theme = Theme::default();
+    Canvas::new(&mut buf, theme.ui.invisible, None).write_cell(0, 0, "中", 2, style, 1);
+
+    assert_eq!(
+        buf[(0, 0)].text(),
+        " ",
+        "a cell that can't fit at all must write nothing"
+    );
+}
+
+#[test]
 fn write_text_run_claims_the_continuation_cell_of_a_wide_grapheme() {
     // A width-2 grapheme owns both its columns: the glyph goes in the first
     // and the second becomes its continuation, with nothing left over from
