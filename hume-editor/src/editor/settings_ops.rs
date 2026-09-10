@@ -17,7 +17,7 @@
 use hume_engine::pipeline::{BufferId, EngineView};
 
 use crate::editor::EditorState;
-use crate::editor::settings::THEME_KEY;
+use crate::editor::settings::{ResyncKey, THEME_KEY, resync_key};
 use crate::editor::theme;
 
 /// Write a global setting and resync every piece of derived state that
@@ -34,9 +34,8 @@ pub(in crate::editor) fn apply_global(
 
     crate::editor::settings::write_global(key, value, &mut state.settings)?;
 
-    if !resync_derived_state(state, view, key)
-        && let Some(prev) = prev_theme
-    {
+    let resynced = resync_key(key).is_none_or(|rk| resync_derived_state(state, view, rk));
+    if !resynced && let Some(prev) = prev_theme {
         let failed_theme = std::mem::replace(&mut state.settings.theme, prev);
         return Err(format!(
             "theme '{failed_theme}' failed to load — see :messages for details"
@@ -84,16 +83,16 @@ pub(crate) fn write_global_for_test(
 ///
 /// `state.settings = EditorSettings::default()` alone would leave
 /// `view.theme` still baked with the old theme: `theme`'s default is the
-/// empty string, and `resync_derived_state`'s `"theme"` arm deliberately
-/// no-ops on empty (nothing to load), so the view's theme is set directly
-/// to the same compiled-in default `Editor::open` uses instead of relying
-/// on that arm.
+/// empty string, and `resync_derived_state`'s `ResyncKey::theme` arm
+/// deliberately no-ops on empty (nothing to load), so the view's theme is
+/// set directly to the same compiled-in default `Editor::open` uses instead
+/// of relying on that arm.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::default();
     view.theme = crate::ui::theme::build_default_theme();
     for &key in crate::editor::settings::all_setting_keys() {
-        if crate::editor::settings::has_declared_resync(key) {
-            resync_derived_state(state, view, key);
+        if let Some(rk) = resync_key(key) {
+            resync_derived_state(state, view, rk);
         }
     }
 }
@@ -111,49 +110,38 @@ pub(in crate::editor) fn apply_buffer(
 }
 
 /// Resync derived state after a successful [`crate::editor::settings::write_global`]
-/// for `key`. Returns `false` if an effect failed (theme load only) — the
-/// caller rolls the setting back so a bad value never persists.
+/// for the key `rk` decodes. Returns `false` if an effect failed (theme load
+/// only) — the caller rolls the setting back so a bad value never persists.
 ///
-/// The fallthrough arm's `debug_assert!` is the cross-check against
-/// `settings.rs`'s `resync: true` declarations: a global key that declares a
-/// resync effect but has no matching arm here panics immediately in any
-/// debug build or test run, instead of the effect silently never firing.
-fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, key: &str) -> bool {
-    match key {
-        "history-capacity" => {
+/// Exhaustive over [`ResyncKey`] — see that type's own doc for why a new
+/// `resync: true` declaration with no arm here fails to compile instead of
+/// only tripping a runtime `debug_assert!`.
+fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: ResyncKey) -> bool {
+    match rk {
+        ResyncKey::history_capacity => {
             state.history.set_capacity(state.settings.history_capacity);
             true
         }
-        "undo-levels" => {
+        ResyncKey::undo_levels => {
             state
                 .buffers
                 .set_undo_levels_all(state.settings.undo_levels);
             true
         }
-        "jump-list-capacity" => {
+        ResyncKey::jump_list_capacity => {
             state
                 .panes
                 .jumps
                 .set_capacity(state.settings.jump_list_capacity);
             true
         }
-        THEME_KEY if !state.settings.theme.is_empty() => theme::load_theme_by_name(
+        ResyncKey::theme if !state.settings.theme.is_empty() => theme::load_theme_by_name(
             view,
             &mut state.message_log,
             &mut state.status_msg,
             &state.settings.theme,
         ),
-        // Empty theme (cleared, or never set): nothing to load, and this
-        // must not fall through to the `_` arm below — "theme" declares
-        // `resync: true`, so the debug_assert there would fire.
-        THEME_KEY => true,
-        _ => {
-            debug_assert!(
-                !crate::editor::settings::has_declared_resync(key),
-                "'{key}' declares `resync: true` in define_settings! but \
-                 resync_derived_state has no matching arm for it"
-            );
-            true
-        }
+        // Empty theme (cleared, or never set): nothing to load.
+        ResyncKey::theme => true,
     }
 }

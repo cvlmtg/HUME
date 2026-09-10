@@ -907,30 +907,6 @@ fn all_setting_keys_are_recognized_by_apply_setting() {
     }
 }
 
-#[test]
-fn has_declared_resync_matches_keys_with_derived_state() {
-    // Independent cross-check of the `resync: true` declarations against
-    // `editor::settings_ops::resync_derived_state`'s actual match arms — see
-    // that function's doc for the debug_assert! this backs.
-    for key in [
-        "history-capacity",
-        "undo-levels",
-        "jump-list-capacity",
-        "theme",
-    ] {
-        assert!(
-            has_declared_resync(key),
-            "'{key}' should declare resync: true"
-        );
-    }
-    for key in ["scrolloff", "tab-width", "mouse-enabled", "unknown-key"] {
-        assert!(
-            !has_declared_resync(key),
-            "'{key}' should not declare resync: true"
-        );
-    }
-}
-
 // ── Pane-scope chokepoint lint ───────────────────────────────────────────────
 
 #[test]

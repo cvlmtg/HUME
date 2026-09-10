@@ -7,11 +7,9 @@
 
 mod absent_decode;
 mod dispatch_funnel;
-mod field_classification;
 mod init_example;
 mod manual_options;
 mod plugin_manifest;
-mod resync_derived_state;
 mod scm_headers;
 mod test_globals;
 mod test_globals_spawn;
@@ -322,150 +320,6 @@ fn first_cell_keys(section: &str) -> std::collections::BTreeSet<String> {
             (!key.is_empty()).then(|| key.to_string())
         })
         .collect()
-}
-
-/// Extract top-level field names from a Rust struct's body text (the
-/// text strictly between its outer `{` and matching `}`). Strips
-/// `///`/`//` comment lines and `#[...]` attribute lines first (so a
-/// doc comment mentioning a colon, or `#[cfg(test)]` on its own line,
-/// is never mistaken for a field), then splits on depth-0 commas —
-/// tracking `(){}[]<>` nesting so a field's own generic type (e.g.
-/// `Vec<(BufferId, Option<String>)>`, or a wrapped multi-line type)
-/// is never mistaken for a field boundary — and takes the last
-/// identifier before each segment's first depth-0 `:` (skipping `::`
-/// path separators, including the ones inside `pub(in crate::editor)`)
-/// as that field's name.
-fn struct_field_names(body: &str) -> Vec<String> {
-    let stripped: String = body
-        .lines()
-        .filter(|line| {
-            let t = line.trim();
-            !t.starts_with("///") && !t.starts_with("//") && !t.starts_with('#')
-        })
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    fn field_name_in_segment(seg: &[char]) -> Option<String> {
-        let mut depth = 0i32;
-        let mut colon_at = None;
-        for (i, &c) in seg.iter().enumerate() {
-            match c {
-                '(' | '[' | '{' | '<' => depth += 1,
-                ')' | ']' | '}' | '>' => depth -= 1,
-                ':' if depth == 0 => {
-                    let is_path_sep = seg.get(i + 1) == Some(&':') || (i > 0 && seg[i - 1] == ':');
-                    if !is_path_sep {
-                        colon_at = Some(i);
-                        break;
-                    }
-                }
-                _ => {}
-            }
-        }
-        seg[..colon_at?]
-            .iter()
-            .collect::<String>()
-            .split_whitespace()
-            .next_back()
-            .map(str::to_string)
-    }
-
-    let chars: Vec<char> = stripped.chars().collect();
-    let mut names = Vec::new();
-    let mut depth = 0i32;
-    let mut seg_start = 0usize;
-    for (i, &c) in chars.iter().enumerate() {
-        match c {
-            '(' | '[' | '{' | '<' => depth += 1,
-            ')' | ']' | '}' | '>' => depth -= 1,
-            ',' if depth == 0 => {
-                if let Some(name) = field_name_in_segment(&chars[seg_start..i]) {
-                    names.push(name);
-                }
-                seg_start = i + 1;
-            }
-            _ => {}
-        }
-    }
-    if let Some(name) = field_name_in_segment(&chars[seg_start..]) {
-        names.push(name);
-    }
-    names
-}
-
-/// Extract the top-level field names of `struct_decl` (e.g.
-/// `"pub(crate) struct EditorState {"`) as found in `src`, excluding
-/// `exempt` (fields governed by their own separate classification —
-/// `EditorState.config`, `Editor.state`/`Editor.view`).
-fn struct_fields_excluding(
-    src: &str,
-    struct_decl: &str,
-    exempt: &[&str],
-) -> std::collections::BTreeSet<String> {
-    let struct_start = src
-        .find(struct_decl)
-        .unwrap_or_else(|| panic!("{struct_decl:?} not found in editor/mod.rs"));
-    let body_start = src[struct_start..]
-        .find('{')
-        .expect("no opening brace for struct")
-        + struct_start;
-    let mut depth = 0i32;
-    let mut body_end = body_start;
-    for (i, c) in src[body_start..].char_indices() {
-        match c {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    body_end = body_start + i;
-                    break;
-                }
-            }
-            _ => {}
-        }
-    }
-    struct_field_names(&src[body_start + 1..body_end])
-        .into_iter()
-        .filter(|f| !exempt.contains(&f.as_str()))
-        .collect()
-}
-
-/// Diff `fields` against `classification`'s names in both directions —
-/// shared assertion body for `editor_state_fields_are_classified` and
-/// `editor_fields_are_classified`. `struct_name`/`const_name` only shape
-/// the panic messages.
-fn assert_fields_classified(
-    fields: &std::collections::BTreeSet<String>,
-    classification: &[(&str, &str)],
-    struct_name: &str,
-    const_name: &str,
-) {
-    let classified: std::collections::BTreeSet<&str> =
-        classification.iter().map(|(name, _)| *name).collect();
-
-    let unclassified: Vec<&String> = fields
-        .iter()
-        .filter(|f| !classified.contains(f.as_str()))
-        .collect();
-    assert!(
-        unclassified.is_empty(),
-        "{struct_name} gained new field(s) {unclassified:?} with no entry in \
-         {const_name} — decide whether :reload-config's reset should touch \
-         it (add the mechanism to reset_config_state and classify it \
-         \"config: …\" here), or whether it genuinely survives a reload \
-         (classify it \"preserved\"), then add the entry"
-    );
-
-    let stale: Vec<&str> = classified
-        .iter()
-        .filter(|name| !fields.contains(name.to_string().as_str()))
-        .copied()
-        .collect();
-    assert!(
-        stale.is_empty(),
-        "{const_name} lists {stale:?}, which is no longer a field on \
-         {struct_name} — remove the stale entry"
-    );
 }
 
 #[test]
