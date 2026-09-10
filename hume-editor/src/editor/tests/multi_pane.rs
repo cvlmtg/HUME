@@ -1262,7 +1262,9 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         .virtual_lines
         .clone();
     assert!(
-        virtual_lines_arc.read_or_panic().contains_key(&0),
+        virtual_lines_arc
+            .read_or_panic()
+            .contains_key(&hume_rope::line::ContentLine::new(0)),
         "sanity: pane A mirrors buffer A's virtual line at line 0"
     );
 
@@ -1527,9 +1529,12 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     let pid_a = ed.state.focused_pane_id;
 
     // Move A's cursor and scroll well away from the top of the file.
-    let cursor_pos = ed.doc().text().line_to_char(150);
+    let cursor_pos = ed
+        .doc()
+        .text()
+        .line_to_char(hume_rope::line::RopeyLine::new(150));
     set_cursor(&mut ed, cursor_pos);
-    ed.view.panes[pid_a].viewport.top_line = 140;
+    ed.view.panes[pid_a].viewport.top_line = hume_rope::line::ContentLine::new(140);
 
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.state.focused_pane_id;
@@ -1540,7 +1545,8 @@ fn split_inherits_focused_panes_selection_and_scroll() {
         "new pane inherits the source pane's selection"
     );
     assert_eq!(
-        ed.view.panes[pid_b].viewport.top_line, 140,
+        ed.view.panes[pid_b].viewport.top_line,
+        hume_rope::line::ContentLine::new(140),
         "new pane inherits the source pane's scroll position"
     );
 }
@@ -1571,7 +1577,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
     ed.view.panes[pid_a].saved_scrolls.insert(
         bid2,
         ScrollPosition {
-            top_line: 42,
+            top_line: hume_rope::line::ContentLine::new(42),
             top_row_offset: 0,
             horizontal_offset: 0,
         },
@@ -1782,7 +1788,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     // since this test is about span geometry, not scope resolution.
     let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.search)
         .into_iter()
-        .map(|(line, start, end, _)| (line, start, end))
+        .map(|(line, start, end, _)| (line.index(), start, end))
         .collect();
     assert_eq!(
         matches,

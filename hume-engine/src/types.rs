@@ -144,16 +144,33 @@ pub struct DisplayRow {
 }
 
 /// Classifies a display row's origin.
+///
+/// `line_idx`/`anchor_line` are ropey domain, not content domain: every
+/// *production* row comes from [`crate::rows::RowMap`], which never walks
+/// past [`crate::rows::RowMap::last_line`] — but [`crate::format::format_buffer_line`]
+/// is also exercised directly, one ropey line at a time, by its own unit
+/// tests (`hume-engine/src/format/tests.rs`), including on the buffer's
+/// trailing phantom line — see e.g. `wrap_sentinel_and_phantom_line_are_distinct_rows`.
+/// A `ContentLine` has no representation for that line, so the field has to
+/// be the wider domain; every real caller (`GutterColumn` implementations)
+/// narrows it back via [`hume_rope::line::RopeyLine::to_content`], clamping
+/// to the last content line — a no-op in practice, since it's never actually
+/// reached with a phantom index outside these tests.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RowKind {
     /// The first display row of a buffer line.
-    LineStart { line_idx: usize },
+    LineStart {
+        line_idx: hume_rope::line::RopeyLine,
+    },
     /// A continuation row produced by wrapping.
-    Wrap { line_idx: usize, wrap_row: u16 },
+    Wrap {
+        line_idx: hume_rope::line::RopeyLine,
+        wrap_row: u16,
+    },
     /// A virtual row injected by a provider (no buffer line).
     Virtual {
         provider_id: u16,
-        anchor_line: usize,
+        anchor_line: hume_rope::line::RopeyLine,
     },
     /// A tilde filler row past end of buffer.
     Filler,
@@ -161,7 +178,7 @@ pub enum RowKind {
 
 impl RowKind {
     /// Returns the buffer line index if this row corresponds to a real line.
-    pub fn line_idx(self) -> Option<usize> {
+    pub fn line_idx(self) -> Option<hume_rope::line::RopeyLine> {
         match self {
             RowKind::LineStart { line_idx } | RowKind::Wrap { line_idx, .. } => Some(line_idx),
             RowKind::Virtual { .. } | RowKind::Filler => None,

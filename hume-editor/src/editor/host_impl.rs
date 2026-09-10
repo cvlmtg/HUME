@@ -409,13 +409,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn buffer_line_count(&self, id: BufferId) -> Option<usize> {
-        Some(self.buffer(id)?.text().content_line_count())
+        Some(self.buffer(id)?.text().content_line_count().get())
     }
 
     fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>> {
         let text = self.buffer(id)?.text();
         Some(
-            text.line_tokens_at(range.start)
+            text.line_tokens_at(hume_rope::line::RopeyLine::new(range.start))
                 .take(range.len())
                 .map(line_token_content)
                 .collect(),
@@ -423,7 +423,11 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
     }
 
     fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize> {
-        Some(self.buffer(id)?.text().line_to_char(line))
+        Some(
+            self.buffer(id)?
+                .text()
+                .line_to_char(hume_rope::line::RopeyLine::new(line)),
+        )
     }
 
     fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
@@ -735,7 +739,11 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         if idx > text.len_chars() {
             return None;
         }
-        Some(text.char_to_line(idx) + 1)
+        // `idx == len_chars()` is accepted (only `>` rejects) — the one
+        // Steel line-index builtin that admits the buffer's own trailing
+        // phantom line, so this goes through the ropey domain rather than
+        // `char_to_line`'s content-only contract.
+        Some(text.ropey_char_to_line(idx).index() + 1)
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
@@ -1467,13 +1475,13 @@ fn line_start_offset(
     line: usize,
     builtin: &str,
 ) -> Result<usize, String> {
-    if !text.content_lines_range().contains(&line) {
+    let Some(line) = hume_rope::line::ContentLine::checked(text.rope(), line) else {
         return Err(format!(
             "{builtin}: line {line} is out of range (buffer has {} content lines)",
-            text.content_line_count()
+            text.content_line_count().get()
         ));
-    }
-    Ok(text.line_to_char(line))
+    };
+    Ok(text.line_to_char(line.into()))
 }
 
 /// `pos` must address a real char in `text` (`<` its length) — `Err` naming
@@ -1503,8 +1511,8 @@ fn validate_offset(
         ));
     }
     if !before {
-        let landing_line = text.char_to_line(pos + 1);
-        if landing_line >= text.content_line_count() {
+        let landing_line = text.ropey_char_to_line(pos + 1);
+        if landing_line.to_content(text.rope()).is_none() {
             return Err(format!(
                 "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \
                  empty line"

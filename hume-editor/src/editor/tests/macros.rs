@@ -326,7 +326,11 @@ fn macro_replay_with_count() {
 
     let start = ed.current_selections().primary().head();
     let start_line = ed.doc().text().char_to_line(start);
-    assert_eq!(start_line, 0, "cursor should be on line 0 before replay");
+    assert_eq!(
+        start_line,
+        hume_rope::line::ContentLine::new(0),
+        "cursor should be on line 0 before replay"
+    );
 
     // `3qq` — count 3, replay from register 'q'.
     ed.handle_key(key('3'));
@@ -339,9 +343,10 @@ fn macro_replay_with_count() {
         .text()
         .char_to_line(ed.current_selections().primary().head());
     assert_eq!(
-        end_line, 3,
+        end_line,
+        hume_rope::line::ContentLine::new(3),
         "expected cursor on line 3, got line {}",
-        end_line
+        end_line.index()
     );
 }
 

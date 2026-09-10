@@ -94,15 +94,19 @@ fn shift_indent(
     // `sort::collect_rows`).
     let mut lines: Vec<usize> = sels
         .iter_sorted()
-        .flat_map(|sel| text.char_to_line(sel.start())..=text.char_to_line(sel.content_end(&text)))
+        .flat_map(|sel| {
+            text.char_to_line(sel.start()).index()
+                ..=text.char_to_line(sel.content_end(&text)).index()
+        })
         .collect();
     lines.dedup();
 
     let mut b = ChangeSetBuilder::new(text.len_chars());
     let mut touched_any = false;
 
-    for line in lines {
-        let line_start = text.line_to_char(line);
+    for line_idx in lines {
+        let line = hume_rope::line::ContentLine::new(line_idx);
+        let line_start = text.line_to_char(line.into());
         let (ws_end, old_width) = leading_indent(&text, line, tab_width);
         // Blank line (empty, or whitespace-only): every line char up to the
         // structural/line '\n' is whitespace, so `leading_indent`'s scan runs

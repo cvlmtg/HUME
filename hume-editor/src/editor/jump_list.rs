@@ -32,7 +32,7 @@ pub(crate) struct JumpEntry {
     /// Full selection state at the moment of the jump.
     pub selections: SelectionSet,
     /// Line number of the primary selection's head — cached for O(1) dedup.
-    pub primary_line: usize,
+    pub primary_line: hume_rope::line::ContentLine,
 }
 
 impl JumpEntry {
@@ -40,8 +40,22 @@ impl JumpEntry {
     /// to a line via `text`. Shared by [`Self::new`] (constructing an entry) and
     /// [`JumpList::translate_in_place`] (recomputing it after an edit moved the
     /// head), so the two never drift apart.
-    fn primary_line_of(selections: &SelectionSet, text: &BufferText) -> usize {
-        text.char_to_line(selections.primary().head())
+    fn primary_line_of(
+        selections: &SelectionSet,
+        text: &BufferText,
+    ) -> hume_rope::line::ContentLine {
+        // `char_to_line` won't do here: `translate_in_place` remaps a saved
+        // selection through an edit's `ChangeSet` (e.g. an undo that shrinks
+        // the buffer), which can clamp a stale head to exactly the new
+        // `len_chars()` — a legal remap result, not a bug, but one
+        // `char_to_line` debug-asserts against. Narrow through the ropey
+        // domain instead, falling back to the last real line on the phantom
+        // one: dedup only needs *a* line number, and "the last line" is the
+        // line this head is about to be re-clamped onto anyway.
+        let head = selections.primary().head();
+        text.ropey_char_to_line(head)
+            .to_content(text.rope())
+            .unwrap_or_else(|| text.last_content_line())
     }
 
     /// Build a jump entry from the current selection state, deriving
@@ -61,7 +75,7 @@ impl JumpEntry {
     /// `primary_line` is already known and no buffer reference is needed.
     pub(crate) fn from_pre_motion(
         pre_primary: Selection,
-        primary_line: usize,
+        primary_line: hume_rope::line::ContentLine,
         buffer_id: BufferId,
     ) -> Self {
         Self {
@@ -219,7 +233,12 @@ impl JumpList {
         let mut removed_before_cursor = 0usize;
         // (buffer_id, pre-remap line, post-remap line, original index) of the
         // entry currently kept at slot `write - 1`.
-        let mut last: Option<(BufferId, usize, usize, usize)> = None;
+        let mut last: Option<(
+            BufferId,
+            hume_rope::line::ContentLine,
+            hume_rope::line::ContentLine,
+            usize,
+        )> = None;
 
         for read in 0..self.entries.len() {
             let bid = self.entries[read].buffer_id;

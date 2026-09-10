@@ -7,6 +7,8 @@
 //! future kind reusing it inherits the same guarantees without redoing the
 //! bridge-level plumbing.
 
+use hume_rope::line::ContentLine;
+
 use super::{last_writer_per_line, resolve_decoration_line};
 
 // ── `resolve_decoration_line` ───────────────────────────────────────────────
@@ -15,7 +17,7 @@ use super::{last_writer_per_line, resolve_decoration_line};
 fn resolve_decoration_line_returns_the_line_for_a_content_position() {
     let text = hume_editing::text::BufferText::from("aaa\nbbb\nccc\n");
     // Line 2 ("ccc") starts at char offset 8.
-    assert_eq!(resolve_decoration_line(&text, 8), Some(2));
+    assert_eq!(resolve_decoration_line(&text, 8), Some(ContentLine::new(2)));
 }
 
 #[test]
@@ -37,9 +39,12 @@ fn resolve_decoration_line_drops_a_position_on_the_trailing_phantom_line() {
 fn last_writer_per_line_keeps_the_later_entry_within_one_source() {
     // Two entries from the same source collapsed onto line 4 by a remap —
     // within one source, the last entry wins.
-    let entries = vec![("diagnostics", 4, "first"), ("diagnostics", 4, "second")];
+    let entries = vec![
+        ("diagnostics", ContentLine::new(4), "first"),
+        ("diagnostics", ContentLine::new(4), "second"),
+    ];
     let result = last_writer_per_line(entries);
-    assert_eq!(result.get(&4), Some(&"second"));
+    assert_eq!(result.get(&ContentLine::new(4)), Some(&"second"));
 }
 
 #[test]
@@ -48,10 +53,13 @@ fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
     // *first* source wins. Input order deliberately does not match sort
     // order, so a fix that just returned "whichever came last in the
     // input" would pass by accident.
-    let entries = vec![("z-marks", 7, "from-z"), ("a-marks", 7, "from-a")];
+    let entries = vec![
+        ("z-marks", ContentLine::new(7), "from-z"),
+        ("a-marks", ContentLine::new(7), "from-a"),
+    ];
     let result = last_writer_per_line(entries);
     assert_eq!(
-        result.get(&7),
+        result.get(&ContentLine::new(7)),
         Some(&"from-a"),
         "the alphabetically first source (\"a-marks\") must win, matching \
          the sign pipeline's tie-break"
@@ -60,8 +68,11 @@ fn last_writer_per_line_breaks_cross_source_ties_alphabetically_first() {
 
 #[test]
 fn last_writer_per_line_keeps_entries_on_distinct_lines_independent() {
-    let entries = vec![("a", 1, "one"), ("b", 2, "two")];
+    let entries = vec![
+        ("a", ContentLine::new(1), "one"),
+        ("b", ContentLine::new(2), "two"),
+    ];
     let result = last_writer_per_line(entries);
-    assert_eq!(result.get(&1), Some(&"one"));
-    assert_eq!(result.get(&2), Some(&"two"));
+    assert_eq!(result.get(&ContentLine::new(1)), Some(&"one"));
+    assert_eq!(result.get(&ContentLine::new(2)), Some(&"two"));
 }

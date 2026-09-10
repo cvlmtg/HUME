@@ -731,7 +731,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     );
     assert_eq!(
         ed.viewport().top_line,
-        top_before + ed.state.settings.mouse_scroll_lines,
+        top_before.down(ed.state.settings.mouse_scroll_lines),
         "the wheel tick must still scroll the buffer in the same event"
     );
 }

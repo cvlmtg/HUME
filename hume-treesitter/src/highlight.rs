@@ -181,15 +181,15 @@ impl TreeSitterHighlighter {
 /// viewport query first, a span cache second.
 pub fn layer_highlights_for_line(
     layers: &SyntaxLayers,
-    line_idx: usize,
+    line_idx: hume_rope::line::ContentLine,
     rope: &ropey::Rope,
     raw: &mut Vec<(usize, usize, u8, ScopeId)>,
     stack: &mut Vec<(u8, u32, ScopeId)>,
     events: &mut Vec<(usize, bool, u32, u8, ScopeId)>,
     out: &mut Vec<(usize, usize, ScopeId)>,
 ) {
-    let line_start = rope.line_to_byte(line_idx);
-    let line_end = hume_rope::lines::line_end_exclusive_byte(rope, line_idx);
+    let line_start = rope.line_to_byte(line_idx.index());
+    let line_end = hume_rope::lines::next_line_start_byte(rope, line_idx.into());
 
     raw.clear();
     for layer in &layers.layers {

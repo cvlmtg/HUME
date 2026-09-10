@@ -8,7 +8,7 @@ use ropey::Rope;
 
 fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
     let mut v = ViewportState::new(width, height);
-    v.top_line = top_line;
+    v.top_line = hume_rope::line::ContentLine::new(top_line);
     v
 }
 
@@ -376,7 +376,7 @@ fn content_pos_accounts_for_before_line_0() {
     let cursor_char = 0; // start of line 0
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::uniform(
-        VirtualLineAnchor::Before(0),
+        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
         1,
         "V",
     )));
@@ -406,7 +406,7 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
     let cursor_char = rope.line_to_char(1); // start of the last real line
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
-        VirtualLineAnchor::After(1),
+        VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
         3,
     )));
 

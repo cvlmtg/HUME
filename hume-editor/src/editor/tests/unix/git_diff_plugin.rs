@@ -124,7 +124,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos),
+                text.char_to_line(e.pos).index(),
                 e.text.to_string(),
                 scope_name(ed, e.scope).to_string(),
             )
@@ -145,7 +145,7 @@ fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos),
+                text.char_to_line(e.pos).index(),
                 scope_name(ed, e.scope).to_string(),
             )
         })
@@ -179,7 +179,7 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
         .iter()
         .map(|e| {
             (
-                text.char_to_line(e.pos),
+                text.char_to_line(e.pos).index(),
                 e.before,
                 e.text.clone(),
                 Some(scope_name(ed, e.scope).to_string()),

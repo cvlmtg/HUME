@@ -23,7 +23,10 @@ fn zz_centres_cursor_in_viewport() {
     ed.handle_key(key('z'));
     ed.handle_key(key('z'));
     // height=24, target=12; cursor on line 25 → top_line = 25 - 12 = 13.
-    assert_eq!(ed.viewport().top_line, 13);
+    assert_eq!(
+        ed.viewport().top_line,
+        hume_rope::line::ContentLine::new(13)
+    );
     assert_eq!(ed.viewport().top_row_offset, 0);
     // Cursor is unchanged.
     assert_eq!(
@@ -39,7 +42,7 @@ fn zz_clamps_at_top_of_buffer() {
     ed.handle_key(key('z'));
     ed.handle_key(key('z'));
     // saturating_sub: 2 - 12 = 0.
-    assert_eq!(ed.viewport().top_line, 0);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
 }
 
 #[test]
@@ -50,7 +53,10 @@ fn zz_allows_scrolling_past_eof() {
     ed.handle_key(key('z'));
     // 50 lines total, cursor on line 48, target=12 → top_line=36.
     // No bottom clamp: 36 + 24 = 60 > 50, trailing tildes are intentional.
-    assert_eq!(ed.viewport().top_line, 36);
+    assert_eq!(
+        ed.viewport().top_line,
+        hume_rope::line::ContentLine::new(36)
+    );
 }
 
 #[test]
@@ -60,7 +66,10 @@ fn zk_puts_cursor_at_top() {
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
     // target_row = 0 → top_line = cursor_line.
-    assert_eq!(ed.viewport().top_line, 25);
+    assert_eq!(
+        ed.viewport().top_line,
+        hume_rope::line::ContentLine::new(25)
+    );
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
 
@@ -71,7 +80,7 @@ fn zj_puts_cursor_at_bottom() {
     ed.handle_key(key('z'));
     ed.handle_key(key('j'));
     // height=24, target=23; cursor on line 25 → top_line = 25 - 23 = 2.
-    assert_eq!(ed.viewport().top_line, 2);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(2));
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
 
@@ -105,7 +114,7 @@ fn zz_in_wrap_mode_walks_display_rows() {
     ed.handle_key(key('z'));
 
     // From (line=1, sub=2), walking backward 2 rows lands at (line=1, sub=0).
-    assert_eq!(ed.viewport().top_line, 1);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
     assert_eq!(ed.viewport().top_row_offset, 0);
 }
 
@@ -131,7 +140,7 @@ fn zk_in_wrap_mode_anchors_cursor_row_at_top() {
     ed.handle_key(key('k'));
 
     // target_row = 0 → top_line = cursor_line, top_row_offset = cursor_sub.
-    assert_eq!(ed.viewport().top_line, 1);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
     assert_eq!(ed.viewport().top_row_offset, 2);
 }
 

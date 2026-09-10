@@ -4,6 +4,7 @@ use crate::test_support::{bg, fg, theme_with};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use hume_grid::Rgb;
+use hume_rope::line::{ContentLine, RopeyLine};
 
 /// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
 /// (`pipeline::pane_render::render_pane`'s row walk): primary-based
@@ -24,7 +25,7 @@ fn apply_styles(
     scratch
         .styles
         .resize(graphemes.len(), ResolvedStyle::default());
-    let mut current_line: Option<usize> = None;
+    let mut current_line: Option<hume_rope::line::RopeyLine> = None;
     let mut tint = None;
     for row in rows {
         let Some(line_idx) = row.kind.line_idx() else {
@@ -32,10 +33,15 @@ fn apply_styles(
         };
         if current_line != Some(line_idx) {
             current_line = Some(line_idx);
-            tint = rebuild_line_decorations(line_idx, None, &ProviderSet::new(), rope, scratch);
+            // Trusted mint, not `RopeyLine::to_content`: these fixture rows
+            // are hand-built with small real-content indices, and several
+            // fixture ropes here don't even uphold the trailing-newline
+            // invariant `to_content` would check.
+            let content_line = ContentLine::new(line_idx.index());
+            tint = rebuild_line_decorations(content_line, None, &ProviderSet::new(), rope, scratch);
         }
-        let line_start_char = rope.line_to_char(line_idx);
-        let line_end_char = rope.line_to_char(line_idx + 1);
+        let line_start_char = rope.line_to_char(line_idx.index());
+        let line_end_char = hume_rope::lines::next_line_start(rope, line_idx);
         let is_head_line = scratch
             .primary_idx_in_sorted
             .and_then(|i| scratch.sorted_sels.get(i))
@@ -71,7 +77,9 @@ fn make_graphemes(count: usize) -> Vec<Grapheme> {
 
 fn make_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes,
     }
 }
@@ -429,11 +437,15 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let graphemes = vec![g0, g1, g2, g3];
     let rows = vec![
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 0 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
             graphemes: 0..2,
         },
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 1 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(1),
+            },
             graphemes: 2..4,
         },
     ];
@@ -588,15 +600,21 @@ fn cursorline_applies_only_to_primary_head_line() {
     ];
     let rows = vec![
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 0 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
             graphemes: 0..1,
         },
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 1 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(1),
+            },
             graphemes: 1..2,
         },
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 2 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(2),
+            },
             graphemes: 2..3,
         },
     ];
@@ -658,13 +676,15 @@ fn virtual_rows_keep_default_style() {
     ];
     let rows = vec![
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 0 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
             graphemes: 0..1,
         },
         DisplayRow {
             kind: RowKind::Virtual {
                 provider_id: 0,
-                anchor_line: 0,
+                anchor_line: RopeyLine::new(0),
             },
             graphemes: 1..2,
         },
@@ -1100,12 +1120,14 @@ fn head_on_wrapped_line_only_on_correct_segment() {
     ];
     let rows = vec![
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 0 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
             graphemes: 0..3,
         },
         DisplayRow {
             kind: RowKind::Wrap {
-                line_idx: 0,
+                line_idx: RopeyLine::new(0),
                 wrap_row: 1,
             },
             graphemes: 3..5,
@@ -1199,12 +1221,14 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     ];
     let rows = vec![
         DisplayRow {
-            kind: RowKind::LineStart { line_idx: 0 },
+            kind: RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
             graphemes: 0..3,
         },
         DisplayRow {
             kind: RowKind::Wrap {
-                line_idx: 0,
+                line_idx: RopeyLine::new(0),
                 wrap_row: 1,
             },
             graphemes: 3..5,
@@ -1272,7 +1296,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
@@ -1331,7 +1355,7 @@ fn an_invisible_cluster_is_styled_by_its_own_scope_not_the_text_around_it() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
@@ -1391,7 +1415,7 @@ fn a_whitespace_indicator_is_styled_by_its_own_scope_not_the_text_around_it() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &ws,
         &crate::pane::WrapMode::None,
@@ -1451,7 +1475,7 @@ fn tab_fill_does_not_carry_the_whitespace_scope_when_its_indicator_is_off() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &ws,
         &crate::pane::WrapMode::None,
@@ -1511,7 +1535,7 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,
@@ -1580,7 +1604,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
     let mut fmt = crate::format::LineFormat::new();
     crate::format::format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &crate::pane::WhitespaceConfig::default(),
         &crate::pane::WrapMode::None,

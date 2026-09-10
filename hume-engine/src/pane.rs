@@ -6,6 +6,7 @@ use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::Selection;
+use hume_rope::line::{ContentLine, RopeyLine};
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
@@ -16,7 +17,7 @@ use ropey::Rope;
 #[derive(Clone, Debug)]
 pub struct ViewportState {
     /// First fully-visible buffer line.
-    pub top_line: usize,
+    pub top_line: ContentLine,
     /// How many display rows of `top_line`'s visual block — virtual `before`
     /// rows, the line's own wrap rows, then virtual `after` rows, in that
     /// order — have already scrolled past. Every row in the block is an
@@ -36,7 +37,7 @@ pub struct ViewportState {
 impl ViewportState {
     pub fn new(width: u16, height: u16) -> Self {
         Self {
-            top_line: 0,
+            top_line: ContentLine::new(0),
             top_row_offset: 0,
             horizontal_offset: 0,
             width,
@@ -55,7 +56,7 @@ impl ViewportState {
 /// buffer when it switches away. Restored by `recall_scroll` on switch-back.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ScrollPosition {
-    pub top_line: usize,
+    pub top_line: ContentLine,
     pub top_row_offset: u16,
     pub horizontal_offset: u32,
 }
@@ -428,7 +429,7 @@ impl Pane {
     /// `last_line_idx` is the buffer's last ropey line index (used to size
     /// the line-number column — `hume_rope::lines::last_ropey_line`). Call this
     /// before `WrapMode::resolve` to get the concrete wrap column.
-    pub fn content_width(&self, last_line_idx: usize) -> u16 {
+    pub fn content_width(&self, last_line_idx: RopeyLine) -> u16 {
         let gutter_w = gutter_width_for_line(self.providers.gutter_columns(), last_line_idx);
         self.viewport.width.saturating_sub(gutter_w).max(1)
     }
@@ -452,7 +453,7 @@ impl Pane {
     /// while this pane viewed a different buffer), so `top_line` is clamped
     /// to it, the same bound `reload_buffer_in_place` applies
     /// (`hume-editor/src/editor/buffer/file_open.rs`).
-    pub fn recall_scroll(&mut self, id: BufferId, last_content_line: usize) {
+    pub fn recall_scroll(&mut self, id: BufferId, last_content_line: ContentLine) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
         self.viewport.top_line = sp.top_line.min(last_content_line);
         self.viewport.top_row_offset = sp.top_row_offset;
@@ -470,7 +471,7 @@ impl Pane {
     ///
     /// See [`primary_head_line`] — this is the whole-pane spelling, for
     /// callers that hold a `&Pane` rather than its split-out fields.
-    pub fn primary_head_line(&self, rope: &Rope) -> usize {
+    pub fn primary_head_line(&self, rope: &Rope) -> ContentLine {
         primary_head_line(&self.selections, self.primary_idx, rope)
     }
 }
@@ -484,7 +485,7 @@ impl Pane {
 /// Panics (debug and release) if `selections` is empty or `primary_idx` is out
 /// of range — both are violated invariants, not recoverable cases, so this
 /// fails loudly rather than defaulting to char 0 and hiding the bug.
-pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Rope) -> usize {
+pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Rope) -> ContentLine {
     let head_char = selections
         .get(primary_idx)
         .expect("pane selections empty or primary_idx out of range")
@@ -495,7 +496,13 @@ pub fn primary_head_line(selections: &[Selection], primary_idx: usize, rope: &Ro
          pane.selections is out of sync with pane.buffer_id",
         rope.len_chars()
     );
-    rope.char_to_line(head_char)
+    // Trusted mint, not `RopeyLine::to_content`: a well-formed head is always
+    // < len_chars(), landing on a real content line, and the `<=` above only
+    // tolerates a stale mirror's head == len_chars() without crashing on it —
+    // it doesn't ask this function to repair that case, so this mints the
+    // line as-is rather than validating it against `rope`'s own invariant
+    // (which a bare `ropey::Rope` in a unit test may not even uphold).
+    ContentLine::new(rope.char_to_line(head_char))
 }
 
 // ---------------------------------------------------------------------------

@@ -38,7 +38,11 @@ impl DecorationSource for TwoTierSource {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::HIGHLIGHT
     }
-    fn decorations_for_line(&self, _line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(
+        &self,
+        _line_idx: hume_rope::line::ContentLine,
+        out: &mut Vec<Decoration>,
+    ) {
         out.push(Decoration::Highlight {
             byte_start: 0,
             byte_end: 1,
@@ -64,7 +68,13 @@ fn rebuild_line_decorations_buckets_one_sources_spans_by_tier() {
     let rope = ropey::Rope::from_str("abcdef\n");
     let mut scratch = StyleScratch::new();
 
-    rebuild_line_decorations(0, None, &providers, &rope, &mut scratch);
+    rebuild_line_decorations(
+        hume_rope::line::ContentLine::new(0),
+        None,
+        &providers,
+        &rope,
+        &mut scratch,
+    );
 
     assert_eq!(
         scratch.tier_bufs.0[HighlightTier::Syntax as usize],

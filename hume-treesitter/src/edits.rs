@@ -90,18 +90,18 @@ fn make_input_edit(
     let (old_end_row, old_end_byte_col) = hume_rope::lines::char_to_line_byte(rope, old_end_char);
 
     let (new_end_row, new_end_byte_col) =
-        hume_rope::lines::advance_byte_point(start_row, start_byte_col, inserted);
+        hume_rope::lines::advance_byte_point(start_row.index(), start_byte_col, inserted);
 
     tree_sitter::InputEdit {
         start_byte,
         old_end_byte,
         new_end_byte,
         start_position: tree_sitter::Point {
-            row: start_row,
+            row: start_row.index(), // tree-sitter's own row unit, not this crate's line-domain type
             column: start_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
         old_end_position: tree_sitter::Point {
-            row: old_end_row,
+            row: old_end_row.index(), // tree-sitter's own row unit, not this crate's line-domain type
             column: old_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
         },
         new_end_position: tree_sitter::Point {

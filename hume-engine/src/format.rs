@@ -325,7 +325,7 @@ impl FormatBound {
 #[allow(clippy::too_many_arguments)]
 pub fn format_buffer_line(
     rope: &Rope,
-    line_idx: usize,
+    line_idx: hume_rope::line::RopeyLine,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     wrap_mode: &WrapMode,
@@ -339,7 +339,7 @@ pub fn format_buffer_line(
     // assumed) so `line_str` below stays correct if that contract ever
     // changes. Rope chunks are valid UTF-8.
     let text_start = out.line_texts.len();
-    let line_slice = rope.line(line_idx);
+    let line_slice = rope.line(line_idx.index());
     // The one buffer whose final size is known before writing it. Reserving
     // turns the chunk loop into a single allocation instead of a doubling
     // chain, which matters because `LineFormat::new` deliberately hands over
@@ -402,7 +402,7 @@ pub fn format_buffer_line(
 
     // Running absolute char position within the buffer. Populated per grapheme
     // so the style stage can resolve selection positions without rope lookups.
-    let mut char_pos = rope.line_to_char(line_idx);
+    let mut char_pos = rope.line_to_char(line_idx.index());
 
     // Set when the scan stopped early — either `h_window` reached its right
     // edge, or `bound` was satisfied. Everything past that point — the EOL
@@ -737,7 +737,7 @@ impl WrapState {
         width: u8,
         wrap_width: Option<u32>,
         indent_display_cols: u32,
-        line_idx: usize,
+        line_idx: hume_rope::line::RopeyLine,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
         graphemes_out: &mut [Grapheme],

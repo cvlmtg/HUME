@@ -11,7 +11,7 @@ use crate::editor::cursor;
 
 fn viewport(top: usize, height: u16, width: u16) -> ViewportState {
     let mut v = ViewportState::new(width, height);
-    v.top_line = top;
+    v.top_line = hume_rope::line::ContentLine::new(top);
     v
 }
 
@@ -51,10 +51,10 @@ fn no_wrap_cursor_visible_no_scroll_needed() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        RowPos::new(2, 0),
+        RowPos::new(hume_rope::line::ContentLine::new(2), 0),
         3,
     );
-    assert_eq!(v.top_line, 0);
+    assert_eq!(v.top_line, hume_rope::line::ContentLine::new(0));
 }
 
 #[test]
@@ -66,12 +66,12 @@ fn no_wrap_cursor_below_viewport_scrolls_down() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        RowPos::new(7, 0),
+        RowPos::new(hume_rope::line::ContentLine::new(7), 0),
         3,
     );
     let cursor_line = 7usize;
-    assert!(cursor_line >= v.top_line);
-    assert!(cursor_line < v.top_line + v.height as usize);
+    assert!(cursor_line >= v.top_line.index());
+    assert!(cursor_line < v.top_line.index() + v.height as usize);
 }
 
 #[test]
@@ -83,12 +83,12 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        RowPos::new(1, 0),
+        RowPos::new(hume_rope::line::ContentLine::new(1), 0),
         3,
     );
     let cursor_line = 1usize;
-    assert!(cursor_line >= v.top_line);
-    assert!(cursor_line < v.top_line + v.height as usize);
+    assert!(cursor_line >= v.top_line.index());
+    assert!(cursor_line < v.top_line.index() + v.height as usize);
 }
 
 /// A `scrolloff` at or above half the viewport height (`:set scrolloff=999`'s
@@ -103,7 +103,7 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     let r = rope(&text);
     let mut v = viewport(0, 24, 80);
     let providers = no_providers();
-    let cursor_pos = RowPos::new(20, 0);
+    let cursor_pos = RowPos::new(hume_rope::line::ContentLine::new(20), 0);
 
     let mut s = PaneLineStore::new();
     ensure_cursor_visible(
@@ -170,7 +170,7 @@ fn cursor_sub_row_wrapped() {
 fn wrap_cursor_within_top_margin_scrolls_up() {
     let r = rope(&"ab\n".repeat(10));
     let mut v = ViewportState::new(3, 8);
-    v.top_line = 3;
+    v.top_line = hume_rope::line::ContentLine::new(3);
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(3);
     let providers = no_providers();
@@ -178,7 +178,7 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
     let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
-    assert_eq!(v.top_line, 1);
+    assert_eq!(v.top_line, hume_rope::line::ContentLine::new(1));
     assert_eq!(v.top_row_offset, 0);
 }
 
@@ -186,7 +186,7 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
 fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let r = rope(&"ab\n".repeat(10));
     let mut v = ViewportState::new(3, 8);
-    v.top_line = 0;
+    v.top_line = hume_rope::line::ContentLine::new(0);
     v.top_row_offset = 0;
     let cursor_char = r.line_to_char(7);
     let providers = no_providers();
@@ -194,7 +194,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
     let mut rm = map(&r, WrapMode::Soft { width: 3 }, &providers, 3, &mut s);
     let cursor_pos = rm.locate_row(cursor_char);
     ensure_cursor_visible(&mut v, &mut rm, cursor_pos, 2);
-    assert_eq!(v.top_line, 2);
+    assert_eq!(v.top_line, hume_rope::line::ContentLine::new(2));
     assert_eq!(v.top_row_offset, 0);
 }
 
@@ -222,17 +222,25 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
         cursor_char,
         0,
     );
-    assert_eq!(v.top_line, 25, "view-top places top at cursor line");
+    assert_eq!(
+        v.top_line,
+        hume_rope::line::ContentLine::new(25),
+        "view-top places top at cursor line"
+    );
 
     // 2) Per-frame correction: scrolloff = 3 trims cursor inward by 3 rows.
     let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        RowPos::new(25, 0),
+        RowPos::new(hume_rope::line::ContentLine::new(25), 0),
         3,
     );
-    assert_eq!(v.top_line, 22, "scrolloff trims top inward by margin (3)");
+    assert_eq!(
+        v.top_line,
+        hume_rope::line::ContentLine::new(22),
+        "scrolloff trims top inward by margin (3)"
+    );
 }
 
 #[test]
@@ -250,18 +258,26 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
         cursor_char,
         23,
     );
-    assert_eq!(v.top_line, 2, "view-bottom places cursor on display row 23");
+    assert_eq!(
+        v.top_line,
+        hume_rope::line::ContentLine::new(2),
+        "view-bottom places cursor on display row 23"
+    );
 
     let mut s = PaneLineStore::new();
     ensure_cursor_visible(
         &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
-        RowPos::new(25, 0),
+        RowPos::new(hume_rope::line::ContentLine::new(25), 0),
         3,
     );
     // cursor_line=25, top=2, height=24, margin=3 → cursor at row 23 = height-margin-1.
     // bottom branch fires: top_line = 25 - (24-3-1) = 25 - 20 = 5.
-    assert_eq!(v.top_line, 5, "scrolloff trims top up by margin (3)");
+    assert_eq!(
+        v.top_line,
+        hume_rope::line::ContentLine::new(5),
+        "scrolloff trims top up by margin (3)"
+    );
 }
 
 // ── Virtual-line-aware scrolling (synthetic provider) ───────────────
@@ -341,7 +357,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     let r = rope("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
-        VirtualLineAnchor::Before(0),
+        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
         3,
     )));
     let cursor_char = r.line_to_char(2);
@@ -360,7 +376,8 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
             20, // margin far larger than the 2 real rows between top and cursor
         );
         assert_eq!(
-            v.top_line, 0,
+            v.top_line,
+            hume_rope::line::ContentLine::new(0),
             "walk reaches the very first buffer line ({wrap:?})"
         );
         assert_eq!(
@@ -496,15 +513,15 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
     let r = rope("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
-        VirtualLineAnchor::Before(3),
+        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(3)),
         2,
     )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         for height in [1u16, 2, 5, 8] {
             for top in [0usize, 2, 5, 9] {
-                for line in hume_rope::lines::content_lines_range(&r) {
-                    let cursor_char = r.line_to_char(line);
+                for line in hume_rope::lines::content_lines(&r) {
+                    let cursor_char = r.line_to_char(line.index());
                     let mut v = viewport(top, height, 80);
 
                     let mut s = PaneLineStore::new();
@@ -522,7 +539,8 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
                     assert_eq!(
                         reported.map(|row| row as u16),
                         walked.map(|(_, row)| row),
-                        "{wrap:?}, height {height}, top {top}, line {line}"
+                        "{wrap:?}, height {height}, top {top}, line {}",
+                        line.index()
                     );
                 }
             }
@@ -596,10 +614,18 @@ fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
 
     let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
-    let row = ensure_cursor_visible(&mut v, &mut rm, RowPos::new(cursor_line, 0), margin);
+    let row = ensure_cursor_visible(
+        &mut v,
+        &mut rm,
+        RowPos::new(hume_rope::line::ContentLine::new(cursor_line), 0),
+        margin,
+    );
 
     let target = height - margin - 1;
-    assert_eq!(v.top_line, cursor_line - target);
+    assert_eq!(
+        v.top_line,
+        hume_rope::line::ContentLine::new(cursor_line - target)
+    );
     assert_eq!(row, Some(target));
 }
 
@@ -620,7 +646,12 @@ fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
 
     let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
-    ensure_cursor_visible(&mut v, &mut rm, RowPos::new(100, 0), 2);
+    ensure_cursor_visible(
+        &mut v,
+        &mut rm,
+        RowPos::new(hume_rope::line::ContentLine::new(100), 0),
+        2,
+    );
 
     assert_eq!(
         formats.get(),
@@ -647,7 +678,11 @@ fn distance_line_delta_short_circuit_never_formats_when_unreachable() {
 
     let mut s = PaneLineStore::new();
     let mut rm = map(&r, WrapMode::Soft { width: 80 }, &providers, 80, &mut s);
-    let result = rm.distance(RowPos::new(0, 0), RowPos::new(1000, 0), 5);
+    let result = rm.distance(
+        RowPos::new(hume_rope::line::ContentLine::new(0), 0),
+        RowPos::new(hume_rope::line::ContentLine::new(1000), 0),
+        5,
+    );
 
     assert_eq!(result, None);
     assert_eq!(

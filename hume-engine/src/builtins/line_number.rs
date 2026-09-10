@@ -108,7 +108,7 @@ pub fn digit_count(n: usize) -> u8 {
 }
 
 impl GutterColumn for LineNumberColumn {
-    fn width(&self, last_line_idx: usize) -> u8 {
+    fn width(&self, last_line_idx: hume_rope::line::RopeyLine) -> u8 {
         // Digits needed to display the 1-based line number, plus 1 space of
         // right-padding. `last_line_idx` is the phantom-inclusive
         // `hume_rope::lines::last_ropey_line` (see `layout.rs`/`Pane::content_width`
@@ -117,7 +117,7 @@ impl GutterColumn for LineNumberColumn {
         // field (`ui/statusline/elements/position.rs`) instead sizes for
         // `content_line_count()` — an accidental, shipped divergence, not a
         // bug to fix here.
-        digit_count(last_line_idx + 1).saturating_add(1)
+        digit_count(last_line_idx.index() + 1).saturating_add(1)
     }
 
     fn render_row_cells(
@@ -125,7 +125,11 @@ impl GutterColumn for LineNumberColumn {
         kind: RowKind,
         ctx: &crate::providers::GutterRowCtx,
     ) -> Vec<GutterCell> {
-        let primary_head_line = ctx.primary_head_line;
+        // Widened from the content domain: `RowKind::LineStart`'s own field is
+        // ropey domain (see its doc), so the comparison needs both sides in
+        // the same one. The widening is a no-op in practice — a real render
+        // walk (`RowMap`) never emits a `LineStart` for the phantom line.
+        let primary_head_line: hume_rope::line::RopeyLine = ctx.primary_head_line.into();
         let cell = match kind {
             RowKind::Filler | RowKind::Virtual { .. } | RowKind::Wrap { .. } => {
                 GutterCell::blank(self.default_scope)
@@ -137,16 +141,22 @@ impl GutterColumn for LineNumberColumn {
                     self.default_scope
                 };
 
+                // `+ 1`, not `.number()`: that method belongs to `ContentLine`
+                // only, since a ropey-domain line has no meaningful 1-based
+                // display number to begin with (the phantom line has no
+                // number a user would ever see) — this plain escape-hatch
+                // arithmetic mirrors `width()`'s own `last_line_idx.index() + 1`.
                 let display_num = match self.style {
-                    LineNumberStyle::Absolute => line_idx + 1,
-                    LineNumberStyle::Relative => {
-                        (line_idx as isize - primary_head_line as isize).unsigned_abs()
-                    }
+                    LineNumberStyle::Absolute => line_idx.index() + 1,
+                    LineNumberStyle::Relative => (line_idx.index() as isize
+                        - primary_head_line.index() as isize)
+                        .unsigned_abs(),
                     LineNumberStyle::Hybrid => {
                         if line_idx == primary_head_line {
-                            line_idx + 1 // absolute on the primary selection head line
+                            line_idx.index() + 1 // absolute on the primary selection head line
                         } else {
-                            (line_idx as isize - primary_head_line as isize).unsigned_abs()
+                            (line_idx.index() as isize - primary_head_line.index() as isize)
+                                .unsigned_abs()
                         }
                     }
                 };

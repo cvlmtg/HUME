@@ -1124,7 +1124,7 @@ fn colon_goto_moves_to_line() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        2, // 0-indexed: line 3 → index 2
+        hume_rope::line::ContentLine::new(2), // 0-indexed: line 3 → index 2
         ":goto 3 must land on line 3 (0-indexed: 2)"
     );
 }
@@ -1139,7 +1139,7 @@ fn colon_bare_number_moves_to_line() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        2,
+        hume_rope::line::ContentLine::new(2),
         ":3 must land on line 3 (0-indexed: 2)"
     );
 }
@@ -1156,7 +1156,7 @@ fn colon_goto_clamps_past_eof() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        19,
+        hume_rope::line::ContentLine::new(19),
         ":goto 9999 must clamp to last content line (index 19)"
     );
 }
@@ -1170,7 +1170,7 @@ fn colon_bare_number_clamps_past_eof() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        19,
+        hume_rope::line::ContentLine::new(19),
         ":9999 must clamp to last content line (index 19)"
     );
 }
@@ -1239,7 +1239,7 @@ fn colon_goto_records_jump() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        14, // 0-indexed: line 15 → index 14
+        hume_rope::line::ContentLine::new(14), // 0-indexed: line 15 → index 14
         ":goto 15 must land on line 15 (index 14)"
     );
 

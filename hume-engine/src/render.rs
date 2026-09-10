@@ -30,7 +30,7 @@ pub(crate) struct ComposeCtx<'a> {
     pub visible: &'a PaneGeometry,
     pub viewport: &'a ViewportState,
     pub mode: EditorMode,
-    pub primary_head_line: usize,
+    pub primary_head_line: hume_rope::line::ContentLine,
     pub tab_width: u8,
     /// Pre-resolved from `theme.ui.virtual_text` — avoids repeated field access in the hot loop.
     pub tilde_style: ResolvedStyle,

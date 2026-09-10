@@ -30,7 +30,9 @@ fn error_line_gets_a_sign_with_the_error_scope() {
 
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
-    let sign = signs[&0].first().expect("one sign on the error line");
+    let sign = signs[&hume_rope::line::ContentLine::new(0)]
+        .first()
+        .expect("one sign on the error line");
     assert_eq!(&*sign.text, "●");
     assert_eq!(sign.scope, error_scope);
     assert_eq!(
@@ -72,7 +74,9 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let sign = signs[&0].first().expect("one sign on the error line");
+    let sign = signs[&hume_rope::line::ContentLine::new(0)]
+        .first()
+        .expect("one sign on the error line");
     assert_eq!(sign.scope, gutter_scope);
 
     let highlights = ed.state.panes.render[pid].highlights.diagnostics.clone();
@@ -101,7 +105,9 @@ fn error_beats_warning_on_the_same_line() {
 
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1, "one line, one merged sign");
-    let sign = signs[&0].first().expect("one sign on the line");
+    let sign = signs[&hume_rope::line::ContentLine::new(0)]
+        .first()
+        .expect("one sign on the line");
     assert_eq!(
         sign.scope, error_scope,
         "error must win over warning on the same line regardless of publish order"
@@ -127,8 +133,8 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
         2,
         "both lines the diagnostic touches get a sign"
     );
-    assert!(signs.contains_key(&0));
-    assert!(signs.contains_key(&1));
+    assert!(signs.contains_key(&hume_rope::line::ContentLine::new(0)));
+    assert!(signs.contains_key(&hume_rope::line::ContentLine::new(1)));
 }
 
 /// `diagnostics-for-buffer`'s `"end-line"` field itself (D9), independent of
@@ -273,7 +279,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     let rope = ed.state.buffers.get(bid).text().rope().clone();
     let gutter_ctx = hume_engine::providers::GutterRowCtx {
         mode: hume_engine::types::EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: hume_rope::line::ContentLine::new(0),
         rope: &rope,
     };
     let col = ed.view.panes[pid]
@@ -282,7 +288,9 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
         .next()
         .expect("sign column registered first");
     let cells = col.render_row_cells(
-        hume_engine::types::RowKind::LineStart { line_idx: 0 },
+        hume_engine::types::RowKind::LineStart {
+            line_idx: hume_rope::line::RopeyLine::new(0),
+        },
         &gutter_ctx,
     );
     assert_eq!(
@@ -336,10 +344,12 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
 
     let signs = pane_signs(&ed, pid);
     assert!(
-        !signs.contains_key(&50),
+        !signs.contains_key(&hume_rope::line::ContentLine::new(50)),
         "the diagnostic on line 50 is scrolled out of the 25-row viewport"
     );
-    let sign = signs[&0].first().expect("plugin sign on line 0");
+    let sign = signs[&hume_rope::line::ContentLine::new(0)]
+        .first()
+        .expect("plugin sign on line 0");
     assert_eq!(
         sign.slot, 1,
         "the off-screen diagnostic (registered at priority 10) still reserves \

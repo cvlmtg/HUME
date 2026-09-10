@@ -127,7 +127,7 @@ impl TierBufs {
 /// configured). Its spans for this line are merged into the `Syntax`
 /// tier bucket before any per-pane provider-based sources.
 pub(crate) fn rebuild_line_decorations(
-    line_idx: usize,
+    line_idx: hume_rope::line::ContentLine,
     syntax: Option<&dyn SyntaxSpans>,
     providers: &ProviderSet,
     rope: &ropey::Rope,

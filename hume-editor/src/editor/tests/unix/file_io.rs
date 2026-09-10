@@ -552,7 +552,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     // would center against `Pane::new`'s 80x24 placeholder instead).
     assert_eq!(
         ed.view.panes[ed.state.focused_pane_id].viewport.top_line,
-        138
+        hume_rope::line::ContentLine::new(138)
     );
 }
 

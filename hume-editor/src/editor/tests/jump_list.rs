@@ -16,7 +16,7 @@ fn goto_first_line_records_jump() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        0
+        hume_rope::line::ContentLine::new(0)
     );
 
     // jump-backward should restore the pre-jump position.
@@ -108,7 +108,7 @@ fn large_motion_records_jump() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        10
+        hume_rope::line::ContentLine::new(10)
     );
 
     ed.handle_key(key_ctrl('o'));
@@ -132,7 +132,7 @@ fn search_confirm_records_jump() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        15
+        hume_rope::line::ContentLine::new(15)
     );
 
     // jump-backward should return to line 0.
@@ -291,7 +291,7 @@ fn select_all_records_jump() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        19,
+        hume_rope::line::ContentLine::new(19),
         "% should place the cursor at the last line"
     );
 

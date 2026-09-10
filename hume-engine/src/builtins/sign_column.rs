@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use crate::providers::{GutterCell, GutterCellContent, GutterColumn, GutterRowCtx};
 use crate::types::{RowKind, ScopeId};
+use hume_rope::line::ContentLine;
 
 /// One sign a `SignSource` renders for a buffer line (diagnostic marker, git
 /// change indicator, breakpoint, bookmark, ...).
@@ -41,14 +42,22 @@ pub trait SignSource {
     /// its own `slot`. Called per `LineStart` row per frame — implementations
     /// should be cheap lookups into their own state (same contract as
     /// `DecorationSource`).
-    fn signs_for_line(&self, line_idx: usize, ctx: &GutterRowCtx) -> Vec<Sign>;
+    fn signs_for_line(
+        &self,
+        line_idx: hume_rope::line::ContentLine,
+        ctx: &GutterRowCtx,
+    ) -> Vec<Sign>;
 }
 
 /// A source with no signs at all — used wherever a test needs an inert
 /// `SignColumn` and doesn't care what fires.
 #[cfg(test)]
 impl SignSource for () {
-    fn signs_for_line(&self, _line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
+    fn signs_for_line(
+        &self,
+        _line_idx: hume_rope::line::ContentLine,
+        _ctx: &GutterRowCtx,
+    ) -> Vec<Sign> {
         Vec::new()
     }
 }
@@ -115,7 +124,7 @@ impl SignColumn {
 }
 
 impl GutterColumn for SignColumn {
-    fn width(&self, _last_line_idx: usize) -> u8 {
+    fn width(&self, _last_line_idx: hume_rope::line::RopeyLine) -> u8 {
         // Returns the stored field verbatim — never recomputed inline here,
         // unlike `LineNumberColumn::width()`'s whole-file-max rule, which
         // derives its answer from `last_line_idx` on every call. `auto` mode
@@ -138,12 +147,19 @@ impl GutterColumn for SignColumn {
         }
 
         let mut cells = vec![GutterCell::blank(self.blank_scope); max_signs];
+        // `line_idx` is `RowKind::LineStart`'s ropey-domain field (see its
+        // doc), but `SignSource` deals only in real content — a sign can't
+        // meaningfully attach to the phantom line. Trusted mint, not
+        // `RopeyLine::to_content`: a real render walk never emits a
+        // `LineStart` this far past content, so there is nothing here to
+        // validate against `ctx.rope`, only a domain tag to attach.
+        let content_line = ContentLine::new(line_idx.index());
         // This loop places, it never ranks — each sign already carries its
         // own resolved `slot` (`DecorationStores::signs_in_range`). Two
         // signs from the source claiming the same slot on one line is a
         // source bug (undefined which wins — see `SignSource::signs_for_line`'s
         // contract). A slot `>= max_signs` is dropped.
-        for sign in self.source.signs_for_line(line_idx, ctx) {
+        for sign in self.source.signs_for_line(content_line, ctx) {
             if let Some(cell) = cells.get_mut(sign.slot as usize) {
                 *cell = GutterCell {
                     content: GutterCellContent::Shared(Arc::clone(&sign.text)),

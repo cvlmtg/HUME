@@ -2,6 +2,8 @@
 //! grapheme-cluster algorithms. See that module for the implementations and
 //! detailed doc comments.
 
+use hume_rope::line::ContentLine;
+
 use crate::text::BufferText;
 
 /// See [`hume_rope::grapheme::next_grapheme_boundary`].
@@ -25,30 +27,35 @@ pub fn cluster_last_char(text: &BufferText, cluster_start: usize) -> usize {
 }
 
 /// See [`hume_rope::grapheme::grapheme_col_in_line`].
-pub fn grapheme_col_in_line(text: &BufferText, line_idx: usize, char_pos: usize) -> usize {
-    hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx, char_pos)
+pub fn grapheme_col_in_line(text: &BufferText, line_idx: ContentLine, char_pos: usize) -> usize {
+    hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx.index(), char_pos)
 }
 
 /// See [`hume_rope::grapheme::display_col_in_line`].
 pub fn display_col_in_line(
     text: &BufferText,
-    line_idx: usize,
+    line_idx: ContentLine,
     char_pos: usize,
     tab_width: u8,
 ) -> usize {
-    hume_rope::grapheme::display_col_in_line(text.full_slice(), line_idx, char_pos, tab_width)
+    hume_rope::grapheme::display_col_in_line(
+        text.full_slice(),
+        line_idx.index(),
+        char_pos,
+        tab_width,
+    )
 }
 
 /// See [`hume_rope::grapheme::char_pos_at_display_col`].
 pub fn char_pos_at_display_col(
     text: &BufferText,
-    line_idx: usize,
+    line_idx: ContentLine,
     target_display_col: usize,
     tab_width: u8,
 ) -> usize {
     hume_rope::grapheme::char_pos_at_display_col(
         text.full_slice(),
-        line_idx,
+        line_idx.index(),
         target_display_col,
         tab_width,
     )

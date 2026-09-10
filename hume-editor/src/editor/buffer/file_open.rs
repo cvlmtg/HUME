@@ -215,7 +215,7 @@ impl Editor {
         let focused = self.state.focused_pane_id;
         let pre_sels = self.state.panes.state[focused][id].selections.clone();
 
-        let cursor_coords: Vec<(PaneId, usize, usize)> = {
+        let cursor_coords: Vec<(PaneId, hume_rope::line::ContentLine, usize)> = {
             let text = self.state.buffers.get(id).text();
             pane_ids
                 .iter()
@@ -236,7 +236,7 @@ impl Editor {
             let mut heads = Vec::with_capacity(cursor_coords.len());
             for &(pid, line, char_col) in &cursor_coords {
                 let target_line = line.min(last_line);
-                let head = place_char_column(new_text, target_line, char_col);
+                let head = place_char_column(new_text, target_line.into(), char_col);
                 heads.push((pid, head));
             }
             heads

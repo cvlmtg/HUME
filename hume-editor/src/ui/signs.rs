@@ -14,6 +14,7 @@ use crate::lock_ext::LockExt;
 
 use hume_engine::builtins::sign_column::{Sign, SignSource};
 use hume_engine::providers::GutterRowCtx;
+use hume_rope::line::ContentLine;
 
 /// Shared per-frame sign data: at most one `Sign` per resolved slot per
 /// line (a line's `Vec` holds whichever slots this map's signs actually
@@ -21,7 +22,7 @@ use hume_engine::providers::GutterRowCtx;
 /// resolved `signcolumn` slot count). Every registered source (diagnostics
 /// included — `core:lsp` places them through `set-signs!` like any other
 /// plugin) is pre-merged into this one map at write time.
-pub(crate) type SignMap = Arc<RwLock<FxHashMap<usize, Vec<Sign>>>>;
+pub(crate) type SignMap = Arc<RwLock<FxHashMap<ContentLine, Vec<Sign>>>>;
 
 /// One `SignSource` reading a shared per-frame line->signs map.
 pub(crate) struct SharedSignSource {
@@ -35,7 +36,7 @@ impl SharedSignSource {
 }
 
 impl SignSource for SharedSignSource {
-    fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
+    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterRowCtx) -> Vec<Sign> {
         self.data
             .read_or_panic()
             .get(&line_idx)

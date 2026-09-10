@@ -32,6 +32,7 @@
 
 pub mod cursor;
 pub mod grapheme;
+pub mod line;
 pub mod lines;
 pub mod position_encoding;
 pub mod width;

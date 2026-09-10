@@ -24,4 +24,12 @@ disallowed-methods = [
     # caller-held `TEST_GLOBALS` claim) are the sanctioned exception.
     "std::env::set_var",
     "std::env::remove_var",
+    # Line counts and ranges go through `hume-rope`'s domain-typed
+    # `RopeyLine`/`ContentLine`/`RopeyLineCount`/`ContentLineCount`
+    # (`hume-rope/src/line.rs`) — see CLAUDE.md's "Line counts and ranges".
+    # Those types can't stop a raw `Rope::len_lines()` call from reaching a
+    # bare `usize`, so the ban lives here instead; `hume-rope/src/lines.rs`
+    # itself carries the one `#[allow(clippy::disallowed_methods)]`.
+    "ropey::Rope::len_lines",
+    "ropey::RopeSlice::len_lines",
 ]

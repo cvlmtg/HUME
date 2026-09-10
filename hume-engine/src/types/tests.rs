@@ -1,4 +1,5 @@
 use super::*;
+use hume_rope::line::RopeyLine;
 
 #[test]
 fn selection_range_ordered() {
@@ -14,19 +15,25 @@ fn selection_range_ordered() {
 
 #[test]
 fn row_kind_line_idx() {
-    assert_eq!(RowKind::LineStart { line_idx: 7 }.line_idx(), Some(7));
+    assert_eq!(
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(7)
+        }
+        .line_idx(),
+        Some(RopeyLine::new(7))
+    );
     assert_eq!(
         RowKind::Wrap {
-            line_idx: 7,
+            line_idx: RopeyLine::new(7),
             wrap_row: 1
         }
         .line_idx(),
-        Some(7)
+        Some(RopeyLine::new(7))
     );
     assert_eq!(
         RowKind::Virtual {
             provider_id: 0,
-            anchor_line: 7
+            anchor_line: RopeyLine::new(7)
         }
         .line_idx(),
         None

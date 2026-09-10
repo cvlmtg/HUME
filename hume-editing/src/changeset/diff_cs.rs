@@ -139,8 +139,8 @@ fn build_changesets(
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
 fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<usize>) {
-    let mut tokens = Vec::with_capacity(text.ropey_line_count());
-    let mut offsets = Vec::with_capacity(text.ropey_line_count() + 1);
+    let mut tokens = Vec::with_capacity(text.ropey_line_count().get());
+    let mut offsets = Vec::with_capacity(text.ropey_line_count().get() + 1);
     offsets.push(0);
     let mut char_acc = 0usize;
     for token in text.line_tokens() {

@@ -8,9 +8,10 @@
 //! per-line shell invocation to reorder against.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{char_col_in_line, line_break_char, line_end_exclusive};
+use hume_editing::lines::{char_col_in_line, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::line::ContentLine;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -35,7 +36,7 @@ pub enum SortRefusal {
 
 /// One buffer row touched by a selection, keyed by the selected text on it.
 struct Row {
-    line: usize,
+    line: ContentLine,
     key: String,
 }
 
@@ -54,7 +55,7 @@ pub fn sort_rows(
     let mut any_group = false;
     let mut any_edit = false;
     // Old line -> new line, populated only for rows that actually move.
-    let mut line_map = rustc_hash::FxHashMap::<usize, usize>::default();
+    let mut line_map = rustc_hash::FxHashMap::<ContentLine, ContentLine>::default();
 
     for group in &groups {
         if group.len() < 2 {
@@ -75,14 +76,14 @@ pub fn sort_rows(
         };
         any_edit = true;
 
-        let edit_start = text.line_to_char(rows[group[lo]].line);
-        let edit_end = line_end_exclusive(&text, rows[group[hi]].line);
+        let edit_start = text.line_to_char(rows[group[lo]].line.into());
+        let edit_end = next_line_start(&text, rows[group[hi]].line.into());
         b.retain(edit_start - b.old_pos());
         b.delete(edit_end - edit_start);
         for &local in &order[lo..=hi] {
             let line = rows[group[local]].line;
-            let start = text.line_to_char(line);
-            let end = line_end_exclusive(&text, line);
+            let start = text.line_to_char(line.into());
+            let end = next_line_start(&text, line.into());
             b.insert(&text.slice(start..end).to_string());
         }
     }
@@ -117,8 +118,9 @@ fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
     for sel in sels.iter_sorted() {
         let start_line = text.char_to_line(sel.start());
         let end_line = text.char_to_line(sel.end_inclusive(text));
-        for line in start_line..=end_line {
-            let line_start = text.line_to_char(line);
+        for line_idx in start_line.index()..=end_line.index() {
+            let line = ContentLine::new(line_idx);
+            let line_start = text.line_to_char(line.into());
             // This line's own trailing '\n'.
             let nl = line_break_char(text, line);
             let fragment = if nl > line_start {
@@ -151,10 +153,10 @@ fn collect_rows(text: &BufferText, sels: &SelectionSet) -> Vec<Row> {
 /// line numbers. Each inner `Vec` holds indices into `rows`.
 fn group_adjacent(rows: &[Row]) -> Vec<Vec<usize>> {
     let mut groups: Vec<Vec<usize>> = Vec::new();
-    let mut prev_line: Option<usize> = None;
+    let mut prev_line: Option<ContentLine> = None;
     for (idx, row) in rows.iter().enumerate() {
         match (groups.last_mut(), prev_line) {
-            (Some(g), Some(prev)) if prev + 1 == row.line => g.push(idx),
+            (Some(g), Some(prev)) if prev.down(1) == row.line => g.push(idx),
             _ => groups.push(vec![idx]),
         }
         prev_line = Some(row.line);
@@ -261,7 +263,7 @@ fn remap_selections(
     old_text: &BufferText,
     new_text: &BufferText,
     sels: &SelectionSet,
-    line_map: &rustc_hash::FxHashMap<usize, usize>,
+    line_map: &rustc_hash::FxHashMap<ContentLine, ContentLine>,
 ) -> SelectionSet {
     let mut new_sels = Vec::with_capacity(sels.len());
     for sel in sels.iter_sorted() {
@@ -271,7 +273,7 @@ fn remap_selections(
             line_map.get(&start_line).map(|&new_line| {
                 let anchor_char_col = char_col_in_line(old_text, start_line, sel.anchor());
                 let head_char_col = char_col_in_line(old_text, start_line, sel.head());
-                let new_line_start = new_text.line_to_char(new_line);
+                let new_line_start = new_text.line_to_char(new_line.into());
                 Selection::new(
                     new_line_start + anchor_char_col,
                     new_line_start + head_char_col,

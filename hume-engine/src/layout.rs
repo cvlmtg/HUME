@@ -24,7 +24,7 @@ pub struct PaneGeometry {
     /// 0-based index of the last ropey line (`hume_rope::lines::last_ropey_line`),
     /// phantom trailing line included. This is the correct value to pass to
     /// `GutterColumn::width()`.
-    pub last_line_idx: usize,
+    pub last_line_idx: hume_rope::line::RopeyLine,
 }
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ pub struct PaneGeometry {
 /// shape this purely-arithmetic function needs to know about.
 pub fn lane_widths<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
-    max_line: usize,
+    max_line: hume_rope::line::RopeyLine,
 ) -> impl Iterator<Item = u16> + 'a {
     // display-width-safe: GutterColumn::width is a cell count, not display width.
     gutter_columns.map(move |c| c.width(max_line) as u16)
@@ -56,7 +56,7 @@ pub fn lane_widths<'a>(
 /// [`lane_widths`], which this sums.
 pub fn gutter_width_for_line<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
-    max_line: usize,
+    max_line: hume_rope::line::RopeyLine,
 ) -> u16 {
     lane_widths(gutter_columns, max_line).sum()
 }

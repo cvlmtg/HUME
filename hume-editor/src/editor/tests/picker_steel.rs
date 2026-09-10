@@ -486,7 +486,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     let cursor_line = rope.char_to_line(cursor_char);
 
     let pane = &ed.view.panes[pid];
-    let top = pane.viewport.top_line;
+    let top = pane.viewport.top_line.index();
     let bottom = top + pane.viewport.height as usize;
     assert!(
         top > 0,

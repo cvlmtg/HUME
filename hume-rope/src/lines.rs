@@ -1,5 +1,6 @@
 use ropey::{Rope, RopeSlice};
-use std::ops::Range;
+
+use crate::line::{ContentLine, ContentLineCount, RopeyLine, RopeyLineCount};
 
 /// True if `rope` satisfies the trailing-newline invariant every HUME
 /// buffer upholds by construction: empty, or ending in `'\n'`. The single
@@ -17,32 +18,32 @@ pub fn ends_with_newline(rope: &Rope) -> bool {
 /// ends with makes ropey report one line past the buffer's real content —
 /// this is that raw count, phantom line included. Valid on any rope;
 /// always `>= 1` (ropey defines an empty rope as having one, empty, line).
-pub fn ropey_line_count(rope: &Rope) -> usize {
-    rope.len_lines()
+pub fn ropey_line_count(rope: &Rope) -> RopeyLineCount {
+    #[allow(clippy::disallowed_methods)] // the sanctioned wrapper — see clippy.toml
+    RopeyLineCount::new(rope.len_lines())
 }
 
 /// Index of the last ropey line — the phantom trailing line, under the
 /// trailing-newline invariant. Gutter sizing and LSP wire-position clamps
 /// use this: both must stay addressable up to ropey's own last line, not
 /// just the last line with real content.
-pub fn last_ropey_line(rope: &Rope) -> usize {
+pub fn last_ropey_line(rope: &Rope) -> RopeyLine {
     // ropey_line_count() is always >= 1, so this never underflows.
-    ropey_line_count(rope) - 1
+    RopeyLine::new(ropey_line_count(rope).get() - 1)
 }
 
-/// `0..ropey_line_count(rope)` — every line index ropey considers valid,
-/// phantom line included. The compliant spelling for a whole-buffer walk in
-/// the ropey domain: writing the range out by hand is the same re-derivation
-/// the line-count lint forbids everywhere else, and that lint reaches test
-/// code too.
+/// Every line index ropey considers valid, phantom line included. The
+/// compliant spelling for a whole-buffer walk in the ropey domain: writing
+/// the range out by hand is the same re-derivation the line-count lint
+/// forbids everywhere else, and that lint reaches test code too.
 ///
 /// Deliberately kept with no production caller. Production never walks a
 /// whole buffer by line index — the render path walks a viewport window and
 /// motions scan outward from the cursor — so whole-document iteration is a
 /// test-harness shape, and the harnesses doing it have no other compliant
 /// spelling.
-pub fn ropey_lines_range(rope: &Rope) -> Range<usize> {
-    0..ropey_line_count(rope)
+pub fn ropey_lines(rope: &Rope) -> impl Iterator<Item = RopeyLine> {
+    (0..ropey_line_count(rope).get()).map(RopeyLine::new)
 }
 
 /// Number of content lines: `ropey_line_count()` minus the structural
@@ -55,26 +56,26 @@ pub fn ropey_lines_range(rope: &Rope) -> Range<usize> {
 /// `hume_editing::BufferText` upholds it by construction. Callers that instead
 /// need the last valid *ropey* line, phantom line included, want
 /// [`last_ropey_line`].
-pub fn content_line_count(rope: &Rope) -> usize {
+pub fn content_line_count(rope: &Rope) -> ContentLineCount {
     debug_assert!(
         ends_with_newline(rope),
         "content_line_count: rope does not end with '\\n' — trailing-newline invariant violated"
     );
-    ropey_line_count(rope).saturating_sub(1)
+    ContentLineCount::new(ropey_line_count(rope).get().saturating_sub(1))
 }
 
 /// Index of the last content line (`content_line_count() - 1`). `0` on an
 /// empty buffer (`"\n"`, one content line: the empty first line). Callers
 /// clamping a target line to stay within real content use this.
-pub fn last_content_line(rope: &Rope) -> usize {
-    content_line_count(rope).saturating_sub(1)
+pub fn last_content_line(rope: &Rope) -> ContentLine {
+    ContentLine::new(content_line_count(rope).get().saturating_sub(1))
 }
 
-/// `0..content_line_count(rope)` — every real content line index.
-/// `range.contains(&line)` is the canonical "is this a real content line"
-/// bounds check.
-pub fn content_lines_range(rope: &Rope) -> Range<usize> {
-    0..content_line_count(rope)
+/// Every real content line index. The canonical "walk every content line"
+/// spelling — `range.contains(&line)`'s old bounds-check role is now
+/// [`ContentLine::checked`].
+pub fn content_lines(rope: &Rope) -> impl Iterator<Item = ContentLine> {
+    (0..content_line_count(rope).get()).map(ContentLine::new)
 }
 
 /// Line tokens from `line_idx` forward, each keeping its trailing line-break
@@ -95,8 +96,8 @@ pub fn content_lines_range(rope: &Rope) -> Range<usize> {
 ///
 /// # Panics
 /// Panics if `line_idx > ropey_line_count(rope)` (matches `Rope::line_to_char`).
-pub fn line_tokens_at(rope: &Rope, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
-    rope.lines_at(line_idx)
+pub fn line_tokens_at(rope: &Rope, line_idx: RopeyLine) -> impl Iterator<Item = RopeSlice<'_>> {
+    rope.lines_at(line_idx.index())
 }
 
 /// Same tokens as [`line_tokens_at`], walking backward from `line_idx`
@@ -106,8 +107,11 @@ pub fn line_tokens_at(rope: &Rope, line_idx: usize) -> impl Iterator<Item = Rope
 ///
 /// # Panics
 /// Panics if `line_idx >= ropey_line_count(rope)`.
-pub fn line_tokens_back_from(rope: &Rope, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
-    rope.lines_at(line_idx + 1).reversed()
+pub fn line_tokens_back_from(
+    rope: &Rope,
+    line_idx: RopeyLine,
+) -> impl Iterator<Item = RopeSlice<'_>> {
+    rope.lines_at(line_idx.index() + 1).reversed()
 }
 
 /// Strips the trailing line break from a line-tokenization token. `'\n'` is
@@ -138,39 +142,45 @@ pub fn line_token_content(token: RopeSlice<'_>) -> String {
     s
 }
 
-/// Exclusive end of `line`: char offset of the first char on the *next*
-/// line, or `rope.len_chars()` for the last line.
-pub fn line_end_exclusive(rope: &Rope, line: usize) -> usize {
-    if line + 1 < ropey_line_count(rope) {
-        rope.line_to_char(line + 1)
+/// Char offset of the first char on the line *after* `line`, or
+/// `rope.len_chars()` when `line` is the last ropey line. Named for what it
+/// is, not for what it might look like a shorthand for: the trailing `\n` of
+/// `line` itself is the char just before this offset, not `- 1` of it — that
+/// subtraction is [`line_break_char`]'s job, not this function's.
+pub fn next_line_start(rope: &Rope, line: RopeyLine) -> usize {
+    let next = line.down(1);
+    if next.index() < ropey_line_count(rope).get() {
+        rope.line_to_char(next.index())
     } else {
         rope.len_chars()
     }
 }
 
 /// Char offset of the `\n` that terminates `line` — the inclusive
-/// counterpart to [`line_end_exclusive`], and the content-domain face of
+/// counterpart to [`next_line_start`], and the content-domain face of
 /// `line_terminator_start`.
 ///
 /// Content domain: `line` must be a real content line, which is exactly the
 /// condition under which a terminator exists. The phantom trailing line has
 /// none, so that case is debug-asserted rather than silently answered with
 /// the line's own start.
-pub fn line_break_char(rope: &Rope, line: usize) -> usize {
+pub fn line_break_char(rope: &Rope, line: ContentLine) -> usize {
     debug_assert!(
-        line < content_line_count(rope),
-        "line_break_char: line {line} is not a real content line (buffer has {} content lines)",
-        content_line_count(rope)
+        line.index() < content_line_count(rope).get(),
+        "line_break_char: line {} is not a real content line (buffer has {} content lines)",
+        line.index(),
+        content_line_count(rope).get()
     );
-    line_terminator_start(rope, line)
+    line_terminator_start(rope, line.into())
 }
 
 /// Char offset one past the last content char on `line` — the offset the
 /// byte-domain wire helpers in [`crate::position_encoding`] use, expressed
 /// in bytes instead of chars.
-pub fn line_end_exclusive_byte(rope: &Rope, line: usize) -> usize {
-    if line + 1 < ropey_line_count(rope) {
-        rope.line_to_byte(line + 1)
+pub fn next_line_start_byte(rope: &Rope, line: RopeyLine) -> usize {
+    let next = line.down(1);
+    if next.index() < ropey_line_count(rope).get() {
+        rope.line_to_byte(next.index())
     } else {
         rope.len_bytes()
     }
@@ -184,7 +194,7 @@ pub fn line_end_exclusive_byte(rope: &Rope, line: usize) -> usize {
 /// editor's auto-indent-on-Enter and dedent-on-Backspace paths both consult
 /// it so they agree on the boundary. Thin wrapper over [`leading_indent`] for
 /// callers that don't also need the indent's display width.
-pub fn leading_whitespace_end(rope: &Rope, line: usize) -> usize {
+pub fn leading_whitespace_end(rope: &Rope, line: ContentLine) -> usize {
     leading_indent(rope, line, 1).0
 }
 
@@ -195,9 +205,9 @@ pub fn leading_whitespace_end(rope: &Rope, line: usize) -> usize {
 /// twice: once here, once through `crate::grapheme::display_col_in_line`,
 /// which re-walks it with full grapheme-cluster machinery it doesn't need —
 /// leading whitespace is always ASCII (`' '`/`'\t'`).
-pub fn leading_indent(rope: &Rope, line: usize, tab_width: u8) -> (usize, usize) {
-    let line_start = rope.line_to_char(line);
-    let end_excl = line_end_exclusive(rope, line);
+pub fn leading_indent(rope: &Rope, line: ContentLine, tab_width: u8) -> (usize, usize) {
+    let line_start = rope.line_to_char(line.index());
+    let end_excl = next_line_start(rope, line.into());
     let slice = rope.slice(line_start..end_excl);
     // Each whitespace char is ASCII (single byte == single char), so the
     // byte count is also the char count — no grapheme stepping needed.
@@ -246,9 +256,9 @@ pub(crate) fn snap_to_grapheme_boundary(rope: &Rope, line_start: usize, target: 
 /// one expression over this value. The wire and motion domains still
 /// disagree for an empty line by design — they differ in what they do with
 /// this offset, not in how they find it.
-pub(crate) fn line_terminator_start(rope: &Rope, line: usize) -> usize {
-    let end_excl = line_end_exclusive(rope, line);
-    if line + 1 < ropey_line_count(rope) {
+pub(crate) fn line_terminator_start(rope: &Rope, line: RopeyLine) -> usize {
+    let end_excl = next_line_start(rope, line);
+    if line.down(1).index() < ropey_line_count(rope).get() {
         end_excl - 1
     } else {
         end_excl
@@ -273,8 +283,8 @@ pub fn is_empty_line_token(token: RopeSlice<'_>) -> bool {
 /// Returns `true` if `line` is an empty line — zero content chars before its
 /// terminating `\n`. Whitespace-only lines are NOT empty (matching Helix
 /// semantics).
-pub fn is_empty_line(rope: &Rope, line: usize) -> bool {
-    is_empty_line_token(rope.line(line))
+pub fn is_empty_line(rope: &Rope, line: RopeyLine) -> bool {
+    is_empty_line_token(rope.line(line.index()))
 }
 
 /// The last char offset a cursor can land on for `line`.
@@ -286,9 +296,18 @@ pub fn is_empty_line(rope: &Rope, line: usize) -> bool {
 /// including a position sitting *on* the `\n`. [`crate::position_encoding`]'s
 /// wire-domain counterpart is defined by content length instead, and the two
 /// disagree by design for an empty line; do not substitute one for the other.
-pub fn line_content_end(rope: &Rope, line: usize) -> usize {
-    let line_start = rope.line_to_char(line);
-    let term_start = line_terminator_start(rope, line);
+///
+/// Content domain: `line` must be a real content line. The phantom trailing
+/// line has no cursor-legal position at all (`line_start` there is
+/// `rope.len_chars()`, one past every char in the buffer), so admitting it
+/// here would hand a caller a position violating the buffer's own
+/// `head < len_chars()` invariant — callers that might resolve onto the
+/// phantom line (a scripted `goto-location!` target) clamp to
+/// [`last_content_line`] before calling this, rather than this function
+/// silently answering with an illegal head.
+pub fn line_content_end(rope: &Rope, line: ContentLine) -> usize {
+    let line_start = rope.line_to_char(line.index());
+    let term_start = line_terminator_start(rope, line.into());
     if term_start == line_start {
         line_start // empty line — cursor on the `\n` itself
     } else {
@@ -304,7 +323,7 @@ pub fn line_content_end(rope: &Rope, line: usize) -> usize {
 /// lands — so the round trip through `next_grapheme_boundary` converts to its
 /// last codepoint; an identity on the single-codepoint clusters most text is
 /// made of, the `\n` of an empty line included.
-pub fn line_last_char(rope: &Rope, line: usize) -> usize {
+pub fn line_last_char(rope: &Rope, line: ContentLine) -> usize {
     crate::grapheme::cluster_last_char(rope.slice(..), line_content_end(rope, line))
 }
 
@@ -313,11 +332,12 @@ pub fn line_last_char(rope: &Rope, line: usize) -> usize {
 /// [`crate::grapheme::grapheme_col_in_line`] /
 /// [`crate::grapheme::display_col_in_line`]; inverse of `place_char_column`'s
 /// `line_start + char_col`.
-pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
-    let line_start = rope.line_to_char(line);
+pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: usize) -> usize {
+    let line_start = rope.line_to_char(line.index());
     debug_assert!(
         char_pos >= line_start,
-        "char_col_in_line: char_pos {char_pos} is before line {line}'s start {line_start}"
+        "char_col_in_line: char_pos {char_pos} is before line {}'s start {line_start}",
+        line.index()
     );
     char_pos - line_start
 }
@@ -337,16 +357,32 @@ pub fn char_col_in_line(rope: &Rope, line: usize, char_pos: usize) -> usize {
 /// which need `hume-editor`'s `RowMap` and so live there rather than as a
 /// pure `hume-ops` fn over this char-only one.
 ///
+/// `line` takes the ropey domain — a scripted `goto-location!` target can
+/// address the buffer's own trailing phantom line — but there is no cursor
+/// position *on* that line (see [`line_content_end`]'s doc), so a phantom
+/// `line` places at `rope.len_chars()` regardless of `char_col`, which is
+/// not itself a legal cursor head — callers clamp the result to
+/// `len_chars() - 1` (e.g. `goto_location`'s own doc comment).
+///
 /// The clamp compares against the line's *content* end, not
-/// [`line_end_exclusive`]: the latter counts the terminating `\n`, which would
+/// [`next_line_start`]: the latter counts the terminating `\n`, which would
 /// make a `char_col` of exactly the line's content length land on the newline
 /// while any larger one clamped back to the last real character — a
 /// non-monotonic result where moving further right moves the cursor left. An
 /// empty line still lands on its `\n`, since there `line_content_end` *is*
 /// that newline.
-pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
-    let line_start = rope.line_to_char(line);
-    let content_end = line_content_end(rope, line);
+pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: usize) -> usize {
+    let line_start = rope.line_to_char(line.index());
+    // The phantom line has no content to place within — its "content end"
+    // is its own start (`len_chars()`), the same value `line_content_end`
+    // would compute for it if it accepted a `RopeyLine` (empty line, cursor
+    // on the line's own terminator — here, EOF instead of a `\n`). Falling
+    // back to the *last content line*'s end here would silently relocate
+    // the target to a different line than the one asked for.
+    let content_end = match line.to_content(rope) {
+        Some(content_line) => line_content_end(rope, content_line),
+        None => line_start,
+    };
     let target = line_start + char_col;
 
     if target >= content_end {
@@ -366,9 +402,16 @@ pub fn place_char_column(rope: &Rope, line: usize, char_col: usize) -> usize {
 /// line with a multi-char grapheme (`é` = `e` + U+0301, a ZWJ emoji):
 /// `place_char_column` counts each combining char as its own column, this
 /// counts the whole cluster as one, matching what the caller displayed.
-pub fn place_grapheme_column(rope: &Rope, line: usize, grapheme_col: usize) -> usize {
-    let line_start = rope.line_to_char(line);
-    let content_end = line_content_end(rope, line);
+///
+/// Same phantom-line clamp as [`place_char_column`] — see its doc.
+pub fn place_grapheme_column(rope: &Rope, line: RopeyLine, grapheme_col: usize) -> usize {
+    let line_start = rope.line_to_char(line.index());
+    // See `place_char_column`'s comment: the phantom line's own start is its
+    // content end, not the last content line's.
+    let content_end = match line.to_content(rope) {
+        Some(content_line) => line_content_end(rope, content_line),
+        None => line_start,
+    };
     let slice = rope.slice(..);
     let mut pos = line_start;
     for _ in 0..grapheme_col {
@@ -383,14 +426,14 @@ pub fn place_grapheme_column(rope: &Rope, line: usize, grapheme_col: usize) -> u
 
 /// Convert a char-offset position to a line-relative byte offset.
 ///
-/// Returns `(line_idx, byte_in_line)` — the byte offset from the start of
+/// Returns `(line, byte_in_line)` — the byte offset from the start of
 /// the line. Used to build tree-sitter `Point`s and line-relative highlight
 /// spans.
-pub fn char_to_line_byte(rope: &Rope, char_pos: usize) -> (usize, usize) {
+pub fn char_to_line_byte(rope: &Rope, char_pos: usize) -> (RopeyLine, usize) {
     let line = rope.char_to_line(char_pos);
     let line_start_byte = rope.line_to_byte(line);
     let byte = rope.char_to_byte(char_pos).saturating_sub(line_start_byte);
-    (line, byte)
+    (RopeyLine::new(line), byte)
 }
 
 /// `(row, byte_col)` of the end of `inserted` written starting at
@@ -402,6 +445,10 @@ pub fn char_to_line_byte(rope: &Rope, char_pos: usize) -> (usize, usize) {
 /// `byte_col` becomes the byte count after the last `'\n'`. Splits on
 /// `'\n'` only, matching tree-sitter's own convention — callers feed
 /// CRLF-normalized buffer text.
+///
+/// `row` is a tree-sitter `Point` row, not a rope line index — pure `'\n'`
+/// counting over `inserted`, with no rope involved, so it stays `usize`
+/// rather than either line-domain type.
 pub fn advance_byte_point(row: usize, byte_col: usize, inserted: &str) -> (usize, usize) {
     match inserted.rfind('\n') {
         None => (row, byte_col + inserted.len()),
@@ -420,7 +467,7 @@ pub fn advance_byte_point(row: usize, byte_col: usize, inserted: &str) -> (usize
 /// A single-line range yields one triple, byte-identical to converting
 /// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A multi-line
 /// range yields one triple per line it covers content on. The clip point is
-/// deliberately the `\n` char's own position, not [`line_end_exclusive`] —
+/// deliberately the `\n` char's own position, not [`next_line_start`] —
 /// the latter is the *next* line's start, which `char_to_line_byte` would
 /// resolve to the wrong line (byte 0 of the line after).
 ///
@@ -436,13 +483,14 @@ pub fn line_segments(
     rope: &Rope,
     start: usize,
     end_char_excl: usize,
-) -> impl Iterator<Item = (usize, usize, usize)> + '_ {
+) -> impl Iterator<Item = (ContentLine, usize, usize)> + '_ {
     let last_char = end_char_excl - 1;
     let start_line = rope.char_to_line(start);
     let end_line = rope.char_to_line(last_char);
-    (start_line..=end_line).filter_map(move |line| {
+    (start_line..=end_line).filter_map(move |line_idx| {
+        let line = ContentLine::new(line_idx);
         let line_newline = line_break_char(rope, line);
-        let seg_start = start.max(rope.line_to_char(line));
+        let seg_start = start.max(rope.line_to_char(line_idx));
         let seg_end = end_char_excl.min(line_newline);
         if seg_start >= seg_end {
             return None;
@@ -451,7 +499,7 @@ pub fn line_segments(
         // is already known — subtracting this line's own byte offset gives the
         // same answer as `char_to_line_byte` without re-deriving the line or
         // its start byte once per end.
-        let line_start_byte = rope.line_to_byte(line);
+        let line_start_byte = rope.line_to_byte(line_idx);
         let byte_start = rope.char_to_byte(seg_start) - line_start_byte;
         let byte_end = rope.char_to_byte(seg_end) - line_start_byte;
         Some((line, byte_start, byte_end))

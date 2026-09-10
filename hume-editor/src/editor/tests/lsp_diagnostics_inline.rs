@@ -50,7 +50,9 @@ fn full_message_reaches_the_render_provider_untruncated() {
         .eol_text
         .read()
         .unwrap();
-    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    let inserts = by_line
+        .get(&hume_rope::line::ContentLine::new(0))
+        .expect("line 0 must have an insert");
     assert_eq!(inserts.len(), 1);
     assert_eq!(
         inserts[0].text, message,
@@ -106,7 +108,9 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
         .eol_text
         .read()
         .unwrap();
-    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    let inserts = by_line
+        .get(&hume_rope::line::ContentLine::new(0))
+        .expect("line 0 must have an insert");
     assert_eq!(
         inserts.len(),
         1,
@@ -165,7 +169,9 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         .eol_text
         .read()
         .unwrap();
-    let inserts = by_line.get(&0).expect("line 0 must have an insert");
+    let inserts = by_line
+        .get(&hume_rope::line::ContentLine::new(0))
+        .expect("line 0 must have an insert");
     assert_eq!(inserts.len(), 1);
     assert_eq!(
         inserts[0].text, "from-a",

@@ -118,21 +118,25 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     // behind, and the case that distinguishes "viewport moved" from
     // "cursor moved with it".
     let pid = ed.state.focused_pane_id;
-    ed.view.panes[pid].viewport.top_line = 10;
-    let head = ed.doc().text().line_to_char(10);
+    ed.view.panes[pid].viewport.top_line = hume_rope::line::ContentLine::new(10);
+    let head = ed
+        .doc()
+        .text()
+        .line_to_char(hume_rope::line::RopeyLine::new(10));
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
 
     ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top_line, 7,
+        ed.view.panes[pid].viewport.top_line,
+        hume_rope::line::ContentLine::new(7),
         "viewport must scroll up by mouse_scroll_lines (3)"
     );
     assert_eq!(
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        7,
+        hume_rope::line::ContentLine::new(7),
         "cursor must move with the viewport so it stays at the same screen row"
     );
 }
@@ -147,7 +151,10 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     ed.handle_input(mouse_wheel(false));
 
     let pid = ed.state.focused_pane_id;
-    assert_eq!(ed.view.panes[pid].viewport.top_line, 0);
+    assert_eq!(
+        ed.view.panes[pid].viewport.top_line,
+        hume_rope::line::ContentLine::new(0)
+    );
     assert_eq!(ed.current_selections().primary().head(), 0);
 }
 
@@ -259,7 +266,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     let sel = ed.state.panes.state[pid_b][bid].selections.primary();
     assert_eq!(
         ed.doc().text().char_to_line(sel.head()),
-        3,
+        hume_rope::line::ContentLine::new(3),
         "row 15 in pane B (rect.y=12) must resolve to buffer line 3, not \
          raw row 15 in the buffer (which would be past EOF) or be rejected \
          outright (row 15 >= pane B's own viewport.height of 12)"

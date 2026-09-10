@@ -35,7 +35,7 @@ pub(super) fn find_char_on_line_backward(
     ch: char,
 ) -> Option<usize> {
     let line = text.char_to_line(head);
-    let line_start = text.line_to_char(line);
+    let line_start = text.line_to_char(line.into());
     if head == line_start {
         return None; // already at line start, nothing to the left
     }

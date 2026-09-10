@@ -448,7 +448,7 @@ impl Editor {
             }
             let p = sel.head();
             let line_idx = text.char_to_line(p);
-            let line_start = text.line_to_char(line_idx);
+            let line_start = text.line_to_char(line_idx.into());
             // `p > line_start` rules out char_col 0 (nothing to dedent). `p <=
             // leading_whitespace_end` keeps the all-or-nothing "in leading ws"
             // rule: at exactly the end the cursor sits on the first content

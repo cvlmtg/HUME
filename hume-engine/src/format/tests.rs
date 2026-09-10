@@ -1,5 +1,6 @@
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
+use hume_rope::line::RopeyLine;
 
 // Tab-stop arithmetic itself (`hume_rope::width::tab_advance`) is tested at
 // its own definition in `hume-rope`, this crate's SSOT for display-column
@@ -11,7 +12,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayRow>, Vec<Grapheme>
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -32,7 +33,12 @@ fn single_line_no_wrap() {
     // No trailing newline → ropey sees exactly 1 line.
     let (rows, graphemes) = do_format("hello", WrapMode::None);
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
+    assert_eq!(
+        rows[0].kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0)
+        }
+    );
     assert_eq!(graphemes.len(), 5); // 'h','e','l','l','o'
 }
 
@@ -82,7 +88,12 @@ fn empty_line_produces_empty_sentinel_grapheme() {
     let (rows, graphemes) = do_format("a\n\nb", WrapMode::None);
     assert_eq!(rows.len(), 3, "three lines");
     let empty_row = &rows[1];
-    assert_eq!(empty_row.kind, RowKind::LineStart { line_idx: 1 });
+    assert_eq!(
+        empty_row.kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(1)
+        }
+    );
     let row_gs = &graphemes[empty_row.graphemes.clone()];
     assert_eq!(row_gs.len(), 1, "exactly one sentinel grapheme");
     assert!(
@@ -114,8 +125,15 @@ fn soft_wrap_produces_continuation_rows() {
         "expected at least 2 rows, got {}",
         rows.len()
     );
-    assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
-    assert!(matches!(rows[1].kind, RowKind::Wrap { line_idx: 0, .. }));
+    assert_eq!(
+        rows[0].kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0)
+        }
+    );
+    assert!(
+        matches!(rows[1].kind, RowKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
+    );
 }
 
 #[test]
@@ -262,16 +280,26 @@ fn soft_wrap_exact_fit_row_wraps_the_eol_sentinel_to_a_continuation_row() {
         3,
         "line 0's row + its wrapped sentinel row + the phantom trailing line"
     );
-    assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
+    assert_eq!(
+        rows[0].kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0)
+        }
+    );
     assert_eq!(
         rows[1].kind,
         RowKind::Wrap {
-            line_idx: 0,
+            line_idx: RopeyLine::new(0),
             wrap_row: 1
         },
         "the sentinel's row is a continuation of line 0"
     );
-    assert_eq!(rows[2].kind, RowKind::LineStart { line_idx: 1 });
+    assert_eq!(
+        rows[2].kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(1)
+        }
+    );
 
     let row0 = &graphemes[rows[0].graphemes.clone()];
     assert_eq!(
@@ -314,7 +342,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayRow>, Vec<Graph
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -560,8 +588,15 @@ fn word_wrap_breaks_at_whitespace() {
     // "ab cd ef" with width 5: "ab cd" fits, then "ef" on next row.
     let (rows, graphemes) = do_format("ab cd ef", WrapMode::Word { width: 5 });
     assert!(rows.len() >= 2);
-    assert_eq!(rows[0].kind, RowKind::LineStart { line_idx: 0 });
-    assert!(matches!(rows[1].kind, RowKind::Wrap { line_idx: 0, .. }));
+    assert_eq!(
+        rows[0].kind,
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0)
+        }
+    );
+    assert!(
+        matches!(rows[1].kind, RowKind::Wrap { line_idx, .. } if line_idx == RopeyLine::new(0))
+    );
     // The first row must not contain 'e' or 'f'.
     let row0_graphemes = &graphemes[rows[0].graphemes.clone()];
     assert!(row0_graphemes.len() <= 5);
@@ -705,7 +740,7 @@ fn do_format_windowed(
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines_range(&rope) {
+    for line_idx in hume_rope::lines::ropey_lines(&rope) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -786,7 +821,7 @@ fn row_char_offsets_are_non_decreasing_with_inline_inserts() {
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,
@@ -828,7 +863,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,
@@ -864,7 +899,7 @@ fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat 
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,
@@ -947,7 +982,7 @@ fn an_invisible_cluster_in_buffer_text_renders_as_its_codepoint() {
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,
@@ -987,7 +1022,7 @@ fn a_control_character_in_buffer_text_never_reaches_the_terminal() {
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,
@@ -1022,7 +1057,7 @@ fn a_bidi_override_is_distinguishable_from_a_zero_width_space() {
         let mut scratch = LineFormat::new();
         format_buffer_line(
             &rope,
-            0,
+            RopeyLine::new(0),
             4,
             &WhitespaceConfig::default(),
             &WrapMode::None,
@@ -1114,7 +1149,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     let mut scratch = LineFormat::new();
     format_buffer_line(
         &rope,
-        0,
+        RopeyLine::new(0),
         4,
         &WhitespaceConfig::default(),
         &WrapMode::None,

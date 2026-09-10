@@ -423,7 +423,7 @@ fn char_indexed_to_char_pos(
 ) -> usize {
     let buf = state.buffers.get(bid);
     let text = buf.text();
-    let line = line.min(text.last_ropey_line());
+    let line = hume_rope::line::RopeyLine::clamped(text.rope(), line);
     hume_editing::lines::place_char_column(text, line, char_col)
 }
 
@@ -478,7 +478,13 @@ fn resolve_goto_target(
                 wire_to_line_char_col(buf.text().rope(), line, character, encoding);
             Ok((
                 bid,
-                hume_editing::lines::place_char_column(buf.text(), line, char_col),
+                // `wire_to_line_char_col` already clamped `line` to the
+                // buffer's last ropey line.
+                hume_editing::lines::place_char_column(
+                    buf.text(),
+                    hume_rope::line::RopeyLine::new(line),
+                    char_col,
+                ),
             ))
         }
         GotoTarget::Path {

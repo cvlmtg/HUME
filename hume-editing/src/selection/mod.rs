@@ -386,9 +386,14 @@ impl SelectionSet {
         let mut mapper = PosMapCursor::new(cs.ops());
 
         for sel in &mut self.selections {
-            let pre_line = text_pre.char_to_line(sel.head);
+            // Ropey domain, not `char_to_line`: `sel.head` is a saved
+            // selection being replayed through an edit that may have shrunk
+            // the buffer since it was captured, so it can legitimately equal
+            // `text_pre.len_chars()` (the phantom line) — `line_to_char` and
+            // `next_line_start` both already accept that domain directly.
+            let pre_line = text_pre.ropey_char_to_line(sel.head);
             let line_start = text_pre.line_to_char(pre_line);
-            let line_end = crate::lines::line_end_exclusive(text_pre, pre_line);
+            let line_end = crate::lines::next_line_start(text_pre, pre_line);
 
             // Drop edits that end entirely before this line — heads (and thus
             // pre-edit lines) strictly increase across selections in a sorted,

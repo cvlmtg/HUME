@@ -132,7 +132,7 @@ fn enter_jumps_and_drawer_stays_open() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "Enter on row 2 must jump to that entry's line"
     );
     assert!(

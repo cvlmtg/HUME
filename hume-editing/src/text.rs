@@ -215,12 +215,12 @@ impl BufferText {
     /// [`hume_rope`]'s crate docs for the ropey-domain / content-domain
     /// distinction. Callers wanting the buffer's real line count want
     /// [`BufferText::content_line_count`] instead.
-    pub fn ropey_line_count(&self) -> usize {
+    pub fn ropey_line_count(&self) -> hume_rope::line::RopeyLineCount {
         hume_rope::lines::ropey_line_count(&self.rope)
     }
 
     /// Index of the last ropey line — the phantom trailing line.
-    pub fn last_ropey_line(&self) -> usize {
+    pub fn last_ropey_line(&self) -> hume_rope::line::RopeyLine {
         hume_rope::lines::last_ropey_line(&self.rope)
     }
 
@@ -229,27 +229,26 @@ impl BufferText {
     /// this subtracts it. The single source of truth for "how many lines
     /// does this buffer have" from a caller's point of view (line counts
     /// shown to the user, range-checked line indices).
-    pub fn content_line_count(&self) -> usize {
+    pub fn content_line_count(&self) -> hume_rope::line::ContentLineCount {
         hume_rope::lines::content_line_count(&self.rope)
     }
 
     /// Index of the last content line (`content_line_count() - 1`). Callers
     /// clamping a target line to stay within real content use this.
-    pub fn last_content_line(&self) -> usize {
+    pub fn last_content_line(&self) -> hume_rope::line::ContentLine {
         hume_rope::lines::last_content_line(&self.rope)
     }
 
-    /// `0..content_line_count()` — every real content line index.
-    /// `range.contains(&line)` is the canonical "is this a real content
-    /// line" bounds check.
-    pub fn content_lines_range(&self) -> Range<usize> {
-        hume_rope::lines::content_lines_range(&self.rope)
+    /// Every real content line index. The canonical "walk every content
+    /// line" spelling — `ContentLine::checked`'s old bounds-check role.
+    pub fn content_lines(&self) -> impl Iterator<Item = hume_rope::line::ContentLine> {
+        hume_rope::lines::content_lines(&self.rope)
     }
 
     /// All line tokens from the buffer start. See
     /// [`BufferText::line_tokens_at`].
     pub fn line_tokens(&self) -> impl Iterator<Item = RopeSlice<'_>> {
-        self.line_tokens_at(0)
+        self.line_tokens_at(hume_rope::line::RopeyLine::new(0))
     }
 
     /// Line tokens from `line_idx` forward, each keeping its trailing line
@@ -257,7 +256,10 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()` (matches `line_to_char`).
-    pub fn line_tokens_at(&self, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
+    pub fn line_tokens_at(
+        &self,
+        line_idx: hume_rope::line::RopeyLine,
+    ) -> impl Iterator<Item = RopeSlice<'_>> {
         hume_rope::lines::line_tokens_at(&self.rope, line_idx)
     }
 
@@ -267,7 +269,10 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx >= self.ropey_line_count()`.
-    pub fn line_tokens_back_from(&self, line_idx: usize) -> impl Iterator<Item = RopeSlice<'_>> {
+    pub fn line_tokens_back_from(
+        &self,
+        line_idx: hume_rope::line::RopeyLine,
+    ) -> impl Iterator<Item = RopeSlice<'_>> {
         hume_rope::lines::line_tokens_back_from(&self.rope, line_idx)
     }
 
@@ -276,16 +281,41 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `line_idx > self.ropey_line_count()`.
-    pub fn line_to_char(&self, line_idx: usize) -> usize {
-        self.rope.line_to_char(line_idx)
+    pub fn line_to_char(&self, line_idx: hume_rope::line::RopeyLine) -> usize {
+        self.rope.line_to_char(line_idx.index())
     }
 
-    /// Returns the 0-based line number that contains char offset `char_idx`.
+    /// Returns the 0-based line number that contains char offset `char_idx`,
+    /// in the content domain.
+    ///
+    /// # Panics
+    /// Panics if `char_idx >= self.len_chars()` (debug-asserted) — every
+    /// cursor position in this buffer satisfies that bound by construction.
+    /// A caller that must resolve a position that may sit on the buffer's
+    /// own trailing phantom line (`char_idx == len_chars()`, reachable when
+    /// probing one past a char offset) wants [`BufferText::ropey_char_to_line`]
+    /// instead.
+    pub fn char_to_line(&self, char_idx: usize) -> hume_rope::line::ContentLine {
+        debug_assert!(
+            char_idx < self.len_chars(),
+            "char_to_line: char_idx {char_idx} is not a legal cursor position \
+             (buffer has {} chars) — use ropey_char_to_line for a position that \
+             may land on the phantom trailing line",
+            self.len_chars()
+        );
+        hume_rope::line::ContentLine::new(self.rope.char_to_line(char_idx))
+    }
+
+    /// Returns the 0-based ropey line that contains char offset `char_idx`,
+    /// phantom trailing line included — for the two callers that must
+    /// resolve a position possibly one past the last real char (an `'after`
+    /// decoration anchor probing `pos + 1`, or LSP wire-position encoding).
+    /// Every other caller wants [`BufferText::char_to_line`].
     ///
     /// # Panics
     /// Panics if `char_idx > self.len_chars()`.
-    pub fn char_to_line(&self, char_idx: usize) -> usize {
-        self.rope.char_to_line(char_idx)
+    pub fn ropey_char_to_line(&self, char_idx: usize) -> hume_rope::line::RopeyLine {
+        hume_rope::line::RopeyLine::new(self.rope.char_to_line(char_idx))
     }
 
     /// Returns a slice of the buffer over the given char range.

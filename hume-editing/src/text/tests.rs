@@ -1,4 +1,5 @@
 use super::*;
+use hume_rope::line::{ContentLine, RopeyLine};
 
 #[test]
 fn from_rope_is_raw() {
@@ -17,7 +18,7 @@ fn from_rope_is_raw() {
 fn empty_buffer() {
     let text = BufferText::empty();
     assert_eq!(text.len_chars(), 1); // structural trailing \n
-    assert_eq!(text.ropey_line_count(), 2); // "\n" → line 0 = "\n", line 1 = ""
+    assert_eq!(text.ropey_line_count().get(), 2); // "\n" → line 0 = "\n", line 1 = ""
     assert!(text.is_empty());
     assert_eq!(text.to_string(), "\n");
 }
@@ -26,7 +27,7 @@ fn empty_buffer() {
 fn from_str_ascii() {
     let text = BufferText::from("hello\nworld");
     assert_eq!(text.len_chars(), 12); // "hello\nworld\n"
-    assert_eq!(text.ropey_line_count(), 3); // line 0, line 1, trailing empty line
+    assert_eq!(text.ropey_line_count().get(), 3); // line 0, line 1, trailing empty line
     assert!(!text.is_empty());
     assert_eq!(text.to_string(), "hello\nworld\n");
 }
@@ -96,14 +97,14 @@ fn normalize_line_endings_is_noop_on_lf() {
 fn from_str_trailing_newline() {
     // A trailing newline creates an extra empty line.
     let text = BufferText::from("hello\n");
-    assert_eq!(text.ropey_line_count(), 2);
+    assert_eq!(text.ropey_line_count().get(), 2);
 }
 
 #[test]
 fn line_tokens_count_matches_ropey_line_count_and_keeps_terminators() {
     let text = BufferText::from("a\nb\n");
     let tokens: Vec<_> = text.line_tokens().collect();
-    assert_eq!(tokens.len(), text.ropey_line_count());
+    assert_eq!(tokens.len(), text.ropey_line_count().get());
     assert_eq!(tokens, vec!["a\n", "b\n", ""]);
 }
 
@@ -128,21 +129,21 @@ fn line_tokens_treats_every_non_lf_break_char_as_content() {
 #[test]
 fn line_tokens_at_starts_at_the_requested_line() {
     let text = BufferText::from("a\nb\nc\n");
-    let tokens: Vec<_> = text.line_tokens_at(1).collect();
+    let tokens: Vec<_> = text.line_tokens_at(RopeyLine::new(1)).collect();
     assert_eq!(tokens, vec!["b\n", "c\n", ""]);
 }
 
 #[test]
 fn line_tokens_back_from_starts_at_the_requested_line_itself() {
     let text = BufferText::from("a\nb\nc\n");
-    let tokens: Vec<_> = text.line_tokens_back_from(2).collect();
+    let tokens: Vec<_> = text.line_tokens_back_from(RopeyLine::new(2)).collect();
     assert_eq!(tokens, vec!["c\n", "b\n", "a\n"]);
 }
 
 #[test]
 fn line_tokens_back_from_zero_yields_only_that_line() {
     let text = BufferText::from("a\nb\n");
-    let tokens: Vec<_> = text.line_tokens_back_from(0).collect();
+    let tokens: Vec<_> = text.line_tokens_back_from(RopeyLine::new(0)).collect();
     assert_eq!(tokens, vec!["a\n"]);
 }
 
@@ -155,25 +156,28 @@ fn line_tokens_back_from_walks_backward_across_a_chunk_boundary() {
     let source: String = (0..300).map(|i| format!("line {i}\n")).collect();
     let text = BufferText::from(source.as_str());
     let last = text.last_content_line();
-    let tokens: Vec<_> = text.line_tokens_back_from(last).collect();
-    assert_eq!(tokens.len(), text.content_line_count());
+    let tokens: Vec<_> = text.line_tokens_back_from(last.into()).collect();
+    assert_eq!(tokens.len(), text.content_line_count().get());
     // Independent oracle: line `n`'s own content, not derived from
     // `line_tokens_back_from` itself.
     for (steps_back, token) in tokens.iter().enumerate() {
-        assert_eq!(token.to_string(), format!("line {}\n", last - steps_back));
+        assert_eq!(
+            token.to_string(),
+            format!("line {}\n", last.index() - steps_back)
+        );
     }
 }
 
 #[test]
 fn content_line_count_excludes_the_phantom_trailing_line() {
-    assert_eq!(BufferText::from("\n").content_line_count(), 1);
-    assert_eq!(BufferText::from("a\nb\nc\n").content_line_count(), 3);
+    assert_eq!(BufferText::from("\n").content_line_count().get(), 1);
+    assert_eq!(BufferText::from("a\nb\nc\n").content_line_count().get(), 3);
 }
 
 #[test]
 fn last_content_line_is_content_line_count_minus_one() {
-    assert_eq!(BufferText::from("\n").last_content_line(), 0);
-    assert_eq!(BufferText::from("a\nb\nc\n").last_content_line(), 2);
+    assert_eq!(BufferText::from("\n").last_content_line().index(), 0);
+    assert_eq!(BufferText::from("a\nb\nc\n").last_content_line().index(), 2);
 }
 
 #[test]
@@ -188,18 +192,18 @@ fn from_str_unicode() {
 #[test]
 fn line_to_char() {
     let text = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(text.line_to_char(0), 0); // "hello" starts at 0
-    assert_eq!(text.line_to_char(1), 6); // "world" starts after "hello\n"
-    assert_eq!(text.line_to_char(2), 12); // "foo" starts after "world\n"
+    assert_eq!(text.line_to_char(RopeyLine::new(0)), 0); // "hello" starts at 0
+    assert_eq!(text.line_to_char(RopeyLine::new(1)), 6); // "world" starts after "hello\n"
+    assert_eq!(text.line_to_char(RopeyLine::new(2)), 12); // "foo" starts after "world\n"
 }
 
 #[test]
 fn char_to_line() {
     let text = BufferText::from("hello\nworld\nfoo");
-    assert_eq!(text.char_to_line(0), 0); // 'h' is on line 0
-    assert_eq!(text.char_to_line(5), 0); // '\n' is still line 0
-    assert_eq!(text.char_to_line(6), 1); // 'w' is on line 1
-    assert_eq!(text.char_to_line(12), 2); // 'f' is on line 2
+    assert_eq!(text.char_to_line(0), ContentLine::new(0)); // 'h' is on line 0
+    assert_eq!(text.char_to_line(5), ContentLine::new(0)); // '\n' is still line 0
+    assert_eq!(text.char_to_line(6), ContentLine::new(1)); // 'w' is on line 1
+    assert_eq!(text.char_to_line(12), ContentLine::new(2)); // 'f' is on line 2
 }
 
 #[test]

@@ -374,8 +374,12 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
     let bid = ed.focused_buffer_id();
     let text = ed.state.buffers.get(bid).text();
     let line = text.char_to_line(head);
-    let col = head - text.line_to_char(line);
-    assert_eq!((line, col), (2, 1), "cursor landed at the jump target");
+    let col = head - text.line_to_char(line.into());
+    assert_eq!(
+        (line, col),
+        (hume_rope::line::ContentLine::new(2), 1),
+        "cursor landed at the jump target"
+    );
     assert!(
         ed.state.config.drawer.is_some(),
         "drawer stays open after the jump"

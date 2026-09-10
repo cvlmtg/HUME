@@ -8,7 +8,7 @@ impl DecorationSource for DummyHighlight {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::HIGHLIGHT
     }
-    fn decorations_for_line(&self, _: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(&self, _: hume_rope::line::ContentLine, out: &mut Vec<Decoration>) {
         out.push(Decoration::Highlight {
             byte_start: 0,
             byte_end: 1,
@@ -27,13 +27,13 @@ impl DecorationSource for DummyVirtualLine {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, _: usize, _: &mut Vec<Decoration>) {}
+    fn decorations_for_line(&self, _: hume_rope::line::ContentLine, _: &mut Vec<Decoration>) {}
 }
 
 struct DummyGutter;
 
 impl GutterColumn for DummyGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine) -> u8 {
         0
     }
     fn render_row_cells(&self, _: crate::types::RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
@@ -130,7 +130,7 @@ fn sync_sign_column_width_updates_registered_sign_columns() {
         .as_any_mut()
         .downcast_mut::<SignColumn>()
         .unwrap();
-    assert_eq!(lane.width(0), 0);
+    assert_eq!(lane.width(hume_rope::line::RopeyLine::new(0)), 0);
 }
 
 #[test]

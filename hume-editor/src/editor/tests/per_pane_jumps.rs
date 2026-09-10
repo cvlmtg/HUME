@@ -15,7 +15,7 @@ fn p7_pane_jumps_ctrl_o_backward() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        0
+        hume_rope::line::ContentLine::new(0)
     );
 
     ed.handle_key(key_ctrl('o'));

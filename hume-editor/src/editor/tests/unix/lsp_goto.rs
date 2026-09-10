@@ -148,7 +148,7 @@ fn single_location_hashmap_jumps_directly() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "a single Location must jump directly to line 1 (0-indexed)"
     );
 }
@@ -202,7 +202,7 @@ fn single_element_array_jumps_directly() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "a length-1 Location[] must jump directly, not open the drawer"
     );
     assert!(ed.state.config.drawer.is_none());
@@ -241,7 +241,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "selecting row 2 in the drawer must jump to that entry's line"
     );
 }
@@ -334,7 +334,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "selecting a LocationLink drawer row must jump to targetSelectionRange's line"
     );
 }
@@ -357,7 +357,7 @@ fn location_link_array_prefers_target_selection_range() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "a single-entry LocationLink[] must jump using targetSelectionRange"
     );
 }
@@ -558,7 +558,7 @@ fn each_command_sends_its_own_method() {
             ed.doc()
                 .text()
                 .char_to_line(ed.current_selections().primary().head()),
-            1,
+            hume_rope::line::ContentLine::new(1),
             "{cmd} must send {method} and jump on its response"
         );
     }

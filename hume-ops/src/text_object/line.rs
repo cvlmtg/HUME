@@ -11,10 +11,10 @@ use crate::MotionMode;
 /// Returns `None` for lines that contain only a newline (no content to select).
 fn inner_line(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let line = text.char_to_line(pos);
-    if is_empty_line(text, line) {
+    if is_empty_line(text, line.into()) {
         return None; // empty line — no selectable content
     }
-    let line_start = text.line_to_char(line);
+    let line_start = text.line_to_char(line.into());
     Some((line_start, line_last_char(text, line)))
 }
 
@@ -26,7 +26,7 @@ fn inner_line(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
 /// is always a real content line — exactly `line_break_char`'s precondition.
 fn around_line(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let line = text.char_to_line(pos);
-    Some((text.line_to_char(line), line_break_char(text, line)))
+    Some((text.line_to_char(line.into()), line_break_char(text, line)))
 }
 
 pub fn cmd_inner_line(

@@ -167,7 +167,7 @@ pub(super) fn step_capture_pre_jump(
     state: &EditorState,
     view: &EngineView,
     meta: &CmdMeta,
-) -> Option<(Selection, usize, BufferId)> {
+) -> Option<(Selection, hume_rope::line::ContentLine, BufferId)> {
     meta.moves_cursor().then(|| jump_position(state, view))
 }
 
@@ -207,7 +207,10 @@ pub(super) fn step_clear_typed_run(state: &mut EditorState, view: &EngineView, m
 /// The primary selection, its line, and the focused buffer — what a jump
 /// entry is built from and what `step_record_jump` compares against, before
 /// and after a command runs.
-fn jump_position(state: &EditorState, view: &EngineView) -> (Selection, usize, BufferId) {
+fn jump_position(
+    state: &EditorState,
+    view: &EngineView,
+) -> (Selection, hume_rope::line::ContentLine, BufferId) {
     let bid = focused_buffer_id(state, view);
     let primary = current_selections(state, view).primary();
     let line = doc(state, view).text().char_to_line(primary.head());
@@ -251,7 +254,7 @@ pub(super) fn step_snapshot_recipe(
 pub(super) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
-    pre_jump: Option<(Selection, usize, BufferId)>,
+    pre_jump: Option<(Selection, hume_rope::line::ContentLine, BufferId)>,
     is_jump: bool,
 ) -> bool {
     let Some((pre_primary, pre_line, pre_bid)) = pre_jump else {
@@ -259,7 +262,10 @@ pub(super) fn step_record_jump(
     };
     let (post_primary, post_line, post_bid) = jump_position(state, view);
     let moved = post_bid != pre_bid || post_primary != pre_primary;
-    if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
+    if moved
+        && (is_jump
+            || pre_line.index().abs_diff(post_line.index()) > state.settings.jump_line_threshold)
+    {
         state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
             pre_primary,
             pre_line,

@@ -64,15 +64,19 @@ impl Editor {
             .map(|(pid, pane)| {
                 let bid = pane.buffer_id;
                 let vp = &pane.viewport;
-                let bottom = vp.top_line + vp.height as usize;
+                let bottom = vp.top_line.index() + vp.height as usize;
                 let text = self.state.buffers.get(bid).text();
-                let top_line = vp.top_line.min(text.last_ropey_line());
+                let top_line =
+                    hume_rope::line::RopeyLine::from(vp.top_line).min(text.last_ropey_line());
                 DecoratedPane {
                     pid,
                     bid,
-                    lines: top_line..(bottom + 1).min(text.ropey_line_count()),
+                    lines: top_line.index()..(bottom + 1).min(text.ropey_line_count().get()),
                     chars: text.line_to_char(top_line)
-                        ..hume_editing::lines::line_end_exclusive(text, bottom),
+                        ..hume_editing::lines::next_line_start(
+                            text,
+                            hume_rope::line::RopeyLine::new(bottom),
+                        ),
                 }
             })
             .collect()
@@ -127,12 +131,12 @@ impl Editor {
 
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after this pane's `top_line`.
-            let top_char = text.line_to_char(visible.start);
+            let top_char = text.line_to_char(hume_rope::line::RopeyLine::new(visible.start));
             let matches = &buf.search_matches.matches;
             let first = matches.partition_point(|&(start, _)| start < top_char);
             for &(start, end_incl) in &matches[first..] {
                 let start_line = text.char_to_line(start);
-                if start_line >= visible.end {
+                if start_line.index() >= visible.end {
                     break;
                 }
                 // end_incl is inclusive char offset; +1 makes it exclusive.
@@ -172,6 +176,9 @@ impl Editor {
                     let (line, byte) = char_to_line_byte(text, match_pos);
                     // Single-char match: byte_end = byte + utf8 length of the char.
                     let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                    // Trusted narrow: a bracket match is always a real
+                    // selection position, never the buffer's phantom line.
+                    let line = hume_rope::line::ContentLine::new(line.index());
                     bracket_arc
                         .write_or_panic()
                         .push((line, byte, byte + ch_len, bracket_scope));
@@ -326,7 +333,7 @@ impl Editor {
                 |e| e.pos,
             );
 
-            let mut by_line: rustc_hash::FxHashMap<usize, Vec<Sign>> =
+            let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<Sign>> =
                 rustc_hash::FxHashMap::default();
             for (slot, line, e) in anchored {
                 if slot >= slots as usize {
@@ -399,8 +406,10 @@ impl Editor {
             let visible = p.chars.clone();
             let text = self.state.buffers.get(bid).text();
 
-            let mut by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
-                rustc_hash::FxHashMap::default();
+            let mut by_line: rustc_hash::FxHashMap<
+                hume_rope::line::ContentLine,
+                Vec<InlineInsert>,
+            > = rustc_hash::FxHashMap::default();
             for entry in self
                 .state
                 .config
@@ -419,6 +428,10 @@ impl Editor {
                 } else {
                     char_to_line_byte(text, entry.pos + 1)
                 };
+                // Trusted narrow: `host_impl.rs`'s `validate_offset` already
+                // rejects an 'after anchor that would land on the phantom
+                // line at set-time, so `line` here is always real content.
+                let line = hume_rope::line::ContentLine::new(line.index());
                 by_line.entry(line).or_default().push(InlineInsert {
                     byte_offset,
                     text: entry.text.clone(),
@@ -462,32 +475,33 @@ impl Editor {
             // (`EolTextEntry::pos`); resolved to its *current* line here.
             let visible_lines = p.lines.clone();
             let text = self.state.buffers.get(bid).text();
-            let per_line: Vec<(&str, usize, InlineInsert)> = visible_line_anchored(
-                text,
-                visible_lines,
-                self.state.config.decorations.eol_text_for_buffer(bid),
-                |e| e.pos,
-            )
-            .map(|(source, line, e)| {
-                // End-of-line placement: the line's own trailing '\n'
-                // char resolves to a byte offset within `line` (never
-                // the next line — see `char_to_line_byte`'s doc comment
-                // on the same pattern used for inlay hints' `'after`
-                // anchor).
-                let line_newline = line_break_char(text, line);
-                let (_, byte_offset) = char_to_line_byte(text, line_newline);
-                (
-                    source,
-                    line,
-                    InlineInsert {
-                        byte_offset,
-                        text: e.text.clone(),
-                        scope: e.scope,
-                    },
+            let per_line: Vec<(&str, hume_rope::line::ContentLine, InlineInsert)> =
+                visible_line_anchored(
+                    text,
+                    visible_lines,
+                    self.state.config.decorations.eol_text_for_buffer(bid),
+                    |e| e.pos,
                 )
-            })
-            .collect();
-            let by_line: rustc_hash::FxHashMap<usize, Vec<InlineInsert>> =
+                .map(|(source, line, e)| {
+                    // End-of-line placement: the line's own trailing '\n'
+                    // char resolves to a byte offset within `line` (never
+                    // the next line — see `char_to_line_byte`'s doc comment
+                    // on the same pattern used for inlay hints' `'after`
+                    // anchor).
+                    let line_newline = line_break_char(text, line);
+                    let (_, byte_offset) = char_to_line_byte(text, line_newline);
+                    (
+                        source,
+                        line,
+                        InlineInsert {
+                            byte_offset,
+                            text: e.text.clone(),
+                            scope: e.scope,
+                        },
+                    )
+                })
+                .collect();
+            let by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<InlineInsert>> =
                 last_writer_per_line(per_line)
                     .into_iter()
                     .map(|(line, insert)| (line, vec![insert]))
@@ -549,7 +563,7 @@ impl Editor {
             };
 
             let text = self.state.buffers.get(bid).text();
-            let mut by_line: rustc_hash::FxHashMap<usize, Vec<VirtualLine>> =
+            let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<VirtualLine>> =
                 rustc_hash::FxHashMap::default();
             for entry in self.state.config.decorations.virtual_lines_for_buffer(bid) {
                 // `entry.pos` is the anchor line's line-start char offset
@@ -584,7 +598,7 @@ impl Editor {
     }
 
     /// Write per-frame line-background data to every pane's own
-    /// `Arc<RwLock<FxHashMap<usize, ScopeId>>>` buffer, read by that pane's
+    /// `Arc<RwLock<FxHashMap<ContentLine, ScopeId>>>` buffer, read by that pane's
     /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame —
     /// unlike `virtual_lines`, the payload is filtered to the viewport
     /// before any per-entry clone or scope resolution runs (mirrors
@@ -608,7 +622,11 @@ impl Editor {
             // line scrolled out of view costs nothing but the filter check.
             let visible_lines = p.lines.clone();
             let text = self.state.buffers.get(bid).text();
-            let per_line: Vec<(&str, usize, hume_engine::types::ScopeId)> = visible_line_anchored(
+            let per_line: Vec<(
+                &str,
+                hume_rope::line::ContentLine,
+                hume_engine::types::ScopeId,
+            )> = visible_line_anchored(
                 text,
                 visible_lines,
                 self.state
@@ -643,7 +661,9 @@ impl Editor {
 /// earlier one when folded left-to-right; and the alphabetically-first
 /// source sorts last, so its entries are folded last and win the
 /// cross-source overwrite.
-fn last_writer_per_line<T>(mut entries: Vec<(&str, usize, T)>) -> rustc_hash::FxHashMap<usize, T> {
+fn last_writer_per_line<T>(
+    mut entries: Vec<(&str, hume_rope::line::ContentLine, T)>,
+) -> rustc_hash::FxHashMap<hume_rope::line::ContentLine, T> {
     entries.sort_by(|a, b| b.0.cmp(a.0));
     entries.into_iter().map(|(_, line, v)| (line, v)).collect()
 }
@@ -658,9 +678,11 @@ fn last_writer_per_line<T>(mut entries: Vec<(&str, usize, T)>) -> rustc_hash::Fx
 /// end-of-buffer. The entry disappears rather than getting relocated onto
 /// whatever line precedes it (four callers: signs, EOL text, virtual lines,
 /// line backgrounds — all four line-anchored decoration kinds).
-fn resolve_decoration_line(text: &hume_editing::text::BufferText, pos: usize) -> Option<usize> {
-    let line = text.char_to_line(pos);
-    text.content_lines_range().contains(&line).then_some(line)
+fn resolve_decoration_line(
+    text: &hume_editing::text::BufferText,
+    pos: usize,
+) -> Option<hume_rope::line::ContentLine> {
+    text.ropey_char_to_line(pos).to_content(text.rope())
 }
 
 /// Filters `entries`' `(tag, entry)` pairs to `visible_lines`, resolving
@@ -683,10 +705,12 @@ fn visible_line_anchored<'a, K, E: 'a>(
     visible_lines: std::ops::Range<usize>,
     entries: impl Iterator<Item = (K, &'a E)>,
     pos_of: impl Fn(&E) -> usize,
-) -> impl Iterator<Item = (K, usize, &'a E)> {
+) -> impl Iterator<Item = (K, hume_rope::line::ContentLine, &'a E)> {
     entries.filter_map(move |(tag, e)| {
         let line = resolve_decoration_line(text, pos_of(e))?;
-        visible_lines.contains(&line).then_some((tag, line, e))
+        visible_lines
+            .contains(&line.index())
+            .then_some((tag, line, e))
     })
 }
 
@@ -699,7 +723,12 @@ fn push_match_highlight_lines(
     start: usize,
     end_char_excl: usize,
     scope: hume_engine::types::ScopeId,
-    data: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
+    data: &mut Vec<(
+        hume_rope::line::ContentLine,
+        usize,
+        usize,
+        hume_engine::types::ScopeId,
+    )>,
 ) {
     if start >= end_char_excl {
         return;
@@ -718,7 +747,13 @@ fn push_priority_highlight_lines(
     end_char_excl: usize,
     priority: u8,
     scope: hume_engine::types::ScopeId,
-    data: &mut Vec<(usize, usize, usize, u8, hume_engine::types::ScopeId)>,
+    data: &mut Vec<(
+        hume_rope::line::ContentLine,
+        usize,
+        usize,
+        u8,
+        hume_engine::types::ScopeId,
+    )>,
 ) {
     if start >= end_char_excl {
         return;
@@ -748,8 +783,19 @@ fn push_priority_highlight_lines(
 /// source-name order). `raw` need not be pre-sorted; drained (left empty)
 /// on return.
 fn flatten_priority_overlaps(
-    raw: &mut Vec<(usize, usize, usize, u8, hume_engine::types::ScopeId)>,
-    out: &mut Vec<(usize, usize, usize, hume_engine::types::ScopeId)>,
+    raw: &mut Vec<(
+        hume_rope::line::ContentLine,
+        usize,
+        usize,
+        u8,
+        hume_engine::types::ScopeId,
+    )>,
+    out: &mut Vec<(
+        hume_rope::line::ContentLine,
+        usize,
+        usize,
+        hume_engine::types::ScopeId,
+    )>,
 ) {
     use hume_engine::interval_sweep::{TieBreak, flatten_overlapping_spans};
     use std::cmp::Reverse;

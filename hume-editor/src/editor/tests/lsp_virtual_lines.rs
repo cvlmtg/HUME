@@ -25,7 +25,7 @@ fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::Vir
         .virtual_lines
         .read()
         .unwrap()
-        .get(&line)
+        .get(&hume_rope::line::ContentLine::new(line))
         .cloned()
         .unwrap_or_default()
 }
@@ -85,7 +85,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     let cursor_char = ed.current_selections().primary().head();
     assert_eq!(
         ed.state.buffers.get(bid).text().char_to_line(cursor_char),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "sanity: cursor on line 1"
     );
 

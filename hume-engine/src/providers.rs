@@ -53,7 +53,7 @@ pub enum HighlightTier {
 pub trait SyntaxSpans {
     fn spans_for_line(
         &self,
-        line_idx: usize,
+        line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
         out: &mut Vec<(usize, usize, ScopeId)>,
     );
@@ -70,7 +70,7 @@ pub trait SyntaxSpans {
 /// `line_to_byte` call it themselves.
 pub struct GutterRowCtx<'a> {
     pub mode: EditorMode,
-    pub primary_head_line: usize,
+    pub primary_head_line: hume_rope::line::ContentLine,
     pub rope: &'a ropey::Rope,
 }
 
@@ -78,8 +78,10 @@ pub struct GutterRowCtx<'a> {
 pub trait GutterColumn {
     /// Display width of this column in terminal cells.
     /// `last_line_idx` is the 0-based index of the last line in the file — used to
-    /// size line-number columns to fit the largest line number.
-    fn width(&self, last_line_idx: usize) -> u8;
+    /// size line-number columns to fit the largest line number. Ropey domain,
+    /// phantom trailing line included: deliberate, so the gutter stays one
+    /// digit wider than content strictly requires (see `layout::compute_viewport`).
+    fn width(&self, last_line_idx: hume_rope::line::RopeyLine) -> u8;
 
     /// Produce content for one display row as a sequence of cells.
     /// Single-cell columns (like `LineNumberColumn`) return a `Vec` with one element.
@@ -161,17 +163,17 @@ impl GutterCell {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum VirtualLineAnchor {
     /// Insert before the first display row of buffer line `n`.
-    Before(usize),
+    Before(hume_rope::line::ContentLine),
     /// Insert after the last display row (including wraps) of buffer line `n`.
-    After(usize),
+    After(hume_rope::line::ContentLine),
 }
 
 impl VirtualLineAnchor {
     /// Sort key for ordering virtual lines: Before(n) < After(n) < Before/After(n+1).
     pub fn sort_key(self) -> (usize, u8) {
         match self {
-            Self::Before(n) => (n, 0),
-            Self::After(n) => (n, 1),
+            Self::Before(n) => (n.index(), 0),
+            Self::After(n) => (n.index(), 1),
         }
     }
 }
@@ -292,7 +294,11 @@ pub trait DecorationSource {
     /// source's lifetime, cached at registration.
     fn kinds(&self) -> DecorationKinds;
 
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>);
+    fn decorations_for_line(
+        &self,
+        line_idx: hume_rope::line::ContentLine,
+        out: &mut Vec<Decoration>,
+    );
 }
 
 // ---------------------------------------------------------------------------

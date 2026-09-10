@@ -367,8 +367,8 @@ pub(crate) fn diagnostics_for_buffer(
             serde_json::json!({
                 "start": d.start,
                 "end": d.end,
-                "line": line,
-                "end-line": end_line,
+                "line": line.index(),
+                "end-line": end_line.index(),
                 "char-col": char_col,
                 "grapheme-col": grapheme_col,
                 "severity": d.severity.to_string(),
@@ -415,11 +415,14 @@ fn wire_pos_to_grapheme_col(
     character: usize,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<usize> {
-    if line > text.last_content_line() {
+    if line > text.last_content_line().index() {
         return None;
     }
     let char_pos =
         hume_rope::position_encoding::wire_to_char(text.rope(), line, character, encoding);
+    // Trusted narrow: the bound check above already confirmed `line` names a
+    // real content line.
+    let line = hume_rope::line::ContentLine::new(line);
     Some(hume_editing::grapheme::grapheme_col_in_line(
         text, line, char_pos,
     ))
@@ -621,7 +624,7 @@ pub(crate) fn linewise_ranges_params(
 /// than an empty one, so callers always get at least the pane's top line
 /// instead of a degenerate empty range.
 pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
-    let first_line = pane.viewport.top_line;
+    let first_line = pane.viewport.top_line.index();
     let visible_rows = pane.viewport.height.max(1) as usize;
     let end_line = (first_line + visible_rows).min(content_lines);
     first_line..end_line
@@ -640,7 +643,7 @@ pub(crate) fn viewport_range(
 ) -> Option<Range<usize>> {
     let pane_id = state.pane_showing_buffer(view, id)?;
     let pane = view.panes.get(pane_id)?;
-    let content_lines = state.buffers.try_get(id)?.text().content_line_count();
+    let content_lines = state.buffers.try_get(id)?.text().content_line_count().get();
     Some(pane_visible_range(pane, content_lines))
 }
 

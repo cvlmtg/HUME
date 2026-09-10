@@ -1,7 +1,8 @@
 use super::MotionMode;
-use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
+use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::BufferText;
+use hume_rope::line::ContentLine;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -46,30 +47,37 @@ fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selectio
         let top_line = text.char_to_line(sel.start());
         let bottom_line = text.char_to_line(sel.end());
         let end = line_break_char(text, bottom_line);
-        return Selection::directed(text.line_to_char(top_line), end, delta > 0);
+        return Selection::directed(text.line_to_char(top_line.into()), end, delta > 0);
     }
 
     let anchor_line = text.char_to_line(sel.anchor());
     let head_line = text.char_to_line(sel.head());
     if delta > 0 {
-        if line_end_exclusive(text, head_line) >= text.len_chars() {
+        if next_line_start(text, head_line.into()) >= text.len_chars() {
             return sel; // head already on the last line — clamp
         }
-    } else if head_line == 0 {
+    } else if head_line.index() == 0 {
         return sel; // head already on the first line — clamp
     }
     // `checked_add_signed` fails loudly on overflow/underflow in both debug
     // and release builds — unlike the `(x as isize + delta) as usize` cast
     // pair, which silently wraps in release. The clamps above guarantee this
     // can't actually underflow/overflow for delta = ±1.
-    let new_head_line = head_line
-        .checked_add_signed(delta)
-        .expect("head_line clamped above: delta=±1 cannot underflow/overflow here");
+    let new_head_line = ContentLine::new(
+        head_line
+            .index()
+            .checked_add_signed(delta)
+            .expect("head_line clamped above: delta=±1 cannot underflow/overflow here"),
+    );
 
     let lo = anchor_line.min(new_head_line);
     let hi = anchor_line.max(new_head_line);
     let end = line_break_char(text, hi);
-    Selection::directed(text.line_to_char(lo), end, anchor_line <= new_head_line)
+    Selection::directed(
+        text.line_to_char(lo.into()),
+        end,
+        anchor_line <= new_head_line,
+    )
 }
 
 /// One `x` press (`Move` mode): re-anchors to select the full current line,
@@ -79,14 +87,14 @@ fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selectio
 /// line, rather than growing a span (that's `Ctrl+x` / [`extend_line_span`]).
 fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
     let bottom_line = text.char_to_line(sel.end());
-    let end_excl = line_end_exclusive(text, bottom_line);
+    let end_excl = next_line_start(text, bottom_line.into());
     // If selection already ends on the trailing `\n`, jump to the next line.
     let target_line = if sel.ends_on_newline(text) && end_excl < text.len_chars() {
-        bottom_line + 1
+        bottom_line.down(1)
     } else {
         text.char_to_line(sel.start())
     };
-    let start = text.line_to_char(target_line);
+    let start = text.line_to_char(target_line.into());
     let end = line_break_char(text, target_line);
     Selection::new(start, end)
 }
@@ -122,12 +130,12 @@ pub fn cmd_select_line(
 fn move_select_line_backward(text: &BufferText, sel: Selection) -> Selection {
     let top_line = text.char_to_line(sel.start());
     // If selection already starts at line start, jump to previous line.
-    let target_line = if is_line_start(text, &sel) && top_line > 0 {
-        top_line - 1
+    let target_line = if is_line_start(text, &sel) && top_line.index() > 0 {
+        top_line.up(1)
     } else {
         top_line
     };
-    let start = text.line_to_char(target_line);
+    let start = text.line_to_char(target_line.into());
     let end = line_break_char(text, target_line);
     Selection::new(end, start) // backward: anchor=`\n`, head=line_start
 }

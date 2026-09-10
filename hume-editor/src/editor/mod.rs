@@ -816,7 +816,8 @@ pub(crate) struct Editor {
     /// `(top_line, height)` as of the last frame, per pane — `prepare_frame`'s
     /// scroll step compares against this to detect a real viewport change
     /// worth debouncing, rather than firing every frame regardless.
-    last_viewport_key: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (usize, u16)>,
+    last_viewport_key:
+        rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (hume_rope::line::ContentLine, u16)>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each
     /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
     /// compares against this to skip the rebuild on frames where neither

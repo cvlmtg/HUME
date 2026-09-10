@@ -85,7 +85,7 @@ pub(crate) fn place(
 /// content strictly requires.
 pub(crate) fn gutter_width<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
-    last_line_idx: usize,
+    last_line_idx: hume_rope::line::RopeyLine,
 ) -> u16 {
     gutter_width_for_line(gutter_columns, last_line_idx)
 }

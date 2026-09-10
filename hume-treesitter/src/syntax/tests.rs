@@ -110,7 +110,11 @@ fn attach_sync_parses_immediately_and_produces_real_highlight_spans() {
     );
 
     let mut spans = Vec::new();
-    syn.spans_for_line(0, text.rope(), &mut spans);
+    syn.spans_for_line(
+        hume_rope::line::ContentLine::new(0),
+        text.rope(),
+        &mut spans,
+    );
     assert!(
         !spans.is_empty(),
         "a real markdown grammar must highlight a heading line immediately, not leave it plain"

@@ -440,7 +440,11 @@ fn sign_remaps_through_a_line_inserted_above_it() {
         let pos = ed.state.config.decorations.signs_for("linter", bid)[0].pos;
         ed.state.buffers.get(bid).text().char_to_line(pos)
     };
-    assert_eq!(sign_line(&ed), 1, "sanity: sign starts on line 1");
+    assert_eq!(
+        sign_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "sanity: sign starts on line 1"
+    );
 
     // Insert a whole new blank line above line 0 — "bbbb" (and the sign on
     // it) must shift from line 1 to line 2.
@@ -451,7 +455,7 @@ fn sign_remaps_through_a_line_inserted_above_it() {
 
     assert_eq!(
         sign_line(&ed),
-        2,
+        hume_rope::line::ContentLine::new(2),
         "the sign must remap forward with the line it annotates"
     );
 }
@@ -496,8 +500,16 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
             .pos;
         ed.state.buffers.get(bid).text().char_to_line(pos)
     };
-    assert_eq!(vline_line(&ed), 1, "sanity: virtual line starts on line 1");
-    assert_eq!(eol_line(&ed), 1, "sanity: EOL text starts on line 1");
+    assert_eq!(
+        vline_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "sanity: virtual line starts on line 1"
+    );
+    assert_eq!(
+        eol_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "sanity: EOL text starts on line 1"
+    );
 
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
@@ -506,12 +518,12 @@ fn virtual_line_and_eol_text_remap_through_a_line_inserted_above_them() {
 
     assert_eq!(
         vline_line(&ed),
-        2,
+        hume_rope::line::ContentLine::new(2),
         "the virtual line must remap forward with the line it annotates"
     );
     assert_eq!(
         eol_line(&ed),
-        2,
+        hume_rope::line::ContentLine::new(2),
         "the EOL text must remap forward with the line it annotates"
     );
 }
@@ -566,7 +578,7 @@ fn line_anchored_decoration_follows_its_content_past_an_open_line_above_it() {
     );
     assert_eq!(
         text.char_to_line(pos),
-        2,
+        hume_rope::line::ContentLine::new(2),
         "the sign must render on line 2, where \"bbbb\" now is, not line 1's new blank line"
     );
 }
@@ -864,7 +876,11 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
             .pos;
         ed.state.buffers.get(bid).text().char_to_line(pos)
     };
-    assert_eq!(tint_line(&ed), 1, "sanity: tint starts on line 1");
+    assert_eq!(
+        tint_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "sanity: tint starts on line 1"
+    );
 
     // Insert a whole new blank line above line 0 — "bbbb" (and its tint)
     // must shift from line 1 to line 2.
@@ -875,7 +891,7 @@ fn line_background_remaps_through_a_line_inserted_above_it() {
 
     assert_eq!(
         tint_line(&ed),
-        2,
+        hume_rope::line::ContentLine::new(2),
         "the tint must remap forward with the line it annotates"
     );
 }

@@ -9,7 +9,7 @@ fn entry(char_pos: usize, line: usize) -> JumpEntry {
     JumpEntry {
         buffer_id: hume_engine::pipeline::BufferId::default(),
         selections: SelectionSet::single(Selection::collapsed(char_pos)),
-        primary_line: line,
+        primary_line: hume_rope::line::ContentLine::new(line),
     }
 }
 
@@ -22,13 +22,13 @@ fn push_and_backward() {
 
     let current = entry(30, 15);
     let e = jl.backward(current).unwrap();
-    assert_eq!(e.primary_line, 10);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
 
     let e = jl.backward(entry(0, 0)).unwrap();
-    assert_eq!(e.primary_line, 5);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(5));
 
     let e = jl.backward(entry(0, 0)).unwrap();
-    assert_eq!(e.primary_line, 0);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 
     assert!(jl.backward(entry(0, 0)).is_none());
 }
@@ -45,10 +45,10 @@ fn forward_after_backward() {
     jl.backward(entry(0, 0)).unwrap();
 
     let e = jl.forward().unwrap();
-    assert_eq!(e.primary_line, 10);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
 
     let e = jl.forward().unwrap();
-    assert_eq!(e.primary_line, 15);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(15));
 
     assert!(jl.forward().is_none());
 }
@@ -69,10 +69,10 @@ fn truncation_on_new_push() {
     assert!(jl.forward().is_none());
 
     let e = jl.backward(entry(60, 30)).unwrap();
-    assert_eq!(e.primary_line, 25);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(25));
 
     let e = jl.backward(entry(0, 0)).unwrap();
-    assert_eq!(e.primary_line, 0);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 
     assert!(jl.backward(entry(0, 0)).is_none());
 }
@@ -87,7 +87,7 @@ fn capacity_cap() {
     assert_eq!(jl.len(), CAP);
 
     let e = jl.backward(entry(9999, 9999)).unwrap();
-    assert_eq!(e.primary_line, CAP);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(CAP));
 
     let mut oldest = e.primary_line;
     while let Some(e) = jl.backward(entry(0, 0)) {
@@ -98,7 +98,7 @@ fn capacity_cap() {
     // saved position, so the true oldest survivor is line 2, not line 1.
     // Fail oracle: dropping that trim (leaving `backward` free to grow the
     // list to `CAP + 1`) would keep line 1 reachable and this assertion red.
-    assert_eq!(oldest, 2);
+    assert_eq!(oldest, hume_rope::line::ContentLine::new(2));
 }
 
 #[test]
@@ -127,7 +127,8 @@ fn set_capacity_defers_trim_to_next_push() {
     // hold 3 entries and line 4 would still be reachable as a second step.
     let e = jl.backward(entry(9999, 9999)).unwrap();
     assert_eq!(
-        e.primary_line, 5,
+        e.primary_line,
+        hume_rope::line::ContentLine::new(5),
         "the surviving pushed entry is the newest push"
     );
     assert!(
@@ -230,9 +231,9 @@ fn deduplication() {
 
     jl.push(entry(20, 10));
     let e = jl.backward(entry(99, 99)).unwrap();
-    assert_eq!(e.primary_line, 10);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
     let e = jl.backward(entry(0, 0)).unwrap();
-    assert_eq!(e.primary_line, 5);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(5));
     assert_eq!(e.selections.primary().head(), 3);
 }
 
@@ -258,13 +259,14 @@ fn backward_after_returning_to_present() {
     // the jump list from a fresh editing state.
     let e = jl.backward(entry(80, 20)).unwrap();
     assert_eq!(
-        e.primary_line, 0,
+        e.primary_line,
+        hume_rope::line::ContentLine::new(0),
         "traverses existing history without saving new position"
     );
 
     // Forward returns to the previously saved "present" (line 10).
     let e = jl.forward().unwrap();
-    assert_eq!(e.primary_line, 10);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
     assert!(jl.forward().is_none());
 }
 
@@ -274,10 +276,10 @@ fn backward_saves_current_position() {
     jl.push(entry(0, 0));
 
     let e = jl.backward(entry(50, 10)).unwrap();
-    assert_eq!(e.primary_line, 0);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 
     let e = jl.forward().unwrap();
-    assert_eq!(e.primary_line, 10);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(10));
 }
 
 // ── prune_buffer cursor-adjustment arithmetic ─────────────────────────────
@@ -287,7 +289,7 @@ fn entry_for(char_pos: usize, line: usize, bid: BufferId) -> JumpEntry {
     JumpEntry {
         buffer_id: bid,
         selections: SelectionSet::single(Selection::collapsed(char_pos)),
-        primary_line: line,
+        primary_line: hume_rope::line::ContentLine::new(line),
     }
 }
 
@@ -408,8 +410,15 @@ fn translate_in_place_shifts_offset_and_primary_line() {
 
     let e = jl.backward(entry_for(0, 0, bid)).unwrap();
     assert_eq!(e.selections.primary().head(), 9);
-    assert_eq!(e.primary_line, line_of("XXaaaa\nbbbb\ncccc", 9));
-    assert_eq!(e.primary_line, 1, "insert landed entirely before line 1");
+    assert_eq!(
+        e.primary_line,
+        hume_rope::line::ContentLine::new(line_of("XXaaaa\nbbbb\ncccc", 9))
+    );
+    assert_eq!(
+        e.primary_line,
+        hume_rope::line::ContentLine::new(1),
+        "insert landed entirely before line 1"
+    );
 }
 
 /// An entry tagged with a different buffer is untouched by a remap targeting
@@ -437,7 +446,11 @@ fn translate_in_place_skips_entries_for_other_buffers() {
         2,
         "untouched — different buffer"
     );
-    assert_eq!(e.primary_line, 0, "untouched — different buffer");
+    assert_eq!(
+        e.primary_line,
+        hume_rope::line::ContentLine::new(0),
+        "untouched — different buffer"
+    );
 }
 
 /// A deletion that fully covers an entry's position collapses it to the
@@ -461,7 +474,7 @@ fn translate_in_place_collapses_entry_inside_a_full_deletion() {
 
     let e = jl.backward(entry_for(99, 99, bid)).unwrap();
     assert_eq!(e.selections.primary().head(), 0);
-    assert_eq!(e.primary_line, 0);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
 }
 
 /// A deletion that merges two entries' positions onto the same post-edit line
@@ -494,7 +507,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
 
     let e = jl.backward(entry_for(99, 99, bid)).unwrap();
     assert_eq!(e.selections.primary().head(), 0);
-    assert_eq!(e.primary_line, 0);
+    assert_eq!(e.primary_line, hume_rope::line::ContentLine::new(0));
     assert!(
         jl.backward(entry_for(0, 0, bid)).is_none(),
         "only one entry survives the collapse"
@@ -590,7 +603,8 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
     let kept_ab = jl.backward(entry_for(99, 99, bid)).unwrap();
     assert_eq!(kept_ab.selections.primary().head(), 0);
     assert_eq!(
-        kept_ab.primary_line, 0,
+        kept_ab.primary_line,
+        hume_rope::line::ContentLine::new(0),
         "A and B both collapsed onto line 0 of the post-edit text"
     );
     let survivor_c = jl.forward().unwrap();
@@ -599,7 +613,10 @@ fn translate_in_place_adjusts_cursor_for_a_merge_before_it_mid_navigation() {
         7,
         "C merely shifts by the 10-char deletion, unaffected by the A/B merge"
     );
-    assert_eq!(survivor_c.primary_line, 1);
+    assert_eq!(
+        survivor_c.primary_line,
+        hume_rope::line::ContentLine::new(1)
+    );
 }
 
 /// After pruning, backward/forward still work correctly on the remaining entries.
@@ -617,9 +634,14 @@ fn prune_buffer_remaining_entries_navigable() {
 
     let e = jl.backward(entry_for(99, 99, bid_b)).unwrap();
     assert_eq!(
-        e.primary_line, 2,
+        e.primary_line,
+        hume_rope::line::ContentLine::new(2),
         "backward from present lands on last remaining entry"
     );
     let e = jl.backward(entry_for(0, 0, bid_b)).unwrap();
-    assert_eq!(e.primary_line, 0, "backward again reaches the oldest entry");
+    assert_eq!(
+        e.primary_line,
+        hume_rope::line::ContentLine::new(0),
+        "backward again reaches the oldest entry"
+    );
 }

@@ -4,7 +4,7 @@ use crate::types::Selection;
 #[test]
 fn viewport_state_defaults() {
     let vp = ViewportState::new(80, 24);
-    assert_eq!(vp.top_line, 0);
+    assert_eq!(vp.top_line.index(), 0);
     assert_eq!(vp.top_row_offset, 0);
     assert_eq!(vp.horizontal_offset, 0);
     assert_eq!(vp.width, 80);
@@ -259,16 +259,16 @@ fn recall_scroll_clamps_top_line_to_the_buffers_current_last_content_line() {
     let mut pane = Pane::new(bid);
 
     // Save a scroll position deep into a buffer that was, at the time, tall.
-    pane.viewport.top_line = 100;
+    pane.viewport.top_line = ContentLine::new(100);
     pane.remember_scroll();
 
     // The pane moves elsewhere, then recalls the same buffer — which has
     // since shrunk to a last content line of 3 (e.g. edited by another pane
     // in the meantime).
-    pane.viewport.top_line = 0;
-    pane.recall_scroll(bid, 3);
+    pane.viewport.top_line = ContentLine::new(0);
+    pane.recall_scroll(bid, ContentLine::new(3));
 
-    assert_eq!(pane.viewport.top_line, 3);
+    assert_eq!(pane.viewport.top_line.index(), 3);
 }
 
 #[test]
@@ -276,13 +276,13 @@ fn recall_scroll_leaves_an_in_range_top_line_untouched() {
     let bid = fresh_buffer_id();
     let mut pane = Pane::new(bid);
 
-    pane.viewport.top_line = 4;
+    pane.viewport.top_line = ContentLine::new(4);
     pane.remember_scroll();
 
-    pane.viewport.top_line = 0;
-    pane.recall_scroll(bid, 100);
+    pane.viewport.top_line = ContentLine::new(0);
+    pane.recall_scroll(bid, ContentLine::new(100));
 
-    assert_eq!(pane.viewport.top_line, 4);
+    assert_eq!(pane.viewport.top_line.index(), 4);
 }
 
 #[test]
@@ -313,7 +313,7 @@ fn primary_head_line_returns_head_line() {
     // Char 8 (start of line 2) should resolve to line 2.
     let rope = ropey::Rope::from_str("aaa\nbbb\nccc");
     let pane = make_pane_at_char(8); // first char of line 2
-    assert_eq!(pane.primary_head_line(&rope), 2);
+    assert_eq!(pane.primary_head_line(&rope).index(), 2);
 }
 
 #[test]
@@ -324,5 +324,5 @@ fn primary_head_line_uses_primary_idx() {
     let mut pane = make_pane_at_char(0); // first selection on line 0
     pane.selections.push(Selection { anchor: 8, head: 8 }); // second on line 2
     pane.primary_idx = 1;
-    assert_eq!(pane.primary_head_line(&rope), 2);
+    assert_eq!(pane.primary_head_line(&rope).index(), 2);
 }

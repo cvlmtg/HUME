@@ -4,7 +4,7 @@
 use hume_editing::grapheme::{
     cluster_last_char, next_grapheme_boundary, prev_grapheme_boundary, snap_to_cluster_start,
 };
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::next_line_start;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{
@@ -336,8 +336,8 @@ pub fn cmd_select_word_nearest_on_line(
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let line = text.char_to_line(sel.anchor());
-        let line_start = text.line_to_char(line);
-        let line_end_excl = line_end_exclusive(text, line);
+        let line_start = text.line_to_char(line.into());
+        let line_end_excl = next_line_start(text, line.into());
         let found = nearest_word_on_line(
             text,
             sel.anchor(),

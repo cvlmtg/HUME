@@ -36,7 +36,7 @@ fn editor_with_before_line() -> Editor {
     ed.view.panes[pid]
         .providers
         .add_decoration_source(Box::new(VirtualRows::uniform(
-            VirtualLineAnchor::Before(0),
+            VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
             1,
             "V",
         )));
@@ -96,7 +96,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
 
     let scroll_down = || mouse_wheel(true);
 
-    assert_eq!(ed.viewport().top_line, 0);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
     assert_eq!(
         ed.viewport().top_row_offset,
         0,
@@ -104,7 +104,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     );
 
     ed.handle_input(scroll_down());
-    assert_eq!(ed.viewport().top_line, 0);
+    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
     assert_eq!(
         ed.viewport().top_row_offset,
         1,
@@ -114,7 +114,7 @@ fn mouse_wheel_moves_one_row_at_a_time_through_a_before_block() {
     ed.handle_input(scroll_down());
     assert_eq!(
         ed.viewport().top_line,
-        1,
+        hume_rope::line::ContentLine::new(1),
         "second notch exhausts line 0's block, landing on line 1"
     );
     assert_eq!(ed.viewport().top_row_offset, 0);
@@ -146,7 +146,7 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
         ed.view.panes[pid]
             .providers
             .add_decoration_source(Box::new(VirtualRows::numbered(
-                VirtualLineAnchor::After(1),
+                VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
                 3,
             )));
 
@@ -163,7 +163,8 @@ fn screen_row_cursor_follow_counts_virtual_rows_toward_its_budget() {
             .text()
             .char_to_line(ed.current_selections().primary().head());
         assert_eq!(
-            cursor_line, 2,
+            cursor_line,
+            hume_rope::line::ContentLine::new(2),
             "5 display rows crosses 3 virtual After(1) rows, landing on real line 2, not 5 ({wrap:?})"
         );
     }

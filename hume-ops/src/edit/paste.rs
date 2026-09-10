@@ -1,7 +1,7 @@
 //! `p`/`P` — paste register contents after/before each selection.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{is_line_start, line_break_char, line_end_exclusive};
+use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 
@@ -67,9 +67,9 @@ fn paste_impl(
                 // starts; after it, one past where it ends.
                 let line = text.char_to_line(sel.head());
                 let insert_at = if before {
-                    text.line_to_char(line)
+                    text.line_to_char(line.into())
                 } else {
-                    line_end_exclusive(text, line)
+                    next_line_start(text, line.into())
                 };
                 // saturating_sub guards against same-line multi-cursor underflow.
                 b.retain(insert_at.saturating_sub(b.old_pos()));

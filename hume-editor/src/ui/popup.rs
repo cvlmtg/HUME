@@ -70,7 +70,7 @@ impl MarkupSyntax {
     /// `styled_runs`'s doc on `self.text`'s padded trailing `'\n'`).
     pub(crate) fn styled_row(
         &self,
-        line_idx: usize,
+        line_idx: hume_rope::line::ContentLine,
         line: &str,
         theme: &Theme,
         base_style: ResolvedStyle,
@@ -112,7 +112,11 @@ impl MarkupSyntax {
         let lines: Vec<&str> = text.split('\n').collect();
         let mut runs: Vec<(String, ResolvedStyle)> = Vec::new();
         for (line_idx, line) in lines.iter().enumerate() {
-            runs.extend(self.styled_row(line_idx, line, theme, base_style));
+            // Trusted mint: `lines` is `text`'s own unpadded split, always
+            // within `self.text`'s real content even though the latter may
+            // carry one more (phantom) line than `lines.len()`.
+            let content_line = hume_rope::line::ContentLine::new(line_idx);
+            runs.extend(self.styled_row(content_line, line, theme, base_style));
             if line_idx + 1 < lines.len() {
                 push_run(&mut runs, "\n", base_style);
             }

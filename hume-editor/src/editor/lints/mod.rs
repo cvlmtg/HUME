@@ -10,7 +10,6 @@ mod column_naming;
 mod field_classification;
 mod grapheme;
 mod init_example;
-mod line_count;
 mod manual_options;
 mod plugin_manifest;
 mod resync_derived_state;

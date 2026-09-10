@@ -3,6 +3,7 @@ use crate::pane::ViewportState;
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, Modifiers, ResolvedStyle, RowKind, ScopeId};
 use hume_grid::{Grid, Rect, Rgb};
+use hume_rope::line::{ContentLine, RopeyLine};
 
 fn make_test_buf(w: u16, h: u16) -> Grid {
     Grid::new(w, h)
@@ -28,7 +29,9 @@ fn poke(buf: &mut Grid, x: u16, y: u16, text: &str) {
 
 fn simple_row(graphemes: std::ops::Range<usize>) -> DisplayRow {
     DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes,
     }
 }
@@ -55,7 +58,7 @@ fn renders_simple_text() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let pane_rect = Rect {
@@ -73,7 +76,7 @@ fn renders_simple_text() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -109,7 +112,7 @@ fn filler_rows_have_tilde() {
         content_height: 5, // 5 rows requested; caller already rendered row 0
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let pane_rect = Rect {
@@ -126,7 +129,7 @@ fn filler_rows_have_tilde() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -180,7 +183,7 @@ fn do_compose_row(
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -225,7 +228,7 @@ fn horizontal_scroll_clips_left_columns() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let mut viewport = ViewportState::new(20, 5);
     viewport.horizontal_offset = 2; // skip columns 0 and 1
@@ -283,7 +286,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let mut viewport = ViewportState::new(20, 5);
     viewport.horizontal_offset = 1;
@@ -324,7 +327,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
         content_height: 5,
         content_width: 5,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(5, 5);
     let buf = do_compose_row(
@@ -377,7 +380,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -406,7 +409,9 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         })
         .collect();
     let rows = [DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes: 0..11,
     }];
     let styles = vec![ResolvedStyle::default(); 11];
@@ -414,7 +419,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -472,7 +477,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -510,7 +515,9 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         })
         .collect();
     let rows = [DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes: 0..11,
     }];
     let styles = vec![ResolvedStyle::default(); 11];
@@ -518,7 +525,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let pane_rect = Rect {
@@ -536,7 +543,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -589,7 +596,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         .collect();
     let rows = [DisplayRow {
         kind: RowKind::Wrap {
-            line_idx: 0,
+            line_idx: RopeyLine::new(0),
             wrap_row: 1,
         },
         graphemes: 4..8,
@@ -599,7 +606,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -627,7 +634,7 @@ fn indicator_content_fills_tab_width() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -660,7 +667,7 @@ fn tab_fill_blanks_its_whole_width() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -698,7 +705,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         content_height: 5,
         content_width: 20,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_row(
@@ -720,7 +727,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
 
 struct OverlongGutter;
 impl GutterColumn for OverlongGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         4
     }
     fn render_row_cells(
@@ -754,7 +761,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         content_height: 1,
         content_width: 6,
         gutter_width: 4,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(10, 1);
     let pane_rect = Rect {
@@ -775,7 +782,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -828,7 +835,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         content_height: 1,
         content_width: 1,
         gutter_width: 4,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(5, 1);
     let pane_rect = Rect {
@@ -852,7 +859,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -893,7 +900,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
 /// Exists purely to reproduce a leftover in a *non-first* gutter column.
 struct LeftoverGutter;
 impl GutterColumn for LeftoverGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         6
     }
     fn render_row_cells(
@@ -919,7 +926,7 @@ impl GutterColumn for LeftoverGutter {
 /// *second* column, which is what exposes the bug (see next test's doc).
 struct ExactFillGutter;
 impl GutterColumn for ExactFillGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         2
     }
     fn render_row_cells(
@@ -961,7 +968,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         content_height: 1,
         content_width: 2,
         gutter_width: 8, // 2 (ExactFillGutter) + 6 (LeftoverGutter)
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(10, 1);
     let pane_rect = Rect {
@@ -985,7 +992,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1036,7 +1043,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
 /// always:40` in a narrow vsplit).
 struct HugeGutter;
 impl GutterColumn for HugeGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         20
     }
     fn render_row_cells(
@@ -1069,7 +1076,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         content_height: 1,
         content_width: 1,
         gutter_width: 20,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(6, 1);
     let pane_rect = Rect {
@@ -1093,7 +1100,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1131,7 +1138,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
 /// shape a Steel-configured gutter icon would take.
 struct OwnedIconGutter;
 impl GutterColumn for OwnedIconGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         3
     }
     fn render_row_cells(
@@ -1158,7 +1165,7 @@ impl GutterColumn for OwnedIconGutter {
 /// path; `Cow::Owned` must produce the same output.
 struct StaticIconGutter;
 impl GutterColumn for StaticIconGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         3
     }
     fn render_row_cells(
@@ -1187,7 +1194,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             content_height: 1,
             content_width: 4,
             gutter_width: 3,
-            last_line_idx: 0,
+            last_line_idx: RopeyLine::new(0),
         };
         let viewport = ViewportState::new(7, 1);
         let pane_rect = Rect {
@@ -1208,7 +1215,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             visible: &visible,
             viewport: &viewport,
             mode: EditorMode::Normal,
-            primary_head_line: 0,
+            primary_head_line: ContentLine::new(0),
             tab_width: 4,
             tilde_style: ResolvedStyle::default(),
             indent_guide_style: ResolvedStyle::default(),
@@ -1252,7 +1259,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
 /// plumbing end to end through `compose_gutter`.
 struct FirstCharGutter;
 impl GutterColumn for FirstCharGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         2
     }
     fn render_row_cells(
@@ -1262,7 +1269,12 @@ impl GutterColumn for FirstCharGutter {
     ) -> Vec<crate::providers::GutterCell> {
         let cell = match kind {
             RowKind::LineStart { line_idx } => {
-                let first_char = ctx.rope.line(line_idx).chars().next().unwrap_or(' ');
+                let first_char = ctx
+                    .rope
+                    .line(line_idx.index())
+                    .chars()
+                    .next()
+                    .unwrap_or(' ');
                 crate::providers::GutterCell {
                     content: crate::providers::GutterCellContent::Text(std::borrow::Cow::Owned(
                         first_char.to_string(),
@@ -1287,7 +1299,9 @@ fn gutter_column_reads_rope_via_ctx() {
     let rope = ropey::Rope::from_str("apple\nbanana\n");
     let graphemes = vec![simple_grapheme(0, 0, 1)];
     let rows = [DisplayRow {
-        kind: RowKind::LineStart { line_idx: 1 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(1),
+        },
         graphemes: 0..1,
     }];
     let styles = vec![ResolvedStyle::default()];
@@ -1297,7 +1311,7 @@ fn gutter_column_reads_rope_via_ctx() {
         content_height: 2,
         content_width: 10,
         gutter_width: 2,
-        last_line_idx: 1,
+        last_line_idx: RopeyLine::new(1),
     };
     let viewport = ViewportState::new(12, 2);
     let pane_rect = Rect {
@@ -1317,7 +1331,7 @@ fn gutter_column_reads_rope_via_ctx() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1415,7 +1429,7 @@ fn compose_row_dims_cells_inline() {
         content_height: 1,
         content_width: 2,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(2, 1);
     let pane_rect = Rect {
@@ -1433,7 +1447,7 @@ fn compose_row_dims_cells_inline() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -1474,7 +1488,7 @@ fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
         content_height: 1,
         content_width: 2,
         gutter_width: 0,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = ViewportState::new(2, 1);
     let pane_rect = Rect {
@@ -1492,7 +1506,7 @@ fn compose_row_dim_leaves_an_uncoloured_cell_alone() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),

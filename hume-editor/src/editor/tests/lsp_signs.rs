@@ -150,7 +150,7 @@ fn re_registering_a_sign_source_updates_its_priority_and_slot() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         &*line_signs[0].text, "A",
         "re-registering \"a\" at priority 10 must move it ahead of \"b\" — \
@@ -172,7 +172,9 @@ fn plugin_sign_via_set_signs_appears_in_the_plugin_map() {
 
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1);
-    let sign = signs[&0].first().expect("one sign on the line");
+    let sign = signs[&hume_rope::line::ContentLine::new(0)]
+        .first()
+        .expect("one sign on the line");
     assert_eq!(&*sign.text, "!");
     assert_eq!(
         sign.slot, 0,
@@ -206,7 +208,7 @@ fn default_signcolumn_auto_sizes_to_show_every_channel_present() {
 
     let signs = pane_signs(&ed, pid);
     assert_eq!(signs.len(), 1, "one line, one merged entry across sources");
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         2,
@@ -237,7 +239,7 @@ fn bare_auto_auto_sizes_to_multiple_channels_like_bare_always() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         2,
@@ -270,7 +272,7 @@ fn auto_size_grows_to_five_registered_sources() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         5,
@@ -297,7 +299,7 @@ fn pinned_single_slot_keeps_only_the_higher_priority_sign() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         1,
@@ -324,7 +326,7 @@ fn equal_priority_sign_sources_get_distinct_slots_ordered_by_name() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         2,
@@ -353,7 +355,7 @@ fn wider_signcolumn_keeps_multiple_signs_per_line() {
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         2,
@@ -387,7 +389,7 @@ fn a_source_ranked_past_the_resolved_slot_count_is_hidden_not_miscast_into_slot_
     );
 
     let signs = pane_signs(&ed, pid);
-    let line_signs = &signs[&0];
+    let line_signs = &signs[&hume_rope::line::ContentLine::new(0)];
     assert_eq!(
         line_signs.len(),
         2,

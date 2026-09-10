@@ -144,7 +144,7 @@ fn cursorline_wins_over_the_line_background_tint() {
             .get(bid)
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "sanity: cursor on the tinted line"
     );
 
@@ -210,7 +210,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
             .get(bid)
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        1,
+        hume_rope::line::ContentLine::new(1),
         "sanity: cursor on the tinted line"
     );
 
@@ -257,7 +257,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
             .get(bid)
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        9,
+        hume_rope::line::ContentLine::new(9),
         "sanity: cursor lands on the last line, off-screen at the default top_line=0"
     );
 
@@ -276,7 +276,8 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     frame(&mut ed, 20, 5); // rect height 5 → 4 content rows, forces the scroll
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top_line, 6,
+        ed.view.panes[pid].viewport.top_line,
+        hume_rope::line::ContentLine::new(6),
         "sanity: the cursor forced this frame's own scroll, landing top_line \
          where line 8 is visible but line 0's default viewport never was"
     );
@@ -287,7 +288,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
         .unwrap()
         .clone();
     assert!(
-        by_line.contains_key(&8),
+        by_line.contains_key(&hume_rope::line::ContentLine::new(8)),
         "line 8's tint must survive into the post-scroll viewport this bridge reads"
     );
 }

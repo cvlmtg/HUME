@@ -266,7 +266,7 @@ fn exit_cursor(b: &BufferText, head: usize, step_back: bool) -> Selection {
     if !step_back {
         return Selection::collapsed(head);
     }
-    let line_start = b.line_to_char(b.char_to_line(head));
+    let line_start = b.line_to_char(b.char_to_line(head).into());
     let new_head = if head > line_start {
         hume_editing::grapheme::prev_grapheme_boundary(b, head)
     } else {

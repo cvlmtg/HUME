@@ -2,9 +2,10 @@
 //! the inserted spaces.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::lines::{line_break_char, line_end_exclusive};
+use hume_editing::lines::{line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::line::ContentLine;
 
 use super::apply_edit;
 
@@ -45,13 +46,14 @@ pub fn join_lines_select_spaces(
             // Clamp to the last content line: a cursor there must not join
             // with the trailing structural-newline line — it would delete
             // the structural '\n' and panic in the changeset validator.
-            end_line = (end_line + 1).min(text.last_content_line());
+            end_line = end_line.down(1).min(text.last_content_line());
         }
 
-        for line in start_line..end_line {
+        for line_idx in start_line.index()..end_line.index() {
+            let line = ContentLine::new(line_idx);
             let nl_pos = line_break_char(text, line);
-            let next_start = line_end_exclusive(text, line);
-            let next_end_excl = line_end_exclusive(text, line + 1);
+            let next_start = next_line_start(text, line.into());
+            let next_end_excl = next_line_start(text, ContentLine::new(line_idx + 1).into());
 
             let content_start = {
                 let mut p = next_start;

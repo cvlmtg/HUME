@@ -83,7 +83,7 @@ impl VirtualRows {
         self
     }
 
-    fn line(&self) -> usize {
+    fn line(&self) -> hume_rope::line::ContentLine {
         match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         }
@@ -95,7 +95,11 @@ impl DecorationSource for VirtualRows {
         DecorationKinds::VIRTUAL_LINE
     }
 
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(
+        &self,
+        line_idx: hume_rope::line::ContentLine,
+        out: &mut Vec<Decoration>,
+    ) {
         if line_idx != self.line() {
             return;
         }
@@ -122,7 +126,7 @@ impl DecorationSource for VirtualRows {
 
 /// An INLINE source emitting one insert on one line — an inlay hint, say.
 pub(crate) struct InlineHint {
-    line: usize,
+    line: hume_rope::line::ContentLine,
     byte_offset: usize,
     text: &'static str,
     scope: ScopeId,
@@ -133,7 +137,7 @@ impl InlineHint {
     /// An insert of `text` at `byte_offset` on `line`, unstyled.
     pub(crate) fn new(line: usize, byte_offset: usize, text: &'static str) -> Self {
         Self {
-            line,
+            line: hume_rope::line::ContentLine::new(line),
             byte_offset,
             text,
             scope: ScopeId(0),
@@ -161,7 +165,11 @@ impl DecorationSource for InlineHint {
         DecorationKinds::INLINE
     }
 
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(
+        &self,
+        line_idx: hume_rope::line::ContentLine,
+        out: &mut Vec<Decoration>,
+    ) {
         if line_idx != self.line || self.gate.as_ref().is_some_and(|g| !g.get()) {
             return;
         }
@@ -180,13 +188,16 @@ impl DecorationSource for InlineHint {
 /// formats that depends on nothing the row map reports about itself. Emitting
 /// no insert keeps the line's layout the one it would have had unobserved.
 pub(crate) struct FormatProbe {
-    line: usize,
+    line: hume_rope::line::ContentLine,
     formats: Rc<Cell<usize>>,
 }
 
 impl FormatProbe {
     pub(crate) fn new(line: usize, formats: Rc<Cell<usize>>) -> Self {
-        Self { line, formats }
+        Self {
+            line: hume_rope::line::ContentLine::new(line),
+            formats,
+        }
     }
 }
 
@@ -195,7 +206,11 @@ impl DecorationSource for FormatProbe {
         DecorationKinds::INLINE
     }
 
-    fn decorations_for_line(&self, line_idx: usize, _out: &mut Vec<Decoration>) {
+    fn decorations_for_line(
+        &self,
+        line_idx: hume_rope::line::ContentLine,
+        _out: &mut Vec<Decoration>,
+    ) {
         if line_idx == self.line {
             self.formats.set(self.formats.get() + 1);
         }
@@ -212,7 +227,7 @@ pub(crate) fn no_providers() -> ProviderSet {
 pub(crate) fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
     p.add_decoration_source(Box::new(VirtualRows::uniform(
-        VirtualLineAnchor::Before(line),
+        VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(line)),
         1,
         "V",
     )));

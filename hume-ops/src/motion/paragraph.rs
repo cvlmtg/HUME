@@ -3,6 +3,7 @@ use std::iter::Peekable;
 use hume_editing::lines::line_last_char;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::is_empty_line_token;
 use ropey::RopeSlice;
 
@@ -16,6 +17,20 @@ use super::{MotionMode, apply_object_motion};
 // composable: it leaves the run-ending token unconsumed, so a second run can
 // continue the same cursor exactly where the first stopped, rather than
 // forcing a fresh one to re-seek to that boundary.
+//
+// Line indices below are bare `usize`, all content-domain: run lengths are
+// added to and subtracted from them repeatedly (`line + 1 - up`, `target +=
+// blank_run(...)`, `after_paragraph.checked_sub(...)`), which is exactly the
+// arithmetic `hume_rope::line`'s typed indices refuse to do — deliberately,
+// everywhere else in this workspace. Threading `ContentLine` through this
+// module's own scanning would add a conversion at every one of those
+// additions without checking anything a `debug_assert` doesn't already:
+// every value here stays `<= content_line_count()` by construction (each
+// finder climbs/descends from a real cursor position and stops at a run
+// boundary `content_tokens_at`/`line_tokens_back_from` already bounds).
+// Values cross back into the typed domain only at the four points that
+// actually call into `hume_editing`/`hume_rope` (`content_tokens_at`,
+// `line_span`, and the two `line_tokens_back_from` calls below).
 
 /// Count of consecutive tokens at the front of `tokens` whose emptiness
 /// matches `empty`. The token that ends the run stays unconsumed.
@@ -45,13 +60,13 @@ fn content_tokens_at(
     text: &BufferText,
     line: usize,
 ) -> Peekable<impl Iterator<Item = RopeSlice<'_>>> {
+    let content_line_count = text.content_line_count().get();
     debug_assert!(
-        line <= text.content_line_count(),
-        "content_tokens_at: line {line} is past the buffer's {} content lines",
-        text.content_line_count()
+        line <= content_line_count,
+        "content_tokens_at: line {line} is past the buffer's {content_line_count} content lines"
     );
-    text.line_tokens_at(line)
-        .take(text.content_line_count() - line)
+    text.line_tokens_at(RopeyLine::new(line))
+        .take(content_line_count - line)
         .peekable()
 }
 
@@ -59,8 +74,8 @@ fn content_tokens_at(
 /// content char.
 fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> (usize, usize) {
     (
-        text.line_to_char(first_line),
-        line_last_char(text, last_line),
+        text.line_to_char(RopeyLine::new(first_line)),
+        line_last_char(text, ContentLine::new(last_line)),
     )
 }
 
@@ -78,11 +93,11 @@ pub(crate) fn paragraph_at(
     pos: usize,
     include_gap: bool,
 ) -> Option<(usize, usize)> {
-    let line = text.char_to_line(pos);
+    let line = text.char_to_line(pos).index();
 
     // Climb backward from `line` itself (a run of 0 means `line` is blank —
     // the "no paragraph here" case) to the paragraph's first line.
-    let mut back = text.line_tokens_back_from(line).peekable();
+    let mut back = text.line_tokens_back_from(RopeyLine::new(line)).peekable();
     let up = content_run(&mut back);
     if up == 0 {
         return None;
@@ -134,8 +149,8 @@ pub fn cmd_goto_prev_paragraph(
 /// its gap (landing past the buffer's last content line means there's
 /// nothing below), then the target paragraph's own content and gap.
 fn next_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    let total = text.content_line_count();
-    let line = text.char_to_line(pos);
+    let total = text.content_line_count().get();
+    let line = text.char_to_line(pos).index();
     let mut tokens = content_tokens_at(text, line);
 
     let mut target = line + content_run(&mut tokens);
@@ -161,8 +176,8 @@ fn next_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
 /// backward count only sees the blanks at or above `pos`, never the ones
 /// below it.
 fn prev_paragraph(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
-    let line = text.char_to_line(pos);
-    let mut back = text.line_tokens_back_from(line).peekable();
+    let line = text.char_to_line(pos).index();
+    let mut back = text.line_tokens_back_from(RopeyLine::new(line)).peekable();
 
     let after_paragraph = line.checked_sub(content_run(&mut back))?;
     let target_last = after_paragraph.checked_sub(blank_run(&mut back))?;

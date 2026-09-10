@@ -183,8 +183,8 @@ pub(crate) fn park_cursor_at(
     grapheme_col0: usize,
 ) {
     let text = buffers.get(bid).text();
-    let line = line0.min(text.last_content_line());
-    let char_pos = hume_editing::lines::place_grapheme_column(text, line, grapheme_col0);
+    let line = hume_rope::line::ContentLine::clamped(text.rope(), line0);
+    let char_pos = hume_editing::lines::place_grapheme_column(text, line.into(), grapheme_col0);
     write_cursor(pane_state, buffers, pid, bid, char_pos);
 }
 

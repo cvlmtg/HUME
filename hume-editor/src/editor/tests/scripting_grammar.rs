@@ -772,7 +772,7 @@ fn rust_function_highlight_snapshot() {
         let mut spans = Vec::new();
         layer_highlights_for_line(
             layers,
-            1,
+            hume_rope::line::ContentLine::new(1),
             rope,
             &mut raw,
             &mut stack,

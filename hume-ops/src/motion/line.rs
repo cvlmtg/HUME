@@ -1,12 +1,12 @@
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::{line_break_char, line_content_end, line_end_exclusive};
+use hume_editing::lines::{line_break_char, line_content_end, next_line_start};
 use hume_editing::text::BufferText;
 
 // ── Line motions (inner) ──────────────────────────────────────────────────────
 
 /// Jump to the first character on the current line.
 pub(super) fn goto_line_start(text: &BufferText, head: usize) -> usize {
-    text.line_to_char(text.char_to_line(head))
+    text.line_to_char(text.char_to_line(head).into())
 }
 
 /// Jump to the last non-newline grapheme cluster on the current line.
@@ -37,8 +37,8 @@ pub(super) fn goto_line_newline(text: &BufferText, head: usize) -> usize {
 /// stays at its current position.
 pub(super) fn goto_first_nonblank(text: &BufferText, head: usize) -> usize {
     let line = text.char_to_line(head);
-    let line_start = text.line_to_char(line);
-    let end_excl = line_end_exclusive(text, line);
+    let line_start = text.line_to_char(line.into());
+    let end_excl = next_line_start(text, line.into());
 
     let mut pos = line_start;
     while pos < end_excl {

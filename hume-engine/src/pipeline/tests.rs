@@ -11,6 +11,7 @@ use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
 };
 use crate::types::{ResolvedStyle, RowKind};
+use hume_rope::line::{ContentLine, RopeyLine};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect {
@@ -86,10 +87,10 @@ impl DecorationSource for ScopedVirtualLine {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == 0 {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
+        if line_idx == ContentLine::new(0) {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: VirtualLineAnchor::Before(0),
+                anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
                 provider_id: 0,
                 text: "H~".to_string(),
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
@@ -159,10 +160,10 @@ impl DecorationSource for UnsortedScopedVirtualLine {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == 0 {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
+        if line_idx == ContentLine::new(0) {
             out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: VirtualLineAnchor::Before(0),
+                anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
                 provider_id: 0,
                 text: "ABCD".to_string(),
                 segments: vec![
@@ -239,7 +240,7 @@ impl DecorationSource for FixedVirtualLineSource {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
@@ -296,7 +297,8 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     // wraps onto a row of its own. `top_row_offset` walks through the whole
     // block uniformly, the same as it would a plain wrap row: each unit of
     // offset drops exactly one block row, virtual or real.
-    let offset1 = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(0));
+    let offset1 =
+        render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset1, 0, 0),
         "a",
@@ -304,21 +306,24 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     );
     assert_eq!(cell_symbol(&offset1, 0, 1), "b", "wrap row 1 follows");
 
-    let offset2 = render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(0));
+    let offset2 =
+        render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset2, 0, 0),
         "b",
         "offset 2 skips V and wrap row 0"
     );
 
-    let offset3 = render_wrapped_pane_with_virtual_line(3, VirtualLineAnchor::Before(0));
+    let offset3 =
+        render_wrapped_pane_with_virtual_line(3, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset3, 0, 0),
         "c",
         "offset 3 reaches wrap row 2"
     );
 
-    let offset4 = render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(0));
+    let offset4 =
+        render_wrapped_pane_with_virtual_line(4, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&offset4, 0, 0),
         " ",
@@ -334,7 +339,8 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
     // Fail oracle: treating an over-large offset as rows-to-skip instead of
     // clamping would carry over into line 1, disagreeing with the clamp's
     // own "line 0's last row" answer.
-    let past_end = render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(0));
+    let past_end =
+        render_wrapped_pane_with_virtual_line(5, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(
         cell_symbol(&past_end, 0, 0),
         " ",
@@ -346,7 +352,8 @@ fn before_virtual_line_skipped_one_row_at_a_time() {
 fn before_virtual_line_renders_when_not_skipped() {
     // top_row_offset=0: the Before(0) virtual line renders at screen row
     // 0, pushing wrap row 0 ("aaaa") down to screen row 1.
-    let buf = render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(0));
+    let buf =
+        render_wrapped_pane_with_virtual_line(0, VirtualLineAnchor::Before(ContentLine::new(0)));
     assert_eq!(cell_symbol(&buf, 0, 0), "V", "virtual line at screen row 0");
     assert_eq!(
         cell_symbol(&buf, 0, 1),
@@ -362,7 +369,8 @@ fn after_virtual_line_renders_below_skipped_rows() {
     // trailing '\n's own wrapped sentinel row — none of which are skipped
     // (the budget is exhausted by wrap row 0 alone) — it must still render,
     // after wrap rows 1, 2, and the sentinel.
-    let buf = render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(0));
+    let buf =
+        render_wrapped_pane_with_virtual_line(1, VirtualLineAnchor::After(ContentLine::new(0)));
     assert_eq!(cell_symbol(&buf, 0, 0), "b", "wrap row 1");
     assert_eq!(cell_symbol(&buf, 0, 1), "c", "wrap row 2");
     assert_eq!(
@@ -386,11 +394,11 @@ impl DecorationSource for MultiBeforeLine {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
-        if line_idx == 0 {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
+        if line_idx == ContentLine::new(0) {
             for i in 0..self.0 {
                 out.push(Decoration::VirtualLine(VirtualLine {
-                    anchor: VirtualLineAnchor::Before(0),
+                    anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
                     provider_id: 0,
                     text: (i + 1).to_string(),
                     segments: Vec::new(),
@@ -457,7 +465,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
     fn kinds(&self) -> DecorationKinds {
         DecorationKinds::VIRTUAL_LINE
     }
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
         let line = match self.anchor {
             VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
         };
@@ -478,7 +486,7 @@ impl DecorationSource for SpoofingVirtualLineSource {
 struct ProviderIdReportingGutter;
 
 impl crate::providers::GutterColumn for ProviderIdReportingGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: RopeyLine) -> u8 {
         5
     }
     fn render_row_cells(
@@ -514,7 +522,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let real_id = pane
         .providers
         .add_decoration_source(Box::new(SpoofingVirtualLineSource {
-            anchor: VirtualLineAnchor::Before(0),
+            anchor: VirtualLineAnchor::Before(ContentLine::new(0)),
         }));
 
     let mut registry = crate::theme::ScopeRegistry::new();
@@ -593,7 +601,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
 
     let mut pane = Pane::new(bid);
     pane.viewport = crate::pane::ViewportState::new(20, 5);
-    pane.viewport.top_line = 1;
+    pane.viewport.top_line = ContentLine::new(1);
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 5);
@@ -619,7 +627,7 @@ fn filler_row_gutter_shows_gutter_content_not_stale_blank() {
     // GutterColumn would render for RowKind::Filler.
     struct MarkerGutter;
     impl crate::providers::GutterColumn for MarkerGutter {
-        fn width(&self, _: usize) -> u8 {
+        fn width(&self, _: RopeyLine) -> u8 {
             3
         }
         fn render_row_cells(

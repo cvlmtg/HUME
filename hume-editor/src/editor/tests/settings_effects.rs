@@ -94,7 +94,7 @@ fn set_option_applies_jump_list_capacity() {
             selections: hume_editing::selection::SelectionSet::single(
                 hume_editing::selection::Selection::collapsed(0),
             ),
-            primary_line: i,
+            primary_line: hume_rope::line::ContentLine::new(i),
         });
     }
     assert_eq!(ed.state.panes.jumps[pid].len(), 5);
@@ -116,7 +116,7 @@ fn set_option_applies_jump_list_capacity() {
         selections: hume_editing::selection::SelectionSet::single(
             hume_editing::selection::Selection::collapsed(0),
         ),
-        primary_line: 5,
+        primary_line: hume_rope::line::ContentLine::new(5),
     });
     assert_eq!(
         ed.state.panes.jumps[pid].len(),

@@ -11,8 +11,9 @@ use std::sync::{Arc, RwLock};
 use crate::lock_ext::LockExt;
 
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, InlineInsert};
+use hume_rope::line::ContentLine;
 
-pub(crate) type InlineDecorationMap = Arc<RwLock<FxHashMap<usize, Vec<InlineInsert>>>>;
+pub(crate) type InlineDecorationMap = Arc<RwLock<FxHashMap<ContentLine, Vec<InlineInsert>>>>;
 
 pub(crate) struct InlineDecorationProvider {
     pub(crate) data: InlineDecorationMap,
@@ -23,7 +24,7 @@ impl DecorationSource for InlineDecorationProvider {
         DecorationKinds::INLINE
     }
 
-    fn decorations_for_line(&self, line_idx: usize, out: &mut Vec<Decoration>) {
+    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
         if let Some(hints) = self.data.read_or_panic().get(&line_idx) {
             out.extend(hints.iter().cloned().map(Decoration::Inline));
         }

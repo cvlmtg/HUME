@@ -100,8 +100,12 @@ fn line_store_does_not_leak_between_panes() {
     ed.view.panes[pid_a]
         .providers
         .add_decoration_source(Box::new(
-            VirtualRows::uniform(VirtualLineAnchor::Before(TARGET), 1, "V")
-                .counting(Rc::clone(&calls_a)),
+            VirtualRows::uniform(
+                VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+                1,
+                "V",
+            )
+            .counting(Rc::clone(&calls_a)),
         ));
     seek_to_line(&mut ed, TARGET);
     ed.feed_key(key('z'));
@@ -121,8 +125,12 @@ fn line_store_does_not_leak_between_panes() {
     ed.view.panes[pid_b]
         .providers
         .add_decoration_source(Box::new(
-            VirtualRows::uniform(VirtualLineAnchor::Before(TARGET), 1, "V")
-                .counting(Rc::clone(&calls_b)),
+            VirtualRows::uniform(
+                VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+                1,
+                "V",
+            )
+            .counting(Rc::clone(&calls_b)),
         ));
     seek_to_line(&mut ed, TARGET);
     ed.feed_key(key('z'));
@@ -151,7 +159,12 @@ fn a_between_frame_walk_does_not_survive_a_frame() {
 
     let calls = Rc::new(Cell::new(0));
     ed.view.panes[pid].providers.add_decoration_source(Box::new(
-        VirtualRows::uniform(VirtualLineAnchor::Before(TARGET), 1, "V").counting(Rc::clone(&calls)),
+        VirtualRows::uniform(
+            VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(TARGET)),
+            1,
+            "V",
+        )
+        .counting(Rc::clone(&calls)),
     ));
     seek_to_line(&mut ed, TARGET);
     ed.feed_key(key('z'));

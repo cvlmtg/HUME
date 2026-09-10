@@ -2,7 +2,7 @@
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
-use hume_editing::lines::{leading_whitespace_end, line_end_exclusive};
+use hume_editing::lines::{leading_whitespace_end, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
@@ -86,7 +86,7 @@ fn is_blank_indented_line(text: &BufferText, line_start: usize, ws_end: usize) -
 /// record a spurious pending tree-sitter edit) and the edit ops below.
 pub fn blank_line_ws_range(text: &BufferText, pos: usize) -> Option<(usize, usize)> {
     let line = text.char_to_line(pos);
-    let line_start = text.line_to_char(line);
+    let line_start = text.line_to_char(line.into());
     let ws_end = leading_whitespace_end(text, line);
     is_blank_indented_line(text, line_start, ws_end).then_some((line_start, ws_end))
 }
@@ -106,7 +106,7 @@ fn line_context_if_unconsumed(
         return None;
     }
     let line_idx = text.char_to_line(pos);
-    let line_start = text.line_to_char(line_idx);
+    let line_start = text.line_to_char(line_idx.into());
     let ws_end = leading_whitespace_end(text, line_idx);
     Some((line_start, ws_end))
 }
@@ -256,7 +256,7 @@ pub fn insert_tab(
     // earlier cursors on the same line. Without this, the second cursor on a line
     // would compute its tab-stop offset from the original-buffer column, missing the
     // spaces the first cursor already inserted.
-    let mut prev_line: Option<usize> = None;
+    let mut prev_line: Option<hume_rope::line::ContentLine> = None;
     let mut display_col_shift: isize = 0;
     apply_edit(text, sels, move |b, text, _i, sel, new_sels| {
         let start = sel.start();
@@ -281,7 +281,7 @@ pub fn insert_tab(
             // (del_end on a different line) would otherwise walk past the '\n'
             // when counting columns, making display_col_shift wrong for later
             // same-line cursors.
-            let line_end = line_end_exclusive(text, line_idx);
+            let line_end = next_line_start(text, line_idx.into());
             let del_end_clamped = del_end.min(line_end);
             let del_width =
                 display_col_in_line(text, line_idx, del_end_clamped, tab_width) - start_display_col;

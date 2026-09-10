@@ -75,6 +75,7 @@ use rustc_hash::FxHashMap;
 use crate::format::{LineFormat, VirtualRowScratch};
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::VirtualLine;
+use hume_rope::line::ContentLine;
 
 /// The caller's identification of a buffer *state* — which buffer, at which
 /// content generation, with which decorations — as the three numbers naming
@@ -136,7 +137,7 @@ pub struct LineEntry {
     /// The line this describes. Held so an entry index alone addresses a
     /// line: every caller working from one reads the line back here rather
     /// than carrying it alongside and risking the two disagreeing.
-    pub line: usize,
+    pub line: ContentLine,
     /// This line's virtual rows, `Before` ones first — the order
     /// [`crate::providers::VirtualLineAnchor::sort_key`] imposes, so the
     /// `i`th `After` row is at index `before + i`.
@@ -148,7 +149,7 @@ pub struct LineEntry {
 }
 
 impl LineEntry {
-    fn new(line: usize) -> Self {
+    fn new(line: ContentLine) -> Self {
         Self {
             line,
             virtual_lines: Vec::new(),
@@ -177,7 +178,7 @@ impl LineEntry {
     /// start from empty rather than appending onto a stale block. `before`
     /// gets no such treatment: `block_entry` overwrites it unconditionally
     /// right after this call returns, before anything reads it.
-    fn rebind(&mut self, line: usize) {
+    fn rebind(&mut self, line: ContentLine) {
         self.line = line;
         self.virtual_lines.clear();
     }
@@ -199,7 +200,7 @@ pub struct PaneLineStore {
     /// `entries[..live]` describe lines; the rest are spares.
     live: usize,
     /// Buffer line -> index into `entries`.
-    index: FxHashMap<usize, usize>,
+    index: FxHashMap<ContentLine, usize>,
     /// The virtual row currently being laid out. Separate from any entry's
     /// `format`: a `Before` row renders ahead of its line's content rows, so
     /// laying it out must not disturb them.
@@ -242,16 +243,17 @@ impl PaneLineStore {
     }
 
     /// The entry for `line`, if this store has one.
-    pub(super) fn find(&self, line: usize) -> Option<usize> {
+    pub(super) fn find(&self, line: ContentLine) -> Option<usize> {
         self.index.get(&line).copied()
     }
 
     /// Start an entry for `line`, reusing a spare's allocations. The caller
     /// fills in the block shape; the format arrives later, if at all.
-    pub(super) fn insert(&mut self, line: usize) -> usize {
+    pub(super) fn insert(&mut self, line: ContentLine) -> usize {
         debug_assert!(
             self.find(line).is_none(),
-            "line {line} already has an entry; the caller must reuse it"
+            "line {} already has an entry; the caller must reuse it",
+            line.index()
         );
         let idx = self.live;
         match self.entries.get_mut(idx) {

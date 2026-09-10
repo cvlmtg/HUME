@@ -5,11 +5,12 @@ use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 use crate::types::ResolvedStyle;
 use hume_grid::{Grid, Rect, Rgb};
+use hume_rope::line::{ContentLine, RopeyLine};
 
 fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
     GutterRowCtx {
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         rope,
     }
 }
@@ -20,12 +21,12 @@ fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
 /// (`Editor::update_sign_providers`), so a multi-sign line is one
 /// `signs_for_line` call returning several entries, not several sources.
 struct FixedSign {
-    line: usize,
+    line: ContentLine,
     signs: Vec<Sign>,
 }
 
 impl SignSource for FixedSign {
-    fn signs_for_line(&self, line_idx: usize, _ctx: &GutterRowCtx) -> Vec<Sign> {
+    fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterRowCtx) -> Vec<Sign> {
         if line_idx == self.line {
             self.signs.clone()
         } else {
@@ -41,7 +42,7 @@ fn sign_renders_in_its_own_resolved_slot() {
     let blank_scope = registry.intern("ui.linenr");
 
     let source = FixedSign {
-        line: 3,
+        line: ContentLine::new(3),
         signs: vec![Sign {
             text: "!".into(),
             scope: diag_scope,
@@ -51,7 +52,12 @@ fn sign_renders_in_its_own_resolved_slot() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 3 }, &ctx(&rope));
+    let cells = lane.render_row_cells(
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(3),
+        },
+        &ctx(&rope),
+    );
     assert_eq!(cells[0].as_str(), " ", "slot 0 unclaimed — stays blank");
     assert_eq!(
         cells[1].as_str(),
@@ -68,7 +74,12 @@ fn no_sign_fires_renders_blank() {
     let lane = SignColumn::new(Box::new(()), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
-        .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
+        .render_row_cells(
+            RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
+            &ctx(&rope),
+        )
         .into_iter()
         .next()
         .unwrap();
@@ -81,7 +92,7 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "!".into(),
             scope,
@@ -93,12 +104,12 @@ fn sign_absent_on_wrap_virtual_and_filler_rows() {
 
     for kind in [
         RowKind::Wrap {
-            line_idx: 0,
+            line_idx: RopeyLine::new(0),
             wrap_row: 1,
         },
         RowKind::Virtual {
             provider_id: 0,
-            anchor_line: 0,
+            anchor_line: RopeyLine::new(0),
         },
         RowKind::Filler,
     ] {
@@ -116,8 +127,12 @@ fn width_is_configured_not_recomputed_per_frame() {
     let mut registry = ScopeRegistry::new();
     let blank_scope = registry.intern("ui.linenr");
     let lane = SignColumn::with_width(3, Box::new(()), blank_scope);
-    assert_eq!(lane.width(0), 3);
-    assert_eq!(lane.width(999_999), 3, "stable regardless of file size");
+    assert_eq!(lane.width(RopeyLine::new(0)), 3);
+    assert_eq!(
+        lane.width(RopeyLine::new(999_999)),
+        3,
+        "stable regardless of file size"
+    );
 }
 
 #[test]
@@ -126,9 +141,17 @@ fn set_width_overrides_the_configured_width() {
     let blank_scope = registry.intern("ui.linenr");
     let mut lane = SignColumn::with_width(2, Box::new(()), blank_scope);
     lane.set_width(0);
-    assert_eq!(lane.width(0), 0, "collapsed to zero when no signs exist");
+    assert_eq!(
+        lane.width(RopeyLine::new(0)),
+        0,
+        "collapsed to zero when no signs exist"
+    );
     lane.set_width(2);
-    assert_eq!(lane.width(0), 2, "restored once a sign exists again");
+    assert_eq!(
+        lane.width(RopeyLine::new(0)),
+        2,
+        "restored once a sign exists again"
+    );
 }
 
 #[test]
@@ -141,7 +164,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let scope = registry.intern("diagnostic");
     let blank_scope = registry.intern("ui.linenr");
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "▶▶▶".into(),
             scope,
@@ -160,7 +183,9 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         scope: None,
     }];
     let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes: 0..1,
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
@@ -169,7 +194,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         content_height: 1,
         content_width: 6,
         gutter_width: 2,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
     let pane_rect = Rect {
@@ -188,7 +213,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -231,7 +256,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let scope = registry.intern("diagnostic");
     let empty_lane = SignColumn::with_width(0, Box::new(()), blank_scope); // no signs — width collapsed
     let content_source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "!".into(),
             scope,
@@ -250,7 +275,9 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         scope: None,
     }];
     let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes: 0..1,
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
@@ -260,7 +287,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         content_height: 1,
         content_width: 6,
         gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
     let pane_rect = Rect {
@@ -279,7 +306,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),
@@ -322,7 +349,7 @@ fn sign_scope_resolves_via_baked_theme() {
     theme.bake(&registry);
 
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "!".into(),
             scope: scope_id,
@@ -332,7 +359,12 @@ fn sign_scope_resolves_via_baked_theme() {
     let lane = SignColumn::new(Box::new(source), blank_scope);
     let rope = ropey::Rope::new();
     let cell = lane
-        .render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope))
+        .render_row_cells(
+            RowKind::LineStart {
+                line_idx: RopeyLine::new(0),
+            },
+            &ctx(&rope),
+        )
         .into_iter()
         .next()
         .unwrap();
@@ -348,7 +380,7 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
     let blank_scope = registry.intern("ui.linenr");
 
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![
             Sign {
                 text: "!".into(),
@@ -371,7 +403,12 @@ fn multi_slot_column_places_each_sign_in_its_own_slot() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
+        &ctx(&rope),
+    );
     assert_eq!(cells.len(), 2, "width-3 column = 2 sign slots");
     assert_eq!(cells[0].as_str(), "!", "slot 0");
     assert_eq!(cells[1].as_str(), "+", "slot 1");
@@ -384,7 +421,7 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let blank_scope = registry.intern("ui.linenr");
 
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "!".into(),
             scope: a,
@@ -394,7 +431,12 @@ fn multi_slot_column_pads_with_blank_when_fewer_signs_than_slots() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
+        &ctx(&rope),
+    );
     assert_eq!(cells.len(), 2, "still 2 cells — padded to slot count");
     assert_eq!(cells[0].as_str(), "!");
     assert_eq!(cells[1].as_str(), " ", "unclaimed slot is blank");
@@ -407,7 +449,7 @@ fn width_one_column_keeps_no_signs() {
     let blank_scope = registry.intern("ui.linenr");
 
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![Sign {
             text: "!".into(),
             scope: a,
@@ -417,7 +459,12 @@ fn width_one_column_keeps_no_signs() {
     let lane = SignColumn::with_width(1, Box::new(source), blank_scope); // 0 sign slots
 
     let rope = ropey::Rope::new();
-    let cells = lane.render_row_cells(RowKind::LineStart { line_idx: 0 }, &ctx(&rope));
+    let cells = lane.render_row_cells(
+        RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
+        &ctx(&rope),
+    );
     assert!(cells.is_empty(), "width-1 column has 0 sign slots");
 }
 
@@ -433,7 +480,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let blank_scope = registry.intern("ui.linenr");
 
     let source = FixedSign {
-        line: 0,
+        line: ContentLine::new(0),
         signs: vec![
             Sign {
                 text: "!".into(),
@@ -459,7 +506,9 @@ fn multi_slot_column_renders_through_compose_gutter() {
         scope: None,
     }];
     let rows = [crate::types::DisplayRow {
-        kind: RowKind::LineStart { line_idx: 0 },
+        kind: RowKind::LineStart {
+            line_idx: RopeyLine::new(0),
+        },
         graphemes: 0..1,
     }];
     let styles = vec![crate::types::ResolvedStyle::default()];
@@ -468,7 +517,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         content_height: 1,
         content_width: 5,
         gutter_width: 3,
-        last_line_idx: 0,
+        last_line_idx: RopeyLine::new(0),
     };
     let viewport = crate::pane::ViewportState::new(8, 1);
     let pane_rect = Rect {
@@ -487,7 +536,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         visible: &visible,
         viewport: &viewport,
         mode: EditorMode::Normal,
-        primary_head_line: 0,
+        primary_head_line: ContentLine::new(0),
         tab_width: 4,
         tilde_style: ResolvedStyle::default(),
         indent_guide_style: ResolvedStyle::default(),

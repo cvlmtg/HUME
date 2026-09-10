@@ -29,5 +29,5 @@ pub(super) fn goto_first_line(_buf: &BufferText, _head: usize) -> usize {
 
 /// Jump to the first character of the last (real) line of the buffer.
 pub(super) fn goto_last_line(text: &BufferText, _head: usize) -> usize {
-    text.line_to_char(text.last_content_line())
+    text.line_to_char(text.last_content_line().into())
 }

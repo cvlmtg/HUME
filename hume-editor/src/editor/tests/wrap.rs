@@ -500,13 +500,13 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
     ed.view.panes[ed.state.focused_pane_id]
         .providers
         .add_decoration_source(Box::new(VirtualRows::uniform(
-            hume_engine::providers::VirtualLineAnchor::Before(0),
+            hume_engine::providers::VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
             3,
             "V",
         )));
     {
         let pane = &mut ed.view.panes[ed.state.focused_pane_id];
-        pane.viewport.top_line = 0;
+        pane.viewport.top_line = hume_rope::line::ContentLine::new(0);
         pane.viewport.top_row_offset = 1; // inside the Before(0) block
     }
 
@@ -689,7 +689,7 @@ fn wrapped_and_scrolled_frame_pins_the_rendered_rows() {
     frame(&mut ed, 24, 8);
 
     assert!(
-        focused_pane(&ed).viewport.top_line > 0,
+        focused_pane(&ed).viewport.top_line > hume_rope::line::ContentLine::new(0),
         "the fixture must actually be scrolled, or it pins the wrong thing"
     );
 

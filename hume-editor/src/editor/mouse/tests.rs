@@ -50,7 +50,7 @@ fn down_no_wrap_clamps_at_last_real_line() {
     // would make such a block permanently unreachable).
     let rope = rope_with_lines(10);
     let mut vp = ViewportState::new(80, 5);
-    vp.top_line = 0;
+    vp.top_line = hume_rope::line::ContentLine::new(0);
     let providers = no_providers();
     let mut scratch = PaneLineStore::new();
 
@@ -63,7 +63,8 @@ fn down_no_wrap_clamps_at_last_real_line() {
         );
     }
     assert_eq!(
-        vp.top_line, 9,
+        vp.top_line,
+        hume_rope::line::ContentLine::new(9),
         "top_line must not exceed the last real line (9)"
     );
     assert_eq!(
@@ -85,7 +86,11 @@ fn down_no_wrap_file_fits_no_movement() {
         &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
     );
-    assert_eq!(vp.top_line, 0, "viewport must not move when file fits");
+    assert_eq!(
+        vp.top_line,
+        hume_rope::line::ContentLine::new(0),
+        "viewport must not move when file fits"
+    );
 }
 
 #[test]
@@ -101,7 +106,8 @@ fn down_no_wrap_advances_by_scroll_lines() {
         SCROLL_LINES,
     );
     assert_eq!(
-        vp.top_line, SCROLL_LINES,
+        vp.top_line,
+        hume_rope::line::ContentLine::new(SCROLL_LINES),
         "first scroll advances by SCROLL_LINES"
     );
 }
@@ -112,7 +118,7 @@ fn down_no_wrap_advances_by_scroll_lines() {
 fn up_no_wrap_clamps_at_zero() {
     let rope = rope_with_lines(10);
     let mut vp = ViewportState::new(80, 5);
-    vp.top_line = 1; // only 1 above top
+    vp.top_line = hume_rope::line::ContentLine::new(1); // only 1 above top
     let providers = no_providers();
     let mut scratch = PaneLineStore::new();
 
@@ -121,14 +127,18 @@ fn up_no_wrap_clamps_at_zero() {
         &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
     );
-    assert_eq!(vp.top_line, 0, "stepping back must not underflow");
+    assert_eq!(
+        vp.top_line,
+        hume_rope::line::ContentLine::new(0),
+        "stepping back must not underflow"
+    );
 }
 
 #[test]
 fn up_no_wrap_decrements_by_scroll_lines() {
     let rope = rope_with_lines(20);
     let mut vp = ViewportState::new(80, 5);
-    vp.top_line = 10;
+    vp.top_line = hume_rope::line::ContentLine::new(10);
     let providers = no_providers();
     let mut scratch = PaneLineStore::new();
 
@@ -137,14 +147,17 @@ fn up_no_wrap_decrements_by_scroll_lines() {
         &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
     );
-    assert_eq!(vp.top_line, 10 - SCROLL_LINES);
+    assert_eq!(
+        vp.top_line,
+        hume_rope::line::ContentLine::new(10 - SCROLL_LINES)
+    );
 }
 
 #[test]
 fn up_at_top_is_no_op() {
     let rope = rope_with_lines(10);
     let mut vp = ViewportState::new(80, 5);
-    vp.top_line = 0;
+    vp.top_line = hume_rope::line::ContentLine::new(0);
     let providers = no_providers();
     let mut scratch = PaneLineStore::new();
 
@@ -153,7 +166,7 @@ fn up_at_top_is_no_op() {
         &mut map(&rope, WrapMode::None, &providers, &mut scratch),
         SCROLL_LINES,
     );
-    assert_eq!(vp.top_line, 0);
+    assert_eq!(vp.top_line, hume_rope::line::ContentLine::new(0));
     assert_eq!(vp.top_row_offset, 0);
 }
 
@@ -173,7 +186,11 @@ fn down_wrap_file_fits_no_movement() {
         &mut map(&rope, wrap, &providers, &mut scratch),
         SCROLL_LINES,
     );
-    assert_eq!(vp.top_line, 0, "no scroll when file fits in viewport");
+    assert_eq!(
+        vp.top_line,
+        hume_rope::line::ContentLine::new(0),
+        "no scroll when file fits in viewport"
+    );
     assert_eq!(vp.top_row_offset, 0);
 }
 
@@ -190,7 +207,7 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
     let rope = rope_with_lines(2); // last real line = index 1
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
-        VirtualLineAnchor::After(1),
+        VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
         3,
     )));
     let mut scratch = PaneLineStore::new();
@@ -201,7 +218,7 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
         for &(exp_line, exp_offset) in &expected {
             assert_eq!(
                 (vp.top_line, vp.top_row_offset),
-                (exp_line, exp_offset),
+                (hume_rope::line::ContentLine::new(exp_line), exp_offset),
                 "{wrap:?}"
             );
             scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 1);
@@ -210,7 +227,7 @@ fn down_reaches_every_row_of_an_after_last_line_block() {
         scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 1);
         assert_eq!(
             (vp.top_line, vp.top_row_offset),
-            (1, 3),
+            (hume_rope::line::ContentLine::new(1), 3),
             "further scrolling past the block's last row must stay clamped there ({wrap:?})"
         );
     }
@@ -227,18 +244,22 @@ fn down_overshoot_past_after_last_line_clamps_not_resets() {
     let rope = rope_with_lines(2);
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualRows::numbered(
-        VirtualLineAnchor::After(1),
+        VirtualLineAnchor::After(hume_rope::line::ContentLine::new(1)),
         3,
     )));
     let mut scratch = PaneLineStore::new();
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
         let mut vp = ViewportState::new(80, 2);
-        vp.top_line = 1;
+        vp.top_line = hume_rope::line::ContentLine::new(1);
         vp.top_row_offset = 1; // already partway into the After block
         // A large notch overshoots well past the block's remaining rows.
         scroll_viewport_down(&mut vp, &mut map(&rope, wrap, &providers, &mut scratch), 10);
-        assert_eq!(vp.top_line, 1, "{wrap:?}");
+        assert_eq!(
+            vp.top_line,
+            hume_rope::line::ContentLine::new(1),
+            "{wrap:?}"
+        );
         assert_eq!(
             vp.top_row_offset, 3,
             "must clamp to the block's last row (3), not reset to 0 ({wrap:?})"

@@ -23,7 +23,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
 
     let spans: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.bracket)
         .into_iter()
-        .map(|(line, start, end, _)| (line, start, end))
+        .map(|(line, start, end, _)| (line.index(), start, end))
         .collect();
     assert_eq!(
         spans,

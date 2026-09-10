@@ -5,6 +5,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::line::ContentLine;
 
 use super::apply_edit;
 
@@ -53,7 +54,7 @@ pub fn align_selections(
 
     // Geometry for each selection in sorted order (matches apply_edit iteration).
     struct SelMeta {
-        start_line: usize,
+        start_line: ContentLine,
         is_multiline: bool,
         anchor_display_col: usize, // display col of sel.anchor() (left for forward, right for backward)
         rem: usize,                // chars removable before sel.start() while keeping ≥1 space
@@ -61,7 +62,7 @@ pub fn align_selections(
     }
 
     let primary_line = text.char_to_line(sels.primary().anchor());
-    let mut slots_on_line = rustc_hash::FxHashMap::<usize, usize>::default();
+    let mut slots_on_line = rustc_hash::FxHashMap::<ContentLine, usize>::default();
 
     let mut meta: Vec<SelMeta> = sels
         .iter_sorted()
@@ -79,7 +80,7 @@ pub fn align_selections(
             }
             let anchor_display_col =
                 display_col_in_line(&text, start_line, sel.anchor(), tab_width);
-            let line_start = text.line_to_char(start_line);
+            let line_start = text.line_to_char(start_line.into());
             let sel_start = sel.start();
             let rem = (line_start..sel_start)
                 .rev()
@@ -131,7 +132,8 @@ pub fn align_selections(
 
     // Group participating metas by line for pair-wise constraint computation.
     // Values are in slot order (sels.iter_sorted() is ascending by start).
-    let mut by_line: rustc_hash::FxHashMap<usize, Vec<&SelMeta>> = rustc_hash::FxHashMap::default();
+    let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<&SelMeta>> =
+        rustc_hash::FxHashMap::default();
     for m in &meta {
         if !m.is_multiline {
             by_line.entry(m.start_line).or_default().push(m);
@@ -187,7 +189,7 @@ pub fn align_selections(
     // deletion's char delta is only a lower bound on its display-column
     // delta when the removed run contains a tab (see `align_selections`'s
     // own doc). `amount`'s sign selects which case applies on this line.
-    let mut current_line = usize::MAX;
+    let mut current_line: Option<ContentLine> = None;
     let mut line_shift = 0isize;
 
     apply_edit(text, sels, |b, text, i, sel, new_sels| {
@@ -197,8 +199,8 @@ pub fn align_selections(
         let forward = sel.anchor() <= sel.head();
         let start_line = text.char_to_line(sel_start);
 
-        if start_line != current_line {
-            current_line = start_line;
+        if Some(start_line) != current_line {
+            current_line = Some(start_line);
             line_shift = 0;
         }
 

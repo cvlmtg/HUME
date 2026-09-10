@@ -103,7 +103,7 @@ fn single_line_error_diagnostic_gets_the_error_scope() {
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
         pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
-        vec![(0, 2, 5, error_scope)],
+        vec![(hume_rope::line::ContentLine::new(0), 2, 5, error_scope)],
         "single-line ASCII diagnostic: byte offsets equal char offsets"
     );
 }
@@ -118,7 +118,10 @@ fn severity_floor_hides_less_severe_diagnostics() {
     let hint_scope = scope(&c.ed, "diagnostic.hint");
     assert_eq!(
         pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
-        vec![(0, 0, 1, error_scope), (0, 6, 7, hint_scope)],
+        vec![
+            (hume_rope::line::ContentLine::new(0), 0, 1, error_scope),
+            (hume_rope::line::ContentLine::new(0), 6, 7, hint_scope)
+        ],
         "sanity: default floor (Hint) keeps everything"
     );
 
@@ -135,7 +138,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
 
     assert_eq!(
         pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
-        vec![(0, 0, 1, error_scope)],
+        vec![(hume_rope::line::ContentLine::new(0), 0, 1, error_scope)],
         "raising the floor to warning must drop the hint but keep the error"
     );
 }
@@ -151,7 +154,10 @@ fn multiline_diagnostic_splits_into_per_line_spans() {
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
         pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
-        vec![(0, 2, 3, error_scope), (1, 0, 3, error_scope)],
+        vec![
+            (hume_rope::line::ContentLine::new(0), 2, 3, error_scope),
+            (hume_rope::line::ContentLine::new(1), 0, 3, error_scope)
+        ],
         "line 0 gets 'c' clipped before its own '\\n' (byte 2..3); \
          line 1 gets 'def' from its own start (byte 0..3)"
     );
@@ -224,7 +230,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
     let unused_scope = scope(&ed, "unused");
     assert_eq!(
         pane_highlights(&ed, pid, |h| &h.extra),
-        vec![(0, 1, 4, unused_scope)],
+        vec![(hume_rope::line::ContentLine::new(0), 1, 4, unused_scope)],
         "the plugin's 'unused' scope string must be interned and used verbatim"
     );
 }
@@ -297,7 +303,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
     let aaa_scope = scope(&ed, "aaa-scope");
     assert_eq!(
         pane_highlights(&ed, pid, |h| &h.extra),
-        vec![(0, 1, 4, aaa_scope)],
+        vec![(hume_rope::line::ContentLine::new(0), 1, 4, aaa_scope)],
         "the alphabetically first source (\"aaa\") must win the overlap \
          regardless of which source called set-extra-highlights! first"
     );

@@ -115,10 +115,10 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     assert_eq!(
         pane_highlights(&ed, pid, |h| &h.extra),
         vec![
-            (0, 0, 9, warn_badge),
-            (0, 10, 17, warn_text),
-            (1, 0, 7, err_badge),
-            (1, 8, 13, err_text),
+            (hume_rope::line::ContentLine::new(0), 0, 9, warn_badge),
+            (hume_rope::line::ContentLine::new(0), 10, 17, warn_text),
+            (hume_rope::line::ContentLine::new(1), 0, 7, err_badge),
+            (hume_rope::line::ContentLine::new(1), 8, 13, err_text),
         ]
     );
 }

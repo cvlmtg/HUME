@@ -5,7 +5,7 @@
 //! the cursor before replacing or deleting it).
 
 use hume_editing::grapheme::next_grapheme_boundary;
-use hume_editing::lines::line_end_exclusive;
+use hume_editing::lines::next_line_start;
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
 
@@ -400,8 +400,8 @@ pub(crate) fn find_quote_pair(
     quote: char,
 ) -> Option<(usize, usize)> {
     let line = text.char_to_line(pos);
-    let line_start = text.line_to_char(line);
-    let line_end = line_end_exclusive(text, line);
+    let line_start = text.line_to_char(line.into());
+    let line_end = next_line_start(text, line.into());
 
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.

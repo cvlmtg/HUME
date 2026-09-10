@@ -29,6 +29,7 @@ use ropey::Rope;
 use crate::format::{FormatBound, LineFormat, format_buffer_line};
 use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayRow, Grapheme, ScopeId};
+use hume_rope::line::ContentLine;
 
 pub mod line_store;
 
@@ -45,12 +46,12 @@ use line_store::{FormatKey, PaneLineStore};
 /// comparing two addresses answers "which comes first on screen".
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RowPos {
-    pub line: usize,
+    pub line: ContentLine,
     pub row: usize,
 }
 
 impl RowPos {
-    pub fn new(line: usize, row: usize) -> Self {
+    pub fn new(line: ContentLine, row: usize) -> Self {
         Self { line, row }
     }
 }
@@ -255,7 +256,7 @@ impl<'a> RowMap<'a> {
     // ── Block shape ──────────────────────────────────────────────────────
 
     /// The display-row breakdown of `line`'s visual block.
-    pub fn block(&mut self, line: usize) -> RowsBreakdown {
+    pub fn block(&mut self, line: ContentLine) -> RowsBreakdown {
         let idx = self.block_entry(line);
         self.breakdown(idx)
     }
@@ -281,7 +282,7 @@ impl<'a> RowMap<'a> {
     /// Only the *shape* — the format arrives separately, from whoever first
     /// needs the line's rows. Under `WrapMode::None` that may be much later,
     /// or never.
-    fn block_entry(&mut self, line: usize) -> usize {
+    fn block_entry(&mut self, line: ContentLine) -> usize {
         if let Some(idx) = self.store.find(line) {
             return idx;
         }
@@ -362,14 +363,27 @@ impl<'a> RowMap<'a> {
         debug_assert!(
             content >= 1,
             "line {} counted zero content rows; every line occupies at least one",
-            entry.line
+            entry.line.index()
         );
         content
     }
 
     /// Index of the last buffer line a cursor can occupy.
-    pub fn last_line(&self) -> usize {
+    pub fn last_line(&self) -> ContentLine {
         hume_rope::lines::last_content_line(self.rope)
+    }
+
+    /// The content line a char offset resolves to, clamping the buffer's own
+    /// trailing phantom line down to [`RowMap::last_line`] — reachable when
+    /// `char_offset == len_chars()` (the debug_assert in every caller below
+    /// admits it), and there is no display row to address on a line that
+    /// doesn't exist. Same posture as `hume_rope::lines::place_char_column`
+    /// on a phantom `line` argument: land on the last real line instead of
+    /// an address no render pass can lay out.
+    fn content_line_of(&self, ropey_line: hume_rope::line::RopeyLine) -> ContentLine {
+        ropey_line
+            .to_content(self.rope)
+            .unwrap_or_else(|| self.last_line())
     }
 
     /// Pull `pos` into the document: `line` into `0..=last_line()`, then `row`
@@ -395,7 +409,7 @@ impl<'a> RowMap<'a> {
             pos.row < b.total(),
             "row {} is past line {}'s block of {}",
             pos.row,
-            pos.line,
+            pos.line.index(),
             b.total()
         );
         let slot = if pos.row < b.before {
@@ -417,7 +431,7 @@ impl<'a> RowMap<'a> {
         if pos.row + 1 < total {
             return Some(RowPos::new(pos.line, pos.row + 1));
         }
-        (pos.line < self.last_line()).then(|| RowPos::new(pos.line + 1, 0))
+        (pos.line < self.last_line()).then(|| RowPos::new(pos.line.down(1), 0))
     }
 
     /// The previous display row. `None` only at the document's first row.
@@ -425,7 +439,10 @@ impl<'a> RowMap<'a> {
         if pos.row > 0 {
             return Some(RowPos::new(pos.line, pos.row - 1));
         }
-        let prev_line = pos.line.checked_sub(1)?;
+        if pos.line.index() == 0 {
+            return None;
+        }
+        let prev_line = pos.line.up(1);
         let total = self.block(prev_line).total();
         Some(RowPos::new(prev_line, total.saturating_sub(1)))
     }
@@ -478,7 +495,7 @@ impl<'a> RowMap<'a> {
         // costs at least that many steps — a line delta beyond `cap` already
         // proves the walk below would return `None`, without formatting a
         // single line under wrap to find out.
-        if to.line.saturating_sub(from.line) > cap {
+        if to.line.index().saturating_sub(from.line.index()) > cap {
             return None;
         }
         let mut cur = from;
@@ -529,7 +546,8 @@ impl<'a> RowMap<'a> {
              against the current buffer before reaching here",
             self.rope.len_chars()
         );
-        let (line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let line = self.content_line_of(ropey_line);
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
@@ -589,7 +607,7 @@ impl<'a> RowMap<'a> {
             "locate_in_line: line {}, char_offset {char_offset} matched \
              no row — every content row should claim some byte range of the \
              line",
-            entry.line
+            entry.line.index()
         );
         let last_row = rows.len().saturating_sub(1);
         let display_col = rows
@@ -621,7 +639,9 @@ impl<'a> RowMap<'a> {
             // and `block` has already formatted the line to count its rows.
             return self.locate(char_offset).0;
         }
-        let line = self.rope.char_to_line(char_offset);
+        let line = self.content_line_of(hume_rope::line::RopeyLine::new(
+            self.rope.char_to_line(char_offset),
+        ));
         RowPos::new(line, self.block(line).before)
     }
 
@@ -661,7 +681,7 @@ impl<'a> RowMap<'a> {
         target: DisplayColTarget,
     ) -> usize {
         let entry = self.store.entry(idx);
-        let line_start = self.rope.line_to_char(entry.line);
+        let line_start = self.rope.line_to_char(entry.line.index());
         let format = &entry.format;
         let Some(row) = format.display_rows.get(sub) else {
             return line_start;
@@ -780,7 +800,8 @@ impl<'a> RowMap<'a> {
              a buffer of {} chars — see the debug_assert in RowMap::locate",
             self.rope.len_chars()
         );
-        let (line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
         let (sub, row_display_col) = self.locate_in_line(idx, target_byte, char_offset);
         let (row_indent, _) = self.row_shape(idx, sub);
@@ -799,7 +820,7 @@ impl<'a> RowMap<'a> {
     /// [`RowMap::char_at`].
     pub fn char_at_line_display_col(
         &mut self,
-        line: usize,
+        line: ContentLine,
         target_line_display_col: u32,
         target: DisplayColTarget,
     ) -> usize {
@@ -854,7 +875,7 @@ impl<'a> RowMap<'a> {
         let end = rows
             .get(sub + 1)
             .and_then(first_char_of)
-            .unwrap_or_else(|| hume_rope::lines::line_end_exclusive(self.rope, pos.line));
+            .unwrap_or_else(|| hume_rope::lines::next_line_start(self.rope, pos.line.into()));
         Some((start, end))
     }
 
@@ -907,7 +928,7 @@ impl<'a> RowMap<'a> {
         // can be read while its cells are written.
         let (entry, vrow) = self.store.entry_and_virtual_row(idx);
         let vl = &entry.virtual_lines[vl_idx];
-        let anchor_line = entry.line;
+        let anchor_line = entry.line.into();
         let provider_id = vl.provider_id;
         let base_scope = vl.base_scope;
         vrow.clear();
@@ -958,7 +979,7 @@ impl<'a> RowMap<'a> {
     /// Guarantee `line`'s entry holds its content rows, formatted at least
     /// as far as `bound` reaches. Returns the entry it resolved, so a read
     /// accessor can be handed the line by value.
-    fn ensure_formatted(&mut self, line: usize, bound: FormatBound) -> usize {
+    fn ensure_formatted(&mut self, line: ContentLine, bound: FormatBound) -> usize {
         let idx = self.block_entry(line);
         self.ensure_format_at(idx, bound);
         idx
@@ -1018,7 +1039,7 @@ impl<'a> RowMap<'a> {
         format.reset();
         format_buffer_line(
             self.rope,
-            line,
+            line.into(),
             self.key.tab_width,
             &self.key.whitespace,
             &self.key.wrap_mode,

@@ -54,7 +54,7 @@ fn highlights_for_line(
     tree: tree_sitter::Tree,
     bundle: Arc<GrammarBundle>,
     rope: &ropey::Rope,
-    line_idx: usize,
+    line_idx: hume_rope::line::ContentLine,
 ) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
     let layers = SyntaxLayers::new(vec![SyntaxLayer {
         tree,
@@ -148,7 +148,7 @@ fn highlights_emit_keyword_event() {
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm should exist");
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", &highlights_source);
 
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     assert!(
         !out.is_empty(),
@@ -175,7 +175,7 @@ fn highlights_for_line_correct_on_nonzero_line() {
         std::fs::read_to_string(grammar_query_path("rust")).expect("highlights.scm");
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", &highlights_source);
 
-    let out = highlights_for_line(tree, bundle, &rope, 1);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(1));
 
     assert!(!out.is_empty(), "line 1 should emit highlight events");
     // `let` starts at line-relative offset 0, ends at 3.
@@ -206,7 +206,7 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     let query_src = "(function_item) @function\n\"fn\" @keyword";
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     assert!(out.len() >= 2, "expected at least 2 spans; got: {out:?}");
     let keyword_span = out
@@ -241,7 +241,7 @@ fn highlight_overlap_fully_contained_is_dropped() {
     let query_src = "(string) @string\n(string) @string.duplicate";
     let (bundle, scope_reg) = bundle_for("json", "tree_sitter_json", query_src);
 
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     let string_spans: Vec<_> = out.iter().filter(|&&(s, e, _)| s == 0 && e == 7).collect();
     assert_eq!(
@@ -273,7 +273,7 @@ fn highlight_later_pattern_wins_on_same_node() {
     let query_src = "(identifier) @variable\n(call_expression function: (identifier) @function)";
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     // `foo` is at byte offset 12..15 in `fn main() { foo(1); }`.
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
@@ -304,7 +304,7 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
     let query_src = "(call_expression function: (identifier) @function)\n(identifier) @variable";
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", query_src);
 
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
@@ -334,7 +334,12 @@ fn highlight_underscore_captures_are_ignored() {
     // Only-underscore query: must yield zero spans for `foo`.
     let helper_only_query = "(call_expression function: (identifier) @_helper)";
     let (bundle, _scope_reg) = bundle_for("rust", "tree_sitter_rust", helper_only_query);
-    let out = highlights_for_line(tree.clone(), bundle, &rope, 0);
+    let out = highlights_for_line(
+        tree.clone(),
+        bundle,
+        &rope,
+        hume_rope::line::ContentLine::new(0),
+    );
     assert!(
         out.is_empty(),
         "a query with only an underscore capture must emit no spans; got: {out:?}"
@@ -344,7 +349,7 @@ fn highlight_underscore_captures_are_ignored() {
     // capture must win, never the (dropped) underscore capture.
     let mixed_query = "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", mixed_query);
-    let out = highlights_for_line(tree, bundle, &rope, 0);
+    let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
     let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(

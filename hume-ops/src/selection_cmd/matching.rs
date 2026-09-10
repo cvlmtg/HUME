@@ -52,15 +52,16 @@ pub fn cmd_split_selection_on_newlines(
             new_sels.push(sel);
 
             // Middle lines: full lines.
-            for line in (start_line + 1)..end_line {
-                let ls = text.line_to_char(line);
+            for line_idx in start_line.down(1).index()..end_line.index() {
+                let line = hume_rope::line::ContentLine::new(line_idx);
+                let ls = text.line_to_char(line.into());
                 let le = line_content_end(text, line);
                 let sel = Selection::directed(ls, le, forward);
                 new_sels.push(sel);
             }
 
             // Last line piece: from line start to selection end.
-            let last_ls = text.line_to_char(end_line);
+            let last_ls = text.line_to_char(end_line.into());
             let sel = Selection::directed(last_ls, end, forward);
             new_sels.push(sel);
         }

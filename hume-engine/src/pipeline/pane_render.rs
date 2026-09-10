@@ -254,16 +254,18 @@ struct LineStyle {
 
 impl LineStyle {
     fn enter(
-        line_idx: usize,
-        last_content_line: usize,
+        line_idx: hume_rope::line::ContentLine,
+        last_content_line: hume_rope::line::ContentLine,
         pane_ctx: &PaneRenderCtx,
         style: &mut super::StyleScratch,
     ) -> Self {
         debug_assert!(
             line_idx <= last_content_line,
-            "row walk reached line {line_idx}, past the buffer's last \
-             content line {last_content_line} — `RowMap::last_line`, not \
-             `visible.last_line_idx` (the phantom trailing-\\n line one past it)"
+            "row walk reached line {}, past the buffer's last \
+             content line {} — `RowMap::last_line`, not \
+             `visible.last_line_idx` (the phantom trailing-\\n line one past it)",
+            line_idx.index(),
+            last_content_line.index()
         );
         let tint = crate::style::rebuild_line_decorations(
             line_idx,
@@ -272,8 +274,8 @@ impl LineStyle {
             pane_ctx.rope,
             style,
         );
-        let start_char = pane_ctx.rope.line_to_char(line_idx);
-        let end_char = hume_rope::lines::line_end_exclusive(pane_ctx.rope, line_idx);
+        let start_char = pane_ctx.rope.line_to_char(line_idx.index());
+        let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
         // Cursorline highlights only the primary cursor's line.
         let is_head_line = style
             .primary_idx_in_sorted

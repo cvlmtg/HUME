@@ -503,7 +503,7 @@ impl Syntax {
 impl hume_engine::providers::SyntaxSpans for Syntax {
     fn spans_for_line(
         &self,
-        line_idx: usize,
+        line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
         out: &mut Vec<(usize, usize, ScopeId)>,
     ) {

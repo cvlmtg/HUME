@@ -8,7 +8,7 @@ use crate::types::{RowKind, ScopeId};
 struct FixedWidthGutter;
 
 impl GutterColumn for FixedWidthGutter {
-    fn width(&self, _: usize) -> u8 {
+    fn width(&self, _: hume_rope::line::RopeyLine) -> u8 {
         3
     }
     fn render_row_cells(&self, _: RowKind, _: &GutterRowCtx) -> Vec<GutterCell> {
@@ -57,5 +57,5 @@ fn last_line_idx_includes_the_phantom_trailing_line() {
     let rope = Rope::from_str("a\nb\nc\n");
     let viewport = ViewportState::new(80, 3);
     let visible = compute_viewport(&rope, &viewport, std::iter::empty());
-    assert_eq!(visible.last_line_idx, 3);
+    assert_eq!(visible.last_line_idx.index(), 3);
 }

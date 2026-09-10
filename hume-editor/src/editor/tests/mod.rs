@@ -267,7 +267,10 @@ fn type_text(ed: &mut Editor, text: &str) {
 fn pane_signs(
     ed: &Editor,
     pid: PaneId,
-) -> rustc_hash::FxHashMap<usize, Vec<hume_engine::builtins::sign_column::Sign>> {
+) -> rustc_hash::FxHashMap<
+    hume_rope::line::ContentLine,
+    Vec<hume_engine::builtins::sign_column::Sign>,
+> {
     ed.state.panes.render[pid].signs.read().unwrap().clone()
 }
 
@@ -278,7 +281,7 @@ fn pane_highlights(
     ed: &Editor,
     pid: PaneId,
     tier: impl Fn(&PaneHighlights) -> &ScopedHighlightRanges,
-) -> Vec<(usize, usize, usize, ScopeId)> {
+) -> Vec<(hume_rope::line::ContentLine, usize, usize, ScopeId)> {
     tier(&ed.state.panes.render[pid].highlights)
         .read()
         .unwrap()
@@ -292,7 +295,7 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
         .gutter_columns()
         .next()
         .expect("sign column registered first")
-        .width(0)
+        .width(hume_rope::line::RopeyLine::new(0))
 }
 
 /// Runs the write-side pipeline (`prepare_frame`) at a given terminal size —
@@ -362,7 +365,7 @@ fn reg(ed: &Editor, name: char) -> Vec<String> {
 fn jump_editor(cursor_line: usize) -> Editor {
     let content: String = (0..20).map(|i| format!("line {i}\n")).collect();
     let text = BufferText::from(content.as_str());
-    let pos = text.line_to_char(cursor_line);
+    let pos = text.line_to_char(hume_rope::line::RopeyLine::new(cursor_line));
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(pos));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);

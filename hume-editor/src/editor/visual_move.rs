@@ -94,9 +94,9 @@ fn move_buffer_line(
     let target_line = if down {
         // On the last content line, line + count would be the phantom
         // trailing line (the structural \n) — clamp there is nothing past it.
-        line.saturating_add(count).min(text.last_content_line())
+        line.down(count).min(text.last_content_line())
     } else {
-        line.saturating_sub(count)
+        line.up(count)
     };
     if target_line == line {
         return head; // already at the document's first/last content line
@@ -290,8 +290,8 @@ fn copy_selection_vertically(
 
     for i in 0..original_len {
         let sel = all_sels[i];
-        let anchor_line = text.char_to_line(sel.anchor()) as isize;
-        let head_line = text.char_to_line(sel.head()) as isize;
+        let anchor_line = text.char_to_line(sel.anchor()).index() as isize;
+        let head_line = text.char_to_line(sel.head()).index() as isize;
 
         // The outermost line in the copy direction determines the offset target.
         let outer_line = if down {
@@ -313,7 +313,7 @@ fn copy_selection_vertically(
         // `count` of `usize::MAX` must clamp here without ever appearing in
         // an `isize` computation, which `available.min(count)` guarantees.
         let available = if down {
-            (text.last_content_line() as isize - outer_line).max(0) / span
+            (text.last_content_line().index() as isize - outer_line).max(0) / span
         } else {
             outer_line / span
         } as usize;
@@ -322,12 +322,12 @@ fn copy_selection_vertically(
         for step in 1..=steps {
             let delta = step as isize * span * direction;
             let new_anchor = rm.char_at_line_display_col(
-                (anchor_line + delta) as usize,
+                hume_rope::line::ContentLine::new((anchor_line + delta) as usize),
                 anchor_display_col,
                 DisplayColTarget::NearestContent,
             );
             let new_head = rm.char_at_line_display_col(
-                (head_line + delta) as usize,
+                hume_rope::line::ContentLine::new((head_line + delta) as usize),
                 head_display_col,
                 DisplayColTarget::NearestContent,
             );
@@ -497,8 +497,8 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
                 let (line_start, line_end_excl) =
                     rm.content_row_char_bounds(pos).unwrap_or_else(|| {
                         let buf_line = text.char_to_line(sel.anchor());
-                        let ls = text.line_to_char(buf_line);
-                        let le = hume_editing::lines::line_end_exclusive(text, buf_line);
+                        let ls = text.line_to_char(buf_line.into());
+                        let le = hume_editing::lines::next_line_start(text, buf_line.into());
                         (ls, le)
                     });
 
