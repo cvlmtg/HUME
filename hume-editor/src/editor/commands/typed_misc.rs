@@ -17,7 +17,7 @@ use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 /// Displays all logged warnings, errors, and trace entries accumulated during
 /// the session. Cursor starts at the last entry (most recent). Dismiss with
 /// `:bd` or switch away with `:b#`.
-pub(crate) fn typed_messages(
+pub(in crate::editor) fn typed_messages(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -53,7 +53,7 @@ pub(crate) fn typed_messages(
 /// Each row shows: 1-based index, current (`%`) / alternate (`#`) marker,
 /// dirty (`+`) flag, short name, and home-shortened absolute path.
 /// Cursor is placed on the line corresponding to the currently focused buffer.
-pub(crate) fn typed_list_buffers(
+pub(in crate::editor) fn typed_list_buffers(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -111,7 +111,7 @@ pub(crate) fn typed_list_buffers(
 
 /// `:plugin-status` / `:plugins` — show all declared plugins, their load
 /// state, and (for still-waiting plugins) which activation entries they are waiting on.
-pub(crate) fn typed_plugin_status(
+pub(in crate::editor) fn typed_plugin_status(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -137,7 +137,7 @@ pub(crate) fn typed_plugin_status(
 /// With no `path`, the new pane views the same buffer as the focused one.
 /// With `path`, the new pane views that file instead (opened via the usual
 /// dedup-on-canonical-path rule — see [`open_path_arg`]).
-pub(crate) fn typed_split(
+pub(in crate::editor) fn typed_split(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -146,7 +146,7 @@ pub(crate) fn typed_split(
 }
 
 /// `:vsplit [path]` — split the focused pane side by side.
-pub(crate) fn typed_vsplit(
+pub(in crate::editor) fn typed_vsplit(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -209,7 +209,7 @@ fn active_theme_name(ed: &Editor) -> &str {
 /// On success the engine view's theme is replaced; the next `prepare_frame`
 /// re-bakes it (see `Theme::bake_if_stale`). On failure a warning is shown and
 /// the current theme is left unchanged.
-pub(crate) fn typed_theme(
+pub(in crate::editor) fn typed_theme(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -229,7 +229,7 @@ pub(crate) fn typed_theme(
 /// Cursor rows report the pre-resolved style the renderer reads; every other
 /// row — bracket/search match, selection, cursorline, statusline — reports its
 /// resolved style plus every name on its dot-notation chain the theme defines.
-pub(crate) fn typed_theme_debug(
+pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -338,7 +338,7 @@ pub(crate) fn typed_theme_debug(
     Ok(())
 }
 
-pub(crate) fn typed_version(
+pub(in crate::editor) fn typed_version(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -347,7 +347,7 @@ pub(crate) fn typed_version(
     Ok(())
 }
 
-pub(crate) fn typed_tutor(
+pub(in crate::editor) fn typed_tutor(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -405,7 +405,7 @@ pub(crate) fn typed_tutor(
 /// The pre-jump position is recorded in the jump list so `Ctrl+o` returns here.
 /// `:42` is accepted as shorthand (the command-mode dispatcher intercepts bare
 /// digit strings and routes them here before the normal registry lookup).
-pub(crate) fn typed_goto_line(
+pub(in crate::editor) fn typed_goto_line(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -484,7 +484,7 @@ fn parse_sort_flags(arg: Option<&str>) -> Result<SortOpts, CommandError> {
 /// says "rows" — that's the user-facing vocabulary (see
 /// `user-manual/docs/command-mode.md`), deliberately left as-is even though
 /// the internal type is `SortEntry`/lines.
-pub(crate) fn typed_sort(
+pub(in crate::editor) fn typed_sort(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,

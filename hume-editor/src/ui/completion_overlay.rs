@@ -40,7 +40,7 @@ pub(crate) struct MinibufCompletionView {
 }
 
 /// Overlay that paints the completion popup on top of pane content.
-pub(crate) struct MinibufCompletionOverlay {
+pub(in crate::ui) struct MinibufCompletionOverlay {
     pub data: Arc<RwLock<Option<MinibufCompletionView>>>,
 }
 

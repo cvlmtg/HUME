@@ -103,7 +103,7 @@ impl RangeAnchored for StoredDiag {
 /// severity/range filter, `counts`) stay here since no decoration kind
 /// needs them.
 #[derive(Default)]
-pub(crate) struct DiagnosticsStore {
+pub(in crate::editor::lsp) struct DiagnosticsStore {
     store: SourceStore<ServerId, StoredDiag>,
 }
 
@@ -113,7 +113,12 @@ impl DiagnosticsStore {
     /// uri) within a drain batch). `SourceStore::set` sorts by `start`
     /// (`StoredDiag`'s `Positioned` impl), so callers no longer need to
     /// pre-sort themselves.
-    pub(crate) fn replace(&mut self, server: ServerId, bid: BufferId, diags: Vec<StoredDiag>) {
+    pub(in crate::editor) fn replace(
+        &mut self,
+        server: ServerId,
+        bid: BufferId,
+        diags: Vec<StoredDiag>,
+    ) {
         self.store.set(server, bid, diags);
     }
 
@@ -124,7 +129,7 @@ impl DiagnosticsStore {
     /// consumers). A range collapsed to empty by a covering deletion is
     /// dropped, not kept as a zero-width entry — `SourceStore::remap_ranges`'
     /// shared policy, the same one `ExtraHighlightEntry` uses.
-    pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
+    pub(in crate::editor) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
         self.store.remap_ranges(bid, cs);
     }
 
@@ -140,7 +145,7 @@ impl DiagnosticsStore {
     /// `OnDiagnosticsChanged` for exactly those — same "only the buffers
     /// this batch touched" discipline as `drain_lsp`'s `publishDiagnostics`
     /// ingest.
-    pub(crate) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
+    pub(in crate::editor::lsp) fn remove_server(&mut self, server: ServerId) -> Vec<BufferId> {
         self.store.retain_sources(|&sid| sid != server)
     }
 
@@ -152,7 +157,7 @@ impl DiagnosticsStore {
     /// must not survive against the new content). Returns whether anything
     /// was actually removed, so a reload caller only fires
     /// `OnDiagnosticsChanged` when the display actually changes.
-    pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
+    pub(in crate::editor) fn remove_buffer(&mut self, bid: BufferId) -> bool {
         self.store.remove_buffer(bid)
     }
 
@@ -161,7 +166,9 @@ impl DiagnosticsStore {
     /// drops a stopped server's own entries, but a crash leaves them here
     /// deliberately (see `LspState::reset_config`'s doc), so `:reload-config`'s
     /// resync can still replay `OnDiagnosticsChanged` for them.
-    pub(crate) fn buffers_with_diagnostics(&self) -> impl Iterator<Item = BufferId> + '_ {
+    pub(in crate::editor) fn buffers_with_diagnostics(
+        &self,
+    ) -> impl Iterator<Item = BufferId> + '_ {
         self.store.buffers()
     }
 
@@ -190,7 +197,7 @@ impl DiagnosticsStore {
     /// iterated first rather than the nearest diagnostic. Collected and
     /// sorted once here so every caller gets a globally ordered result
     /// without re-deriving it.
-    pub(crate) fn for_range(
+    pub(in crate::editor::lsp) fn for_range(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -205,7 +212,7 @@ impl DiagnosticsStore {
     /// caller whose own result doesn't depend on the order it sees these in
     /// (the sign bridge folds them into a per-line winner; the underline
     /// bridge re-sorts what it builds). Lazy, so it never collects at all.
-    pub(crate) fn for_range_unsorted(
+    pub(in crate::editor::lsp) fn for_range_unsorted(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,

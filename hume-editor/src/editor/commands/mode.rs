@@ -22,7 +22,7 @@ use crate::editor::error::CommandError;
 
 // ── Mode transitions ──────────────────────────────────────────────────────────
 
-pub(crate) fn cmd_insert_before(
+pub(in crate::editor) fn cmd_insert_before(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -36,7 +36,7 @@ pub(crate) fn cmd_insert_before(
     Ok(())
 }
 
-pub(crate) fn cmd_insert_after(
+pub(in crate::editor) fn cmd_insert_after(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -50,7 +50,7 @@ pub(crate) fn cmd_insert_after(
     Ok(())
 }
 
-pub(crate) fn cmd_insert_at_line_start(
+pub(in crate::editor) fn cmd_insert_at_line_start(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -64,7 +64,7 @@ pub(crate) fn cmd_insert_at_line_start(
     Ok(())
 }
 
-pub(crate) fn cmd_insert_at_line_end(
+pub(in crate::editor) fn cmd_insert_at_line_end(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -94,7 +94,7 @@ pub(crate) fn cmd_insert_at_line_end(
 
 /// Enter insert mode at the start of each selection (min of anchor and head).
 /// For a collapsed cursor this is identical to `i`.
-pub(crate) fn cmd_insert_at_selection_start(
+pub(in crate::editor) fn cmd_insert_at_selection_start(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -119,7 +119,7 @@ pub(crate) fn cmd_insert_at_selection_start(
 /// If the selection ends on a `\n` (e.g. after `select-line` / `x`, or on an empty
 /// line), the cursor stays on that `\n` slot rather than stepping past it — `a` on
 /// an empty line is identical to `i`.
-pub(crate) fn cmd_insert_at_selection_end(
+pub(in crate::editor) fn cmd_insert_at_selection_end(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -147,7 +147,7 @@ pub(crate) fn cmd_insert_at_selection_end(
 /// `begin_insert_session` opens the edit group so the structural `\n` and
 /// everything typed before Esc form one undo step — the same pattern as
 /// `cmd_change`.
-pub(crate) fn cmd_open_line_below(
+pub(in crate::editor) fn cmd_open_line_below(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -165,7 +165,7 @@ pub(crate) fn cmd_open_line_below(
 }
 
 /// Open a new line above the cursor and enter insert mode.
-pub(crate) fn cmd_open_line_above(
+pub(in crate::editor) fn cmd_open_line_above(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -183,7 +183,7 @@ pub(crate) fn cmd_open_line_above(
     Ok(())
 }
 
-pub(crate) fn cmd_command_mode(
+pub(in crate::editor) fn cmd_command_mode(
     state: &mut EditorState,
     _view: &mut EngineView,
     _count: usize,
@@ -199,7 +199,7 @@ pub(crate) fn cmd_command_mode(
     Ok(())
 }
 
-pub(crate) fn cmd_exit_insert(
+pub(in crate::editor) fn cmd_exit_insert(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -211,7 +211,7 @@ pub(crate) fn cmd_exit_insert(
 
 // ── Extend mode ───────────────────────────────────────────────────────────────
 
-pub(crate) fn cmd_toggle_extend(
+pub(in crate::editor) fn cmd_toggle_extend(
     state: &mut EditorState,
     _view: &mut EngineView,
     _count: usize,
@@ -242,7 +242,7 @@ fn do_collapse_and_exit_extend(
 /// Collapse each selection to its cursor (head) and exit extend mode.
 ///
 /// Collapsing is a "done selecting" signal, so extend mode is always cleared.
-pub(crate) fn cmd_collapse_to_head_and_exit_extend(
+pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -260,7 +260,7 @@ pub(crate) fn cmd_collapse_to_head_and_exit_extend(
 /// stationary (anchor) end. For a forward word selection this puts the cursor
 /// on the first character of the word. Only reachable via the kitty keyboard
 /// protocol (`Ctrl+;`); harmless no-op on legacy terminals.
-pub(crate) fn cmd_collapse_to_anchor_and_exit_extend(
+pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -293,7 +293,7 @@ pub(crate) fn cmd_collapse_to_anchor_and_exit_extend(
 /// for `run_native_body`/`run_steel_command` and `handle_insert`. This keeps
 /// the invariant that no `EditorCmd` handler takes `&mut Editor` (see
 /// `EditorCmdFn` in `registry/command.rs`).
-pub(crate) fn cmd_repeat(
+pub(in crate::editor) fn cmd_repeat(
     state: &mut EditorState,
     _view: &mut EngineView,
     count: usize,

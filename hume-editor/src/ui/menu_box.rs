@@ -21,7 +21,7 @@ use super::width::text_width;
 /// `#[allow(clippy::too_many_arguments)]` regardless given its other params
 /// (canvas, rect, rows, selection, scroll, border).
 #[derive(Clone, Copy)]
-pub(crate) struct MenuBoxStyles {
+pub(in crate::ui) struct MenuBoxStyles {
     /// Fill, border, and unstyled rows.
     pub(crate) base: ResolvedStyle,
     /// The highlighted row (menus only — plain popups never set `selected`).
@@ -135,7 +135,7 @@ pub(crate) fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_row
 /// already computed `outer` against this same rect this same frame, so this
 /// should never return `false` — but painting outside the pane is worse than
 /// a dropped frame of content.
-pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
+pub(in crate::ui) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
     outer.left() >= pane_rect.left()
         && outer.top() >= pane_rect.top()
         && outer.right() <= pane_rect.right()
@@ -146,7 +146,7 @@ pub(crate) fn fits_inside(outer: Rect, pane_rect: Rect) -> bool {
 /// Shared by every bordered box overlay — [`draw_menu_box`] and
 /// `super::picker_panel::draw_picker_panel` — so the frame glyphs stay
 /// identical without a copy per caller.
-pub(crate) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
+pub(in crate::ui) fn draw_box_border(canvas: &mut Canvas, outer: Rect, style: ResolvedStyle) {
     let inner = outer.inset(1, 1);
     // The right/bottom border's own column/row — `outer.right()`/`.bottom()`
     // is the exclusive bound one past it; `inner.right()`/`.bottom()` is
@@ -225,7 +225,7 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
 /// (plain popups, menus), which paint each row in one style. Ignored for a
 /// row that has `selected == Some(row_idx)`: the highlight bar always wins.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_menu_box(
+pub(in crate::ui) fn draw_menu_box(
     canvas: &mut Canvas,
     outer: Rect,
     rows: &[String],
@@ -318,7 +318,7 @@ pub(crate) fn draw_menu_box(
 /// drift between them — each caller still owns its own row-index bookkeeping
 /// and text truncation, which differ in kind, not just in value, between them.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_list_row(
+pub(in crate::ui) fn draw_list_row(
     canvas: &mut Canvas,
     x: u16,
     y: u16,

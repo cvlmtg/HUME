@@ -155,7 +155,7 @@ impl Editor {
     /// Runs the selection recipe motions and edit body with [`commands::run_native_body`]
     /// (avoiding pipeline re-entry), then feeds insert keys through `handle_insert`.
     /// Preserves `last_repeatable_action` so `.` chains.
-    pub(crate) fn replay_dot(&mut self, count: usize) {
+    pub(in crate::editor) fn replay_dot(&mut self, count: usize) {
         let Some(action) = self.state.last_repeatable_action.take() else {
             return;
         };
@@ -314,7 +314,7 @@ impl Editor {
     /// settle() call clears the flag at its own end — losing
     /// `report_disk_state`'s shadowing guard for that earlier message if a
     /// stale-buffer warning fires from a later key's settle.
-    pub(crate) fn drain_replay_queue(&mut self) {
+    pub(in crate::editor) fn drain_replay_queue(&mut self) {
         if self.state.replay_queue.is_empty() {
             return;
         }

@@ -21,7 +21,7 @@ const TINT_SCOPE: &str = "ui.cursor.match.search";
 fn line_background_tints_gutter_content_and_trailing_cells() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     // Esc lands the cursor on line 2 ("ghi") — line 0 is tinted but not the
     // cursor's line, so this test isolates the tint from cursorline.
     type_text(&mut ed, "abc\ndef\nghi");
@@ -77,7 +77,7 @@ fn line_background_tints_gutter_content_and_trailing_cells() {
 fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     // Line 0 (20 cols, wraps at a narrow width) is tinted; line 1 ("b") is
     // short and holds the cursor after Esc, so cursorline never lands on
     // the tinted line — this test isolates wrap-row persistence from the
@@ -125,7 +125,7 @@ fn line_background_tint_survives_every_wrap_display_line_of_a_wrapped_line() {
 fn cursorline_wins_over_the_line_background_tint() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "abc\ndef"); // Esc lands the cursor on line 1 ("def").
     run(
         &mut ed,

@@ -82,7 +82,7 @@ pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<Lan
 /// The server's raw wire capabilities — see `LspClient::capabilities_json`'s
 /// doc comment for why this, not the typed decode, is what
 /// `(lsp-capabilities …)` must hand to Steel.
-pub(crate) fn capabilities(
+pub(in crate::editor) fn capabilities(
     state: &EditorState,
     lsp: &LspState,
     focused_bid: BufferId,
@@ -94,7 +94,9 @@ pub(crate) fn capabilities(
 
 /// One entry per running (language, root) server — `:lsp-status`'s data in
 /// structured form.
-pub(crate) fn server_status(lsp: &LspState) -> Vec<hume_scripting::LspServerStatusEntry> {
+pub(in crate::editor) fn server_status(
+    lsp: &LspState,
+) -> Vec<hume_scripting::LspServerStatusEntry> {
     lsp.servers
         .values()
         .filter_map(|e| {
@@ -110,7 +112,7 @@ pub(crate) fn server_status(lsp: &LspState) -> Vec<hume_scripting::LspServerStat
 }
 
 /// The registered language for the server attached to buffer `id`.
-pub(crate) fn server_for_buffer(
+pub(in crate::editor) fn server_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
@@ -159,7 +161,7 @@ pub(crate) fn activity(state: &EditorState, lsp: &LspState, id: BufferId) -> Lsp
 /// registered, not necessarily attached/running. Distinguishes "no server
 /// registered" from "registered but still starting", which
 /// `server_for_buffer` (attachment, not registration) can't tell apart.
-pub(crate) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
+pub(in crate::editor) fn registered_for_language(lsp: &LspState, language: &str) -> bool {
     lsp.configs.contains_key(language)
 }
 
@@ -181,7 +183,7 @@ fn uri_and_encoding(
 
 /// Ready-made `{"textDocument" {"uri"} "position" {"line" "character"}}`
 /// params from `id`'s primary cursor head, in the pane currently showing it.
-pub(crate) fn position_params(
+pub(in crate::editor) fn position_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
@@ -214,7 +216,7 @@ fn negotiated_encoding(
 /// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
 /// default) if `id` has no attached server — used by `set-inlay-hints!`
 /// to convert its wire positions to char offsets at set time.
-pub(crate) fn encoding_for_buffer(
+pub(in crate::editor::lsp) fn encoding_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
@@ -235,7 +237,7 @@ pub(crate) fn encoding_for_buffer(
 /// the buffer's `len_chars()` (`set-extra-highlights!`'s `validate_range`
 /// accepts that boundary), so this must not reject it. Point-anchored
 /// callers want the opposite; see [`wire_point_to_char_for_buffer`].
-pub(crate) fn wire_to_char_for_buffer(
+pub(in crate::editor) fn wire_to_char_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
@@ -257,7 +259,7 @@ pub(crate) fn wire_to_char_for_buffer(
 /// (a request that raced an edit) fail the caller's *entire* hint batch
 /// (`collect::<Result<Vec<_>, _>>` in `host_impl.rs`) instead of just being
 /// filtered out, one entry, by the caller's own `#f` check.
-pub(crate) fn wire_point_to_char_for_buffer(
+pub(in crate::editor) fn wire_point_to_char_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
@@ -282,7 +284,7 @@ pub(crate) fn wire_point_to_char_for_buffer(
 /// `None` when `id` has no attached server, refusing rather than guessing
 /// UTF-16 for the same reason [`wire_to_char_for_buffer`] does: the wrong
 /// answer is invisible until the label holds a non-ASCII character.
-pub(crate) fn label_slice_for_buffer(
+pub(in crate::editor) fn label_slice_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
@@ -318,7 +320,7 @@ pub(crate) fn label_slice_for_buffer(
 /// caller (e.g. the diagnostics plugin's EOL summary and gutter signs)
 /// agrees with what's on screen unless it explicitly asks for a different
 /// cut.
-pub(crate) fn diagnostics_for_buffer(
+pub(in crate::editor) fn diagnostics_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     bid: BufferId,
@@ -485,7 +487,7 @@ fn wire_pos_to_grapheme_col(
 /// once a target isn't read — cached per distinct path (not per location)
 /// so a batch with many locations in few files pays one `canonicalize` +
 /// buffer-store scan per file, not one per location.
-pub(crate) fn location_display_parts(
+pub(in crate::editor) fn location_display_parts(
     state: &EditorState,
     lsp: &LspState,
     focused_bid: BufferId,
@@ -562,7 +564,7 @@ fn char_range_to_wire(
 /// Ready-made range params from `id`'s primary selection alone — the shape
 /// `:lsp-code-actions` needs, since its diagnostics context
 /// (`lsp/primary-selection-range` in `actions.scm`) is primary-scoped too.
-pub(crate) fn primary_range_params(
+pub(in crate::editor) fn primary_range_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
@@ -592,7 +594,7 @@ pub(crate) fn primary_range_params(
 /// the blank line between them too. `None` only when `id` has no path, no
 /// attached server, or isn't shown in any pane, matching every other params
 /// builder in this file.
-pub(crate) fn linewise_ranges_params(
+pub(in crate::editor) fn linewise_ranges_params(
     state: &EditorState,
     view: &EngineView,
     lsp: &LspState,
@@ -631,7 +633,7 @@ pub(crate) fn linewise_ranges_params(
 /// rows, e.g. one not yet laid out) still reports a one-line range rather
 /// than an empty one, so callers always get at least the pane's top line
 /// instead of a degenerate empty range.
-pub(crate) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
+pub(in crate::editor) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
     let first_line = pane.viewport.top_line.index();
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal

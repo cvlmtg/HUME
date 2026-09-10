@@ -12,7 +12,10 @@ impl Editor {
     /// is what lets a lazily-activated plugin's own `register-lsp-server!` (or
     /// `set-buffer-language!`, grammar sweep, ...) take effect before this call
     /// returns, so the buffer that triggered activation isn't skipped.
-    pub(super) fn activate_and_register(&mut self, plugin: &hume_scripting::attribution::PluginId) {
+    pub(in crate::editor::mappings::lazy) fn activate_and_register(
+        &mut self,
+        plugin: &hume_scripting::attribution::PluginId,
+    ) {
         let init_budget = self.state.settings.steel_init_budget_ms as u64;
         let result = {
             let Some(host) = self.scripting.as_mut() else {
@@ -32,7 +35,7 @@ impl Editor {
     /// Activate `plugin`, emit a `Severity::Trace` message if it transitioned
     /// `Declared → Loaded`, and leave messages unflushed.  `activation` is the
     /// human-readable activation description for the log line.
-    pub(super) fn activate_and_trace(
+    pub(in crate::editor::mappings::lazy) fn activate_and_trace(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
         activation: &str,
@@ -64,7 +67,7 @@ impl Editor {
     /// the plugin body never defined `name`; in that case the stub is removed
     /// (preventing an infinite retry loop) and the caller should report an
     /// "unknown command" warning.
-    pub(crate) fn activate_lazy_plugin(
+    pub(in crate::editor) fn activate_lazy_plugin(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
         name: &str,

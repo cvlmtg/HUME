@@ -1,6 +1,4 @@
-use super::elements::file_path::{
-    shorten_path_to_width, shorten_path_to_width_with, statusline_display_path,
-};
+use super::elements::file_path::{shorten_path_to_width, statusline_display_path};
 use super::*;
 use crate::editor::tests::co;
 use hume_engine::types::ResolvedStyle;
@@ -378,9 +376,7 @@ fn language_element_empty_when_none() {
 
 #[test]
 fn language_element_renders_bracketed() {
-    let mut ed = test_editor();
-    let lang = ed.state.config.languages.intern("rust");
-    ed.doc_mut().language = Some(lang);
+    let ed = crate::editor::tests::editor_with_language("hello\n", "rust");
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(&StatusElement::Language, &ed.statusline(), &colors, "");
     insta::assert_snapshot!(text, @"[rust]");
@@ -401,12 +397,7 @@ fn readonly_element_empty_for_normal_buffer() {
 
 #[test]
 fn readonly_element_renders_ro_label() {
-    use crate::editor::buffer::Buffer;
-    let buf = Buffer::read_only_view(
-        hume_editing::text::BufferText::from("hello\n"),
-        "[test]".to_string(),
-    );
-    let ed = crate::editor::Editor::for_testing(buf);
+    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[test]");
     let colors = crate::ui::theme::EditorColors::default();
     let (text, _) = render_element(&StatusElement::ReadOnly, &ed.statusline(), &colors, "");
     insta::assert_snapshot!(text, @"[RO]");
@@ -642,53 +633,10 @@ fn shorten_path_actually_abbreviates_when_too_wide() {
     );
 }
 
-// ── shorten_path_to_width_with (separator injection, cross-platform) ──────
-
-fn windows_like_sep(c: char) -> bool {
-    c == '/' || c == '\\'
-}
-
-fn unix_like_sep(c: char) -> bool {
-    c == '/'
-}
-
-#[test]
-fn shorten_path_windows_seps_abbreviates_dirs() {
-    // Regression for the reported bug: on Windows the path uses '\' and was
-    // not being abbreviated at all, falling straight to whole-string
-    // truncation ("~\foo\bar\baz\fi…"). Mirrors shorten_path_abbreviates_multiple_dirs.
-    let path = r"~\foo\bar\baz.txt"; // 17 cols
-    let result = shorten_path_to_width_with(path, 13, windows_like_sep);
-    assert_eq!(result, r"~\f\b\baz.txt");
-}
-
-#[test]
-fn shorten_path_mixed_seps_preserved() {
-    // Each component keeps its own original separator character rather than
-    // normalizing to '/'.
-    let path = r"~\foo/bar\file.txt"; // 18 cols
-    let result = shorten_path_to_width_with(path, 14, windows_like_sep);
-    assert_eq!(result, r"~\f/b\file.txt");
-}
-
-#[test]
-fn shorten_path_windows_seps_ellipsis_on_very_narrow() {
-    // Mirrors shorten_path_ellipsis_on_very_narrow but with '\' separators —
-    // the ellipsis branch must keep the '\'-prefix, not drop separators.
-    let path = r"~\foo\bar\baz.txt";
-    let result = shorten_path_to_width_with(path, 10, windows_like_sep);
-    assert_eq!(result, r"~\f\b\baz…");
-}
-
-#[test]
-fn shorten_path_unix_sep_ignores_backslash() {
-    // With a Unix-style predicate, '\' is an ordinary filename character, not
-    // a separator — it must never be split on, only ever truncated as part of
-    // the filename content.
-    let path = r"~/foo\bar.txt"; // 13 cols
-    let result = shorten_path_to_width_with(path, 8, unix_like_sep);
-    assert_eq!(result, r"~/foo\b…");
-}
+// `shorten_path_to_width_with`'s own separator-injection tests are co-located
+// with it in `elements::file_path::tests` — it has no caller outside that
+// file, unlike `shorten_path_to_width` above (called from `render_statusline`
+// in this module, hence tested here).
 
 // ── statusline_display_path (label fallback for path-less buffers) ────────
 //
@@ -707,12 +655,7 @@ fn statusline_display_path_scratch_buffer_shows_scratch_name() {
 
 #[test]
 fn statusline_display_path_synthetic_buffer_shows_label() {
-    use crate::editor::buffer::Buffer;
-    let buf = Buffer::read_only_view(
-        hume_editing::text::BufferText::from("hello\n"),
-        "[buffers]".to_string(),
-    );
-    let ed = crate::editor::Editor::for_testing(buf);
+    let ed = crate::editor::tests::editor_with_read_only_view("hello\n", "[buffers]");
     assert_eq!(statusline_display_path(&ed.statusline()), "[buffers]");
 }
 
@@ -725,9 +668,8 @@ fn statusline_display_path_real_file_still_shows_path() {
     // calling the very same function. `/some/absolute/path/file.rs` has no
     // `$HOME` prefix and no Windows verbatim prefix, so `display_form` is a
     // no-op on it and it must come back byte-identical.
-    let mut ed = test_editor();
     let path = std::path::Path::new("/some/absolute/path/file.rs");
-    ed.doc_mut().set_path(Some(path.to_owned()));
+    let ed = crate::editor::tests::editor_with_path("hello\n", path);
     assert_eq!(
         statusline_display_path(&ed.statusline()),
         "/some/absolute/path/file.rs"

@@ -104,7 +104,7 @@ fn markdown_popup_paints_per_run_styles() {
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
         &mut ed,
@@ -171,7 +171,7 @@ fn docked_popup_survives_a_multiline_capture_node() {
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     register_markdown(&mut ed);
     run(
         &mut ed,

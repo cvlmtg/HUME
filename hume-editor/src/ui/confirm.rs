@@ -56,7 +56,7 @@ impl ConfirmModel {
 
     /// The line to paint in the statusline row: prompt text followed by
     /// each choice as `[key]label`.
-    pub(crate) fn render_line(&self) -> String {
+    pub(in crate::ui) fn render_line(&self) -> String {
         let mut out = self.prompt.clone();
         for choice in &self.choices {
             out.push_str("  [");

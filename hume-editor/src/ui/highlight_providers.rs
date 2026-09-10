@@ -48,7 +48,7 @@ pub(crate) struct PaneHighlights {
 /// scope onto the span rather than fixing it on the provider, so one shape
 /// serves every caller without forcing a one-provider-per-scope split for
 /// diagnostics/extra.
-pub(crate) struct ScopedHighlighter {
+pub(in crate::ui) struct ScopedHighlighter {
     pub(crate) tier: HighlightTier,
     /// Shared data: `(line_idx, byte_start, byte_end, scope)` for each highlight.
     pub(crate) data: ScopedHighlightRanges,

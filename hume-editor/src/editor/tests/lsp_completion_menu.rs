@@ -119,7 +119,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 #[test]
 fn menu_appears_with_top_items_after_begin() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     begin_session(
         &mut ed,

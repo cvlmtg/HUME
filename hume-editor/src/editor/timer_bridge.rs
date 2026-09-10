@@ -30,13 +30,13 @@ pub(super) enum TimerPayload {
 /// `&mut self` method here would borrow all of `Editor`, defeating the
 /// disjoint-field borrow the call sites need alongside `&mut self.state` /
 /// `&mut self.scripting`.
-pub(crate) struct TimerHandle<'a> {
+pub(in crate::editor) struct TimerHandle<'a> {
     pub(super) wheel: &'a mut super::timers::TimerWheel,
     pub(super) payloads: &'a mut rustc_hash::FxHashMap<TimerId, TimerPayload>,
 }
 
 impl<'a> TimerHandle<'a> {
-    pub(crate) fn schedule(&mut self, after: Duration, thunk: SteelVal) -> u64 {
+    pub(in crate::editor) fn schedule(&mut self, after: Duration, thunk: SteelVal) -> u64 {
         let id = self.wheel.schedule(after);
         self.payloads.insert(id, TimerPayload::SteelThunk(thunk));
         id.0
@@ -44,7 +44,7 @@ impl<'a> TimerHandle<'a> {
 
     /// Idempotent: a already-fired or already-cancelled (or never-existed)
     /// raw id is silently ignored, matching `TimerWheel::cancel`'s contract.
-    pub(crate) fn cancel(&mut self, raw_id: u64) {
+    pub(in crate::editor) fn cancel(&mut self, raw_id: u64) {
         let id = TimerId(raw_id);
         self.wheel.cancel(id);
         self.payloads.remove(&id);

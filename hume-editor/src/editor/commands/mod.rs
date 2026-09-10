@@ -14,7 +14,7 @@
 //! that don't use a count accept it and ignore it (`_count`).
 
 /// Display label used when no named theme is active (the compiled-in default).
-pub(super) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
+pub(in crate::editor::commands) const DEFAULT_THEME_LABEL: &str = "default (built-in)";
 
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
@@ -38,7 +38,7 @@ use crate::editor::settings::EditorSettings;
 impl EditorState {
     /// Consume the pending `"<reg>` prefix and return the explicit register name,
     /// or `None` if no prefix was typed (bare default case).
-    pub(super) fn take_register_prefix(&mut self) -> Option<char> {
+    pub(in crate::editor::commands) fn take_register_prefix(&mut self) -> Option<char> {
         match self.register_prefix.take() {
             Some(RegisterPrefix::Selected(c)) => Some(c),
             _ => None,
@@ -58,7 +58,7 @@ impl EditorState {
     /// ring; any other explicit register prefix routes through `write_register`.
     /// Returns `true` when the yank was captured to the ring (and stamped) —
     /// `false` for an explicit-register route, which never stamps.
-    pub(super) fn route_kill(&mut self, yanked: Vec<String>) -> bool {
+    pub(in crate::editor::commands) fn route_kill(&mut self, yanked: Vec<String>) -> bool {
         match self.take_register_prefix() {
             None | Some(hume_ops::register::KILL_RING_REGISTER) => {
                 self.capture_to_ring(yanked);
@@ -101,7 +101,7 @@ pub(super) fn apply_focused_motion(
 /// Apply an edit to the focused (pane, buffer) pair.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit`]; see [`apply_focused_motion`].
-pub(super) fn apply_focused_edit(
+pub(in crate::editor::commands) fn apply_focused_edit(
     state: &mut EditorState,
     view: &EngineView,
     cmd: impl FnOnce(
@@ -127,7 +127,7 @@ pub(super) fn apply_focused_edit(
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
 /// [`apply_focused_motion`].
-pub(super) fn apply_focused_edit_grouped(
+pub(in crate::editor::commands) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
     cmd: impl FnOnce(
@@ -157,7 +157,10 @@ pub(super) fn apply_focused_edit_grouped(
 /// session entry clears the prefix itself before ever reaching here, for a
 /// different reason — see `begin_insert_session` — so this is a no-op on
 /// that path, not a second clear of the same kind.)
-pub(super) fn refuse_if_read_only(state: &mut EditorState, view: &EngineView) -> bool {
+pub(in crate::editor::commands) fn refuse_if_read_only(
+    state: &mut EditorState,
+    view: &EngineView,
+) -> bool {
     if !doc(state, view).is_read_only() {
         return false;
     }

@@ -69,7 +69,7 @@ impl SystemClipboard {
     /// The inert baseline in `EditorState::default()`, so proptest never reaches
     /// the real NSPasteboard (which throws uncatchable ObjC exceptions in test
     /// threads); `Editor::open` overrides it with a real handle via `new()`.
-    pub(crate) fn new_unavailable() -> Self {
+    pub(in crate::editor) fn new_unavailable() -> Self {
         Self {
             handle: None,
             #[cfg(test)]
@@ -85,7 +85,7 @@ impl SystemClipboard {
     /// `write()` stores text and returns `Ok`. No real OS clipboard is touched.
     /// Use when a test needs a functioning clipboard without a real server.
     #[cfg(test)]
-    pub(crate) fn new_mock() -> Self {
+    pub(in crate::editor) fn new_mock() -> Self {
         Self {
             handle: None,
             mock_active: true,
@@ -98,7 +98,7 @@ impl SystemClipboard {
     /// All subsequent read/write calls return `Err`, triggering the in-memory
     /// fallback. Undoes a previous `set_mock_content()` / `new_mock()`.
     #[cfg(test)]
-    pub(crate) fn force_unavailable(&mut self) {
+    pub(in crate::editor) fn force_unavailable(&mut self) {
         self.handle = None;
         self.mock_active = false;
         self.mock_content = None;
@@ -109,7 +109,7 @@ impl SystemClipboard {
     /// Subsequent `read()` calls return `text`; `write()` calls overwrite it.
     /// No real OS clipboard is touched.
     #[cfg(test)]
-    pub(crate) fn set_mock_content(&mut self, text: &str) {
+    pub(in crate::editor) fn set_mock_content(&mut self, text: &str) {
         self.mock_active = true;
         self.mock_content = Some(text.to_string());
     }

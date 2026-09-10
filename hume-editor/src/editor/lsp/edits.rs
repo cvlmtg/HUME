@@ -28,7 +28,7 @@ use crate::editor::pane_state;
 /// positions against it. One definition so `build_edit_changeset` and
 /// `CompletionSession::accept` (which needs the same guard but isn't
 /// building from wire `TextEdit`s) can't drift apart.
-pub(crate) fn checked_buffer(
+pub(in crate::editor::lsp) fn checked_buffer(
     state: &EditorState,
     bid: BufferId,
     expect_gen: Option<u64>,
@@ -165,7 +165,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
 }
 
 /// `(apply-text-edits! bid edits #:expect-generation gen)`.
-pub(crate) fn apply_text_edits(
+pub(in crate::editor) fn apply_text_edits(
     state: &mut EditorState,
     lsp: &LspState,
     bid: BufferId,
@@ -181,7 +181,7 @@ pub(crate) fn apply_text_edits(
 /// `completionItem/resolve` response's positions (computed against the
 /// pre-accept document) forward onto the buffer as it stands after this
 /// edit landed.
-pub(crate) fn apply_text_edits_returning_cs(
+pub(in crate::editor::lsp::edits) fn apply_text_edits_returning_cs(
     state: &mut EditorState,
     lsp: &LspState,
     bid: BufferId,
@@ -210,7 +210,7 @@ pub(crate) fn apply_text_edits_returning_cs(
 /// `apply-text-edits!`'s convention of erroring on an empty list only when
 /// the caller has no legitimate empty-response case; both callers here do
 /// (no `additionalTextEdits` at all is normal).
-pub(crate) fn build_edits_from_earlier_document<'a>(
+pub(in crate::editor::lsp) fn build_edits_from_earlier_document<'a>(
     rope_at: &ropey::Rope,
     cs_forward: &ChangeSet,
     encoding: PositionEncoding,
@@ -252,7 +252,7 @@ pub(crate) fn build_edits_from_earlier_document<'a>(
 /// `Ok(None)` for an empty batch (nothing to commit); `Ok(Some(cs))`
 /// otherwise, so a caller composing this into a larger changeset doesn't need
 /// its own empty-batch branch.
-pub(crate) fn commit_char_edits(
+pub(in crate::editor::lsp) fn commit_char_edits(
     state: &mut EditorState,
     bid: BufferId,
     char_edits: Vec<(ExclusiveRange<CharOffset>, &str)>,
@@ -342,7 +342,7 @@ fn resolve_or_open(
 /// changeset first (opening unopened files as buffers along the way), and
 /// only commits any of them once every file has passed: a bad edit in file
 /// 3 of 5 must leave files 1 and 2 untouched.
-pub(crate) fn apply_workspace_edit(
+pub(in crate::editor) fn apply_workspace_edit(
     state: &mut EditorState,
     view: &mut EngineView,
     lsp: &LspState,
@@ -394,7 +394,7 @@ pub(crate) fn apply_workspace_edit(
 ///   regardless of which file the location points into);
 /// - `(list target line char-col)`, already char-indexed — `target` is a path
 ///   string, a `file://` URI string, or a `bid`.
-pub(crate) enum GotoTarget {
+pub(in crate::editor) enum GotoTarget {
     Wire {
         uri: lsp_types::Uri,
         line: usize,
@@ -515,7 +515,7 @@ fn resolve_goto_target(
 /// if resolution succeeded and it actually lands somewhere else — same
 /// "commit point" discipline as `:goto` (`typed_misc.rs`) and buffer
 /// switches (`switch_to_buffer_with_jump`).
-pub(crate) fn goto_location(
+pub(in crate::editor) fn goto_location(
     state: &mut EditorState,
     view: &mut EngineView,
     lsp: &LspState,

@@ -8,5 +8,13 @@
 mod mock_host;
 pub use mock_host::MockHost;
 
+// Not needed by the `test-util` external test crates `mock_host`'s own doc
+// describes — narrower than this module's own `cfg(any(test, feature =
+// "test-util"))` gate.
+#[cfg(test)]
+mod snapshot_theme;
+#[cfg(test)]
+pub(crate) use snapshot_theme::build_snapshot_theme;
+
 #[cfg(test)]
 mod tests;

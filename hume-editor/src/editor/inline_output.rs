@@ -118,7 +118,7 @@ impl InlineOutput {
     /// Whether a declared `#:inline-output` command is anywhere on the
     /// current call stack — the stdout gate opens whenever this is true,
     /// with or without a live alt-screen to protect.
-    pub(crate) fn is_open(&self) -> bool {
+    pub(in crate::editor) fn is_open(&self) -> bool {
         !self.frames.is_empty()
     }
 
@@ -127,7 +127,7 @@ impl InlineOutput {
     /// been left this session — `None` otherwise, including once `entered`
     /// is already set, so nesting deeper after the first real print can
     /// never re-enter.
-    pub(crate) fn needs_enter(&self) -> Option<(&str, &ActiveTui, bool)> {
+    pub(in crate::editor) fn needs_enter(&self) -> Option<(&str, &ActiveTui, bool)> {
         if self.entered.is_some() {
             return None;
         }
@@ -137,7 +137,7 @@ impl InlineOutput {
 
     /// Record that the alt-screen was actually left, for this session, with
     /// the same `tui` [`Self::needs_enter`] returned for it.
-    pub(crate) fn mark_entered(
+    pub(in crate::editor) fn mark_entered(
         &mut self,
         kitty: bool,
         mouse: bool,
@@ -158,13 +158,13 @@ impl InlineOutput {
 
     /// Take the terminal state saved by [`Self::mark_entered`], clearing it —
     /// call once, at the Rust boundary closing the bracket.
-    pub(crate) fn take_entered(&mut self) -> Option<Entered> {
+    pub(in crate::editor) fn take_entered(&mut self) -> Option<Entered> {
         self.entered.take()
     }
 
     /// Take (and clear) whether any frame this session owned the terminal —
     /// call once, at the same Rust boundary as [`Self::take_entered`].
-    pub(crate) fn take_ran(&mut self) -> bool {
+    pub(in crate::editor) fn take_ran(&mut self) -> bool {
         std::mem::take(&mut self.ran)
     }
 
@@ -172,14 +172,14 @@ impl InlineOutput {
     /// during this `Editor`'s lifetime — lets a test pin an exact count (a
     /// re-entry bug shows up as `2`, not "entered"; `0` for "never entered").
     #[cfg(test)]
-    pub(crate) fn enter_count(&self) -> usize {
+    pub(in crate::editor) fn enter_count(&self) -> usize {
         self.enters
     }
 
     /// Test-only seam: raw frame count, for asserting exactly which frames
     /// a [`Self::truncate`] call removed.
     #[cfg(test)]
-    pub(crate) fn frame_count(&self) -> usize {
+    pub(in crate::editor::inline_output) fn frame_count(&self) -> usize {
         self.frames.len()
     }
 }

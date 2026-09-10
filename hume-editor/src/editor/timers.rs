@@ -17,7 +17,7 @@ use super::async_source::AsyncSource;
 /// integer Steel's `(after ms thunk)` returns — this module itself stays
 /// Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(crate) struct TimerId(pub(crate) u64);
+pub(in crate::editor) struct TimerId(pub(crate) u64);
 
 /// Min-heap of `(deadline, id)`, plus a lazily-drained cancellation set.
 ///
@@ -27,7 +27,7 @@ pub(crate) struct TimerId(pub(crate) u64);
 /// pushed eventually surfaces at the head as earlier entries pop, at which
 /// point `take_due` drops it — the cancelled set can only shrink over time,
 /// never needs a sweep.
-pub(crate) struct TimerWheel {
+pub(in crate::editor) struct TimerWheel {
     heap: BinaryHeap<Reverse<(Instant, TimerId)>>,
     cancelled: FxHashSet<TimerId>,
     next_id: u64,
@@ -44,7 +44,7 @@ impl TimerWheel {
 
     /// Schedule a timer to fire `after` from now. Returns a handle usable
     /// with [`Self::cancel`]. Production caller: `timer_bridge::TimerHandle`.
-    pub(crate) fn schedule(&mut self, after: Duration) -> TimerId {
+    pub(in crate::editor) fn schedule(&mut self, after: Duration) -> TimerId {
         let id = TimerId(self.next_id);
         self.next_id += 1;
         self.heap.push(Reverse((Instant::now() + after, id)));
@@ -53,7 +53,7 @@ impl TimerWheel {
 
     /// Cancel a previously scheduled timer. A no-op if `id` already fired or
     /// was already cancelled.
-    pub(crate) fn cancel(&mut self, id: TimerId) {
+    pub(in crate::editor) fn cancel(&mut self, id: TimerId) {
         self.cancelled.insert(id);
     }
 
@@ -63,7 +63,7 @@ impl TimerWheel {
     /// head-compacting walk `take_due` uses, since `AsyncSource::next_wake`
     /// is queried every event-loop iteration and must not disturb timer state
     /// mid-command.
-    pub(crate) fn next_deadline(&self) -> Option<Instant> {
+    pub(in crate::editor::timers) fn next_deadline(&self) -> Option<Instant> {
         self.heap
             .iter()
             .filter(|Reverse((_, id))| !self.cancelled.contains(id))
@@ -73,7 +73,7 @@ impl TimerWheel {
 
     /// Pop every timer with deadline `<= now`, skipping (and discarding)
     /// cancelled entries as they're encountered.
-    pub(crate) fn take_due(&mut self, now: Instant) -> Vec<TimerId> {
+    pub(in crate::editor) fn take_due(&mut self, now: Instant) -> Vec<TimerId> {
         let mut due = Vec::new();
         loop {
             self.drop_cancelled_head();

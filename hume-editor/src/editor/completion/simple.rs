@@ -12,7 +12,7 @@ use super::{
 /// popup so it doesn't get cluttered with shorthand. Editor (key-bindable)
 /// commands are never offered here — `:` can't dispatch them; see
 /// `registry/mod.rs`'s module doc.
-pub(crate) struct CommandCompleter;
+pub(in crate::editor) struct CommandCompleter;
 
 impl Completer for CommandCompleter {
     fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
@@ -53,7 +53,7 @@ impl Completer for CommandCompleter {
 /// When two open buffers share the same basename, a shortened parent-directory
 /// suffix is appended to `display` (e.g. `foo.rs  (~/a/)`) so the user can
 /// distinguish them in the popup without accepting the wrong one.
-pub(crate) struct BufferNameCompleter;
+pub(in crate::editor) struct BufferNameCompleter;
 
 impl Completer for BufferNameCompleter {
     fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
@@ -116,7 +116,7 @@ impl Completer for BufferNameCompleter {
 /// `<runtime_dir>/themes/*.toml`, strips the `.toml` extension, deduplicates
 /// (config wins over data-dir wins over bundled), and filters by the current
 /// prefix.
-pub(crate) struct ThemeCompleter;
+pub(in crate::editor) struct ThemeCompleter;
 
 impl Completer for ThemeCompleter {
     fn complete(&self, input: &str, cursor: usize, _ctx: &CompletionCtx<'_>) -> CompletionResult {

@@ -63,7 +63,7 @@ impl MiniBuffer {
     /// `self.cursor`) and the completion-overlay anchor (at a completion
     /// span's start) — both are "where does this byte offset into `input`
     /// land on screen" under the same prompt.
-    pub(crate) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
+    pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
         let prompt_w = text_width(&self.prompt) as u16;
         let safe_offset = byte_offset.min(self.input.len());
@@ -72,7 +72,7 @@ impl MiniBuffer {
     }
 
     /// Column offset of the edit cursor within the rendered statusline.
-    pub(crate) fn statusline_cursor_x(&self) -> u16 {
+    pub(in crate::editor) fn statusline_cursor_x(&self) -> u16 {
         self.cursor_x_at(self.cursor)
     }
 

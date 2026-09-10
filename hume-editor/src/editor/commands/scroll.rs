@@ -26,7 +26,7 @@ fn scroll_page(
     Ok(())
 }
 
-pub(crate) fn cmd_page_down(
+pub(in crate::editor) fn cmd_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -34,7 +34,7 @@ pub(crate) fn cmd_page_down(
 ) -> Result<(), CommandError> {
     scroll_page(state, view, mode, false, true)
 }
-pub(crate) fn cmd_page_up(
+pub(in crate::editor) fn cmd_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -42,7 +42,7 @@ pub(crate) fn cmd_page_up(
 ) -> Result<(), CommandError> {
     scroll_page(state, view, mode, false, false)
 }
-pub(crate) fn cmd_half_page_down(
+pub(in crate::editor) fn cmd_half_page_down(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -50,7 +50,7 @@ pub(crate) fn cmd_half_page_down(
 ) -> Result<(), CommandError> {
     scroll_page(state, view, mode, true, true)
 }
-pub(crate) fn cmd_half_page_up(
+pub(in crate::editor) fn cmd_half_page_up(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -76,18 +76,18 @@ fn cmd_view_scroll_to_display_line(state: &mut EditorState, view: &mut EngineVie
 /// that wants the same effect without going through an `EditorCmdFn`'s
 /// `Result` — `lifecycle.rs`'s post-file-load placement, LSP goto-definition
 /// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
-pub(crate) fn view_center(state: &mut EditorState, view: &mut EngineView) {
+pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView) {
     let target = (viewport(state, view).height as usize) / 2;
     cmd_view_scroll_to_display_line(state, view, target);
 }
 
 /// Pin the head at the viewport's top display line, like `z k`. Infallible core
 /// shared by [`cmd_view_top`] and `step_align_view`'s `Top` arm.
-pub(crate) fn view_top(state: &mut EditorState, view: &mut EngineView) {
+pub(in crate::editor::commands) fn view_top(state: &mut EditorState, view: &mut EngineView) {
     cmd_view_scroll_to_display_line(state, view, 0);
 }
 
-pub(crate) fn cmd_view_center(
+pub(in crate::editor) fn cmd_view_center(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -97,7 +97,7 @@ pub(crate) fn cmd_view_center(
     Ok(())
 }
 
-pub(crate) fn cmd_view_top(
+pub(in crate::editor) fn cmd_view_top(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -107,7 +107,7 @@ pub(crate) fn cmd_view_top(
     Ok(())
 }
 
-pub(crate) fn cmd_view_bottom(
+pub(in crate::editor) fn cmd_view_bottom(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

@@ -233,7 +233,11 @@ impl KeyTrie {
     /// will be stored in `pending_char` and `wc.cmd_name` will be dispatched.
     ///
     /// Called by [`Keymap::bind_wait_char_user`] at runtime (e.g. from Steel config).
-    pub(crate) fn bind_wait_char_sequence(&mut self, keys: &[KeyEvent], wc: WaitCharPending) {
+    pub(in crate::editor) fn bind_wait_char_sequence(
+        &mut self,
+        keys: &[KeyEvent],
+        wc: WaitCharPending,
+    ) {
         debug_assert!(!keys.is_empty());
         if keys.len() == 1 {
             self.bind(keys[0], KeyTrieNode::WaitChar(wc));
@@ -255,7 +259,11 @@ impl KeyTrie {
     /// needed. Single-key sequences insert directly as a `Leaf`.
     ///
     /// Called by [`Keymap::bind_user_with_extend`] at runtime (e.g. from Steel config).
-    pub(crate) fn bind_sequence(&mut self, keys: &[KeyEvent], cmd: KeymapCommand) {
+    pub(in crate::editor::keymap) fn bind_sequence(
+        &mut self,
+        keys: &[KeyEvent],
+        cmd: KeymapCommand,
+    ) {
         debug_assert!(!keys.is_empty());
         if keys.len() == 1 {
             self.bind_leaf(keys[0], cmd);
@@ -278,7 +286,7 @@ impl KeyTrie {
     /// Remove the binding for a key sequence. Leaves interior nodes in place.
     ///
     /// No-op if the sequence is not bound or any intermediate node is absent.
-    pub(crate) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
+    pub(in crate::editor::keymap) fn remove_sequence(&mut self, keys: &[KeyEvent]) {
         match keys {
             [] => {}
             [only] => {
@@ -332,7 +340,7 @@ impl KeyTrie {
         WalkResult::NoMatch
     }
 
-    pub(super) fn collect_command_names(&self, out: &mut Vec<String>) {
+    pub(in crate::editor::keymap) fn collect_command_names(&self, out: &mut Vec<String>) {
         for node in self.map.values() {
             match node {
                 KeyTrieNode::Leaf(cmd) => out.push(cmd.name.to_string()),
@@ -349,7 +357,7 @@ impl KeyTrie {
 ///
 /// Used by [`Keymap::bind_user_with_extend`] and [`Keymap::unbind_user`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BindMode {
+pub(in crate::editor) enum BindMode {
     Normal,
     /// Sparse extend-mode overrides. These are checked first in extend mode;
     /// a miss falls through to the normal trie with `extend = true`.
@@ -392,7 +400,7 @@ impl Keymap {
     /// After the user completes `keys`, the next character is stored in
     /// `pending_char` and `command` is dispatched.  Interior nodes are created
     /// as needed.  `keys` must not be empty.
-    pub(crate) fn bind_wait_char_user(
+    pub(in crate::editor) fn bind_wait_char_user(
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
@@ -420,7 +428,7 @@ impl Keymap {
     /// that should always extend (see `cmd_extend!`).
     ///
     /// `keys` must not be empty.
-    pub(crate) fn bind_user_with_extend(
+    pub(in crate::editor) fn bind_user_with_extend(
         &mut self,
         mode: BindMode,
         keys: &[KeyEvent],
@@ -444,7 +452,7 @@ impl Keymap {
     /// Remove a binding for a key sequence in the given mode.
     ///
     /// No-op if the sequence is not bound or any intermediate node is missing.
-    pub(crate) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
+    pub(in crate::editor) fn unbind_user(&mut self, mode: BindMode, keys: &[KeyEvent]) {
         let trie = self.trie_mut(mode);
         trie.remove_sequence(keys);
     }
@@ -472,7 +480,7 @@ impl Keymap {
     /// Return the command name and `force_extend` flag for `keys` in `mode`,
     /// or `None` if the sequence is unbound.
     #[cfg(test)]
-    pub(crate) fn lookup_command(
+    pub(in crate::editor) fn lookup_command(
         &self,
         mode: BindMode,
         keys: &[KeyEvent],

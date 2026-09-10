@@ -13,9 +13,9 @@ use crate::lock_ext::LockExt;
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, InlineInsert};
 use hume_rope::line::ContentLine;
 
-pub(crate) type InlineDecorationMap = Arc<RwLock<FxHashMap<ContentLine, Vec<InlineInsert>>>>;
+pub(in crate::ui) type InlineDecorationMap = Arc<RwLock<FxHashMap<ContentLine, Vec<InlineInsert>>>>;
 
-pub(crate) struct InlineDecorationProvider {
+pub(in crate::ui) struct InlineDecorationProvider {
     pub(crate) data: InlineDecorationMap,
 }
 

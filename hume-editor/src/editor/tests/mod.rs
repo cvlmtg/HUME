@@ -73,6 +73,39 @@ pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
     hume_rope::offset::CharOffset::new(n)
 }
 
+/// `editor_from`'s sibling for `ui::statusline::tests`, which needs a
+/// language-tagged buffer but has no reason to reach `Buffer::language` or
+/// `Editor::doc_mut`'s unrestricted `&mut Buffer` directly — those stay
+/// `pub(in crate::editor)`, and this narrow, purpose-built fixture is the
+/// only thing `ui::statusline::tests` imports across the subtree boundary.
+pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
+    let text = BufferText::from(content);
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    let lang = ed.state.config.languages.intern(lang_name);
+    ed.doc_mut().language = Some(lang);
+    ed
+}
+
+/// `ui::statusline::tests`' other cross-boundary shape: a read-only view
+/// buffer, without handing that suite `Buffer::read_only_view` itself.
+pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
+    Editor::for_testing(Buffer::read_only_view(
+        BufferText::from(content),
+        label.to_string(),
+    ))
+}
+
+/// `ui::statusline::tests`' third cross-boundary shape: a buffer with an
+/// explicit path, without handing that suite `Buffer::set_path` itself.
+pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
+    let text = BufferText::from(content);
+    let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
+    let mut ed = Editor::for_testing(Buffer::new(text, sels));
+    ed.doc_mut().set_path(Some(path.to_owned()));
+    ed
+}
+
 /// Attach `name`'s compiled grammar fixture to `ed`, with its own
 /// `highlights.scm` and no other query.
 ///

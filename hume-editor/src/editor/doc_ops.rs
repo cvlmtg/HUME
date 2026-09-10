@@ -24,7 +24,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// Shared signature of [`apply_doc_undo`] and [`apply_doc_redo`] — lets a
 /// caller (e.g. `commands/edit.rs`'s `history_step`) pick one by function
 /// pointer instead of duplicating the call site per direction.
-pub(crate) type ApplyDocFn = fn(
+pub(in crate::editor) type ApplyDocFn = fn(
     &mut BufferStore,
     &DecorationStores,
     &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -148,7 +148,7 @@ fn finish_edit(
 /// The default state (cursor-at-0) is transient: it is overwritten by
 /// `new_sels` before this function returns. `apply_edit` is infallible, so
 /// no panic can leave the set in its default state.
-pub(crate) fn apply_doc_edit(
+pub(in crate::editor) fn apply_doc_edit(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -202,7 +202,7 @@ pub(crate) fn apply_doc_edit(
 /// Returns the applied `ChangeSet` — `mappings/insert.rs`'s `apply_insert_edit`
 /// uses it to remap an open LSP completion session's anchor through every
 /// keystroke, not just the primary cursor's own position.
-pub(crate) fn apply_doc_edit_grouped(
+pub(in crate::editor) fn apply_doc_edit_grouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -253,7 +253,7 @@ pub(crate) fn apply_doc_edit_grouped(
 /// Propagates the resulting CS (mapping current text → new text) to all other
 /// panes. `pane_state[focused_pane_id][buf_id].paste_group` must be `Some`;
 /// caller must have opened the session with `Buffer::begin_edit_group` first.
-pub(crate) fn apply_doc_edit_regrouped(
+pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -288,7 +288,7 @@ pub(crate) fn apply_doc_edit_regrouped(
 
 /// Apply undo to the focused buffer and propagate the inverse `ChangeSet` to
 /// all other panes viewing the same buffer.
-pub(crate) fn apply_doc_undo(
+pub(in crate::editor) fn apply_doc_undo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -326,7 +326,7 @@ pub(crate) fn apply_doc_undo(
 
 /// Apply redo to the focused buffer and propagate the forward `ChangeSet` to
 /// all other panes viewing the same buffer.
-pub(crate) fn apply_doc_redo(
+pub(in crate::editor) fn apply_doc_redo(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -365,7 +365,7 @@ pub(crate) fn apply_doc_redo(
 /// the default state is transient and overwritten before this fn returns.
 /// The closure `f` is assumed infallible; a panic mid-motion leaves
 /// `selections` as `Default` (cursor at 0).
-pub(crate) fn apply_doc_motion(
+pub(in crate::editor) fn apply_doc_motion(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
@@ -385,7 +385,7 @@ pub(crate) fn apply_doc_motion(
 /// Snapshots the current selections (via `.clone()`) for use as `pre_sels`
 /// in the recorded undo revision — the field must NOT be taken because the
 /// ongoing insert session continues to read it between keystrokes.
-pub(crate) fn begin_edit_group(
+pub(in crate::editor) fn begin_edit_group(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
@@ -406,7 +406,7 @@ pub(crate) fn begin_edit_group(
 ///
 /// Snapshots the current selections as `post_sels` for the undo revision;
 /// same rationale as `begin_edit_group` — must `.clone()`, not `take`.
-pub(crate) fn commit_edit_group(
+pub(in crate::editor) fn commit_edit_group(
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
@@ -431,7 +431,7 @@ pub(crate) fn commit_edit_group(
 /// the next `prepare_frame` handles that. Only the authoritative `SelectionSet`
 /// in `pane_state` must be kept valid between edits, because other
 /// mid-event code (e.g. `update_pane_cursor`) reads it.
-pub(crate) fn propagate_cs_to_panes(
+pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     focused_pane_id: PaneId,
     buf_id: BufferId,

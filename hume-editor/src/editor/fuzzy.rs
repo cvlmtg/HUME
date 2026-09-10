@@ -36,7 +36,7 @@ use nucleo_matcher::{Config, Matcher, Utf32Str};
 ///   used instead" — exactly the split above, so Autocomplete turns it on and
 ///   Picker leaves nucleo's default (`false`).
 #[derive(Clone, Copy)]
-pub(crate) enum FuzzyProfile {
+pub(in crate::editor) enum FuzzyProfile {
     Picker,
     Autocomplete,
 }
@@ -56,7 +56,7 @@ pub(crate) enum FuzzyPattern {
 /// Owns the reusable scoring engine. One instance per picker/completion
 /// session (parallels `CompletionSession::rank_scratch` — caller-owned state
 /// reused across every keystroke, never rebuilt per call).
-pub(crate) struct FuzzyMatcher {
+pub(in crate::editor) struct FuzzyMatcher {
     matcher: Matcher,
     haystack_buf: Vec<char>,
     profile: FuzzyProfile,
@@ -102,7 +102,11 @@ impl FuzzyMatcher {
     ///
     /// An empty pattern matches every haystack with score `0` — verified
     /// empirically below since `nucleo-matcher`'s docs don't state it.
-    pub(crate) fn score(&mut self, pattern: &FuzzyPattern, haystack: &str) -> Option<u32> {
+    pub(in crate::editor) fn score(
+        &mut self,
+        pattern: &FuzzyPattern,
+        haystack: &str,
+    ) -> Option<u32> {
         let haystack = Utf32Str::new(haystack, &mut self.haystack_buf);
         match pattern {
             FuzzyPattern::Words(p) => p.score(haystack, &mut self.matcher),

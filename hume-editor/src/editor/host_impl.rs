@@ -36,7 +36,7 @@ use hume_scripting::host::{
 use super::tui::Tui;
 use super::{EditorState, Severity};
 
-pub(crate) struct EditorHostImpl<'a> {
+pub(in crate::editor) struct EditorHostImpl<'a> {
     state: &'a mut EditorState,
     view: &'a mut EngineView,
     /// `Some` only at the three call sites that can reach an introspection

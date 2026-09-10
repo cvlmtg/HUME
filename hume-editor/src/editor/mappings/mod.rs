@@ -17,7 +17,7 @@ mod widgets;
 impl Editor {
     // ── Key dispatch ──────────────────────────────────────────────────────────
 
-    pub(crate) fn handle_key(&mut self, key: KeyEvent) {
+    pub(in crate::editor) fn handle_key(&mut self, key: KeyEvent) {
         // How many keystrokes the message-log summary stays visible after
         // `status_msg` clears. Chosen for UX, not technical constraint.
         const SUMMARY_TTL: u8 = 3;

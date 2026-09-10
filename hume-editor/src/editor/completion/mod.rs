@@ -19,9 +19,9 @@ mod path;
 mod set;
 mod simple;
 
-pub(crate) use path::PathCompleter;
-pub(crate) use set::SetCompleter;
-pub(crate) use simple::{BufferNameCompleter, CommandCompleter, ThemeCompleter};
+pub(in crate::editor) use path::PathCompleter;
+pub(in crate::editor) use set::SetCompleter;
+pub(in crate::editor) use simple::{BufferNameCompleter, CommandCompleter, ThemeCompleter};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ pub(crate) struct MinibufCompletionState {
 
 impl MinibufCompletionState {
     /// The byte range that the current replacement occupies in the input.
-    pub(crate) fn current_span(&self) -> std::ops::Range<usize> {
+    pub(in crate::editor) fn current_span(&self) -> std::ops::Range<usize> {
         debug_assert!(
             self.selected < self.candidates.len(),
             "MinibufCompletionState invariant violated: selected {} >= len {}",
@@ -72,7 +72,7 @@ impl MinibufCompletionState {
 /// (command registry, buffer list, working directory) without exposing a full
 /// `&Editor`.  This makes unit-testing completers straightforward — no Editor
 /// construction required.
-pub(crate) struct CompletionCtx<'a> {
+pub(in crate::editor) struct CompletionCtx<'a> {
     pub registry: &'a CommandRegistry,
     pub buffers: &'a BufferStore,
     pub cwd: &'a Path,
@@ -83,7 +83,7 @@ pub(crate) struct CompletionCtx<'a> {
 ///
 /// `span_start` is the byte offset in `input` where the completed token
 /// begins.  All candidates are replacements for `input[span_start..cursor]`.
-pub(crate) struct CompletionResult {
+pub(in crate::editor) struct CompletionResult {
     pub span_start: usize,
     pub candidates: Vec<Completion>,
 }
@@ -101,7 +101,7 @@ impl CompletionResult {
 }
 
 /// A completion source for a specific context (command name, path, buffer name).
-pub(crate) trait Completer {
+pub(in crate::editor) trait Completer {
     /// Return sorted candidates for the token at `cursor` in `input`.
     ///
     /// Returns `span_start` (the byte offset where the completed token begins)
@@ -181,14 +181,15 @@ mod testing {
     use hume_engine::theme::Theme;
     use std::path::PathBuf;
 
-    pub(crate) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir) {
+    pub(in crate::editor::completion) fn make_ctx_parts() -> (CommandRegistry, BufferStore, TempDir)
+    {
         let reg = CommandRegistry::with_defaults();
         let store = BufferStore::new();
         let dir = tempfile::tempdir().unwrap();
         (reg, store, dir)
     }
 
-    pub(crate) fn ctx<'a>(
+    pub(in crate::editor) fn ctx<'a>(
         registry: &'a CommandRegistry,
         buffers: &'a BufferStore,
         cwd: &'a Path,
@@ -196,7 +197,7 @@ mod testing {
         ctx_with(registry, buffers, cwd, empty_langs())
     }
 
-    pub(crate) fn ctx_with<'a>(
+    pub(in crate::editor::completion) fn ctx_with<'a>(
         registry: &'a CommandRegistry,
         buffers: &'a BufferStore,
         cwd: &'a Path,
@@ -213,25 +214,25 @@ mod testing {
     /// Shared empty registry for tests that don't register languages — avoids
     /// re-allocating one per `ctx()` call and sidesteps the borrow-lifetime
     /// issue of constructing it inline.
-    pub(crate) fn empty_langs() -> &'static LanguageRegistry {
+    pub(in crate::editor::completion) fn empty_langs() -> &'static LanguageRegistry {
         use std::sync::OnceLock;
         static EMPTY: OnceLock<LanguageRegistry> = OnceLock::new();
         EMPTY.get_or_init(LanguageRegistry::new)
     }
 
-    pub(crate) fn ev() -> EngineView {
+    pub(in crate::editor) fn ev() -> EngineView {
         EngineView::new(Theme::default())
     }
 
-    pub(crate) fn make_id(ev: &mut EngineView) -> BufferId {
+    pub(in crate::editor) fn make_id(ev: &mut EngineView) -> BufferId {
         ev.buffers.insert(())
     }
 
-    pub(crate) fn make_buf() -> Buffer {
+    pub(in crate::editor) fn make_buf() -> Buffer {
         Buffer::new(BufferText::from("a\n"), SelectionSet::default())
     }
 
-    pub(crate) fn buf_with_path(path: &str) -> Buffer {
+    pub(in crate::editor::completion) fn buf_with_path(path: &str) -> Buffer {
         let mut b = make_buf();
         b.set_path(Some(PathBuf::from(path)));
         b

@@ -15,9 +15,9 @@ use crate::lock_ext::LockExt;
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
 use hume_rope::line::ContentLine;
 
-pub(crate) type VirtualLineMap = Arc<RwLock<FxHashMap<ContentLine, Vec<VirtualLine>>>>;
+pub(in crate::ui) type VirtualLineMap = Arc<RwLock<FxHashMap<ContentLine, Vec<VirtualLine>>>>;
 
-pub(crate) struct PaneVirtualLines {
+pub(in crate::ui) struct PaneVirtualLines {
     pub(crate) data: VirtualLineMap,
 }
 

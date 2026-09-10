@@ -61,7 +61,7 @@ pub(crate) fn open_buffer(
 /// `Editor::open`, which builds the startup buffer inline (bootstrapping the
 /// very `EngineView`/pane-state maps `open_buffer` needs, so it can't call
 /// that helper) but must leave the buffer in the same state.
-pub(crate) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
+pub(in crate::editor) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
     state.buffers.get_mut(bid).open_hook_pending = true;
     state.config.pending_language_detection.push(bid);
 }
@@ -70,7 +70,7 @@ pub(crate) fn queue_open_announcement(state: &mut EditorState, bid: BufferId) {
 /// detection doesn't run inline. `Editor::detect_pending_languages` fires
 /// `OnBufferOpen` once detection (and `OnLanguageSet`) for `bid` has run, so
 /// plugins observing both hooks see `OnLanguageSet` first.
-pub(crate) fn open_buffer_and_notify(
+pub(in crate::editor::buffer) fn open_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
     doc: Buffer,
@@ -95,7 +95,7 @@ pub(crate) fn open_buffer_and_notify(
 /// already-open path enqueues no hook and detects no language — matching
 /// `Editor::open_buffer`'s "every call is a genuinely new buffer" contract.
 /// The caller is responsible for any other post-open work (pane switching).
-pub(crate) fn open_or_dedup_and_notify(
+pub(in crate::editor) fn open_or_dedup_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
     resolved: &std::path::Path,
@@ -114,7 +114,7 @@ pub(crate) fn open_or_dedup_and_notify(
 /// Saves the pane's scroll for the old buffer, restores `target`'s saved scroll
 /// (zero on first visit), and seeds `pane_state[pid][target]` if this pane has
 /// never viewed `target` before. Does not touch any denormalised `buffer_id`.
-pub(crate) fn switch_pane_to_buffer(
+pub(in crate::editor) fn switch_pane_to_buffer(
     ev: &mut EngineView,
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -140,7 +140,7 @@ pub(crate) fn switch_pane_to_buffer(
 ///
 /// Caller contract: all fallible steps must succeed before calling this —
 /// `push` truncates forward history.
-pub(crate) fn switch_to_buffer_with_jump(
+pub(in crate::editor) fn switch_to_buffer_with_jump(
     ev: &mut EngineView,
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -228,7 +228,7 @@ pub(crate) fn close_buffer(
 /// opened and closed before `Editor::detect_pending_languages`'s drain ran
 /// (e.g. within one Steel eval) never announced its open, so it must not
 /// announce a close either.
-pub(crate) fn close_buffer_and_notify(
+pub(in crate::editor) fn close_buffer_and_notify(
     ev: &mut EngineView,
     state: &mut EditorState,
     lsp: Option<&mut LspState>,
@@ -285,7 +285,7 @@ pub(crate) fn close_buffer_and_notify(
 ///
 /// Used by the last-buffer case of `close_buffer`.
 /// Caller contract: `new_doc.search_pattern` must be `None`.
-pub(crate) fn replace_buffer_in_place(
+pub(in crate::editor) fn replace_buffer_in_place(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -332,7 +332,7 @@ pub(crate) fn replace_buffer_in_place(
 /// a background pane's *saved* scroll or pin for `id` is just as stale as a
 /// live one's; a regenerated view buffer starts unpinned again, same as a
 /// freshly opened one would).
-pub(crate) fn reseed_panes_after_content_reset(
+pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
     ev: &mut EngineView,
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,

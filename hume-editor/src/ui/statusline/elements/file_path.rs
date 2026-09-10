@@ -50,7 +50,7 @@ pub(in crate::ui::statusline) fn shorten_path_to_width(
 /// Windows) is exercisable in tests regardless of the host platform. Splits
 /// keep each component's trailing separator character so mixed `/`/`\` input
 /// (as can appear in a Windows path) survives reassembly unchanged.
-pub(in crate::ui::statusline) fn shorten_path_to_width_with(
+fn shorten_path_to_width_with(
     display: &str,
     max_display_cols: usize,
     is_sep: fn(char) -> bool,
@@ -123,3 +123,6 @@ fn split_trailing_sep(s: &str, is_sep: fn(char) -> bool) -> (&str, &str) {
         _ => (s, ""),
     }
 }
+
+#[cfg(test)]
+mod tests;

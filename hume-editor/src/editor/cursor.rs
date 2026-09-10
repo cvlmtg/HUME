@@ -30,7 +30,7 @@ use super::scroll::top_pos;
 /// The returned `x` accounts for `viewport.horizontal_offset` (0 while
 /// wrapping, since wrap mode has no horizontal scroll — see
 /// `scroll::ensure_cursor_visible_horizontal`).
-pub(crate) fn content_pos(
+pub(in crate::editor) fn content_pos(
     viewport: &ViewportState,
     dlm: &mut DisplayLineMap<'_>,
     cursor_char: hume_rope::offset::CharOffset,
@@ -73,7 +73,7 @@ pub(crate) fn content_pos(
 /// both while deciding where to scroll — can produce the same answer without
 /// re-walking the display-line list. The two must not drift: this is the only place the
 /// horizontal-offset subtraction and the `u16` narrowing happen.
-pub(crate) fn place(
+pub(in crate::editor) fn place(
     viewport: &ViewportState,
     cursor_display_col: DisplayLineCol,
     screen_row: usize,
@@ -106,7 +106,7 @@ pub(crate) fn place(
 /// (`hume_rope::lines::last_ropey_line`) — deliberately the phantom trailing line,
 /// not the last content line, so the gutter is sized one digit wider than
 /// content strictly requires.
-pub(crate) fn gutter_width<'a>(
+pub(in crate::editor) fn gutter_width<'a>(
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
     last_line_idx: hume_rope::line::RopeyLine,
 ) -> u16 {
@@ -129,7 +129,7 @@ pub(crate) fn gutter_width<'a>(
 /// terminal-absolute — callers translate through `Editor::pane_at_screen_pos`
 /// (`editor/src/editor/mouse.rs`) first, which also decides which pane a
 /// click landed in when more than one is on screen (a `:split`/`:vsplit`).
-pub(crate) fn screen_to_char_offset(
+pub(in crate::editor) fn screen_to_char_offset(
     content_x: u16,
     content_y: u16,
     gutter_w: u16,

@@ -42,7 +42,9 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(crate) use command::{ArgCompleter, CmdMeta, SelectionTracking, TypedBody, TypedCommand};
+pub(in crate::editor) use command::{
+    ArgCompleter, CmdMeta, SelectionTracking, TypedBody, TypedCommand,
+};
 // Narrower than the re-exports above: these carry a native command's `fun`
 // function pointer, callable only from `commands::pipeline::run_native_body`
 // — see `MappableCommand`'s own doc.
@@ -99,7 +101,7 @@ pub(crate) enum Command {
 
 impl CommandRegistry {
     /// Build a registry pre-populated with every default command.
-    pub(crate) fn with_defaults() -> Self {
+    pub(in crate::editor) fn with_defaults() -> Self {
         let mut reg = Self {
             commands: FxHashMap::default(),
             alias_map: FxHashMap::default(),
@@ -124,7 +126,7 @@ impl CommandRegistry {
     /// caller (Lazy-stub cleanup, failed-plugin rollback) only legitimately
     /// owns dynamic entries, so refusing anything else keeps a buggy rollback
     /// from deleting a built-in command for the rest of the session.
-    pub(crate) fn unregister(&mut self, name: &str) {
+    pub(in crate::editor) fn unregister(&mut self, name: &str) {
         let removable = match self.commands.get(name) {
             Some(Command::Mappable(mc)) => !mc.is_native(),
             Some(Command::Typed(tc)) => {
@@ -155,7 +157,7 @@ impl CommandRegistry {
     /// lookup missing a typed name) and the `:` dispatcher (a typed-only
     /// lookup missing a mappable name). One wording, so the three sites
     /// can't drift into subtly different advice for the same mistake.
-    pub(crate) fn other_kind_hint(&self, name: &str) -> Option<String> {
+    pub(in crate::editor) fn other_kind_hint(&self, name: &str) -> Option<String> {
         match self.commands.get(name)? {
             Command::Mappable(_) => Some(format!(
                 "'{name}' is an editor command — bind it to a key, or run it with call!, not `:`"
@@ -171,7 +173,7 @@ impl CommandRegistry {
     /// Inserts the canonical name into `commands` and each alias into
     /// `alias_map`. Called by the native default registrations and by
     /// `(define-typed-command! …)`.
-    pub(crate) fn register_typed(&mut self, cmd: TypedCommand) {
+    pub(in crate::editor) fn register_typed(&mut self, cmd: TypedCommand) {
         let canonical = cmd.name.clone();
         for &alias in cmd.aliases {
             self.alias_map
@@ -201,7 +203,7 @@ impl CommandRegistry {
     /// Returns `None` if the name is unknown or resolves to a mappable
     /// command — `:` never falls back to a mappable command; see
     /// `execute_command` in `mappings/command_mode.rs`.
-    pub(crate) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
+    pub(in crate::editor) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
         let canonical = ci_get(&self.alias_map, name)
             .map(|c| c.as_ref())
             .unwrap_or(name);
@@ -219,7 +221,7 @@ impl CommandRegistry {
     /// Iterate over the canonical names of every registered typed command
     /// (not aliases). Feeds `:` Tab completion (`CommandCompleter`) — the
     /// typed-only counterpart of [`Self::native_mappable_names`].
-    pub(crate) fn typed_names(&self) -> impl Iterator<Item = &str> {
+    pub(in crate::editor) fn typed_names(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|(k, v)| match v {
             Command::Typed(_) => Some(k.as_ref()),
             _ => None,
@@ -233,7 +235,7 @@ impl CommandRegistry {
     /// (`:` command-line only) entries.  Used to pre-register bare command
     /// bindings in the Steel engine so `(move-left)` etc. compile without a
     /// `FreeIdentifier` error.
-    pub(crate) fn native_mappable_names(&self) -> impl Iterator<Item = &str> {
+    pub(in crate::editor) fn native_mappable_names(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|(k, v)| match v {
             Command::Mappable(cmd) if cmd.is_native() => Some(k.as_ref()),
             _ => None,
@@ -254,7 +256,10 @@ impl CommandRegistry {
     /// and `define-typed-command!`'s self-ownership guards, and lazy-plugin
     /// activation's unresolved-stub check, all read this rather than
     /// matching on `Command::Mappable`/`Command::Typed` themselves.
-    pub(crate) fn lazy_owner(&self, name: &str) -> Option<&hume_scripting::attribution::PluginId> {
+    pub(in crate::editor) fn lazy_owner(
+        &self,
+        name: &str,
+    ) -> Option<&hume_scripting::attribution::PluginId> {
         lazy_owner_of(self.commands.get(name)?)
     }
 
@@ -266,7 +271,7 @@ impl CommandRegistry {
     /// lazy-activation check): `call!` can never reach a typed command, so
     /// that path must not see a typed-only stub as activatable. Every other
     /// caller wants [`Self::lazy_owner`]'s kind-agnostic answer.
-    pub(crate) fn lazy_mappable_owner(
+    pub(in crate::editor) fn lazy_mappable_owner(
         &self,
         name: &str,
     ) -> Option<&hume_scripting::attribution::PluginId> {
@@ -284,7 +289,9 @@ impl CommandRegistry {
     /// sole owner of `Lazy` stubs, so this is the only source for that list.
     /// The `is_typed` tag lets the display tell the user whether a pending
     /// name will need a key binding or `:` once its plugin loads.
-    pub(crate) fn lazy_stubs(&self) -> Vec<(String, hume_scripting::attribution::PluginId, bool)> {
+    pub(in crate::editor) fn lazy_stubs(
+        &self,
+    ) -> Vec<(String, hume_scripting::attribution::PluginId, bool)> {
         self.commands
             .iter()
             .filter_map(|(name, cmd)| {
@@ -349,7 +356,7 @@ fn is_typed_lazy(cmd: &Command) -> bool {
 #[cfg(test)]
 impl CommandRegistry {
     /// Collect the canonical names of every `SteelBacked` command. Test-only.
-    pub(crate) fn steel_backed_names(&self) -> Vec<String> {
+    pub(in crate::editor::registry) fn steel_backed_names(&self) -> Vec<String> {
         self.commands
             .values()
             .filter_map(|cmd| match cmd {

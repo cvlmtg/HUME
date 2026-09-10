@@ -20,7 +20,7 @@ use super::buffer::Buffer;
 /// are sorted by `head` (see `populate_sorted_sels`).  The two orderings differ
 /// whenever a selection is backward (`anchor > head`).  `primary_idx` is
 /// re-located after the sort by matching the primary's unique head value.
-pub(super) fn write_pane_mirror(
+pub(in crate::editor::frame) fn write_pane_mirror(
     pane: &mut hume_engine::pane::Pane,
     sels: &hume_editing::selection::SelectionSet,
 ) {
@@ -164,7 +164,7 @@ impl Editor {
     /// synced and parse trees are up to date before rendering. Used by
     /// snapshot tests to lock down styled output without a live terminal.
     #[cfg(test)]
-    pub(crate) fn render_to_buf(&mut self, rect: Rect) -> Grid {
+    pub(in crate::editor) fn render_to_buf(&mut self, rect: Rect) -> Grid {
         let mut buf = Grid::new(rect.width, rect.height);
         let mut ctx = RenderContext::new();
         self.sync_viewport_dims(rect.width, rect.height);
@@ -210,7 +210,7 @@ impl Editor {
     /// `applied_mouse_mode` in sync with `state.settings` even headless,
     /// which is what makes the change-detection unit-testable without a
     /// real `SharedTerm`.
-    pub(super) fn resync_mouse_mode(&mut self) {
+    pub(in crate::editor::frame) fn resync_mouse_mode(&mut self) {
         let desired = (
             self.state.settings.mouse_enabled,
             self.state.settings.mouse_select,
@@ -495,7 +495,7 @@ impl Editor {
     ///
     /// Called once per frame from `prepare_frame`, after the async/Steel
     /// drains and before `render()`.
-    pub(crate) fn sync_all_pane_mirrors(&mut self) {
+    pub(in crate::editor) fn sync_all_pane_mirrors(&mut self) {
         let state = &mut self.state;
         let view = &mut self.view;
         for (pid, pane) in view.panes.iter_mut() {
@@ -508,7 +508,7 @@ impl Editor {
     // ── Engine accessors ──────────────────────────────────────────────────────
 
     #[cfg(test)]
-    pub(crate) fn viewport(&self) -> &hume_engine::pane::ViewportState {
+    pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::ViewportState {
         &self.view.panes[self.state.focused_pane_id].viewport
     }
 
@@ -519,11 +519,11 @@ impl Editor {
     /// `Editor`. Also lets a test pin an exact count through nested `call!`s
     /// (a re-entry bug shows up as `2`, not just "entered").
     #[cfg(test)]
-    pub(crate) fn inline_output_enter_count(&self) -> usize {
+    pub(in crate::editor) fn inline_output_enter_count(&self) -> usize {
         self.state.inline_output.enter_count()
     }
 
-    pub(crate) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {
+    pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {
         &mut self.view.panes[self.state.focused_pane_id].viewport
     }
 }

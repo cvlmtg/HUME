@@ -392,7 +392,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
 fn drawer_renders_under_the_pane_with_selected_row_highlighted() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
         ed.feed_key(key(ch));

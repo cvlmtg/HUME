@@ -16,7 +16,7 @@ impl EditorState {
     /// freshness check below — and before this predicate they asked it
     /// inline, two of them with `>` and one with `<=`, which is how half of
     /// a future cap change would have slipped through.
-    pub(in crate::editor) fn syntax_size_ok(&self, bid: BufferId) -> bool {
+    pub(in crate::editor::syntax::parse) fn syntax_size_ok(&self, bid: BufferId) -> bool {
         self.buffers.get(bid).text().len_bytes() <= self.settings.syntax_highlight_max_bytes
     }
 }
@@ -43,7 +43,7 @@ impl Editor {
     /// Idempotent: always clears any existing syntax attachment before
     /// attempting setup. No-ops when the buffer has no language, the language
     /// has no grammar, or the buffer exceeds `syntax-highlight-max-bytes`.
-    pub(in crate::editor) fn setup_buffer_syntax(&mut self, bid: BufferId) {
+    pub(in crate::editor::syntax) fn setup_buffer_syntax(&mut self, bid: BufferId) {
         self.state.buffers.get_mut(bid).syntax = None;
 
         let Some(lang_id) = self.state.buffers.get(bid).language else {

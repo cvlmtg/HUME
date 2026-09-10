@@ -68,7 +68,7 @@ impl MarkupSyntax {
     /// to the line start either way, so this stays exact even when the
     /// caller's line boundaries differ slightly from the rope's own (see
     /// `styled_runs`'s doc on `self.text`'s padded trailing `'\n'`).
-    pub(crate) fn styled_row(
+    pub(in crate::ui::popup) fn styled_row(
         &self,
         line_idx: hume_rope::line::ContentLine,
         line: &str,
@@ -234,7 +234,7 @@ pub(crate) struct PopupState {
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
 /// hover-style popups (`show-popup!`) and, via a second registration with
 /// its own `Arc`, for the selection menu and completion menu.
-pub(crate) struct PopupOverlay {
+pub(in crate::ui) struct PopupOverlay {
     pub(crate) data: Arc<RwLock<Option<PopupState>>>,
     /// Root scope for the background/text fill (`ui.popup` for hover popups,
     /// `ui.menu` for menus) — [`MenuBoxStyles::resolve`] derives the
@@ -381,7 +381,7 @@ pub(crate) fn resolve_popup_geometry(
 /// box-in-pane placement, shared by every caller that positions a box
 /// against a pane rect ([`resolve_popup_geometry`] and, for a box already
 /// anchored on its own axis, `MinibufCompletionOverlay::render`).
-pub(crate) fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
+pub(in crate::ui) fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
     (width.min(pane_rect.width), height.min(pane_rect.height))
 }
 
@@ -390,7 +390,7 @@ pub(crate) fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u
 /// placement, split out from [`resolve_popup_geometry`] so a caller that
 /// only needs this axis (`MinibufCompletionOverlay::render`, which resolves
 /// its own bottom-anchored `y`) doesn't re-derive it by hand.
-pub(crate) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
+pub(in crate::ui) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
     x.max(pane_rect.x)
         .min(pane_rect.right().saturating_sub(width))
 }
@@ -398,7 +398,7 @@ pub(crate) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
 /// One wrapped popup row's content, as contiguous same-style runs — the
 /// styled counterpart of a `wrap_text` row (a `Vec<StyledRun>` instead of a
 /// bare `String`).
-pub(crate) type StyledRun = (String, ResolvedStyle);
+pub(in crate::ui::popup) type StyledRun = (String, ResolvedStyle);
 pub(crate) type StyledRow = Vec<StyledRun>;
 
 /// Merge adjacent `(text, style)` pairs sharing the same `ResolvedStyle` — shared by

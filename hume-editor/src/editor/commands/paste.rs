@@ -389,7 +389,7 @@ fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) 
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
-pub(crate) fn cmd_paste_after(
+pub(in crate::editor) fn cmd_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -400,7 +400,7 @@ pub(crate) fn cmd_paste_after(
 }
 
 /// Paste before the selection: plain paste, kill-ring head by default.
-pub(crate) fn cmd_paste_before(
+pub(in crate::editor) fn cmd_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -412,7 +412,7 @@ pub(crate) fn cmd_paste_before(
 
 /// Smart-paste after the selection: ring while nothing has been edited since
 /// the last capture, clipboard otherwise. See [`PasteStamp`].
-pub(crate) fn cmd_smart_paste_after(
+pub(in crate::editor) fn cmd_smart_paste_after(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -424,7 +424,7 @@ pub(crate) fn cmd_smart_paste_after(
 
 /// Smart-paste before the selection: ring while nothing has been edited since
 /// the last capture, clipboard otherwise. See [`PasteStamp`].
-pub(crate) fn cmd_smart_paste_before(
+pub(in crate::editor) fn cmd_smart_paste_before(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -481,7 +481,7 @@ fn do_paste_cycle(
 }
 
 /// Cycle the kill ring one step older and re-paste from the session snapshot.
-pub(crate) fn cmd_paste_ring_older(
+pub(in crate::editor) fn cmd_paste_ring_older(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -491,7 +491,7 @@ pub(crate) fn cmd_paste_ring_older(
 }
 
 /// Cycle the kill ring one step newer and re-paste from the session snapshot.
-pub(crate) fn cmd_paste_ring_newer(
+pub(in crate::editor) fn cmd_paste_ring_newer(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

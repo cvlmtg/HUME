@@ -38,7 +38,7 @@ use registry::{LanguageName, LspServerConfig};
 /// [`hume_rope::position_encoding::wire_range_to_char_range`] — the one
 /// lsp_types↔tuple adaptation point in the editor's LSP glue, so
 /// `hume-rope` stays free of an `lsp_types` dependency.
-pub(crate) fn wire_range_to_chars(
+pub(in crate::editor::lsp) fn wire_range_to_chars(
     rope: &ropey::Rope,
     range: &lsp_types::Range,
     encoding: hume_rope::position_encoding::PositionEncoding,
@@ -55,7 +55,7 @@ pub(crate) fn wire_range_to_chars(
 /// holds this — it only ever sees the `(ServerId, RequestId)` pair the
 /// editor keys its callback under, which `hume-lsp` already hands back from
 /// `send_request`/`take_completed`/`drain_pending`.
-pub(crate) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
+pub(in crate::editor::lsp) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
 
 struct CallbackEntry {
     callback: LspCallback,
@@ -143,7 +143,7 @@ impl LspState {
     /// agree: `AsyncSource::next_wake` (*when* to wake for the next spinner
     /// tick) and `drain_lsp` (*whether* to advance the frame once woken). If
     /// they diverged, the spinner would freeze or wake without advancing.
-    pub(crate) fn has_animating_server(&self) -> bool {
+    pub(in crate::editor) fn has_animating_server(&self) -> bool {
         self.servers
             .values()
             .any(|e| e.client.state() == ServerState::Starting || !e.progress.is_empty())
@@ -172,7 +172,7 @@ impl LspState {
     /// there's no compiler nudge for that the way `ConfigState`'s wholesale
     /// rebuild gets one, so a reviewer must check this list by hand against
     /// each new field.
-    pub(crate) fn reset_config(&mut self) {
+    pub(in crate::editor) fn reset_config(&mut self) {
         self.callbacks.clear();
         self.configs.clear();
         self.completion = None;
@@ -216,13 +216,13 @@ impl LspState {
     /// Production constructor: one real server process per registration.
     /// `wake` is forwarded to every spawned server's reader/stderr threads,
     /// so the main loop wakes instead of polling for completion.
-    pub(crate) fn new_threaded(wake: WakeCallback) -> Self {
+    pub(in crate::editor) fn new_threaded(wake: WakeCallback) -> Self {
         Self::with_backend(Box::new(ThreadedLspBackend::with_waker(wake)))
     }
 
     /// Test constructor: scripted responses, no process, no threads.
     #[cfg(test)]
-    pub(crate) fn new_inline() -> Self {
+    pub(in crate::editor) fn new_inline() -> Self {
         Self::with_backend(Box::new(InlineLspBackend::new()))
     }
 
@@ -231,14 +231,14 @@ impl LspState {
     /// calls) — `backend_mut` only exposes the trait object, which can't
     /// reach `InlineLspBackend`'s scripting methods.
     #[cfg(test)]
-    pub(crate) fn from_backend_for_test(backend: Box<dyn LspBackend>) -> Self {
+    pub(in crate::editor) fn from_backend_for_test(backend: Box<dyn LspBackend>) -> Self {
         Self::with_backend(backend)
     }
 
     /// Reach the raw backend directly. Test-only: production code goes
     /// through `drain_lsp`'s direct field access instead.
     #[cfg(test)]
-    pub(crate) fn backend_mut(&mut self) -> &mut dyn LspBackend {
+    pub(in crate::editor) fn backend_mut(&mut self) -> &mut dyn LspBackend {
         self.backend.as_mut()
     }
 
@@ -247,7 +247,7 @@ impl LspState {
     /// this map in production. Inserted with no language — tests that need
     /// one call `insert_server_key_for_test` next.
     #[cfg(test)]
-    pub(crate) fn insert_client_for_test(&mut self, client: LspClient) -> ServerId {
+    pub(in crate::editor) fn insert_client_for_test(&mut self, client: LspClient) -> ServerId {
         let id = client.id();
         self.servers.insert(
             id,
@@ -265,7 +265,7 @@ impl LspState {
     /// second argument) — a real attach never has these disagree, since
     /// both come from the same `resolve_root` call.
     #[cfg(test)]
-    pub(crate) fn insert_server_key_for_test(
+    pub(in crate::editor) fn insert_server_key_for_test(
         &mut self,
         language: String,
         root: PathBuf,
@@ -284,14 +284,21 @@ impl LspState {
     }
 
     #[cfg(test)]
-    pub(crate) fn insert_server_name_for_test(&mut self, server_id: ServerId, name: String) {
+    pub(in crate::editor) fn insert_server_name_for_test(
+        &mut self,
+        server_id: ServerId,
+        name: String,
+    ) {
         if let Some(entry) = self.servers.get_mut(&server_id) {
             entry.name = name;
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn client_for_test(&mut self, server: ServerId) -> Option<&mut LspClient> {
+    pub(in crate::editor) fn client_for_test(
+        &mut self,
+        server: ServerId,
+    ) -> Option<&mut LspClient> {
         self.servers.get_mut(&server).map(|e| &mut e.client)
     }
 
@@ -299,7 +306,7 @@ impl LspState {
     /// lets tests observe last-wins replacement and unregistration without
     /// reaching into the private `configs` map directly.
     #[cfg(test)]
-    pub(crate) fn config_command_for_test(&self, language: &str) -> Option<String> {
+    pub(in crate::editor) fn config_command_for_test(&self, language: &str) -> Option<String> {
         self.configs.get(language).map(|c| c.command.clone())
     }
 
@@ -308,7 +315,10 @@ impl LspState {
     /// Steel-to-JSON settings conversion without reaching into the private
     /// `configs` map directly.
     #[cfg(all(test, unix))]
-    pub(crate) fn config_settings_for_test(&self, language: &str) -> Option<serde_json::Value> {
+    pub(in crate::editor) fn config_settings_for_test(
+        &self,
+        language: &str,
+    ) -> Option<serde_json::Value> {
         self.configs.get(language).and_then(|c| c.settings.clone())
     }
 
@@ -317,7 +327,10 @@ impl LspState {
     /// `core:lsp/registration.scm`), so a test asserting the conversion
     /// needs both, not just `settings`.
     #[cfg(all(test, unix))]
-    pub(crate) fn config_init_options_for_test(&self, language: &str) -> Option<serde_json::Value> {
+    pub(in crate::editor) fn config_init_options_for_test(
+        &self,
+        language: &str,
+    ) -> Option<serde_json::Value> {
         self.configs
             .get(language)
             .and_then(|c| c.init_options.clone())
@@ -328,7 +341,10 @@ impl LspState {
     /// `LspServerConfig.env` without reaching into the private `configs`
     /// map directly.
     #[cfg(test)]
-    pub(crate) fn config_env_for_test(&self, language: &str) -> Option<Vec<(String, String)>> {
+    pub(in crate::editor) fn config_env_for_test(
+        &self,
+        language: &str,
+    ) -> Option<Vec<(String, String)>> {
         self.configs.get(language).map(|c| c.env.clone())
     }
 
@@ -336,12 +352,12 @@ impl LspState {
     /// second buffer attaching under the same (language, root) key (rather
     /// than spawning) leaves this unchanged.
     #[cfg(test)]
-    pub(crate) fn server_count_for_test(&self) -> usize {
+    pub(in crate::editor) fn server_count_for_test(&self) -> usize {
         self.servers.len()
     }
 
     #[cfg(test)]
-    pub(crate) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
+    pub(in crate::editor) fn diagnostic_counts_for_test(&self, bid: BufferId) -> (usize, usize) {
         self.diagnostics.counts(bid)
     }
 
@@ -350,7 +366,7 @@ impl LspState {
     /// `report` that omits it) without going through `LspActivity`, which
     /// doesn't carry `title` (it's not rendered — see `introspect::activity`).
     #[cfg(test)]
-    pub(crate) fn progress_title_for_test(&self, server: ServerId) -> Option<&str> {
+    pub(in crate::editor) fn progress_title_for_test(&self, server: ServerId) -> Option<&str> {
         self.servers
             .get(&server)?
             .progress
@@ -362,7 +378,7 @@ impl LspState {
     /// check: every callback must eventually be removed by `dispatch_completed`
     /// (response, timeout, or teardown), never orphaned.
     #[cfg(test)]
-    pub(crate) fn callback_count_for_test(&self) -> usize {
+    pub(in crate::editor) fn callback_count_for_test(&self) -> usize {
         self.callbacks.len()
     }
 
@@ -370,7 +386,7 @@ impl LspState {
     /// removed once its request finishes (response/timeout) or its server
     /// stops, never orphaned.
     #[cfg(test)]
-    pub(crate) fn supersede_count_for_test(&self) -> usize {
+    pub(in crate::editor) fn supersede_count_for_test(&self) -> usize {
         self.supersede.len()
     }
 
@@ -382,7 +398,7 @@ impl LspState {
     /// Unordered: both render callers impose their own structure on the
     /// result (a per-line severity winner, a re-sorted highlight span list),
     /// so neither pays for the cross-server sort.
-    pub(crate) fn diagnostics_for_range(
+    pub(in crate::editor) fn diagnostics_for_range(
         &self,
         bid: BufferId,
         range: hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>,
@@ -395,12 +411,12 @@ impl LspState {
     /// `close_buffer` (a pure memory-leak fix there) and from `:e!` reload
     /// (a correctness fix: stale offsets must not survive against the new
     /// content). Returns whether anything was actually removed.
-    pub(crate) fn remove_buffer_diagnostics(&mut self, bid: BufferId) -> bool {
+    pub(in crate::editor) fn remove_buffer_diagnostics(&mut self, bid: BufferId) -> bool {
         self.diagnostics.remove_buffer(bid)
     }
 
     #[cfg(test)]
-    pub(crate) fn diagnostics_for_test(
+    pub(in crate::editor) fn diagnostics_for_test(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (usize, usize)> + '_ {
@@ -423,7 +439,7 @@ impl LspState {
     /// whole struct. Production caller: every send site in `sync.rs`, so
     /// document sync respects the Starting-queue instead of writing to the
     /// wire directly.
-    pub(crate) fn client_and_backend(
+    pub(in crate::editor) fn client_and_backend(
         &mut self,
         server: ServerId,
     ) -> Option<(&mut LspClient, &mut dyn LspBackend)> {
@@ -439,7 +455,7 @@ impl LspState {
     /// time, so no separate token needs to be minted. Production caller:
     /// `bridge::send_one_lsp_request`, called after `send_request`
     /// returns the id.
-    pub(crate) fn register_callback(
+    pub(in crate::editor) fn register_callback(
         &mut self,
         server: ServerId,
         id: RequestId,
@@ -458,7 +474,7 @@ impl LspState {
     /// Sends a request through `server`'s client, if one is registered.
     /// `None` if `server` has no tracked client (can't happen with the real
     /// registration path; still must not panic).
-    pub(crate) fn send_request(
+    pub(in crate::editor) fn send_request(
         &mut self,
         server: ServerId,
         method: &str,

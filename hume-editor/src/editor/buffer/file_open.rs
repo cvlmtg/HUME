@@ -201,7 +201,7 @@ impl Editor {
     /// sessions, the engine-side syntax tree, and saved scrolls.
     ///
     /// Used by the no-arg `:e`/`:e!` reload branch.
-    pub(crate) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
+    pub(in crate::editor) fn reload_buffer_in_place(&mut self, id: BufferId, mut new_doc: Buffer) {
         use hume_editing::lines::{char_col_in_line, place_char_column};
         use hume_editing::selection::{Selection, SelectionSet};
 
@@ -376,7 +376,7 @@ impl Editor {
     /// Caller contract: `new_doc.search_pattern` must be `None` (enforced by
     /// debug_assert — `Buffer::from_file` satisfies this by construction).
     #[cfg(test)]
-    pub(crate) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
+    pub(in crate::editor) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
         lifecycle::replace_buffer_in_place(
             &mut self.view,
             &mut self.state.buffers,
@@ -392,7 +392,7 @@ impl Editor {
     }
 
     /// Redirect the focused pane to `target` without recording a jump.
-    pub(crate) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
+    pub(in crate::editor) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.state.focused_pane_id;
         lifecycle::switch_pane_to_buffer(
             &mut self.view,
@@ -408,7 +408,7 @@ impl Editor {
     ///
     /// Caller contract: all fallible steps (path resolution, file read, etc.)
     /// must succeed before calling this — `push()` truncates forward history.
-    pub(crate) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
+    pub(in crate::editor) fn switch_to_buffer_with_jump(&mut self, target: BufferId) {
         let current = self.focused_buffer_id();
         lifecycle::switch_to_buffer_with_jump(
             &mut self.view,
@@ -455,7 +455,7 @@ impl Editor {
     /// Returns the view buffer's id, e.g. for callers attaching decorations
     /// (`:messages`'s severity highlights) that must target this specific
     /// buffer rather than whatever ends up focused.
-    pub(crate) fn open_read_only_view(
+    pub(in crate::editor) fn open_read_only_view(
         &mut self,
         label: &'static str,
         content: &str,

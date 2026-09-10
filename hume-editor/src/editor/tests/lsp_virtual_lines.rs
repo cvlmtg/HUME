@@ -34,7 +34,7 @@ fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::Vir
 fn virtual_line_renders_after_its_anchor_line() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     let bid = ed.focused_buffer_id();
     run(
@@ -65,7 +65,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
     // 1's content down by the one stolen row, never overlap or skip it.
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "aaa\nbbb\nccc");
     run(
         &mut ed,
@@ -101,7 +101,7 @@ fn scroll_over_a_virtual_line_pushes_the_next_line_down_correctly() {
 fn before_anchored_virtual_line_renders_above_its_line() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5\nlet y = 10");
     run(
         &mut ed,
@@ -124,7 +124,7 @@ fn before_anchored_virtual_line_renders_above_its_line() {
 fn per_segment_scopes_style_the_virtual_lines_text() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "let x = 5");
     run(
         &mut ed,
@@ -298,7 +298,7 @@ const TINT_SCOPE: &str = "ui.cursor.match.search";
 fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "hello");
     run(
         &mut ed,
@@ -347,7 +347,7 @@ fn virtual_line_background_tints_gutter_content_and_trailing_cells() {
 fn virtual_line_with_empty_text_still_renders_its_background_bar() {
     let tmp = safe_tempdir();
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.view.theme = crate::ui::theme::build_snapshot_theme();
+    ed.view.theme = crate::testing::build_snapshot_theme();
     type_text(&mut ed, "hello");
     run(
         &mut ed,

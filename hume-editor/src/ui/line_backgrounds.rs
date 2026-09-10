@@ -11,9 +11,9 @@ use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource};
 use hume_engine::types::ScopeId;
 use hume_rope::line::ContentLine;
 
-pub(crate) type LineBgMap = Arc<RwLock<FxHashMap<ContentLine, ScopeId>>>;
+pub(in crate::ui) type LineBgMap = Arc<RwLock<FxHashMap<ContentLine, ScopeId>>>;
 
-pub(crate) struct PaneLineBackgrounds {
+pub(in crate::ui) struct PaneLineBackgrounds {
     pub(crate) data: LineBgMap,
 }
 

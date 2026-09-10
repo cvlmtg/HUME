@@ -25,7 +25,7 @@ use hume_editing::tab_style::TabStyle;
 /// Value lists are completion *hints* mirrored from each setting's parser;
 /// `write_global`/`write_buffer` remain the validation SSOT, so the two can
 /// drift only in what's offered, never in what's accepted.
-pub(crate) struct SetCompleter;
+pub(in crate::editor) struct SetCompleter;
 
 /// Prefix-filter `items`, dropping an exact match (Tab on a fully-typed value
 /// is a no-op), and wrap each into a `Completion`. Caller sorts.

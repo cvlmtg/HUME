@@ -31,7 +31,10 @@ fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
 /// case (exiting Insert mode away from a blank line) skips the edit entirely
 /// instead of running an identity one (see
 /// [`hume_ops::edit::blank_line_ws_range`]'s doc comment).
-pub(super) fn has_blank_line_cursor(state: &EditorState, view: &EngineView) -> bool {
+pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
+    state: &EditorState,
+    view: &EngineView,
+) -> bool {
     let text = doc(state, view).text();
     current_selections(state, view).iter_sorted().any(|sel| {
         sel.is_collapsed() && hume_ops::edit::blank_line_ws_range(text, sel.head()).is_some()

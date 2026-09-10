@@ -13,7 +13,7 @@ use super::{Completer, Completion, CompletionCtx, CompletionResult, arg_prefix};
 ///
 /// When `dirs_only` is `true` (used by `:cd`), non-directory entries are
 /// filtered out.
-pub(crate) struct PathCompleter {
+pub(in crate::editor) struct PathCompleter {
     pub(crate) dirs_only: bool,
 }
 

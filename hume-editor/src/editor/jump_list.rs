@@ -23,7 +23,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// Default capacity — used in tests to construct jump lists without importing `EditorSettings`.
 #[cfg(test)]
-pub(crate) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
+pub(in crate::editor::jump_list) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,7 +74,7 @@ impl JumpEntry {
     ///
     /// Used at call sites that capture the cursor *before* a motion runs, so
     /// `primary_line` is already known and no buffer reference is needed.
-    pub(crate) fn from_pre_motion(
+    pub(in crate::editor) fn from_pre_motion(
         pre_primary: Selection,
         primary_line: hume_rope::line::ContentLine,
         buffer_id: BufferId,
@@ -125,7 +125,7 @@ impl JumpList {
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. No cursor adjustment is
     /// needed here, since no entries are removed by this call.
-    pub(crate) fn set_capacity(&mut self, capacity: usize) {
+    pub(in crate::editor) fn set_capacity(&mut self, capacity: usize) {
         debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         self.capacity = capacity;
     }
@@ -158,7 +158,7 @@ impl JumpList {
     /// Remove all entries for `id`. Adjusts the cursor so its relative position
     /// in the remaining entries is preserved; clamps to `entries.len()` if the
     /// cursor falls past the end (which means "at the present").
-    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
+    pub(in crate::editor) fn prune_buffer(&mut self, id: BufferId) {
         let removed_before = self
             .entries
             .iter()
@@ -222,7 +222,7 @@ impl JumpList {
     /// newer entry, matching `push`'s own `*last = entry`. The cursor is
     /// adjusted exactly as `prune_buffer` adjusts it for a removal: by how
     /// many merged-away entries had an original index before it.
-    pub(crate) fn translate_in_place(
+    pub(in crate::editor) fn translate_in_place(
         &mut self,
         buf_id: BufferId,
         edits: &[ExclusiveRange<CharOffset>],
@@ -277,7 +277,7 @@ impl JumpList {
     /// Navigate backward. If at the present, saves `current` first so that
     /// `forward()` can return to it. Returns the entry to restore, or `None`
     /// if the list is empty / already at the oldest entry.
-    pub(crate) fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
+    pub(in crate::editor) fn backward(&mut self, current: JumpEntry) -> Option<&JumpEntry> {
         if self.entries.is_empty() {
             return None;
         }
@@ -309,7 +309,7 @@ impl JumpList {
 
     /// Navigate forward. Returns the next entry, or `None` if already at the
     /// present.
-    pub(crate) fn forward(&mut self) -> Option<&JumpEntry> {
+    pub(in crate::editor) fn forward(&mut self) -> Option<&JumpEntry> {
         if self.cursor + 1 >= self.entries.len() {
             return None;
         }
@@ -324,7 +324,7 @@ impl JumpList {
 
     /// Returns `true` if any entry in the list belongs to `id`.
     #[cfg(test)]
-    pub(crate) fn entries_for_buffer(&self, id: BufferId) -> bool {
+    pub(in crate::editor) fn entries_for_buffer(&self, id: BufferId) -> bool {
         self.entries.iter().any(|e| e.buffer_id == id)
     }
 }
@@ -354,7 +354,7 @@ impl JumpLists {
     /// presence check — only the `switch_focused_pane` test choke-point
     /// lazily seeds a pane it didn't create through the normal path.
     #[cfg(test)]
-    pub(crate) fn contains_key(&self, pid: PaneId) -> bool {
+    pub(in crate::editor) fn contains_key(&self, pid: PaneId) -> bool {
         self.0.contains_key(pid)
     }
 
@@ -372,7 +372,7 @@ impl JumpLists {
     /// `edits` must be `cs.edited_old_ranges()` — computed once by the
     /// caller and shared across every pane's list; see
     /// [`JumpList::translate_in_place`].
-    pub(crate) fn translate(
+    pub(in crate::editor) fn translate(
         &mut self,
         buf_id: BufferId,
         edits: &[ExclusiveRange<CharOffset>],
@@ -390,7 +390,7 @@ impl JumpLists {
     /// history-resetting in-place replace) rather than edited: there is no
     /// `ChangeSet` to remap through, and same-buffer-id survival alone isn't
     /// enough, since the new content shares nothing but its id with the old.
-    pub(crate) fn prune_buffer(&mut self, id: BufferId) {
+    pub(in crate::editor) fn prune_buffer(&mut self, id: BufferId) {
         for jumps in self.0.values_mut() {
             jumps.prune_buffer(id);
         }
@@ -398,7 +398,7 @@ impl JumpLists {
 
     /// Apply a `jump-list-capacity` change to every pane's list — takes
     /// effect on each list's next `push`, per `JumpList::set_capacity`.
-    pub(crate) fn set_capacity(&mut self, capacity: usize) {
+    pub(in crate::editor) fn set_capacity(&mut self, capacity: usize) {
         for jumps in self.0.values_mut() {
             jumps.set_capacity(capacity);
         }

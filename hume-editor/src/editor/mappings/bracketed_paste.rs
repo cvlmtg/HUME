@@ -19,7 +19,7 @@ impl Editor {
     /// render) instead of running the full per-key pipeline once per
     /// character. See [`Editor::apply_insert_mode_paste`] for the Insert-mode
     /// path, shared with dot-repeat replay.
-    pub(crate) fn handle_terminal_paste(&mut self, text: String) {
+    pub(in crate::editor) fn handle_terminal_paste(&mut self, text: String) {
         // Normalized here, at the terminal boundary, rather than left to the
         // changeset builder: this text also reaches the minibuffer (via
         // `flatten_for_minibuf`, whose contract is already-normalized input)
@@ -92,7 +92,7 @@ impl Editor {
     /// Deliberately bypasses auto-pairs, trigger-char hooks, and per-char LSP
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
-    pub(crate) fn apply_insert_mode_paste(&mut self, text: &str) {
+    pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
         let focused = self.state.focused_pane_id;
         let buf = self.focused_buffer_id();
         doc_ops::apply_doc_edit_grouped(

@@ -22,9 +22,9 @@ mod disk;
 // entirely, passing a trigger to `check_buffer_disk_state` directly or
 // injecting a `DiskState` value to test the state machine without depending
 // on filesystem mtime precision) needs it outside `buffer` itself.
-pub(crate) use disk::DiskCheckTrigger;
+pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
-pub(crate) use disk::DiskState;
+pub(in crate::editor) use disk::DiskState;
 mod file_open;
 pub(crate) mod lifecycle;
 pub(crate) mod store;
@@ -172,7 +172,7 @@ pub(crate) struct Buffer {
 
 impl Buffer {
     /// Display name used for buffers that have no backing file.
-    pub(crate) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
+    pub(in crate::editor) const SCRATCH_BUFFER_NAME: &'static str = "*scratch*";
 
     /// Create a new buffer from text and an initial selection state.
     ///
@@ -218,7 +218,7 @@ impl Buffer {
     /// path (Steel `open-buffer!`, `:tutor`, LSP goto). `search_pattern` and
     /// `search_matches` are left at their defaults (no active search) —
     /// caller contract for `replace_buffer_in_place`.
-    pub(crate) fn from_file(path: &Path) -> io::Result<Self> {
+    pub(in crate::editor::buffer) fn from_file(path: &Path) -> io::Result<Self> {
         let (content, meta) = hume_platform::io::read_file(path)?;
         let text = BufferText::from(content.as_str());
         let sels = SelectionSet::default();
@@ -234,7 +234,7 @@ impl Buffer {
     /// branch). `file_meta` stays `None` until that first write; `path` is
     /// set so the buffer participates in `find_by_path` dedup and displays
     /// its intended name.
-    pub(crate) fn new_file(path: PathBuf) -> Self {
+    pub(in crate::editor::buffer) fn new_file(path: PathBuf) -> Self {
         let mut buf = Self::new(BufferText::empty(), SelectionSet::default());
         buf.set_path(Some(path));
         buf
@@ -244,7 +244,7 @@ impl Buffer {
     /// via [`Self::new_file`], not yet written. `path.is_some()` alone isn't
     /// enough (a normal file has that too); `file_meta` is the SSOT for
     /// "has this buffer ever touched disk" — see the field doc.
-    pub(crate) fn is_new_file(&self) -> bool {
+    pub(in crate::editor) fn is_new_file(&self) -> bool {
         self.path.is_some() && self.file_meta.is_none()
     }
 
@@ -262,7 +262,7 @@ impl Buffer {
     ///
     /// A path with no basename (`/`, `..`) still errors — `Buffer::set_path`
     /// would panic on it in debug.
-    pub(crate) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
+    pub(in crate::editor) fn from_file_or_new(path: &Path, cwd: &Path) -> io::Result<Self> {
         match Self::from_file(path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {
                 let resolved = crate::editor::Editor::resolve_buffer_path(path, cwd);
@@ -279,7 +279,7 @@ impl Buffer {
     ///
     /// Used when closing the last buffer to keep the "always ≥1 buffer open"
     /// invariant without leaving the editor in an invalid state.
-    pub(crate) fn scratch() -> Self {
+    pub(in crate::editor) fn scratch() -> Self {
         Self::new(BufferText::empty(), SelectionSet::default())
     }
 
@@ -287,7 +287,7 @@ impl Buffer {
     ///
     /// Used for `:messages`, `:ls`, and `:plugin-status`. The buffer has no
     /// backing file, no language detection, and blocks all user edits.
-    pub(crate) fn read_only_view(text: BufferText, label: String) -> Self {
+    pub(in crate::editor) fn read_only_view(text: BufferText, label: String) -> Self {
         let mut buf = Self::new(text, SelectionSet::default());
         buf.read_only = true;
         buf.label = Some(label);
@@ -299,7 +299,7 @@ impl Buffer {
     /// Resets history to a clean root and clears search state so the refreshed
     /// buffer is non-dirty and has no stale match data. This is a system
     /// refresh — it intentionally bypasses the `read_only` guard in `doc_ops`.
-    pub(crate) fn set_view_content(&mut self, text: BufferText) {
+    pub(in crate::editor) fn set_view_content(&mut self, text: BufferText) {
         let text_len = text.len_chars();
         let undo_levels = self.history.undo_levels();
         self.history = History::new(SelectionSet::default(), text_len);
@@ -320,7 +320,7 @@ impl Buffer {
     /// Synthetic buffers have no backing file (`path = None`) but carry a
     /// display label. Scratch buffers are path-less too, but have no label —
     /// that distinction is what this predicate captures.
-    pub(crate) fn is_synthetic(&self) -> bool {
+    pub(in crate::editor) fn is_synthetic(&self) -> bool {
         self.path.is_none() && self.label.is_some()
     }
 
@@ -343,7 +343,7 @@ impl Buffer {
     /// The derived `display_path` is only a default: callers with a
     /// user-typed path overwrite it afterwards via `set_display_path` (see
     /// `Buffer::from_file`).
-    pub(crate) fn set_path(&mut self, path: Option<PathBuf>) {
+    pub(in crate::editor) fn set_path(&mut self, path: Option<PathBuf>) {
         if let Some(ref p) = path {
             debug_assert!(
                 p.file_name().is_some(),
@@ -361,7 +361,7 @@ impl Buffer {
     }
 
     /// Set the display-ready path string (see field doc). Pass `None` to clear.
-    pub(crate) fn set_display_path(&mut self, display: Option<String>) {
+    pub(in crate::editor) fn set_display_path(&mut self, display: Option<String>) {
         self.display_path = display;
     }
 
@@ -375,7 +375,7 @@ impl Buffer {
     /// line's `\n`.
     /// Returns `None` when the first line is empty. Used for shebang detection.
     /// Iterates codepoints, not grapheme clusters — safe because shebang lines are ASCII-only.
-    pub(crate) fn first_line(&self) -> Option<String> {
+    pub(in crate::editor) fn first_line(&self) -> Option<String> {
         const CAP: usize = 64;
         let mut out = String::with_capacity(CAP);
         for ch in self.text.rope().chars() {
@@ -394,7 +394,7 @@ impl Buffer {
     ///
     /// Used to seed `PaneBufferState.selections` when a pane first views this
     /// buffer or when `:e!` reloads it from disk.
-    pub(crate) fn initial_sels(&self) -> SelectionSet {
+    pub(in crate::editor) fn initial_sels(&self) -> SelectionSet {
         self.history.initial_sels().clone()
     }
 
@@ -439,7 +439,7 @@ impl Buffer {
     /// reload — `reload_from_text` is the only place that already knows
     /// which branch ran and already has the CS in hand.
     #[must_use]
-    pub(crate) fn reload_from_text(
+    pub(in crate::editor::buffer) fn reload_from_text(
         &mut self,
         new_text: BufferText,
         pre_sels: SelectionSet,
@@ -485,7 +485,7 @@ impl Buffer {
     /// Record the current revision as the saved state.
     ///
     /// Call this immediately after a successful file write.
-    pub(crate) fn mark_saved(&mut self) {
+    pub(in crate::editor) fn mark_saved(&mut self) {
         self.saved_revision = Some(self.history.current_id());
         self.disk_state = disk::DiskState::InSync;
     }
@@ -496,12 +496,12 @@ impl Buffer {
     /// this (see `stale_write_block`) — this remains for tests that assert
     /// on the reported/warned state itself, not on write behavior.
     #[cfg(test)]
-    pub(crate) fn is_disk_stale(&self) -> bool {
+    pub(in crate::editor) fn is_disk_stale(&self) -> bool {
         !matches!(self.disk_state, disk::DiskState::InSync)
     }
 
     /// Set the `undo-levels` cap on this buffer's history. `0` means unlimited.
-    pub(crate) fn set_undo_levels(&mut self, levels: usize) {
+    pub(in crate::editor) fn set_undo_levels(&mut self, levels: usize) {
         self.history.set_undo_levels(levels);
     }
 
@@ -568,7 +568,7 @@ impl Buffer {
     ///
     /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
     /// first. Panics (debug) if `None`.
-    pub(crate) fn apply_edit_grouped(
+    pub(in crate::editor) fn apply_edit_grouped(
         &mut self,
         sels: SelectionSet,
         edit_group: &mut Option<EditGroup>,
@@ -606,7 +606,7 @@ impl Buffer {
     ///
     /// `edit_group` must be `Some` — caller must have called `begin_edit_group`
     /// first. Panics if `None`.
-    pub(crate) fn apply_edit_regrouped(
+    pub(in crate::editor) fn apply_edit_regrouped(
         &mut self,
         edit_group: &mut Option<EditGroup>,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -641,7 +641,7 @@ impl Buffer {
     /// so `commit_edit_group` can invert the composed CS and record one revision.
     ///
     /// Panics (debug) if a group is already open.
-    pub(crate) fn begin_edit_group(
+    pub(in crate::editor) fn begin_edit_group(
         &self,
         edit_group: &mut Option<EditGroup>,
         pre_sels: SelectionSet,
@@ -663,7 +663,7 @@ impl Buffer {
     /// composed `ChangeSet` cancelled out to the identity transform (e.g. type
     /// a char, then backspace it), no revision is recorded.  Panics if no
     /// group is open.
-    pub(crate) fn commit_edit_group(
+    pub(in crate::editor) fn commit_edit_group(
         &mut self,
         edit_group: &mut Option<EditGroup>,
         post_sels: SelectionSet,
@@ -719,21 +719,21 @@ impl Buffer {
     }
 
     /// The current revision in the undo history.
-    pub(crate) fn revision_id(&self) -> RevisionId {
+    pub(in crate::editor) fn revision_id(&self) -> RevisionId {
         self.history.current_id()
     }
 
-    pub(crate) fn can_undo(&self) -> bool {
+    pub(in crate::editor) fn can_undo(&self) -> bool {
         self.history.can_undo()
     }
 
-    pub(crate) fn can_redo(&self) -> bool {
+    pub(in crate::editor) fn can_redo(&self) -> bool {
         self.history.can_redo()
     }
 
     /// Jump to an arbitrary revision in the undo tree.
     #[cfg(test)]
-    pub(crate) fn goto_revision(
+    pub(in crate::editor) fn goto_revision(
         &mut self,
         sels: &mut SelectionSet,
         target: hume_editing::history::RevisionId,

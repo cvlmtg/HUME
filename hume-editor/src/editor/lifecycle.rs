@@ -249,7 +249,7 @@ impl Editor {
     /// Must run after `run`'s own first `sync_viewport_dims` call: centring
     /// reads the focused pane's height, which is still `Pane::new`'s 80x24
     /// placeholder until that first sync runs.
-    pub(crate) fn apply_startup_positions(&mut self) {
+    pub(in crate::editor) fn apply_startup_positions(&mut self) {
         let placements = std::mem::take(&mut self.startup_positions);
         if placements.is_empty() {
             return;

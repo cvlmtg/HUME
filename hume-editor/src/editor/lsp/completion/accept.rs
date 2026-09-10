@@ -68,7 +68,7 @@ impl CompletionSession {
     /// machinery every other `lsp-request` uses — dropped silently if the
     /// buffer has moved past `generation_at_begin`'s successor by then,
     /// same staleness discipline as any other LSP response).
-    pub(crate) fn accept(
+    pub(in crate::editor) fn accept(
         &self,
         state: &mut EditorState,
         lsp: &mut LspState,

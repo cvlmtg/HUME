@@ -550,6 +550,13 @@ fn render_statusline(
     }
 }
 
+/// Crate-wide, not `pub(in crate::ui::statusline)`: two independent test
+/// suites call this directly by design (see the module doc split in
+/// `editor::tests::lsp_statusline`) — `ui::statusline::tests` pins exact
+/// glyphs/spacing with synthetic `Data`, `editor::tests::lsp_statusline`
+/// checks that a live LSP diagnostics flow produces the right *counts*
+/// without re-asserting their rendering. Pure formatting function, no
+/// mutable state — the crossing carries no risk `pub(in ...)` would avoid.
 pub(crate) fn render_element(
     seg: &StatusElement,
     editor: &HumeStatusline<'_>,

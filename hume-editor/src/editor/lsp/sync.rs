@@ -132,7 +132,7 @@ impl Editor {
 /// also callable from `EditorHostImpl` (completion's accept path needs this
 /// same flush, synchronously, before sending a `completionItem/resolve`
 /// request — see `completion::CompletionSession::accept`).
-pub(crate) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
+pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
     let with_pending: Vec<BufferId> = state
         .buffers
         .iter()
@@ -303,7 +303,7 @@ fn send_doc_notification(
 /// as every other send site here — a queued didClose flushes after a queued
 /// didOpen, in order, so the pair stays coherent even if a buffer opens and
 /// closes before the handshake completes.
-pub(crate) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {
+pub(in crate::editor) fn lsp_did_close(state: &mut EditorState, lsp: &mut LspState, bid: BufferId) {
     send_doc_notification(
         state,
         lsp,

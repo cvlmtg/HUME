@@ -22,7 +22,7 @@ use crate::editor::theme;
 
 /// Write a global setting and resync every piece of derived state that
 /// depends on it.
-pub(crate) fn apply_global(
+pub(in crate::editor) fn apply_global(
     state: &mut EditorState,
     view: &mut EngineView,
     key: &str,
@@ -88,7 +88,7 @@ pub(crate) fn write_global_for_test(
 /// no-ops on empty (nothing to load), so the view's theme is set directly
 /// to the same compiled-in default `Editor::open` uses instead of relying
 /// on that arm.
-pub(crate) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
+pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::default();
     view.theme = crate::ui::theme::build_default_theme();
     for &key in crate::editor::settings::all_setting_keys() {
@@ -101,7 +101,7 @@ pub(crate) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
 /// derived-state effect today (see [`crate::editor::settings::write_buffer`]'s doc),
 /// so unlike [`apply_global`] there is nothing to resync here.
-pub(crate) fn apply_buffer(
+pub(in crate::editor) fn apply_buffer(
     state: &mut EditorState,
     bid: BufferId,
     key: &str,

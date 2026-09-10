@@ -72,7 +72,7 @@ impl ReloadSnapshot {
     /// `resync_config_state` unit tests that exercise the replay in
     /// isolation, without a full reset.
     #[cfg(test)]
-    pub(crate) fn for_test(
+    pub(in crate::editor) fn for_test(
         pre_reload_bids: impl IntoIterator<Item = BufferId>,
         buffers: &super::buffer::store::BufferStore,
     ) -> Self {
@@ -105,7 +105,7 @@ impl Editor {
     /// (queued callbacks, open overlay sessions, scheduled thunks) is
     /// dropped first, before the engine itself goes away — so nothing here
     /// ever gets invoked against the *new* engine that didn't create it.
-    pub(crate) fn reset_config_state(&mut self) -> ReloadSnapshot {
+    pub(in crate::editor) fn reset_config_state(&mut self) -> ReloadSnapshot {
         // Captured before anything below runs: `replace_stamp` is buffer
         // identity bookkeeping, untouched by this reset, but must reflect
         // each buffer's stamp *as of reload start* — see
@@ -248,7 +248,7 @@ impl Editor {
     /// `OnDiagnosticsChanged`/`OnViewportChange`. `pending_work` is FIFO, so
     /// each buffer's *own* hooks still fire in the same relative order a real
     /// open would use — only the cross-buffer interleaving differs.
-    pub(crate) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
+    pub(in crate::editor) fn resync_config_state(&mut self, snapshot: &ReloadSnapshot) {
         let running_attachments: Vec<_> = self
             .lsp
             .running_attached_buffers(&self.state.buffers)
@@ -360,7 +360,7 @@ impl Editor {
 /// never causes the transition that hook is gated on. See
 /// `Editor::resync_config_state`'s doc for why this is scoped to a replay
 /// rather than a literal LSP close+reopen.
-pub(crate) fn typed_reload_config(
+pub(in crate::editor) fn typed_reload_config(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,

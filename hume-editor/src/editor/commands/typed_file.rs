@@ -33,7 +33,7 @@ fn stale_write_block(meta: &FileMeta) -> Option<&'static str> {
 
 // ── Typed file commands ───────────────────────────────────────────────────────
 
-pub(crate) fn typed_quit(
+pub(in crate::editor) fn typed_quit(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,
@@ -72,7 +72,7 @@ pub(crate) fn typed_quit(
     Ok(())
 }
 
-pub(crate) fn typed_quit_all(
+pub(in crate::editor) fn typed_quit_all(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,
@@ -110,7 +110,7 @@ pub(crate) fn typed_quit_all(
     Ok(())
 }
 
-pub(crate) fn typed_write(
+pub(in crate::editor) fn typed_write(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
@@ -118,7 +118,7 @@ pub(crate) fn typed_write(
     write_file(ed, arg, force)
 }
 
-pub(crate) fn typed_write_quit(
+pub(in crate::editor) fn typed_write_quit(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
@@ -137,7 +137,7 @@ pub(crate) fn typed_write_quit(
     }
 }
 
-pub(crate) fn typed_toggle_soft_wrap(
+pub(in crate::editor) fn typed_toggle_soft_wrap(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -148,7 +148,7 @@ pub(crate) fn typed_toggle_soft_wrap(
     Ok(())
 }
 
-pub(crate) fn typed_set(
+pub(in crate::editor) fn typed_set(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -458,7 +458,7 @@ fn write_file(ed: &mut Editor, arg: Option<&str>, force: bool) -> Result<(), Com
     }
 }
 
-pub(crate) fn typed_write_all(
+pub(in crate::editor) fn typed_write_all(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,

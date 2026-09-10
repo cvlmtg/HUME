@@ -6,7 +6,7 @@
 /// server declared `insertTextFormat: Snippet` — see [`strip_snippet`].
 /// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
 /// hook and `completionItem/resolve` both see the server's original text).
-pub(crate) struct StoredCompletionItem {
+pub(in crate::editor) struct StoredCompletionItem {
     pub(crate) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
@@ -44,7 +44,7 @@ impl StoredCompletionItem {
     /// can straight from JSON. `Err` only when even that fails (`label`
     /// itself missing/non-string); callers skip the item and report a Trace
     /// line rather than fabricating a placeholder.
-    pub(crate) fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
+    pub(in crate::editor) fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
         match serde_json::from_value::<lsp_types::CompletionItem>(v.clone()) {
             Ok(item) => Ok(Self::from_typed(item, v)),
             Err(strict_err) => Self::from_json_lenient(v).ok_or(strict_err),

@@ -24,7 +24,7 @@ pub(crate) enum HistoryKind {
 
 /// Direction for [`crate::editor::Editor::recall_history`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HistoryDir {
+pub(in crate::editor) enum HistoryDir {
     Prev,
     Next,
 }
@@ -91,7 +91,7 @@ impl History {
     /// adjustment needed here, since no entries are removed by this call —
     /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
     /// runs on the next confirm.
-    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+    pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
         debug_assert!(new_cap > 0, "History capacity must be non-zero");
         self.capacity = new_cap;
     }
@@ -144,19 +144,19 @@ impl History {
 
     /// Demote: the user edited a recalled entry. Clears the cursor so the next
     /// `prev` re-stashes the current (now-edited) text as fresh scratch.
-    pub(crate) fn demote_to_scratch(&mut self) {
+    pub(in crate::editor) fn demote_to_scratch(&mut self) {
         self.cursor = None;
         self.scratch = None;
     }
 
     /// Reset per-session nav state. Called when the minibuffer opens or closes.
-    pub(crate) fn begin_session(&mut self) {
+    pub(in crate::editor) fn begin_session(&mut self) {
         self.cursor = None;
         self.scratch = None;
     }
 
     #[cfg(test)]
-    pub(crate) fn entries(&self) -> &VecDeque<String> {
+    pub(in crate::editor) fn entries(&self) -> &VecDeque<String> {
         &self.entries
     }
 }
@@ -190,7 +190,7 @@ impl HistoryStore {
         }
     }
 
-    pub(crate) fn get_mut(&mut self, kind: HistoryKind) -> &mut History {
+    pub(in crate::editor) fn get_mut(&mut self, kind: HistoryKind) -> &mut History {
         match kind {
             HistoryKind::Command => &mut self.command,
             HistoryKind::SearchForward => &mut self.search_f,
@@ -200,7 +200,7 @@ impl HistoryStore {
 
     /// Map a minibuffer prompt character to its history kind.
     /// Returns `None` for prompts that have no associated history (e.g. `⫽`).
-    pub(crate) fn kind_for_prompt(prompt: &str) -> Option<HistoryKind> {
+    pub(in crate::editor) fn kind_for_prompt(prompt: &str) -> Option<HistoryKind> {
         match prompt {
             ":" => Some(HistoryKind::Command),
             "/" => Some(HistoryKind::SearchForward),
@@ -211,7 +211,7 @@ impl HistoryStore {
 
     /// Reset per-session nav state on every ring. Called when any minibuffer
     /// opens or closes.
-    pub(crate) fn begin_session_all(&mut self) {
+    pub(in crate::editor) fn begin_session_all(&mut self) {
         self.command.begin_session();
         self.search_f.begin_session();
         self.search_b.begin_session();
@@ -220,7 +220,7 @@ impl HistoryStore {
     /// Update the capacity of every ring — see `History::set_capacity` for
     /// why this doesn't trim. Called when the `history-capacity` setting
     /// changes at runtime.
-    pub(crate) fn set_capacity(&mut self, new_cap: usize) {
+    pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
         self.command.set_capacity(new_cap);
         self.search_f.set_capacity(new_cap);
         self.search_b.set_capacity(new_cap);

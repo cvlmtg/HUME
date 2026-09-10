@@ -22,10 +22,10 @@ use hume_rope::line::ContentLine;
 /// resolved `signcolumn` slot count). Every registered source (diagnostics
 /// included — `core:lsp` places them through `set-signs!` like any other
 /// plugin) is pre-merged into this one map at write time.
-pub(crate) type SignMap = Arc<RwLock<FxHashMap<ContentLine, Vec<Sign>>>>;
+pub(in crate::ui) type SignMap = Arc<RwLock<FxHashMap<ContentLine, Vec<Sign>>>>;
 
 /// One `SignSource` reading a shared per-frame line->signs map.
-pub(crate) struct SharedSignSource {
+pub(in crate::ui) struct SharedSignSource {
     data: SignMap,
 }
 

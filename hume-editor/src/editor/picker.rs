@@ -36,7 +36,7 @@ pub(crate) struct PickerItem {
 /// handing a batch to the store; kept here rather than duplicated at each
 /// call site because `hume-scripting`'s `UiHost` trait cannot name
 /// `PickerItem`, an `hume-editor`-private type.
-pub(crate) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
+pub(in crate::editor) fn picker_items(items: Vec<(String, SteelVal)>) -> Vec<PickerItem> {
     items
         .into_iter()
         .map(|(display, payload)| PickerItem { display, payload })
@@ -195,7 +195,7 @@ impl PickerSession {
     /// `picker-push!`/`picker-replace!`/`picker-source-spawn!`) —
     /// `population` starts `Complete` and only changes once a source
     /// actually attaches.
-    pub(crate) fn new_live(on_select: SteelVal, opts: LivePickerOpts) -> Self {
+    pub(in crate::editor) fn new_live(on_select: SteelVal, opts: LivePickerOpts) -> Self {
         Self::build(
             on_select,
             opts.prompt,
@@ -234,7 +234,7 @@ impl PickerSession {
         }
     }
 
-    pub(crate) fn token(&self) -> u64 {
+    pub(in crate::editor) fn token(&self) -> u64 {
         self.token
     }
 
@@ -249,7 +249,7 @@ impl PickerSession {
     /// Whether results are still arriving — `population` is anything but
     /// `Complete`, or a live requery is armed and hasn't delivered its
     /// first batch yet (see `requery_armed`'s doc).
-    pub(crate) fn is_pending(&self) -> bool {
+    pub(in crate::editor) fn is_pending(&self) -> bool {
         self.requery_armed || !matches!(self.population, Population::Complete)
     }
 
@@ -269,7 +269,7 @@ impl PickerSession {
     /// not a batch arrival — nothing has come back yet, so `#:pending` must
     /// survive it; a non-empty one goes through `push`, which clears
     /// `pending` because a populated list needs no "still arriving" marker.
-    pub(crate) fn seed(&mut self, items: Vec<PickerItem>) {
+    pub(in crate::editor) fn seed(&mut self, items: Vec<PickerItem>) {
         if !items.is_empty() {
             self.push(items);
         }
@@ -326,7 +326,7 @@ impl PickerSession {
     /// (`drain_async_sources` precedes `drain_pending_work` in
     /// `Editor::settle`), and that stale batch must not read as "the
     /// requery landed."
-    pub(crate) fn replace(&mut self, items: Vec<PickerItem>) {
+    pub(in crate::editor) fn replace(&mut self, items: Vec<PickerItem>) {
         self.take_supersede();
         self.batch_arrived();
         self.requery_armed = false;
@@ -369,7 +369,7 @@ impl PickerSession {
         }
     }
 
-    pub(crate) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
+    pub(in crate::editor) fn source_mut(&mut self) -> Option<&mut SpawnedLineSource> {
         match &mut self.population {
             Population::Streaming(attached) => Some(&mut attached.source),
             _ => None,
@@ -380,7 +380,7 @@ impl PickerSession {
     /// wholesale on its next batch — `drain_picker_source`'s check for a
     /// live requery's source that disconnected before ever delivering one,
     /// so it can clear the previous pattern's now-stale rows itself.
-    pub(crate) fn source_supersedes_rows(&self) -> bool {
+    pub(in crate::editor) fn source_supersedes_rows(&self) -> bool {
         self.attached()
             .is_some_and(|attached| attached.supersedes_rows)
     }
@@ -404,7 +404,7 @@ impl PickerSession {
     /// call racing a source that was never there, or that already finished,
     /// must not fabricate a "done" transition, so the prior state is put
     /// back untouched and this returns `None`.
-    pub(crate) fn take_source(&mut self) -> Option<(SpawnedLineSource, Vec<i32>)> {
+    pub(in crate::editor) fn take_source(&mut self) -> Option<(SpawnedLineSource, Vec<i32>)> {
         match std::mem::replace(&mut self.population, Population::Complete) {
             Population::Streaming(attached) => Some((attached.source, attached.ok_exit_codes)),
             other => {
@@ -415,7 +415,7 @@ impl PickerSession {
     }
 
     #[cfg(all(test, unix))]
-    pub(crate) fn has_source(&self) -> bool {
+    pub(in crate::editor) fn has_source(&self) -> bool {
         self.attached().is_some()
     }
 
@@ -423,7 +423,7 @@ impl PickerSession {
     /// against an independent liveness check rather than the handle's own
     /// state.
     #[cfg(all(test, unix))]
-    pub(crate) fn source_pid_for_test(&self) -> Option<u32> {
+    pub(in crate::editor) fn source_pid_for_test(&self) -> Option<u32> {
         self.attached().map(|attached| attached.source.pid())
     }
 
@@ -432,7 +432,7 @@ impl PickerSession {
     /// child having already exited without also triggering the ordinary
     /// disconnect-and-report drain path it's racing against.
     #[cfg(all(test, unix))]
-    pub(crate) fn source_has_exited_for_test(&self) -> bool {
+    pub(in crate::editor) fn source_has_exited_for_test(&self) -> bool {
         self.attached()
             .is_some_and(|attached| attached.source.has_exited())
     }
@@ -465,7 +465,7 @@ impl PickerSession {
     /// [`insert_char`](Self::insert_char)) — the query didn't change, so
     /// there is nothing to notify either way.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(crate) fn pop_grapheme(&mut self) -> Option<SteelVal> {
+    pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<SteelVal> {
         if self.query.is_empty() {
             return None;
         }
@@ -502,7 +502,7 @@ impl PickerSession {
     /// the `visible_rows`-tall window (`clamp_scroll_to_window`, shared with
     /// `clamp_drawer_scroll`). No-op when `filtered` is empty or
     /// `visible_rows` is `0`. Page moves are simply `delta = ±visible_rows`.
-    pub(crate) fn move_selection(&mut self, delta: isize, visible_rows: usize) {
+    pub(in crate::editor) fn move_selection(&mut self, delta: isize, visible_rows: usize) {
         if self.filtered.is_empty() {
             return;
         }
@@ -530,12 +530,12 @@ impl PickerSession {
     }
 
     /// Number of items currently ranked (i.e. matching the query).
-    pub(crate) fn matched_len(&self) -> usize {
+    pub(in crate::editor) fn matched_len(&self) -> usize {
         self.filtered.len()
     }
 
     /// Total number of items ever pushed, regardless of the current query.
-    pub(crate) fn total_len(&self) -> usize {
+    pub(in crate::editor) fn total_len(&self) -> usize {
         self.items.len()
     }
 
@@ -552,7 +552,7 @@ impl PickerSession {
 
     /// Payload of the currently selected item, or `None` when nothing
     /// matches.
-    pub(crate) fn selected_payload(&self) -> Option<&SteelVal> {
+    pub(in crate::editor) fn selected_payload(&self) -> Option<&SteelVal> {
         self.filtered
             .get(self.selected)
             .map(|&idx| &self.items[idx as usize].payload)
@@ -560,7 +560,7 @@ impl PickerSession {
 
     /// Cheap `Rc` clone — the accept/dismiss dispatch fires this via
     /// `queue_steel_call`; the store itself never invokes it.
-    pub(crate) fn on_select(&self) -> &SteelVal {
+    pub(in crate::editor) fn on_select(&self) -> &SteelVal {
         &self.on_select
     }
 
@@ -662,7 +662,7 @@ impl PickerSession {
 /// closed or replaced — so callers treat `None` as a silent no-op, never an
 /// error; none of `PickerSession`'s own mutators re-check the token
 /// themselves once a caller has reached one through here.
-pub(crate) fn session_for_token(
+pub(in crate::editor) fn session_for_token(
     state: &mut super::EditorState,
     token: u64,
 ) -> Option<&mut PickerSession> {
@@ -685,7 +685,7 @@ pub(crate) fn session_for_token(
 /// Takes `state`/`lsp` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
 /// not a whole `Editor` — it can never reach an `&mut Editor`.
-pub(crate) fn open_picker(
+pub(in crate::editor) fn open_picker(
     state: &mut super::EditorState,
     lsp: Option<&mut super::lsp::LspState>,
     session: PickerSession,
@@ -707,7 +707,7 @@ pub(crate) fn open_picker(
 /// the `pending_work` queue this function would have pushed the callback
 /// onto — the outgoing engine that owns the callback is seconds from being
 /// dropped, so firing it would be observable to nothing.
-pub(crate) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
+pub(in crate::editor) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
     let Some(session) = state.config.picker.take() else {
         return;
     };

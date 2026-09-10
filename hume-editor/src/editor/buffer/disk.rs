@@ -18,7 +18,7 @@ use super::Buffer;
 /// Result of comparing a buffer's stored file signature against a fresh stat.
 /// `Changed` carries the freshly-read signature so the caller can store it
 /// back without a second stat.
-pub(crate) enum DiskChange {
+pub(in crate::editor::buffer::disk) enum DiskChange {
     /// The fresh stat genuinely matches the stored signature — the buffer is
     /// caught up with disk, whatever its prior `DiskState` was.
     Unchanged,
@@ -73,7 +73,7 @@ pub(crate) enum DiskState {
 /// Which trigger ran a disk check — decides whether a `Changed` state that
 /// was already reported should re-fire.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum DiskCheckTrigger {
+pub(in crate::editor) enum DiskCheckTrigger {
     /// Terminal focus, return from an inline shell command. A state already
     /// reported (by an earlier ambient check, or by this same buffer having
     /// been entered before) must stay silent — nothing new to say.
@@ -310,7 +310,7 @@ impl Editor {
     /// focus and return from an inline shell command, `Explicit` for
     /// `:checktime` — never `BufferEnter`, since no single buffer among many
     /// is "the one being entered".
-    pub(crate) fn check_all_disk_state(&mut self, trigger: DiskCheckTrigger) {
+    pub(in crate::editor) fn check_all_disk_state(&mut self, trigger: DiskCheckTrigger) {
         debug_assert_ne!(
             trigger,
             DiskCheckTrigger::BufferEnter,

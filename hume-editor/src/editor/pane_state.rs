@@ -124,7 +124,7 @@ pub(crate) struct PaneBufferState {
 /// value. All seed sites must call this rather than building the struct literal
 /// directly, so that adding a new field with a non-default initialiser requires
 /// only one edit here.
-pub(crate) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
+pub(in crate::editor) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
     PaneBufferState {
         selections: buf.initial_sels(),
         ..PaneBufferState::default()
@@ -136,7 +136,7 @@ pub(crate) fn fresh_from_buf(buf: &Buffer) -> PaneBufferState {
 ///
 /// Panics if `pid` or `bid` is not a live slotmap key; that is a caller-contract
 /// violation (the pane or buffer was never opened), not a recoverable error.
-pub(crate) fn ensure<'a>(
+pub(in crate::editor) fn ensure<'a>(
     pane_state: &'a mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
     pid: PaneId,
@@ -159,7 +159,7 @@ pub(crate) fn ensure<'a>(
 /// a caller with no char position yet, and `goto_location`
 /// (`editor/lsp/edits.rs`) — whose target is already char-indexed — calls
 /// this directly.
-pub(crate) fn write_cursor(
+pub(in crate::editor) fn write_cursor(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
     pid: PaneId,
@@ -175,7 +175,7 @@ pub(crate) fn write_cursor(
 /// line. Shared by every caller that parks a cursor at a line/column pair —
 /// a read-only view's opening position and a CLI startup position both
 /// reduce to this.
-pub(crate) fn park_cursor_at(
+pub(in crate::editor) fn park_cursor_at(
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     buffers: &BufferStore,
     pid: PaneId,
@@ -236,7 +236,11 @@ impl PaneView {
     /// The seeded [`PaneBufferState`] for `(pid, bid)`, or `None` when the
     /// pane has no map yet or never showed `bid`. Read-side counterpart of
     /// [`ensure`], which seeds rather than reporting absence.
-    pub(crate) fn buffer_state(&self, pid: PaneId, bid: BufferId) -> Option<&PaneBufferState> {
+    pub(in crate::editor) fn buffer_state(
+        &self,
+        pid: PaneId,
+        bid: BufferId,
+    ) -> Option<&PaneBufferState> {
         self.state.get(pid)?.get(bid)
     }
 }
@@ -249,7 +253,10 @@ impl super::EditorState {
     /// assuming it matches the focused buffer. Strictly focused-pane callers
     /// only — a `bid` that may be shown in a *different* pane, or in none,
     /// wants [`shown_buffer_state`](Self::shown_buffer_state) instead.
-    pub(crate) fn focused_buffer_state(&self, bid: BufferId) -> Option<&PaneBufferState> {
+    pub(in crate::editor) fn focused_buffer_state(
+        &self,
+        bid: BufferId,
+    ) -> Option<&PaneBufferState> {
         self.panes.buffer_state(self.focused_pane_id, bid)
     }
 
@@ -273,7 +280,11 @@ impl super::EditorState {
     /// The pane currently showing `bid`: the focused pane if it shows `bid`,
     /// else the first pane (by `SlotMap` iteration order) that does, else
     /// `None` if `bid` isn't open in any pane (a background buffer).
-    pub(crate) fn pane_showing_buffer(&self, view: &EngineView, bid: BufferId) -> Option<PaneId> {
+    pub(in crate::editor) fn pane_showing_buffer(
+        &self,
+        view: &EngineView,
+        bid: BufferId,
+    ) -> Option<PaneId> {
         if view
             .panes
             .get(self.focused_pane_id)
@@ -301,7 +312,7 @@ impl super::EditorState {
     /// supplied `bid` (a Steel `(current-buffer)` snapshot, or one carried
     /// across a debounce or an async LSP round-trip) may no longer be the
     /// buffer the focused pane shows, or may be shown in a different pane.
-    pub(crate) fn shown_buffer_state(
+    pub(in crate::editor) fn shown_buffer_state(
         &self,
         view: &EngineView,
         bid: BufferId,
@@ -316,7 +327,7 @@ impl Editor {
 
     /// The focused pane's effective wrap mode: pane override → buffer
     /// override → global default (see `commands::effective_wrap_mode`).
-    pub(crate) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
+    pub(in crate::editor) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
         let pane = &self.view.panes[self.state.focused_pane_id];
         let doc = self.state.buffers.get(pane.buffer_id);
         super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
@@ -343,7 +354,10 @@ impl Editor {
     /// Zeroes horizontal scroll (meaningless once wrapped) on any actual
     /// change to the pane's *effective* mode — see `toggle_focused_wrap`'s
     /// doc for the full rationale, shared by both functions.
-    pub(crate) fn set_focused_wrap_override(&mut self, mode: hume_engine::pane::WrapMode) {
+    pub(in crate::editor) fn set_focused_wrap_override(
+        &mut self,
+        mode: hume_engine::pane::WrapMode,
+    ) {
         let before = self.focused_wrap_mode();
         let pid = self.state.focused_pane_id;
         let pane = &mut self.view.panes[pid];
@@ -406,7 +420,7 @@ impl Editor {
     /// range once wrapping grows `content` — landing on a wrap display line
     /// of the line's own text instead of the virtual display line it used
     /// to point at. Silent, not a bug this function fixes.
-    pub(crate) fn toggle_focused_wrap(&mut self) -> bool {
+    pub(in crate::editor) fn toggle_focused_wrap(&mut self) -> bool {
         use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
 
         let pid = self.state.focused_pane_id;

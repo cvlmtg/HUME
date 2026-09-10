@@ -70,16 +70,16 @@ mod timer_bridge;
 mod timers;
 mod visual_move;
 
-pub(crate) use search::SearchState;
+pub(in crate::editor) use search::SearchState;
 
 // Re-export module-level helpers so sibling submodules can call `super::foo()`.
-pub(crate) use scripting_setup::ConfigPath;
+pub(in crate::editor) use scripting_setup::ConfigPath;
 use scripting_setup::theme_search_paths;
 
-pub(crate) use minibuf::MiniBuffer;
+pub(in crate::editor) use minibuf::MiniBuffer;
 
 use message_log::MessageLog;
-pub(crate) use message_log::Severity;
+pub(in crate::editor) use message_log::Severity;
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 //
@@ -241,7 +241,7 @@ impl ConfigState {
     /// describing a symbol the cursor has left. A `Sticky` popup (signature
     /// help) belongs to an ongoing Insert session instead, and is closed by
     /// the `on-mode-change` hook.
-    pub(super) fn dismiss_scrollable_popup(&mut self) {
+    pub(in crate::editor) fn dismiss_scrollable_popup(&mut self) {
         if matches!(
             self.popup.as_ref().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Scrollable)
@@ -258,7 +258,7 @@ impl ConfigState {
 /// once the terminal probe result is known, before `init.scm` can override
 /// it) so the two can't drift apart on what "kitty defaults installed"
 /// means.
-pub(super) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
+pub(in crate::editor) fn default_keymap_for(kitty_enabled: bool) -> Keymap {
     let mut keymap = Keymap::default();
     if kitty_enabled {
         keymap.apply_kitty_defaults();
@@ -598,7 +598,7 @@ impl EditorState {
     /// and `resolve_pane_settings`' `cursor_is_block` read, so the real
     /// terminal cursor and the grid's painted heads can never disagree about
     /// which shape is in effect outside a prompt.
-    pub(crate) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
+    pub(in crate::editor) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
         if self.mode == Mode::Insert {
             self.settings.cursor_shape_insert
         } else {
@@ -627,7 +627,7 @@ impl EditorState {
     /// The engine cannot derive this — it depends on neither `hume-editing`
     /// (for the generation) nor this crate (for the decoration store), which
     /// is exactly why that key takes a caller-supplied tag.
-    pub(crate) fn buffer_tag(
+    pub(in crate::editor) fn buffer_tag(
         &self,
         bid: hume_engine::pipeline::BufferId,
     ) -> hume_engine::display_lines::line_store::BufferTag {
@@ -657,7 +657,7 @@ impl EditorState {
     /// entirely on the two resolving a bit-identical key — one function
     /// rather than two independently-maintained call sites is what makes
     /// that true by construction instead of by convention.
-    pub(crate) fn format_key(
+    pub(in crate::editor) fn format_key(
         &self,
         pane: &hume_engine::pane::Pane,
     ) -> hume_engine::display_lines::line_store::FormatKey {
@@ -689,7 +689,7 @@ impl EditorState {
     /// `reset_config_state`'s wholesale `ConfigState` rebuild does,
     /// bypassing `close-drawer!`'s callback queueing) can't leave a stale
     /// view painting a closed drawer.
-    pub(super) fn sync_drawer_view(&self) {
+    pub(in crate::editor) fn sync_drawer_view(&self) {
         let resolved = self
             .config
             .drawer
@@ -708,7 +708,11 @@ impl EditorState {
     /// hook fire. A buffer with no language (`language: None`) never
     /// matches anything — trigger chars are always server-derived, and a
     /// server attach implies a language.
-    pub(crate) fn trigger_sources_for(&self, ch: char, language: Option<&str>) -> Vec<String> {
+    pub(in crate::editor) fn trigger_sources_for(
+        &self,
+        ch: char,
+        language: Option<&str>,
+    ) -> Vec<String> {
         let Some(language) = language else {
             return Vec::new();
         };
@@ -728,7 +732,7 @@ impl EditorState {
     ///
     /// The `mode` field is private so the compiler enforces that every
     /// transition goes through here.
-    pub(crate) fn set_mode(&mut self, new: Mode) {
+    pub(in crate::editor) fn set_mode(&mut self, new: Mode) {
         let old = self.mode;
         if old == new {
             return;
@@ -753,7 +757,7 @@ impl EditorState {
     /// single raise path every event goes through, reached as
     /// `self.state.queue_event(…)` from `Editor` methods and directly, like
     /// `set_mode` above, from methods that only hold `&mut EditorState`.
-    pub(crate) fn queue_event(&mut self, event: event::EditorEvent) {
+    pub(in crate::editor) fn queue_event(&mut self, event: event::EditorEvent) {
         self.config
             .pending_work
             .push_back(event::PendingWork::Event(event));
@@ -768,7 +772,7 @@ impl EditorState {
     /// `EditorHostImpl`'s spawn-failure arm — which only hold `&mut
     /// EditorState` — can reach it too, the same reason `queue_event` lives
     /// here.
-    pub(crate) fn queue_steel_call(
+    pub(in crate::editor) fn queue_steel_call(
         &mut self,
         proc: steel::rvals::SteelVal,
         args: Vec<steel::rvals::SteelVal>,
@@ -871,7 +875,7 @@ impl Editor {
 
     /// The most-recently-focused buffer other than the current one, or `None`
     /// when only one buffer is open. Derives from `BufferStore.mru` (SSOT).
-    pub(crate) fn alternate_buffer(&self) -> Option<BufferId> {
+    pub(in crate::editor) fn alternate_buffer(&self) -> Option<BufferId> {
         self.state.buffers.mru_excluding(self.focused_buffer_id())
     }
 
@@ -880,13 +884,13 @@ impl Editor {
     /// Uses a split borrow — `buffers` and other fields on `Editor` are
     /// disjoint, so you can hold this reference while reading e.g. `self.state.settings`.
     /// Do NOT keep this reference live across a call that also borrows `self`.
-    pub(crate) fn doc_mut(&mut self) -> &mut Buffer {
+    pub(in crate::editor) fn doc_mut(&mut self) -> &mut Buffer {
         let bid = self.focused_buffer_id();
         self.state.buffers.get_mut(bid)
     }
 
     /// `true` when the focused buffer rejects user edits.
-    pub(crate) fn focused_buffer_read_only(&self) -> bool {
+    pub(in crate::editor) fn focused_buffer_read_only(&self) -> bool {
         self.doc().is_read_only()
     }
 
@@ -896,13 +900,13 @@ impl Editor {
     }
 
     /// Replace the focused pane's selections for the current buffer.
-    pub(super) fn set_current_selections(&mut self, sels: SelectionSet) {
+    pub(in crate::editor) fn set_current_selections(&mut self, sels: SelectionSet) {
         commands::set_current_selections(&mut self.state, &self.view, sels);
     }
 
     // ── Mode transitions ──────────────────────────────────────────────────────
 
-    pub(super) fn end_insert_session(&mut self) {
+    pub(in crate::editor) fn end_insert_session(&mut self) {
         commands::end_insert_session(&mut self.state, &self.view);
     }
 
@@ -916,7 +920,7 @@ impl Editor {
     /// For Insert mode entry and exit use `begin_insert_session` and
     /// [`crate::editor::commands::end_insert_session`] instead — they manage
     /// the undo group and dot-repeat recording alongside the mode change.
-    pub(super) fn set_mode(&mut self, mode: Mode) {
+    pub(in crate::editor) fn set_mode(&mut self, mode: Mode) {
         self.state.set_mode(mode);
     }
 }

@@ -163,7 +163,7 @@ pub(in crate::editor) fn step_paste_commit(
 /// pollute the jump list on a threshold-exceeding extent. Jump-flagged
 /// selections (e.g. `%` select-all, `jump: true`) still record via the
 /// `meta.is_jump` arm.
-pub(super) fn step_capture_pre_jump(
+pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
     state: &EditorState,
     view: &EngineView,
     meta: &CmdMeta,
@@ -195,7 +195,11 @@ pub(super) fn step_capture_pre_jump(
 /// (`doc_ops::begin_edit_group`). See `CmdMeta::moves_cursor`'s doc for the
 /// `SteelBacked`/`Lazy` blind spot this inherits unchanged: a user-bound
 /// Steel motion still leaves the pins in place.
-pub(super) fn step_clear_typed_run(state: &mut EditorState, view: &EngineView, meta: &CmdMeta) {
+pub(in crate::editor::commands::pipeline) fn step_clear_typed_run(
+    state: &mut EditorState,
+    view: &EngineView,
+    meta: &CmdMeta,
+) {
     if state.mode() != Mode::Insert || !meta.moves_cursor() {
         return;
     }
@@ -222,7 +226,7 @@ fn jump_position(
 /// The snapshot captures the selection extent the user built before the edit,
 /// so `.` can re-establish it.  Inner dispatches (Steel `call!`) may overwrite
 /// `selection_recipe` during the body; the snapshot is taken before they run.
-pub(super) fn step_snapshot_recipe(
+pub(in crate::editor::commands::pipeline) fn step_snapshot_recipe(
     state: &mut EditorState,
     repeatable: bool,
 ) -> Option<Vec<SelectionStep>> {
@@ -251,7 +255,7 @@ pub(super) fn step_snapshot_recipe(
 ///
 /// `step_align_view` reuses this same `moved` rather than recomputing
 /// `jump_position` a second time.
-pub(super) fn step_record_jump(
+pub(in crate::editor::commands::pipeline) fn step_record_jump(
     state: &mut EditorState,
     view: &EngineView,
     pre_jump: Option<(Selection, hume_rope::line::ContentLine, BufferId)>,
@@ -283,7 +287,7 @@ pub(super) fn step_record_jump(
 /// "put the head at this viewport row". `moved` is `step_record_jump`'s
 /// result: a `}` press already on the last paragraph is a no-op on the
 /// selection and must not yank the viewport around on every repeated press.
-pub(super) fn step_align_view(
+pub(in crate::editor::commands::pipeline) fn step_align_view(
     state: &mut EditorState,
     view: &mut EngineView,
     aligns_view: bool,
@@ -349,7 +353,7 @@ pub(in crate::editor) fn step_stamp_repeatable(
 // `&Cow` not `&str`: `.clone()` must preserve Borrowed (built-ins) or Owned
 // (Steel) without an unconditional heap alloc.
 #[allow(clippy::ptr_arg)]
-pub(super) fn step_update_recipe(
+pub(in crate::editor::commands::pipeline) fn step_update_recipe(
     state: &mut EditorState,
     meta: &CmdMeta,
     name: &Cow<'static, str>,
@@ -386,7 +390,10 @@ pub(super) fn step_update_recipe(
 /// operator exit. No-op unless the editor is currently in Extend — a `change`
 /// command (which already entered Insert) will not be affected because
 /// `state.mode()` is `Insert` by the time the AFTER block runs.
-pub(super) fn step_clear_extend(state: &mut EditorState, clears_extend: bool) {
+pub(in crate::editor::commands::pipeline) fn step_clear_extend(
+    state: &mut EditorState,
+    clears_extend: bool,
+) {
     if clears_extend && state.mode() == Mode::Extend {
         state.set_mode(Mode::Normal);
     }

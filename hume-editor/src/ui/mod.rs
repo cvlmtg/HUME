@@ -199,7 +199,7 @@ pub(crate) fn build_pane(
 /// a rendered `Grid` region to a string for `insta`/plain assertions, and
 /// the dump itself is identical between the two overlay kinds.
 #[cfg(test)]
-pub(crate) fn symbols_in(buf: &hume_grid::Grid, area: hume_grid::Rect) -> String {
+pub(in crate::ui) fn symbols_in(buf: &hume_grid::Grid, area: hume_grid::Rect) -> String {
     (area.y..area.y + area.height)
         .map(|y| {
             let row: String = (area.x..area.x + area.width)

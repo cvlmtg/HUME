@@ -130,14 +130,14 @@ pub(crate) fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
 /// these to `default` when a theme omits it, so no custom fallback layer is
 /// needed here.
 #[derive(Clone, Copy)]
-pub(crate) struct PickerStyles {
+pub(in crate::ui::picker_panel) struct PickerStyles {
     pub(crate) background: ResolvedStyle,
     pub(crate) text: ResolvedStyle,
     pub(crate) selected: ResolvedStyle,
     pub(crate) cursor: ResolvedStyle,
 }
 
-pub(crate) fn picker_styles(theme: &Theme) -> PickerStyles {
+pub(in crate::ui::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
     let by = |name| theme.resolve_by_name(Scope(name));
     PickerStyles {
         background: by("ui.background"),
@@ -193,7 +193,7 @@ fn truncate_marked(s: &str, budget: usize, cut: TruncateEnd) -> std::borrow::Cow
 /// `matched/total` counter when it fits); the remaining rows are `state.rows`, with
 /// `state.selected_row` highlighted across the full inner width. `rows` is
 /// never re-windowed here — the store already scrolled it.
-pub(crate) fn draw_picker_panel(
+pub(in crate::ui::picker_panel) fn draw_picker_panel(
     canvas: &mut Canvas,
     state: &PickerViewState,
     styles: PickerStyles,
@@ -282,7 +282,7 @@ pub(crate) fn draw_picker_panel(
 /// Overlay provider painting the picker panel — registered per-pane (last,
 /// for top z-order, since the picker is full-modal and must sit above every
 /// other overlay). See [`super::build_pane`].
-pub(crate) struct PickerOverlay {
+pub(in crate::ui) struct PickerOverlay {
     pub(crate) data: Arc<RwLock<Option<PickerViewState>>>,
 }
 

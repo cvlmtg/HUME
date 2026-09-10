@@ -62,7 +62,7 @@ impl EditorColors {
         }
     }
 
-    pub(crate) fn from_theme(
+    pub(in crate::ui) fn from_theme(
         theme: &hume_engine::theme::Theme,
         mode: Option<hume_engine::types::EditorMode>,
     ) -> Self {
@@ -112,32 +112,10 @@ pub(crate) fn build_default_theme() -> hume_engine::theme::Theme {
     // A real `assert!`, not `debug_assert!`: this runs once at startup over
     // content fixed at compile time, so it costs nothing, and a `debug_assert`
     // would drop in release exactly the builds where a shipped-theme mistake
-    // reaches users. `build_snapshot_theme` below asserts the same way.
+    // reaches users. `crate::testing::build_snapshot_theme` asserts the same way.
     assert!(
         loaded.warnings.is_empty(),
         "embedded sand.toml produced load warnings: {:?}",
-        loaded.warnings
-    );
-    loaded.theme
-}
-
-/// `gruvbox.toml`, embedded for renderer snapshot tests that assert exact
-/// colors. Those tests exercise seam/junction/dimming *rendering mechanics*,
-/// not the default theme's palette — pinning them to a stable theme means
-/// retuning `sand.toml` (the compiled-in default) never forces an unrelated
-/// snapshot re-record. `gruvbox.toml` is a vendored upstream file rather
-/// than one HUME tunes for its own sake, so it stays stable for the same
-/// reason `sand.toml` doesn't serve this role.
-#[cfg(test)]
-const SNAPSHOT_THEME_TOML: &str = include_str!("../../../runtime/themes/gruvbox.toml");
-
-#[cfg(test)]
-pub(crate) fn build_snapshot_theme() -> hume_engine::theme::Theme {
-    let loaded = hume_engine::theme::loader::parse_theme(SNAPSHOT_THEME_TOML)
-        .expect("embedded gruvbox.toml must parse — file is compile-time embedded");
-    assert!(
-        loaded.warnings.is_empty(),
-        "embedded gruvbox.toml produced load warnings: {:?}",
         loaded.warnings
     );
     loaded.theme

@@ -237,7 +237,7 @@ impl EditorEvent {
     /// the only place `IntoSteelVal`/`json_to_steel` is invoked for events.
     /// Called at drain, after the `has_hook_handlers` early-exit, so an
     /// event nobody subscribes to never allocates a `SteelVal`.
-    pub(crate) fn steel_args(&self) -> Vec<SteelVal> {
+    pub(in crate::editor) fn steel_args(&self) -> Vec<SteelVal> {
         match self {
             EditorEvent::OnBufferOpen { buffer }
             | EditorEvent::OnBufferClose { buffer }

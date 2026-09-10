@@ -28,7 +28,7 @@ use hume_ops::search::{find_all_matches, search_match_info};
 
 /// Clear the active search state for buffer `bid`: drop the pattern,
 /// reset the match cache, and reset every pane's search cursor.
-pub(crate) fn clear_buffer_search(
+pub(in crate::editor) fn clear_buffer_search(
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     bid: BufferId,
@@ -48,7 +48,7 @@ pub(crate) fn clear_buffer_search(
 /// No-op when no search is active. Cache check uses direct field access
 /// to compare the pattern string by reference, avoiding `pattern_str.clone()`
 /// on the common cache-hit path.
-pub(crate) fn update_buffer_matches(buffers: &mut BufferStore, bid: BufferId) {
+pub(in crate::editor) fn update_buffer_matches(buffers: &mut BufferStore, bid: BufferId) {
     let buf = buffers.get_mut(bid);
 
     let Some(sp) = buf.search_pattern.as_ref() else {
@@ -87,7 +87,7 @@ pub(crate) fn update_buffer_matches(buffers: &mut BufferStore, bid: BufferId) {
 /// Takes `buffers: &BufferStore` and `pane_state: &mut ...` as separate
 /// parameters — the match-list reference and the cursor write are disjoint,
 /// so no intermediate owned variable is needed.
-pub(crate) fn update_pane_cursor(
+pub(in crate::editor::search::ops) fn update_pane_cursor(
     buffers: &BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pid: PaneId,
@@ -113,7 +113,7 @@ pub(crate) fn update_pane_cursor(
 
 /// Convenience: run `update_buffer_matches` + `update_pane_cursor` for a
 /// specific pane/buffer pair.
-pub(crate) fn sync_search_cache(
+pub(in crate::editor) fn sync_search_cache(
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pid: PaneId,
@@ -126,7 +126,7 @@ pub(crate) fn sync_search_cache(
 impl Editor {
     /// Accessor for the focused buffer's active search pattern (used in tests).
     #[cfg(test)]
-    pub(crate) fn search_pattern(&self) -> Option<&SearchPattern> {
+    pub(in crate::editor) fn search_pattern(&self) -> Option<&SearchPattern> {
         self.state
             .buffers
             .get(self.focused_buffer_id())
@@ -155,7 +155,7 @@ impl Editor {
 
     /// Recompute the match list and pane search cursor for the focused buffer,
     /// if stale. No-op when no search is active.
-    pub(crate) fn sync_search_cache(&mut self) {
+    pub(in crate::editor) fn sync_search_cache(&mut self) {
         let pid = self.state.focused_pane_id;
         let bid = self.focused_buffer_id();
         sync_search_cache(

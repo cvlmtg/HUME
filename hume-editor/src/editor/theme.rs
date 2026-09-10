@@ -29,7 +29,7 @@ use crate::editor::message_log::{MessageLog, Severity};
 /// `engine_view`, `message_log`, and `status_msg` are disjoint `Editor` fields;
 /// passing them separately lets the caller hold `&editor.settings.theme` for
 /// the `name` argument without cloning.
-pub(crate) fn load_theme_by_name(
+pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,

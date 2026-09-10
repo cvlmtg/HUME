@@ -23,7 +23,7 @@ use hume_platform::terminal::SharedTerm;
 /// `EventReader`, both cheap to clone — see its own doc in
 /// `hume_platform::terminal`) against that alternative's global state.
 #[derive(Clone)]
-pub(crate) enum Tui {
+pub(in crate::editor) enum Tui {
     /// [`Editor::run`](super::Editor::run) does not own the terminal: before
     /// and after the event loop, plus tests and headless `run_keys`.
     Off,
@@ -54,7 +54,7 @@ impl Tui {
     /// `On`/`OnHeadless` clone into the narrower [`ActiveTui`] shape a pushed
     /// `InlineOutput` frame carries forward. See [`ActiveTui`]'s own doc for
     /// why capturing this rather than re-reading `tui` later matters.
-    pub(crate) fn as_active(&self) -> Option<ActiveTui> {
+    pub(in crate::editor) fn as_active(&self) -> Option<ActiveTui> {
         match self {
             Tui::Off => None,
             Tui::On(term) => Some(ActiveTui::On(term.clone())),

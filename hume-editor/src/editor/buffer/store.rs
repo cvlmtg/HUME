@@ -53,14 +53,14 @@ impl BufferStore {
     }
 
     /// Current edit sequence — see the field doc.
-    pub(crate) fn edit_seq(&self) -> u64 {
+    pub(in crate::editor) fn edit_seq(&self) -> u64 {
         self.edit_seq
     }
 
     /// Advance the edit sequence by one. Called only from the `doc_ops`
     /// chokepoint, once per actual mutation (never on a no-op undo/redo at a
     /// history boundary, never on a read-only-refused edit).
-    pub(crate) fn bump_edit_seq(&mut self) {
+    pub(in crate::editor) fn bump_edit_seq(&mut self) {
         self.edit_seq += 1;
     }
 
@@ -87,7 +87,7 @@ impl BufferStore {
     /// for a deleted backing file uses `std::path::absolute` (no prefix),
     /// which would otherwise dedup-miss against an already-open buffer.
     /// Used by `:e` to deduplicate already-open files.
-    pub(crate) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
+    pub(in crate::editor) fn find_by_path(&self, path: &Path) -> Option<BufferId> {
         let needle = strip_unc_prefix_cow(path);
         self.buffers.iter().find_map(|(id, buf)| {
             buf.path()
@@ -101,7 +101,7 @@ impl BufferStore {
     /// Returns the first `BufferId` whose `buffer.label == Some(label)`.
     /// Used by `open_read_only_view` to reuse existing view buffers instead
     /// of accumulating duplicates.
-    pub(crate) fn find_by_label(&self, label: &str) -> Option<BufferId> {
+    pub(in crate::editor) fn find_by_label(&self, label: &str) -> Option<BufferId> {
         self.buffers
             .iter()
             .find_map(|(id, buf)| buf.label.as_deref().filter(|l| *l == label).map(|_| id))
@@ -115,19 +115,19 @@ impl BufferStore {
     }
 
     /// Infallible mutable getter.
-    pub(crate) fn get_mut(&mut self, id: BufferId) -> &mut Buffer {
+    pub(in crate::editor) fn get_mut(&mut self, id: BufferId) -> &mut Buffer {
         self.buffers
             .get_mut(id)
             .expect("BufferStore: unseeded BufferId")
     }
 
     /// Non-panicking getter — `None` for stale / unknown IDs.
-    pub(crate) fn try_get(&self, id: BufferId) -> Option<&Buffer> {
+    pub(in crate::editor) fn try_get(&self, id: BufferId) -> Option<&Buffer> {
         self.buffers.get(id)
     }
 
     /// Non-panicking mutable getter — `None` for stale / unknown IDs.
-    pub(crate) fn try_get_mut(&mut self, id: BufferId) -> Option<&mut Buffer> {
+    pub(in crate::editor) fn try_get_mut(&mut self, id: BufferId) -> Option<&mut Buffer> {
         self.buffers.get_mut(id)
     }
 
@@ -151,7 +151,7 @@ impl BufferStore {
     /// refresh or `:e!` must not look like an edit to paste-stamping, see its
     /// doc), this is per-buffer and fires for every text replacement
     /// `set_text` performs.
-    pub(crate) fn take_text_changed(&mut self) -> Vec<BufferId> {
+    pub(in crate::editor) fn take_text_changed(&mut self) -> Vec<BufferId> {
         let Self { order, buffers, .. } = self;
         order
             .iter()
@@ -171,7 +171,7 @@ impl BufferStore {
     /// Called from the `:set global` side-effect path and from the
     /// post-init.scm settings pickup — there is no per-buffer scope for
     /// this setting, so every buffer always tracks the same cap.
-    pub(crate) fn set_undo_levels_all(&mut self, levels: usize) {
+    pub(in crate::editor) fn set_undo_levels_all(&mut self, levels: usize) {
         for buf in self.buffers.values_mut() {
             buf.set_undo_levels(levels);
         }
@@ -181,7 +181,7 @@ impl BufferStore {
     /// global" — called by `:reload-config`'s reset so a `set-buffer-option!`
     /// from the previous `init.scm` (e.g. one fired from an `OnLanguageSet`
     /// hook) doesn't outlive the config that set it.
-    pub(crate) fn clear_overrides_all(&mut self) {
+    pub(in crate::editor) fn clear_overrides_all(&mut self) {
         for buf in self.buffers.values_mut() {
             buf.overrides = crate::editor::settings::BufferOverrides::default();
         }
@@ -211,7 +211,7 @@ impl BufferStore {
     /// runs `setup_buffer_syntax` at all — leaving the buffer highlighted
     /// from a grammar registry that no longer exists unless this clears it
     /// directly.
-    pub(crate) fn clear_languages_all(&mut self) {
+    pub(in crate::editor) fn clear_languages_all(&mut self) {
         for buf in self.buffers.values_mut() {
             buf.language = None;
             buf.language_explicit = false;
@@ -223,7 +223,7 @@ impl BufferStore {
     ///
     /// Returns the most-recently-used buffer excluding `id` (the recommended
     /// replacement target), or `None` if `id` was the only buffer.
-    pub(crate) fn close(&mut self, id: BufferId) -> Option<BufferId> {
+    pub(in crate::editor) fn close(&mut self, id: BufferId) -> Option<BufferId> {
         let replacement = self.mru_excluding(id);
         self.buffers.remove(id);
         self.order.retain(|&x| x != id);
@@ -235,13 +235,13 @@ impl BufferStore {
     /// from `Editor::detect_buffer_enter` (promote on focus) — never from a
     /// buffer-switch primitive directly, since a plain pane-focus move must
     /// promote too and only that observation point sees every path.
-    pub(crate) fn touch_mru(&mut self, id: BufferId) {
+    pub(in crate::editor) fn touch_mru(&mut self, id: BufferId) {
         self.mru.retain(|&x| x != id);
         self.mru.push(id);
     }
 
     /// The most-recently-used buffer that is not `id`.
-    pub(crate) fn mru_excluding(&self, id: BufferId) -> Option<BufferId> {
+    pub(in crate::editor) fn mru_excluding(&self, id: BufferId) -> Option<BufferId> {
         self.mru.iter().rev().find(|&&x| x != id).copied()
     }
 

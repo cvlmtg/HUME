@@ -33,7 +33,7 @@ pub(crate) enum RegisterPrefix {
 ///
 /// The kill-ring register (`'k'`) and black-hole register (`'b'`) are handled
 /// upstream in `resolve_explicit_register`; this function is not called for them.
-pub(crate) fn read_register_text<'a>(
+pub(in crate::editor) fn read_register_text<'a>(
     registers: &'a RegisterSet,
     clipboard: &mut SystemClipboard,
     name: char,
@@ -79,7 +79,7 @@ pub(crate) fn read_register_text<'a>(
 ///
 /// Returns `Some(warning)` if the clipboard write failed; the in-memory mirror
 /// is always updated regardless.
-pub(crate) fn write_register(
+pub(in crate::editor) fn write_register(
     registers: &mut RegisterSet,
     clipboard: &mut SystemClipboard,
     name: char,

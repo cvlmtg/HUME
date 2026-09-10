@@ -24,7 +24,7 @@ use crate::editor::error::CommandError;
 /// suffix) only takes effect in the no-arg reload branch: it discards unsaved
 /// changes and re-reads the file from disk. When a path is given, `force` is
 /// unused.
-pub(crate) fn typed_edit(
+pub(in crate::editor) fn typed_edit(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
@@ -103,7 +103,7 @@ pub(crate) fn typed_edit(
 /// back silent just because an earlier prompt was dismissed — see
 /// `DiskCheckTrigger::Explicit`. `force` has no effect: force accepting a
 /// reload is what the confirm's `[r]eload` choice (or `:e!`) is for.
-pub(crate) fn typed_checktime(
+pub(in crate::editor) fn typed_checktime(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -117,7 +117,7 @@ pub(crate) fn typed_checktime(
 /// - No arg: change to `$HOME`.
 /// - `path` given: `~` / env-var expansion applied first; relative paths
 ///   resolve against the current process cwd (which mirrors `editor.cwd`).
-pub(crate) fn typed_cd(
+pub(in crate::editor) fn typed_cd(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -141,7 +141,7 @@ pub(crate) fn typed_cd(
 }
 
 /// `:pwd` / `:print-working-directory` — display the current working directory.
-pub(crate) fn typed_pwd(
+pub(in crate::editor) fn typed_pwd(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -157,7 +157,7 @@ pub(crate) fn typed_pwd(
 ///
 /// If the buffer is dirty and `force` is false, returns an error.
 /// If it is the only buffer, it is replaced with a scratch buffer.
-pub(crate) fn typed_buffer_delete(
+pub(in crate::editor) fn typed_buffer_delete(
     ed: &mut Editor,
     _arg: Option<&str>,
     force: bool,
@@ -183,7 +183,7 @@ pub(crate) fn typed_buffer_delete(
 ///
 /// The `force` flag is accepted syntactically but has no effect — there is
 /// nothing to force on a plain buffer switch.
-pub(crate) fn typed_buffer(
+pub(in crate::editor) fn typed_buffer(
     ed: &mut Editor,
     arg: Option<&str>,
     _force: bool,
@@ -331,7 +331,7 @@ fn typed_buffer_step(ed: &mut Editor, step: BufferStep) -> Result<(), CommandErr
 }
 
 /// `:bnext` / `:bn` — switch to the next buffer in open-order.
-pub(crate) fn typed_bnext(
+pub(in crate::editor) fn typed_bnext(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,
@@ -340,7 +340,7 @@ pub(crate) fn typed_bnext(
 }
 
 /// `:bprev` / `:bp` — switch to the previous buffer in open-order.
-pub(crate) fn typed_bprev(
+pub(in crate::editor) fn typed_bprev(
     ed: &mut Editor,
     _arg: Option<&str>,
     _force: bool,

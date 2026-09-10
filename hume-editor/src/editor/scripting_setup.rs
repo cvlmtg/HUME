@@ -32,7 +32,7 @@ const MAX_EVENT_DRAIN: usize = 1000;
 /// `Editor::config_path`'s result. Carries the reason rather than collapsing
 /// it to `Option<PathBuf>` so callers (`init_scripting`, `typed_reload_config`)
 /// don't each have to re-derive it from `config_source` separately.
-pub(crate) enum ConfigPath {
+pub(in crate::editor) enum ConfigPath {
     /// The file to evaluate. `required` marks a `--config` override: the user
     /// asserted the file exists, so a missing one is an error (checked at
     /// `:reload-config` time in `init_scripting`) — where a missing default
@@ -62,7 +62,7 @@ impl Editor {
     /// goto-definition). *After* the effect loop, not before: a script that
     /// opens a buffer and registers its language in the same eval must have
     /// the registration land first.
-    pub(crate) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
+    pub(in crate::editor) fn apply_script_effects(&mut self, effects: Vec<Effect>) {
         let mut effects: std::collections::VecDeque<Effect> = effects.into();
         while let Some(effect) = effects.pop_front() {
             match effect {
@@ -130,7 +130,7 @@ impl Editor {
     /// which eval failed (a hook, a queued call, `init.scm`, a `runtime/`
     /// file) in the reported message; pass `""` for a caller with nothing to
     /// prefix.
-    pub(crate) fn apply_script_result(
+    pub(in crate::editor) fn apply_script_result(
         &mut self,
         result: Result<Vec<Effect>, hume_scripting::EvalError>,
         err_prefix: &str,
@@ -159,13 +159,13 @@ impl Editor {
     /// - `Warning` → push to `message_log` AND set `status_msg`
     /// - `Error`   → push to `message_log` AND set `status_msg`
     /// - `Trace`   → push to `message_log` only (not shown in statusline)
-    pub(crate) fn report(&mut self, severity: Severity, text: String) {
+    pub(in crate::editor) fn report(&mut self, severity: Severity, text: String) {
         self.state.report(severity, text);
     }
 
     /// Drain any pending `(log! …)` messages from the scripting host and
     /// report each one. No-op if scripting isn't initialized.
-    pub(crate) fn flush_script_messages(&mut self) {
+    pub(in crate::editor) fn flush_script_messages(&mut self) {
         let msgs = self
             .scripting
             .as_mut()
@@ -787,7 +787,7 @@ impl Editor {
     /// The `init.scm` this session evaluates — at startup and on every
     /// `:reload-config`, which must re-run the file the session booted from
     /// rather than falling back to the default one.
-    pub(crate) fn config_path(&self) -> ConfigPath {
+    pub(in crate::editor) fn config_path(&self) -> ConfigPath {
         match &self.config_source {
             ConfigSource::File(path) => ConfigPath::Resolved {
                 path: path.clone(),
@@ -849,7 +849,9 @@ fn to_editor_bind_mode(mode: hume_scripting::host::BindMode) -> crate::editor::k
 }
 
 /// Map scripting `LogLevel` → editor `Severity`.
-pub(crate) fn log_level_to_severity(level: hume_scripting::LogLevel) -> Severity {
+pub(in crate::editor::scripting_setup) fn log_level_to_severity(
+    level: hume_scripting::LogLevel,
+) -> Severity {
     use hume_scripting::LogLevel;
     match level {
         LogLevel::Info => Severity::Info,

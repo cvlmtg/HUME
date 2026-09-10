@@ -144,18 +144,18 @@ impl MessageLog {
     /// Lifetime `(errors, warnings)` pushed so far — see the field docs for
     /// why this, not `unseen_counts`, is the eviction-proof way to detect
     /// "were any new warnings/errors logged between two points in time".
-    pub(crate) fn totals(&self) -> (u64, u64) {
+    pub(in crate::editor) fn totals(&self) -> (u64, u64) {
         (self.total_errors, self.total_warnings)
     }
 
     /// All entries in chronological order. Used only in tests.
     #[cfg(test)]
-    pub(crate) fn entries(&self) -> impl ExactSizeIterator<Item = &LogEntry> {
+    pub(in crate::editor) fn entries(&self) -> impl ExactSizeIterator<Item = &LogEntry> {
         self.entries.iter()
     }
 
     /// Whether there are any entries that have not been seen via `:messages`.
-    pub(crate) fn has_unseen(&self) -> bool {
+    pub(in crate::editor) fn has_unseen(&self) -> bool {
         self.seen_up_to < self.entries.len()
     }
 
@@ -163,7 +163,7 @@ impl MessageLog {
     ///
     /// `Info` entries are never logged; `Trace` entries are not surfaced in
     /// the summary because they are supplemental detail, not actionable items.
-    pub(crate) fn unseen_counts(&self) -> (usize, usize) {
+    pub(in crate::editor::message_log) fn unseen_counts(&self) -> (usize, usize) {
         self.entries
             .iter()
             .skip(self.seen_up_to)
@@ -178,7 +178,7 @@ impl MessageLog {
     ///
     /// Called when the user opens `:messages`, or automatically after the
     /// statusline summary's keystroke budget elapses.
-    pub(crate) fn mark_all_seen(&mut self) {
+    pub(in crate::editor) fn mark_all_seen(&mut self) {
         self.seen_up_to = self.entries.len();
     }
 
@@ -227,7 +227,9 @@ impl MessageLog {
     /// `[messages]` is a synthetic, path-less buffer, so `detect_language`
     /// never attaches a grammar to it (and a grammar for `[severity] text`
     /// lines would be absurd anyway).
-    pub(crate) fn format_with_spans(&self) -> (String, Vec<(usize, usize, &'static str)>) {
+    pub(in crate::editor) fn format_with_spans(
+        &self,
+    ) -> (String, Vec<(usize, usize, &'static str)>) {
         if self.entries.is_empty() {
             return (String::new(), Vec::new());
         }
@@ -263,7 +265,7 @@ impl MessageLog {
     /// Test-only convenience over [`format_with_spans`] for assertions that
     /// only care about the rendered text.
     #[cfg(test)]
-    pub(crate) fn format_for_display(&self) -> String {
+    pub(in crate::editor) fn format_for_display(&self) -> String {
         self.format_with_spans().0
     }
 }

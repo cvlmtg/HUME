@@ -23,7 +23,7 @@ use super::Editor;
 /// One source of asynchronous work the event loop must wake for.
 ///
 /// Implemented by the LSP backend and the timer wheel.
-pub(crate) trait AsyncSource {
+pub(in crate::editor) trait AsyncSource {
     /// Next instant the event loop should wake for this source, if any.
     /// `None` means this source needs no wake — the loop may block on input.
     fn next_wake(&self, now: Instant) -> Option<Instant>;
@@ -42,7 +42,7 @@ impl Editor {
     /// source has a wake instant) is `None` — the wait primitive blocks
     /// until real input or a background-thread wake, so the editor never
     /// busy-polls at rest.
-    pub(crate) fn wake_timeout(&self) -> Option<Duration> {
+    pub(in crate::editor) fn wake_timeout(&self) -> Option<Duration> {
         let now = Instant::now();
         self.async_sources()
             .iter()

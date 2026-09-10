@@ -25,7 +25,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
 /// char at `pos`.
-pub(crate) struct InlayHintEntry {
+pub(in crate::editor) struct InlayHintEntry {
     pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) before: bool,
@@ -45,7 +45,7 @@ pub(crate) struct InlayHintEntry {
 /// straight into `hume_engine::builtins::sign_column::Sign::text` (also
 /// `Arc<str>`) for every visible line, every frame — a refcount bump
 /// instead of a fresh allocation per sign per frame.
-pub(crate) struct SignEntry {
+pub(in crate::editor) struct SignEntry {
     pub(crate) pos: CharOffset,
     pub(crate) text: std::sync::Arc<str>,
     pub(crate) scope: ScopeId,
@@ -69,7 +69,7 @@ pub(crate) struct SignEntry {
 /// type's `segments` are unvalidated char offsets naming scopes, this one's
 /// are validated byte offsets naming already-interned `ScopeId`s —
 /// deliberately different shapes, not merely a field rename.
-pub(crate) struct VirtualLineEntry {
+pub(in crate::editor) struct VirtualLineEntry {
     pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) before: bool,
@@ -87,7 +87,7 @@ pub(crate) struct VirtualLineEntry {
 /// first client, not its owner, same as every other kind here is to LSP.
 /// `scope` is interned by `host_impl.rs`'s `set_eol_text` at the
 /// `set-eol-text!` boundary.
-pub(crate) struct EolTextEntry {
+pub(in crate::editor) struct EolTextEntry {
     pub(crate) pos: CharOffset,
     pub(crate) text: String,
     pub(crate) scope: ScopeId,
@@ -96,7 +96,7 @@ pub(crate) struct EolTextEntry {
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`,
 /// interned by `host_impl.rs`'s `set_extra_highlights` at the
 /// `set-extra-highlights!` boundary.
-pub(crate) struct ExtraHighlightEntry {
+pub(in crate::editor) struct ExtraHighlightEntry {
     pub(crate) start: CharOffset,
     pub(crate) end: CharOffset,
     pub(crate) scope: ScopeId,
@@ -113,7 +113,7 @@ pub(crate) struct ExtraHighlightEntry {
 /// name, never claim a reserved column the way a registered sign source does.
 /// `scope` is interned by `host_impl.rs`'s `set_line_backgrounds` at the
 /// `set-line-backgrounds!` boundary.
-pub(crate) struct LineBgEntry {
+pub(in crate::editor) struct LineBgEntry {
     pub(crate) pos: CharOffset,
     pub(crate) scope: ScopeId,
 }
@@ -220,7 +220,7 @@ impl PointAnchored for LineBgEntry {
 /// `PointAnchored`'s doc) — drives [`SourceStore::remap_ranges`]' batch
 /// `ChangeSet::map_ranges` call. `Positioned::pos()` supplies the range's
 /// start; this supplies the end.
-pub(crate) trait RangeAnchored: Positioned {
+pub(in crate::editor) trait RangeAnchored: Positioned {
     fn end(&self) -> CharOffset;
     fn set_range(&mut self, start: CharOffset, end: CharOffset);
 }
@@ -243,7 +243,7 @@ impl RangeAnchored for ExtraHighlightEntry {
 /// — keyed by `ServerId`, otherwise the exact same shape (per-buffer,
 /// per-source, wholesale-replace, remap-through-a-`ChangeSet`) — can wrap
 /// this instead of hand-rolling the same write/remap logic a second time.
-pub(crate) struct SourceStore<K, T> {
+pub(in crate::editor) struct SourceStore<K, T> {
     by_buffer: FxHashMap<BufferId, Vec<(K, Vec<T>)>>,
 }
 
@@ -260,7 +260,10 @@ impl<K, T> SourceStore<K, T> {
     /// primitive `for_buffer` and a per-source-structure caller (e.g.
     /// `DiagnosticsStore::for_range`'s per-source `partition_point` prune)
     /// both build on.
-    pub(crate) fn groups_for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &[T])> {
+    pub(in crate::editor) fn groups_for_buffer(
+        &self,
+        bid: BufferId,
+    ) -> impl Iterator<Item = (&K, &[T])> {
         self.by_buffer
             .get(&bid)
             .into_iter()
@@ -276,7 +279,7 @@ impl<K, T> SourceStore<K, T> {
     /// directly, so two sources anchored to the same line render in a
     /// name-deterministic order rather than whichever call `set-*!` happened
     /// to land first this session; every other kind's caller discards it.
-    pub(crate) fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &T)> {
+    pub(in crate::editor) fn for_buffer(&self, bid: BufferId) -> impl Iterator<Item = (&K, &T)> {
         self.groups_for_buffer(bid)
             .flat_map(|(k, entries)| entries.iter().map(move |e| (k, e)))
     }
@@ -307,7 +310,7 @@ impl<K, T> SourceStore<K, T> {
     /// Drops every entry for `bid`. Returns whether `bid` had an entry to
     /// drop — `DiagnosticsStore::remove_buffer` uses this to only bump its
     /// generation when the removal actually changed anything.
-    pub(crate) fn remove_buffer(&mut self, bid: BufferId) -> bool {
+    pub(in crate::editor) fn remove_buffer(&mut self, bid: BufferId) -> bool {
         self.by_buffer.remove(&bid).is_some()
     }
 
@@ -330,7 +333,10 @@ impl<K, T> SourceStore<K, T> {
     /// `DiagnosticsStore::remove_server`'s sole caller — decoration kinds
     /// have no per-source removal (a source only ever replaces its own
     /// entries wholesale via `set`, never disappears on its own).
-    pub(crate) fn retain_sources(&mut self, mut keep: impl FnMut(&K) -> bool) -> Vec<BufferId> {
+    pub(in crate::editor) fn retain_sources(
+        &mut self,
+        mut keep: impl FnMut(&K) -> bool,
+    ) -> Vec<BufferId> {
         let mut touched = Vec::new();
         self.by_buffer.retain(|&bid, entry| {
             let before = entry.len();
@@ -359,7 +365,7 @@ impl<K, T: Positioned> SourceStore<K, T> {
     /// range-anchored kind whose span can start before `range` (extra
     /// highlights; `DiagnosticsStore::for_range_unsorted`, which prunes only
     /// the upper bound for exactly this reason) must not build on this.
-    pub(crate) fn groups_in_range(
+    pub(in crate::editor::decorations) fn groups_in_range(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -376,7 +382,7 @@ impl<K, T: Positioned> SourceStore<K, T> {
     /// build on instead when a caller needs the source name (e.g.
     /// [`DecorationStores::signs_in_range`], to resolve a group's registered
     /// slot once rather than once per entry).
-    pub(crate) fn in_range(
+    pub(in crate::editor::decorations) fn in_range(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -392,7 +398,7 @@ impl<K: Ord, T: Positioned> SourceStore<K, T> {
     /// — a binary-search insert rather than find-or-push — so
     /// `for_buffer`'s iteration order is deterministic by construction
     /// instead of "whichever source called `set` first this session".
-    pub(crate) fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
+    pub(in crate::editor) fn set(&mut self, source: K, bid: BufferId, mut entries: Vec<T>) {
         entries.sort_by_key(Positioned::pos);
         let slot = self.by_buffer.entry(bid).or_default();
         match slot.binary_search_by(|(s, _)| s.cmp(&source)) {
@@ -441,7 +447,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
     /// (`DiagnosticsStore::remap_through`) was a near-verbatim copy of this
     /// method against `StoredDiag` instead of `ExtraHighlightEntry` — this
     /// generic version now backs both.
-    pub(crate) fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
+    pub(in crate::editor) fn remap_ranges(&mut self, bid: BufferId, cs: &ChangeSet) -> bool {
         let mut touched = false;
         for spans in self.sources_mut(bid) {
             if spans.is_empty() {
@@ -539,7 +545,7 @@ impl DecorationStores {
     /// guarantees no stamp value is ever reused for the life of the
     /// session, so that ABA collision can't happen no matter how many
     /// reloads a pane sits out.
-    pub(crate) fn reset(prior_clock: u64) -> Self {
+    pub(in crate::editor) fn reset(prior_clock: u64) -> Self {
         Self {
             clock: prior_clock.wrapping_add(1),
             ..Default::default()
@@ -558,7 +564,7 @@ impl DecorationStores {
     /// The shared clock backing every buffer's stamp — `:reload-config`
     /// carries this forward into the next store via `reset`. Not a
     /// generation to compare a buffer's stamp against; see `generation`.
-    pub(crate) fn clock(&self) -> u64 {
+    pub(in crate::editor) fn clock(&self) -> u64 {
         self.clock
     }
 
@@ -567,12 +573,12 @@ impl DecorationStores {
     /// `reset`). Bumped by every `set_*` call and `remove_buffer` for `bid`,
     /// and by `remap_through` when a remap actually moved one of `bid`'s
     /// entries.
-    pub(crate) fn generation(&self, bid: BufferId) -> u64 {
+    pub(in crate::editor) fn generation(&self, bid: BufferId) -> u64 {
         self.generation.get(&bid).copied().unwrap_or(0)
     }
 
     /// Replaces `source`'s inlay hints for `bid` wholesale.
-    pub(crate) fn set_inlay_hints(
+    pub(in crate::editor) fn set_inlay_hints(
         &mut self,
         source: String,
         bid: BufferId,
@@ -586,7 +592,7 @@ impl DecorationStores {
     /// tests that check what a server published rather than what a viewport
     /// shows. Production reads go through [`Self::inlay_hints_in_range`].
     #[cfg(test)]
-    pub(crate) fn inlay_hints_for_buffer(
+    pub(in crate::editor) fn inlay_hints_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = &InlayHintEntry> {
@@ -595,7 +601,7 @@ impl DecorationStores {
 
     /// Inlay hints for `bid` anchored inside `range` — the per-frame render
     /// bridge's view, which only ever wants the viewport's worth.
-    pub(crate) fn inlay_hints_in_range(
+    pub(in crate::editor) fn inlay_hints_in_range(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -604,13 +610,18 @@ impl DecorationStores {
     }
 
     /// Replaces `source`'s signs for `bid` wholesale.
-    pub(crate) fn set_signs(&mut self, source: String, bid: BufferId, signs: Vec<SignEntry>) {
+    pub(in crate::editor) fn set_signs(
+        &mut self,
+        source: String,
+        bid: BufferId,
+        signs: Vec<SignEntry>,
+    ) {
         self.signs.set(source, bid, signs);
         self.touch(bid);
     }
 
     #[cfg(test)]
-    pub(crate) fn signs_for(&self, source: &str, bid: BufferId) -> &[SignEntry] {
+    pub(in crate::editor) fn signs_for(&self, source: &str, bid: BufferId) -> &[SignEntry] {
         self.signs.entries_for(source, bid)
     }
 
@@ -626,7 +637,7 @@ impl DecorationStores {
     /// buffer's signs being cleared alongside it (`Self::remove_buffer`) —
     /// so every group this sees has a real slot; the `expect` documents that
     /// invariant at the one place it's owned, rather than at every caller.
-    pub(crate) fn signs_in_range(
+    pub(in crate::editor) fn signs_in_range(
         &self,
         bid: BufferId,
         range: ExclusiveRange<CharOffset>,
@@ -651,7 +662,12 @@ impl DecorationStores {
     /// this is the common case and skips the remove-then-resort dance
     /// entirely rather than repeating it every frame for nothing. See
     /// [`Self::sign_slot`] for what a registration buys a caller.
-    pub(crate) fn register_sign_source(&mut self, name: String, bid: BufferId, priority: i64) {
+    pub(in crate::editor) fn register_sign_source(
+        &mut self,
+        name: String,
+        bid: BufferId,
+        priority: i64,
+    ) {
         let sources = self.sign_sources.entry(bid).or_default();
         if let Some(idx) = sources.iter().position(|(n, _)| *n == name) {
             if sources[idx].1 == priority {
@@ -674,7 +690,7 @@ impl DecorationStores {
     /// buffer's life and frame-to-frame: it depends only on the registry,
     /// never on which lines currently carry a sign, so a channel's column
     /// never shifts as signs come and go.
-    pub(crate) fn sign_slot(&self, bid: BufferId, name: &str) -> Option<usize> {
+    pub(in crate::editor) fn sign_slot(&self, bid: BufferId, name: &str) -> Option<usize> {
         self.sign_sources
             .get(&bid)?
             .iter()
@@ -684,12 +700,12 @@ impl DecorationStores {
     /// Number of sign sources registered for `bid` — the bare slot count
     /// `SignColumnConfig::slots_for` auto-sizes to (before the `+1` padding
     /// column `SignColumn::width_for_slots` adds).
-    pub(crate) fn sign_source_count(&self, bid: BufferId) -> usize {
+    pub(in crate::editor) fn sign_source_count(&self, bid: BufferId) -> usize {
         self.sign_sources.get(&bid).map_or(0, Vec::len)
     }
 
     /// Replaces `source`'s virtual lines for `bid` wholesale.
-    pub(crate) fn set_virtual_lines(
+    pub(in crate::editor) fn set_virtual_lines(
         &mut self,
         source: String,
         bid: BufferId,
@@ -701,7 +717,7 @@ impl DecorationStores {
 
     /// All virtual-line entries for `bid`, across every source — the render
     /// write side merges them all into one per-line bucket.
-    pub(crate) fn virtual_lines_for_buffer(
+    pub(in crate::editor) fn virtual_lines_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = &VirtualLineEntry> {
@@ -709,12 +725,16 @@ impl DecorationStores {
     }
 
     #[cfg(test)]
-    pub(crate) fn virtual_lines_for(&self, source: &str, bid: BufferId) -> &[VirtualLineEntry] {
+    pub(in crate::editor) fn virtual_lines_for(
+        &self,
+        source: &str,
+        bid: BufferId,
+    ) -> &[VirtualLineEntry] {
         self.virtual_lines.entries_for(source, bid)
     }
 
     /// Replaces `source`'s EOL text for `bid` wholesale.
-    pub(crate) fn set_eol_text(
+    pub(in crate::editor) fn set_eol_text(
         &mut self,
         source: String,
         bid: BufferId,
@@ -728,7 +748,7 @@ impl DecorationStores {
     /// their source name — the render write side needs the name for a
     /// deterministic tie-break when a remap collapses two sources' entries
     /// onto the same line (mirrors `line_backgrounds_for_buffer`).
-    pub(crate) fn eol_text_for_buffer(
+    pub(in crate::editor) fn eol_text_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &EolTextEntry)> {
@@ -736,7 +756,7 @@ impl DecorationStores {
     }
 
     /// Replaces `source`'s line backgrounds for `bid` wholesale.
-    pub(crate) fn set_line_backgrounds(
+    pub(in crate::editor) fn set_line_backgrounds(
         &mut self,
         source: String,
         bid: BufferId,
@@ -747,14 +767,18 @@ impl DecorationStores {
     }
 
     #[cfg(test)]
-    pub(crate) fn line_backgrounds_for(&self, source: &str, bid: BufferId) -> &[LineBgEntry] {
+    pub(in crate::editor) fn line_backgrounds_for(
+        &self,
+        source: &str,
+        bid: BufferId,
+    ) -> &[LineBgEntry] {
         self.line_backgrounds.entries_for(source, bid)
     }
 
     /// All line-background entries for `bid`, across every source, paired
     /// with their source name — the render write side needs the name for a
     /// deterministic tie-break when two sources tint the same line.
-    pub(crate) fn line_backgrounds_for_buffer(
+    pub(in crate::editor) fn line_backgrounds_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = (&str, &LineBgEntry)> {
@@ -764,7 +788,7 @@ impl DecorationStores {
     }
 
     /// Replaces `source`'s extra highlights for `bid` wholesale.
-    pub(crate) fn set_extra_highlights(
+    pub(in crate::editor) fn set_extra_highlights(
         &mut self,
         source: String,
         bid: BufferId,
@@ -775,7 +799,7 @@ impl DecorationStores {
     }
 
     #[cfg(test)]
-    pub(crate) fn extra_highlights_for(
+    pub(in crate::editor) fn extra_highlights_for(
         &self,
         source: &str,
         bid: BufferId,
@@ -785,7 +809,7 @@ impl DecorationStores {
 
     /// All extra-highlight entries for `bid`, across every source — the
     /// render write side merges them all into one highlight-tier bucket.
-    pub(crate) fn extra_highlights_for_buffer(
+    pub(in crate::editor) fn extra_highlights_for_buffer(
         &self,
         bid: BufferId,
     ) -> impl Iterator<Item = &ExtraHighlightEntry> {
@@ -801,7 +825,7 @@ impl DecorationStores {
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so a kind can never silently go
     /// unreported to `has_any`'s callers.
-    pub(crate) fn has_any(&self, bid: BufferId) -> bool {
+    pub(in crate::editor) fn has_any(&self, bid: BufferId) -> bool {
         let Self {
             inlay_hints,
             signs,
@@ -838,7 +862,7 @@ impl DecorationStores {
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so closing or reloading a buffer can
     /// never leave a stale kind behind.
-    pub(crate) fn remove_buffer(&mut self, bid: BufferId) {
+    pub(in crate::editor) fn remove_buffer(&mut self, bid: BufferId) {
         let Self {
             inlay_hints,
             signs,
@@ -876,7 +900,7 @@ impl DecorationStores {
     /// Exhaustive destructuring, no `..`: a new decoration kind fails to
     /// compile here until it is listed, so a kind can never silently skip
     /// the remap chokepoint and drift out of sync with its buffer's edits.
-    pub(crate) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
+    pub(in crate::editor) fn remap_through(&mut self, bid: BufferId, cs: &ChangeSet) {
         let Self {
             inlay_hints,
             signs,

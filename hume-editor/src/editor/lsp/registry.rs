@@ -16,11 +16,11 @@ use crate::editor::{Editor, Severity};
 /// `LanguageName -> [registration name]` map alongside
 /// it — this alias exists so that future re-key finds every language-keyed
 /// signature by type, not by re-reading every `String` in this module.
-pub(crate) type LanguageName = String;
+pub(in crate::editor::lsp) type LanguageName = String;
 
 /// Config recorded by one `register-lsp-server!` call, keyed by language.
 #[derive(Debug, Clone)]
-pub(crate) struct LspServerConfig {
+pub(in crate::editor::lsp) struct LspServerConfig {
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) root_markers: Vec<String>,
@@ -43,7 +43,11 @@ pub(crate) struct LspServerConfig {
 /// if none match. `Path::ancestors()` yields `file`'s parent first, then
 /// each successively shorter prefix up to (and including) the filesystem
 /// root, so the nearest marker wins.
-pub(crate) fn resolve_root(file: &Path, markers: &[String], cwd: &Path) -> PathBuf {
+pub(in crate::editor::lsp::registry) fn resolve_root(
+    file: &Path,
+    markers: &[String],
+    cwd: &Path,
+) -> PathBuf {
     let start = file.parent().unwrap_or(cwd);
     for dir in start.ancestors() {
         if markers.iter().any(|m| dir.join(m).exists()) {

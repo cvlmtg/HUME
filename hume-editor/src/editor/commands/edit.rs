@@ -26,7 +26,7 @@ use crate::editor::error::CommandError;
 ///
 /// **Bare default** (no `"<reg>` prefix): pushes to the kill ring only.
 /// **Explicit register**: routes through `write_register`.
-pub(crate) fn cmd_delete(
+pub(in crate::editor) fn cmd_delete(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -52,7 +52,7 @@ pub(crate) fn cmd_delete(
 /// Unlike `d`, a trailing `\n` at the end of a selection is not deleted — `c`
 /// clears line content but keeps the line. The yank is trimmed accordingly so
 /// the kill-ring entry matches what was removed (no trailing `\n`).
-pub(crate) fn cmd_change(
+pub(in crate::editor) fn cmd_change(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -111,7 +111,7 @@ pub(crate) fn cmd_change(
 /// stashed insertion, or if a later mutation (any edit, undo, or redo) has
 /// moved the buffer's `text_gen` past the stamp — see
 /// [`crate::editor::buffer::LastInsert`].
-pub(crate) fn cmd_select_last_insertion(
+pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -160,7 +160,7 @@ pub(crate) fn cmd_select_last_insertion(
 ///
 /// **Bare default**: writes to the system clipboard AND pushes to the kill ring.
 /// **Explicit register**: routes through `write_register`.
-pub(crate) fn cmd_yank(
+pub(in crate::editor) fn cmd_yank(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -212,7 +212,7 @@ fn history_step(
     Ok(())
 }
 
-pub(crate) fn cmd_undo(
+pub(in crate::editor) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -228,7 +228,7 @@ pub(crate) fn cmd_undo(
     )
 }
 
-pub(crate) fn cmd_redo(
+pub(in crate::editor) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -247,7 +247,7 @@ pub(crate) fn cmd_redo(
 // ── Replace / surround ────────────────────────────────────────────────────────
 
 /// Replace every character in each selection with the next typed character.
-pub(crate) fn cmd_replace(
+pub(in crate::editor) fn cmd_replace(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -260,7 +260,7 @@ pub(crate) fn cmd_replace(
 }
 
 /// Join lines inside each selection and select the inserted spaces.
-pub(crate) fn cmd_join_lines_select_spaces(
+pub(in crate::editor) fn cmd_join_lines_select_spaces(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -271,7 +271,7 @@ pub(crate) fn cmd_join_lines_select_spaces(
 }
 
 /// Align each selection's anchor to the primary selection's anchor column.
-pub(crate) fn cmd_align_selections(
+pub(in crate::editor) fn cmd_align_selections(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -290,7 +290,7 @@ pub(crate) fn cmd_align_selections(
 }
 
 /// Indent every line touched by a selection by `count` levels (`>`).
-pub(crate) fn cmd_indent(
+pub(in crate::editor) fn cmd_indent(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -305,7 +305,7 @@ pub(crate) fn cmd_indent(
 }
 
 /// Unindent every line touched by a selection by `count` levels (`<`).
-pub(crate) fn cmd_unindent(
+pub(in crate::editor) fn cmd_unindent(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -327,7 +327,7 @@ pub(crate) fn cmd_unindent(
 /// operation by name: leaving it on the built-in word rule would mean `b`
 /// then `d` deletes a whole hyphenated run while Ctrl-W deletes only the
 /// last piece — a split a user would notice within a minute.
-pub(crate) fn cmd_delete_word_backward(
+pub(in crate::editor) fn cmd_delete_word_backward(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
@@ -342,7 +342,7 @@ pub(crate) fn cmd_delete_word_backward(
 }
 
 /// Wrap every selection with a pair determined by the next typed character.
-pub(crate) fn cmd_surround_add(
+pub(in crate::editor) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,

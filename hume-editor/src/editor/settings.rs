@@ -327,7 +327,8 @@ pub(crate) enum Scope {
 impl Scope {
     /// Every scope, in the order `:set`'s scope-phase completion offers them
     /// (alphabetical, applied by the caller).
-    pub(crate) const ALL: &'static [Scope] = &[Scope::Global, Scope::Buffer, Scope::Pane];
+    pub(in crate::editor) const ALL: &'static [Scope] =
+        &[Scope::Global, Scope::Buffer, Scope::Pane];
 
     /// The wire-format string for this scope — the single source `Display`
     /// delegates to and completion/error messages format with, so the two
@@ -365,18 +366,18 @@ impl FromStr for Scope {
 /// section for why) — this constant is the single source `typed_set` and
 /// `completion::set` compare against, so the two special cases can't drift
 /// on the literal.
-pub(crate) const LANGUAGE_KEY: &str = "language";
+pub(in crate::editor) const LANGUAGE_KEY: &str = "language";
 
 /// The `:set`/completion key for the active theme — declared as a
 /// `define_settings!` entry (below), but also matched directly at a few
 /// non-macro call sites (`typed_theme`, completion, `resync_derived_state`'s
 /// theme-reload branch), so this constant keeps those literals from drifting
 /// off the macro's own key string.
-pub(crate) const THEME_KEY: &str = "theme";
+pub(in crate::editor) const THEME_KEY: &str = "theme";
 
 /// Same rationale as [`THEME_KEY`], for `wrap-mode`'s non-macro call sites
 /// (completion, `typed_set`'s pane-scope handler).
-pub(crate) const WRAP_MODE_KEY: &str = "wrap-mode";
+pub(in crate::editor) const WRAP_MODE_KEY: &str = "wrap-mode";
 
 // ── Parser helper ─────────────────────────────────────────────────────────────
 
@@ -673,7 +674,7 @@ macro_rules! define_settings {
         /// arm checks against via `debug_assert!`, so a key that declares a
         /// resync effect but has no matching arm there fails loudly instead
         /// of silently doing nothing.
-        pub(crate) fn has_declared_resync(key: &str) -> bool {
+        pub(in crate::editor) fn has_declared_resync(key: &str) -> bool {
             match key {
                 $( $( $gkey => $gresync, )? )*
                 _ => false,
@@ -725,7 +726,7 @@ macro_rules! define_settings {
         /// key not declared there — notably `"language"`, which has no
         /// generic storage and is handled entirely by `typed_set`'s own
         /// special case, never through this table.
-        pub(crate) fn setting_scopes(key: &str) -> &'static [Scope] {
+        pub(in crate::editor) fn setting_scopes(key: &str) -> &'static [Scope] {
             match key {
                 $( $gkey => &[$($gscope),+], )*
                 $( $bkey => &[$($bscope),+], )*
@@ -745,7 +746,7 @@ macro_rules! define_settings {
         /// [`crate::editor::completion::SetCompleter`] to enumerate key
         /// candidates, filtered further by [`setting_scopes`] against the
         /// chosen scope.
-        pub(crate) fn all_setting_keys() -> &'static [&'static str] {
+        pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
             &[$($gkey,)* $($bkey,)* $($skey,)* $($mkey,)*]
         }
 
@@ -759,7 +760,7 @@ macro_rules! define_settings {
         /// [`crate::editor::completion::SetCompleter`]'s value completion)
         /// instead of needing a hand-copied key list. `manual_keys` never
         /// declare a `parser:`, so this only checks global/buffer/subfield.
-        pub(crate) fn is_bool_setting(key: &str) -> bool {
+        pub(in crate::editor) fn is_bool_setting(key: &str) -> bool {
             match key {
                 $( $gkey => stringify!($gparser) == "bool", )*
                 $( $bkey => stringify!($bparser) == "bool", )*
@@ -1029,7 +1030,7 @@ pub(crate) fn format_statusline(cfg: &StatusLineConfig) -> String {
 /// `editor::completion::set::static_value_candidates`), so the two can never
 /// drift out of sync. Mirrors the `WhitespaceRender::VALUES` pattern
 /// (`hume-engine/src/pane.rs`) used by the sibling `space`/`tab` settings.
-pub(crate) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
+pub(in crate::editor) const SHOW_NEWLINE_VALUES: &[&str] = &["none", "all"];
 
 /// Parse the `whitespace-newline` wire format. Unlike `space`/`tab`, a
 /// newline is inherently always at end-of-line, so there's no meaningful
@@ -1060,7 +1061,7 @@ impl BufferOverrides {
     /// when no buffer override is set for that sub-field. This lets a buffer
     /// override just one sub-field (e.g. `space`) while still inheriting the
     /// global values for the others.
-    pub(crate) fn whitespace(&self, global: &EditorSettings) -> WhitespaceConfig {
+    pub(in crate::editor) fn whitespace(&self, global: &EditorSettings) -> WhitespaceConfig {
         WhitespaceConfig {
             space: self.whitespace_space.unwrap_or(global.whitespace.space),
             tab: self.whitespace_tab.unwrap_or(global.whitespace.tab),
@@ -1074,7 +1075,10 @@ impl BufferOverrides {
     ///
     /// The pair list itself is a fixed constant (`hume_ops::auto_pairs::DEFAULT_PAIRS`)
     /// — only `auto-pairs-enabled` is an actual per-buffer setting.
-    pub(crate) fn auto_pairs_ref(&self, global: &EditorSettings) -> (bool, &'static [Pair]) {
+    pub(in crate::editor) fn auto_pairs_ref(
+        &self,
+        global: &EditorSettings,
+    ) -> (bool, &'static [Pair]) {
         (
             self.auto_pairs_enabled(global),
             hume_ops::auto_pairs::DEFAULT_PAIRS,

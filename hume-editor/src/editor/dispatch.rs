@@ -15,7 +15,7 @@ use super::{Editor, Severity, commands};
 /// Per-dispatch context assembled by the key handler and passed through
 /// [`Editor::dispatch`].
 #[derive(Debug, Clone)]
-pub(crate) struct CmdCtx {
+pub(in crate::editor) struct CmdCtx {
     /// Numeric count prefix. `None` means "no count was typed" — a bare
     /// keyboard press, which visual-move commands read as one visual line
     /// (`state.explicit_count`, set from this by `run_native_body`). Producible

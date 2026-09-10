@@ -38,7 +38,7 @@ impl CommandError {
     /// Use this when the user asked for something not currently possible
     /// (search found nothing, `:b` named a buffer that isn't open, `:set`
     /// got a typo'd key) rather than when an attempted operation failed.
-    pub(crate) fn transient(msg: impl Into<String>) -> Self {
+    pub(in crate::editor) fn transient(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
             severity: Severity::Info,
@@ -46,12 +46,12 @@ impl CommandError {
     }
 
     /// The human-readable error message.
-    pub(crate) fn message(&self) -> &str {
+    pub(in crate::editor) fn message(&self) -> &str {
         &self.message
     }
 
     /// The severity this error should be reported at.
-    pub(crate) fn severity(&self) -> Severity {
+    pub(in crate::editor) fn severity(&self) -> Severity {
         self.severity
     }
 }

@@ -15,9 +15,9 @@ use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use crate::editor::{Editor, EditorState};
 use crate::lock_ext::LockExt;
 
-pub(crate) use item::StoredCompletionItem;
+pub(in crate::editor) use item::StoredCompletionItem;
 
-pub(crate) struct CompletionSession {
+pub(in crate::editor) struct CompletionSession {
     bid: BufferId,
     /// Pane the session began in — `accept` only proceeds while this pane is
     /// still focused. A completion resolved against a pane the user has
@@ -80,7 +80,7 @@ pub(crate) struct CompletionSession {
 /// Insert-mode UI state for an open completion session — kept separate from
 /// `CompletionSession` itself (which deliberately has no `selected`) so the
 /// session's filtering/accept logic stays free of rendering concerns.
-pub(crate) struct CompletionMenuUi {
+pub(in crate::editor) struct CompletionMenuUi {
     pub(crate) selected: usize,
 }
 
@@ -127,7 +127,7 @@ impl CompletionSession {
     /// `len_before`/`len_after` check is a release `assert_eq!`, not a
     /// `debug_assert!`). The caller must dismiss the session in that case —
     /// there's no shorter edit history to fall back to.
-    pub(crate) fn observe_edit(&mut self, cs: &ChangeSet) -> bool {
+    pub(in crate::editor) fn observe_edit(&mut self, cs: &ChangeSet) -> bool {
         if cs.len_before() != self.cs_since_begin.len_after() {
             return false;
         }
@@ -137,7 +137,7 @@ impl CompletionSession {
 
     /// The server's `isIncomplete` flag from the response that began this
     /// session — gates `on-completion-refilter`.
-    pub(crate) fn incomplete(&self) -> bool {
+    pub(in crate::editor) fn incomplete(&self) -> bool {
         self.incomplete
     }
 
@@ -165,7 +165,7 @@ impl CompletionSession {
     /// race (the async completion response landed after the user switched
     /// panes), not a caller bug, so this is silently absorbed by the caller
     /// rather than raised as a Steel error.
-    pub(crate) fn begin(
+    pub(in crate::editor) fn begin(
         state: &EditorState,
         bid: BufferId,
         items: Vec<StoredCompletionItem>,
@@ -199,7 +199,7 @@ impl CompletionSession {
     /// text_gen), then this is called with the new filter text," so a
     /// legitimate keystroke must not itself look like the buffer-changed-
     /// out-from-under-us case `accept!` guards against.
-    pub(crate) fn update_filter(&mut self, state: &EditorState, text: String) {
+    pub(in crate::editor) fn update_filter(&mut self, state: &EditorState, text: String) {
         self.filter = text;
         self.generation_at_begin = state.buffers.get(self.bid).text_gen;
         self.menu_cache = None;
@@ -246,7 +246,9 @@ impl CompletionSession {
     /// — see [`Self::menu_cache`]'s doc — so a caller redrawing the same
     /// unchanged menu every frame reads the cache instead of reformatting
     /// and re-measuring every candidate again.
-    pub(crate) fn menu_labels_and_width(&mut self) -> (std::sync::Arc<Vec<String>>, u16) {
+    pub(in crate::editor) fn menu_labels_and_width(
+        &mut self,
+    ) -> (std::sync::Arc<Vec<String>>, u16) {
         if self.menu_cache.is_none() {
             let labels: Vec<String> = self
                 .filtered
@@ -269,7 +271,7 @@ impl CompletionSession {
 /// `EditorHostImpl` via its own disjoint `state` borrow). Single definition
 /// of "what constitutes an open completion session", shared by
 /// `clear_completion_menu` and `completion_accept`.
-pub(crate) fn clear_completion_state(lsp: &mut LspState) {
+pub(in crate::editor) fn clear_completion_state(lsp: &mut LspState) {
     lsp.completion = None;
     lsp.completion_ui = None;
 }
@@ -282,7 +284,10 @@ pub(crate) fn clear_completion_state(lsp: &mut LspState) {
 /// is `None` at call sites that hold no `LspState` borrow — a no-op there,
 /// same as when `lsp` is `Some` but no session is open. Always clears the
 /// shared `completion_menu_view` Arc regardless of `lsp`.
-pub(crate) fn clear_completion_menu(state: &mut EditorState, lsp: Option<&mut LspState>) {
+pub(in crate::editor) fn clear_completion_menu(
+    state: &mut EditorState,
+    lsp: Option<&mut LspState>,
+) {
     if let Some(lsp) = lsp {
         clear_completion_state(lsp);
     }
@@ -297,14 +302,14 @@ impl Editor {
     /// Backspace crossing the anchor, a successful/failed accept) and by
     /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
     /// open.
-    pub(crate) fn clear_completion_menu(&mut self) {
+    pub(in crate::editor) fn clear_completion_menu(&mut self) {
         clear_completion_menu(&mut self.state, Some(&mut self.lsp));
     }
 
     /// Consumes `set_mode`'s deferred dismissal, if one is pending — called
     /// at every chokepoint between "a mode change could have happened" and
     /// "the next render" (see the flag's own doc comment on `EditorState`).
-    pub(crate) fn take_pending_lsp_completion_dismiss(&mut self) {
+    pub(in crate::editor) fn take_pending_lsp_completion_dismiss(&mut self) {
         if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
             self.clear_completion_menu();
         }

@@ -14,7 +14,7 @@ use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan};
 /// selection recipe (`EditorState::selection_recipe`). See
 /// [`CmdMeta::selection_tracking`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SelectionTracking {
+pub(in crate::editor) enum SelectionTracking {
     /// Not a selection builder — clears the recipe.
     Untracked,
     /// A motion's Move-mode result is a bare cursor — nothing to replay, so
@@ -58,7 +58,7 @@ pub(crate) enum SelectionTracking {
 /// separately via [`MappableCommand::name`] and cloned once per dispatch by the
 /// pipeline, not carried in here.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CmdMeta {
+pub(in crate::editor) struct CmdMeta {
     /// How this command updates the selection recipe after it runs.
     ///
     /// Always `Extends` for Motion variants. `Selection` and `EditorCmd`
@@ -139,7 +139,7 @@ impl CmdMeta {
     /// declare its own motion semantics. A user-bound Steel motion therefore
     /// answers `false` here — the jump list won't record it, and a pinned typed
     /// run survives it. Both callers accept that rather than guess.
-    pub(crate) fn moves_cursor(&self) -> bool {
+    pub(in crate::editor) fn moves_cursor(&self) -> bool {
         self.is_motion || self.is_jump || self.is_visual_move
     }
 }
@@ -405,7 +405,7 @@ impl MappableCommand {
     /// This is the single source of truth for bookkeeping properties. The
     /// pipeline reads `CmdMeta` — it never matches on variant or checks
     /// string sets to decide what bookkeeping to run.
-    pub(crate) fn meta(&self) -> CmdMeta {
+    pub(in crate::editor) fn meta(&self) -> CmdMeta {
         match self {
             Self::Motion {
                 jump, aligns_view, ..
@@ -492,7 +492,7 @@ impl MappableCommand {
     /// sync-dispatch gate, `run_command_sync`, and bare-binding registration all
     /// derive from this. The match is intentionally exhaustive (no `_`) so a new
     /// variant forces a decision here at compile time.
-    pub(crate) fn is_native(&self) -> bool {
+    pub(in crate::editor) fn is_native(&self) -> bool {
         match self {
             Self::Motion { .. }
             | Self::Selection { .. }
@@ -509,7 +509,7 @@ impl MappableCommand {
     /// EditorCmd has an explicit flag set at registration time.
     /// Steel commands (SteelBacked and Lazy stubs) are always extendable —
     /// the resolved lambda receives `extend` as its second arg.
-    pub(crate) fn is_extendable(&self) -> bool {
+    pub(in crate::editor) fn is_extendable(&self) -> bool {
         match self {
             Self::Motion { .. }
             | Self::Selection { .. }
@@ -527,7 +527,7 @@ impl MappableCommand {
 /// if any. Declared alongside the command name in `typed_cmd!` so renaming a
 /// command can't silently desync it from the completion dispatch in
 /// `command_mode.rs`, which reads this instead of re-matching on the name.
-pub(crate) enum ArgCompleter {
+pub(in crate::editor) enum ArgCompleter {
     /// Path completion. `dirs_only` restricts candidates to directories
     /// (`:change-directory`); `false` covers files too (`:edit`/`:write`).
     Path {
@@ -547,7 +547,7 @@ pub(crate) enum ArgCompleter {
 /// The signature differs from mappable commands: it receives an optional
 /// string argument (e.g. the path for `:w foo.txt`) and a force flag (whether
 /// `!` was appended), rather than a numeric count — see [`TypedBody`].
-pub(crate) struct TypedCommand {
+pub(in crate::editor) struct TypedCommand {
     /// Canonical name, e.g. `"write"`. Used as the registry key.
     pub name: Cow<'static, str>,
     /// One-line description for `:help` and command-palette display.
@@ -572,7 +572,7 @@ pub(crate) struct TypedCommand {
 /// `MappableCommand::SteelBacked` is (there is no `(write)` bare binding);
 /// `Steel`/`Lazy` here mean the command's *body* is a Steel lambda invoked
 /// only from the `:` line, defined via `(define-typed-command! …)`.
-pub(crate) enum TypedBody {
+pub(in crate::editor) enum TypedBody {
     /// A command implemented in Rust. Receives the editor, an optional
     /// argument (e.g. a file path), and whether `!` was appended.
     ///

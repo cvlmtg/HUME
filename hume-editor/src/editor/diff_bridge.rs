@@ -25,13 +25,16 @@ use hume_scripting::host::{DiffHunk, WordDiffHunk};
 
 /// Line-level hunks between two texts, neither yet loaded as a HUME buffer —
 /// both sides go through [`BufferText::from`]'s normalization (see the module doc).
-pub(crate) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
+pub(in crate::editor) fn line_hunks(old: &str, new: &str) -> Vec<DiffHunk> {
     hunks(&BufferText::from(old), &BufferText::from(new))
 }
 
 /// As [`line_hunks`], diffing `ref_text` (normalized here) against `buffer`
 /// — already a live, normalized `BufferText`, so it needs no second pass.
-pub(crate) fn line_hunks_against_buffer(ref_text: &str, buffer: &BufferText) -> Vec<DiffHunk> {
+pub(in crate::editor) fn line_hunks_against_buffer(
+    ref_text: &str,
+    buffer: &BufferText,
+) -> Vec<DiffHunk> {
     hunks(&BufferText::from(ref_text), buffer)
 }
 
@@ -76,7 +79,7 @@ fn strip_newlines(tokens: &[RopeSlice<'_>], range: Range<usize>) -> Vec<String> 
 /// already-extracted line strings (typically one side of a line-diff
 /// `Replace` hunk), and `diff_words`' tokens abut with no separator, so its
 /// hunk payload strings are already the exact substring at that char range.
-pub(crate) fn word_hunks(old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) {
+pub(in crate::editor) fn word_hunks(old: &str, new: &str) -> (Vec<WordDiffHunk>, bool) {
     convert_word_diff(diff_words(old, new))
 }
 
