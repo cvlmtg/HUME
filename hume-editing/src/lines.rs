@@ -2,6 +2,7 @@
 //! helpers, plus [`is_line_start`] (needs a [`Selection`], so it stays here).
 //! See `hume_rope::lines` for the implementations and detailed doc comments.
 
+use hume_rope::column::{ByteCol, CharCol, GraphemeCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::CharOffset;
 
@@ -55,12 +56,12 @@ pub fn line_last_char(text: &BufferText, line: ContentLine) -> CharOffset {
 }
 
 /// See [`hume_rope::lines::char_col_in_line`].
-pub fn char_col_in_line(text: &BufferText, line: ContentLine, char_pos: CharOffset) -> usize {
+pub fn char_col_in_line(text: &BufferText, line: ContentLine, char_pos: CharOffset) -> CharCol {
     hume_rope::lines::char_col_in_line(text.rope(), line, char_pos)
 }
 
 /// See [`hume_rope::lines::place_char_column`].
-pub fn place_char_column(text: &BufferText, line: RopeyLine, char_col: usize) -> CharOffset {
+pub fn place_char_column(text: &BufferText, line: RopeyLine, char_col: CharCol) -> CharOffset {
     hume_rope::lines::place_char_column(text.rope(), line, char_col)
 }
 
@@ -68,13 +69,13 @@ pub fn place_char_column(text: &BufferText, line: RopeyLine, char_col: usize) ->
 pub fn place_grapheme_column(
     text: &BufferText,
     line: RopeyLine,
-    grapheme_col: usize,
+    grapheme_col: GraphemeCol,
 ) -> CharOffset {
     hume_rope::lines::place_grapheme_column(text.rope(), line, grapheme_col)
 }
 
 /// See [`hume_rope::lines::char_to_line_byte`].
-pub fn char_to_line_byte(text: &BufferText, char_pos: CharOffset) -> (RopeyLine, usize) {
+pub fn char_to_line_byte(text: &BufferText, char_pos: CharOffset) -> (RopeyLine, ByteCol) {
     hume_rope::lines::char_to_line_byte(text.rope(), char_pos)
 }
 
@@ -83,7 +84,7 @@ pub fn line_segments(
     text: &BufferText,
     start: CharOffset,
     end_char_excl: CharOffset,
-) -> impl Iterator<Item = (ContentLine, usize, usize)> + '_ {
+) -> impl Iterator<Item = (ContentLine, ByteCol, ByteCol)> + '_ {
     hume_rope::lines::line_segments(text.rope(), start, end_char_excl)
 }
 

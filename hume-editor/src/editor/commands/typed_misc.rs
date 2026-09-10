@@ -431,7 +431,7 @@ pub(crate) fn typed_goto_line(
         pid,
         bid,
         line0,
-        0,
+        hume_rope::column::GraphemeCol::new(0),
     );
     record_jump_if_moved(&mut ed.state, &ed.view, entry);
     Ok(())

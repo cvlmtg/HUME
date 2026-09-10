@@ -1,5 +1,6 @@
 use ropey::{Rope, RopeSlice};
 
+use crate::column::{ByteCol, CharCol, GraphemeCol};
 use crate::line::{ContentLine, ContentLineCount, RopeyLine, RopeyLineCount};
 use crate::offset::CharOffset;
 
@@ -346,9 +347,9 @@ pub fn line_last_char(rope: &Rope, line: ContentLine) -> CharOffset {
 /// [`crate::grapheme::grapheme_col_in_line`] /
 /// [`crate::grapheme::display_col_in_line`]; inverse of `place_char_column`'s
 /// `line_start + char_col`.
-pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) -> usize {
+pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) -> CharCol {
     let line_start = CharOffset::new(rope.line_to_char(line.index()));
-    char_pos.chars_since(line_start)
+    CharCol::new(char_pos.chars_since(line_start))
 }
 
 /// Place the cursor at `char_col` **chars** from the start of `line` (not
@@ -380,7 +381,7 @@ pub fn char_col_in_line(rope: &Rope, line: ContentLine, char_pos: CharOffset) ->
 /// non-monotonic result where moving further right moves the cursor left. An
 /// empty line still lands on its `\n`, since there `line_content_end` *is*
 /// that newline.
-pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: usize) -> CharOffset {
+pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: CharCol) -> CharOffset {
     let line_start = CharOffset::new(rope.line_to_char(line.index()));
     // The phantom line has no content to place within — its "content end"
     // is its own start (`len_chars()`), the same value `line_content_end`
@@ -396,7 +397,7 @@ pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: usize) -> CharO
     // not yet grapheme-boundary-aligned — this deliberately may land
     // mid-cluster, which the `snap_to_grapheme_boundary` call below
     // corrects. Never treat this intermediate `target` as a cursor position.
-    let target = CharOffset::new(line_start.index() + char_col);
+    let target = CharOffset::new(line_start.index() + char_col.index());
 
     if target >= content_end {
         content_end
@@ -417,7 +418,11 @@ pub fn place_char_column(rope: &Rope, line: RopeyLine, char_col: usize) -> CharO
 /// counts the whole cluster as one, matching what the caller displayed.
 ///
 /// Same phantom-line clamp as [`place_char_column`] — see its doc.
-pub fn place_grapheme_column(rope: &Rope, line: RopeyLine, grapheme_col: usize) -> CharOffset {
+pub fn place_grapheme_column(
+    rope: &Rope,
+    line: RopeyLine,
+    grapheme_col: GraphemeCol,
+) -> CharOffset {
     let line_start = CharOffset::new(rope.line_to_char(line.index()));
     // See `place_char_column`'s comment: the phantom line's own start is its
     // content end, not the last content line's.
@@ -427,7 +432,7 @@ pub fn place_grapheme_column(rope: &Rope, line: RopeyLine, grapheme_col: usize) 
     };
     let slice = rope.slice(..);
     let mut pos = line_start;
-    for _ in 0..grapheme_col {
+    for _ in 0..grapheme_col.index() {
         let next = crate::grapheme::next_grapheme_boundary(slice, pos);
         if next > content_end || next == pos {
             break;
@@ -442,12 +447,12 @@ pub fn place_grapheme_column(rope: &Rope, line: RopeyLine, grapheme_col: usize) 
 /// Returns `(line, byte_in_line)` — the byte offset from the start of
 /// the line. Used to build tree-sitter `Point`s and line-relative highlight
 /// spans.
-pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, usize) {
+pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, ByteCol) {
     let char_pos = char_pos.index();
     let line = rope.char_to_line(char_pos);
     let line_start_byte = rope.line_to_byte(line);
     let byte = rope.char_to_byte(char_pos).saturating_sub(line_start_byte);
-    (RopeyLine::new(line), byte)
+    (RopeyLine::new(line), ByteCol::new(byte))
 }
 
 /// `(row, byte_col)` of the end of `inserted` written starting at
@@ -463,12 +468,15 @@ pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, usize
 /// `row` is a tree-sitter `Point` row, not a rope line index — pure `'\n'`
 /// counting over `inserted`, with no rope involved, so it stays `usize`
 /// rather than either line-domain type.
-pub fn advance_byte_point(row: usize, byte_col: usize, inserted: &str) -> (usize, usize) {
+pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usize, ByteCol) {
     match inserted.rfind('\n') {
-        None => (row, byte_col + inserted.len()),
+        None => (row, ByteCol::new(byte_col.index() + inserted.len())),
         Some(last_nl) => {
             let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
-            (row + newline_count, inserted.len() - last_nl - 1)
+            (
+                row + newline_count,
+                ByteCol::new(inserted.len() - last_nl - 1),
+            )
         }
     }
 }
@@ -497,7 +505,7 @@ pub fn line_segments(
     rope: &Rope,
     start: CharOffset,
     end_char_excl: CharOffset,
-) -> impl Iterator<Item = (ContentLine, usize, usize)> + '_ {
+) -> impl Iterator<Item = (ContentLine, ByteCol, ByteCol)> + '_ {
     // `- 1`: converts the exclusive bound to the range's own last char, only
     // to find which *line* that char is on (`char_to_line` below) — never
     // used as a cursor or slice position, so landing mid-cluster (a
@@ -520,7 +528,7 @@ pub fn line_segments(
         let line_start_byte = rope.line_to_byte(line_idx);
         let byte_start = rope.char_to_byte(seg_start.index()) - line_start_byte;
         let byte_end = rope.char_to_byte(seg_end.index()) - line_start_byte;
-        Some((line, byte_start, byte_end))
+        Some((line, ByteCol::new(byte_start), ByteCol::new(byte_end)))
     })
 }
 

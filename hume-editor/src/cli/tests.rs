@@ -14,7 +14,7 @@ fn line_only_suffix() {
         parsed.pos,
         Some(CliPosition {
             line: 12,
-            grapheme_col: 1
+            grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );
 }
@@ -29,7 +29,7 @@ fn line_and_column_suffix() {
         parsed.pos,
         Some(CliPosition {
             line: 12,
-            grapheme_col: 24
+            grapheme_col: GraphemeCol::from_number(24).unwrap()
         })
     );
 }
@@ -44,7 +44,7 @@ fn trailing_colon_is_tolerated() {
         parsed.pos,
         Some(CliPosition {
             line: 12,
-            grapheme_col: 1
+            grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );
 }
@@ -188,7 +188,7 @@ fn drive_absolute_path_with_line_suffix_splits_normally() {
         parsed.pos,
         Some(CliPosition {
             line: 12,
-            grapheme_col: 1
+            grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );
 }

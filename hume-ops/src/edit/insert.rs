@@ -271,13 +271,12 @@ pub fn insert_tab(
             prev_line = Some(line_idx);
         }
         // Compute the effective display column of the cursor after all prior
-        // same-line edits. Cast to isize because display_col_shift is signed
-        // (a selection deletion can decrease it), then clamp to avoid
-        // underflow.
+        // same-line edits. `shift` is signed (a selection deletion can
+        // decrease it) and saturates at 0 rather than underflowing.
         // Walks the line prefix grapheme by grapheme, so it's measured once
         // and reused by the deletion-width computation below.
         let start_display_col = display_col_in_line(text, line_idx, start, tab_width);
-        let display_col = (start_display_col as isize + display_col_shift).max(0) as usize;
+        let display_col = start_display_col.shift(display_col_shift);
         if !sel.is_collapsed() {
             let del_end = sel.content_end_exclusive(text);
             // Clamp del_end to the line boundary before computing the display-column
@@ -287,12 +286,12 @@ pub fn insert_tab(
             // same-line cursors.
             let line_end = next_line_start(text, line_idx.into());
             let del_end_clamped = del_end.min(line_end);
-            let del_width =
-                display_col_in_line(text, line_idx, del_end_clamped, tab_width) - start_display_col;
+            let del_width = display_col_in_line(text, line_idx, del_end_clamped, tab_width)
+                .cells_since(start_display_col);
             b.delete(del_end.chars_since(start));
             display_col_shift -= del_width as isize;
         }
-        let n = hume_rope::width::tab_advance(display_col, tab_width);
+        let n = hume_rope::width::tab_advance(display_col.get() as usize, tab_width);
         b.insert(&" ".repeat(n));
         display_col_shift += n as isize;
         new_sels.push(Selection::collapsed(b.new_pos()));

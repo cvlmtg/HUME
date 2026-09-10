@@ -2,6 +2,7 @@
 //! grapheme-cluster algorithms. See that module for the implementations and
 //! detailed doc comments.
 
+use hume_rope::column::{BufferLineCol, GraphemeCol};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
 
@@ -32,7 +33,7 @@ pub fn grapheme_col_in_line(
     text: &BufferText,
     line_idx: ContentLine,
     char_pos: CharOffset,
-) -> usize {
+) -> GraphemeCol {
     hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx.index(), char_pos)
 }
 
@@ -42,7 +43,7 @@ pub fn display_col_in_line(
     line_idx: ContentLine,
     char_pos: CharOffset,
     tab_width: u8,
-) -> usize {
+) -> BufferLineCol {
     hume_rope::grapheme::display_col_in_line(
         text.full_slice(),
         line_idx.index(),
@@ -55,7 +56,7 @@ pub fn display_col_in_line(
 pub fn char_pos_at_display_col(
     text: &BufferText,
     line_idx: ContentLine,
-    target_display_col: usize,
+    target_display_col: BufferLineCol,
     tab_width: u8,
 ) -> CharOffset {
     hume_rope::grapheme::char_pos_at_display_col(

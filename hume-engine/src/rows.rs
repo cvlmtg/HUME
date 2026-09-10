@@ -29,6 +29,7 @@ use ropey::Rope;
 use crate::format::{FormatBound, LineFormat, format_buffer_line};
 use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayRow, Grapheme, ScopeId};
+use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -146,7 +147,7 @@ pub struct RowMap<'a> {
     key: FormatKey,
     providers: &'a ProviderSet,
     content_width: u16,
-    h_window: Option<Range<u32>>,
+    h_window: Option<Range<DisplayLineCol>>,
     /// Everything this map knows about the lines it has visited — the
     /// pane's own store, so every other walk of that pane this frame shares
     /// what this one formats. See [`line_store`]'s module doc.
@@ -218,7 +219,7 @@ impl<'a> RowMap<'a> {
     /// its format is subject to being recut. That is also what keeps the
     /// frame's two passes from sharing a *format* in `WrapMode::None`, where
     /// only the render pass clips — they still share the block shape.
-    pub fn with_h_window(mut self, h_window: Option<Range<u32>>) -> Self {
+    pub fn with_h_window(mut self, h_window: Option<Range<DisplayLineCol>>) -> Self {
         debug_assert!(
             h_window.is_none() || !self.key.wrap_mode.is_wrapping(),
             "with_h_window is a WrapMode::None-only clip — a wrapping RowMap \
@@ -537,7 +538,7 @@ impl<'a> RowMap<'a> {
 
     /// Locate `char_offset`: its display row, and its display column in that
     /// row.
-    pub fn locate(&mut self, char_offset: CharOffset) -> (RowPos, u32) {
+    pub fn locate(&mut self, char_offset: CharOffset) -> (RowPos, DisplayLineCol) {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "locate: char_offset {char_offset:?} is out of range for a buffer \
@@ -548,6 +549,7 @@ impl<'a> RowMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
@@ -561,7 +563,12 @@ impl<'a> RowMap<'a> {
     /// (line-relative, resolved by the caller), and at what column. `idx` must
     /// come from an [`RowMap::ensure_formatted`] bounded at least as far as
     /// `ToByte(target_byte)`.
-    fn locate_in_line(&self, idx: usize, target_byte: usize, char_offset: usize) -> (usize, u32) {
+    fn locate_in_line(
+        &self,
+        idx: usize,
+        target_byte: usize,
+        char_offset: usize,
+    ) -> (usize, DisplayLineCol) {
         let entry = self.store.entry(idx);
         let format = &entry.format;
         let rows = &format.display_rows;
@@ -589,7 +596,7 @@ impl<'a> RowMap<'a> {
                 )
                 .map_or_else(
                     // Past every grapheme on the row (end of line).
-                    || last.display_col.saturating_add(last.width as u32),
+                    || last.display_col.advance(last.width as u32),
                     |(display_col, _)| display_col,
                 );
                 return (i, display_col);
@@ -614,9 +621,9 @@ impl<'a> RowMap<'a> {
         let display_col = rows
             .get(last_row)
             .filter(|r| !r.graphemes.is_empty())
-            .map_or(0, |r| {
+            .map_or(DisplayLineCol::new(0), |r| {
                 let lg = &graphemes[r.graphemes.end - 1];
-                lg.display_col.saturating_add(lg.width as u32)
+                lg.display_col.advance(lg.width as u32)
             });
         (last_row, display_col)
     }
@@ -655,7 +662,7 @@ impl<'a> RowMap<'a> {
     pub fn char_at(
         &mut self,
         pos: RowPos,
-        target_display_col: u32,
+        target_display_col: DisplayLineCol,
         target: DisplayColTarget,
     ) -> CharOffset {
         let b = self.block(pos.line);
@@ -678,7 +685,7 @@ impl<'a> RowMap<'a> {
         &self,
         idx: usize,
         sub: usize,
-        target_display_col: u32,
+        target_display_col: DisplayLineCol,
         target: DisplayColTarget,
     ) -> usize {
         let entry = self.store.entry(idx);
@@ -696,7 +703,7 @@ impl<'a> RowMap<'a> {
             DisplayColTarget::Cell => {
                 graphemes
                     .iter()
-                    .find(|g| target_display_col < g.display_col.saturating_add(g.width as u32))
+                    .find(|g| target_display_col < g.display_col.advance(g.width as u32))
                     .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
                     .char_offset
             }
@@ -768,18 +775,21 @@ impl<'a> RowMap<'a> {
     /// summing `span` across every row before `sub`, plus the indent-excluded
     /// offset within `sub`, converts a row-relative column into one relative
     /// to the whole buffer line.
-    fn row_shape(&self, idx: usize, sub: usize) -> (u32, u32) {
+    fn row_shape(&self, idx: usize, sub: usize) -> (DisplayLineCol, u32) {
         let format = self.format_at(idx);
         let Some(row) = format.display_rows.get(sub) else {
-            return (0, 0);
+            return (DisplayLineCol::new(0), 0);
         };
         let graphemes = &format.graphemes[row.graphemes.clone()];
         let Some(first) = graphemes.first() else {
-            return (0, 0);
+            return (DisplayLineCol::new(0), 0);
         };
         let last = graphemes.last().expect("non-empty checked above");
         let indent = first.display_col;
-        let span = last.display_col.saturating_add(last.width as u32) - indent;
+        let span = last
+            .display_col
+            .advance(last.width as u32)
+            .cells_since(indent);
         (indent, span)
     }
 
@@ -794,7 +804,7 @@ impl<'a> RowMap<'a> {
     /// [`RowMap::locate`] — the two differ only in what they're measured
     /// from, and coincide under `WrapMode::None`, where a line is exactly one
     /// row with no indent.
-    pub fn line_display_col(&mut self, char_offset: CharOffset) -> u32 {
+    pub fn line_display_col(&mut self, char_offset: CharOffset) -> BufferLineCol {
         debug_assert!(
             char_offset.index() <= self.rope.len_chars(),
             "line_display_col: char_offset {char_offset:?} is out of range for \
@@ -802,12 +812,13 @@ impl<'a> RowMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
         let (sub, row_display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
         let (row_indent, _) = self.row_shape(idx, sub);
         let preceding: u32 = (0..sub).map(|j| self.row_shape(idx, j).1).sum();
-        preceding + row_display_col.saturating_sub(row_indent)
+        BufferLineCol::new(preceding + row_display_col.cells_since(row_indent))
     }
 
     /// Inverse of [`RowMap::line_display_col`]: the char offset
@@ -822,18 +833,23 @@ impl<'a> RowMap<'a> {
     pub fn char_at_line_display_col(
         &mut self,
         line: ContentLine,
-        target_line_display_col: u32,
+        target_line_display_col: BufferLineCol,
         target: DisplayColTarget,
     ) -> CharOffset {
         let content_rows = self.block(line).content;
         // Only up to the target column: while wrapping, `ensure_formatted`
         // promotes this to `Full` regardless (a row-relative bound can't
         // usefully clip a line-relative target), and without wrapping
-        // `content_rows == 1` so the two columns coincide.
-        let idx = self.ensure_formatted(line, FormatBound::ToDisplayCol(target_line_display_col));
-        let mut remaining = target_line_display_col;
+        // `content_rows == 1` so the two columns coincide — sound to read as
+        // row-relative here for exactly that reason (see
+        // `BufferLineCol::as_display_line_unwrapped`'s own doc).
+        let idx = self.ensure_formatted(
+            line,
+            FormatBound::ToDisplayCol(target_line_display_col.as_display_line_unwrapped()),
+        );
+        let mut remaining = target_line_display_col.get();
         let mut sub = 0;
-        let mut row_indent = 0;
+        let mut row_indent = DisplayLineCol::new(0);
         for j in 0..content_rows {
             let (indent, span) = self.row_shape(idx, j);
             sub = j;
@@ -843,7 +859,7 @@ impl<'a> RowMap<'a> {
             }
             remaining -= span;
         }
-        CharOffset::new(self.resolve_in_row(idx, sub, remaining + row_indent, target))
+        CharOffset::new(self.resolve_in_row(idx, sub, row_indent.advance(remaining), target))
     }
 
     /// The char range one content row covers, as `(start, end_exclusive)`.
@@ -943,7 +959,7 @@ impl<'a> RowMap<'a> {
         // single monotonic cursor resolves every grapheme's scope in
         // O(graphemes + segments) instead of a per-grapheme linear scan.
         let mut scope_cursor = crate::style::highlight::IntervalCursor::new(&vl.segments);
-        let mut display_col: u32 = 0;
+        let mut display_col = DisplayLineCol::new(0);
         crate::format::push_virtual_cells(
             &mut vrow.texts,
             &mut vrow.graphemes,

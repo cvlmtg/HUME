@@ -7,6 +7,8 @@
 
 use std::path::{Path, PathBuf};
 
+use hume_rope::column::GraphemeCol;
+
 /// Error text for a `0` in either position of a `:goto` target or a CLI
 /// `path:line[:col]` position — both contracts are 1-based. Lives here
 /// (rather than beside `:goto` itself, `editor/commands/typed_misc.rs`)
@@ -19,15 +21,16 @@ pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
 /// only ever takes a line — so this stays private to the CLI parser.
 const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start at 1";
 
-/// A 1-based startup cursor position, in the units the statusline shows:
-/// `line` counts buffer lines, `grapheme_col` counts grapheme clusters
-/// within that line (see `hume_editing::lines::place_grapheme_column`) —
-/// not chars, so it agrees with what the user read off a `file:line:col`
-/// diagnostic or the statusline itself.
+/// A startup cursor position, in the units the statusline shows: `line`
+/// counts buffer lines (1-based, as typed), `grapheme_col` counts grapheme
+/// clusters within that line (see `hume_editing::lines::place_grapheme_column`)
+/// — not chars, so it agrees with what the user read off a `file:line:col`
+/// diagnostic or the statusline itself. `0`-based: decoded from the 1-based
+/// CLI digits via `GraphemeCol::from_number` at parse time below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliPosition {
     pub line: usize,
-    pub grapheme_col: usize,
+    pub grapheme_col: GraphemeCol,
 }
 
 /// One `hume` command-line file argument, split into the path to open and
@@ -98,12 +101,12 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
     if line == 0 {
         return Err(format!("{}: {LINE_NUMBERS_START_AT_1}", raw.display()));
     }
-    if grapheme_col == 0 {
+    let Some(grapheme_col) = GraphemeCol::from_number(grapheme_col) else {
         return Err(format!(
             "{}: {GRAPHEME_COL_NUMBERS_START_AT_1}",
             raw.display()
         ));
-    }
+    };
     Ok(FileArg {
         path: PathBuf::from(path_str),
         pos: Some(CliPosition { line, grapheme_col }),

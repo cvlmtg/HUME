@@ -5,6 +5,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::column::BufferLineCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
 
@@ -46,6 +47,13 @@ use super::apply_edit;
 /// remove one column *more* than strictly needed when the freed run contains
 /// a tab. Insertion has no such gap: an inserted run is always spaces, each
 /// exactly one display column, so `amount > 0` lands exactly on `target`.
+///
+/// Because of that mixing, every display column below drops to `.get()`'s
+/// bare `u32` the moment it's combined with a char count (`rem`) or a
+/// cross-line shift — `BufferLineCol`'s arithmetic methods assume both
+/// operands are display cells, which `rem` and `line_shift` are not.
+/// `baseline`/`targets`/`fit_0`/`fit_k`/`amount` are therefore plain
+/// `isize`/`usize`, not `BufferLineCol`, for the length of this function.
 pub fn align_selections(
     text: BufferText,
     sels: SelectionSet,
@@ -57,9 +65,9 @@ pub fn align_selections(
     struct SelMeta {
         start_line: ContentLine,
         is_multiline: bool,
-        anchor_display_col: usize, // display col of sel.anchor() (left for forward, right for backward)
-        rem: usize,                // chars removable before sel.start() while keeping ≥1 space
-        slot: Option<usize>,       // None = multiline or extra (slot >= N)
+        anchor_display_col: BufferLineCol, // display col of sel.anchor() (left for forward, right for backward)
+        rem: usize,          // chars removable before sel.start() while keeping ≥1 space
+        slot: Option<usize>, // None = multiline or extra (slot >= N)
     }
 
     let primary_line = text.char_to_line(sels.primary().anchor());
@@ -74,7 +82,7 @@ pub fn align_selections(
                 return SelMeta {
                     start_line,
                     is_multiline: true,
-                    anchor_display_col: 0,
+                    anchor_display_col: BufferLineCol::new(0),
                     rem: 0,
                     slot: None,
                 };
@@ -127,7 +135,7 @@ pub fn align_selections(
         if m.start_line == primary_line
             && let Some(slot) = m.slot
         {
-            baseline[slot] = m.anchor_display_col;
+            baseline[slot] = m.anchor_display_col.get() as usize;
         }
     }
 
@@ -150,7 +158,7 @@ pub fn align_selections(
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| m.anchor_display_col as isize - m.rem as isize)
+        .map(|m| m.anchor_display_col.get() as isize - m.rem as isize)
         .max()
         .unwrap_or(0)
         .max(0) as usize;
@@ -171,7 +179,8 @@ pub fn align_selections(
                 let cur = ms.iter().find(|m| m.slot == Some(k))?;
                 Some(
                     targets[k - 1] as isize
-                        + (cur.anchor_display_col as isize - prev.anchor_display_col as isize)
+                        + (cur.anchor_display_col.get() as isize
+                            - prev.anchor_display_col.get() as isize)
                         - cur.rem as isize,
                 )
             })
@@ -224,7 +233,7 @@ pub fn align_selections(
                 // Measured in pass 1 from the same (still unedited) text —
                 // a `Some(slot)` meta is exactly one that took pass 1's
                 // single-line branch, which is what populates this field.
-                let anchor_display_col_orig = meta[i].anchor_display_col;
+                let anchor_display_col_orig = meta[i].anchor_display_col.get();
                 let anchor_display_col_now =
                     (anchor_display_col_orig as isize + line_shift).max(0) as usize;
                 let amount = target as isize - anchor_display_col_now as isize;

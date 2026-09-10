@@ -265,7 +265,7 @@ impl Editor {
                 pid,
                 bid,
                 pos.line - 1,
-                pos.grapheme_col - 1,
+                pos.grapheme_col,
             );
             center_focused |= bid == focused_bid;
         }

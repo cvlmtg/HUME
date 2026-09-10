@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 
+use crate::column::{BufferLineCol, GraphemeCol};
 use crate::offset::CharOffset;
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
@@ -253,12 +254,16 @@ pub(crate) fn grapheme_count(
 /// This is a logical position (grapheme index), not a display column: wide
 /// characters count as one, not two. The value matches how many times the
 /// user pressed → to reach the cursor from the start of the line.
-pub fn grapheme_col_in_line(slice: RopeSlice<'_>, line_idx: usize, char_pos: CharOffset) -> usize {
-    grapheme_count(
+pub fn grapheme_col_in_line(
+    slice: RopeSlice<'_>,
+    line_idx: usize,
+    char_pos: CharOffset,
+) -> GraphemeCol {
+    GraphemeCol::new(grapheme_count(
         slice,
         CharOffset::new(slice.line_to_char(line_idx)),
         char_pos,
-    )
+    ))
 }
 
 /// Grapheme cluster `[start, end)` of `slice`, as text — the shape
@@ -299,17 +304,21 @@ pub fn display_col_in_line(
     line_idx: usize,
     char_pos: CharOffset,
     tab_width: u8,
-) -> usize {
+) -> BufferLineCol {
     let line_start = CharOffset::new(slice.line_to_char(line_idx));
-    let mut display_col = 0usize;
+    let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
     while pos < char_pos {
         let next = next_grapheme_boundary(slice, pos);
         if next > char_pos || next == pos {
             break;
         }
-        display_col +=
-            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tab_width);
+        let w = crate::width::grapheme_width(
+            &cluster_str(slice, pos, next),
+            display_col.get() as usize,
+            tab_width,
+        );
+        display_col = display_col.advance(w as u32);
         pos = next;
     }
     display_col
@@ -336,14 +345,14 @@ pub fn display_col_in_line(
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
     line_idx: usize,
-    target_display_col: usize,
+    target_display_col: BufferLineCol,
     tab_width: u8,
 ) -> CharOffset {
     let line_start = CharOffset::new(slice.line_to_char(line_idx));
-    if target_display_col == 0 {
+    if target_display_col == BufferLineCol::new(0) {
         return line_start;
     }
-    let mut display_col = 0usize;
+    let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
     loop {
         let next = next_grapheme_boundary(slice, pos);
@@ -353,12 +362,16 @@ pub fn char_pos_at_display_col(
         if slice.get_char(pos.index()) == Some('\n') {
             break; // end of line — never walk onto the next line
         }
-        let w =
-            crate::width::grapheme_width(&cluster_str(slice, pos, next), display_col, tab_width);
-        if display_col + w > target_display_col {
+        let w = crate::width::grapheme_width(
+            &cluster_str(slice, pos, next),
+            display_col.get() as usize,
+            tab_width,
+        );
+        let advanced = display_col.advance(w as u32);
+        if advanced > target_display_col {
             break; // this grapheme would overshoot — stop here
         }
-        display_col += w;
+        display_col = advanced;
         pos = next;
         if display_col == target_display_col {
             break;

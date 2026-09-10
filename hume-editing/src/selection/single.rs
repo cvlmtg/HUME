@@ -1,50 +1,46 @@
+use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use crate::grapheme::{cluster_last_char, next_grapheme_boundary};
 use crate::lines::is_line_start;
 use crate::text::BufferText;
 
-/// What a [`StickyDisplayCol`]'s number is measured *from*.
+/// A display column together with the frame it was measured in.
 ///
-/// Both origins are `hume_engine::rows::RowMap` quantities — one authority,
+/// Both variants are `hume_engine::rows::RowMap` quantities — one authority,
 /// so both count tab expansion, wide glyphs and inline decorations (inlay
 /// hints, ghost text) identically. They differ only in what they're measured
-/// *from*: under soft wrap, a continuation row renumbers its columns from
-/// its own left edge (its indent, under `WrapMode::Indent`), so the same
-/// character has a different `DisplayRow` column than `BufferLine` column —
-/// reading one as the other sends the cursor sideways. With wrapping off a
-/// row *is* the whole line, so the two coincide and either origin reads back
-/// the same number. This is why a motion switching families (`j` then `2j`,
-/// or vice versa) re-derives instead of reusing a latch tagged with the other
-/// origin.
+/// *from*: under soft wrap, a continuation display line renumbers its
+/// columns from its own left edge (its indent, under `WrapMode::Indent`), so
+/// the same character has a different [`DisplayLineCol`] than
+/// [`BufferLineCol`] — reading one as the other sends the cursor sideways,
+/// which [`DisplayLineCol`]/[`BufferLineCol`] being distinct types makes a
+/// compile error rather than a bug to find at runtime. With wrapping off a
+/// display line *is* the whole buffer line, so the two coincide and either
+/// variant reads back the same number. This is why a motion switching
+/// families (`j` then `2j`, or vice versa) re-derives instead of reusing a
+/// latch tagged with the other variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DisplayColOrigin {
-    /// Column within the current display row (`RowMap::locate`) — what
+pub enum StickyDisplayCol {
+    /// Column within the current display line (`RowMap::locate`) — what
     /// `j`/`k`, page/half-page scroll, and the mouse wheel latch.
-    DisplayRow,
+    DisplayLine {
+        display_col: DisplayLineCol,
+        /// The wrap column `display_col` was measured against
+        /// (`RowMap::resolved_wrap_width`). A pane resize changes what
+        /// column a display-line-relative latch's number means (the same
+        /// display-line-relative column addresses a different buffer
+        /// position once display lines re-flow at a new width), so a reader
+        /// compares this against the row map's *current* resolved width and
+        /// re-derives on a mismatch instead of reusing a column measured for
+        /// a wrap geometry that no longer exists.
+        wrap_width: Option<u16>,
+    },
     /// Column within the buffer line (`RowMap::line_display_col`) — what an
-    /// explicit numeric prefix (`9j`/`9k`) latches.
-    BufferLine,
-}
-
-/// A display column together with the frame it was measured in. See
-/// [`DisplayColOrigin`] for why the two can't be compared directly.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StickyDisplayCol {
-    pub display_col: u32,
-    pub origin: DisplayColOrigin,
-    /// The wrap column `display_col` was measured against when `origin` is
-    /// [`DisplayColOrigin::DisplayRow`] (`RowMap::resolved_wrap_width`);
-    /// meaningless for [`DisplayColOrigin::BufferLine`], which counts a
-    /// buffer line's own characters and never depends on wrap geometry —
-    /// still populated there for a uniform constructor, just never read. A
-    /// pane resize changes what column a `DisplayRow` latch's number means
-    /// (the same row-relative column addresses a different buffer position
-    /// once rows re-flow at a new width), so a reader compares this against
-    /// the row map's *current* resolved width and re-derives on a mismatch
-    /// instead of reusing a column measured for a wrap geometry that no
-    /// longer exists.
-    pub wrap_width: Option<u16>,
+    /// explicit numeric prefix (`9j`/`9k`) latches. Carries no wrap width:
+    /// a buffer-line column counts a line's own characters and never
+    /// depends on wrap geometry, unlike the `DisplayLine` variant above.
+    BufferLine { display_col: BufferLineCol },
 }
 
 /// A single selection range within a buffer.

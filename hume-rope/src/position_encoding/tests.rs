@@ -204,7 +204,7 @@ fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
             let (clamped_line, char_col) = wire_to_line_char_col(&text, line, character, enc);
             assert_eq!(clamped_line, line);
             assert_eq!(
-                co(text.line_to_char(clamped_line) + char_col),
+                co(text.line_to_char(clamped_line) + char_col.index()),
                 wire_to_char(&text, line, character, enc)
             );
         }
@@ -218,7 +218,7 @@ fn wire_to_line_char_col_is_line_relative_not_absolute() {
     let text = fixture();
     assert_eq!(
         wire_to_line_char_col(&text, 1, 1, PositionEncoding::Utf8),
-        (1, 1)
+        (1, CharCol::new(1))
     );
 }
 

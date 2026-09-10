@@ -7,7 +7,7 @@ fn viewport_state_defaults() {
     let vp = ViewportState::new(80, 24);
     assert_eq!(vp.top_line.index(), 0);
     assert_eq!(vp.top_row_offset, 0);
-    assert_eq!(vp.horizontal_offset, 0);
+    assert_eq!(vp.horizontal_offset, DisplayLineCol::new(0));
     assert_eq!(vp.width, 80);
     assert_eq!(vp.height, 24);
 }

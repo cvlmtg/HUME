@@ -5,6 +5,18 @@ fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
 }
 
+fn cc(n: usize) -> CharCol {
+    CharCol::new(n)
+}
+
+fn gc(n: usize) -> GraphemeCol {
+    GraphemeCol::new(n)
+}
+
+fn bc(n: usize) -> ByteCol {
+    ByteCol::new(n)
+}
+
 #[test]
 fn ropey_line_count_includes_the_phantom_trailing_line() {
     assert_eq!(ropey_line_count(&Rope::from_str("\n")).get(), 2);
@@ -510,7 +522,7 @@ fn is_empty_line_false_for_a_cr_only_line() {
 #[test]
 fn char_col_in_line_at_line_start_is_zero() {
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(0)), 0);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(0)), cc(0));
 }
 
 #[test]
@@ -518,7 +530,7 @@ fn char_col_in_line_mid_line() {
     // "ab\ncd\n" — line 1 starts at char offset 3; char offset 4 ('d') is
     // column 1.
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(1), co(4)), 1);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(1), co(4)), cc(1));
 }
 
 #[test]
@@ -526,7 +538,7 @@ fn char_col_in_line_on_the_lines_own_newline() {
     // Line 0's own '\n' sits at offset 2 — column 2, one past its two
     // content chars.
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(2)), 2);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(2)), cc(2));
 }
 
 #[test]
@@ -534,7 +546,7 @@ fn char_col_in_line_is_the_inverse_of_place_char_column() {
     // Round-trip: a char_col that doesn't overshoot the line comes back
     // unchanged through place_char_column -> char_col_in_line.
     let buf = rope("hello\nworld\n");
-    let char_col = 3;
+    let char_col = cc(3);
     let pos = place_char_column(&buf, RopeyLine::new(1), char_col);
     assert_eq!(char_col_in_line(&buf, ContentLine::new(1), pos), char_col);
 }
@@ -543,25 +555,25 @@ fn char_col_in_line_is_the_inverse_of_place_char_column() {
 
 #[test]
 fn advance_byte_point_no_newlines() {
-    let (row, byte_col) = advance_byte_point(2, 5, "hello");
+    let (row, byte_col) = advance_byte_point(2, bc(5), "hello");
     assert_eq!(row, 2);
-    assert_eq!(byte_col, 10); // 5 + 5
+    assert_eq!(byte_col, bc(10)); // 5 + 5
 }
 
 #[test]
 fn advance_byte_point_with_newlines() {
-    let (row, byte_col) = advance_byte_point(1, 3, "foo\nbar\nbaz");
+    let (row, byte_col) = advance_byte_point(1, bc(3), "foo\nbar\nbaz");
     // 2 newlines → row + 2 = 3; byte_col = "baz".len() = 3
     assert_eq!(row, 3);
-    assert_eq!(byte_col, 3);
+    assert_eq!(byte_col, bc(3));
 }
 
 #[test]
 fn advance_byte_point_trailing_newline() {
     // Inserted text ends with '\n' — byte_col must be 0.
-    let (row, byte_col) = advance_byte_point(0, 0, "foo\n");
+    let (row, byte_col) = advance_byte_point(0, bc(0), "foo\n");
     assert_eq!(row, 1);
-    assert_eq!(byte_col, 0);
+    assert_eq!(byte_col, bc(0));
 }
 
 // ── place_char_column ────────────────────────────────────────────────────
@@ -570,7 +582,7 @@ fn advance_byte_point_trailing_newline() {
 fn place_char_column_within_line() {
     // "hello\nworld\n" — char col 2 of line 1 lands on 'r' (offset 8).
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 2), co(8));
+    assert_eq!(place_char_column(&buf, RopeyLine::new(1), cc(2)), co(8));
 }
 
 #[test]
@@ -583,7 +595,7 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // moving further right moved the cursor left.
     let buf = rope("abc\ndef\n");
     let placed: Vec<usize> = (0..6)
-        .map(|col| place_char_column(&buf, RopeyLine::new(0), col).index())
+        .map(|col| place_char_column(&buf, RopeyLine::new(0), cc(col)).index())
         .collect();
     assert_eq!(placed, vec![0, 1, 2, 2, 2, 2]);
     assert!(
@@ -593,8 +605,8 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // An empty line keeps landing on its own '\n' — there the last content
     // position *is* the newline.
     let empty = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 0), co(2));
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 3), co(2));
+    assert_eq!(place_char_column(&empty, RopeyLine::new(1), cc(0)), co(2));
+    assert_eq!(place_char_column(&empty, RopeyLine::new(1), cc(3)), co(2));
 }
 
 #[test]
@@ -602,7 +614,7 @@ fn place_char_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n" — line 0 only has 2 real chars; char col 10 clamps to
     // 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(0), 10), co(1));
+    assert_eq!(place_char_column(&buf, RopeyLine::new(0), cc(10)), co(1));
 }
 
 #[test]
@@ -610,7 +622,7 @@ fn place_char_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n" — line 1 is empty; any char column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 3), co(2));
+    assert_eq!(place_char_column(&buf, RopeyLine::new(1), cc(3)), co(2));
 }
 
 #[test]
@@ -622,11 +634,11 @@ fn place_char_column_on_the_phantom_line_places_at_len_chars() {
     // scripted `goto-location!` target) clamps the result down itself.
     let buf = rope("a\nb\n");
     assert_eq!(
-        place_char_column(&buf, last_ropey_line(&buf), 0),
+        place_char_column(&buf, last_ropey_line(&buf), cc(0)),
         co(buf.len_chars())
     );
     assert_eq!(
-        place_char_column(&buf, last_ropey_line(&buf), 5),
+        place_char_column(&buf, last_ropey_line(&buf), cc(5)),
         co(buf.len_chars())
     );
 }
@@ -638,7 +650,7 @@ fn place_grapheme_column_within_line() {
     // "hello\nworld\n" — grapheme col 2 of line 1 lands on 'r' (offset 8),
     // same as the char-column case here since every grapheme is one char.
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 2), co(8));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(2)), co(8));
 }
 
 #[test]
@@ -647,8 +659,8 @@ fn place_grapheme_column_counts_combining_marks_as_one_column() {
     // Column 0 is the cluster start; column 1 is 'x'; char_col would have
     // landed column 1 on the combining mark itself instead.
     let buf = rope("e\u{0301}x\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 0), co(0));
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 1), co(2));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), gc(0)), co(0));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), gc(1)), co(2));
 }
 
 #[test]
@@ -656,13 +668,16 @@ fn place_grapheme_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n" — line 0 only has 2 grapheme clusters; column 10 clamps
     // to 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 10), co(1));
+    assert_eq!(
+        place_grapheme_column(&buf, RopeyLine::new(0), gc(10)),
+        co(1)
+    );
 }
 
 #[test]
 fn place_grapheme_column_zero_is_line_start() {
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 0), co(6));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(0)), co(6));
 }
 
 #[test]
@@ -670,7 +685,7 @@ fn place_grapheme_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n" — line 1 is empty; any grapheme column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 3), co(2));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), gc(3)), co(2));
 }
 
 #[test]
@@ -689,7 +704,7 @@ fn grapheme_col_in_line_is_the_inverse_of_place_grapheme_column() {
     // combining mark itself), so this line is required to actually exercise
     // the grapheme/char distinction, not just restate the char-column test.
     let buf = rope("e\u{0301}x\n");
-    let grapheme_col = 1;
+    let grapheme_col = gc(1);
     let pos = place_grapheme_column(&buf, RopeyLine::new(0), grapheme_col);
     assert_eq!(
         crate::grapheme::grapheme_col_in_line(buf.slice(..), 0, pos),
@@ -705,7 +720,7 @@ fn line_segments_yields_one_triple_per_line_covered() {
     let start = co(buf.line_to_char(0));
     let end = co(buf.line_to_char(2) + 2); // through "gh" on line 2
     let segs: Vec<_> = line_segments(&buf, start, end)
-        .map(|(l, s, e)| (l.index(), s, e))
+        .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
     assert_eq!(segs, vec![(0, 0, 3), (1, 0, 3), (2, 0, 2)]);
 }
@@ -722,7 +737,7 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
     let start = co(buf.line_to_char(0) + 3); // line 0's own '\n'
     let end = co(buf.line_to_char(1) + 2); // through "de" on line 1
     let segs: Vec<_> = line_segments(&buf, start, end)
-        .map(|(l, s, e)| (l.index(), s, e))
+        .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
     assert_eq!(segs, vec![(1, 0, 2)]);
 }

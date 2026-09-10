@@ -3,7 +3,12 @@ use crate::pane::ViewportState;
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, Modifiers, ResolvedStyle, RowKind, ScopeId};
 use hume_grid::{Grid, Rect, Rgb};
+use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
+
+fn dc(n: u32) -> DisplayLineCol {
+    DisplayLineCol::new(n)
+}
 
 fn make_test_buf(w: u16, h: u16) -> Grid {
     Grid::new(w, h)
@@ -41,7 +46,7 @@ fn simple_grapheme(display_col: u32, byte_start: usize, ch_len: usize) -> Graphe
         byte_range: byte_start..byte_start + ch_len,
         // char_offset is not needed for render tests (selections handled in style stage).
         char_offset: byte_start,
-        display_col,
+        display_col: dc(display_col),
         width: 1,
         content: CellContent::Grapheme,
         indent_depth: 0,
@@ -215,7 +220,7 @@ fn horizontal_scroll_clips_left_columns() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            display_col: i,
+            display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -231,7 +236,7 @@ fn horizontal_scroll_clips_left_columns() {
         last_line_idx: RopeyLine::new(0),
     };
     let mut viewport = ViewportState::new(20, 5);
-    viewport.horizontal_offset = 2; // skip columns 0 and 1
+    viewport.horizontal_offset = dc(2); // skip columns 0 and 1
     let buf = do_compose_row(
         "abcde", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -255,7 +260,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         Grapheme {
             byte_range: 0..3,
             char_offset: 0,
-            display_col: 0,
+            display_col: dc(0),
             width: 2,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -264,7 +269,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         Grapheme {
             byte_range: 0..3,
             char_offset: 0,
-            display_col: 2,
+            display_col: dc(2),
             width: 0,
             content: CellContent::WidthContinuation,
             indent_depth: 0,
@@ -273,7 +278,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 1,
-            display_col: 2,
+            display_col: dc(2),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -289,7 +294,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         last_line_idx: RopeyLine::new(0),
     };
     let mut viewport = ViewportState::new(20, 5);
-    viewport.horizontal_offset = 1;
+    viewport.horizontal_offset = dc(1);
     let buf = do_compose_row(
         "中X", "", &rows[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -315,7 +320,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
     let graphemes = vec![Grapheme {
         byte_range: 0..3,
         char_offset: 0,
-        display_col: 4,
+        display_col: dc(4),
         width: 2,
         content: CellContent::Grapheme,
         indent_depth: 0,
@@ -358,7 +363,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            display_col: 0,
+            display_col: dc(0),
             width: 2,
             content: CellContent::Virtual { start: 0, len: 3 },
             indent_depth: 0,
@@ -367,7 +372,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            display_col: 2,
+            display_col: dc(2),
             width: 0,
             content: CellContent::WidthContinuation,
             indent_depth: 0,
@@ -401,7 +406,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            display_col: i,
+            display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 2, // 8 spaces / 4 tab_width = depth 2
@@ -455,7 +460,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         .map(|i| Grapheme {
             byte_range: 0..0, // virtual: no buffer bytes
             char_offset: usize::MAX,
-            display_col: i,
+            display_col: dc(i),
             width: 1,
             content: CellContent::Virtual { start: i, len: 1 },
             indent_depth: 2,
@@ -465,7 +470,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     graphemes.extend((0..3u32).map(|i| Grapheme {
         byte_range: (i as usize)..(i as usize + 1),
         char_offset: i as usize,
-        display_col: 6 + i,
+        display_col: dc(6 + i),
         width: 1,
         content: CellContent::Grapheme,
         indent_depth: 2,
@@ -507,7 +512,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            display_col: i,
+            display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 2,
@@ -587,7 +592,7 @@ fn indent_guide_not_drawn_on_wrap_rows() {
         .map(|i| Grapheme {
             byte_range: (i as usize)..(i as usize + 1),
             char_offset: i as usize,
-            display_col: i,
+            display_col: dc(i),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 1,
@@ -622,7 +627,7 @@ fn indicator_content_fills_tab_width() {
     let graphemes = vec![Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: dc(0),
         width: 4,
         content: CellContent::Whitespace { start: 0, len: 3 }, // "→" is 3 bytes
         indent_depth: 0,
@@ -655,7 +660,7 @@ fn tab_fill_blanks_its_whole_width() {
     let graphemes = vec![Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: dc(0),
         width: 4,
         content: CellContent::TabFill,
         indent_depth: 0,
@@ -691,7 +696,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            display_col: 0,
+            display_col: dc(0),
             width: 2,
             content: CellContent::Virtual { start: 0, len: 2 },
             indent_depth: 0,

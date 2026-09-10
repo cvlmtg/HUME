@@ -490,6 +490,7 @@ fn open_extra_file_opens_the_path() {
 // ── CLI startup cursor positions ─────────────────────────────────────────
 
 use crate::cli::CliPosition;
+use hume_rope::column::GraphemeCol;
 
 #[test]
 fn apply_startup_positions_places_focused_cursor() {
@@ -508,7 +509,7 @@ fn apply_startup_positions_places_focused_cursor() {
         bid,
         CliPosition {
             line: 2,
-            grapheme_col: 6,
+            grapheme_col: GraphemeCol::from_number(6).unwrap(),
         },
     );
     ed.apply_startup_positions();
@@ -539,7 +540,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
         bid,
         CliPosition {
             line: 150,
-            grapheme_col: 1,
+            grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );
     ed.apply_startup_positions();
@@ -578,7 +579,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
         extra_bid,
         CliPosition {
             line: 3,
-            grapheme_col: 2,
+            grapheme_col: GraphemeCol::from_number(2).unwrap(),
         },
     );
     ed.apply_startup_positions();
@@ -619,7 +620,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
         bid,
         CliPosition {
             line: 999,
-            grapheme_col: 1,
+            grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );
     ed.apply_startup_positions();

@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::CharOffset;
 
 // ---------------------------------------------------------------------------
@@ -71,7 +72,7 @@ pub struct Grapheme {
     /// width — which is why the render path subtracts
     /// `ViewportState::horizontal_offset` from it rather than treating it as
     /// a screen cell.
-    pub display_col: u32,
+    pub display_col: DisplayLineCol,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.
     pub width: u8,
     /// What to render.

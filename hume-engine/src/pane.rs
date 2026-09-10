@@ -6,6 +6,7 @@ use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
 use crate::types::Selection;
+use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::CharOffset;
 use ropey::Rope;
@@ -28,7 +29,7 @@ pub struct ViewportState {
     /// column, not a terminal cell — widened past `u16` alongside
     /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
     /// unwrapped line.
-    pub horizontal_offset: u32,
+    pub horizontal_offset: DisplayLineCol,
     /// Total width of the pane in terminal cells (gutter + content).
     pub width: u16,
     /// Total height of the pane in terminal cells.
@@ -40,7 +41,7 @@ impl ViewportState {
         Self {
             top_line: ContentLine::new(0),
             top_row_offset: 0,
-            horizontal_offset: 0,
+            horizontal_offset: DisplayLineCol::new(0),
             width,
             height,
         }
@@ -59,7 +60,7 @@ impl ViewportState {
 pub struct ScrollPosition {
     pub top_line: ContentLine,
     pub top_row_offset: u16,
-    pub horizontal_offset: u32,
+    pub horizontal_offset: DisplayLineCol,
 }
 
 // ---------------------------------------------------------------------------

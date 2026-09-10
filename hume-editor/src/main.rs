@@ -142,6 +142,7 @@ fn main() {
 mod tests {
     use super::*;
     use hume_editor::cli::{ConfigSource, FileArg};
+    use hume_rope::column::GraphemeCol;
 
     // ── clap layer: parse from argv strings ──────────────────────────────────
 
@@ -329,7 +330,7 @@ mod tests {
                 path: PathBuf::from("does-not-exist.rs"),
                 pos: Some(hume_editor::cli::CliPosition {
                     line: 12,
-                    grapheme_col: 24
+                    grapheme_col: GraphemeCol::from_number(24).unwrap()
                 })
             }]
         );

@@ -100,8 +100,8 @@ pub(crate) fn render_pane(
     let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
         let h_offset = pane_ctx.viewport.horizontal_offset;
         let end = h_offset
-            .saturating_add(visible.content_width as u32)
-            .saturating_add(H_WINDOW_SLACK as u32);
+            .advance(visible.content_width as u32)
+            .advance(H_WINDOW_SLACK as u32);
         h_offset..end
     });
 

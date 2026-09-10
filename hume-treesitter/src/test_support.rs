@@ -89,11 +89,11 @@ pub(crate) fn range(start: usize, end: usize) -> tree_sitter::Range {
         end_byte: end,
         start_point: tree_sitter::Point {
             row: 0,
-            column: start, // column-name-safe: tree-sitter's Point::column is a byte offset
+            column: start,
         },
         end_point: tree_sitter::Point {
             row: 0,
-            column: end, // column-name-safe: tree-sitter's Point::column is a byte offset
+            column: end,
         },
     }
 }

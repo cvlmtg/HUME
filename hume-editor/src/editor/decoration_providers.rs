@@ -177,6 +177,7 @@ impl Editor {
                     .primary();
                 if let Some(match_pos) = matching_bracket(text, primary) {
                     let (line, byte) = char_to_line_byte(text, match_pos);
+                    let byte = byte.index();
                     // Single-char match: byte_end = byte + utf8 length of the char.
                     let ch_len = text
                         .char_at(match_pos.index())
@@ -439,7 +440,7 @@ impl Editor {
                 // line at set-time, so `line` here is always real content.
                 let line = hume_rope::line::ContentLine::new(line.index());
                 by_line.entry(line).or_default().push(InlineInsert {
-                    byte_offset,
+                    byte_offset: byte_offset.index(),
                     text: entry.text.clone(),
                     scope,
                 });
@@ -500,7 +501,7 @@ impl Editor {
                         source,
                         line,
                         InlineInsert {
-                            byte_offset,
+                            byte_offset: byte_offset.index(),
                             text: e.text.clone(),
                             scope: e.scope,
                         },
@@ -739,7 +740,9 @@ fn push_match_highlight_lines(
     if start >= end_char_excl {
         return;
     }
-    data.extend(line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
+    data.extend(
+        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s.index(), e.index(), scope)),
+    );
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
@@ -765,7 +768,8 @@ fn push_priority_highlight_lines(
         return;
     }
     data.extend(
-        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
+        line_segments(text, start, end_char_excl)
+            .map(|(l, s, e)| (l, s.index(), e.index(), priority, scope)),
     );
 }
 

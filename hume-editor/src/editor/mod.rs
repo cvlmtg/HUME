@@ -344,7 +344,7 @@ pub(crate) struct EditorState {
     /// Reusable sticky-column buffer for vertical motion — shared by all
     /// three units `apply_visual_vertical` handles (row-domain `j`/`k`,
     /// scroll/wheel, and buffer-line `9j`/`9k`).
-    pub(super) visual_move_target_display_cols: Vec<u32>,
+    pub(super) visual_move_target_display_cols: Vec<hume_editing::selection::StickyDisplayCol>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.

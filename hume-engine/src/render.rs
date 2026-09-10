@@ -1,3 +1,5 @@
+use hume_rope::column::DisplayLineCol;
+
 use hume_grid::{Rect, Rgb};
 // `Canvas` and its geometry helper live in `hume-grid` now — see its own doc
 // for why a crate with "no other HUME crate" as its rule takes this one
@@ -273,17 +275,20 @@ pub(crate) fn compose_row(
         }
 
         // Horizontal scroll: skip cells left of the viewport.
-        if g.display_col + g.width as u32 <= h_offset {
+        if g.display_col.advance(g.width as u32) <= h_offset {
             continue;
         }
         // Clip cells that start before the viewport edge. `g.display_col` is
-        // a row column (`u32`), which with wrapping off spans the whole
-        // unwrapped line, but this render path always runs behind
+        // a row column (`DisplayLineCol`), which with wrapping off spans the
+        // whole unwrapped line, but this render path always runs behind
         // `with_h_window` (`pane_render.rs`), so a cell surviving the skip
         // above sits within one viewport width of `h_offset` — safely
         // representable in the terminal-cell (`u16`) domain the rest of
-        // compose works in.
-        let content_x = g.display_col.saturating_sub(h_offset);
+        // compose works in. `.get()` here (not `cells_since`, which
+        // debug-panics on inversion): a cell straddling `h_offset` — handled
+        // below — legitimately has `g.display_col < h_offset`, and this
+        // clamps that case to 0 rather than treating it as a bug.
+        let content_x = g.display_col.get().saturating_sub(h_offset.get());
         debug_assert!(
             u16::try_from(content_x).is_ok(),
             "on-screen column {content_x} exceeds a u16 — h_window should have clipped this cell"
@@ -307,7 +312,7 @@ pub(crate) fn compose_row(
         // `g.display_col < h_offset < g.display_col + g.width`, which has no
         // integer solution when `g.width == 1`.
         if g.display_col < h_offset {
-            let visible_cells = g.width as u32 - (h_offset - g.display_col);
+            let visible_cells = g.width as u32 - h_offset.cells_since(g.display_col);
             for i in 0..visible_cells as u16 {
                 let sx = screen_x + i;
                 canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
@@ -403,15 +408,19 @@ pub(crate) fn compose_row(
         let indent_origin = row_graphemes
             .iter()
             .find(|g| !g.byte_range.is_empty())
-            .map_or(0, |g| g.display_col);
+            .map_or(DisplayLineCol::new(0), |g| g.display_col);
         // Draw a guide at each inner tab-stop. These positions are
         // guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_display_col =
-                indent_origin + hume_rope::width::indent_stop(k as u32, compose_ctx.tab_width);
+            let guide_display_col = indent_origin.advance(hume_rope::width::indent_stop(
+                k as u32,
+                compose_ctx.tab_width,
+            ));
             // Account for horizontal scroll.
-            if guide_display_col + tw > h_offset {
-                let content_x = guide_display_col.saturating_sub(h_offset);
+            if guide_display_col.advance(tw) > h_offset {
+                // See the content loop's own `.get()` comment above — a guide
+                // left of `h_offset` clamps to 0 rather than panicking.
+                let content_x = guide_display_col.get().saturating_sub(h_offset.get());
                 debug_assert!(
                     u16::try_from(content_x).is_ok(),
                     "on-screen indent guide column {content_x} exceeds a u16"

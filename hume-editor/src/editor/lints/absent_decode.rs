@@ -82,11 +82,7 @@ fn absent_marker_is_decoded_only_in_args_rs() {
     let paths = workspace_source_paths(workspace_root, &[], &[args_rs]);
 
     let violations = scan_lines(&paths, workspace_root, OPT_OUT_MARKER, |code| {
-        if reads_absent_marker(code) {
-            vec![MARKER_PATTERN.to_string()]
-        } else {
-            Vec::new()
-        }
+        usize::from(reads_absent_marker(code))
     });
 
     assert!(

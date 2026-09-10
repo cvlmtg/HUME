@@ -156,7 +156,7 @@ fn nowrap_horizontal_scroll() {
     // "abcde\n" with h_offset=2: screen_x 0 maps to content_x 2 = 'c' (char 2).
     let rope = Rope::from_str("abcde\n");
     let mut v = vp(0, 80, 10);
-    v.horizontal_offset = 2;
+    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(2);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(

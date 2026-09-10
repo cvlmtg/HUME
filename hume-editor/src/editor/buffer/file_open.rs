@@ -216,7 +216,11 @@ impl Editor {
         let focused = self.state.focused_pane_id;
         let pre_sels = self.state.panes.state[focused][id].selections.clone();
 
-        let cursor_coords: Vec<(PaneId, hume_rope::line::ContentLine, usize)> = {
+        let cursor_coords: Vec<(
+            PaneId,
+            hume_rope::line::ContentLine,
+            hume_rope::column::CharCol,
+        )> = {
             let text = self.state.buffers.get(id).text();
             pane_ids
                 .iter()
@@ -493,7 +497,7 @@ impl Editor {
             pid,
             bid,
             cursor_line,
-            0,
+            hume_rope::column::GraphemeCol::new(0),
         );
 
         bid

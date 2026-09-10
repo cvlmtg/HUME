@@ -2,9 +2,7 @@ mod single;
 #[cfg(test)]
 pub mod testing;
 
-pub use single::{
-    DisplayColOrigin, Selection, StickyDisplayCol, is_selection_linewise, linewise_classification,
-};
+pub use single::{Selection, StickyDisplayCol, is_selection_linewise, linewise_classification};
 
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 

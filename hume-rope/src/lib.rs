@@ -30,6 +30,7 @@
 //! single-char: there is no two-char terminator to look behind for, and no
 //! break set to test membership in.
 
+pub mod column;
 pub mod cursor;
 pub mod grapheme;
 pub mod line;

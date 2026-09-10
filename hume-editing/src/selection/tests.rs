@@ -1,5 +1,6 @@
 use super::*;
 use crate::changeset::ChangeSetBuilder;
+use hume_rope::column::BufferLineCol;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 
@@ -8,14 +9,12 @@ fn co(n: usize) -> CharOffset {
 }
 
 /// Test-only shorthand: these tests exercise merge/translate invalidation,
-/// not `DisplayColOrigin` itself, so every latch below is `BufferLine`
-/// arbitrarily — origin-aware behaviour is pinned separately in
+/// not the `StickyDisplayCol` variants themselves, so every latch below is
+/// `BufferLine` arbitrarily — variant-aware behaviour is pinned separately in
 /// `hume-ops`/`hume-editor`.
 fn sticky(display_col: u32) -> StickyDisplayCol {
-    StickyDisplayCol {
-        display_col,
-        origin: DisplayColOrigin::BufferLine,
-        wrap_width: None,
+    StickyDisplayCol::BufferLine {
+        display_col: BufferLineCol::new(display_col),
     }
 }
 

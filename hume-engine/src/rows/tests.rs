@@ -7,11 +7,20 @@ use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{DecorationSource, VirtualLine};
 use crate::types::ScopeId;
+use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
+}
+
+fn dc(n: u32) -> DisplayLineCol {
+    DisplayLineCol::new(n)
+}
+
+fn ldc(n: u32) -> BufferLineCol {
+    BufferLineCol::new(n)
 }
 
 fn ex(start: usize, end: usize) -> ExclusiveRange<CharOffset> {
@@ -776,22 +785,22 @@ fn locate_returns_the_wrap_row_and_column_of_a_char() {
 
     assert_eq!(
         rm.locate(co(0)),
-        (RowPos::new(ContentLine::new(0), 0), 0),
+        (RowPos::new(ContentLine::new(0), 0), dc(0)),
         "'a' — row 0, column 0"
     );
     assert_eq!(
         rm.locate(co(2)),
-        (RowPos::new(ContentLine::new(0), 0), 2),
+        (RowPos::new(ContentLine::new(0), 0), dc(2)),
         "'c' — row 0, column 2"
     );
     assert_eq!(
         rm.locate(co(4)),
-        (RowPos::new(ContentLine::new(0), 1), 0),
+        (RowPos::new(ContentLine::new(0), 1), dc(0)),
         "'e' — row 1, column 0"
     );
     assert_eq!(
         rm.locate(co(5)),
-        (RowPos::new(ContentLine::new(0), 1), 1),
+        (RowPos::new(ContentLine::new(0), 1), dc(1)),
         "'f' — row 1, column 1"
     );
 }
@@ -809,7 +818,10 @@ fn locate_offsets_the_row_by_the_lines_before_block() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
-    assert_eq!(rm.locate(co(5)), (RowPos::new(ContentLine::new(0), 3), 1));
+    assert_eq!(
+        rm.locate(co(5)),
+        (RowPos::new(ContentLine::new(0), 3), dc(1))
+    );
 }
 
 #[test]
@@ -824,7 +836,10 @@ fn locate_skips_a_mid_line_inline_insert_sharing_the_real_graphemes_offset() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(co(1)), (RowPos::new(ContentLine::new(0), 0), 3));
+    assert_eq!(
+        rm.locate(co(1)),
+        (RowPos::new(ContentLine::new(0), 0), dc(3))
+    );
 }
 
 #[test]
@@ -841,7 +856,7 @@ fn char_at_cell_lands_on_the_eol_sentinel_past_the_text() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            99,
+            dc(99),
             DisplayColTarget::Cell
         ),
         co(2)
@@ -860,7 +875,7 @@ fn char_at_nearest_content_stays_off_the_eol_sentinel() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            99,
+            dc(99),
             DisplayColTarget::NearestContent
         ),
         co(1)
@@ -879,7 +894,10 @@ fn locate_resolves_the_eol_sentinel_of_an_exactly_full_wrapped_row() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::Soft { width: 5 }, &providers, &mut s);
 
-    assert_eq!(rm.locate(co(5)), (RowPos::new(ContentLine::new(0), 1), 0));
+    assert_eq!(
+        rm.locate(co(5)),
+        (RowPos::new(ContentLine::new(0), 1), dc(0))
+    );
 }
 
 #[test]
@@ -911,7 +929,7 @@ fn char_at_nearest_content_stays_off_the_newline_indicator() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            99,
+            dc(99),
             DisplayColTarget::NearestContent
         ),
         co(1),
@@ -935,7 +953,7 @@ fn char_at_nearest_content_skips_a_trailing_inline_insert() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            10,
+            dc(10),
             DisplayColTarget::NearestContent
         ),
         co(1),
@@ -954,7 +972,7 @@ fn char_at_nearest_content_falls_back_to_the_sentinel_on_an_empty_line() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            5,
+            dc(5),
             DisplayColTarget::NearestContent
         ),
         co(0)
@@ -973,7 +991,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            3,
+            dc(3),
             DisplayColTarget::Cell
         ),
         co(0),
@@ -982,7 +1000,7 @@ fn char_at_resolves_a_column_inside_a_wide_cell_differently_per_policy() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            3,
+            dc(3),
             DisplayColTarget::NearestContent
         ),
         co(1),
@@ -1005,7 +1023,7 @@ fn char_at_cell_on_the_right_half_of_a_wide_grapheme_selects_the_grapheme() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            1,
+            dc(1),
             DisplayColTarget::Cell
         ),
         co(0),
@@ -1028,7 +1046,7 @@ fn char_at_cell_inside_a_placeholder_selects_the_placeholder() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            3,
+            dc(3),
             DisplayColTarget::Cell
         ),
         co(1),
@@ -1053,7 +1071,7 @@ fn char_at_nearest_content_prefers_real_content_over_a_width_continuation_tie() 
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            2,
+            dc(2),
             DisplayColTarget::NearestContent
         ),
         co(1),
@@ -1081,7 +1099,7 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(1), 0),
-            0,
+            dc(0),
             DisplayColTarget::Cell
         ),
         co(rope.line_to_char(1)),
@@ -1090,7 +1108,7 @@ fn char_at_on_a_virtual_row_clamps_to_the_lines_own_content() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(2), 1),
-            0,
+            dc(0),
             DisplayColTarget::Cell
         ),
         co(rope.line_to_char(2)),
@@ -1229,7 +1247,7 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
     let virtual_row = rm.render_row(RowPos::new(ContentLine::new(0), 0));
     let cells = &virtual_row.graphemes[virtual_row.row.graphemes.clone()];
     assert_eq!(cells.len(), 2, "one cell for the tab, one for 'x'");
-    assert_eq!(cells[0].display_col, 0);
+    assert_eq!(cells[0].display_col, dc(0));
     assert_eq!(
         cells[0].width, 4,
         "tab at display_col 0, tab_width 4 -> full stop"
@@ -1239,7 +1257,8 @@ fn render_row_expands_a_tab_in_a_virtual_lines_text() {
         "a tab renders as TabFill, matching a real buffer line's tab with its indicator off"
     );
     assert_eq!(
-        cells[1].display_col, 4,
+        cells[1].display_col,
+        dc(4),
         "'x' lands right after the tab stop"
     );
 }
@@ -1267,16 +1286,17 @@ fn render_row_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_stop() {
     // so it also occupies 2 columns and gets its own WidthContinuation —
     // same as any width-2 cell, tab or not), then 'x'.
     assert_eq!(cells.len(), 5);
-    assert_eq!(cells[0].display_col, 0);
+    assert_eq!(cells[0].display_col, dc(0));
     assert_eq!(cells[0].width, 2);
     assert!(matches!(cells[1].content, CellContent::WidthContinuation));
     assert_eq!(
-        cells[2].display_col, 2,
+        cells[2].display_col,
+        dc(2),
         "tab starts right after the wide char"
     );
     assert_eq!(cells[2].width, 2, "tab_advance(2, 4) == 2");
     assert!(matches!(cells[3].content, CellContent::WidthContinuation));
-    assert_eq!(cells[4].display_col, 4, "'x' lands at column 4, not 3");
+    assert_eq!(cells[4].display_col, dc(4), "'x' lands at column 4, not 3");
 }
 
 #[test]
@@ -1286,7 +1306,7 @@ fn h_window_clips_an_unwrapped_rows_graphemes_without_changing_its_row_count() {
     let rope = Rope::from_str("abcdefghij\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
-    let mut rm = map(&rope, WrapMode::None, &providers, &mut s).with_h_window(Some(2..5));
+    let mut rm = map(&rope, WrapMode::None, &providers, &mut s).with_h_window(Some(dc(2)..dc(5)));
 
     assert_eq!(
         rm.block(ContentLine::new(0)).content,
@@ -1392,7 +1412,7 @@ fn locate_formats_only_as_far_as_the_target_offset() {
 
     assert_eq!(
         rm.locate(co(5)).1,
-        5,
+        dc(5),
         "pure ASCII: column equals char offset"
     );
 
@@ -1417,7 +1437,7 @@ fn char_at_formats_only_as_far_as_the_target_column() {
     assert_eq!(
         rm.char_at(
             RowPos::new(ContentLine::new(0), 0),
-            5,
+            dc(5),
             DisplayColTarget::Cell
         ),
         co(5)
@@ -1440,8 +1460,8 @@ fn a_wider_offset_on_a_cached_line_reformats() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.locate(co(3)).1, 3);
-    assert_eq!(rm.locate(co(50)).1, 50, "the second query must rescan");
+    assert_eq!(rm.locate(co(3)).1, dc(3));
+    assert_eq!(rm.locate(co(50)).1, dc(50), "the second query must rescan");
 }
 
 #[test]
@@ -1454,7 +1474,7 @@ fn a_column_query_after_an_offset_query_reformats() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     let (pos, _) = rm.locate(co(3));
-    assert_eq!(rm.char_at(pos, 40, DisplayColTarget::Cell), co(40));
+    assert_eq!(rm.char_at(pos, dc(40), DisplayColTarget::Cell), co(40));
 }
 
 #[test]
@@ -1521,9 +1541,9 @@ fn locate_row_agrees_with_locate_in_both_wrap_modes() {
 fn line_display_col_matches_locate_column_in_no_wrap() {
     // No-wrap: a line is exactly one row, so the line-relative column and
     // `locate`'s row-relative one must agree everywhere — the invariant
-    // `DisplayColOrigin` relies on to treat the two origins as
-    // interchangeable there. `locate` is the oracle, pinned independently by
-    // the `locate_*` tests above.
+    // `BufferLineCol::as_display_line_unwrapped` relies on to treat the two origins
+    // as interchangeable there. `locate` is the oracle, pinned independently
+    // by the `locate_*` tests above.
     let rope = Rope::from_str("hello\tworld\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
@@ -1531,7 +1551,11 @@ fn line_display_col_matches_locate_column_in_no_wrap() {
 
     for offset in 0..=rope.len_chars() {
         let expected = rm.locate(co(offset)).1;
-        assert_eq!(rm.line_display_col(co(offset)), expected, "offset {offset}");
+        assert_eq!(
+            rm.line_display_col(co(offset)).get(),
+            expected.get(),
+            "offset {offset}"
+        );
     }
 }
 
@@ -1552,7 +1576,7 @@ fn line_display_col_accumulates_across_a_wrap_row() {
     for offset in 0..4 {
         assert_eq!(
             rm.line_display_col(co(offset)),
-            offset as u32 * 2,
+            ldc(offset as u32 * 2),
             "offset {offset}"
         );
     }
@@ -1575,7 +1599,7 @@ fn line_display_col_excludes_wrap_indent() {
     for offset in 0..rope.len_chars() {
         assert_eq!(
             rm.line_display_col(co(offset)),
-            offset as u32,
+            ldc(offset as u32),
             "offset {offset}"
         );
     }
@@ -1591,7 +1615,8 @@ fn line_display_col_excludes_wrap_indent() {
         "the line must actually wrap for this test to mean anything"
     );
     assert_ne!(
-        row_display_col, last as u32,
+        row_display_col,
+        dc(last as u32),
         "row-relative column must differ from the line-relative one on an indented row"
     );
 }
@@ -1609,10 +1634,14 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     let mut s = PaneLineStore::new();
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(rm.line_display_col(co(0)), 0, "'a' precedes the insert");
+    assert_eq!(
+        rm.line_display_col(co(0)),
+        ldc(0),
+        "'a' precedes the insert"
+    );
     assert_eq!(
         rm.line_display_col(co(1)),
-        3,
+        ldc(3),
         "'b' is pushed right by the insert's 2 cells"
     );
 }
@@ -1634,7 +1663,7 @@ fn char_at_line_display_col_round_trips_with_line_display_col() {
         assert_eq!(
             rm.char_at_line_display_col(ContentLine::new(0), col, DisplayColTarget::NearestContent),
             co(offset),
-            "offset {offset}, col {col}"
+            "offset {offset}, col {col:?}"
         );
     }
 }
@@ -1652,7 +1681,11 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at_line_display_col(ContentLine::new(1), 5, DisplayColTarget::NearestContent),
+        rm.char_at_line_display_col(
+            ContentLine::new(1),
+            ldc(5),
+            DisplayColTarget::NearestContent
+        ),
         co(rope.line_to_char(1) + 1),
         "clamps to 'b', not the '\\n'"
     );
@@ -1667,7 +1700,11 @@ fn char_at_line_display_col_lands_on_newline_for_an_empty_line() {
     let mut rm = map(&rope, WrapMode::None, &providers, &mut s);
 
     assert_eq!(
-        rm.char_at_line_display_col(ContentLine::new(0), 5, DisplayColTarget::NearestContent),
+        rm.char_at_line_display_col(
+            ContentLine::new(0),
+            ldc(5),
+            DisplayColTarget::NearestContent
+        ),
         co(0)
     );
 }
@@ -1698,9 +1735,9 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
                 for col in 0..12u32 {
                     let mut s = PaneLineStore::new();
                     let mut rm = map(rope, WrapMode::None, &providers, &mut s);
-                    let expected = rm.char_at(RowPos::new(line, 0), col, target);
+                    let expected = rm.char_at(RowPos::new(line, 0), dc(col), target);
                     assert_eq!(
-                        rm.char_at_line_display_col(line, col, target),
+                        rm.char_at_line_display_col(line, ldc(col), target),
                         expected,
                         "line {}, col {col}, {target:?}",
                         line.index()
@@ -1804,7 +1841,8 @@ fn an_h_window_map_does_not_read_an_unclipped_format() {
     let after_first = calls.get();
     assert_eq!(after_first, 1, "no-wrap formats on render, not on block");
 
-    let mut clipped = map(&r, WrapMode::None, &providers, &mut store).with_h_window(Some(6..20));
+    let mut clipped =
+        map(&r, WrapMode::None, &providers, &mut store).with_h_window(Some(dc(6)..dc(20)));
     clipped.render_row(RowPos::new(ContentLine::new(0), 0));
 
     assert_eq!(
@@ -1828,7 +1866,7 @@ fn an_h_window_change_keeps_the_block_shape() {
     let after_first = calls.get();
 
     map(&r, WrapMode::None, &providers, &mut store)
-        .with_h_window(Some(0..5))
+        .with_h_window(Some(dc(0)..dc(5)))
         .block(ContentLine::new(0));
 
     assert_eq!(

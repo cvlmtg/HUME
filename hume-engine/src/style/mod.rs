@@ -3,6 +3,7 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
+use hume_rope::column::DisplayLineCol;
 use hume_rope::offset::CharOffset;
 
 use crate::providers::Decoration;
@@ -28,9 +29,9 @@ pub struct StyleScratch {
     /// Sorted highlight intervals split by tier; built once per buffer line.
     pub tier_bufs: TierBufs,
     /// Selection display-column spans for the current row (all selections, including primary).
-    pub sel_spans: Vec<(u32, u32)>,
+    pub sel_spans: Vec<(DisplayLineCol, DisplayLineCol)>,
     /// Display columns of each selection head on the current row (all selections, including primary).
-    pub head_display_cols: Vec<u32>,
+    pub head_display_cols: Vec<DisplayLineCol>,
     /// Sorted copy of selections; populated once per frame or batch call.
     pub sorted_sels: Vec<Selection>,
     /// Index of the primary selection within `sorted_sels`. `None` if empty.
@@ -42,9 +43,9 @@ pub struct StyleScratch {
     /// fragile DocPos equality: two distinct selections could share the same head position.
     pub primary_idx_in_sorted: Option<usize>,
     /// Display column of the primary selection's head on the current row. `None` if not on this row.
-    pub primary_head_display_col: Option<u32>,
+    pub primary_head_display_col: Option<DisplayLineCol>,
     /// Display-column span of the primary selection on the current row. `None` if not on this row.
-    pub primary_sel_span: Option<(u32, u32)>,
+    pub primary_sel_span: Option<(DisplayLineCol, DisplayLineCol)>,
 }
 
 impl StyleScratch {
@@ -336,8 +337,8 @@ fn collect_selection_spans(
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-    out: &mut Vec<(u32, u32)>,
-    primary_sel_span: &mut Option<(u32, u32)>,
+    out: &mut Vec<(DisplayLineCol, DisplayLineCol)>,
+    primary_sel_span: &mut Option<(DisplayLineCol, DisplayLineCol)>,
 ) {
     out.clear();
     *primary_sel_span = None;
@@ -396,14 +397,18 @@ fn collect_selection_spans(
             }
         }
 
-        let display_col_start =
-            char_offset_to_display_col(sel_char_start, graphemes, row_range).unwrap_or(0);
+        let display_col_start = char_offset_to_display_col(sel_char_start, graphemes, row_range)
+            .unwrap_or(DisplayLineCol::new(0));
         // Selections are inclusive at both ends, so the exclusive upper bound is
         // the right edge of the end grapheme (display_col + width), not its
         // left edge (display_col). Using the left edge caused backward
         // selections to silently drop their anchor cell from the highlighted span.
         let display_col_end = char_offset_to_end_display_col(sel_char_end, graphemes, row_range)
-            .unwrap_or_else(|| row_gs.last().map_or(0, |g| g.display_col + g.width as u32));
+            .unwrap_or_else(|| {
+                row_gs.last().map_or(DisplayLineCol::new(0), |g| {
+                    g.display_col.advance(g.width as u32)
+                })
+            });
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
@@ -428,8 +433,8 @@ fn collect_head_display_cols(
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-    out: &mut Vec<u32>,
-    primary_head_display_col: &mut Option<u32>,
+    out: &mut Vec<DisplayLineCol>,
+    primary_head_display_col: &mut Option<DisplayLineCol>,
 ) {
     out.clear();
     *primary_head_display_col = None;
@@ -467,7 +472,7 @@ pub(crate) fn resolve_grapheme_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<(u32, u32)> {
+) -> Option<(DisplayLineCol, u32)> {
     if char_offset == usize::MAX {
         // Sentinel: "extend to end of row" — let the caller use the fallback.
         return None;
@@ -505,7 +510,7 @@ fn char_offset_to_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<u32> {
+) -> Option<DisplayLineCol> {
     resolve_grapheme_display_col(char_offset, graphemes, row_range)
         .map(|(display_col, _)| display_col)
 }
@@ -519,9 +524,9 @@ fn char_offset_to_end_display_col(
     char_offset: usize,
     graphemes: &[Grapheme],
     row_range: &std::ops::Range<usize>,
-) -> Option<u32> {
+) -> Option<DisplayLineCol> {
     resolve_grapheme_display_col(char_offset, graphemes, row_range)
-        .map(|(display_col, width)| display_col + width)
+        .map(|(display_col, width)| display_col.advance(width))
 }
 
 // ---------------------------------------------------------------------------

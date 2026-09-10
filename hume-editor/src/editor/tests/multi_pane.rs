@@ -90,22 +90,21 @@ fn d4a_search_pattern_is_per_buffer() {
 #[test]
 fn d4b_sticky_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
-    use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
+    use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
     use hume_editing::text::BufferText;
+    use hume_rope::column::BufferLineCol;
 
     // "abc\ndef\n" — two lines.
     let text = BufferText::from("abc\ndef\n");
 
     // Selection on line 1 (char offset 4 = 'd'), sticky_display_col = 0.
-    // Origin is incidental to this test (translate_in_place invalidation
-    // doesn't look at it) — BufferLine is as good as DisplayRow here.
+    // Variant is incidental to this test (translate_in_place invalidation
+    // doesn't look at it) — `BufferLine` is as good as `DisplayLine` here.
     let sel = Selection::with_sticky_display_col(
         co(4),
         co(4),
-        StickyDisplayCol {
-            display_col: 0,
-            origin: DisplayColOrigin::BufferLine,
-            wrap_width: None,
+        StickyDisplayCol::BufferLine {
+            display_col: BufferLineCol::new(0),
         },
     );
     let mut sels = SelectionSet::single(sel);
@@ -124,10 +123,8 @@ fn d4b_sticky_col_is_per_selection() {
     assert_eq!(sels.primary().head(), co(5), "head mapped past insert");
     assert_eq!(
         sels.primary().sticky_display_col(),
-        Some(StickyDisplayCol {
-            display_col: 0,
-            origin: DisplayColOrigin::BufferLine,
-            wrap_width: None,
+        Some(StickyDisplayCol::BufferLine {
+            display_col: BufferLineCol::new(0),
         }),
         "sticky_display_col preserved on untouched line"
     );
@@ -138,10 +135,8 @@ fn d4b_sticky_col_is_per_selection() {
     let sel2 = Selection::with_sticky_display_col(
         co(5),
         co(5),
-        StickyDisplayCol {
-            display_col: 0,
-            origin: DisplayColOrigin::BufferLine,
-            wrap_width: None,
+        StickyDisplayCol::BufferLine {
+            display_col: BufferLineCol::new(0),
         },
     );
     let mut sels2 = SelectionSet::single(sel2);
@@ -1580,7 +1575,7 @@ fn same_buffer_split_inherits_saved_scrolls() {
         ScrollPosition {
             top_line: hume_rope::line::ContentLine::new(42),
             top_row_offset: 0,
-            horizontal_offset: 0,
+            horizontal_offset: hume_rope::column::DisplayLineCol::new(0),
         },
     );
 

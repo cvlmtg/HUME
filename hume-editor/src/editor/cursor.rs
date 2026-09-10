@@ -12,6 +12,7 @@ use hume_engine::layout::gutter_width_for_line;
 use hume_engine::pane::ViewportState;
 use hume_engine::providers::GutterColumn;
 use hume_engine::rows::{DisplayColTarget, RowMap};
+use hume_rope::column::DisplayLineCol;
 
 use super::scroll::top_pos;
 
@@ -61,10 +62,10 @@ pub(crate) fn content_pos(
 /// horizontal-offset subtraction and the `u16` narrowing happen.
 pub(crate) fn place(
     viewport: &ViewportState,
-    cursor_display_col: u32,
+    cursor_display_col: DisplayLineCol,
     screen_row: usize,
 ) -> (u16, u16) {
-    let content_x = cursor_display_col.saturating_sub(viewport.horizontal_offset);
+    let content_x = cursor_display_col.cells_since(viewport.horizontal_offset);
     // `ensure_cursor_visible_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
     // subtraction it's a small on-screen offset — safe to narrow to the
@@ -120,7 +121,9 @@ pub(crate) fn screen_to_char_offset(
     // Pane-content column past the gutter, plus horizontal scroll (0 while
     // wrapping — see `scroll::ensure_cursor_visible_horizontal`),
     // reconstructed back into a document display column.
-    let display_col = ((content_x - gutter_w) as u32).saturating_add(viewport.horizontal_offset);
+    let display_col = viewport
+        .horizontal_offset
+        .advance((content_x - gutter_w) as u32);
 
     let top = rm.clamp(top_pos(viewport));
     let clicked = rm.advance(top, content_y as isize);

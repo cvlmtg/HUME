@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use hume_rope::column::DisplayLineCol;
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -53,7 +54,7 @@ pub struct LineFormat {
     /// instead lets the entry's window-independent fields (block shape,
     /// virtual rows) survive a window change; only [`LineFormat::covers`]
     /// needs to tell the two formats apart.
-    pub h_window: Option<Range<u32>>,
+    pub h_window: Option<Range<DisplayLineCol>>,
 }
 
 /// How large each buffer may stay across a frame boundary — past this,
@@ -146,7 +147,7 @@ impl LineFormat {
     /// Whether this format already answers a query bounded by `bound`, cut to
     /// the same `h_window` the querying map is using. A windowed format never
     /// answers for an unwindowed query or vice versa — see the field doc.
-    pub fn covers(&self, bound: FormatBound, h_window: Option<&Range<u32>>) -> bool {
+    pub fn covers(&self, bound: FormatBound, h_window: Option<&Range<DisplayLineCol>>) -> bool {
         self.extent.is_some_and(|e| e.covers(bound)) && self.h_window.as_ref() == h_window
     }
 }
@@ -264,7 +265,7 @@ pub enum FormatBound {
     ToByte(usize),
     /// Stop after the first grapheme whose own start display column is past
     /// this one.
-    ToDisplayCol(u32),
+    ToDisplayCol(DisplayLineCol),
 }
 
 impl FormatBound {
@@ -292,7 +293,7 @@ impl FormatBound {
     /// straddle the target, and stopping on the running column would drop
     /// the cell to its right — which may be strictly nearer the target than
     /// the straddling one, changing what `NearestContent` answers.
-    fn reached(self, bytes: &Range<usize>, start_display_col: u32) -> bool {
+    fn reached(self, bytes: &Range<usize>, start_display_col: DisplayLineCol) -> bool {
         match self {
             Self::Full => false,
             Self::ToByte(b) => bytes.contains(&b),
@@ -329,7 +330,7 @@ pub fn format_buffer_line(
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     wrap_mode: &WrapMode,
-    h_window: Option<Range<u32>>,
+    h_window: Option<Range<DisplayLineCol>>,
     bound: FormatBound,
     inline_inserts: &[InlineInsert],
     out: &mut LineFormat,
@@ -366,10 +367,13 @@ pub fn format_buffer_line(
     // that can exceed a `u16`. `None` means no wrap.
     let wrap_width: Option<u32> = wrap_mode.wrap_width().map(u32::from);
     // For indent-wrap, continuation rows start at this column.
-    let indent_display_cols: u32 = if matches!(wrap_mode, WrapMode::Indent { .. }) {
-        hume_rope::width::indent_stop(indent_depth as u32, tab_width)
+    let indent_display_cols: DisplayLineCol = if matches!(wrap_mode, WrapMode::Indent { .. }) {
+        DisplayLineCol::new(hume_rope::width::indent_stop(
+            indent_depth as u32,
+            tab_width,
+        ))
     } else {
-        0
+        DisplayLineCol::new(0)
     };
     // Word/Indent backtrack to the last whitespace on overflow; Soft splits at
     // the exact wrap column.
@@ -384,7 +388,7 @@ pub fn format_buffer_line(
 
     let mut insert_idx = 0usize;
     let mut wrap = WrapState {
-        current_display_col: 0,
+        current_display_col: DisplayLineCol::new(0),
         wrap_row: 0,
         row_g_start: graphemes_out.len(),
         // Word-wrap state: remember the last whitespace position in the current row.
@@ -459,7 +463,7 @@ pub fn format_buffer_line(
                 // column it's later used against; nothing here can go stale.
                 let ins_width = hume_rope::width::str_width(
                     &ins.text,
-                    wrap.current_display_col as usize,
+                    wrap.current_display_col.get() as usize,
                     tab_width,
                 )
                 .min(255) as u8;
@@ -473,9 +477,9 @@ pub fn format_buffer_line(
                         rows_out,
                         graphemes_out,
                     );
-                    let visible = h_window
-                        .as_ref()
-                        .is_none_or(|w| wrap.current_display_col + ins_width as u32 > w.start);
+                    let visible = h_window.as_ref().is_none_or(|w| {
+                        wrap.current_display_col.advance(ins_width as u32) > w.start
+                    });
                     if visible {
                         push_virtual_cells(
                             virtual_texts_out,
@@ -492,7 +496,7 @@ pub fn format_buffer_line(
                         );
                     } else {
                         wrap.current_display_col =
-                            wrap.current_display_col.saturating_add(ins_width as u32);
+                            wrap.current_display_col.advance(ins_width as u32);
                     }
                 }
             }
@@ -545,8 +549,11 @@ pub fn format_buffer_line(
         // (post-wrap) column, not the one `grapheme_display` computed it at —
         // tab width is column-dependent, unlike every other grapheme's.
         let width = if grapheme_str == "\t" {
-            hume_rope::width::grapheme_width("\t", wrap.current_display_col as usize, tab_width)
-                as u8
+            hume_rope::width::grapheme_width(
+                "\t",
+                wrap.current_display_col.get() as usize,
+                tab_width,
+            ) as u8
         } else {
             width
         };
@@ -560,7 +567,7 @@ pub fn format_buffer_line(
         let byte_range = byte_offset..byte_offset + grapheme_str.len();
         let visible = h_window
             .as_ref()
-            .is_none_or(|w| start_display_col + width as u32 > w.start);
+            .is_none_or(|w| start_display_col.advance(width as u32) > w.start);
         if visible {
             graphemes_out.push(Grapheme {
                 byte_range: byte_range.clone(),
@@ -573,7 +580,7 @@ pub fn format_buffer_line(
             });
         }
         char_pos += char_count;
-        wrap.current_display_col = wrap.current_display_col.saturating_add(width as u32);
+        wrap.current_display_col = wrap.current_display_col.advance(width as u32);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
@@ -710,7 +717,7 @@ pub fn format_buffer_line(
 /// Grouping these four fields avoids threading them as separate `&mut`
 /// parameters through `maybe_wrap`.
 struct WrapState {
-    current_display_col: u32,
+    current_display_col: DisplayLineCol,
     wrap_row: u16,
     /// Index into `graphemes_out` where the current display row began.
     row_g_start: usize,
@@ -736,7 +743,7 @@ impl WrapState {
         &mut self,
         width: u8,
         wrap_width: Option<u32>,
-        indent_display_cols: u32,
+        indent_display_cols: DisplayLineCol,
         line_idx: hume_rope::line::RopeyLine,
         indent_depth: u8,
         rows_out: &mut Vec<DisplayRow>,
@@ -745,10 +752,10 @@ impl WrapState {
         let Some(wrap_width) = wrap_width else {
             return;
         };
-        if self.current_display_col + width as u32 <= wrap_width {
+        if self.current_display_col.advance(width as u32).get() <= wrap_width {
             return;
         }
-        if self.current_display_col == 0 {
+        if self.current_display_col == DisplayLineCol::new(0) {
             // Single grapheme wider than the viewport — emit it anyway to avoid
             // an infinite loop. (This can happen with very wide tab stops.)
             return;
@@ -775,7 +782,7 @@ impl WrapState {
         for g in &mut graphemes_out[split_at..] {
             g.display_col = new_display_col;
             g.indent_depth = indent_depth;
-            new_display_col += g.width as u32;
+            new_display_col = new_display_col.advance(g.width as u32);
         }
         self.current_display_col = new_display_col;
         self.last_ws_g_idx = split_at;
@@ -826,13 +833,13 @@ fn is_whitespace_grapheme(s: &str) -> bool {
 /// character) is decided once instead of re-tested here.
 fn grapheme_display(
     grapheme_str: &str,
-    current_display_col: u32,
+    current_display_col: DisplayLineCol,
     tab_width: u8,
     whitespace: &WhitespaceConfig,
     is_trailing: bool,
     virtual_texts: &mut String,
 ) -> (u8, CellContent) {
-    match hume_rope::width::classify(grapheme_str, current_display_col as usize, tab_width) {
+    match hume_rope::width::classify(grapheme_str, current_display_col.get() as usize, tab_width) {
         hume_rope::width::Cluster::Tab { width } => {
             let content = if should_render_whitespace(whitespace.tab, is_trailing) {
                 let (start, len) = push_arena_text(virtual_texts, whitespace.tab_char);
@@ -960,7 +967,7 @@ pub(crate) fn push_virtual_cells(
     graphemes_out: &mut Vec<Grapheme>,
     run: &VirtualRun<'_>,
     tab_width: u8,
-    display_col: &mut u32,
+    display_col: &mut DisplayLineCol,
     mut scope_at: impl FnMut(usize) -> Option<ScopeId>,
 ) {
     let (text_start, _) = push_arena_text(arena, run.text);
@@ -968,7 +975,7 @@ pub(crate) fn push_virtual_cells(
         // One grapheme cluster's width is always <= tab_width (u8's own max
         // 255), unlike a whole run's — no `.min(255)` cap needed before
         // narrowing.
-        let classified = hume_rope::width::classify(cluster, *display_col as usize, tab_width);
+        let classified = hume_rope::width::classify(cluster, display_col.get() as usize, tab_width);
         // display-width-safe: Cluster::width() reads classify()'s own decision — not a second raw measurement.
         let width = classified.width() as u8;
 
@@ -1006,7 +1013,7 @@ pub(crate) fn push_virtual_cells(
             indent_depth: run.indent_depth,
             scope: scope_at(byte_offset),
         });
-        *display_col = display_col.saturating_add(width as u32);
+        *display_col = display_col.advance(width as u32);
 
         // For a double-width cluster: a placeholder so the second cell is
         // addressable and styled with the first, matching what

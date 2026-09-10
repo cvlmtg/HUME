@@ -5,6 +5,7 @@ use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 use crate::types::ResolvedStyle;
 use hume_grid::{Grid, Rect, Rgb};
+use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 
 fn ctx(rope: &ropey::Rope) -> GutterRowCtx<'_> {
@@ -176,7 +177,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -268,7 +269,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -499,7 +500,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let graphemes = vec![crate::types::Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: DisplayLineCol::new(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,

@@ -100,15 +100,15 @@ fn make_input_edit(
         new_end_byte,
         start_position: tree_sitter::Point {
             row: start_row.index(), // tree-sitter's own row unit, not this crate's line-domain type
-            column: start_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
+            column: start_byte_col.index(),
         },
         old_end_position: tree_sitter::Point {
             row: old_end_row.index(), // tree-sitter's own row unit, not this crate's line-domain type
-            column: old_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
+            column: old_end_byte_col.index(),
         },
         new_end_position: tree_sitter::Point {
             row: new_end_row,
-            column: new_end_byte_col, // column-name-safe: tree-sitter's Point::column is a byte offset
+            column: new_end_byte_col.index(),
         },
     }
 }

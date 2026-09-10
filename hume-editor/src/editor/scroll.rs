@@ -7,6 +7,7 @@
 
 use hume_engine::pane::ViewportState;
 use hume_engine::rows::{RowMap, RowPos};
+use hume_rope::column::DisplayLineCol;
 
 // ---------------------------------------------------------------------------
 // Viewport ↔ row address
@@ -101,16 +102,20 @@ pub(super) fn clamp_viewport_top(viewport: &mut ViewportState, rm: &mut RowMap<'
 pub(super) fn ensure_cursor_visible_horizontal(
     viewport: &mut ViewportState,
     rm: &mut RowMap<'_>,
-    cursor_display_col: u32,
+    cursor_display_col: DisplayLineCol,
 ) {
     const H_MARGIN: usize = 5;
 
     if rm.is_wrapping() {
-        viewport.horizontal_offset = 0;
+        viewport.horizontal_offset = DisplayLineCol::new(0);
         return;
     }
 
-    let cursor_display_col = cursor_display_col as usize;
+    // The rest of this function mixes the column with plain margin/width
+    // counts throughout, so it drops to `.get()`'s bare `u32` at the top
+    // rather than threading `DisplayLineCol` arithmetic through — the same
+    // trade-off `align_selections` makes for the same reason.
+    let cursor_display_col = cursor_display_col.get() as usize;
     // `locate`'s column is content-relative (the gutter isn't part of it),
     // so the margin must compare against the content width the map itself
     // was built with — not `viewport.width`, which still includes the
@@ -121,13 +126,15 @@ pub(super) fn ensure_cursor_visible_horizontal(
     }
 
     let margin = H_MARGIN.min(content_width / 2);
-    let offset = viewport.horizontal_offset as usize;
+    let offset = viewport.horizontal_offset.get() as usize;
 
     if cursor_display_col < offset + margin {
-        viewport.horizontal_offset = cursor_display_col.saturating_sub(margin) as u32;
-    } else if cursor_display_col >= offset + content_width - margin {
         viewport.horizontal_offset =
-            cursor_display_col.saturating_sub(content_width - margin - 1) as u32;
+            DisplayLineCol::new(cursor_display_col.saturating_sub(margin) as u32);
+    } else if cursor_display_col >= offset + content_width - margin {
+        viewport.horizontal_offset = DisplayLineCol::new(
+            cursor_display_col.saturating_sub(content_width - margin - 1) as u32,
+        );
     }
 }
 

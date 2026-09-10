@@ -427,7 +427,7 @@ fn char_indexed_to_char_pos(
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = hume_rope::line::RopeyLine::clamped(text.rope(), line);
-    hume_editing::lines::place_char_column(text, line, char_col)
+    hume_editing::lines::place_char_column(text, line, hume_rope::column::CharCol::new(char_col))
 }
 
 /// A bare path string and a `file://` URI string both name shape 2's

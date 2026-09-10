@@ -370,8 +370,8 @@ pub(crate) fn diagnostics_for_buffer(
                 "end": d.end.index(),
                 "line": line.index(),
                 "end-line": end_line.index(),
-                "char-col": char_col,
-                "grapheme-col": grapheme_col,
+                "char-col": char_col.index(),
+                "grapheme-col": grapheme_col.index(),
                 "severity": d.severity.to_string(),
                 // `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 =
                 // hint, lower is more severe) — the single encoding of
@@ -415,7 +415,7 @@ fn wire_pos_to_grapheme_col(
     line: usize,
     character: usize,
     encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<usize> {
+) -> Option<hume_rope::column::GraphemeCol> {
     if line > text.last_content_line().index() {
         return None;
     }
@@ -512,6 +512,7 @@ pub(crate) fn location_display_parts(
                 Some(bid) => {
                     let text = state.buffers.get(bid).text();
                     wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
+                        .map(hume_rope::column::GraphemeCol::index)
                 }
                 // No open buffer to measure against — see this function's
                 // doc for why that means the wire unit itself, not a read.

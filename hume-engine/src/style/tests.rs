@@ -4,11 +4,16 @@ use crate::test_support::{bg, fg, theme_with};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayRow, Grapheme, ResolvedStyle, RowKind, Selection};
 use hume_grid::Rgb;
+use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::CharOffset;
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
+}
+
+fn dc(n: u32) -> DisplayLineCol {
+    DisplayLineCol::new(n)
 }
 
 /// Test driver mirroring the live pipeline's ResolvedStyle-stage orchestration
@@ -71,7 +76,7 @@ fn make_graphemes(count: usize) -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            display_col: i as u32,
+            display_col: dc(i as u32),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -214,7 +219,7 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
         .map(|i| Grapheme {
             byte_range: i..i + 1,
             char_offset: i,
-            display_col: i as u32,
+            display_col: dc(i as u32),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -225,7 +230,7 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
     gs.push(Grapheme {
         byte_range: 5..5,
         char_offset: 5,
-        display_col: 5,
+        display_col: dc(5),
         width: 1,
         content: CellContent::Empty,
         indent_depth: 0,
@@ -421,7 +426,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g0 = Grapheme {
         byte_range: 0..1,
         char_offset: 0,
-        display_col: 0,
+        display_col: dc(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -430,7 +435,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g1 = Grapheme {
         byte_range: 1..2,
         char_offset: 1,
-        display_col: 1,
+        display_col: dc(1),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -439,7 +444,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g2 = Grapheme {
         byte_range: 0..1,
         char_offset: 3,
-        display_col: 0,
+        display_col: dc(0),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -448,7 +453,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     let g3 = Grapheme {
         byte_range: 1..2,
         char_offset: 4,
-        display_col: 1,
+        display_col: dc(1),
         width: 1,
         content: crate::types::CellContent::Grapheme,
         indent_depth: 0,
@@ -608,7 +613,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -617,7 +622,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 2,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -626,7 +631,7 @@ fn cursorline_applies_only_to_primary_head_line() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 4,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -699,7 +704,7 @@ fn virtual_rows_keep_default_style() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: crate::types::CellContent::Grapheme,
             indent_depth: 0,
@@ -708,7 +713,7 @@ fn virtual_rows_keep_default_style() {
         Grapheme {
             byte_range: 0..0,
             char_offset: usize::MAX,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: crate::types::CellContent::Virtual { start: 0, len: 4 },
             indent_depth: 0,
@@ -1161,7 +1166,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1170,7 +1175,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 1..2,
             char_offset: 1,
-            display_col: 1,
+            display_col: dc(1),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1179,7 +1184,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 2..3,
             char_offset: 2,
-            display_col: 2,
+            display_col: dc(2),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1188,7 +1193,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 3,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1197,7 +1202,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
         Grapheme {
             byte_range: 4..5,
             char_offset: 4,
-            display_col: 1,
+            display_col: dc(1),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1265,7 +1270,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 0..1,
             char_offset: 0,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1274,7 +1279,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 1..2,
             char_offset: 1,
-            display_col: 1,
+            display_col: dc(1),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1283,7 +1288,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 2..3,
             char_offset: 2,
-            display_col: 2,
+            display_col: dc(2),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1292,7 +1297,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 3..4,
             char_offset: 3,
-            display_col: 0,
+            display_col: dc(0),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1301,7 +1306,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
         Grapheme {
             byte_range: 4..5,
             char_offset: 4,
-            display_col: 1,
+            display_col: dc(1),
             width: 1,
             content: CellContent::Grapheme,
             indent_depth: 0,
@@ -1661,7 +1666,8 @@ fn insert_mid_row_head_resolves_to_real_grapheme_col() {
         .position(|g| g.char_offset == 2 && matches!(g.content, CellContent::Grapheme))
         .expect("'c' grapheme present");
     assert_eq!(
-        fmt.graphemes[c_idx].display_col, 4,
+        fmt.graphemes[c_idx].display_col,
+        dc(4),
         "'c' shifts right by the insert's width"
     );
     assert_eq!(
@@ -1732,7 +1738,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         .iter()
         .position(|g| matches!(g.content, CellContent::Virtual { .. }))
         .expect("insert grapheme present");
-    assert_eq!(fmt.graphemes[insert_idx].display_col, 0);
+    assert_eq!(fmt.graphemes[insert_idx].display_col, dc(0));
     assert_eq!(
         scratch.styles[insert_idx].bg, None,
         "the row-start insert cell must not be painted as part of the selection"
@@ -1748,7 +1754,7 @@ fn selection_spanning_row_start_insert_begins_at_first_real_grapheme() {
         .iter()
         .position(|g| g.char_offset == 1 && matches!(g.content, CellContent::Grapheme))
         .expect("'b' grapheme present");
-    assert_eq!(fmt.graphemes[a_idx].display_col, 1);
+    assert_eq!(fmt.graphemes[a_idx].display_col, dc(1));
     assert_eq!(
         scratch.styles[a_idx].bg,
         Some(Rgb(0, 0, 255)),

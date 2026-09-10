@@ -442,7 +442,8 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
     ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
     assert_eq!(
-        v.horizontal_offset, 4,
+        v.horizontal_offset,
+        hume_rope::column::DisplayLineCol::new(4),
         "cursor_display_col(70) - (content_width(72) - margin(5) - 1) = 4"
     );
 }
@@ -462,7 +463,11 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
     let cursor_display_col = rm.locate(cursor_char).1;
     ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
-    assert_eq!(v.horizontal_offset, 0, "70 < content_width(80) - margin(5)");
+    assert_eq!(
+        v.horizontal_offset,
+        hume_rope::column::DisplayLineCol::new(0),
+        "70 < content_width(80) - margin(5)"
+    );
 }
 
 /// A cursor past column 65535 on a huge unwrapped line must scroll to its
@@ -486,11 +491,12 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
     ensure_cursor_visible_horizontal(&mut v, &mut rm, cursor_display_col);
 
     assert_eq!(
-        v.horizontal_offset, 69_925,
+        v.horizontal_offset,
+        hume_rope::column::DisplayLineCol::new(69_925),
         "cursor_display_col(69_999) - (content_width(80) - margin(5) - 1) = 69_925"
     );
     assert!(
-        v.horizontal_offset > u16::MAX as u32,
+        v.horizontal_offset.get() > u16::MAX as u32,
         "offset must exceed the former u16 ceiling, not wrap/truncate into it"
     );
 }

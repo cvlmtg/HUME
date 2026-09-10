@@ -1,30 +1,28 @@
 use super::doubles::InlineHint;
 use super::*;
-use hume_editing::selection::{DisplayColOrigin, StickyDisplayCol};
+use hume_editing::selection::StickyDisplayCol;
+use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use pretty_assertions::assert_eq;
 
-/// A `DisplayRow`-tagged latch — what `j`/`k` write while wrapping, which is
-/// how every fixture in this file (except the `WrapMode::None` ones) is
+/// A `DisplayLine`-tagged latch — what `j`/`k` write while wrapping, which
+/// is how every fixture in this file (except the `WrapMode::None` ones) is
 /// pinned. `wrap_width: Some(76)` matches `visual_test_editor`'s fixed
 /// `WrapMode::Indent { width: 76 }` — an explicit, non-sentinel width, so it
 /// stays 76 regardless of the fixture's 80×24 viewport.
-fn sticky_row(display_col: u32) -> StickyDisplayCol {
-    StickyDisplayCol {
-        display_col,
-        origin: DisplayColOrigin::DisplayRow,
+fn sticky_display_line(display_col: u32) -> StickyDisplayCol {
+    StickyDisplayCol::DisplayLine {
+        display_col: DisplayLineCol::new(display_col),
         wrap_width: Some(76),
     }
 }
 
-/// A `BufferLine`-tagged latch — what `9j`/`9k` write, and what `j`/`k` write
-/// too once wrapping is off (a row IS the line there — see `DisplayColOrigin`).
-/// `wrap_width` is never read for this origin (see `StickyDisplayCol`'s own
-/// doc), so `None` here is as good as any other value.
-fn sticky_line(display_col: u32) -> StickyDisplayCol {
-    StickyDisplayCol {
-        display_col,
-        origin: DisplayColOrigin::BufferLine,
-        wrap_width: None,
+/// A `BufferLine`-tagged latch — what `9j`/`9k` write, and what `j`/`k`
+/// write too once wrapping is off (a display line IS the buffer line there
+/// — see `StickyDisplayCol`'s own doc). Carries no `wrap_width` — the
+/// `BufferLine` variant has none, unlike `DisplayLine`.
+fn sticky_buffer_line(display_col: u32) -> StickyDisplayCol {
+    StickyDisplayCol::BufferLine {
+        display_col: BufferLineCol::new(display_col),
     }
 }
 
@@ -78,7 +76,7 @@ fn visual_move_down_within_wrapped_line() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_row(0)),
+        Some(sticky_display_line(0)),
         "sticky col latched on first j"
     );
 }
@@ -161,7 +159,7 @@ fn visual_preferred_display_col_stickiness() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_row(40)),
+        Some(sticky_display_line(40)),
         "sticky col stays at 40"
     );
 
@@ -175,7 +173,7 @@ fn visual_preferred_display_col_stickiness() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_row(40)),
+        Some(sticky_display_line(40)),
         "sticky col still 40"
     );
 }
@@ -221,7 +219,7 @@ fn visual_move_no_wrap_content_row_is_a_buffer_line() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_line(0)),
+        Some(sticky_buffer_line(0)),
         "sticky display column latches even in no-wrap mode"
     );
 }
@@ -249,7 +247,7 @@ fn visual_move_down_with_count() {
 /// wrapping is on. `1j` skips straight to the start of buffer line 1, bypassing
 /// the sub-row-1 stop that a bare `j` (no count) lands on. The buffer-line
 /// path latches a `BufferLine`-tagged sticky column (Q29b) — distinct from
-/// the `DisplayRow` one bare `j` latches while wrapping, so a following `2j`
+/// the `Row` one bare `j` latches while wrapping, so a following `2j`
 /// reuses it and a following bare `j` re-derives instead of reading it as a
 /// row-relative column.
 #[test]
@@ -264,8 +262,8 @@ fn visual_move_down_with_explicit_count_moves_buffer_lines() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_line(0)),
-        "buffer-line path latches a BufferLine sticky display column"
+        Some(sticky_buffer_line(0)),
+        "buffer-line path latches a Line-variant sticky display column"
     );
 }
 
@@ -498,10 +496,8 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
     let seeded = SelectionSet::single(Selection::with_sticky_display_col(
         co(2),
         co(2),
-        StickyDisplayCol {
-            display_col: 6,
-            origin: DisplayColOrigin::BufferLine,
-            wrap_width: None,
+        StickyDisplayCol::BufferLine {
+            display_col: BufferLineCol::new(6),
         },
     ));
     let mut ed = Editor::for_testing(Buffer::new(text.clone(), seeded));
@@ -514,15 +510,14 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
         "BufferLine latch (6) is reused: lands on 'G'"
     );
 
-    // A `DisplayRow`-tagged one is a different quantity under wrap (see
-    // `DisplayColOrigin`) and must be re-derived from `head` instead —
-    // reusing it as a buffer-line column would be a sideways jump.
+    // A `DisplayLine`-tagged one is a different quantity under wrap (see
+    // `StickyDisplayCol`'s own doc) and must be re-derived from `head`
+    // instead — reusing it as a buffer-line column would be a sideways jump.
     let ignored = SelectionSet::single(Selection::with_sticky_display_col(
         co(2),
         co(2),
-        StickyDisplayCol {
-            display_col: 6,
-            origin: DisplayColOrigin::DisplayRow,
+        StickyDisplayCol::DisplayLine {
+            display_col: DisplayLineCol::new(6),
             wrap_width: None,
         },
     ));
@@ -533,7 +528,7 @@ fn explicit_count_move_down_reuses_a_buffer_line_latch_but_rederives_a_display_r
     assert_eq!(
         ed.current_selections().primary().head(),
         co(11),
-        "DisplayRow latch is ignored: re-derives from head (col 2), lands on 'C'"
+        "Row latch is ignored: re-derives from head (col 2), lands on 'C'"
     );
 }
 
@@ -560,7 +555,7 @@ fn resize_invalidates_a_display_row_latch_measured_at_the_old_wrap_width() {
 
     // At width 10: row 0 = "0123456789" (chars 0-9), row 1 = "ABCDE" (chars
     // 10-14). `j` from col 2 of row 0 lands on row 1's col 2 = 'C' (char 12),
-    // latching a `DisplayRow` column of 2 measured against width 10.
+    // latching a `Row` column of 2 measured against width 10.
     ed.handle_key(key('j'));
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -594,8 +589,8 @@ fn explicit_count_move_down_emits_a_buffer_line_tagged_sticky_column() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_line(2)),
-        "output must latch a BufferLine-tagged sticky column"
+        Some(sticky_buffer_line(2)),
+        "output must latch a Line-tagged sticky column"
     );
 }
 
@@ -611,11 +606,7 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
     let sels = SelectionSet::single(Selection::with_sticky_display_col(
         co(5),
         co(5),
-        StickyDisplayCol {
-            display_col: 200,
-            origin: DisplayColOrigin::BufferLine,
-            wrap_width: None,
-        },
+        sticky_buffer_line(200),
     ));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     pin_no_wrap(&mut ed);
@@ -630,14 +621,15 @@ fn explicit_count_move_down_past_last_content_line_leaves_head_exactly_where_it_
 
 // ── Family switch across the fork (Q29b) ──────────────────────────────────
 //
-// Bare `j`/`k` (row domain, `editor::visual_move`) and an explicit count
-// (buffer-line domain, `editor::visual_move::move_buffer_line`) now share
-// `Selection::sticky_display_col`, tagged by `DisplayColOrigin`. With
-// wrap off the two domains coincide (a row IS the line), so the column
+// Bare `j`/`k` (display-line domain, `editor::visual_move`) and an explicit
+// count (buffer-line domain, `editor::visual_move::move_buffer_line`) now
+// share `Selection::sticky_display_col`, a
+// `StickyDisplayCol::DisplayLine`/`BufferLine` enum. With wrap off the two
+// domains coincide (a display line IS the buffer line), so the column
 // survives a switch; while wrapping they're different quantities, so a
 // switch re-derives instead of misreading one as the other.
 
-/// With wrap off, the `BufferLine`-tagged latch bare `j` writes (a row IS the
+/// With wrap off, the `Line`-tagged latch bare `j` writes (a row IS the
 /// line there) is the same latch `2j` reads, so the column survives the
 /// switch from the row-domain path to the buffer-line one.
 #[test]
@@ -653,7 +645,7 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     pin_no_wrap(&mut ed);
 
-    ed.handle_key(key('j')); // bare j: row-domain path, latches BufferLine(4)
+    ed.handle_key(key('j')); // bare j: row-domain path, latches Line(4)
     assert_eq!(
         ed.current_selections().primary().head(),
         co(5),
@@ -670,11 +662,12 @@ fn no_wrap_j_then_count_2_holds_display_column_across_the_family_switch() {
     );
 }
 
-/// While wrapping, bare `j` onto a continuation row latches a `DisplayRow`
-/// column — the sub-row's own, not the buffer line's (see `DisplayColOrigin`).
-/// `2j` must re-derive from `head`'s buffer-line column instead of misreading
-/// that row-relative number as one; this is the trap the naive fix (share the
-/// field without tagging it) would fall into.
+/// While wrapping, bare `j` onto a continuation row latches a
+/// `DisplayLine`-variant column — the sub-row's own, not the buffer line's
+/// (see `StickyDisplayCol`). `2j` must re-derive from `head`'s buffer-line
+/// column instead of misreading that display-line-relative number as one;
+/// this is the trap the naive fix (share the field without tagging it)
+/// would fall into.
 #[test]
 fn wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_column() {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -698,7 +691,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_row_latch_as_a_line_c
     assert_eq!(ed.current_selections().primary().head(), co(79));
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        Some(sticky_row(40)),
+        Some(sticky_display_line(40)),
         "sticky col latches the row-relative column, 40"
     );
 
@@ -889,10 +882,10 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     );
 }
 
-/// Bare `j` (wrap on) latches a `DisplayRow`-tagged column — already
+/// Bare `j` (wrap on) latches a `DisplayLine`-variant column — already
 /// hint-aware, since `move_vertical` always went through `RowMap`. A
-/// following `2j` crosses families (`DisplayRow` → `BufferLine`), so it
-/// can't reuse that latch (see `DisplayColOrigin`) and must re-derive from
+/// following `2j` crosses families (`DisplayLine` → `BufferLine`), so it
+/// can't reuse that latch (see `StickyDisplayCol`) and must re-derive from
 /// `head` instead — on a line with a hint before `head`, that re-derivation
 /// is exactly where the retired rope-only mirror went blind.
 #[test]
@@ -905,7 +898,7 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     );
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     // Wide enough that nothing actually wraps — only `is_wrapping()` matters,
-    // to force bare `j` to tag `DisplayRow` instead of `BufferLine`.
+    // to force bare `j` to tag `DisplayLine` instead of `BufferLine`.
     ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 200 }),
         saved: None,
@@ -922,15 +915,14 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     );
     assert_eq!(
         ed.current_selections().primary().sticky_display_col(),
-        // Not `sticky_row(0)`: that helper's `wrap_width` matches
+        // Not `sticky_display_line(0)`: that helper's `wrap_width` matches
         // `visual_test_editor`'s width-76 fixture, not this test's own
         // `WrapMode::Soft { width: 200 }`.
-        Some(StickyDisplayCol {
-            display_col: 0,
-            origin: DisplayColOrigin::DisplayRow,
+        Some(StickyDisplayCol::DisplayLine {
+            display_col: DisplayLineCol::new(0),
             wrap_width: Some(200),
         }),
-        "latches the DisplayRow-tagged target column (0), not the landed one"
+        "latches the DisplayLine-tagged target column (0), not the landed one"
     );
 
     ed.handle_key(key('2'));
@@ -1065,7 +1057,7 @@ fn select_word_nearest_scopes_to_visual_subrow() {
     );
     assert_eq!(
         sel.sticky_display_col(),
-        Some(sticky_row(0)),
+        Some(sticky_display_line(0)),
         "sticky_display_col preserved through snap"
     );
 }

@@ -1,18 +1,17 @@
 use super::super::*;
 use crate::WordCtx;
-use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
+use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::word::WordChars;
+use hume_rope::column::BufferLineCol;
 use hume_rope::offset::CharOffset;
 use hume_test_fixtures::assert_state;
 
 /// Test-only shorthand: these tests exercise the word-snap pass-through, not
-/// `DisplayColOrigin` itself, so every latch below is `BufferLine`
-/// arbitrarily.
+/// the `StickyDisplayCol` variants themselves, so every latch below is
+/// `BufferLine` arbitrarily.
 fn sticky(display_col: u32) -> StickyDisplayCol {
-    StickyDisplayCol {
-        display_col,
-        origin: DisplayColOrigin::BufferLine,
-        wrap_width: None,
+    StickyDisplayCol::BufferLine {
+        display_col: BufferLineCol::new(display_col),
     }
 }
 

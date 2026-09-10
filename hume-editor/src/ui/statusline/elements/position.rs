@@ -22,7 +22,7 @@ impl StatuslineElement for PositionElement {
         let grapheme_col = grapheme_col_in_line(text, head_line, head);
         // Largest 1-based line number this buffer can display.
         let max_row = text.content_line_count().get();
-        (head_line.number(), grapheme_col + 1, max_row)
+        (head_line.number(), grapheme_col.number(), max_row)
     }
 
     fn format(

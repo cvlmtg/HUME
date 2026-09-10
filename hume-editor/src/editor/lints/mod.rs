@@ -6,7 +6,6 @@
 //! shared string/source-scanning helpers live in this module.
 
 mod absent_decode;
-mod column_naming;
 mod field_classification;
 mod init_example;
 mod manual_options;
@@ -173,9 +172,6 @@ struct Violation {
     file: String,
     /// 1-based line number.
     lineno: usize,
-    /// The forbidden substring (`scan_forbidden`) or whatever else `scan_lines`'s
-    /// `find` callback reports finding (`column_naming`: the untagged identifier).
-    pattern: String,
     /// The offending line, trimmed of leading/trailing whitespace.
     trimmed: String,
 }
@@ -183,13 +179,11 @@ struct Violation {
 /// Shared skeleton for every line-by-line lint in this module: walks
 /// `paths` tracking `#[cfg(test)] mod tests { … }` extent (skipped
 /// entirely) and a two-tier opt-out, then calls `find` on each surviving,
-/// comment-stripped line to collect whatever it reports. `scan_forbidden`
-/// (below) is the common case — a fixed forbidden-substring list;
-/// `column_naming` is the odd one out, extracting and predicate-testing
-/// identifiers instead of matching literal substrings, which is why this
-/// exists as the more general form underneath both.
+/// comment-stripped line, pushing one `Violation` per match it reports
+/// finding. `scan_forbidden` (below) is the common case — a fixed
+/// forbidden-substring list.
 ///
-/// **Opt-out**: a comment containing `marker` (e.g. `"// column-name-safe:"`)
+/// **Opt-out**: a comment containing `marker` (e.g. `"// test-global-safe:"`)
 /// suppresses a hit on the violation line itself; on the line *above*, only
 /// when the marker starts that line (after trimming) — `cargo fmt` hoists a
 /// trailing comment onto its own line, so the marker often ends up above
@@ -200,7 +194,7 @@ fn scan_lines(
     paths: &[std::path::PathBuf],
     display_root: &std::path::Path,
     marker: &str,
-    mut find: impl FnMut(&str) -> Vec<String>,
+    mut find: impl FnMut(&str) -> usize,
 ) -> Vec<Violation> {
     let mut violations = Vec::new();
 
@@ -262,11 +256,10 @@ fn scan_lines(
             }
 
             let code = strip_line_comment(line);
-            for pattern in find(code) {
+            for _ in 0..find(code) {
                 violations.push(Violation {
                     file: file.clone(),
                     lineno: lineno + 1,
-                    pattern,
                     trimmed: trimmed.to_string(),
                 });
             }
@@ -278,8 +271,7 @@ fn scan_lines(
 
 /// Scan `paths` for any of `forbidden` patterns in active (non-test,
 /// non-comment) code — [`scan_lines`] specialized to a fixed
-/// forbidden-substring list, the shape every lint in this module but
-/// `column_naming` needs.
+/// forbidden-substring list, the shape every lint in this module needs.
 fn scan_forbidden(
     paths: &[std::path::PathBuf],
     display_root: &std::path::Path,
@@ -290,8 +282,7 @@ fn scan_forbidden(
         forbidden
             .iter()
             .filter(|&&pattern| code.contains(pattern))
-            .map(|&pattern| pattern.to_string())
-            .collect()
+            .count()
     })
 }
 

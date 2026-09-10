@@ -181,7 +181,7 @@ pub(crate) fn park_cursor_at(
     pid: PaneId,
     bid: BufferId,
     line0: usize,
-    grapheme_col0: usize,
+    grapheme_col0: hume_rope::column::GraphemeCol,
 ) {
     let text = buffers.get(bid).text();
     let line = hume_rope::line::ContentLine::clamped(text.rope(), line0);
@@ -354,7 +354,7 @@ impl Editor {
         }
         pane.set_wrap(wrap);
         if mode != before {
-            self.viewport_mut().horizontal_offset = 0;
+            self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
         }
     }
 
@@ -435,7 +435,7 @@ impl Editor {
             }
             true
         };
-        self.viewport_mut().horizontal_offset = 0;
+        self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
         now_wrapping
     }
 }

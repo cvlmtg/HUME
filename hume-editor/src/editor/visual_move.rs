@@ -7,7 +7,7 @@
 //! (`C`), which needs the same display-column authority to land a duplicated
 //! selection under a tab or wide grapheme without wrap in play at all.
 
-use hume_editing::selection::{DisplayColOrigin, Selection, SelectionSet, StickyDisplayCol};
+use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_engine::pipeline::EngineView;
@@ -16,6 +16,7 @@ use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
 use hume_ops::{MotionMode, WordCtx};
+use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::offset::CharOffset;
 
 use super::commands::{
@@ -43,7 +44,7 @@ fn move_vertical(
     head: CharOffset,
     down: bool,
     count: usize,
-    target_display_col: u32,
+    target_display_col: DisplayLineCol,
     content_only: bool,
 ) -> CharOffset {
     let start = rm.locate_row(head);
@@ -89,7 +90,7 @@ fn move_buffer_line(
     head: CharOffset,
     down: bool,
     count: usize,
-    target_line_display_col: u32,
+    target_line_display_col: BufferLineCol,
 ) -> CharOffset {
     let line = text.char_to_line(head);
     let target_line = if down {
@@ -136,28 +137,28 @@ pub(super) fn apply_visual_vertical(
     // Every unit now resolves its column through `RowMap` — `ContentRow`/
     // `ScreenRow` via `move_vertical`'s row walk, `BufferLine` (`9j`/`9k`) via
     // `move_buffer_line`'s direct line jump — so all three latch a column
-    // from the same authority. `DisplayColOrigin` still distinguishes what
-    // the column is measured *from*: a wrapped `DisplayRow` latch is
-    // row-relative and a `BufferLine` latch is line-relative, and the two
-    // coincide only when nothing wraps (see `DisplayColOrigin`'s own doc).
+    // from the same authority. `StickyDisplayCol`'s two variants still
+    // distinguish what the column is measured *from*: a wrapped
+    // `DisplayLine` latch is display-line-relative and a `BufferLine` latch
+    // is buffer-line-relative, and the two coincide only when nothing wraps
+    // (see `StickyDisplayCol`'s own doc).
     let content_only = !matches!(unit, VerticalUnit::ScreenRow);
+    let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
 
     let buf_id = focused_buffer_id(state, view);
-    // A latch this path wrote is tagged by whether wrapping was on at the
-    // time — see `DisplayColOrigin`. Resolved once per call, and before the
-    // row map takes the pane mutably.
+    // Whether this call's own latches are `BufferLine`-family — always true
+    // for `VerticalUnit::BufferLine`, and also true with wrapping off
+    // (display-line-relative and buffer-line-relative coincide there, so
+    // standardizing on `BufferLine` lets a counted `9j` and a plain `j`
+    // share one latch on an unwrapped buffer). Resolved once per call, and
+    // before the row map takes the pane mutably.
     let wrapping = effective_wrap_mode(
         state.buffers.get(buf_id),
         &state.settings,
         &view.panes[focused],
     )
     .is_wrapping();
-    let origin = if wrapping && !matches!(unit, VerticalUnit::BufferLine) {
-        DisplayColOrigin::DisplayRow
-    } else {
-        DisplayColOrigin::BufferLine
-    };
-    let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
+    let treat_as_line = is_buffer_line || !wrapping;
     let key = state.format_key(&view.panes[focused]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
@@ -172,69 +173,70 @@ pub(super) fn apply_visual_vertical(
         focused,
         buf_id,
         |text, sels| {
-            // Pass 1: resolve each selection's sticky display column. A latch
-            // tagged for this call's own origin is reused as-is; one tagged
-            // for the other origin is a different quantity (see
-            // `DisplayColOrigin`) and is re-derived instead, the same as no
-            // latch at all — line-relative for `BufferLine`, row-relative
-            // otherwise, mirroring which one `move_buffer_line`/`move_vertical`
-            // below is about to consume.
+            // Pass 1: resolve each selection's sticky display column. A
+            // latch matching this call's own family (`BufferLine` when
+            // `treat_as_line`, `DisplayLine` at the current wrap width
+            // otherwise) is reused as-is; any other latch — the other
+            // family, or a `DisplayLine` latch from a stale wrap geometry —
+            // is re-derived instead, the same as no latch at all.
             let current_wrap_width = rm.resolved_wrap_width();
             target_display_cols.extend(sels.iter_sorted().map(
                 |sel| match sel.sticky_display_col() {
-                    Some(sticky)
-                        if sticky.origin == origin
-                            && (origin == DisplayColOrigin::BufferLine
-                                || sticky.wrap_width == current_wrap_width) =>
-                    {
-                        sticky.display_col
+                    Some(StickyDisplayCol::BufferLine { display_col }) if treat_as_line => {
+                        StickyDisplayCol::BufferLine { display_col }
                     }
-                    _ if is_buffer_line => rm.line_display_col(sel.head()),
-                    _ => rm.locate(sel.head()).1,
+                    Some(StickyDisplayCol::DisplayLine {
+                        display_col,
+                        wrap_width,
+                    }) if !treat_as_line && wrap_width == current_wrap_width => {
+                        StickyDisplayCol::DisplayLine {
+                            display_col,
+                            wrap_width,
+                        }
+                    }
+                    _ if treat_as_line => StickyDisplayCol::BufferLine {
+                        display_col: rm.line_display_col(sel.head()),
+                    },
+                    _ => StickyDisplayCol::DisplayLine {
+                        display_col: rm.locate(sel.head()).1,
+                        wrap_width: current_wrap_width,
+                    },
                 },
             ));
 
             // Pass 2: move each selection, preserving the sticky column so
             // consecutive presses in the same family reuse it.
-            let mut display_col_iter = target_display_cols.iter();
+            let mut target_iter = target_display_cols.iter();
             sels.map(|sel| {
-                let &target_display_col =
-                    display_col_iter.next().expect("one column per selection");
-                let head = if is_buffer_line {
-                    move_buffer_line(&mut rm, text, sel.head(), down, count, target_display_col)
-                } else {
-                    move_vertical(
+                let &target = target_iter.next().expect("one column per selection");
+                let head = match target {
+                    StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
+                        move_buffer_line(&mut rm, text, sel.head(), down, count, display_col)
+                    }
+                    // No-wrap (`treat_as_line` without `is_buffer_line`):
+                    // display-line-relative and buffer-line-relative columns
+                    // coincide, and pass 1 resolved this latch via
+                    // `line_display_col` in exactly that case —
+                    // `as_display_line_unwrapped` is the sound
+                    // reinterpretation `move_vertical` needs.
+                    StickyDisplayCol::BufferLine { display_col } => move_vertical(
                         &mut rm,
                         sel.head(),
                         down,
                         count,
-                        target_display_col,
+                        display_col.as_display_line_unwrapped(),
                         content_only,
-                    )
+                    ),
+                    StickyDisplayCol::DisplayLine { display_col, .. } => {
+                        move_vertical(&mut rm, sel.head(), down, count, display_col, content_only)
+                    }
                 };
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {
                     head
                 };
-                Selection::with_sticky_display_col(
-                    anchor,
-                    head,
-                    StickyDisplayCol {
-                        display_col: target_display_col,
-                        origin,
-                        // Meaningless for `BufferLine` (see `StickyDisplayCol`'s
-                        // doc) — stored as `None` uniformly rather than
-                        // whatever the wrap mode happened to resolve to at
-                        // write time, so equality on the latch doesn't
-                        // depend on an origin-irrelevant field.
-                        wrap_width: if origin == DisplayColOrigin::DisplayRow {
-                            current_wrap_width
-                        } else {
-                            None
-                        },
-                    },
-                )
+                Selection::with_sticky_display_col(anchor, head, target)
             })
         },
     );

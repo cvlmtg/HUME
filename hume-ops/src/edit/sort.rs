@@ -280,8 +280,8 @@ fn remap_selections(
                 let head_char_col = char_col_in_line(old_text, start_line, sel.head());
                 let new_line_start = new_text.line_to_char(new_line.into());
                 Selection::new(
-                    CharOffset::new(new_line_start.index() + anchor_char_col),
-                    CharOffset::new(new_line_start.index() + head_char_col),
+                    CharOffset::new(new_line_start.index() + anchor_char_col.index()),
+                    CharOffset::new(new_line_start.index() + head_char_col.index()),
                 )
             })
         } else {

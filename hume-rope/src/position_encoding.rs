@@ -13,6 +13,7 @@ use std::ops::Range;
 
 use ropey::{Rope, RopeSlice};
 
+use crate::column::CharCol;
 use crate::line::RopeyLine;
 use crate::lines::line_terminator_start;
 use crate::offset::{CharOffset, ExclusiveRange};
@@ -88,11 +89,14 @@ pub fn wire_to_line_char_col(
     line: usize,
     character: usize,
     enc: PositionEncoding,
-) -> (usize, usize) {
+) -> (usize, CharCol) {
     let line = RopeyLine::clamped(text, line);
     let line_start = text.line_to_char(line.index());
     let content = text.slice(line_start..line_terminator_start(text, line).index());
-    (line.index(), wire_offset_to_char(content, character, enc))
+    (
+        line.index(),
+        CharCol::new(wire_offset_to_char(content, character, enc)),
+    )
 }
 
 /// `(line, character)` → char offset.
@@ -111,7 +115,7 @@ pub fn wire_to_char(
     let (line, char_col) = wire_to_line_char_col(text, line, character, enc);
     // `line_to_char(line) + char_col`: a line-start offset plus a validated
     // in-line column — not a raw stepping hazard.
-    CharOffset::new(text.line_to_char(line) + char_col)
+    CharOffset::new(text.line_to_char(line) + char_col.index())
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
