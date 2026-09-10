@@ -7,6 +7,13 @@ use hume_editing::changeset::{ChangeSet, Operation};
 /// `rope` must be the buffer text **before** the edit (the old document).  All
 /// char offsets in the changeset are converted to byte offsets and (row, byte-col)
 /// positions via the rope's index helpers.
+///
+/// `pre_char`/`start_char`/`old_end_char` stay bare `usize`, not `CharOffset`:
+/// this walk is pure count-accumulation over `Operation::Retain(n)`/`Delete(n)`
+/// lengths, never a grapheme-boundary walk, and every value it produces feeds
+/// straight into `rope.char_to_byte`/`InputEdit`'s own byte/point coordinates
+/// — tree-sitter's foreign coordinate system, not a HUME buffer position held
+/// or compared in its own domain.
 pub(crate) fn input_edits_from_changeset(
     cs: &ChangeSet,
     rope: &ropey::Rope,

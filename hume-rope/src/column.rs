@@ -34,7 +34,7 @@
 //! advances one grapheme's width at a time, and tab-stop math divides and
 //! multiplies by the tab width. The two display-column types keep a private
 //! field like every domain type in this crate, but expose named arithmetic
-//! (`advance`/`back`/`cells_since`/`abs_diff`/`shift`) instead of forbidding
+//! (`advance`/`cells_since`/`cells_since_saturating`/`abs_diff`/`shift`) instead of forbidding
 //! it — the compile-time win here is keeping `DisplayLineCol` and
 //! `BufferLineCol` from being silently interchanged, not banning `+`/`-` on
 //! a column itself. [`CharCol`]/[`GraphemeCol`]/[`ByteCol`] see no such
@@ -93,13 +93,6 @@ macro_rules! display_col_methods {
                 Self(self.0.saturating_add(cells))
             }
 
-            /// `self` moved back by `cells` — the inverse of [`Self::advance`],
-            /// for a horizontal-scroll margin or a dedent target. Saturates at
-            /// 0 rather than going negative.
-            pub fn back(self, cells: u32) -> Self {
-                Self(self.0.saturating_sub(cells))
-            }
-
             /// Cells between `earlier` and `self` (`earlier <= self`) —
             /// the named form for "how wide is this span", mirroring
             /// `CharOffset::chars_since`. Debug-panics on inversion, where a
@@ -142,6 +135,17 @@ macro_rules! display_col_methods {
             /// it's applied to (e.g. a wide deletion collapsing a later
             /// cursor's indent target); that is the caller's intended
             /// behavior, not a bug this type should catch.
+            ///
+            /// `delta as i32` narrows before `saturating_add_signed` (which
+            /// takes `i32`, not `isize`) — silently wrapping, not saturating,
+            /// for a `delta` outside `i32`'s range: a sufficiently large
+            /// positive delta could wrap negative and shift `self` *down*
+            /// instead of saturating upward. Not reachable today — the sole
+            /// caller (`hume-ops/src/edit/insert.rs`) accumulates a running
+            /// delta within one buffer line, far short of `i32::MAX` cells —
+            /// but a future caller summing deltas across a whole buffer
+            /// should not assume this saturates the way the rest of this
+            /// method's doc does.
             pub fn shift(self, delta: isize) -> Self {
                 Self(self.0.saturating_add_signed(delta as i32))
             }

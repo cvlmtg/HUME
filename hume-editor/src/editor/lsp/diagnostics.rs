@@ -3,8 +3,6 @@
 //! subsequent edit. Bulk never reaches Steel — Steel gets
 //! a signal + bounded pulls.
 
-use std::ops::Range;
-
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
@@ -195,7 +193,7 @@ impl DiagnosticsStore {
     pub(crate) fn for_range(
         &self,
         bid: BufferId,
-        range: Range<usize>,
+        range: ExclusiveRange<CharOffset>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
         let mut out: Vec<&StoredDiag> = self.for_range_unsorted(bid, range, floor).collect();
@@ -210,10 +208,10 @@ impl DiagnosticsStore {
     pub(crate) fn for_range_unsorted(
         &self,
         bid: BufferId,
-        range: Range<usize>,
+        range: ExclusiveRange<CharOffset>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
-        let (lo, hi) = (CharOffset::new(range.start), CharOffset::new(range.end));
+        let (lo, hi) = (range.start, range.end);
         self.store
             .groups_for_buffer(bid)
             .flat_map(move |(_server, diags)| {

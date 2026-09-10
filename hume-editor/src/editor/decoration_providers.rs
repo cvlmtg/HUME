@@ -3,7 +3,6 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s step 3/5.
 
-use std::ops::Range;
 use std::sync::Arc;
 
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -24,8 +23,13 @@ pub(super) struct DecoratedPane {
     pub(super) pid: PaneId,
     pub(super) bid: BufferId,
     /// Line range, end-exclusive — used by line-indexed stores (gutter
-    /// signs, EOL text, line backgrounds) instead of `chars`.
-    pub(super) lines: Range<usize>,
+    /// signs, EOL text, line backgrounds) instead of `chars`. Ropey-domain,
+    /// matching how it's built below (clamped to `ropey_line_count`); every
+    /// consumer compares a `ContentLine` against it, converted up via
+    /// `RopeyLine::from` rather than the two domains being compared through
+    /// `.index()` — over-permissive by exactly the phantom trailing line,
+    /// which no consumer can produce a `ContentLine` for in the first place.
+    pub(super) lines: ExclusiveRange<hume_rope::line::RopeyLine>,
     /// Char range of `bid`'s content currently visible in `pid` — shared by
     /// every per-frame write side that pulls a bounded slice from a
     /// Rust-side store (diagnostics, decorations) instead of the whole
@@ -72,7 +76,12 @@ impl Editor {
                 DecoratedPane {
                     pid,
                     bid,
-                    lines: top_line.index()..(bottom + 1).min(text.ropey_line_count().get()),
+                    lines: ExclusiveRange::new(
+                        top_line,
+                        hume_rope::line::RopeyLine::new(
+                            (bottom + 1).min(text.ropey_line_count().get()),
+                        ),
+                    ),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
                         hume_editing::lines::next_line_start(
@@ -128,18 +137,18 @@ impl Editor {
             // refreshes. No-op when the cache already matches this revision.
             super::search::ops::update_buffer_matches(&mut self.state.buffers, bid);
 
-            let visible = p.lines.clone();
+            let visible = p.lines;
             let buf = self.state.buffers.get(bid);
             let text = buf.text();
 
             // Matches are sorted by document order. Binary-search to the first
             // match that starts at or after this pane's `top_line`.
-            let top_char = text.line_to_char(hume_rope::line::RopeyLine::new(visible.start));
+            let top_char = text.line_to_char(visible.start);
             let matches = &buf.search_matches.matches;
             let first = matches.partition_point(|&(start, _)| start < top_char);
             for &(start, end_incl) in &matches[first..] {
                 let start_line = text.char_to_line(start);
-                if start_line.index() >= visible.end {
+                if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
                     break;
                 }
                 // end_incl is inclusive char offset; shift(1) makes it exclusive.
@@ -306,7 +315,7 @@ impl Editor {
             };
 
             let visible = p.chars;
-            let visible_lines = p.lines.clone();
+            let visible_lines = p.lines;
 
             let signcolumn = self
                 .state
@@ -480,7 +489,7 @@ impl Editor {
 
             // Each entry's `pos` is its line's line-start char offset
             // (`EolTextEntry::pos`); resolved to its *current* line here.
-            let visible_lines = p.lines.clone();
+            let visible_lines = p.lines;
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(&str, hume_rope::line::ContentLine, InlineInsert)> =
                 visible_line_anchored(
@@ -627,7 +636,7 @@ impl Editor {
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
-            let visible_lines = p.lines.clone();
+            let visible_lines = p.lines;
             let text = self.state.buffers.get(bid).text();
             let per_line: Vec<(
                 &str,
@@ -709,14 +718,14 @@ fn resolve_decoration_line(
 /// owned clone to escape this iterator's borrow.
 fn visible_line_anchored<'a, K, E: 'a>(
     text: &'a hume_editing::text::BufferText,
-    visible_lines: std::ops::Range<usize>,
+    visible_lines: ExclusiveRange<hume_rope::line::RopeyLine>,
     entries: impl Iterator<Item = (K, &'a E)>,
     pos_of: impl Fn(&E) -> CharOffset,
 ) -> impl Iterator<Item = (K, hume_rope::line::ContentLine, &'a E)> {
     entries.filter_map(move |(tag, e)| {
         let line = resolve_decoration_line(text, pos_of(e))?;
         visible_lines
-            .contains(&line.index())
+            .contains(hume_rope::line::RopeyLine::from(line))
             .then_some((tag, line, e))
     })
 }

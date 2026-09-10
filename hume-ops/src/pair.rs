@@ -350,7 +350,7 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
     };
     let head = sel.head();
     let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end()) {
-        sel.start().index()..sel.end_inclusive(text).index() + 1
+        sel.start().index()..sel.end_exclusive(text).index()
     } else {
         head.index()..next_grapheme_boundary(text, head).index()
     };

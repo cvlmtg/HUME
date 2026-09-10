@@ -93,7 +93,7 @@ fn remove_server_drops_the_buffer_entry_once_no_server_remains() {
     assert_eq!(store.counts(bid), (0, 0));
     assert!(
         store
-            .for_range(bid, 0..100, DiagSeverity::Hint)
+            .for_range(bid, ex(0, 100), DiagSeverity::Hint)
             .next()
             .is_none(),
         "no entry should remain for a buffer with no servers left"
@@ -111,7 +111,7 @@ fn for_range_is_globally_sorted_across_multiple_servers() {
     store.replace(ServerId(1), bid, vec![diag(0, 2, DiagSeverity::Warning)]);
 
     let starts: Vec<_> = store
-        .for_range(bid, 0..100, DiagSeverity::Hint)
+        .for_range(bid, ex(0, 100), DiagSeverity::Hint)
         .map(|d| d.start)
         .collect();
     assert_eq!(
@@ -179,7 +179,7 @@ fn for_range_respects_severity_floor() {
         ],
     );
     let kept: Vec<DiagSeverity> = store
-        .for_range(bid, 0..100, DiagSeverity::Warning)
+        .for_range(bid, ex(0, 100), DiagSeverity::Warning)
         .map(|d| d.severity)
         .collect();
     assert_eq!(kept, vec![DiagSeverity::Error, DiagSeverity::Warning]);
@@ -199,7 +199,7 @@ fn for_range_respects_range_bounds() {
         ],
     );
     let kept: Vec<_> = store
-        .for_range(bid, 8..18, DiagSeverity::Hint)
+        .for_range(bid, ex(8, 18), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(kept, vec![(co(10), co(15))]);
@@ -216,7 +216,7 @@ fn for_range_keeps_a_diagnostic_that_starts_before_the_range_but_overlaps_it() {
     store.replace(ServerId(0), bid, vec![diag(0, 10, DiagSeverity::Error)]);
 
     let kept: Vec<_> = store
-        .for_range(bid, 8..18, DiagSeverity::Hint)
+        .for_range(bid, ex(8, 18), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
@@ -237,7 +237,7 @@ fn remap_insert_before_shifts_the_range() {
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
-        .for_range(bid, 0..100, DiagSeverity::Hint)
+        .for_range(bid, ex(0, 100), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
@@ -258,7 +258,7 @@ fn remap_insert_inside_grows_the_range() {
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
-        .for_range(bid, 0..100, DiagSeverity::Hint)
+        .for_range(bid, ex(0, 100), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
@@ -279,7 +279,7 @@ fn remap_insert_after_leaves_the_range_unchanged() {
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
-        .for_range(bid, 0..100, DiagSeverity::Hint)
+        .for_range(bid, ex(0, 100), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert_eq!(
@@ -300,7 +300,7 @@ fn remap_deletion_covering_the_range_drops_it() {
     store.remap_through(bid, &b.finish());
 
     let kept: Vec<_> = store
-        .for_range(bid, 0..100, DiagSeverity::Hint)
+        .for_range(bid, ex(0, 100), DiagSeverity::Hint)
         .map(|d| (d.start, d.end))
         .collect();
     assert!(

@@ -23,6 +23,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
+use hume_rope::offset::CharOffset;
 use ropey::RopeSlice;
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
@@ -62,7 +63,7 @@ pub fn changesets_from_line_diff_with_deadline(
             .last()
             .copied()
             .expect("tokens_with_offsets always pushes the trailing sentinel"),
-        old.len_chars(),
+        old.end(),
         "old token char count must equal rope len_chars",
     );
     debug_assert_eq!(
@@ -70,7 +71,7 @@ pub fn changesets_from_line_diff_with_deadline(
             .last()
             .copied()
             .expect("tokens_with_offsets always pushes the trailing sentinel"),
-        new.len_chars(),
+        new.end(),
         "new token char count must equal rope len_chars",
     );
 
@@ -88,15 +89,17 @@ fn build_changesets(
     old: &BufferText,
     new: &BufferText,
     hunks: &[LineHunk],
-    old_offsets: &[usize],
-    new_offsets: &[usize],
+    old_offsets: &[CharOffset],
+    new_offsets: &[CharOffset],
 ) -> (ChangeSet, ChangeSet) {
     let mut fwd = ChangeSetBuilder::new(old.end());
     let mut inv = ChangeSetBuilder::new(new.end());
 
-    let span = |offsets: &[usize], range: &Range<usize>| offsets[range.end] - offsets[range.start];
-    let slice = |text: &BufferText, offsets: &[usize], range: &Range<usize>| {
-        text.slice(offsets[range.start]..offsets[range.end])
+    let span = |offsets: &[CharOffset], range: &Range<usize>| {
+        offsets[range.end].chars_since(offsets[range.start])
+    };
+    let slice = |text: &BufferText, offsets: &[CharOffset], range: &Range<usize>| {
+        text.slice(offsets[range.start].index()..offsets[range.end].index())
             .to_string()
     };
 
@@ -138,14 +141,18 @@ fn build_changesets(
 /// `text.len_chars()`. `build_changesets` needs both — the tokens to diff,
 /// the offsets to translate a hunk's line-index range back to a char range
 /// into the rope.
-fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<usize>) {
+fn tokens_with_offsets(text: &BufferText) -> (Vec<RopeSlice<'_>>, Vec<CharOffset>) {
     let mut tokens = Vec::with_capacity(text.ropey_line_count().get());
     let mut offsets = Vec::with_capacity(text.ropey_line_count().get() + 1);
-    offsets.push(0);
+    offsets.push(CharOffset::new(0));
+    // Raw `usize` accumulator, minted to `CharOffset` only once each running
+    // total is complete — the same "trusted mint" shape as an ASCII delimiter
+    // scan's own loop variable: `char_acc` never appears anywhere as a
+    // position in its own right until it's pushed.
     let mut char_acc = 0usize;
     for token in text.line_tokens() {
         char_acc += token.len_chars();
-        offsets.push(char_acc);
+        offsets.push(CharOffset::new(char_acc));
         tokens.push(token);
     }
     (tokens, offsets)

@@ -26,12 +26,6 @@ macro_rules! display_col_tests {
             }
 
             #[test]
-            fn back_subtracts_and_saturates_at_zero() {
-                assert_eq!($ty::new(7).back(4), $ty::new(3));
-                assert_eq!($ty::new(2).back(5), $ty::new(0));
-            }
-
-            #[test]
             fn cells_since_measures_forward_distance() {
                 assert_eq!($ty::new(7).cells_since($ty::new(2)), 5);
                 assert_eq!($ty::new(2).cells_since($ty::new(2)), 0);

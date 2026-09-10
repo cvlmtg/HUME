@@ -135,7 +135,7 @@ fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
                     .end_inclusive(text)
                     .min(prev_grapheme_boundary(text, nl));
                 if seg_start <= seg_end_incl {
-                    text.slice(seg_start.index()..seg_end_incl.index() + 1)
+                    text.slice(seg_start.index()..seg_end_incl.shift(1).index())
                         .to_string()
                 } else {
                     String::new()

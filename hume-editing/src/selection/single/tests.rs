@@ -78,6 +78,69 @@ fn content_end_combining_grapheme() {
     assert_eq!(sel.content_end(&text), co(1));
 }
 
+// ── end_exclusive ────────────────────────────────────────────────────────
+
+#[test]
+fn end_exclusive_normal_selection() {
+    // "abc\n" — select 'a','b': end() = 1, a single-codepoint grapheme, so
+    // end_exclusive is one past it.
+    let (text, _) = parse_state("-[ab]>c\n");
+    let sel = Selection::new(co(0), co(1));
+    assert_eq!(sel.end_exclusive(&text), co(2));
+}
+
+#[test]
+fn end_exclusive_combining_grapheme() {
+    // "e\u{0301}\n" — 'e'(0) + combining acute(1) + '\n'(2). Collapsed at 0
+    // sits on a 2-codepoint cluster, so the exclusive bound is one past the
+    // whole cluster (char 2), not one past 'e' alone (char 1) — the case
+    // the raw `end() + 1` idiom this method replaces would get wrong.
+    let (text, _) = parse_state("-[e]>\u{0301}\n");
+    let sel = Selection::collapsed(co(0));
+    assert_eq!(sel.end_exclusive(&text), co(2));
+}
+
+// ── content_end_exclusive ────────────────────────────────────────────────
+
+#[test]
+fn content_end_exclusive_normal_selection() {
+    // "abc\n" — select 'a','b': content_end_exclusive = end_exclusive(2)
+    // clamped to last_char (3, the structural '\n') = 2, unaffected by the
+    // clamp here since it's already short of it.
+    let (text, _) = parse_state("-[ab]>c\n");
+    let sel = Selection::new(co(0), co(1));
+    assert_eq!(sel.content_end_exclusive(&text), co(2));
+}
+
+#[test]
+fn content_end_exclusive_clamps_at_the_structural_newline() {
+    // "ab\n" — end on the structural '\n' (char 2): end_exclusive = 3
+    // (len_chars), clamped to last_char = 2 so the bound never reaches past
+    // the buffer's own end.
+    let (text, _) = parse_state("-[ab]>\n");
+    let sel = Selection::new(co(0), co(2));
+    assert_eq!(sel.content_end_exclusive(&text), co(2));
+}
+
+#[test]
+fn content_end_exclusive_on_the_minimal_buffer_is_zero_not_one() {
+    // "\n" alone (len_chars == 1) — the one case where this genuinely
+    // diverges from the `content_end(text) + 1` idiom it replaces.
+    // end() = 0, end_inclusive = 0 (the '\n' is its own one-char cluster),
+    // end_exclusive = next_grapheme_boundary(0) = 1 = len_chars().
+    // last_char() = len_chars() - 1 = 0, so content_end_exclusive = min(1, 0) = 0.
+    //
+    // The old idiom instead computed content_end(text) + 1: content_end =
+    // end_inclusive.min(last_content_char) = 0.min(len_chars().saturating_sub(2))
+    // = 0.min(0) = 0, so `content_end + 1` = 1 — one past the structural
+    // '\n', which would delete it and trip `ChangeSet::apply`'s
+    // `TrailingNewlineMissing`. `content_end_exclusive` correctly refuses
+    // that char instead.
+    let text = BufferText::from("\n");
+    let sel = Selection::collapsed(co(0));
+    assert_eq!(sel.content_end_exclusive(&text), co(0));
+}
+
 // ── is_selection_linewise ─────────────────────────────────────────────────
 
 #[test]

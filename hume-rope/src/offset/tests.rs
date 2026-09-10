@@ -10,23 +10,6 @@ fn checked_accepts_every_position_up_to_and_including_len_chars() {
 }
 
 #[test]
-fn clamped_pulls_a_past_end_index_back_to_len_chars() {
-    let r = rope("ab\n"); // len_chars == 3
-    assert_eq!(CharOffset::clamped(&r, 3), CharOffset::new(3));
-    assert_eq!(CharOffset::clamped(&r, 99), CharOffset::new(3));
-}
-
-#[test]
-fn snapped_is_identity_on_a_boundary_and_floors_mid_cluster() {
-    // "e\u{0301}\n" — 'e' + combining acute accent, one grapheme cluster of
-    // 2 chars, then the structural trailing '\n'.
-    let r = rope("e\u{0301}\n");
-    assert_eq!(CharOffset::snapped(r.slice(..), 0), CharOffset::new(0));
-    assert_eq!(CharOffset::snapped(r.slice(..), 1), CharOffset::new(0));
-    assert_eq!(CharOffset::snapped(r.slice(..), 2), CharOffset::new(2));
-}
-
-#[test]
 fn chars_since_measures_backward_distance() {
     assert_eq!(CharOffset::new(5).chars_since(CharOffset::new(2)), 3);
     assert_eq!(CharOffset::new(5).chars_since(CharOffset::new(5)), 0);
@@ -79,24 +62,16 @@ fn exclusive_range_excludes_its_own_end() {
 }
 
 #[test]
-fn exclusive_range_is_empty_when_start_equals_end() {
-    let r = ExclusiveRange::new(CharOffset::new(3), CharOffset::new(3));
-    assert!(r.is_empty());
-    assert!(!ExclusiveRange::new(CharOffset::new(3), CharOffset::new(4)).is_empty());
-}
-
-#[test]
-fn exclusive_range_converts_to_a_plain_usize_range() {
-    let r = ExclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
-    let plain: std::ops::Range<usize> = r.into();
-    assert_eq!(plain, 2..5);
-}
-
-#[test]
 fn inclusive_range_covers_its_own_end() {
     let r = InclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
     assert!(!r.contains(CharOffset::new(1)));
     assert!(r.contains(CharOffset::new(2)));
     assert!(r.contains(CharOffset::new(5)));
     assert!(!r.contains(CharOffset::new(6)));
+}
+
+#[test]
+fn inclusive_range_end_exclusive_is_one_past_end() {
+    let r = InclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
+    assert_eq!(r.end_exclusive(), CharOffset::new(6));
 }

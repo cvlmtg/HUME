@@ -323,7 +323,7 @@ pub(crate) fn diagnostics_for_buffer(
     lsp: &LspState,
     bid: BufferId,
     severity_floor: Option<&str>,
-    range: Option<(usize, usize)>,
+    range: Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>>,
 ) -> Result<Vec<serde_json::Value>, String> {
     const CAP: usize = 1000;
     let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
@@ -331,14 +331,21 @@ pub(crate) fn diagnostics_for_buffer(
         Some(Ok(f)) => f,
         Some(Err(e)) => return Err(e),
     };
-    let (start, end) = range.unwrap_or((0, usize::MAX));
     let Some(text) = state.buffers.try_get(bid).map(|b| b.text()) else {
         return Ok(Vec::new());
     };
+    // `text.end()`, not a `usize::MAX` sentinel: the buffer's own exclusive
+    // end bound is the honest "whole buffer" default, and only becomes
+    // available once `text` is in hand — this is why the default is
+    // resolved here rather than at the Host seam that converts `range` into
+    // this type.
+    let range = range.unwrap_or_else(|| {
+        hume_rope::offset::ExclusiveRange::new(hume_rope::offset::CharOffset::new(0), text.end())
+    });
 
     let entries = lsp
         .diagnostics
-        .for_range(bid, start..end, floor)
+        .for_range(bid, range, floor)
         .take(CAP)
         .map(|d| {
             // Clamped to the last *content* char, not `len_chars()`: a

@@ -738,14 +738,12 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
     fn char_index_to_line(&self, idx: usize) -> Option<usize> {
         let buf_id = crate::editor::commands::focused_buffer_id(self.state, self.view);
         let text = self.buffer(buf_id)?.text();
-        if idx > text.len_chars() {
-            return None;
-        }
-        // `idx == len_chars()` is accepted (only `>` rejects) — the one
-        // Steel line-index builtin that admits the buffer's own trailing
-        // phantom line, so this goes through the ropey domain rather than
-        // `char_to_line`'s content-only contract.
-        Some(text.ropey_char_to_line(CharOffset::new(idx)).index() + 1)
+        // `CharOffset::checked` accepts `idx == len_chars()` (only `>` rejects)
+        // — the one Steel line-index builtin that admits the buffer's own
+        // trailing phantom line, so this goes through the ropey domain rather
+        // than `char_to_line`'s content-only contract.
+        let offset = CharOffset::checked(text.rope(), idx)?;
+        Some(text.ropey_char_to_line(offset).index() + 1)
     }
 
     fn symbol_under_cursor(&self, bid: BufferId) -> String {
@@ -769,7 +767,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         ) else {
             return String::new();
         };
-        text.slice(range.start.index()..range.end.index() + 1)
+        text.slice(range.start.index()..range.end_exclusive().index())
             .to_string()
     }
 
@@ -1352,6 +1350,13 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(Vec::new());
         };
+        // Converted immediately at the Steel/LSP host seam — `range` arrives
+        // as the raw `(usize, usize)` tuple the FFI boundary decodes Steel's
+        // `#:range` argument into (see `CharOffset`'s doc on this one carve-out)
+        // and must not travel any further as one.
+        let range = range.map(|(start, end)| {
+            hume_rope::offset::ExclusiveRange::new(CharOffset::new(start), CharOffset::new(end))
+        });
         crate::editor::lsp::introspect::diagnostics_for_buffer(
             self.state,
             lsp,

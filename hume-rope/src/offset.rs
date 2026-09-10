@@ -10,10 +10,10 @@
 //! finding: the field is private and the type implements no `Add`/`Sub`/
 //! `AddAssign`, so `offset + 1` doesn't type-check. The only ways to produce
 //! one are the boundary-walking functions in [`crate::grapheme`], the
-//! offset-returning functions in [`crate::lines`], a validated/clamped mint
-//! against a rope, or [`CharOffset::new`] — a trusted mint for a value a
-//! caller has already proven valid by some other means (an ASCII delimiter
-//! scan, a value read back from another `CharOffset`).
+//! offset-returning functions in [`crate::lines`], a validated mint against a
+//! rope ([`CharOffset::checked`]), or [`CharOffset::new`] — a trusted mint
+//! for a value a caller has already proven valid by some other means (an
+//! ASCII delimiter scan, a value read back from another `CharOffset`).
 //!
 //! Deliberately not a bare tuple struct with a `pub` field, matching
 //! [`crate::line`]'s `RopeyLine`/`ContentLine`: a `pub` field would make
@@ -27,9 +27,10 @@
 //! deliberately lands on a cluster's *last* codepoint, not its start. A
 //! caller that needs a cluster boundary asks for one explicitly — via
 //! [`crate::grapheme::next_grapheme_boundary`]/[`crate::grapheme::prev_grapheme_boundary`]
-//! or [`CharOffset::snapped`] — rather than assuming the type provides it.
+//! or [`crate::grapheme::snap_to_cluster_start`] — rather than assuming the
+//! type provides it.
 
-use ropey::{Rope, RopeSlice};
+use ropey::Rope;
 
 /// A char offset into a buffer — an index into its sequence of Unicode
 /// scalar values, never a byte offset or a display column.
@@ -50,22 +51,17 @@ impl CharOffset {
     }
 
     /// `idx` if it names a valid char position in `rope` (`idx <=
-    /// rope.len_chars()`), else `None`.
+    /// rope.len_chars()`), else `None` — the mint for input whose validity
+    /// isn't yet established (a Steel builtin argument, a wire-supplied
+    /// position). `CharOffset` has no `clamped`/`snapped` counterpart: a
+    /// blind `idx.min(rope.len_chars())` is the wrong tool everywhere a
+    /// position needs clamping — an LSP wire position clamps line-then-column
+    /// ([`crate::position_encoding::wire_to_char`]), and landing on a
+    /// grapheme boundary is [`crate::grapheme::snap_to_cluster_start`]'s job
+    /// directly, taken on the type the caller already has rather than routed
+    /// back through this one.
     pub fn checked(rope: &Rope, idx: usize) -> Option<Self> {
         (idx <= rope.len_chars()).then_some(Self(idx))
-    }
-
-    /// Clamp `idx` to `rope`'s valid char range — the bound a scripted or
-    /// wire-supplied position must respect to stay addressable.
-    pub fn clamped(rope: &Rope, idx: usize) -> Self {
-        Self(idx.min(rope.len_chars()))
-    }
-
-    /// Floor `idx` to the start of its own grapheme cluster — a value that
-    /// might land mid-cluster snapped back to where that cluster begins. See
-    /// [`crate::grapheme::snap_to_cluster_start`].
-    pub fn snapped(slice: RopeSlice<'_>, idx: usize) -> Self {
-        crate::grapheme::snap_to_cluster_start(slice, Self(idx))
     }
 
     /// The bare 0-based char index, for handing to ropey itself, tree-sitter,
@@ -133,20 +129,11 @@ impl<T: Copy + PartialOrd> ExclusiveRange<T> {
         Self { start, end }
     }
 
+    /// `hume-editor`'s `DecoratedPane.lines` (an `ExclusiveRange<RopeyLine>`)
+    /// is the one production caller — a per-line decoration filter checking
+    /// a resolved line against the pane's visible range.
     pub fn contains(&self, pos: T) -> bool {
         pos >= self.start && pos < self.end
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.start >= self.end
-    }
-}
-
-impl From<ExclusiveRange<CharOffset>> for std::ops::Range<usize> {
-    /// The bridge into `Rope`/`BufferText::slice`, which want a plain
-    /// `Range<usize>` — every such call site converts via `range.into()`.
-    fn from(r: ExclusiveRange<CharOffset>) -> Self {
-        r.start.index()..r.end.index()
     }
 }
 
@@ -168,6 +155,17 @@ impl<T: Copy + PartialOrd> InclusiveRange<T> {
 
     pub fn contains(&self, pos: T) -> bool {
         pos >= self.start && pos <= self.end
+    }
+}
+
+impl InclusiveRange<CharOffset> {
+    /// The exclusive-end equivalent of this range's `end` — `self.end`
+    /// shifted one char forward, via [`CharOffset::shift`] rather than a raw
+    /// `.index() + 1`, for the common case of handing an inclusive result
+    /// (`Selection`, a text-object/bracket/quote finder) to `text.slice()`,
+    /// which wants a half-open bound.
+    pub fn end_exclusive(&self) -> CharOffset {
+        self.end.shift(1)
     }
 }
 

@@ -19,29 +19,35 @@
 
 use hume_editing::text::BufferText;
 use hume_rope::cursor::CharCursor;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 /// One parsed `<name…>`, `<name…/>`, or `</name>` construct.
 struct Tag {
     closing: bool,
     self_closing: bool,
-    name: (usize, usize), // inclusive char range
-    lt_pos: usize,
-    gt_pos: usize,
+    name: InclusiveRange<CharOffset>,
+    lt_pos: CharOffset,
+    gt_pos: CharOffset,
 }
 
-fn same_name(text: &BufferText, a: (usize, usize), b: (usize, usize)) -> bool {
+fn same_name(
+    text: &BufferText,
+    a: InclusiveRange<CharOffset>,
+    b: InclusiveRange<CharOffset>,
+) -> bool {
     // Names are ASCII-only (`parse_tag` only accepts ascii_alphanumeric plus
     // `_`/`:`/`.`/`-`), so char length equals byte length — an exact,
     // zero-cost rejection that skips two `RopeSlice` tree walks (`slice`'s
     // `PartialEq` only short-circuits on `len_bytes` *after* building both)
     // for the common case of hunting one tag name through many others.
-    (a.1 - a.0) == (b.1 - b.0) && text.slice(a.0..a.1 + 1) == text.slice(b.0..b.1 + 1)
+    a.end.chars_since(a.start) == b.end.chars_since(b.start)
+        && text.slice(a.start.index()..a.end_exclusive().index())
+            == text.slice(b.start.index()..b.end_exclusive().index())
 }
 
 /// True if `<!--` starts at `lt_pos`.
-fn is_comment_start(text: &BufferText, lt_pos: usize) -> bool {
-    let mut cursor = text.chars_at(lt_pos);
+fn is_comment_start(text: &BufferText, lt_pos: CharOffset) -> bool {
+    let mut cursor = text.chars_at(lt_pos.index());
     "<!--"
         .chars()
         .all(|expected| cursor.next().is_some_and(|(_, ch)| ch == expected))
@@ -81,7 +87,7 @@ fn skip_comment_body(cursor: &mut CharCursor<'_>) {
 /// early at the arrow's `>`. An unquoted, unbraced `<` — a stray comparison
 /// operator or the start of the *next* tag — ends the parse with `None`
 /// rather than being consumed as part of this one.
-fn parse_tag(cursor: &mut CharCursor<'_>, lt_pos: usize, first: (usize, char)) -> Option<Tag> {
+fn parse_tag(cursor: &mut CharCursor<'_>, lt_pos: CharOffset, first: (usize, char)) -> Option<Tag> {
     let (mut i, mut ch) = first;
     let closing = ch == '/';
     if closing {
@@ -128,9 +134,12 @@ fn parse_tag(cursor: &mut CharCursor<'_>, lt_pos: usize, first: (usize, char)) -
                 return Some(Tag {
                     closing,
                     self_closing: !closing && last_significant == Some('/'),
-                    name: (name_start, name_end),
+                    name: InclusiveRange::new(
+                        CharOffset::new(name_start),
+                        CharOffset::new(name_end),
+                    ),
                     lt_pos,
-                    gt_pos: i,
+                    gt_pos: CharOffset::new(i),
                 });
             }
             c if !c.is_ascii_whitespace() => last_significant = Some(c),
@@ -170,7 +179,7 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
             // Not a comment either (`<!DOCTYPE`, stray `<!` junk) — `parse_tag`
             // would reject '!' anyway, so fall through to the reseek below
             // instead of calling it.
-        } else if let Some(tag) = parse_tag(cursor, lt_pos, first) {
+        } else if let Some(tag) = parse_tag(cursor, CharOffset::new(lt_pos), first) {
             return Some(tag);
         }
         // Failed to parse a tag at `lt_pos` — resume right after it,
@@ -197,17 +206,20 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
 ///
 /// This keeps the common case — `#` pressed somewhere that isn't inside any
 /// tag — to a short local walk instead of a whole-buffer parse.
-fn tag_at(text: &BufferText, pos: usize) -> Option<Tag> {
-    let mut cursor = text.chars_at(pos + 1);
+fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
+    let mut cursor = text.chars_at(pos.index() + 1);
     while let Some((i, ch)) = cursor.prev() {
         if ch != '<' {
             continue;
         }
-        if is_comment_start(text, i) {
+        let lt_pos = CharOffset::new(i);
+        if is_comment_start(text, lt_pos) {
             return None;
         }
-        match parse_tag_at(text, i) {
-            Some(tag) if (tag.lt_pos..=tag.gt_pos).contains(&pos) => return Some(tag),
+        match parse_tag_at(text, lt_pos) {
+            Some(tag) if InclusiveRange::new(tag.lt_pos, tag.gt_pos).contains(pos) => {
+                return Some(tag);
+            }
             Some(_) => return None,
             None => continue,
         }
@@ -219,8 +231,8 @@ fn tag_at(text: &BufferText, pos: usize) -> Option<Tag> {
 /// [`tag_at`]'s single backward-search call per `#` press is the only
 /// caller — sharing a cursor across calls buys nothing there, unlike
 /// [`next_tag`]'s forward multi-tag scans.
-fn parse_tag_at(text: &BufferText, lt_pos: usize) -> Option<Tag> {
-    let mut cursor = text.chars_at(lt_pos + 1);
+fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
+    let mut cursor = text.chars_at(lt_pos.shift(1).index());
     let first = cursor.next()?;
     parse_tag(&mut cursor, lt_pos, first)
 }
@@ -229,9 +241,9 @@ fn parse_tag_at(text: &BufferText, lt_pos: usize) -> Option<Tag> {
 /// `</name>`), tracking nesting depth for same-name tags only — the same
 /// technique [`crate::pair::scan_right_for_close`] uses for brackets.
 /// `open` must be a non-closing, non-self-closing tag.
-fn close_after(text: &BufferText, open: &Tag) -> Option<usize> {
+fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
     let mut depth = 0usize;
-    let mut cursor = text.chars_at(open.gt_pos + 1);
+    let mut cursor = text.chars_at(open.gt_pos.shift(1).index());
     while let Some(tag) = next_tag(text, &mut cursor) {
         if tag.self_closing || !same_name(text, tag.name, open.name) {
             continue;
@@ -266,12 +278,13 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<usize> {
 /// balanced one cancels itself out and is harmless. Accepted as a known
 /// limitation of the lexical scanner rather than fixed, since a
 /// tree-sitter-backed matcher is expected to supersede this path.
-fn prev_tag(text: &BufferText, before: usize) -> Option<Tag> {
-    let mut cursor = text.chars_at(before);
+fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
+    let mut cursor = text.chars_at(before.index());
     while let Some((i, ch)) = cursor.prev() {
+        let lt_pos = CharOffset::new(i);
         if ch == '<'
-            && !is_comment_start(text, i)
-            && let Some(tag) = parse_tag_at(text, i)
+            && !is_comment_start(text, lt_pos)
+            && let Some(tag) = parse_tag_at(text, lt_pos)
         {
             return Some(tag);
         }
@@ -288,7 +301,7 @@ fn prev_tag(text: &BufferText, before: usize) -> Option<Tag> {
 /// reverse, while typically touching only the handful of tags between
 /// `close` and its partner instead of the whole preceding buffer. See
 /// [`prev_tag`]'s doc for the one case this reuse doesn't handle.
-fn open_before(text: &BufferText, close: &Tag) -> Option<usize> {
+fn open_before(text: &BufferText, close: &Tag) -> Option<CharOffset> {
     let mut depth = 0usize;
     let mut before = close.lt_pos;
     while let Some(tag) = prev_tag(text, before) {
@@ -318,7 +331,7 @@ fn open_before(text: &BufferText, close: &Tag) -> Option<usize> {
 /// [`open_before`] each track only the one name they were asked about, so a
 /// stray `</span>` can't drain an unrelated `<div>` off some shared stack.
 pub(crate) fn matching_tag(text: &BufferText, pos: CharOffset) -> Option<CharOffset> {
-    let tag = tag_at(text, pos.index())?;
+    let tag = tag_at(text, pos)?;
     if tag.self_closing {
         return None;
     }
@@ -327,5 +340,4 @@ pub(crate) fn matching_tag(text: &BufferText, pos: CharOffset) -> Option<CharOff
     } else {
         close_after(text, &tag)
     }
-    .map(CharOffset::new)
 }

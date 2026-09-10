@@ -388,8 +388,7 @@ impl LspState {
         range: hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>,
         floor: DiagSeverity,
     ) -> impl Iterator<Item = &StoredDiag> {
-        self.diagnostics
-            .for_range_unsorted(bid, range.start.index()..range.end.index(), floor)
+        self.diagnostics.for_range_unsorted(bid, range, floor)
     }
 
     /// Drops every diagnostic for `bid`, across every server — called from
@@ -406,7 +405,14 @@ impl LspState {
         bid: BufferId,
     ) -> impl Iterator<Item = (usize, usize)> + '_ {
         self.diagnostics
-            .for_range(bid, 0..usize::MAX, diagnostics::DiagSeverity::Hint)
+            .for_range(
+                bid,
+                hume_rope::offset::ExclusiveRange::new(
+                    hume_rope::offset::CharOffset::new(0),
+                    hume_rope::offset::CharOffset::new(usize::MAX),
+                ),
+                diagnostics::DiagSeverity::Hint,
+            )
             .map(|d| (d.start.index(), d.end.index()))
     }
 
