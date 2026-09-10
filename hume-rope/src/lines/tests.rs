@@ -1,6 +1,10 @@
 use super::*;
 use crate::test_support::rope;
 
+fn co(n: usize) -> CharOffset {
+    CharOffset::new(n)
+}
+
 #[test]
 fn ropey_line_count_includes_the_phantom_trailing_line() {
     assert_eq!(ropey_line_count(&Rope::from_str("\n")).get(), 2);
@@ -114,7 +118,7 @@ fn strip_line_break_is_a_no_op_without_a_trailing_break() {
 fn next_line_start_first_line_of_two() {
     // "hello\nworld\n" — line 0 ends exclusive at char 6 (start of "world")
     let buf = rope("hello\nworld\n");
-    assert_eq!(next_line_start(&buf, RopeyLine::new(0)), 6); // 'h','e','l','l','o','\n' = 6 chars
+    assert_eq!(next_line_start(&buf, RopeyLine::new(0)), co(6)); // 'h','e','l','l','o','\n' = 6 chars
 }
 
 #[test]
@@ -122,7 +126,10 @@ fn next_line_start_last_line() {
     // Last line — returns buf.len_chars()
     let buf = rope("hello\n");
     // single line: len = 6, next_line_start(0) == len_chars() == 6
-    assert_eq!(next_line_start(&buf, RopeyLine::new(0)), buf.len_chars());
+    assert_eq!(
+        next_line_start(&buf, RopeyLine::new(0)),
+        co(buf.len_chars())
+    );
 }
 
 #[test]
@@ -131,7 +138,7 @@ fn next_line_start_empty_line_between() {
     let buf = rope("a\n\nb\n");
     // line 0: 'a','\n' = 2 chars → next_line_start(0) = 2
     // line 1: '\n'     = 1 char  → next_line_start(1) = 3
-    assert_eq!(next_line_start(&buf, RopeyLine::new(1)), 3);
+    assert_eq!(next_line_start(&buf, RopeyLine::new(1)), co(3));
 }
 
 // ── line_break_char ───────────────────────────────────────────────────────
@@ -145,42 +152,42 @@ fn next_line_start_empty_line_between() {
 fn line_break_char_first_line() {
     // "hello\nworld\n": h=0 e=1 l=2 l=3 o=4 \n=5
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), 5);
+    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(5));
 }
 
 #[test]
 fn line_break_char_middle_line() {
     // "a\nb\nc\n": a=0 \n=1 b=2 \n=3 c=4 \n=5 — line 1 ("b") breaks at 3.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(1)), 3);
+    assert_eq!(line_break_char(&buf, ContentLine::new(1)), co(3));
 }
 
 #[test]
 fn line_break_char_empty_line() {
     // "a\n\nb\n": a=0 \n=1 \n=2 b=3 \n=4 — line 1 is empty, breaks at 2.
     let buf = rope("a\n\nb\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(1)), 2);
+    assert_eq!(line_break_char(&buf, ContentLine::new(1)), co(2));
 }
 
 #[test]
 fn line_break_char_last_content_line() {
     // "a\nb\nc\n": last content line is 2 ("c"), breaks at 5.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_break_char(&buf, last_content_line(&buf)), 5);
+    assert_eq!(line_break_char(&buf, last_content_line(&buf)), co(5));
 }
 
 #[test]
 fn line_break_char_single_line_buffer() {
     // "hello\n": one content line, breaks at 5.
     let buf = rope("hello\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), 5);
+    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(5));
 }
 
 #[test]
 fn line_break_char_empty_buffer() {
     // "\n": one empty content line, breaks at 0.
     let buf = rope("\n");
-    assert_eq!(line_break_char(&buf, ContentLine::new(0)), 0);
+    assert_eq!(line_break_char(&buf, ContentLine::new(0)), co(0));
 }
 
 #[test]
@@ -202,21 +209,21 @@ fn line_break_char_asserts_against_the_phantom_trailing_line() {
 fn leading_whitespace_end_none() {
     // "foo\n" — no leading whitespace, end is the line start.
     let buf = rope("foo\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), 0);
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(0));
 }
 
 #[test]
 fn leading_whitespace_end_tabs() {
     // "\t\tfoo\n" — 2 tabs, end is char 2 ('f').
     let buf = rope("\t\tfoo\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), 2);
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(2));
 }
 
 #[test]
 fn leading_whitespace_end_mixed() {
     // "\t  x\n" — tab + 2 spaces, end is char 3 ('x').
     let buf = rope("\t  x\n");
-    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), 3);
+    assert_eq!(leading_whitespace_end(&buf, ContentLine::new(0)), co(3));
 }
 
 #[test]
@@ -227,7 +234,7 @@ fn leading_whitespace_end_whitespace_only_line() {
     let line_start = buf.line_to_char(0);
     assert_eq!(
         leading_whitespace_end(&buf, ContentLine::new(0)),
-        line_start + 3
+        co(line_start + 3)
     );
 }
 
@@ -239,7 +246,7 @@ fn leading_whitespace_end_empty_line_equals_line_start() {
     let line_start = buf.line_to_char(1);
     assert_eq!(
         leading_whitespace_end(&buf, ContentLine::new(1)),
-        line_start
+        co(line_start)
     );
 }
 
@@ -259,14 +266,14 @@ fn leading_indent_agrees_with_leading_whitespace_end() {
 #[test]
 fn leading_indent_spaces_width_is_char_count() {
     let buf = rope("   x\n");
-    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (3, 3));
+    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (co(3), 3));
 }
 
 #[test]
 fn leading_indent_tab_width_expands_to_next_stop() {
     // One tab at column 0, tab_width 4 — advances to column 4, not 1.
     let buf = rope("\tx\n");
-    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (1, 4));
+    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (co(1), 4));
 }
 
 #[test]
@@ -274,7 +281,7 @@ fn leading_indent_mixed_tab_then_spaces_is_not_a_whole_multiple() {
     // Tab (0 -> 4) then 2 spaces (4 -> 6): 6 is not a multiple of tab_width,
     // same off-stop shape `>`/`<` must round-trip on.
     let buf = rope("\t  x\n");
-    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (3, 6));
+    assert_eq!(leading_indent(&buf, ContentLine::new(0), 4), (co(3), 6));
 }
 
 // ── line_content_end ──────────────────────────────────────────────────────
@@ -283,7 +290,7 @@ fn leading_indent_mixed_tab_then_spaces_is_not_a_whole_multiple() {
 fn line_content_end_normal_line() {
     // "hello\nworld\n" — line 0: last non-newline char is 'o' at offset 4
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), 4);
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
@@ -291,14 +298,14 @@ fn line_content_end_empty_line_returns_newline_pos() {
     // "hello\n\nworld\n" — line 1 is empty; cursor sits on the '\n'
     let buf = rope("hello\n\nworld\n");
     // line 1 starts at char 6, its only char is '\n' → content_end = 6
-    assert_eq!(line_content_end(&buf, ContentLine::new(1)), 6);
+    assert_eq!(line_content_end(&buf, ContentLine::new(1)), co(6));
 }
 
 #[test]
 fn line_content_end_single_char_line() {
     // "a\nb\n" — line 0 content end is at 'a' (offset 0)
     let buf = rope("a\nb\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), 0);
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(0));
 }
 
 #[test]
@@ -307,7 +314,7 @@ fn line_content_end_combining_grapheme_before_newline() {
     // The grapheme "e\u{0301}" starts at char 3. line_content_end must
     // return 3 (the grapheme cluster start), not 4 (mid-cluster).
     let buf = rope("cafe\u{0301}\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), 3);
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(3));
 }
 
 #[test]
@@ -315,7 +322,7 @@ fn line_content_end_treats_a_bare_cr_as_content() {
     // "ab\rcd\n" is one line, not two: `\r` is ordinary content here, so the
     // cursor's last landing spot is 'd' (offset 4), not 'b'.
     let buf = rope("ab\rcd\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), 4);
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
@@ -324,7 +331,7 @@ fn line_content_end_stops_on_the_cr_of_a_crlf() {
     // the `\r` is the line's own last content char and the cursor lands on
     // it (offset 2), one further than a plain "ab\n" would give.
     let buf = rope("ab\r\ncd\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(0)), 2);
+    assert_eq!(line_content_end(&buf, ContentLine::new(0)), co(2));
 }
 
 #[test]
@@ -333,7 +340,7 @@ fn line_content_end_crlf_only_line_is_not_empty() {
     // terminator, so the cursor lands on the `\r` (offset 2) as content, not
     // as the empty-line fallback.
     let buf = rope("a\n\r\nb\n");
-    assert_eq!(line_content_end(&buf, ContentLine::new(1)), 2);
+    assert_eq!(line_content_end(&buf, ContentLine::new(1)), co(2));
 }
 
 // ── line_last_char ───────────────────────────────────────────────────────
@@ -350,7 +357,7 @@ fn line_last_char_normal_line() {
     // "hello\nworld\n" — every char is its own cluster, so this is the same
     // answer as line_content_end.
     let buf = rope("hello\nworld\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(0)), 4);
+    assert_eq!(line_last_char(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
@@ -358,7 +365,7 @@ fn line_last_char_empty_line_returns_newline_pos() {
     // "hello\n\nworld\n" — line 1 is empty; line_content_end already lands
     // on its own '\n', so the cluster round trip is a no-op.
     let buf = rope("hello\n\nworld\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(1)), 6);
+    assert_eq!(line_last_char(&buf, ContentLine::new(1)), co(6));
 }
 
 #[test]
@@ -367,14 +374,14 @@ fn line_last_char_combining_grapheme_before_newline() {
     // line_content_end lands on the cluster's start (3); line_last_char
     // must extend through the combining mark to 4, not stop at 3.
     let buf = rope("cafe\u{0301}\n");
-    assert_eq!(line_last_char(&buf, ContentLine::new(0)), 4);
+    assert_eq!(line_last_char(&buf, ContentLine::new(0)), co(4));
 }
 
 #[test]
 fn line_last_char_last_content_line() {
     // "a\nb\nc\n": last content line is 2 ("c"), last char at 4.
     let buf = rope("a\nb\nc\n");
-    assert_eq!(line_last_char(&buf, last_content_line(&buf)), 4);
+    assert_eq!(line_last_char(&buf, last_content_line(&buf)), co(4));
 }
 
 // ── snap_to_grapheme_boundary ─────────────────────────────────────────────
@@ -383,13 +390,13 @@ fn line_last_char_last_content_line() {
 fn snap_to_grapheme_boundary_ascii_lands_exactly() {
     let buf = rope("hello\n");
     // Target 3 in ASCII — all single-char graphemes, so snap returns 3
-    assert_eq!(snap_to_grapheme_boundary(&buf, 0, 3), 3);
+    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(3)), co(3));
 }
 
 #[test]
 fn snap_to_grapheme_boundary_target_at_line_start() {
     let buf = rope("hello\n");
-    assert_eq!(snap_to_grapheme_boundary(&buf, 0, 0), 0);
+    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(0)), co(0));
 }
 
 #[test]
@@ -401,7 +408,10 @@ fn snap_to_grapheme_boundary_target_beyond_line_returns_len_chars() {
     // Callers (vertical motion) apply their own clamping to len_chars - 1.
     let buf = rope("hi\n");
     // "hi\n": h=0, i=1, \n=2; len_chars=3
-    assert_eq!(snap_to_grapheme_boundary(&buf, 0, 100), buf.len_chars());
+    assert_eq!(
+        snap_to_grapheme_boundary(&buf, co(0), co(100)),
+        co(buf.len_chars())
+    );
 }
 
 #[test]
@@ -410,7 +420,7 @@ fn snap_to_grapheme_boundary_mid_cluster_snaps_back() {
     // snap with target=1 (inside the cluster) should return 0 (start of cluster).
     let buf = rope("e\u{0301}\n");
     // The combining char is at char index 1. target=1 is inside the cluster.
-    assert_eq!(snap_to_grapheme_boundary(&buf, 0, 1), 0);
+    assert_eq!(snap_to_grapheme_boundary(&buf, co(0), co(1)), co(0));
 }
 
 // ── line_token_content ──────────────────────────────────────────────────────
@@ -500,7 +510,7 @@ fn is_empty_line_false_for_a_cr_only_line() {
 #[test]
 fn char_col_in_line_at_line_start_is_zero() {
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), 0), 0);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(0)), 0);
 }
 
 #[test]
@@ -508,7 +518,7 @@ fn char_col_in_line_mid_line() {
     // "ab\ncd\n" — line 1 starts at char offset 3; char offset 4 ('d') is
     // column 1.
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(1), 4), 1);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(1), co(4)), 1);
 }
 
 #[test]
@@ -516,7 +526,7 @@ fn char_col_in_line_on_the_lines_own_newline() {
     // Line 0's own '\n' sits at offset 2 — column 2, one past its two
     // content chars.
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), 2), 2);
+    assert_eq!(char_col_in_line(&buf, ContentLine::new(0), co(2)), 2);
 }
 
 #[test]
@@ -560,7 +570,7 @@ fn advance_byte_point_trailing_newline() {
 fn place_char_column_within_line() {
     // "hello\nworld\n" — char col 2 of line 1 lands on 'r' (offset 8).
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 2), 8);
+    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 2), co(8));
 }
 
 #[test]
@@ -573,7 +583,7 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // moving further right moved the cursor left.
     let buf = rope("abc\ndef\n");
     let placed: Vec<usize> = (0..6)
-        .map(|col| place_char_column(&buf, RopeyLine::new(0), col))
+        .map(|col| place_char_column(&buf, RopeyLine::new(0), col).index())
         .collect();
     assert_eq!(placed, vec![0, 1, 2, 2, 2, 2]);
     assert!(
@@ -583,8 +593,8 @@ fn place_char_column_is_monotonic_across_the_line_end_boundary() {
     // An empty line keeps landing on its own '\n' — there the last content
     // position *is* the newline.
     let empty = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 0), 2);
-    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 3), 2);
+    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 0), co(2));
+    assert_eq!(place_char_column(&empty, RopeyLine::new(1), 3), co(2));
 }
 
 #[test]
@@ -592,7 +602,7 @@ fn place_char_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n" — line 0 only has 2 real chars; char col 10 clamps to
     // 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(0), 10), 1);
+    assert_eq!(place_char_column(&buf, RopeyLine::new(0), 10), co(1));
 }
 
 #[test]
@@ -600,7 +610,7 @@ fn place_char_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n" — line 1 is empty; any char column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 3), 2);
+    assert_eq!(place_char_column(&buf, RopeyLine::new(1), 3), co(2));
 }
 
 #[test]
@@ -613,11 +623,11 @@ fn place_char_column_on_the_phantom_line_places_at_len_chars() {
     let buf = rope("a\nb\n");
     assert_eq!(
         place_char_column(&buf, last_ropey_line(&buf), 0),
-        buf.len_chars()
+        co(buf.len_chars())
     );
     assert_eq!(
         place_char_column(&buf, last_ropey_line(&buf), 5),
-        buf.len_chars()
+        co(buf.len_chars())
     );
 }
 
@@ -628,7 +638,7 @@ fn place_grapheme_column_within_line() {
     // "hello\nworld\n" — grapheme col 2 of line 1 lands on 'r' (offset 8),
     // same as the char-column case here since every grapheme is one char.
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 2), 8);
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 2), co(8));
 }
 
 #[test]
@@ -637,8 +647,8 @@ fn place_grapheme_column_counts_combining_marks_as_one_column() {
     // Column 0 is the cluster start; column 1 is 'x'; char_col would have
     // landed column 1 on the combining mark itself instead.
     let buf = rope("e\u{0301}x\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 0), 0);
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 1), 2);
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 0), co(0));
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 1), co(2));
 }
 
 #[test]
@@ -646,13 +656,13 @@ fn place_grapheme_column_overshoot_clamps_to_line_content_end() {
     // "hi\nhello\n" — line 0 only has 2 grapheme clusters; column 10 clamps
     // to 'i' (offset 1).
     let buf = rope("hi\nhello\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 10), 1);
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(0), 10), co(1));
 }
 
 #[test]
 fn place_grapheme_column_zero_is_line_start() {
     let buf = rope("hello\nworld\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 0), 6);
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 0), co(6));
 }
 
 #[test]
@@ -660,7 +670,7 @@ fn place_grapheme_column_on_empty_line_lands_on_newline() {
     // "a\n\nb\n" — line 1 is empty; any grapheme column lands on its '\n'
     // (offset 2).
     let buf = rope("a\n\nb\n");
-    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 3), 2);
+    assert_eq!(place_grapheme_column(&buf, RopeyLine::new(1), 3), co(2));
 }
 
 #[test]
@@ -692,8 +702,8 @@ fn line_segments_yields_one_triple_per_line_covered() {
     // "abc\ndef\nghi\n" — a range spanning all of line 0's "abc" through
     // line 2's "gh" covers content on three lines.
     let buf = rope("abc\ndef\nghi\n");
-    let start = buf.line_to_char(0);
-    let end = buf.line_to_char(2) + 2; // through "gh" on line 2
+    let start = co(buf.line_to_char(0));
+    let end = co(buf.line_to_char(2) + 2); // through "gh" on line 2
     let segs: Vec<_> = line_segments(&buf, start, end)
         .map(|(l, s, e)| (l.index(), s, e))
         .collect();
@@ -709,8 +719,8 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
     // (3, 3) triple for line 0 would sort its end before its own start once
     // downstream flattening builds start/end events from it.
     let buf = rope("abc\ndef\n");
-    let start = buf.line_to_char(0) + 3; // line 0's own '\n'
-    let end = buf.line_to_char(1) + 2; // through "de" on line 1
+    let start = co(buf.line_to_char(0) + 3); // line 0's own '\n'
+    let end = co(buf.line_to_char(1) + 2); // through "de" on line 1
     let segs: Vec<_> = line_segments(&buf, start, end)
         .map(|(l, s, e)| (l.index(), s, e))
         .collect();

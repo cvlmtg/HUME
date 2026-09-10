@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 
+use crate::offset::CharOffset;
+
 /// Returns the char offset of the start of the *next* grapheme cluster after
 /// `char_offset`, or `slice.len_chars()` when already at (or past) the end.
 ///
@@ -20,10 +22,11 @@ use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentati
 /// O(n) in space and time. `GraphemeCursor` supports a chunk-at-a-time API
 /// (`next_boundary` / `provide_context`) that lets us stay O(log n) and
 /// allocation-free.
-pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize {
+pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+    let char_offset = char_offset.index();
     let len_chars = slice.len_chars();
     if char_offset >= len_chars {
-        return len_chars;
+        return CharOffset::new(len_chars);
     }
 
     let len_bytes = slice.len_bytes();
@@ -38,15 +41,15 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 
     loop {
         match gc.next_boundary(chunk, chunk_byte_start) {
-            Ok(None) => return len_chars,
-            Ok(Some(b)) => return slice.byte_to_char(b),
+            Ok(None) => return CharOffset::new(len_chars),
+            Ok(Some(b)) => return CharOffset::new(slice.byte_to_char(b)),
 
             // The cursor needs the next chunk of the rope.
             Err(GraphemeIncomplete::NextChunk) => {
                 let next_byte = chunk_byte_start + chunk.len();
                 if next_byte >= len_bytes {
                     // No more chunks — treat as end.
-                    return len_chars;
+                    return CharOffset::new(len_chars);
                 }
                 let (c, s, _, _) = slice.chunk_at_byte(next_byte);
                 chunk = c;
@@ -72,9 +75,10 @@ pub fn next_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 /// `char_offset`.
 ///
 /// Returns `0` when `char_offset` is already at the start of the slice.
-pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize {
+pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
+    let char_offset = char_offset.index();
     if char_offset == 0 {
-        return 0;
+        return CharOffset::new(0);
     }
 
     let len_bytes = slice.len_bytes();
@@ -89,13 +93,13 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 
     loop {
         match gc.prev_boundary(chunk, chunk_byte_start) {
-            Ok(None) => return 0,
-            Ok(Some(b)) => return slice.byte_to_char(b),
+            Ok(None) => return CharOffset::new(0),
+            Ok(Some(b)) => return CharOffset::new(slice.byte_to_char(b)),
 
             // The cursor needs the previous chunk.
             Err(GraphemeIncomplete::PrevChunk) => {
                 if chunk_byte_start == 0 {
-                    return 0;
+                    return CharOffset::new(0);
                 }
                 let (c, s, _, _) = slice.chunk_at_byte(chunk_byte_start - 1);
                 chunk = c;
@@ -121,7 +125,7 @@ pub fn prev_grapheme_boundary(slice: RopeSlice<'_>, char_offset: usize) -> usize
 /// too far back when `char_offset` is already a boundary. Advancing to the
 /// next boundary first — identity if already on one — then retreating lands
 /// on the boundary that actually opens `char_offset`'s own cluster.
-pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: usize) -> usize {
+pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: CharOffset) -> CharOffset {
     prev_grapheme_boundary(slice, next_grapheme_boundary(slice, char_offset))
 }
 
@@ -137,8 +141,17 @@ pub fn snap_to_cluster_start(slice: RopeSlice<'_>, char_offset: usize) -> usize 
 /// structural trailing `\n` guarantees `next_grapheme_boundary` is always
 /// `> 0` here, but only this function's `saturating_sub` makes that safe to
 /// forget.
-pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: usize) -> usize {
-    next_grapheme_boundary(slice, cluster_start).saturating_sub(1)
+pub fn cluster_last_char(slice: RopeSlice<'_>, cluster_start: CharOffset) -> CharOffset {
+    // Trusted mint: this module is the grapheme-boundary authority itself
+    // (exempt from the raw-stepping rule other crates follow — see
+    // `no_raw_char_stepping_in_motion_code`'s scoping doc), and the `- 1` is
+    // exactly the documented inclusive/exclusive conversion this function
+    // exists to provide.
+    CharOffset::new(
+        next_grapheme_boundary(slice, cluster_start)
+            .index()
+            .saturating_sub(1),
+    )
 }
 
 /// Byte offset of the start of the grapheme cluster ending at `byte_pos` —
@@ -188,8 +201,13 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
 /// arbitrarily wide. This implementation uses the same chunk-at-a-time
 /// `GraphemeCursor` strategy as `next_grapheme_boundary` — O(log n) per
 /// cluster with no heap allocation.
-pub(crate) fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: usize) -> usize {
-    let to_char = to_char.max(from_char);
+pub(crate) fn grapheme_count(
+    slice: RopeSlice<'_>,
+    from_char: CharOffset,
+    to_char: CharOffset,
+) -> usize {
+    let to_char = to_char.max(from_char).index();
+    let from_char = from_char.index();
     if from_char == to_char {
         return 0;
     }
@@ -237,8 +255,12 @@ pub(crate) fn grapheme_count(slice: RopeSlice<'_>, from_char: usize, to_char: us
 /// This is a logical position (grapheme index), not a display column: wide
 /// characters count as one, not two. The value matches how many times the
 /// user pressed → to reach the cursor from the start of the line.
-pub fn grapheme_col_in_line(slice: RopeSlice<'_>, line_idx: usize, char_pos: usize) -> usize {
-    grapheme_count(slice, slice.line_to_char(line_idx), char_pos)
+pub fn grapheme_col_in_line(slice: RopeSlice<'_>, line_idx: usize, char_pos: CharOffset) -> usize {
+    grapheme_count(
+        slice,
+        CharOffset::new(slice.line_to_char(line_idx)),
+        char_pos,
+    )
 }
 
 /// Grapheme cluster `[start, end)` of `slice`, as text — the shape
@@ -251,16 +273,16 @@ pub fn grapheme_col_in_line(slice: RopeSlice<'_>, line_idx: usize, char_pos: usi
 /// hundreds of bytes and a cluster is rarely more than a handful of
 /// codepoints. Copied only for the rare cluster that straddles a chunk
 /// boundary.
-fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
-    let start_byte = slice.char_to_byte(start);
-    let end_byte = slice.char_to_byte(end);
+fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<'_, str> {
+    let start_byte = slice.char_to_byte(start.index());
+    let end_byte = slice.char_to_byte(end.index());
     let (chunk, chunk_byte_start, _, _) = slice.chunk_at_byte(start_byte);
     let local_start = start_byte - chunk_byte_start;
     let local_end = end_byte - chunk_byte_start;
     if local_end <= chunk.len() {
         Cow::Borrowed(&chunk[local_start..local_end])
     } else {
-        Cow::Owned(slice.slice(start..end).to_string())
+        Cow::Owned(slice.slice(start.index()..end.index()).to_string())
     }
 }
 
@@ -277,10 +299,10 @@ fn cluster_str(slice: RopeSlice<'_>, start: usize, end: usize) -> Cow<'_, str> {
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
     line_idx: usize,
-    char_pos: usize,
+    char_pos: CharOffset,
     tab_width: u8,
 ) -> usize {
-    let line_start = slice.line_to_char(line_idx);
+    let line_start = CharOffset::new(slice.line_to_char(line_idx));
     let mut display_col = 0usize;
     let mut pos = line_start;
     while pos < char_pos {
@@ -318,8 +340,8 @@ pub fn char_pos_at_display_col(
     line_idx: usize,
     target_display_col: usize,
     tab_width: u8,
-) -> usize {
-    let line_start = slice.line_to_char(line_idx);
+) -> CharOffset {
+    let line_start = CharOffset::new(slice.line_to_char(line_idx));
     if target_display_col == 0 {
         return line_start;
     }
@@ -330,7 +352,7 @@ pub fn char_pos_at_display_col(
         if next == pos {
             break; // end of buffer
         }
-        if slice.get_char(pos) == Some('\n') {
+        if slice.get_char(pos.index()) == Some('\n') {
             break; // end of line — never walk onto the next line
         }
         let w =

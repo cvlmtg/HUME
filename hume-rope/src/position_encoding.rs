@@ -15,6 +15,7 @@ use ropey::{Rope, RopeSlice};
 
 use crate::line::RopeyLine;
 use crate::lines::line_terminator_start;
+use crate::offset::{CharOffset, ExclusiveRange};
 
 /// Wire-format position encoding negotiated with an LSP server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,8 +29,8 @@ pub enum PositionEncoding {
 /// Total: a `char_idx` past `text.len_chars()` clamps to the document end
 /// rather than panicking (ropey's own indexing functions panic past
 /// `len_chars()`) — mirrors [`wire_to_char`]'s clamp-don't-error convention.
-pub fn char_to_wire(text: &Rope, char_idx: usize, enc: PositionEncoding) -> (usize, usize) {
-    let char_idx = char_idx.min(text.len_chars());
+pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> (usize, usize) {
+    let char_idx = char_idx.index().min(text.len_chars());
     let line = text.char_to_line(char_idx);
     let character = match enc {
         PositionEncoding::Utf8 => text.char_to_byte(char_idx) - text.line_to_byte(line),
@@ -46,13 +47,12 @@ pub fn char_to_wire(text: &Rope, char_idx: usize, enc: PositionEncoding) -> (usi
 /// [`wire_range_to_char_range`].
 pub fn char_range_to_wire_range(
     text: &Rope,
-    start_char: usize,
-    end_char: usize,
+    range: ExclusiveRange<CharOffset>,
     enc: PositionEncoding,
 ) -> ((usize, usize), (usize, usize)) {
     (
-        char_to_wire(text, start_char, enc),
-        char_to_wire(text, end_char, enc),
+        char_to_wire(text, range.start, enc),
+        char_to_wire(text, range.end, enc),
     )
 }
 
@@ -91,7 +91,7 @@ pub fn wire_to_line_char_col(
 ) -> (usize, usize) {
     let line = RopeyLine::clamped(text, line);
     let line_start = text.line_to_char(line.index());
-    let content = text.slice(line_start..line_terminator_start(text, line));
+    let content = text.slice(line_start..line_terminator_start(text, line).index());
     (line.index(), wire_offset_to_char(content, character, enc))
 }
 
@@ -102,9 +102,16 @@ pub fn wire_to_line_char_col(
 /// contract; this just folds its `(line, column)` pair into one absolute
 /// offset; a caller that must additionally land on a grapheme boundary
 /// wants that function directly, not this one.
-pub fn wire_to_char(text: &Rope, line: usize, character: usize, enc: PositionEncoding) -> usize {
+pub fn wire_to_char(
+    text: &Rope,
+    line: usize,
+    character: usize,
+    enc: PositionEncoding,
+) -> CharOffset {
     let (line, char_col) = wire_to_line_char_col(text, line, character, enc);
-    text.line_to_char(line) + char_col
+    // `line_to_char(line) + char_col`: a line-start offset plus a validated
+    // in-line column — not a raw stepping hazard.
+    CharOffset::new(text.line_to_char(line) + char_col)
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
@@ -118,8 +125,8 @@ pub fn wire_range_to_char_range(
     start: (usize, usize),
     end: (usize, usize),
     enc: PositionEncoding,
-) -> (usize, usize) {
-    (
+) -> ExclusiveRange<CharOffset> {
+    ExclusiveRange::new(
         wire_to_char(text, start.0, start.1, enc),
         wire_to_char(text, end.0, end.1, enc),
     )
