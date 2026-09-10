@@ -139,7 +139,7 @@ pub fn should_auto_pair_at(
     chars: WordChars<'_>,
 ) -> bool {
     // Check 1: next char (the char the cursor sits on) must be innocuous.
-    let next_ok = match text.char_at(head.index()) {
+    let next_ok = match text.char_at(head) {
         None => true,                                     // EOF
         Some(c) if c.is_whitespace() => true,             // space, tab, newline, …
         Some(c) => ap_pairs.iter().any(|p| p.close == c), // a configured close char
@@ -152,7 +152,7 @@ pub fn should_auto_pair_at(
     if pair.is_symmetric() && head > CharOffset::new(0) {
         let prev_pos = prev_grapheme_boundary(text, head);
         if text
-            .char_at(prev_pos.index())
+            .char_at(prev_pos)
             .is_some_and(|c| chars.classify(c) == CharClass::Word)
         {
             return false;

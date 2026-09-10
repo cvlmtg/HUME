@@ -59,15 +59,15 @@ pub fn join_lines_select_spaces(
             let content_start = {
                 let mut p = next_start;
                 while p < next_end_excl {
-                    match text.char_at(p.index()) {
-                        Some(c) if c == ' ' || c == '\t' => p = CharOffset::new(p.index() + 1),
+                    match text.char_at(p) {
+                        Some(c) if c == ' ' || c == '\t' => p = p.shift(1),
                         _ => break,
                     }
                 }
                 p
             };
 
-            let is_blank = content_start.index() >= next_end_excl.index().saturating_sub(1);
+            let is_blank = content_start >= next_end_excl.shift(-1);
 
             b.retain(nl_pos.max(b.old_pos()).chars_since(b.old_pos()));
             b.delete(content_start.chars_since(nl_pos));

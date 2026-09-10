@@ -13,7 +13,7 @@ fn line_only_suffix() {
     assert_eq!(
         parsed.pos,
         Some(CliPosition {
-            line: 12,
+            line: hume_rope::line::ContentLine::from_number(12).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );
@@ -28,7 +28,7 @@ fn line_and_column_suffix() {
     assert_eq!(
         parsed.pos,
         Some(CliPosition {
-            line: 12,
+            line: hume_rope::line::ContentLine::from_number(12).unwrap(),
             grapheme_col: GraphemeCol::from_number(24).unwrap()
         })
     );
@@ -43,7 +43,7 @@ fn trailing_colon_is_tolerated() {
     assert_eq!(
         parsed.pos,
         Some(CliPosition {
-            line: 12,
+            line: hume_rope::line::ContentLine::from_number(12).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );
@@ -187,7 +187,7 @@ fn drive_absolute_path_with_line_suffix_splits_normally() {
     assert_eq!(
         parsed.pos,
         Some(CliPosition {
-            line: 12,
+            line: hume_rope::line::ContentLine::from_number(12).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap()
         })
     );

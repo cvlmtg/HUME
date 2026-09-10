@@ -32,7 +32,7 @@ pub(super) fn next_word_start(
     }
 
     let mut pos = head;
-    let mut prev_class = chars.classify(text.char_at(pos.index()).expect("pos < len"));
+    let mut prev_class = chars.classify(text.char_at(pos).expect("pos < len"));
     // Advance by a full grapheme cluster so we never land mid-cluster.
     // This matters for combining sequences like e + U+0301 (combining acute):
     // stepping by 1 would land on the combining codepoint, which classify_char
@@ -40,7 +40,7 @@ pub(super) fn next_word_start(
     pos = next_grapheme_boundary(text, pos);
 
     while pos < end {
-        let cur_class = chars.classify(text.char_at(pos.index()).expect("pos < len"));
+        let cur_class = chars.classify(text.char_at(pos).expect("pos < len"));
         if is_boundary(prev_class, cur_class)
             && (cur_class == CharClass::Eol || cur_class != CharClass::Space)
         {
@@ -75,7 +75,7 @@ pub(crate) fn prev_word_start(
 
     // Phase 1: skip Space and Eol backward.
     loop {
-        let cat = chars.classify(text.char_at(pos.index()).expect("pos < len"));
+        let cat = chars.classify(text.char_at(pos).expect("pos < len"));
         if cat != CharClass::Space && cat != CharClass::Eol {
             break;
         }
@@ -86,13 +86,13 @@ pub(crate) fn prev_word_start(
     }
 
     // Phase 2: skip backward while in the same category.
-    let cat = chars.classify(text.char_at(pos.index()).expect("pos < len"));
+    let cat = chars.classify(text.char_at(pos).expect("pos < len"));
     while pos > CharOffset::new(0) {
         // Use prev_grapheme_boundary rather than pos - 1 so we always examine
         // the first codepoint of each grapheme cluster (the base character),
         // not a combining codepoint that may report a different class.
         let prev_pos = prev_grapheme_boundary(text, pos);
-        let prev_cat = chars.classify(text.char_at(prev_pos.index()).expect("prev_pos < len"));
+        let prev_cat = chars.classify(text.char_at(prev_pos).expect("prev_pos < len"));
         if is_boundary(prev_cat, cat) {
             break;
         }
@@ -129,7 +129,7 @@ pub(super) fn find_word_end_from(
         return CharOffset::new(start.index().saturating_sub(1));
     }
 
-    let cat = chars.classify(text.char_at(start.index()).expect("start < len"));
+    let cat = chars.classify(text.char_at(start).expect("start < len"));
     let mut pos = start;
 
     loop {
@@ -143,7 +143,7 @@ pub(super) fn find_word_end_from(
         if next_pos >= end {
             return cluster_last_char(text, pos);
         }
-        let next_cat = chars.classify(text.char_at(next_pos.index()).expect("next_pos < len"));
+        let next_cat = chars.classify(text.char_at(next_pos).expect("next_pos < len"));
         if is_boundary(cat, next_cat) {
             return cluster_last_char(text, pos);
         }
@@ -164,11 +164,11 @@ pub(super) fn find_word_start_from(
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
     chars: WordChars<'_>,
 ) -> CharOffset {
-    let cat = chars.classify(text.char_at(pos.index()).expect("pos < len"));
+    let cat = chars.classify(text.char_at(pos).expect("pos < len"));
     let mut pos = pos;
     while pos > CharOffset::new(0) {
         let prev_pos = prev_grapheme_boundary(text, pos);
-        let prev_cat = chars.classify(text.char_at(prev_pos.index()).expect("prev_pos < len"));
+        let prev_cat = chars.classify(text.char_at(prev_pos).expect("prev_pos < len"));
         if is_boundary(prev_cat, cat) {
             break;
         }
@@ -201,7 +201,7 @@ pub(super) fn anchor_unit(
     // just that trailing mark. Snap to the start of the cluster containing
     // `anchor` first — a no-op when `anchor` already is a cluster start.
     let anchor = snap_to_cluster_start(text, anchor);
-    let cat = chars.classify(text.char_at(anchor.index()).expect("anchor < len"));
+    let cat = chars.classify(text.char_at(anchor).expect("anchor < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         InclusiveRange::new(anchor, anchor)
     } else {
@@ -234,7 +234,7 @@ pub(super) fn select_next_word(
     // If we landed on a newline that is NOT the trailing '\n', cross the line:
     // call next_word_start again from that newline to get to the next line's word.
     if word_start < last {
-        let cat = chars.classify(text.char_at(word_start.index()).expect("word_start < len"));
+        let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
         if cat == CharClass::Eol {
             word_start = next_word_start(text, word_start, is_boundary, chars);
         }
@@ -247,7 +247,7 @@ pub(super) fn select_next_word(
     }
 
     // Guard: if we somehow landed on whitespace, also a no-op.
-    let cat = chars.classify(text.char_at(word_start.index()).expect("word_start < len"));
+    let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         return None;
     }
@@ -279,7 +279,7 @@ pub(super) fn select_prev_word(
 
     // If that position is whitespace (e.g. buffer starts with spaces), there
     // is no actual word to jump to.
-    let cat = chars.classify(text.char_at(word_start.index()).expect("word_start < len"));
+    let cat = chars.classify(text.char_at(word_start).expect("word_start < len"));
     if cat == CharClass::Space || cat == CharClass::Eol {
         return None;
     }
@@ -293,7 +293,7 @@ pub(super) fn select_prev_word(
             return None; // already at the first word — no-op
         }
         let prev_start = prev_word_start(text, word_start, is_boundary, chars);
-        let prev_cat = chars.classify(text.char_at(prev_start.index()).expect("prev_start < len"));
+        let prev_cat = chars.classify(text.char_at(prev_start).expect("prev_start < len"));
         if prev_cat == CharClass::Space || prev_cat == CharClass::Eol {
             return None; // no word before this one
         }

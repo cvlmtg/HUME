@@ -14,13 +14,10 @@ use crate::pair::find_bracket_pair;
 pub(super) fn inner_of_pair(
     pair: InclusiveRange<CharOffset>,
 ) -> Option<InclusiveRange<CharOffset>> {
-    if pair.start.index() + 1 > pair.end.index() - 1 {
+    if pair.start.shift(1) > pair.end.shift(-1) {
         return None;
     }
-    Some(InclusiveRange::new(
-        CharOffset::new(pair.start.index() + 1),
-        CharOffset::new(pair.end.index() - 1),
-    ))
+    Some(InclusiveRange::new(pair.start.shift(1), pair.end.shift(-1)))
 }
 
 fn inner_bracket(

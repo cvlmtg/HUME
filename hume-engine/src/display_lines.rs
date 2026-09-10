@@ -567,6 +567,10 @@ impl<'a> DisplayLineMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        // Unwrapped here, not threaded further: `locate_in_line`/`FormatBound::ToByte`
+        // compare directly against `Grapheme.byte_range` (`Range<usize>`,
+        // deliberately not `ByteCol` — see CLAUDE.md's per-cell hot-loop note),
+        // so this is the correct crossing into that still-untyped subsystem.
         let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let before = self.block(line).before;
@@ -834,6 +838,10 @@ impl<'a> DisplayLineMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
+        // Unwrapped here, not threaded further: `locate_in_line`/`FormatBound::ToByte`
+        // compare directly against `Grapheme.byte_range` (`Range<usize>`,
+        // deliberately not `ByteCol` — see CLAUDE.md's per-cell hot-loop note),
+        // so this is the correct crossing into that still-untyped subsystem.
         let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));

@@ -34,7 +34,7 @@ pub(crate) fn scan_left_for_open(
     close: char,
 ) -> Option<CharOffset> {
     let mut depth = 0usize;
-    let mut cursor = text.chars_at(pos.index());
+    let mut cursor = text.chars_at(pos);
     while let Some((i, ch)) = cursor.prev() {
         if ch == close {
             depth += 1;
@@ -56,7 +56,7 @@ pub(crate) fn scan_right_for_close(
     close: char,
 ) -> Option<CharOffset> {
     let mut depth = 0usize;
-    for (i, ch) in text.chars_at(pos.index()) {
+    for (i, ch) in text.chars_at(pos) {
         if ch == open {
             depth += 1;
         } else if ch == close {
@@ -80,13 +80,12 @@ pub(crate) fn find_bracket_pair(
     open: char,
     close: char,
 ) -> Option<InclusiveRange<CharOffset>> {
-    match text.char_at(pos.index())? {
+    match text.char_at(pos)? {
         ch if ch == open => {
             // Cursor is on an open bracket — scan right for the matching close.
-            // `pos.index() + 1` cannot panic: `char_at` above already proved
+            // `pos.shift(1)` cannot panic: `char_at` above already proved
             // `pos < text.len_chars()`.
-            let close_pos =
-                scan_right_for_close(text, CharOffset::new(pos.index() + 1), open, close)?;
+            let close_pos = scan_right_for_close(text, pos.shift(1), open, close)?;
             Some(InclusiveRange::new(pos, close_pos))
         }
         ch if ch == close => {
@@ -225,7 +224,7 @@ pub(crate) fn find_tightest_bracket_pair(
     pos: CharOffset,
 ) -> Option<InclusiveRange<CharOffset>> {
     let pos = pos.index();
-    let ch = text.char_at(pos)?;
+    let ch = text.char_at(CharOffset::new(pos))?;
     let role = bracket_role(ch);
 
     let mut opens: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
@@ -251,10 +250,10 @@ pub(crate) fn find_tightest_bracket_pair(
     let mut best_span: Option<usize> = None;
     let within_bound = |best: Option<usize>, d: usize| best.is_none_or(|s| d < s);
 
-    let mut left_cursor = text.chars_at(pos);
+    let mut left_cursor = text.chars_at(CharOffset::new(pos));
     // `pos + 1` cannot panic: `text.char_at(pos)` above already proved
     // `pos < text.len_chars()`.
-    let mut right_cursor = text.chars_at(pos + 1);
+    let mut right_cursor = text.chars_at(CharOffset::new(pos + 1));
     let (mut dl, mut dr) = (0usize, 0usize);
     let (mut left_exhausted, mut right_exhausted) = (false, false);
 
@@ -355,11 +354,11 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
         head.index()..next_grapheme_boundary(text, head).index()
     };
     if head.index() == span.start {
-        text.chars_at(span.start)
+        text.chars_at(CharOffset::new(span.start))
             .take(span.len())
             .find_map(classify)
     } else {
-        let mut cursor = text.chars_at(span.end);
+        let mut cursor = text.chars_at(CharOffset::new(span.end));
         while let Some(hit) = cursor.prev() {
             if hit.0 < span.start {
                 return None;
@@ -429,7 +428,7 @@ pub(crate) fn find_quote_pair(
     // have a complete pair and can test whether `pos` falls inside it.
     let mut open: Option<usize> = None;
     for (i, ch) in text
-        .chars_at(line_start.index())
+        .chars_at(line_start)
         .take(line_end.chars_since(line_start))
     {
         if ch == quote {

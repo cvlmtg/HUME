@@ -61,14 +61,23 @@ pub(in crate::editor) fn cmd_half_page_up(
 
 // ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
 
-fn cmd_view_scroll_to_display_line(state: &mut EditorState, view: &mut EngineView, target_display_line: usize) {
+fn cmd_view_scroll_to_display_line(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    target_display_line: usize,
+) {
     let cursor_char = current_selections(state, view).primary().head();
     let pid = state.focused_pane_id;
     let buf_id = focused_buffer_id(state, view);
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, viewport) =
         pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
-    super::super::scroll::scroll_cursor_to_display_line(viewport, &mut dlm, cursor_char, target_display_line);
+    super::super::scroll::scroll_cursor_to_display_line(
+        viewport,
+        &mut dlm,
+        cursor_char,
+        target_display_line,
+    );
 }
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by

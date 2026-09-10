@@ -107,15 +107,19 @@ macro_rules! display_col_methods {
 
             /// [`Self::cells_since`] without the ordering precondition — 0
             /// when `earlier` is actually later, rather than debug-panicking.
-            /// For the one caller that cannot prove `earlier <= self`:
-            /// `hume-editor`'s `cursor::place` positions a completion popup
-            /// at an LSP completion session's token-start anchor, which is
-            /// fixed while the live cursor (and the viewport's horizontal
-            /// scroll it drives) keeps moving right — so the anchor can sit
-            /// left of `viewport.horizontal_offset` in a way the live cursor,
-            /// kept on-screen by `ensure_cursor_visible_horizontal`, never
-            /// does. Every other caller of `cells_since` has that guarantee
-            /// and keeps the assert.
+            /// Two callers can't prove `earlier <= self`: `hume-editor`'s
+            /// `cursor::place` positions a completion popup at an LSP
+            /// completion session's token-start anchor, which is fixed while
+            /// the live cursor (and the viewport's horizontal scroll it
+            /// drives) keeps moving right — so the anchor can sit left of
+            /// `viewport.horizontal_offset` in a way the live cursor, kept
+            /// on-screen by `ensure_cursor_visible_horizontal`, never does.
+            /// `hume-ops`'s `align_selections` (its `fit_0` computation)
+            /// reaches for the same clamp-not-panic behavior for a genuinely
+            /// unlikely case — a backward selection whose anchor display
+            /// column sits left of its own removable-whitespace count. Every
+            /// other caller of `cells_since` has the ordering guarantee and
+            /// keeps the assert.
             pub fn cells_since_saturating(self, earlier: Self) -> u32 {
                 self.0.saturating_sub(earlier.0)
             }
@@ -140,12 +144,13 @@ macro_rules! display_col_methods {
             /// takes `i32`, not `isize`) — silently wrapping, not saturating,
             /// for a `delta` outside `i32`'s range: a sufficiently large
             /// positive delta could wrap negative and shift `self` *down*
-            /// instead of saturating upward. Not reachable today — the sole
-            /// caller (`hume-ops/src/edit/insert.rs`) accumulates a running
-            /// delta within one buffer line, far short of `i32::MAX` cells —
-            /// but a future caller summing deltas across a whole buffer
-            /// should not assume this saturates the way the rest of this
-            /// method's doc does.
+            /// instead of saturating upward. Not reachable today — both
+            /// callers (`hume-ops/src/edit/insert.rs`, and
+            /// `edit/align.rs`'s `align_selections`, tracking its own
+            /// per-line `line_shift`) accumulate a running delta within one
+            /// buffer line, far short of `i32::MAX` cells — but a future
+            /// caller summing deltas across a whole buffer should not assume
+            /// this saturates the way the rest of this method's doc does.
             pub fn shift(self, delta: isize) -> Self {
                 Self(self.0.saturating_add_signed(delta as i32))
             }

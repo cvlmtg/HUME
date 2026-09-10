@@ -251,12 +251,6 @@ impl BufferText {
         hume_rope::lines::last_content_line(&self.rope)
     }
 
-    /// Every real content line index. The canonical "walk every content
-    /// line" spelling — `ContentLine::checked`'s old bounds-check role.
-    pub fn content_lines(&self) -> impl Iterator<Item = hume_rope::line::ContentLine> {
-        hume_rope::lines::content_lines(&self.rope)
-    }
-
     /// All line tokens from the buffer start. See
     /// [`BufferText::line_tokens_at`].
     pub fn line_tokens(&self) -> impl Iterator<Item = RopeSlice<'_>> {
@@ -349,11 +343,11 @@ impl BufferText {
     }
 
     /// Returns the Unicode scalar value at `char_idx`, or `None` if out of bounds.
-    pub fn char_at(&self, char_idx: usize) -> Option<char> {
-        if char_idx >= self.len_chars() {
+    pub fn char_at(&self, char_idx: CharOffset) -> Option<char> {
+        if char_idx.index() >= self.len_chars() {
             return None;
         }
-        Some(self.rope.char(char_idx))
+        Some(self.rope.char(char_idx.index()))
     }
 
     /// A cursor over chars starting at `pos`, for scanning a contiguous range
@@ -362,8 +356,8 @@ impl BufferText {
     ///
     /// # Panics
     /// Panics if `pos > self.len_chars()`.
-    pub fn chars_at(&self, pos: usize) -> CharCursor<'_> {
-        hume_rope::cursor::chars_at(&self.rope, pos)
+    pub fn chars_at(&self, pos: CharOffset) -> CharCursor<'_> {
+        hume_rope::cursor::chars_at(&self.rope, pos.index())
     }
 
     /// Convert a byte offset to a char (Unicode scalar value) offset.

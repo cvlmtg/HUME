@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use hume_rope::column::DisplayLineCol;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 // ---------------------------------------------------------------------------
 // Theme & Style
@@ -216,12 +216,13 @@ pub struct Selection {
 }
 
 impl Selection {
-    /// Returns the selection range as (start, end) with start <= end.
-    pub fn range(self) -> (CharOffset, CharOffset) {
+    /// Returns the selection range as an inclusive char span, ordered
+    /// start <= end regardless of which of anchor/head came first.
+    pub fn range(self) -> InclusiveRange<CharOffset> {
         if self.anchor <= self.head {
-            (self.anchor, self.head)
+            InclusiveRange::new(self.anchor, self.head)
         } else {
-            (self.head, self.anchor)
+            InclusiveRange::new(self.head, self.anchor)
         }
     }
 

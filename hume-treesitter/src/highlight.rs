@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
+use hume_rope::column::ByteCol;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor};
 
@@ -116,7 +117,7 @@ impl TreeSitterHighlighter {
         line_start: usize,
         line_end: usize,
         depth: u8,
-        raw: &mut Vec<(usize, usize, u8, ScopeId)>,
+        raw: &mut Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     ) {
         let mut cursor = self.cursor.lock().expect("query cursor lock poisoned");
         cursor.set_byte_range(line_start..line_end);
@@ -147,8 +148,8 @@ impl TreeSitterHighlighter {
             let node = cap.node;
             let abs_start = node.start_byte();
             let abs_end = node.end_byte();
-            let rel_start = abs_start.saturating_sub(line_start);
-            let rel_end = abs_end.saturating_sub(line_start).min(content_len);
+            let rel_start = ByteCol::new(abs_start.saturating_sub(line_start));
+            let rel_end = ByteCol::new(abs_end.saturating_sub(line_start).min(content_len));
             if rel_start < rel_end {
                 raw.push((rel_start, rel_end, depth, scope));
             }
@@ -183,10 +184,10 @@ pub fn layer_highlights_for_line(
     layers: &SyntaxLayers,
     line_idx: hume_rope::line::ContentLine,
     rope: &ropey::Rope,
-    raw: &mut Vec<(usize, usize, u8, ScopeId)>,
+    raw: &mut Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     stack: &mut Vec<(u8, u32, ScopeId)>,
-    events: &mut Vec<(usize, bool, u32, u8, ScopeId)>,
-    out: &mut Vec<(usize, usize, ScopeId)>,
+    events: &mut Vec<(ByteCol, bool, u32, u8, ScopeId)>,
+    out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
 ) {
     let line_start = rope.line_to_byte(line_idx.index());
     let line_end = hume_rope::lines::next_line_start_byte(rope, line_idx.into());

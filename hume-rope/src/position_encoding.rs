@@ -25,6 +25,19 @@ pub enum PositionEncoding {
     Utf16,
 }
 
+/// A raw LSP wire position: `line` is a 0-based line number, `character` a
+/// code-unit column in the negotiated encoding — never a char or grapheme
+/// index (see the module doc). Fields are `pub`, matching
+/// [`crate::offset::ExclusiveRange`]'s own rationale: nothing here prevents
+/// arithmetic misuse the way a private-field domain type does — this exists
+/// purely so "which of the two wire numbers is which" is a name at the call
+/// site, not a positional-tuple lookup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WirePos {
+    pub line: usize,
+    pub character: usize,
+}
+
 /// char offset → `(line, character)` in `enc` code units.
 ///
 /// Total: a `char_idx` past `text.len_chars()` clamps to the document end
@@ -86,16 +99,15 @@ pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEnco
 /// to [`wire_offset_to_char`], which owns the rest of the clamp contract.
 pub fn wire_to_line_char_col(
     text: &Rope,
-    line: usize,
-    character: usize,
+    pos: WirePos,
     enc: PositionEncoding,
-) -> (usize, CharCol) {
-    let line = RopeyLine::clamped(text, line);
+) -> (RopeyLine, CharCol) {
+    let line = RopeyLine::clamped(text, pos.line);
     let line_start = text.line_to_char(line.index());
     let content = text.slice(line_start..line_terminator_start(text, line).index());
     (
-        line.index(),
-        CharCol::new(wire_offset_to_char(content, character, enc)),
+        line,
+        CharCol::new(wire_offset_to_char(content, pos.character, enc)),
     )
 }
 
@@ -106,16 +118,11 @@ pub fn wire_to_line_char_col(
 /// contract; this just folds its `(line, column)` pair into one absolute
 /// offset; a caller that must additionally land on a grapheme boundary
 /// wants that function directly, not this one.
-pub fn wire_to_char(
-    text: &Rope,
-    line: usize,
-    character: usize,
-    enc: PositionEncoding,
-) -> CharOffset {
-    let (line, char_col) = wire_to_line_char_col(text, line, character, enc);
+pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
+    let (line, char_col) = wire_to_line_char_col(text, pos, enc);
     // `line_to_char(line) + char_col`: a line-start offset plus a validated
     // in-line column — not a raw stepping hazard.
-    CharOffset::new(text.line_to_char(line) + char_col.index())
+    CharOffset::new(text.line_to_char(line.index()) + char_col.index())
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
@@ -126,14 +133,11 @@ pub fn wire_to_char(
 /// [`char_range_to_wire_range`].
 pub fn wire_range_to_char_range(
     text: &Rope,
-    start: (usize, usize),
-    end: (usize, usize),
+    start: WirePos,
+    end: WirePos,
     enc: PositionEncoding,
 ) -> ExclusiveRange<CharOffset> {
-    ExclusiveRange::new(
-        wire_to_char(text, start.0, start.1, enc),
-        wire_to_char(text, end.0, end.1, enc),
-    )
+    ExclusiveRange::new(wire_to_char(text, start, enc), wire_to_char(text, end, enc))
 }
 
 /// The byte range of `text` named by a `[start, end)` pair of flat wire

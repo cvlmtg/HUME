@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
 use hume_ops::search::SearchDirection;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
 
@@ -36,9 +36,9 @@ pub(crate) struct SearchPattern {
 /// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.
 #[derive(Default)]
 pub(crate) struct SearchMatches {
-    /// All non-overlapping matches as `(start_char, end_char_inclusive)` pairs,
-    /// sorted in document order.
-    pub matches: Vec<(CharOffset, CharOffset)>,
+    /// All non-overlapping matches as inclusive char ranges, sorted in
+    /// document order.
+    pub matches: Vec<InclusiveRange<CharOffset>>,
     /// `(revision, pattern)` when `matches` was last computed. `None` = never computed.
     /// Stored as a pair so both are always in sync — no half-initialised state.
     pub cache: Option<(RevisionId, String)>,

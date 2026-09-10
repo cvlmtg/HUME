@@ -93,7 +93,7 @@ pub fn align_selections(
             let sel_start = sel.start();
             let rem = (line_start.index()..sel_start.index())
                 .rev()
-                .take_while(|&p| matches!(text.char_at(p), Some(' ') | Some('\t')))
+                .take_while(|&p| matches!(text.char_at(CharOffset::new(p)), Some(' ') | Some('\t')))
                 .count()
                 .saturating_sub(1);
             let counter = slots_on_line.entry(start_line).or_insert(0);
@@ -130,12 +130,12 @@ pub fn align_selections(
     // ── Pass 2: targets ────────────────────────────────────────────────────────
 
     // baseline[k] = original anchor display column of the primary line's k-th slot.
-    let mut baseline = vec![0usize; n_slots];
+    let mut baseline = vec![BufferLineCol::new(0); n_slots];
     for m in &meta {
         if m.start_line == primary_line
             && let Some(slot) = m.slot
         {
-            baseline[slot] = m.anchor_display_col.get() as usize;
+            baseline[slot] = m.anchor_display_col;
         }
     }
 
@@ -149,20 +149,23 @@ pub fn align_selections(
         }
     }
 
-    let mut targets = vec![0usize; n_slots];
+    let mut targets = vec![BufferLineCol::new(0); n_slots];
 
     // k == 0: the only thing slot-0 can compress is its own preceding whitespace
     // (down to 1 display column). So the minimum reachable anchor is
-    // anchor_display_col₀ − rem₀. Compute in isize to handle the (unlikely)
-    // backward-selection case where anchor_display_col < rem; clamp to 0.
+    // anchor_display_col₀ − rem₀. `cells_since_saturating` (not `cells_since`)
+    // for the (unlikely) backward-selection case where anchor_display_col <
+    // rem, which it clamps to 0 rather than debug-panicking on.
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| m.anchor_display_col.get() as isize - m.rem as isize)
+        .map(|m| {
+            m.anchor_display_col
+                .cells_since_saturating(BufferLineCol::new(m.rem as u32))
+        })
         .max()
-        .unwrap_or(0)
-        .max(0) as usize;
-    targets[0] = baseline[0].max(fit_0);
+        .unwrap_or(0);
+    targets[0] = baseline[0].max(BufferLineCol::new(fit_0));
 
     // k >= 1: placing target[k-1] shifts every anchor on that line by
     // (target[k-1] − anchor_display_col_{k-1}). Slot k then shifts by the
@@ -177,16 +180,13 @@ pub fn align_selections(
             .filter_map(|ms| {
                 let prev = ms.iter().find(|m| m.slot == Some(k - 1))?;
                 let cur = ms.iter().find(|m| m.slot == Some(k))?;
-                Some(
-                    targets[k - 1] as isize
-                        + (cur.anchor_display_col.get() as isize
-                            - prev.anchor_display_col.get() as isize)
-                        - cur.rem as isize,
-                )
+                let delta = cur.anchor_display_col.get() as isize
+                    - prev.anchor_display_col.get() as isize
+                    - cur.rem as isize;
+                Some(targets[k - 1].shift(delta))
             })
             .max()
-            .unwrap_or(0)
-            .max(0) as usize;
+            .unwrap_or(BufferLineCol::new(0));
         targets[k] = baseline[k].max(fit_k);
     }
 
@@ -233,10 +233,8 @@ pub fn align_selections(
                 // Measured in pass 1 from the same (still unedited) text —
                 // a `Some(slot)` meta is exactly one that took pass 1's
                 // single-line branch, which is what populates this field.
-                let anchor_display_col_orig = meta[i].anchor_display_col.get();
-                let anchor_display_col_now =
-                    (anchor_display_col_orig as isize + line_shift).max(0) as usize;
-                let amount = target as isize - anchor_display_col_now as isize;
+                let anchor_display_col_now = meta[i].anchor_display_col.shift(line_shift);
+                let amount = target.get() as isize - anchor_display_col_now.get() as isize;
 
                 if amount > 0 {
                     b.retain(sel_start.chars_since(b.old_pos()));
@@ -249,7 +247,7 @@ pub fn align_selections(
                     let remove = ((-amount) as usize)
                         .min(meta[i].rem)
                         .min(sel_start.chars_since(b.old_pos()));
-                    b.retain(CharOffset::new(sel_start.index() - remove).chars_since(b.old_pos()));
+                    b.retain(sel_start.shift(-(remove as isize)).chars_since(b.old_pos()));
                     if remove > 0 {
                         b.delete(remove);
                         line_shift -= remove as isize;
@@ -264,7 +262,7 @@ pub fn align_selections(
                 b.retain(content_len);
                 // Use sel.end() (not end_inclusive) so anchor/head land on the
                 // grapheme boundary rather than on a trailing combining codepoint.
-                let new_end = CharOffset::new(new_start.index() + sel.end().chars_since(sel_start));
+                let new_end = new_start.shift(sel.end().chars_since(sel_start) as isize);
                 new_sels.push(Selection::directed(new_start, new_end, forward));
             }
         }

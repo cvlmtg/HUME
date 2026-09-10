@@ -45,8 +45,14 @@ pub(in crate::editor::lsp) fn wire_range_to_chars(
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
     hume_rope::position_encoding::wire_range_to_char_range(
         rope,
-        (range.start.line as usize, range.start.character as usize),
-        (range.end.line as usize, range.end.character as usize),
+        hume_rope::position_encoding::WirePos {
+            line: range.start.line as usize,
+            character: range.start.character as usize,
+        },
+        hume_rope::position_encoding::WirePos {
+            line: range.end.line as usize,
+            character: range.end.character as usize,
+        },
         encoding,
     )
 }

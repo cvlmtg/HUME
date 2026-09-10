@@ -23,7 +23,12 @@ pub enum TieBreak {
 /// scan unit — one line, one byte range, whatever the caller means by
 /// "overlapping") into the sorted, non-overlapping `(start, end, scope)`
 /// sequence a single rendering layer's contract requires: its own output
-/// must not overlap itself. At each position, the span with the
+/// must not overlap itself. `P` is the position type — both current callers
+/// pass `hume_rope::column::ByteCol` (a line-relative byte offset), but
+/// stays generic rather than hardcoded to match how this function is
+/// already agnostic over `R`/`S`: nothing here needs `P` to be a byte
+/// offset specifically, only `Ord + Copy + Default` (`P::default()` is the
+/// sweep's start-of-line origin). At each position, the span with the
 /// highest-`R`-per-`Ord` wins (`R` need not be a priority number directly —
 /// `hume-editor`'s caller passes `std::cmp::Reverse<u8>` so its "lower
 /// priority number wins" convention becomes "highest `Reverse` value wins"
@@ -38,11 +43,11 @@ pub enum TieBreak {
 /// another of the same scope is still active (e.g. A=[0,5), B=[3,8): at pos
 /// 5, A ends and B continues, producing (3,5,B) then (5,8,B) without this
 /// merge pass).
-pub fn flatten_overlapping_spans<R: Ord + Copy, S: PartialEq + Copy>(
-    raw: &mut Vec<(usize, usize, R, S)>,
+pub fn flatten_overlapping_spans<P: Ord + Copy + Default, R: Ord + Copy, S: PartialEq + Copy>(
+    raw: &mut Vec<(P, P, R, S)>,
     stack: &mut Vec<(R, u32, S)>,
-    events: &mut Vec<(usize, bool, u32, R, S)>,
-    out: &mut Vec<(usize, usize, S)>,
+    events: &mut Vec<(P, bool, u32, R, S)>,
+    out: &mut Vec<(P, P, S)>,
     tie_break: TieBreak,
 ) {
     debug_assert!(stack.is_empty());
@@ -75,7 +80,7 @@ pub fn flatten_overlapping_spans<R: Ord + Copy, S: PartialEq + Copy>(
     // below, not by event processing order.
     events.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
 
-    let mut pos = 0usize;
+    let mut pos = P::default();
     for &(event_pos, is_end, seq, rank, scope) in events.iter() {
         // Emit the gap before this event using the currently active
         // (highest rank, then highest seq) scope.

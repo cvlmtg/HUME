@@ -82,6 +82,7 @@ impl MarkupSyntax {
         let mut row: StyledRow = Vec::new();
         let mut cursor = 0usize;
         for &(start, end, scope) in &spans {
+            let (start, end) = (start.index(), end.index());
             if start > cursor {
                 push_run(&mut row, &line[cursor..start], base_style);
             }
@@ -109,12 +110,21 @@ impl MarkupSyntax {
         theme: &Theme,
         base_style: ResolvedStyle,
     ) -> Vec<(String, ResolvedStyle)> {
-        let lines: Vec<&str> = text.split('\n').collect();
+        // A trailing '\n' in `text` itself (as opposed to the buffer-invariant
+        // padding `BufferText::from` may have added) would otherwise make
+        // `split('\n')` yield one more element than `self.text` has real
+        // lines — landing this loop's trusted `ContentLine` mint on the
+        // phantom line. Stripping it here is what keeps that mint honest.
+        let lines: Vec<&str> = text
+            .strip_suffix('\n')
+            .unwrap_or(text)
+            .split('\n')
+            .collect();
         let mut runs: Vec<(String, ResolvedStyle)> = Vec::new();
         for (line_idx, line) in lines.iter().enumerate() {
-            // Trusted mint: `lines` is `text`'s own unpadded split, always
-            // within `self.text`'s real content even though the latter may
-            // carry one more (phantom) line than `lines.len()`.
+            // Trusted mint: `lines` is `text`'s own unpadded split (see
+            // above), always within `self.text`'s real content even though
+            // the latter may carry one more (phantom) line than `lines.len()`.
             let content_line = hume_rope::line::ContentLine::new(line_idx);
             runs.extend(self.styled_row(content_line, line, theme, base_style));
             if line_idx + 1 < lines.len() {

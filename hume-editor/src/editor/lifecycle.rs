@@ -264,7 +264,7 @@ impl Editor {
                 &self.state.buffers,
                 pid,
                 bid,
-                pos.line - 1,
+                pos.line,
                 pos.grapheme_col,
             );
             center_focused |= bid == focused_bid;

@@ -12,6 +12,7 @@ use super::Editor;
 use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::matching_bracket;
+use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 /// One pane's identity plus its on-screen slice, as of the moment
@@ -69,25 +70,19 @@ impl Editor {
             .map(|(pid, pane)| {
                 let bid = pane.buffer_id;
                 let vp = &pane.viewport;
-                let bottom = vp.top_line.index() + vp.height as usize;
                 let text = self.state.buffers.get(bid).text();
                 let top_line =
                     hume_rope::line::RopeyLine::from(vp.top_line).min(text.last_ropey_line());
+                let bottom_line =
+                    hume_rope::line::RopeyLine::from(vp.top_line).down(vp.height as usize);
+                let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
                 DecoratedPane {
                     pid,
                     bid,
-                    lines: ExclusiveRange::new(
-                        top_line,
-                        hume_rope::line::RopeyLine::new(
-                            (bottom + 1).min(text.ropey_line_count().get()),
-                        ),
-                    ),
+                    lines: ExclusiveRange::new(top_line, bottom_line.down(1).min(past_end)),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
-                        hume_editing::lines::next_line_start(
-                            text,
-                            hume_rope::line::RopeyLine::new(bottom),
-                        ),
+                        hume_editing::lines::next_line_start(text, bottom_line),
                     ),
                 }
             })
@@ -145,8 +140,9 @@ impl Editor {
             // match that starts at or after this pane's `top_line`.
             let top_char = text.line_to_char(visible.start);
             let matches = &buf.search_matches.matches;
-            let first = matches.partition_point(|&(start, _)| start < top_char);
-            for &(start, end_incl) in &matches[first..] {
+            let first = matches.partition_point(|span| span.start < top_char);
+            for &span in &matches[first..] {
+                let (start, end_incl) = (span.start, span.end);
                 let start_line = text.char_to_line(start);
                 if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
                     break;
@@ -186,18 +182,15 @@ impl Editor {
                     .primary();
                 if let Some(match_pos) = matching_bracket(text, primary) {
                     let (line, byte) = char_to_line_byte(text, match_pos);
-                    let byte = byte.index();
                     // Single-char match: byte_end = byte + utf8 length of the char.
-                    let ch_len = text
-                        .char_at(match_pos.index())
-                        .map(|c| c.len_utf8())
-                        .unwrap_or(1);
+                    let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                    let byte_end = ByteCol::new(byte.index() + ch_len);
                     // Trusted narrow: a bracket match is always a real
                     // selection position, never the buffer's phantom line.
                     let line = hume_rope::line::ContentLine::new(line.index());
                     bracket_arc
                         .write_or_panic()
-                        .push((line, byte, byte + ch_len, bracket_scope));
+                        .push((line, byte, byte_end, bracket_scope));
                 }
             }
         }
@@ -449,7 +442,7 @@ impl Editor {
                 // line at set-time, so `line` here is always real content.
                 let line = hume_rope::line::ContentLine::new(line.index());
                 by_line.entry(line).or_default().push(InlineInsert {
-                    byte_offset: byte_offset.index(),
+                    byte_offset,
                     text: entry.text.clone(),
                     scope,
                 });
@@ -510,7 +503,7 @@ impl Editor {
                         source,
                         line,
                         InlineInsert {
-                            byte_offset: byte_offset.index(),
+                            byte_offset,
                             text: e.text.clone(),
                             scope: e.scope,
                         },
@@ -741,17 +734,15 @@ fn push_match_highlight_lines(
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(
         hume_rope::line::ContentLine,
-        usize,
-        usize,
+        ByteCol,
+        ByteCol,
         hume_engine::types::ScopeId,
     )>,
 ) {
     if start >= end_char_excl {
         return;
     }
-    data.extend(
-        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s.index(), e.index(), scope)),
-    );
+    data.extend(line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
@@ -767,8 +758,8 @@ fn push_priority_highlight_lines(
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(
         hume_rope::line::ContentLine,
-        usize,
-        usize,
+        ByteCol,
+        ByteCol,
         u8,
         hume_engine::types::ScopeId,
     )>,
@@ -777,8 +768,7 @@ fn push_priority_highlight_lines(
         return;
     }
     data.extend(
-        line_segments(text, start, end_char_excl)
-            .map(|(l, s, e)| (l, s.index(), e.index(), priority, scope)),
+        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
     );
 }
 
@@ -804,15 +794,15 @@ fn push_priority_highlight_lines(
 fn flatten_priority_overlaps(
     raw: &mut Vec<(
         hume_rope::line::ContentLine,
-        usize,
-        usize,
+        ByteCol,
+        ByteCol,
         u8,
         hume_engine::types::ScopeId,
     )>,
     out: &mut Vec<(
         hume_rope::line::ContentLine,
-        usize,
-        usize,
+        ByteCol,
+        ByteCol,
         hume_engine::types::ScopeId,
     )>,
 ) {
@@ -824,7 +814,7 @@ fn flatten_priority_overlaps(
     }
     raw.sort_by_key(|&(line, start, _, _, _)| (line, start));
 
-    let mut group: Vec<(usize, usize, Reverse<u8>, hume_engine::types::ScopeId)> = Vec::new();
+    let mut group: Vec<(ByteCol, ByteCol, Reverse<u8>, hume_engine::types::ScopeId)> = Vec::new();
     let mut stack = Vec::new();
     let mut events = Vec::new();
     let mut line_out = Vec::new();

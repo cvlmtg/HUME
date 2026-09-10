@@ -256,9 +256,9 @@ fn map_severity(sev: Option<lsp_types::DiagnosticSeverity>) -> DiagSeverity {
 fn widen_zero_length(rope: &Rope, pos: CharOffset) -> ExclusiveRange<CharOffset> {
     let len = rope.len_chars();
     if pos.index() < len && rope.char(pos.index()) != '\n' {
-        ExclusiveRange::new(pos, CharOffset::new(pos.index() + 1))
+        ExclusiveRange::new(pos, pos.shift(1))
     } else if pos.index() > 0 {
-        ExclusiveRange::new(CharOffset::new(pos.index() - 1), pos)
+        ExclusiveRange::new(pos.shift(-1), pos)
     } else {
         ExclusiveRange::new(CharOffset::new(0), CharOffset::new(1))
     }

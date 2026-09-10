@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use hume_rope::column::DisplayLineCol;
+use hume_rope::column::{ByteCol, DisplayLineCol};
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -419,7 +419,7 @@ pub fn format_buffer_line(
     'lines: for (byte_offset, grapheme_str) in line_str.grapheme_indices(true) {
         // ── Inject inline inserts before this byte offset ─────────────────
         while insert_idx < inline_inserts.len()
-            && inline_inserts[insert_idx].byte_offset <= byte_offset
+            && inline_inserts[insert_idx].byte_offset.index() <= byte_offset
         {
             if h_window
                 .as_ref()
@@ -972,7 +972,7 @@ pub(crate) fn push_virtual_cells(
     run: &VirtualRun<'_>,
     tab_width: u8,
     display_col: &mut DisplayLineCol,
-    mut scope_at: impl FnMut(usize) -> Option<ScopeId>,
+    mut scope_at: impl FnMut(ByteCol) -> Option<ScopeId>,
 ) {
     let (text_start, _) = push_arena_text(arena, run.text);
     for (byte_offset, cluster) in run.text.grapheme_indices(true) {
@@ -1015,7 +1015,7 @@ pub(crate) fn push_virtual_cells(
             width,
             content,
             indent_depth: run.indent_depth,
-            scope: scope_at(byte_offset),
+            scope: scope_at(ByteCol::new(byte_offset)),
         });
         *display_col = display_col.advance(width as u32);
 

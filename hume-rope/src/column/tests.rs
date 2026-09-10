@@ -38,6 +38,17 @@ macro_rules! display_col_tests {
             }
 
             #[test]
+            fn cells_since_saturating_measures_forward_distance() {
+                assert_eq!($ty::new(7).cells_since_saturating($ty::new(2)), 5);
+                assert_eq!($ty::new(2).cells_since_saturating($ty::new(2)), 0);
+            }
+
+            #[test]
+            fn cells_since_saturating_clamps_to_zero_on_inversion() {
+                assert_eq!($ty::new(2).cells_since_saturating($ty::new(5)), 0);
+            }
+
+            #[test]
             fn abs_diff_ignores_direction() {
                 assert_eq!($ty::new(2).abs_diff($ty::new(5)), 3);
                 assert_eq!($ty::new(5).abs_diff($ty::new(2)), 3);

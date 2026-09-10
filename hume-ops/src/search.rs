@@ -16,7 +16,7 @@ use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::grapheme::prev_str_boundary;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,10 +58,9 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
 ///
 /// # Return value
 ///
-/// `Some((start_char, end_char_inclusive, wrapped))` on success, where:
-/// - `start_char` is the char offset of the first character of the match
-/// - `end_char_inclusive` is the char offset of the last character (HUME's
-///   inclusive selection model — `anchor == head` is a 1-char selection)
+/// `Some((span, wrapped))` on success, where:
+/// - `span` is the inclusive char range of the match (HUME's inclusive
+///   selection model — `anchor == head` is a 1-char selection)
 /// - `wrapped` is `true` when the match was found after wrapping around the
 ///   buffer boundary
 ///
@@ -72,29 +71,29 @@ pub fn find_next_match(
     regex: &Regex,
     from_char: CharOffset,
     direction: SearchDirection,
-) -> Option<(CharOffset, CharOffset, bool)> {
+) -> Option<(InclusiveRange<CharOffset>, bool)> {
     let from_byte = text.char_to_byte(from_char);
     let total_bytes = text.len_bytes();
 
     match direction {
         SearchDirection::Forward => {
             // Primary: search from_byte..end
-            if let Some((s, e)) = search_match_in(text, regex, from_byte..total_bytes, false) {
-                return Some((s, e, false));
+            if let Some(span) = search_match_in(text, regex, from_byte..total_bytes, false) {
+                return Some((span, false));
             }
             // Wrap: search 0..from_byte
-            if let Some((s, e)) = search_match_in(text, regex, 0..from_byte, false) {
-                return Some((s, e, true));
+            if let Some(span) = search_match_in(text, regex, 0..from_byte, false) {
+                return Some((span, true));
             }
         }
         SearchDirection::Backward => {
             // Primary: search 0..from_byte, take the last match
-            if let Some((s, e)) = search_match_in(text, regex, 0..from_byte, true) {
-                return Some((s, e, false));
+            if let Some(span) = search_match_in(text, regex, 0..from_byte, true) {
+                return Some((span, false));
             }
             // Wrap: search from_byte..end, take the last match
-            if let Some((s, e)) = search_match_in(text, regex, from_byte..total_bytes, true) {
-                return Some((s, e, true));
+            if let Some(span) = search_match_in(text, regex, from_byte..total_bytes, true) {
+                return Some((span, true));
             }
         }
     }
@@ -104,14 +103,12 @@ pub fn find_next_match(
 
 // ── find_all_matches ──────────────────────────────────────────────────────────
 
-/// Return all non-overlapping regex matches in `text` as char-offset ranges.
-///
-/// Results are `(start_char, end_char_inclusive)` pairs in document order.
-/// Zero-width matches are skipped.
+/// Return all non-overlapping regex matches in `text` as inclusive char
+/// ranges, in document order. Zero-width matches are skipped.
 ///
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
-pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(CharOffset, CharOffset)> {
+pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<InclusiveRange<CharOffset>> {
     find_matches_in_range(text, regex, CharOffset::new(0), text.last_char())
 }
 
@@ -120,17 +117,17 @@ pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<(CharOffset, Ch
 /// Return all non-overlapping regex matches within a char range of `text`.
 ///
 /// Only matches that fall entirely within `[start_char, end_char]` (inclusive)
-/// are returned. Results are `(start_char, end_char_inclusive)` pairs in
-/// document order. Zero-width matches are skipped.
+/// are returned, as inclusive char ranges in document order. Zero-width
+/// matches are skipped.
 pub fn find_matches_in_range(
     text: &BufferText,
     regex: &Regex,
     start_char: CharOffset,
     end_char: CharOffset, // inclusive
-) -> Vec<(CharOffset, CharOffset)> {
+) -> Vec<InclusiveRange<CharOffset>> {
     let start_byte = text.char_to_byte(start_char);
     // end_char is inclusive — we need the byte *after* the last char in range.
-    let end_byte = text.char_to_byte(CharOffset::new(end_char.index() + 1));
+    let end_byte = text.char_to_byte(end_char.shift(1));
 
     let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);
@@ -142,7 +139,7 @@ pub fn find_matches_in_range(
         .map(|m| {
             let s = text.byte_to_char(m.start());
             let e = text.byte_to_char(m.end()).shift(-1);
-            (s, e)
+            InclusiveRange::new(s, e)
         })
         .collect()
 }
@@ -229,17 +226,17 @@ pub fn word_search_pattern(word: &str, chars: WordChars<'_>) -> String {
 /// `matches` must be in document order (sorted by start position, non-overlapping),
 /// as produced by [`find_all_matches`].
 pub fn search_match_info(
-    matches: &[(CharOffset, CharOffset)],
+    matches: &[InclusiveRange<CharOffset>],
     cursor_head: CharOffset,
 ) -> (usize, usize) {
     let total = matches.len();
     // partition_point gives the first index where start > cursor_head, so
     // idx-1 is the last match that could contain cursor_head. If cursor_head
     // also falls within its end, the cursor is on that match.
-    let idx = matches.partition_point(|&(start, _)| start <= cursor_head);
+    let idx = matches.partition_point(|span| span.start <= cursor_head);
     let current = idx
         .checked_sub(1)
-        .filter(|&i| cursor_head <= matches[i].1)
+        .filter(|&i| cursor_head <= matches[i].end)
         .map(|i| i + 1) // convert to 1-based
         .unwrap_or(0);
     (current, total)
@@ -263,36 +260,34 @@ pub fn search_match_info(
 ///   `matches.last()` if none is found before `from_char`.
 ///
 /// Returns `None` only when `matches` is empty.
-/// Returns `Some((start_char, end_char_inclusive, wrapped))` otherwise.
+/// Returns `Some((span, wrapped))` otherwise.
 pub fn find_match_from_cache(
-    matches: &[(CharOffset, CharOffset)],
+    matches: &[InclusiveRange<CharOffset>],
     from_char: CharOffset,
     direction: SearchDirection,
-) -> Option<(CharOffset, CharOffset, bool)> {
+) -> Option<(InclusiveRange<CharOffset>, bool)> {
     if matches.is_empty() {
         return None;
     }
     match direction {
         SearchDirection::Forward => {
             // First match with start >= from_char.
-            let idx = matches.partition_point(|&(s, _)| s < from_char);
-            if let Some(&(s, e)) = matches.get(idx) {
-                Some((s, e, false))
+            let idx = matches.partition_point(|span| span.start < from_char);
+            if let Some(&span) = matches.get(idx) {
+                Some((span, false))
             } else {
                 // Wrap: take the very first match in the buffer.
-                let &(s, e) = &matches[0]; // non-empty guard above
-                Some((s, e, true))
+                Some((matches[0], true)) // non-empty guard above
             }
         }
         SearchDirection::Backward => {
             // Last match with start < from_char.
-            let idx = matches.partition_point(|&(s, _)| s < from_char);
-            if let Some(&(s, e)) = idx.checked_sub(1).and_then(|i| matches.get(i)) {
-                Some((s, e, false))
+            let idx = matches.partition_point(|span| span.start < from_char);
+            if let Some(&span) = idx.checked_sub(1).and_then(|i| matches.get(i)) {
+                Some((span, false))
             } else {
                 // Wrap: take the very last match in the buffer.
-                let &(s, e) = &matches[matches.len() - 1]; // non-empty guard above
-                Some((s, e, true))
+                Some((matches[matches.len() - 1], true)) // non-empty guard above
             }
         }
     }
@@ -300,8 +295,8 @@ pub fn find_match_from_cache(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// Find a non-zero-width match in `byte_range`, returning
-/// `Some((start_char, end_char_inclusive))` or `None`.
+/// Find a non-zero-width match in `byte_range`, returning its inclusive char
+/// range or `None`.
 ///
 /// `take_last`: `false` takes the first match found (forward search);
 /// `true` scans every match in the range and takes the last one —
@@ -313,7 +308,7 @@ fn search_match_in(
     regex: &Regex,
     byte_range: std::ops::Range<usize>,
     take_last: bool,
-) -> Option<(CharOffset, CharOffset)> {
+) -> Option<InclusiveRange<CharOffset>> {
     if byte_range.is_empty() {
         return None;
     }
@@ -330,7 +325,7 @@ fn search_match_in(
     };
     let start = text.byte_to_char(m.start());
     let end_incl = text.byte_to_char(m.end()).shift(-1);
-    Some((start, end_incl))
+    Some(InclusiveRange::new(start, end_incl))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 //! version, URI) is the editor glue's job — this is pure text math.
 
 use hume_editing::changeset::{ChangeSet, Operation};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::PositionEncoding;
 use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
 use ropey::Rope;
@@ -23,27 +24,29 @@ pub fn changeset_to_content_changes(
     enc: PositionEncoding,
 ) -> Vec<TextDocumentContentChangeEvent> {
     let mut working = before.clone();
-    let mut cursor = 0usize;
+    let mut cursor = CharOffset::new(0);
     let mut events = Vec::new();
 
     for op in cs.ops() {
         match op {
-            Operation::Retain(n) => cursor += n,
+            Operation::Retain(n) => cursor = cursor.shift(*n as isize),
             Operation::Delete(n) => {
-                let range = wire_range(&working, cursor, cursor + n, enc);
-                working.remove(cursor..cursor + n);
+                let range = ExclusiveRange::new(cursor, cursor.shift(*n as isize));
+                let event_range = wire_range(&working, range, enc);
+                working.remove(cursor.index()..cursor.index() + n);
                 events.push(TextDocumentContentChangeEvent {
-                    range: Some(range),
+                    range: Some(event_range),
                     range_length: None,
                     text: String::new(),
                 });
             }
             Operation::Insert(s) => {
-                let range = wire_range(&working, cursor, cursor, enc);
-                working.insert(cursor, s);
-                cursor += s.chars().count();
+                let range = ExclusiveRange::new(cursor, cursor);
+                let event_range = wire_range(&working, range, enc);
+                working.insert(cursor.index(), s);
+                cursor = cursor.shift(s.chars().count() as isize);
                 events.push(TextDocumentContentChangeEvent {
-                    range: Some(range),
+                    range: Some(event_range),
                     range_length: None,
                     text: s.clone(),
                 });
@@ -54,15 +57,11 @@ pub fn changeset_to_content_changes(
     events
 }
 
-/// `[start, end)` in `rope`'s current state, converted to a wire `Range` via
+/// `range` in `rope`'s current state, converted to a wire `Range` via
 /// [`hume_rope::position_encoding::char_range_to_wire_range`] — the one
 /// lsp_types↔tuple adaptation point in this module, so `hume-rope` stays
 /// free of an `lsp_types` dependency.
-fn wire_range(rope: &Rope, start: usize, end: usize, enc: PositionEncoding) -> Range {
-    let range = hume_rope::offset::ExclusiveRange::new(
-        hume_rope::offset::CharOffset::new(start),
-        hume_rope::offset::CharOffset::new(end),
-    );
+fn wire_range(rope: &Rope, range: ExclusiveRange<CharOffset>, enc: PositionEncoding) -> Range {
     let ((start_line, start_character), (end_line, end_character)) =
         hume_rope::position_encoding::char_range_to_wire_range(rope, range, enc);
     Range {

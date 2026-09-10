@@ -144,7 +144,14 @@ fn wire_to_char_counts_a_cr_as_line_content() {
     let text = Rope::from_str("ab\r\ncd\n");
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
         assert_eq!(
-            wire_to_char(&text, 0, 9_999, enc),
+            wire_to_char(
+                &text,
+                WirePos {
+                    line: 0,
+                    character: 9_999
+                },
+                enc
+            ),
             co(3),
             "character past line end must clamp to the \\n, counting the \\r as content, for {enc:?}"
         );
@@ -158,7 +165,7 @@ fn wire_to_char_matches_char_to_wire_for_exact_positions() {
         for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
             let (line, character) = char_to_wire(&text, co(idx), enc);
             assert_eq!(
-                wire_to_char(&text, line, character, enc),
+                wire_to_char(&text, WirePos { line, character }, enc),
                 co(idx),
                 "round trip failed for idx={idx} enc={enc:?}"
             );
@@ -170,7 +177,14 @@ fn wire_to_char_matches_char_to_wire_for_exact_positions() {
 fn wire_to_char_clamps_line_past_eof_to_last_line() {
     let text = fixture();
     assert_eq!(
-        wire_to_char(&text, 999, 0, PositionEncoding::Utf8),
+        wire_to_char(
+            &text,
+            WirePos {
+                line: 999,
+                character: 0
+            },
+            PositionEncoding::Utf8
+        ),
         co(text.len_chars())
     );
 }
@@ -181,7 +195,14 @@ fn wire_to_char_clamps_character_past_line_end_to_line_content_end() {
     // Line 1 ("cé") — character way past its length clamps to the same
     // char position as an exact request for the line's content end.
     assert_eq!(
-        wire_to_char(&text, 1, 9_999, PositionEncoding::Utf8),
+        wire_to_char(
+            &text,
+            WirePos {
+                line: 1,
+                character: 9_999
+            },
+            PositionEncoding::Utf8
+        ),
         co(5) // the '\n' position — see the fixture layout above
     );
 }
@@ -193,7 +214,17 @@ fn wire_to_char_clamps_surrogate_pair_split_down_not_mid_char() {
     // [0, 2) within the line). character=1 lands on the low surrogate —
     // must clamp down to the astral char's own start (char_idx 6), never
     // to a position "inside" it.
-    assert_eq!(wire_to_char(&text, 2, 1, PositionEncoding::Utf16), co(6));
+    assert_eq!(
+        wire_to_char(
+            &text,
+            WirePos {
+                line: 2,
+                character: 1
+            },
+            PositionEncoding::Utf16
+        ),
+        co(6)
+    );
 }
 
 #[test]
@@ -201,11 +232,12 @@ fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
     let text = fixture();
     for &(line, character) in &[(0usize, 1usize), (1, 3), (2, 2)] {
         for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
-            let (clamped_line, char_col) = wire_to_line_char_col(&text, line, character, enc);
-            assert_eq!(clamped_line, line);
+            let (clamped_line, char_col) =
+                wire_to_line_char_col(&text, WirePos { line, character }, enc);
+            assert_eq!(clamped_line.index(), line);
             assert_eq!(
-                co(text.line_to_char(clamped_line) + char_col.index()),
-                wire_to_char(&text, line, character, enc)
+                co(text.line_to_char(clamped_line.index()) + char_col.index()),
+                wire_to_char(&text, WirePos { line, character }, enc)
             );
         }
     }
@@ -217,17 +249,44 @@ fn wire_to_line_char_col_is_line_relative_not_absolute() {
     // 'é') must come back as column 1, not the absolute char index 4.
     let text = fixture();
     assert_eq!(
-        wire_to_line_char_col(&text, 1, 1, PositionEncoding::Utf8),
-        (1, CharCol::new(1))
+        wire_to_line_char_col(
+            &text,
+            WirePos {
+                line: 1,
+                character: 1
+            },
+            PositionEncoding::Utf8
+        ),
+        (RopeyLine::new(1), CharCol::new(1))
     );
 }
 
 #[test]
 fn wire_to_char_minimum_buffer_is_a_bare_newline() {
     let text = Rope::from_str("\n");
-    assert_eq!(wire_to_char(&text, 0, 0, PositionEncoding::Utf8), co(0));
+    assert_eq!(
+        wire_to_char(
+            &text,
+            WirePos {
+                line: 0,
+                character: 0
+            },
+            PositionEncoding::Utf8
+        ),
+        co(0)
+    );
     // Past-end line/character both clamp to the sole valid EOF position.
-    assert_eq!(wire_to_char(&text, 5, 5, PositionEncoding::Utf8), co(1));
+    assert_eq!(
+        wire_to_char(
+            &text,
+            WirePos {
+                line: 5,
+                character: 5
+            },
+            PositionEncoding::Utf8
+        ),
+        co(1)
+    );
 }
 
 // ── wire_range_to_char_range ─────────────────────────────────────────────
@@ -236,10 +295,35 @@ fn wire_to_char_minimum_buffer_is_a_bare_newline() {
 fn wire_range_to_char_range_is_wire_to_char_on_each_end() {
     let text = fixture();
     assert_eq!(
-        wire_range_to_char_range(&text, (0, 0), (1, 1), PositionEncoding::Utf8),
+        wire_range_to_char_range(
+            &text,
+            WirePos {
+                line: 0,
+                character: 0
+            },
+            WirePos {
+                line: 1,
+                character: 1
+            },
+            PositionEncoding::Utf8
+        ),
         ExclusiveRange::new(
-            wire_to_char(&text, 0, 0, PositionEncoding::Utf8),
-            wire_to_char(&text, 1, 1, PositionEncoding::Utf8),
+            wire_to_char(
+                &text,
+                WirePos {
+                    line: 0,
+                    character: 0
+                },
+                PositionEncoding::Utf8
+            ),
+            wire_to_char(
+                &text,
+                WirePos {
+                    line: 1,
+                    character: 1
+                },
+                PositionEncoding::Utf8
+            ),
         )
     );
 }
@@ -250,7 +334,18 @@ fn wire_range_to_char_range_each_end_clamps_independently() {
     // Line 1 ("cé") — character way past its length clamps to that line's
     // content end, same as a lone wire_to_char call.
     assert_eq!(
-        wire_range_to_char_range(&text, (1, 0), (1, 9_999), PositionEncoding::Utf8),
+        wire_range_to_char_range(
+            &text,
+            WirePos {
+                line: 1,
+                character: 0
+            },
+            WirePos {
+                line: 1,
+                character: 9_999
+            },
+            PositionEncoding::Utf8
+        ),
         ExclusiveRange::new(co(3), co(5))
     );
 }
@@ -260,7 +355,18 @@ fn wire_range_to_char_range_reversed_input_is_not_reordered() {
     let text = fixture();
     // end before start on the wire — the pair comes back reversed too, not
     // swapped into order. Callers that must reject this check it themselves.
-    let range = wire_range_to_char_range(&text, (1, 1), (0, 0), PositionEncoding::Utf8);
+    let range = wire_range_to_char_range(
+        &text,
+        WirePos {
+            line: 1,
+            character: 1,
+        },
+        WirePos {
+            line: 0,
+            character: 0,
+        },
+        PositionEncoding::Utf8,
+    );
     assert_eq!(range, ExclusiveRange::new(co(4), co(0)));
     assert!(range.end < range.start);
 }
@@ -270,6 +376,14 @@ fn wire_range_to_char_range_round_trips_through_char_range_to_wire_range() {
     let text = fixture();
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
         let (start, end) = char_range_to_wire_range(&text, ExclusiveRange::new(co(1), co(8)), enc);
+        let start = WirePos {
+            line: start.0,
+            character: start.1,
+        };
+        let end = WirePos {
+            line: end.0,
+            character: end.1,
+        };
         assert_eq!(
             wire_range_to_char_range(&text, start, end, enc),
             ExclusiveRange::new(co(1), co(8))

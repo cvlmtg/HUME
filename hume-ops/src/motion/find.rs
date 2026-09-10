@@ -22,7 +22,7 @@ pub(super) fn find_char_on_line_forward(
     let newline = line_break_char(text, line);
     let mut pos = next_grapheme_boundary(text, head);
     while pos < newline {
-        if text.char_at(pos.index()) == Some(ch) {
+        if text.char_at(pos) == Some(ch) {
             return Some(pos);
         }
         pos = next_grapheme_boundary(text, pos);
@@ -46,7 +46,7 @@ pub(super) fn find_char_on_line_backward(
     }
     let mut pos = prev_grapheme_boundary(text, head);
     loop {
-        if text.char_at(pos.index()) == Some(ch) {
+        if text.char_at(pos) == Some(ch) {
             return Some(pos);
         }
         if pos == line_start {

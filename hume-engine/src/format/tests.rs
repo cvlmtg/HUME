@@ -1,6 +1,6 @@
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
-use hume_rope::column::DisplayLineCol;
+use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::line::RopeyLine;
 
 fn dc(n: u32) -> DisplayLineCol {
@@ -829,17 +829,17 @@ fn display_line_char_offsets_are_non_decreasing_with_inline_inserts() {
     let rope = Rope::from_str("abcdef");
     let inserts = vec![
         InlineInsert {
-            byte_offset: 0,
+            byte_offset: ByteCol::new(0),
             text: "Z".into(),
             scope: crate::types::ScopeId(0),
         },
         InlineInsert {
-            byte_offset: 2,
+            byte_offset: ByteCol::new(2),
             text: "XY".into(),
             scope: crate::types::ScopeId(0),
         },
         InlineInsert {
-            byte_offset: 6,
+            byte_offset: ByteCol::new(6),
             text: "W".into(),
             scope: crate::types::ScopeId(0),
         },
@@ -882,7 +882,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
     let rope = Rope::from_str("x");
     let text = String::from_utf8(vec![b'a'; 300]).unwrap();
     let inserts = vec![InlineInsert {
-        byte_offset: 0,
+        byte_offset: ByteCol::new(0),
         text,
         scope: crate::types::ScopeId(0),
     }];
@@ -918,7 +918,7 @@ fn wide_inline_insert_emits_one_cell_per_grapheme_without_wraparound() {
 fn format_with_insert(line: &str, byte_offset: usize, text: &str) -> LineFormat {
     let rope = Rope::from_str(line);
     let inserts = vec![InlineInsert {
-        byte_offset,
+        byte_offset: ByteCol::new(byte_offset),
         text: text.into(),
         scope: crate::types::ScopeId(0),
     }];
@@ -1171,7 +1171,7 @@ fn trailing_insert_emits_one_cell_per_grapheme() {
     // cell whose text a `Cell` can only paint at one column.
     let rope = Rope::from_str("abc");
     let inserts = vec![InlineInsert {
-        byte_offset: 3, // == line_str.len(): never matched by the in-loop
+        byte_offset: ByteCol::new(3), // == line_str.len(): never matched by the in-loop
         text: "hello".into(),
         scope: crate::types::ScopeId(0),
     }];

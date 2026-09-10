@@ -415,8 +415,7 @@ pub(in crate::editor) fn typed_goto_line(
         .trim()
         .parse()
         .map_err(|_| CommandError::transient(format!("invalid line number: {raw}")))?;
-    let line0 = n
-        .checked_sub(1)
+    let line0 = hume_rope::line::ContentLine::from_number(n)
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
     // Snapshot before moving so Ctrl+O can return here — pushed only if

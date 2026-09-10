@@ -487,7 +487,16 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     };
     let viewport = ViewportState::new(20, 5);
     let buf = do_compose_display_line(
-        "  foo", "abcdef", &display_line, &graphemes, &styles, visible, viewport, 4, 20, 5,
+        "  foo",
+        "abcdef",
+        &display_line,
+        &graphemes,
+        &styles,
+        visible,
+        viewport,
+        4,
+        20,
+        5,
     );
     for (x, expected) in [(0, "a"), (1, "b"), (2, "c"), (3, "d"), (4, "e"), (5, "f")] {
         assert_eq!(

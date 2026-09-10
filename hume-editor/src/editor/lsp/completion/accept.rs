@@ -217,8 +217,8 @@ impl CompletionSession {
         // overlap in the first place.
         if let ReplaceSpan::Uniform { back, forward } = span {
             let (start_now, end_now) = (
-                CharOffset::new(head_now.index() - back),
-                CharOffset::new(head_now.index() + forward),
+                head_now.shift(-(back as isize)),
+                head_now.shift(forward as isize),
             );
             // The half-open overlap test alone (`s < end_now && start_now <
             // e`) misses a *zero-width* additional edit sitting exactly at

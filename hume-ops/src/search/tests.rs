@@ -1,9 +1,13 @@
 use super::*;
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
+}
+
+fn ir(start: usize, end: usize) -> InclusiveRange<CharOffset> {
+    InclusiveRange::new(co(start), co(end))
 }
 
 fn re(pattern: &str) -> Regex {
@@ -30,7 +34,7 @@ fn smart_case_uppercase_is_sensitive() {
     let b = buf("Hello HELLO hello\n");
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0], (co(0), co(4)));
+    assert_eq!(matches[0], ir(0, 4));
 }
 
 #[test]
@@ -40,7 +44,7 @@ fn smart_case_override_force_sensitive() {
     let b = buf("Hello HELLO hello\n");
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0], (co(12), co(16)));
+    assert_eq!(matches[0], ir(12, 16));
 }
 
 // ── find_all_matches ──────────────────────────────────────────────────────
@@ -56,7 +60,7 @@ fn all_matches_empty_buffer() {
 fn all_matches_single_hit() {
     let b = buf("hello world\n");
     // "world" starts at char 6, ends at 10 (inclusive).
-    assert_eq!(find_all_matches(&b, &re("world")), vec![(co(6), co(10))]);
+    assert_eq!(find_all_matches(&b, &re("world")), vec![ir(6, 10)]);
 }
 
 #[test]
@@ -65,7 +69,7 @@ fn all_matches_multiple_hits() {
     // "ab" at chars 1..2, 3..4, 5..6
     assert_eq!(
         find_all_matches(&b, &re("ab")),
-        vec![(co(1), co(2)), (co(3), co(4)), (co(5), co(6))]
+        vec![ir(1, 2), ir(3, 4), ir(5, 6)]
     );
 }
 
@@ -78,8 +82,8 @@ fn all_matches_skips_zero_width() {
     let b = buf("ab\n");
     let matches = find_all_matches(&b, &re("a*"));
     // All matches must be non-zero-width
-    for (start, end) in &matches {
-        assert!(end >= start, "zero-width match found at {start:?}");
+    for span in &matches {
+        assert!(span.end >= span.start, "zero-width match found at {span:?}");
     }
 }
 
@@ -88,10 +92,9 @@ fn all_matches_skips_zero_width() {
 #[test]
 fn forward_basic() {
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
+    let (span, wrapped) =
         find_next_match(&b, &re("world"), co(0), SearchDirection::Forward).unwrap();
-    assert_eq!(s, co(6));
-    assert_eq!(e, co(10));
+    assert_eq!(span, ir(6, 10));
     assert!(!wrapped);
 }
 
@@ -99,17 +102,17 @@ fn forward_basic() {
 fn forward_from_match_start() {
     // Searching from the start of the existing match should find the same match.
     let b = buf("hello world\n");
-    let (s, e, _) = find_next_match(&b, &re("world"), co(6), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(6), co(10)));
+    let (span, _) = find_next_match(&b, &re("world"), co(6), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(6, 10));
 }
 
 #[test]
 fn forward_wraps() {
     let b = buf("hello world\n");
     // Searching from after "world" (char 11 = '\n') should wrap and find "world".
-    let (s, e, wrapped) =
+    let (span, wrapped) =
         find_next_match(&b, &re("world"), co(11), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(6), co(10)));
+    assert_eq!(span, ir(6, 10));
     assert!(wrapped);
 }
 
@@ -123,8 +126,8 @@ fn forward_no_match() {
 fn forward_multiple_matches_picks_first_after_from() {
     let b = buf("aababab\n");
     // Two "ab" matches at (1,2) and (3,4) and (5,6). Searching from char 3.
-    let (s, e, _) = find_next_match(&b, &re("ab"), co(3), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(3), co(4)));
+    let (span, _) = find_next_match(&b, &re("ab"), co(3), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(3, 4));
 }
 
 // ── find_next_match (backward) ────────────────────────────────────────────
@@ -133,9 +136,9 @@ fn forward_multiple_matches_picks_first_after_from() {
 fn backward_basic() {
     let b = buf("hello world\n");
     // Search backward from position 11 ('\n') — should find "world" at (6,10).
-    let (s, e, wrapped) =
+    let (span, wrapped) =
         find_next_match(&b, &re("world"), co(11), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(6), co(10)));
+    assert_eq!(span, ir(6, 10));
     assert!(!wrapped);
 }
 
@@ -143,9 +146,9 @@ fn backward_basic() {
 fn backward_wraps() {
     // Searching backward from before the only match should wrap.
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
+    let (span, wrapped) =
         find_next_match(&b, &re("world"), co(3), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(6), co(10)));
+    assert_eq!(span, ir(6, 10));
     assert!(wrapped);
 }
 
@@ -156,9 +159,9 @@ fn backward_from_position_zero_wraps() {
     // search_match_in(.., take_last: true) fires and the wrap leg does all
     // the work.
     let b = buf("hello world\n");
-    let (s, e, wrapped) =
+    let (span, wrapped) =
         find_next_match(&b, &re("world"), co(0), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(6), co(10)));
+    assert_eq!(span, ir(6, 10));
     assert!(wrapped);
 }
 
@@ -166,8 +169,8 @@ fn backward_from_position_zero_wraps() {
 fn backward_multiple_matches_picks_last_before_from() {
     let b = buf("aababab\n");
     // Matches: (1,2), (3,4), (5,6). Searching backward from char 5.
-    let (s, e, _) = find_next_match(&b, &re("ab"), co(5), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(3), co(4)));
+    let (span, _) = find_next_match(&b, &re("ab"), co(5), SearchDirection::Backward).unwrap();
+    assert_eq!(span, ir(3, 4));
 }
 
 // ── search_match_info ─────────────────────────────────────────────────────
@@ -181,20 +184,20 @@ fn match_info_no_match_in_buffer() {
 #[test]
 fn match_info_cursor_on_only_match() {
     // "world" at chars 6..10; cursor on 'w' (6) → current=1, total=1.
-    assert_eq!(search_match_info(&[(co(6), co(10))], co(6)), (1, 1));
+    assert_eq!(search_match_info(&[ir(6, 10)], co(6)), (1, 1));
 }
 
 #[test]
 fn match_info_cursor_on_last_char_of_match() {
     // Cursor on 'd' (10, inclusive end) → still current=1.
-    assert_eq!(search_match_info(&[(co(6), co(10))], co(10)), (1, 1));
+    assert_eq!(search_match_info(&[ir(6, 10)], co(10)), (1, 1));
 }
 
 #[test]
 fn match_info_cursor_between_matches() {
     // "ab" at (1,2), (3,4), (5,6). Cursor on pos 0 — not inside any match.
     assert_eq!(
-        search_match_info(&[(co(1), co(2)), (co(3), co(4)), (co(5), co(6))], co(0)),
+        search_match_info(&[ir(1, 2), ir(3, 4), ir(5, 6)], co(0)),
         (0, 3)
     );
 }
@@ -203,7 +206,7 @@ fn match_info_cursor_between_matches() {
 fn match_info_cursor_on_second_of_three_matches() {
     // Cursor on char 3 (start of second "ab") → current=2, total=3.
     assert_eq!(
-        search_match_info(&[(co(1), co(2)), (co(3), co(4)), (co(5), co(6))], co(3)),
+        search_match_info(&[ir(1, 2), ir(3, 4), ir(5, 6)], co(3)),
         (2, 3)
     );
 }
@@ -215,8 +218,8 @@ fn unicode_multibyte_char() {
     // "é" in NFC is a single codepoint (U+00E9, 2 bytes in UTF-8).
     // Text chars: [é, space, b, o, n, \n]
     let b = buf("é bon\n");
-    let (s, e, _) = find_next_match(&b, &re("bon"), co(0), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(2), co(4)));
+    let (span, _) = find_next_match(&b, &re("bon"), co(0), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(2, 4));
 }
 
 #[test]
@@ -224,16 +227,16 @@ fn unicode_combining_sequence() {
     // "é" as combining sequence: e (U+0065) + combining acute (U+0301) = 2 chars.
     // Text chars: [e, \u{0301}, space, b, o, n, \n]  (7 chars total)
     let b = buf("e\u{0301} bon\n");
-    let (s, e, _) = find_next_match(&b, &re("bon"), co(0), SearchDirection::Forward).unwrap();
+    let (span, _) = find_next_match(&b, &re("bon"), co(0), SearchDirection::Forward).unwrap();
     // "b" is at char 3, "bon" spans chars 3..5 inclusive
-    assert_eq!((s, e), (co(3), co(5)));
+    assert_eq!(span, ir(3, 5));
 }
 
 // ── find_match_from_cache ─────────────────────────────────────────────────
 
 // Matches used in the cache tests: three "ab" spans at (1,2), (3,4), (5,6).
-fn cache() -> Vec<(CharOffset, CharOffset)> {
-    vec![(co(1), co(2)), (co(3), co(4)), (co(5), co(6))]
+fn cache() -> Vec<InclusiveRange<CharOffset>> {
+    vec![ir(1, 2), ir(3, 4), ir(5, 6)]
 }
 
 #[test]
@@ -245,40 +248,40 @@ fn cache_empty_returns_none() {
 #[test]
 fn cache_forward_first_match() {
     // from_char=0 → first match at (1,2), no wrap.
-    let (s, e, w) = find_match_from_cache(&cache(), co(0), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(1), co(2)));
+    let (span, w) = find_match_from_cache(&cache(), co(0), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(1, 2));
     assert!(!w);
 }
 
 #[test]
 fn cache_forward_exact_start() {
     // from_char exactly on a match start → that match is returned.
-    let (s, e, w) = find_match_from_cache(&cache(), co(3), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(3), co(4)));
+    let (span, w) = find_match_from_cache(&cache(), co(3), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(3, 4));
     assert!(!w);
 }
 
 #[test]
 fn cache_forward_between_matches() {
     // from_char=2 (gap between first and second match) → second match (3,4).
-    let (s, e, w) = find_match_from_cache(&cache(), co(2), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(3), co(4)));
+    let (span, w) = find_match_from_cache(&cache(), co(2), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(3, 4));
     assert!(!w);
 }
 
 #[test]
 fn cache_forward_wraps() {
     // from_char past last match start → wrap to first match.
-    let (s, e, w) = find_match_from_cache(&cache(), co(6), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(1), co(2)));
+    let (span, w) = find_match_from_cache(&cache(), co(6), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(1, 2));
     assert!(w);
 }
 
 #[test]
 fn cache_backward_last_before_cursor() {
     // from_char=5 → last match with start < 5 is (3,4).
-    let (s, e, w) = find_match_from_cache(&cache(), co(5), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(3), co(4)));
+    let (span, w) = find_match_from_cache(&cache(), co(5), SearchDirection::Backward).unwrap();
+    assert_eq!(span, ir(3, 4));
     assert!(!w);
 }
 
@@ -286,34 +289,34 @@ fn cache_backward_last_before_cursor() {
 fn cache_backward_exact_start_excluded() {
     // Backward uses start < from_char (strict), so from_char=3 excludes (3,4)
     // and returns the previous match (1,2).
-    let (s, e, w) = find_match_from_cache(&cache(), co(3), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(1), co(2)));
+    let (span, w) = find_match_from_cache(&cache(), co(3), SearchDirection::Backward).unwrap();
+    assert_eq!(span, ir(1, 2));
     assert!(!w);
 }
 
 #[test]
 fn cache_backward_wraps() {
     // from_char=0 → no match before 0, wrap to last match (5,6).
-    let (s, e, w) = find_match_from_cache(&cache(), co(0), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(5), co(6)));
+    let (span, w) = find_match_from_cache(&cache(), co(0), SearchDirection::Backward).unwrap();
+    assert_eq!(span, ir(5, 6));
     assert!(w);
 }
 
 #[test]
 fn cache_single_match_forward_wrap() {
-    let single = &[(co(4), co(7))];
+    let single = &[ir(4, 7)];
     // from_char past the only match → wrap to it.
-    let (s, e, w) = find_match_from_cache(single, co(8), SearchDirection::Forward).unwrap();
-    assert_eq!((s, e), (co(4), co(7)));
+    let (span, w) = find_match_from_cache(single, co(8), SearchDirection::Forward).unwrap();
+    assert_eq!(span, ir(4, 7));
     assert!(w);
 }
 
 #[test]
 fn cache_single_match_backward_wrap() {
-    let single = &[(co(4), co(7))];
+    let single = &[ir(4, 7)];
     // from_char before the only match → wrap to it.
-    let (s, e, w) = find_match_from_cache(single, co(2), SearchDirection::Backward).unwrap();
-    assert_eq!((s, e), (co(4), co(7)));
+    let (span, w) = find_match_from_cache(single, co(2), SearchDirection::Backward).unwrap();
+    assert_eq!(span, ir(4, 7));
     assert!(w);
 }
 
@@ -325,7 +328,7 @@ fn range_matches_bounded() {
     // return the two matches that fall entirely within it.
     let b = buf("aababab\n");
     let matches = find_matches_in_range(&b, &re("ab"), co(3), co(6));
-    assert_eq!(matches, vec![(co(3), co(4)), (co(5), co(6))]);
+    assert_eq!(matches, vec![ir(3, 4), ir(5, 6)]);
 }
 
 #[test]
@@ -333,7 +336,7 @@ fn range_matches_at_boundaries() {
     // Range exactly covering one match.
     let b = buf("aababab\n");
     let matches = find_matches_in_range(&b, &re("ab"), co(1), co(2));
-    assert_eq!(matches, vec![(co(1), co(2))]);
+    assert_eq!(matches, vec![ir(1, 2)]);
 }
 
 #[test]
@@ -357,7 +360,7 @@ fn range_matches_full_buffer() {
     // Full buffer range returns all matches.
     let b = buf("aababab\n");
     let ranged = find_matches_in_range(&b, &re("ab"), co(0), co(7));
-    assert_eq!(ranged, vec![(co(1), co(2)), (co(3), co(4)), (co(5), co(6))]);
+    assert_eq!(ranged, vec![ir(1, 2), ir(3, 4), ir(5, 6)]);
 }
 
 #[test]
@@ -366,7 +369,7 @@ fn range_matches_with_combining_graphemes() {
     // Searching for "é" within the full range should find it.
     let b = buf("caf\u{0065}\u{0301}\n");
     let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), co(0), co(5));
-    assert_eq!(matches, vec![(co(3), co(4))]);
+    assert_eq!(matches, vec![ir(3, 4)]);
 }
 
 // ── escape_regex ─────────────────────────────────────────────────────────
@@ -397,7 +400,7 @@ fn escape_regex_roundtrip() {
     let b = buf(&format!("{text}\n"));
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0], (co(0), co(text.len() - 1)));
+    assert_eq!(matches[0], ir(0, text.len() - 1));
 }
 
 // ── word_search_pattern ──────────────────────────────────────────────────
@@ -428,7 +431,7 @@ fn word_search_pattern_anchors_a_combining_sequence_on_its_base_char() {
         1,
         "the standalone word matches; the prefix of \"cafétéria\" must not"
     );
-    assert_eq!(matches[0], (co(0), co(4)));
+    assert_eq!(matches[0], ir(0, 4));
 }
 
 /// U+FF3F (FULLWIDTH LOW LINE) is `\p{Pc}` — a word character to
@@ -466,5 +469,5 @@ fn word_search_pattern_over_matches_a_wider_word_chars_run() {
     let b = buf("foo-bar-baz\n");
     let matches = find_all_matches(&b, &r);
     assert_eq!(matches.len(), 1, "the anchors hold inside the longer run");
-    assert_eq!(matches[0], (co(0), co(6))); // inclusive end: 'r' is char index 6
+    assert_eq!(matches[0], ir(0, 6)); // inclusive end: 'r' is char index 6
 }

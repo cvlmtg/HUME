@@ -4,6 +4,7 @@ use ropey::RopeSlice;
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 
 use crate::column::{BufferLineCol, GraphemeCol};
+use crate::line::ContentLine;
 use crate::offset::CharOffset;
 
 /// Returns the char offset of the start of the *next* grapheme cluster after
@@ -256,12 +257,12 @@ pub(crate) fn grapheme_count(
 /// user pressed → to reach the cursor from the start of the line.
 pub fn grapheme_col_in_line(
     slice: RopeSlice<'_>,
-    line_idx: usize,
+    line_idx: ContentLine,
     char_pos: CharOffset,
 ) -> GraphemeCol {
     GraphemeCol::new(grapheme_count(
         slice,
-        CharOffset::new(slice.line_to_char(line_idx)),
+        CharOffset::new(slice.line_to_char(line_idx.index())),
         char_pos,
     ))
 }
@@ -301,11 +302,11 @@ fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<
 /// decoration layer this rope-only function can't see.
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
-    line_idx: usize,
+    line_idx: ContentLine,
     char_pos: CharOffset,
     tab_width: u8,
 ) -> BufferLineCol {
-    let line_start = CharOffset::new(slice.line_to_char(line_idx));
+    let line_start = CharOffset::new(slice.line_to_char(line_idx.index()));
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
     while pos < char_pos {
@@ -344,11 +345,11 @@ pub fn display_col_in_line(
 /// also sees the decoration layer this rope-only function can't.
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
-    line_idx: usize,
+    line_idx: ContentLine,
     target_display_col: BufferLineCol,
     tab_width: u8,
 ) -> CharOffset {
-    let line_start = CharOffset::new(slice.line_to_char(line_idx));
+    let line_start = CharOffset::new(slice.line_to_char(line_idx.index()));
     if target_display_col == BufferLineCol::new(0) {
         return line_start;
     }

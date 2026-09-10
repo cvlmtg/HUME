@@ -120,8 +120,7 @@ pub(super) fn ensure_cursor_visible_horizontal(
 
     // The rest of this function mixes the column with plain margin/width
     // counts throughout, so it drops to `.get()`'s bare `u32` at the top
-    // rather than threading `DisplayLineCol` arithmetic through — the same
-    // trade-off `align_selections` makes for the same reason.
+    // rather than threading `DisplayLineCol` arithmetic through.
     let cursor_display_col = cursor_display_col.get() as usize;
     // `locate`'s column is content-relative (the gutter isn't part of it),
     // so the margin must compare against the content width the map itself

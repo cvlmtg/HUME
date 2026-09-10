@@ -1,5 +1,5 @@
 use super::super::*;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 use hume_test_fixtures::assert_state;
 
 // Stand-ins for `hume_treesitter::textobjects::ObjectSpans` — this crate
@@ -16,26 +16,26 @@ const SPANS: [(usize, usize); 4] = [OBJ1, OBJ_OUTER, OBJ_INNER, OBJ3];
 
 /// Mirrors `ObjectSpans::adjacent(pos, Forward)`: smallest `start > pos`,
 /// ties -> largest `end`.
-fn find_forward(pos: CharOffset) -> Option<(CharOffset, CharOffset)> {
+fn find_forward(pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let pos = pos.index();
     SPANS
         .iter()
         .copied()
         .filter(|&(start, _)| start > pos)
         .min_by_key(|&(start, end)| (start, std::cmp::Reverse(end)))
-        .map(|(start, end)| (CharOffset::new(start), CharOffset::new(end)))
+        .map(|(start, end)| InclusiveRange::new(CharOffset::new(start), CharOffset::new(end)))
 }
 
 /// Mirrors `ObjectSpans::adjacent(pos, Backward)`: largest `start < pos`,
 /// ties -> largest `end`.
-fn find_backward(pos: CharOffset) -> Option<(CharOffset, CharOffset)> {
+fn find_backward(pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let pos = pos.index();
     SPANS
         .iter()
         .copied()
         .filter(|&(start, _)| start < pos)
         .max_by_key(|&(start, end)| (start, end))
-        .map(|(start, end)| (CharOffset::new(start), CharOffset::new(end)))
+        .map(|(start, end)| InclusiveRange::new(CharOffset::new(start), CharOffset::new(end)))
 }
 
 fn cmd_goto(
@@ -154,8 +154,9 @@ fn extend_forward_into_a_nested_object_does_not_shrink_the_selection() {
 /// `apply_word_select_extend`, not `start()`/`end()` as `Move` uses.
 #[test]
 fn extend_searches_from_the_head_not_the_far_edge() {
-    let finder = |pos: CharOffset| -> Option<(CharOffset, CharOffset)> {
-        (pos < CharOffset::new(3)).then_some((CharOffset::new(3), CharOffset::new(4)))
+    let finder = |pos: CharOffset| -> Option<InclusiveRange<CharOffset>> {
+        (pos < CharOffset::new(3))
+            .then_some(InclusiveRange::new(CharOffset::new(3), CharOffset::new(4)))
     };
     assert_state!(
         "ab<[cd]-efghijklmnopqrstuvwxyz\n",

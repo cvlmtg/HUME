@@ -184,7 +184,7 @@ impl DecorationSource for CountingInsert {
         self.calls.set(self.calls.get() + 1);
         if line_idx == self.line {
             out.push(Decoration::Inline(InlineInsert {
-                byte_offset: self.byte_offset,
+                byte_offset: hume_rope::column::ByteCol::new(self.byte_offset),
                 text: self.text.to_string(),
                 scope: ScopeId(0),
             }));
@@ -388,7 +388,10 @@ fn no_wrap_block_counts_without_running_the_formatter() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
     dlm.block(ContentLine::new(0));
-    assert!(calls.get() > 0, "wrapping must format to count display lines");
+    assert!(
+        calls.get() > 0,
+        "wrapping must format to count display lines"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -596,8 +599,16 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
 
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
-    assert_eq!(dlm.advance(first, -10), first, "saturates at the first display line");
-    assert_eq!(dlm.advance(last, 10), last, "saturates at the last display line");
+    assert_eq!(
+        dlm.advance(first, -10),
+        first,
+        "saturates at the first display line"
+    );
+    assert_eq!(
+        dlm.advance(last, 10),
+        last,
+        "saturates at the last display line"
+    );
 }
 
 #[test]
@@ -1574,7 +1585,11 @@ fn buffer_line_col_accumulates_across_a_wrap_display_line() {
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
 
     // Sanity: the display-line boundary actually falls where the arithmetic assumes.
-    assert_eq!(dlm.locate(co(2)).0.slot, 1, "third character starts display line 1");
+    assert_eq!(
+        dlm.locate(co(2)).0.slot,
+        1,
+        "third character starts display line 1"
+    );
 
     for offset in 0..4 {
         assert_eq!(
@@ -1637,7 +1652,11 @@ fn line_display_col_counts_a_preceding_inline_insert() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert_eq!(dlm.buffer_line_col(co(0)), ldc(0), "'a' precedes the insert");
+    assert_eq!(
+        dlm.buffer_line_col(co(0)),
+        ldc(0),
+        "'a' precedes the insert"
+    );
     assert_eq!(
         dlm.buffer_line_col(co(1)),
         ldc(3),
@@ -1796,16 +1815,17 @@ fn a_stored_format_reproduces_the_display_lines_it_replaced() {
     let (providers, _) = with_counting_insert(ContentLine::new(0), 4, "HINT");
     let wrap = WrapMode::Soft { width: 6 };
 
-    let display_lines_of = |dlm: &mut DisplayLineMap<'_>| -> Vec<(crate::types::DisplayLineKind, String)> {
-        let total = dlm.block(ContentLine::new(0)).total();
-        (0..total)
-            .map(|slot_idx| {
-                let rendered =
-                    dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), slot_idx));
-                (rendered.display_line.kind, display_line_text(&rendered))
-            })
-            .collect()
-    };
+    let display_lines_of =
+        |dlm: &mut DisplayLineMap<'_>| -> Vec<(crate::types::DisplayLineKind, String)> {
+            let total = dlm.block(ContentLine::new(0)).total();
+            (0..total)
+                .map(|slot_idx| {
+                    let rendered =
+                        dlm.render_display_line(DisplayLinePos::new(ContentLine::new(0), slot_idx));
+                    (rendered.display_line.kind, display_line_text(&rendered))
+                })
+                .collect()
+        };
 
     // A store that has never seen the line: the formatter runs.
     let mut fresh = PaneLineStore::new();

@@ -232,9 +232,9 @@ impl SelectionSet {
             "BufferText must have at least 1 char (the structural \\n)"
         );
         debug_assert!(
-            text.char_at(buf_len - 1) == Some('\n'),
+            text.char_at(CharOffset::new(buf_len - 1)) == Some('\n'),
             "BufferText must end with structural '\\n', but last char is {:?}",
-            text.char_at(buf_len - 1),
+            text.char_at(CharOffset::new(buf_len - 1)),
         );
         for (i, sel) in self.selections.iter().enumerate() {
             debug_assert!(

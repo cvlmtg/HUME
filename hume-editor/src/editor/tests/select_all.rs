@@ -94,7 +94,7 @@ fn star_on_partial_selection_expands_to_word() {
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
         matches,
-        vec![(co(0), co(4))],
+        vec![hume_rope::offset::InclusiveRange::new(co(0), co(4))],
         "pattern must match the word it came from"
     );
 }
@@ -171,7 +171,7 @@ fn star_whole_word_skips_substring_matches() {
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
         matches,
-        vec![(co(0), co(1))],
+        vec![hume_rope::offset::InclusiveRange::new(co(0), co(1))],
         "only standalone 'as' must match"
     );
 }
@@ -216,7 +216,13 @@ fn search_selection_uses_literal_text() {
     let sp = ed.search_pattern().expect("search pattern must be set");
     let text = ed.doc().text();
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
-    assert_eq!(matches, vec![(co(1), co(3)), (co(6), co(8))]);
+    assert_eq!(
+        matches,
+        vec![
+            hume_rope::offset::InclusiveRange::new(co(1), co(3)),
+            hume_rope::offset::InclusiveRange::new(co(6), co(8)),
+        ]
+    );
 }
 
 /// After `Ctrl+/`, `n` cycles to the next literal occurrence — the full
@@ -246,7 +252,7 @@ fn search_selection_escapes_metacharacters() {
     let matches = hume_ops::search::find_all_matches(text, &sp.regex);
     assert_eq!(
         matches,
-        vec![(co(0), co(2))],
+        vec![hume_rope::offset::InclusiveRange::new(co(0), co(2))],
         "escaped '.' must not match 'axb'"
     );
 }

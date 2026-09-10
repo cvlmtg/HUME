@@ -176,7 +176,7 @@ fn builder_insert_char_normalizes_a_lone_cr() {
 }
 
 #[test]
-#[should_panic(expected = "old_pos (3) != doc_len (CharOffset(10))")]
+#[should_panic(expected = "old_pos (CharOffset(3)) != doc_len (CharOffset(10))")]
 fn builder_finish_panics_on_unconsumed() {
     let mut b = ChangeSetBuilder::new(co(10));
     b.retain(3);

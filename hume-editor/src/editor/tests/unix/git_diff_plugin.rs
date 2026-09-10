@@ -185,7 +185,13 @@ fn vlines(ed: &Editor, bid: BufferId) -> Vec<VLine> {
                 Some(scope_name(ed, e.scope).to_string()),
                 e.segments
                     .iter()
-                    .map(|(start, end, scope)| (*start, *end, scope_name(ed, *scope).to_string()))
+                    .map(|(start, end, scope)| {
+                        (
+                            start.index(),
+                            end.index(),
+                            scope_name(ed, *scope).to_string(),
+                        )
+                    })
                     .collect(),
             )
         })

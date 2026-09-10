@@ -1387,7 +1387,7 @@ fn inline_insert_scope_is_layered_but_neighbour_is_not() {
     let mut registry = crate::theme::ScopeRegistry::new();
     let hint_scope = registry.intern("hint");
     let inserts = vec![crate::providers::InlineInsert {
-        byte_offset: 0,
+        byte_offset: hume_rope::column::ByteCol::new(0),
         text: "H".into(),
         scope: hint_scope,
     }];
@@ -1626,7 +1626,7 @@ fn insert_mid_display_line_head_resolves_to_real_grapheme_col() {
     let mut registry = crate::theme::ScopeRegistry::new();
     let insert_scope = registry.intern("test");
     let inserts = vec![crate::providers::InlineInsert {
-        byte_offset: 2,
+        byte_offset: hume_rope::column::ByteCol::new(2),
         text: "XY".into(),
         scope: insert_scope,
     }];
@@ -1699,7 +1699,7 @@ fn selection_spanning_display_line_start_insert_begins_at_first_real_grapheme() 
     let mut registry = crate::theme::ScopeRegistry::new();
     let insert_scope = registry.intern("test");
     let inserts = vec![crate::providers::InlineInsert {
-        byte_offset: 0,
+        byte_offset: hume_rope::column::ByteCol::new(0),
         text: "Z".into(),
         scope: insert_scope,
     }];

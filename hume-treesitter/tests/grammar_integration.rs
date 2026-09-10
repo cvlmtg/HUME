@@ -55,7 +55,11 @@ fn highlights_for_line(
     bundle: Arc<GrammarBundle>,
     rope: &ropey::Rope,
     line_idx: hume_rope::line::ContentLine,
-) -> Vec<(usize, usize, hume_engine::types::ScopeId)> {
+) -> Vec<(
+    hume_rope::column::ByteCol,
+    hume_rope::column::ByteCol,
+    hume_engine::types::ScopeId,
+)> {
     let layers = SyntaxLayers::new(vec![SyntaxLayer {
         tree,
         bundle,
@@ -156,8 +160,16 @@ fn highlights_emit_keyword_event() {
     );
     // `fn` is 2 bytes at the start of the line; it must be captured as a keyword.
     let (start, end, scope_id) = out[0];
-    assert_eq!(start, 0, "first highlight should start at byte 0 (`fn`)");
-    assert_eq!(end, 2, "first highlight should end at byte 2 (`fn`)");
+    assert_eq!(
+        start.index(),
+        0,
+        "first highlight should start at byte 0 (`fn`)"
+    );
+    assert_eq!(
+        end.index(),
+        2,
+        "first highlight should end at byte 2 (`fn`)"
+    );
     assert!(
         scope_reg.name_of(scope_id).contains("keyword"),
         "scope for `fn` should contain 'keyword', got: {}",
@@ -180,7 +192,7 @@ fn highlights_for_line_correct_on_nonzero_line() {
     assert!(!out.is_empty(), "line 1 should emit highlight events");
     // `let` starts at line-relative offset 0, ends at 3.
     let has_let = out.iter().any(|&(start, end, id)| {
-        start == 0 && end == 3 && scope_reg.name_of(id).contains("keyword")
+        start.index() == 0 && end.index() == 3 && scope_reg.name_of(id).contains("keyword")
     });
     assert!(
         has_let,
@@ -219,11 +231,11 @@ fn highlight_overlap_shorter_wins_at_shared_start() {
     assert!(function_span.is_some(), "expected a 'function' scope");
     let (kw_start, kw_end, _) = *keyword_span.unwrap();
     let (fn_start, _, _) = *function_span.unwrap();
-    assert_eq!(kw_start, 0);
-    assert_eq!(kw_end, 2);
+    assert_eq!(kw_start.index(), 0);
+    assert_eq!(kw_end.index(), 2);
     assert_eq!(
         fn_start, kw_end,
-        "function span must be trimmed to start at {kw_end}"
+        "function span must be trimmed to start at {kw_end:?}"
     );
 }
 
@@ -243,7 +255,10 @@ fn highlight_overlap_fully_contained_is_dropped() {
 
     let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
-    let string_spans: Vec<_> = out.iter().filter(|&&(s, e, _)| s == 0 && e == 7).collect();
+    let string_spans: Vec<_> = out
+        .iter()
+        .filter(|&&(s, e, _)| s.index() == 0 && e.index() == 7)
+        .collect();
     assert_eq!(
         string_spans.len(),
         1,
@@ -276,7 +291,9 @@ fn highlight_later_pattern_wins_on_same_node() {
     let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
     // `foo` is at byte offset 12..15 in `fn main() { foo(1); }`.
-    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let foo_span = out
+        .iter()
+        .find(|&&(s, e, _)| s.index() == 12 && e.index() == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(
             "expected a span at [12, 15) for `foo`; got: {:?}",
@@ -306,7 +323,9 @@ fn highlight_pattern_order_controls_winner_not_specificity() {
 
     let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
 
-    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let foo_span = out
+        .iter()
+        .find(|&&(s, e, _)| s.index() == 12 && e.index() == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(
             "expected a span at [12, 15) for `foo`; got: {:?}",
@@ -350,7 +369,9 @@ fn highlight_underscore_captures_are_ignored() {
     let mixed_query = "(call_expression function: (identifier) @_helper)\n(identifier) @variable";
     let (bundle, scope_reg) = bundle_for("rust", "tree_sitter_rust", mixed_query);
     let out = highlights_for_line(tree, bundle, &rope, hume_rope::line::ContentLine::new(0));
-    let foo_span = out.iter().find(|&&(s, e, _)| s == 12 && e == 15);
+    let foo_span = out
+        .iter()
+        .find(|&&(s, e, _)| s.index() == 12 && e.index() == 15);
     let (_, _, scope_id) = *foo_span.unwrap_or_else(|| {
         panic!(
             "expected a span at [12, 15) for `foo`; got: {:?}",

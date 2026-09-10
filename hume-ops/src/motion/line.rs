@@ -43,7 +43,7 @@ pub(super) fn goto_first_nonblank(text: &BufferText, head: CharOffset) -> CharOf
 
     let mut pos = line_start;
     while pos < end_excl {
-        match text.char_at(pos.index()) {
+        match text.char_at(pos) {
             // Step by grapheme boundary to respect the project invariant even
             // for space/tab (both are always single-codepoint, but be consistent).
             Some(' ') | Some('\t') => pos = next_grapheme_boundary(text, pos),

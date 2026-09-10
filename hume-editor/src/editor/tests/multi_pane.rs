@@ -1784,7 +1784,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     // since this test is about span geometry, not scope resolution.
     let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.search)
         .into_iter()
-        .map(|(line, start, end, _)| (line.index(), start, end))
+        .map(|(line, start, end, _)| (line.index(), start.index(), end.index()))
         .collect();
     assert_eq!(
         matches,

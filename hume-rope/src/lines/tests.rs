@@ -707,7 +707,7 @@ fn grapheme_col_in_line_is_the_inverse_of_place_grapheme_column() {
     let grapheme_col = gc(1);
     let pos = place_grapheme_column(&buf, RopeyLine::new(0), grapheme_col);
     assert_eq!(
-        crate::grapheme::grapheme_col_in_line(buf.slice(..), 0, pos),
+        crate::grapheme::grapheme_col_in_line(buf.slice(..), ContentLine::new(0), pos),
         grapheme_col
     );
 }

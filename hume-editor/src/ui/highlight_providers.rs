@@ -18,12 +18,13 @@ use crate::lock_ext::LockExt;
 
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, HighlightTier};
 use hume_engine::types::ScopeId;
+use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 
 /// Shared per-frame highlight data carrying a per-range scope:
 /// `(line_idx, byte_start, byte_end, scope)`, written once per frame and read
 /// during the engine's per-line render loop.
-pub(crate) type ScopedHighlightRanges = Arc<RwLock<Vec<(ContentLine, usize, usize, ScopeId)>>>;
+pub(crate) type ScopedHighlightRanges = Arc<RwLock<Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>>>;
 
 /// The four highlight buffers every pane owns.
 ///

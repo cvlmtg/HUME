@@ -280,20 +280,23 @@ fn equality() {
 #[test]
 fn char_at_first_position() {
     let text = BufferText::from("hello");
-    assert_eq!(text.char_at(0), Some('h'));
+    assert_eq!(text.char_at(co(0)), Some('h'));
 }
 
 #[test]
 fn char_at_last_position() {
     // "hello" + structural '\n' → last char is '\n' at len_chars()-1.
     let text = BufferText::from("hello");
-    assert_eq!(text.char_at(text.len_chars() - 1), Some('\n'));
+    assert_eq!(
+        text.char_at(CharOffset::new(text.len_chars() - 1)),
+        Some('\n')
+    );
 }
 
 #[test]
 fn char_at_out_of_bounds() {
     let text = BufferText::from("hello");
-    assert_eq!(text.char_at(text.len_chars()), None);
+    assert_eq!(text.char_at(CharOffset::new(text.len_chars())), None);
 }
 
 // ── single-char buffer ────────────────────────────────────────────────────
@@ -304,8 +307,8 @@ fn single_char_buffer_has_two_chars() {
     let text = BufferText::from("x");
     assert_eq!(text.len_chars(), 2);
     assert!(!text.is_empty());
-    assert_eq!(text.char_at(0), Some('x'));
-    assert_eq!(text.char_at(1), Some('\n'));
+    assert_eq!(text.char_at(co(0)), Some('x'));
+    assert_eq!(text.char_at(co(1)), Some('\n'));
 }
 
 // ── remove with empty range ───────────────────────────────────────────────
@@ -326,9 +329,9 @@ fn insert_grapheme_cluster() {
     let new = text.insert(0, "e\u{0301}");
     // 'e' + U+0301 + "hello" + '\n' = 8 chars.
     assert_eq!(new.len_chars(), 8);
-    assert_eq!(new.char_at(0), Some('e'));
-    assert_eq!(new.char_at(1), Some('\u{0301}'));
-    assert_eq!(new.char_at(2), Some('h'));
+    assert_eq!(new.char_at(co(0)), Some('e'));
+    assert_eq!(new.char_at(co(1)), Some('\u{0301}'));
+    assert_eq!(new.char_at(co(2)), Some('h'));
 }
 
 #[test]

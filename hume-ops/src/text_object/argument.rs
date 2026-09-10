@@ -25,20 +25,20 @@ fn find_comma_segments(
     close_pos: CharOffset,
 ) -> Vec<Segment> {
     // Content zone: open_pos+1 ..= close_pos-1. Empty when brackets are adjacent.
-    if close_pos.index() <= open_pos.index() + 1 {
+    if close_pos <= open_pos.shift(1) {
         return Vec::new();
     }
-    // `+ 1` cannot panic: the check above proved `close_pos > open_pos + 1`,
+    // `shift(1)` cannot panic: the check above proved `close_pos > open_pos + 1`,
     // so `open_pos + 1` is a valid content-zone start.
-    let content_start = CharOffset::new(open_pos.index() + 1);
-    let content_end = CharOffset::new(close_pos.index() - 1); // inclusive
+    let content_start = open_pos.shift(1);
+    let content_end = close_pos.shift(-1); // inclusive
 
     let mut segments = Vec::new();
     let mut seg_start = content_start;
     let mut depth = 0usize;
 
     for (i, ch) in text
-        .chars_at(content_start.index())
+        .chars_at(content_start)
         .take(content_end.chars_since(content_start) + 1)
     {
         let i = CharOffset::new(i);
@@ -46,13 +46,10 @@ fn find_comma_segments(
             Some((_, true)) => depth += 1,
             Some((_, false)) => depth = depth.saturating_sub(1),
             None if ch == ',' && depth == 0 => {
-                // i - 1 is safe: seg_start >= content_start >= 1, and this arm
-                // only fires once i has advanced past seg_start.
-                segments.push(InclusiveRange::new(
-                    seg_start,
-                    CharOffset::new(i.index() - 1),
-                ));
-                seg_start = CharOffset::new(i.index() + 1);
+                // shift(-1) is safe: seg_start >= content_start >= 1, and this
+                // arm only fires once i has advanced past seg_start.
+                segments.push(InclusiveRange::new(seg_start, i.shift(-1)));
+                seg_start = i.shift(1);
             }
             None => {}
         }
@@ -104,9 +101,9 @@ fn locate_argument(
 
     // Nudge: if the cursor is on a bracket itself, step into the content zone.
     let pos = if pos == open_pos {
-        CharOffset::new(open_pos.index() + 1)
+        open_pos.shift(1)
     } else if pos == close_pos {
-        CharOffset::new(close_pos.index().saturating_sub(1))
+        close_pos.shift(-1)
     } else {
         pos
     };
@@ -128,7 +125,7 @@ fn locate_argument(
 /// rather than a hand-rolled char match so `m a a` agrees with `m a w` on
 /// which characters count as blank.
 fn is_blank(text: &BufferText, pos: CharOffset) -> bool {
-    text.char_at(pos.index())
+    text.char_at(pos)
         .is_some_and(|ch| blank_class(ch).is_some())
 }
 
@@ -138,7 +135,7 @@ fn is_blank(text: &BufferText, pos: CharOffset) -> bool {
 /// one's trailing whitespace, so `foo(\n    a,\n    b\n)` around `a` eats
 /// `a,` and leaves the newline.
 fn is_inline_blank(text: &BufferText, pos: CharOffset) -> bool {
-    text.char_at(pos.index())
+    text.char_at(pos)
         .is_some_and(|ch| blank_class(ch) == Some(CharClass::Space))
 }
 
@@ -235,7 +232,7 @@ pub fn around_from_inner(
     let before = extend_backward_while(text, start, is_blank);
     if before > CharOffset::new(0) {
         let comma = prev_grapheme_boundary(text, before);
-        if text.char_at(comma.index()) == Some(',') {
+        if text.char_at(comma) == Some(',') {
             let new_end = extend_forward_while(text, end, is_blank);
             return InclusiveRange::new(comma, new_end);
         }
@@ -243,7 +240,7 @@ pub fn around_from_inner(
 
     let after = extend_forward_while(text, end, is_blank);
     let comma = next_grapheme_boundary(text, after);
-    if text.char_at(comma.index()) == Some(',') {
+    if text.char_at(comma) == Some(',') {
         let new_end = extend_forward_while(text, comma, is_inline_blank);
         return InclusiveRange::new(before, new_end);
     }

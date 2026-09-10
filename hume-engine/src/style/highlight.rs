@@ -2,6 +2,7 @@ use super::StyleScratch;
 use crate::providers::{Decoration, DecorationKinds, HighlightTier, ProviderSet, SyntaxSpans};
 use crate::theme::Theme;
 use crate::types::{ResolvedStyle, ScopeId};
+use hume_rope::column::ByteCol;
 
 // ── Interval cursor ────────────────────────────────────────────────────────────
 
@@ -12,18 +13,18 @@ use crate::types::{ResolvedStyle, ScopeId};
 /// per-grapheme scopes for virtual lines, the same interval shape as
 /// `Decoration::Highlight`/`SyntaxSpans`.
 pub(crate) struct IntervalCursor<'a> {
-    intervals: &'a [(usize, usize, ScopeId)],
+    intervals: &'a [(ByteCol, ByteCol, ScopeId)],
     pos: usize,
 }
 
 impl<'a> IntervalCursor<'a> {
-    pub(crate) fn new(intervals: &'a [(usize, usize, ScopeId)]) -> Self {
+    pub(crate) fn new(intervals: &'a [(ByteCol, ByteCol, ScopeId)]) -> Self {
         Self { intervals, pos: 0 }
     }
 
     /// Return the scope id active at `byte_offset`, or `None`.
     /// Advances the internal cursor forward; never goes backward.
-    pub(crate) fn scope_at(&mut self, byte_offset: usize) -> Option<ScopeId> {
+    pub(crate) fn scope_at(&mut self, byte_offset: ByteCol) -> Option<ScopeId> {
         // Skip intervals that have already ended.
         while self.pos < self.intervals.len() && self.intervals[self.pos].1 <= byte_offset {
             self.pos += 1;
@@ -72,7 +73,7 @@ impl<'a> HighlightStack<'a> {
     /// style array — no hashing on the per-grapheme hot path.
     pub(super) fn layer_at(
         &mut self,
-        byte_offset: usize,
+        byte_offset: ByteCol,
         mut base: ResolvedStyle,
         theme: &Theme,
     ) -> ResolvedStyle {
@@ -94,7 +95,7 @@ impl<'a> HighlightStack<'a> {
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
 /// Indexed by `HighlightTier as usize`; see `HighlightStack`.
 #[derive(Default)]
-pub struct TierBufs([Vec<(usize, usize, ScopeId)>; TIER_COUNT]);
+pub struct TierBufs([Vec<(ByteCol, ByteCol, ScopeId)>; TIER_COUNT]);
 
 impl TierBufs {
     pub fn clear(&mut self) {
@@ -103,7 +104,7 @@ impl TierBufs {
         }
     }
 
-    fn push(&mut self, tier: HighlightTier, interval: (usize, usize, ScopeId)) {
+    fn push(&mut self, tier: HighlightTier, interval: (ByteCol, ByteCol, ScopeId)) {
         self.0[tier as usize].push(interval);
     }
 

@@ -103,8 +103,8 @@ pub fn sift_matches_within(
         let piece_start = new_sels.len();
         let matches = find_matches_in_range(text, regex, sel.start(), sel.end_inclusive(text));
 
-        for (s, e) in matches {
-            new_sels.push(Selection::new(s, e));
+        for span in matches {
+            new_sels.push(Selection::new(span.start, span.end));
         }
 
         // Primary = first match within the original primary selection.
@@ -148,7 +148,7 @@ pub fn cmd_trim_selection_whitespace(
         // codebase — Space covers ' '/'\t', Eol covers '\n'.
         while start <= end
             && text
-                .char_at(start.index())
+                .char_at(start)
                 .is_some_and(|c| blank_class(c).is_some())
         {
             start = next_grapheme_boundary(text, start);
@@ -163,7 +163,7 @@ pub fn cmd_trim_selection_whitespace(
         let mut new_end = end;
         while new_end > start
             && text
-                .char_at(new_end.index())
+                .char_at(new_end)
                 .is_some_and(|c| blank_class(c).is_some())
         {
             new_end = prev_grapheme_boundary(text, new_end);

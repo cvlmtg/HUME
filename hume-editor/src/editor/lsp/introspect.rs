@@ -246,7 +246,14 @@ pub(in crate::editor) fn wire_to_char_for_buffer(
 ) -> Option<usize> {
     let rope = state.buffers.try_get(id)?.text().rope();
     let encoding = negotiated_encoding(state, lsp, id)?;
-    Some(hume_rope::position_encoding::wire_to_char(rope, line, character, encoding).index())
+    Some(
+        hume_rope::position_encoding::wire_to_char(
+            rope,
+            hume_rope::position_encoding::WirePos { line, character },
+            encoding,
+        )
+        .index(),
+    )
 }
 
 /// Wire `(line, character)` → char offset, for `lsp-position->offset`.
@@ -428,8 +435,11 @@ fn wire_pos_to_grapheme_col(
     if line > text.last_content_line().index() {
         return None;
     }
-    let char_pos =
-        hume_rope::position_encoding::wire_to_char(text.rope(), line, character, encoding);
+    let char_pos = hume_rope::position_encoding::wire_to_char(
+        text.rope(),
+        hume_rope::position_encoding::WirePos { line, character },
+        encoding,
+    );
     // Trusted narrow: the bound check above already confirmed `line` names a
     // real content line.
     let line = hume_rope::line::ContentLine::new(line);

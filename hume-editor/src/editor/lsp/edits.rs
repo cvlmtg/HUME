@@ -13,7 +13,7 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::codec::ResponseError;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_rope::position_encoding::{PositionEncoding, wire_to_line_char_col};
+use hume_rope::position_encoding::{PositionEncoding, WirePos, wire_to_line_char_col};
 
 use super::LspState;
 use super::introspect;
@@ -403,12 +403,12 @@ pub(in crate::editor) enum GotoTarget {
     Path {
         path_or_uri: String,
         line: usize,
-        char_col: usize,
+        char_col: hume_rope::column::CharCol,
     },
     Buffer {
         bid: BufferId,
         line: usize,
-        char_col: usize,
+        char_col: hume_rope::column::CharCol,
     },
 }
 
@@ -422,12 +422,12 @@ fn char_indexed_to_char_pos(
     state: &EditorState,
     bid: BufferId,
     line: usize,
-    char_col: usize,
+    char_col: hume_rope::column::CharCol,
 ) -> CharOffset {
     let buf = state.buffers.get(bid);
     let text = buf.text();
     let line = hume_rope::line::RopeyLine::clamped(text.rope(), line);
-    hume_editing::lines::place_char_column(text, line, hume_rope::column::CharCol::new(char_col))
+    hume_editing::lines::place_char_column(text, line, char_col)
 }
 
 /// A bare path string and a `file://` URI string both name shape 2's
@@ -478,16 +478,10 @@ fn resolve_goto_target(
             // gets the same grapheme-boundary guarantee instead of landing
             // wherever the raw code-unit offset happens to fall.
             let (line, char_col) =
-                wire_to_line_char_col(buf.text().rope(), line, character, encoding);
+                wire_to_line_char_col(buf.text().rope(), WirePos { line, character }, encoding);
             Ok((
                 bid,
-                // `wire_to_line_char_col` already clamped `line` to the
-                // buffer's last ropey line.
-                hume_editing::lines::place_char_column(
-                    buf.text(),
-                    hume_rope::line::RopeyLine::new(line),
-                    char_col,
-                ),
+                hume_editing::lines::place_char_column(buf.text(), line, char_col),
             ))
         }
         GotoTarget::Path {

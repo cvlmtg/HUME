@@ -467,9 +467,9 @@ impl Editor {
     /// All-or-nothing: if even one cursor doesn't match, the whole operation
     /// falls back to normal insert, keeping multi-cursor behavior consistent.
     fn should_skip_close(&self, ch: char) -> bool {
-        self.current_selections().iter_sorted().all(|sel| {
-            sel.is_collapsed() && self.doc().text().char_at(sel.head().index()) == Some(ch)
-        })
+        self.current_selections()
+            .iter_sorted()
+            .all(|sel| sel.is_collapsed() && self.doc().text().char_at(sel.head()) == Some(ch))
     }
 
     /// Returns `true` if every selection is a cursor AND the pair
@@ -485,7 +485,7 @@ impl Editor {
             // prev_grapheme_boundary handles multi-codepoint clusters; bracket/quote
             // chars are always single codepoints, but using it keeps the logic uniform.
             let prev = hume_editing::grapheme::prev_grapheme_boundary(text, sel.head());
-            match (text.char_at(prev.index()), text.char_at(sel.head().index())) {
+            match (text.char_at(prev), text.char_at(sel.head())) {
                 (Some(before), Some(at)) => pairs.iter().any(|p| p.open == before && p.close == at),
                 _ => false,
             }

@@ -5,7 +5,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::is_empty_line_token;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 use ropey::RopeSlice;
 
 use super::{MotionMode, apply_object_motion};
@@ -73,8 +73,8 @@ fn content_tokens_at(
 
 /// Inclusive char span from `first_line`'s start to `last_line`'s last
 /// content char.
-fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> (CharOffset, CharOffset) {
-    (
+fn line_span(text: &BufferText, first_line: usize, last_line: usize) -> InclusiveRange<CharOffset> {
+    InclusiveRange::new(
         text.line_to_char(RopeyLine::new(first_line)),
         line_last_char(text, ContentLine::new(last_line)),
     )
@@ -93,7 +93,7 @@ pub(crate) fn paragraph_at(
     text: &BufferText,
     pos: CharOffset,
     include_gap: bool,
-) -> Option<(CharOffset, CharOffset)> {
+) -> Option<InclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos).index();
 
     // Climb backward from `line` itself (a run of 0 means `line` is blank —
@@ -149,7 +149,7 @@ pub fn cmd_goto_prev_paragraph(
 /// or `None` at EOF. One forward cursor: leave the enclosing paragraph, then
 /// its gap (landing past the buffer's last content line means there's
 /// nothing below), then the target paragraph's own content and gap.
-fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<(CharOffset, CharOffset)> {
+fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let total = text.content_line_count().get();
     let line = text.char_to_line(pos).index();
     let mut tokens = content_tokens_at(text, line);
@@ -176,7 +176,7 @@ fn next_paragraph(text: &BufferText, pos: CharOffset) -> Option<(CharOffset, Cha
 /// walk can't answer: starting inside a gap that continues below `pos`, the
 /// backward count only sees the blanks at or above `pos`, never the ones
 /// below it.
-fn prev_paragraph(text: &BufferText, pos: CharOffset) -> Option<(CharOffset, CharOffset)> {
+fn prev_paragraph(text: &BufferText, pos: CharOffset) -> Option<InclusiveRange<CharOffset>> {
     let line = text.char_to_line(pos).index();
     let mut back = text.line_tokens_back_from(RopeyLine::new(line)).peekable();
 

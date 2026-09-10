@@ -12,10 +12,10 @@ fn selection_range_ordered() {
         anchor: co(42),
         head: co(7),
     };
-    let (start, end) = sel.range();
-    assert!(start <= end);
-    assert_eq!(start, co(7));
-    assert_eq!(end, co(42));
+    let span = sel.range();
+    assert!(span.start <= span.end);
+    assert_eq!(span.start, co(7));
+    assert_eq!(span.end, co(42));
 }
 
 #[test]
@@ -52,9 +52,9 @@ fn selection_range_anchor_equals_head() {
         anchor: co(5),
         head: co(5),
     };
-    let (start, end) = sel.range();
-    assert_eq!(start, co(5));
-    assert_eq!(end, co(5));
+    let span = sel.range();
+    assert_eq!(span.start, co(5));
+    assert_eq!(span.end, co(5));
 }
 
 #[test]

@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use bitflags::bitflags;
 use hume_grid::Rect;
+use hume_rope::column::ByteCol;
 
 use crate::render::Canvas;
 
@@ -55,7 +56,7 @@ pub trait SyntaxSpans {
         &self,
         line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
-        out: &mut Vec<(usize, usize, ScopeId)>,
+        out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
     );
 }
 
@@ -202,7 +203,7 @@ pub struct VirtualLine {
     /// engine does not trust this — it re-sorts at intake (`DisplayLineMap::block`)
     /// before resolving scopes with a monotonic cursor, the same posture
     /// `style::rebuild_line_decorations` takes for highlight spans.
-    pub segments: Vec<(usize, usize, ScopeId)>,
+    pub segments: Vec<(ByteCol, ByteCol, ScopeId)>,
     /// Scope for bytes no `segments` entry covers, and the display line's
     /// background: its `bg` fills the display line's gutter and trailing
     /// cells past the text (the virtual-display-line counterpart of
@@ -227,7 +228,7 @@ pub struct VirtualLine {
 #[derive(Clone, Debug)]
 pub struct InlineInsert {
     /// Byte offset within the buffer line at which to inject the text.
-    pub byte_offset: usize,
+    pub byte_offset: ByteCol,
     pub text: String,
     pub scope: ScopeId,
 }
@@ -246,8 +247,8 @@ pub enum Decoration {
     /// this span layers at — tier is data here, not a per-provider property,
     /// so one source can emit spans at different tiers.
     Highlight {
-        byte_start: usize,
-        byte_end: usize,
+        byte_start: ByteCol,
+        byte_end: ByteCol,
         scope: ScopeId,
         tier: HighlightTier,
     },

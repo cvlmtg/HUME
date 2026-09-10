@@ -14,6 +14,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_rope::column::{ByteCol, CharCol};
 use hume_rope::lines::line_token_content;
 use hume_rope::offset::CharOffset;
 
@@ -752,7 +753,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         };
         let text = buf.text();
         let head = sels.primary().head();
-        let Some(ch) = text.char_at(head.index()) else {
+        let Some(ch) = text.char_at(head) else {
             return String::new();
         };
         let chars = effective_word_chars(buf, &self.state.settings);
@@ -1224,7 +1225,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?
                     .into_iter()
                     .map(|(start, end, name)| {
-                        (start, end, self.view.registry.intern_runtime(&name))
+                        (
+                            ByteCol::new(start),
+                            ByteCol::new(end),
+                            self.view.registry.intern_runtime(&name),
+                        )
                     })
                     .collect();
                 Ok(crate::editor::decorations::VirtualLineEntry {
@@ -1625,7 +1630,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path_or_uri,
             line,
-            char_col,
+            char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }
@@ -1642,7 +1647,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let target = crate::editor::lsp::edits::GotoTarget::Buffer {
             bid,
             line,
-            char_col,
+            char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }

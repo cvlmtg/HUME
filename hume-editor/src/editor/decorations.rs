@@ -74,7 +74,11 @@ pub(in crate::editor) struct VirtualLineEntry {
     pub(crate) text: String,
     pub(crate) before: bool,
     pub(crate) scope: ScopeId,
-    pub(crate) segments: Vec<(usize, usize, ScopeId)>,
+    pub(crate) segments: Vec<(
+        hume_rope::column::ByteCol,
+        hume_rope::column::ByteCol,
+        ScopeId,
+    )>,
 }
 
 /// One `(set-eol-text! …)` entry: `text` appended at the end of the line

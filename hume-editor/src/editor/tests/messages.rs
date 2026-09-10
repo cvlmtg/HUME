@@ -119,10 +119,30 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     assert_eq!(
         pane_highlights(&ed, pid, |h| &h.extra),
         vec![
-            (hume_rope::line::ContentLine::new(0), 0, 9, warn_badge),
-            (hume_rope::line::ContentLine::new(0), 10, 17, warn_text),
-            (hume_rope::line::ContentLine::new(1), 0, 7, err_badge),
-            (hume_rope::line::ContentLine::new(1), 8, 13, err_text),
+            (
+                hume_rope::line::ContentLine::new(0),
+                bc(0),
+                bc(9),
+                warn_badge
+            ),
+            (
+                hume_rope::line::ContentLine::new(0),
+                bc(10),
+                bc(17),
+                warn_text
+            ),
+            (
+                hume_rope::line::ContentLine::new(1),
+                bc(0),
+                bc(7),
+                err_badge
+            ),
+            (
+                hume_rope::line::ContentLine::new(1),
+                bc(8),
+                bc(13),
+                err_text
+            ),
         ]
     );
 }

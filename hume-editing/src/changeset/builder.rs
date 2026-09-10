@@ -28,8 +28,8 @@ use super::{ChangeSet, Operation, push_merge};
 pub struct ChangeSetBuilder {
     ops: Vec<Operation>,
     doc_len: CharOffset,
-    old_pos: usize,
-    new_pos: usize,
+    old_pos: CharOffset,
+    new_pos: CharOffset,
 }
 
 impl ChangeSetBuilder {
@@ -39,8 +39,8 @@ impl ChangeSetBuilder {
         Self {
             ops: Vec::new(),
             doc_len,
-            old_pos: 0,
-            new_pos: 0,
+            old_pos: CharOffset::new(0),
+            new_pos: CharOffset::new(0),
         }
     }
 
@@ -50,14 +50,14 @@ impl ChangeSetBuilder {
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
     pub fn retain(&mut self, n: usize) -> &mut Self {
         debug_assert!(
-            self.old_pos + n <= self.doc_len.index(),
-            "ChangeSetBuilder::retain: old_pos ({}) + n ({n}) > doc_len ({:?})",
+            self.old_pos.shift(n as isize) <= self.doc_len,
+            "ChangeSetBuilder::retain: old_pos ({:?}) + n ({n}) > doc_len ({:?})",
             self.old_pos,
             self.doc_len,
         );
         push_merge(&mut self.ops, Operation::Retain(n));
-        self.old_pos += n;
-        self.new_pos += n;
+        self.old_pos = self.old_pos.shift(n as isize);
+        self.new_pos = self.new_pos.shift(n as isize);
         self
     }
 
@@ -67,13 +67,13 @@ impl ChangeSetBuilder {
     /// Debug-panics if `old_pos + n` would exceed `doc_len`.
     pub fn delete(&mut self, n: usize) -> &mut Self {
         debug_assert!(
-            self.old_pos + n <= self.doc_len.index(),
-            "ChangeSetBuilder::delete: old_pos ({}) + n ({n}) > doc_len ({:?})",
+            self.old_pos.shift(n as isize) <= self.doc_len,
+            "ChangeSetBuilder::delete: old_pos ({:?}) + n ({n}) > doc_len ({:?})",
             self.old_pos,
             self.doc_len,
         );
         push_merge(&mut self.ops, Operation::Delete(n));
-        self.old_pos += n;
+        self.old_pos = self.old_pos.shift(n as isize);
         // new_pos doesn't advance — deleted chars vanish.
         self
     }
@@ -96,7 +96,7 @@ impl ChangeSetBuilder {
         let text = crate::text::normalize_line_endings(text);
         let len = text.chars().count();
         push_merge(&mut self.ops, Operation::Insert(text.into_owned()));
-        self.new_pos += len;
+        self.new_pos = self.new_pos.shift(len as isize);
         // old_pos doesn't advance — insertion doesn't consume old chars.
         self
     }
@@ -114,7 +114,7 @@ impl ChangeSetBuilder {
 
     /// Current position in the old document (chars consumed so far).
     pub fn old_pos(&self) -> CharOffset {
-        CharOffset::new(self.old_pos)
+        self.old_pos
     }
 
     /// Current position in the new document (chars produced so far).
@@ -122,13 +122,13 @@ impl ChangeSetBuilder {
     /// After emitting an `insert`, `new_pos()` tells you exactly where a
     /// cursor should land in the result buffer.
     pub fn new_pos(&self) -> CharOffset {
-        CharOffset::new(self.new_pos)
+        self.new_pos
     }
 
     /// Retain all remaining chars from `old_pos` to end of document.
     /// Convenience for finishing the changeset.
     pub fn retain_rest(&mut self) -> &mut Self {
-        let remaining = self.doc_len.chars_since(CharOffset::new(self.old_pos));
+        let remaining = self.doc_len.chars_since(self.old_pos);
         if remaining > 0 {
             self.retain(remaining);
         }
@@ -143,17 +143,15 @@ impl ChangeSetBuilder {
     /// to `retain_rest()`.
     pub fn finish(self) -> ChangeSet {
         assert_eq!(
-            self.old_pos,
-            self.doc_len.index(),
-            "ChangeSetBuilder::finish: old_pos ({}) != doc_len ({:?}). \
+            self.old_pos, self.doc_len,
+            "ChangeSetBuilder::finish: old_pos ({:?}) != doc_len ({:?}). \
              Did you forget to call retain_rest()?",
-            self.old_pos,
-            self.doc_len,
+            self.old_pos, self.doc_len,
         );
         ChangeSet {
             ops: self.ops,
             len_before: self.doc_len.index(),
-            len_after: self.new_pos,
+            len_after: self.new_pos.index(),
         }
     }
 }

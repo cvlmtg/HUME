@@ -175,7 +175,7 @@ impl DecorationSource for InlineHint {
             return;
         }
         out.push(Decoration::Inline(InlineInsert {
-            byte_offset: self.byte_offset,
+            byte_offset: hume_rope::column::ByteCol::new(self.byte_offset),
             text: self.text.to_string(),
             scope: self.scope,
         }));

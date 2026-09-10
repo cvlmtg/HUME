@@ -10,8 +10,8 @@ impl DecorationSource for DummyHighlight {
     }
     fn decorations_for_line(&self, _: hume_rope::line::ContentLine, out: &mut Vec<Decoration>) {
         out.push(Decoration::Highlight {
-            byte_start: 0,
-            byte_end: 1,
+            byte_start: hume_rope::column::ByteCol::new(0),
+            byte_end: hume_rope::column::ByteCol::new(1),
             scope: ScopeId(0),
             tier: self.tier,
         });

@@ -3,7 +3,7 @@ use highlight::HighlightStack;
 pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
-use hume_rope::column::DisplayLineCol;
+use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::CharOffset;
 
 use crate::providers::Decoration;
@@ -22,7 +22,7 @@ pub struct StyleScratch {
     /// Per-grapheme resolved styles (parallel to the graphemes slice).
     pub styles: Vec<ResolvedStyle>,
     /// Raw spans from the buffer's `SyntaxSpans` source, reused each call.
-    pub syntax_spans: Vec<(usize, usize, ScopeId)>,
+    pub syntax_spans: Vec<(ByteCol, ByteCol, ScopeId)>,
     /// Raw decorations from the `PAINT`-kind `DecorationSource` providers,
     /// reused across providers.
     pub decorations: Vec<Decoration>,
@@ -204,7 +204,7 @@ pub(crate) fn style_display_line(
 
         // Tier 2a–2d: highlights layered in ascending priority.
         // Each theme.resolve(id) is an O(1) Vec index.
-        style = hl.layer_at(g.byte_range.start, style, theme);
+        style = hl.layer_at(ByteCol::new(g.byte_range.start), style, theme);
 
         // Tier 2d½: an unrenderable cluster's stand-in, or an opted-in
         // whitespace glyph. Layered over the syntax highlight so `<202e>`
@@ -365,7 +365,8 @@ fn collect_selection_spans(
         if sel.is_collapsed() {
             continue;
         }
-        let (start, end) = sel.range(); // (CharOffset, CharOffset) absolute char offsets
+        let span = sel.range(); // absolute char offsets
+        let (start, end) = (span.start, span.end);
 
         // Skip if the selection doesn't overlap this line at all.
         if start >= line_end_char || end < line_start_char {

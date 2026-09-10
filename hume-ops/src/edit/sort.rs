@@ -13,7 +13,6 @@ use hume_editing::lines::{char_col_in_line, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::CharOffset;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -281,8 +280,8 @@ fn remap_selections(
                 let head_char_col = char_col_in_line(old_text, start_line, sel.head());
                 let new_line_start = new_text.line_to_char(new_line.into());
                 Selection::new(
-                    CharOffset::new(new_line_start.index() + anchor_char_col.index()),
-                    CharOffset::new(new_line_start.index() + head_char_col.index()),
+                    new_line_start.shift(anchor_char_col.index() as isize),
+                    new_line_start.shift(head_char_col.index() as isize),
                 )
             })
         } else {

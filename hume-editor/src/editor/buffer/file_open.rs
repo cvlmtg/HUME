@@ -496,7 +496,7 @@ impl Editor {
             &self.state.buffers,
             pid,
             bid,
-            cursor_line,
+            hume_rope::line::ContentLine::new(cursor_line),
             hume_rope::column::GraphemeCol::new(0),
         );
 

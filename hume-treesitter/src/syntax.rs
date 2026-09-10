@@ -7,6 +7,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::BufferId;
 use hume_engine::types::ScopeId;
+use hume_rope::column::ByteCol;
 
 use crate::edits::input_edits_from_changeset;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParseRequest};
@@ -18,9 +19,9 @@ use crate::registry::GrammarBundle;
 /// pattern as `TreeSitterHighlighter::cursor`).
 #[derive(Default)]
 pub(crate) struct FlattenScratch {
-    raw: Vec<(usize, usize, u8, ScopeId)>,
+    raw: Vec<(ByteCol, ByteCol, u8, ScopeId)>,
     stack: Vec<(u8, u32, ScopeId)>,
-    events: Vec<(usize, bool, u32, u8, ScopeId)>,
+    events: Vec<(ByteCol, bool, u32, u8, ScopeId)>,
 }
 
 /// Diagnostic info for a broken pending-edit chain: a text mutation bumped
@@ -505,7 +506,7 @@ impl hume_engine::providers::SyntaxSpans for Syntax {
         &self,
         line_idx: hume_rope::line::ContentLine,
         rope: &ropey::Rope,
-        out: &mut Vec<(usize, usize, ScopeId)>,
+        out: &mut Vec<(ByteCol, ByteCol, ScopeId)>,
     ) {
         let Some(layers) = self.layers.as_ref() else {
             return;

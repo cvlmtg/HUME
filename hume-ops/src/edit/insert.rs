@@ -74,7 +74,7 @@ pub fn insert_str(
 /// invariant), so a whitespace-only line is the one case where the scan runs
 /// all the way to that `\n` without finding one.
 fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: CharOffset) -> bool {
-    ws_end > line_start && text.char_at(ws_end.index()) == Some('\n')
+    ws_end > line_start && text.char_at(ws_end) == Some('\n')
 }
 
 /// `Some(range)` — `[line_start, ws_end)` — if `pos` sits on a blank,

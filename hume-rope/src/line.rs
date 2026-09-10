@@ -80,11 +80,6 @@ impl RopeyLine {
         Self(self.0 + n)
     }
 
-    /// `self`, `n` lines toward the start of the buffer, saturating at 0.
-    pub fn up(self, n: usize) -> Self {
-        Self(self.0.saturating_sub(n))
-    }
-
     /// Narrow to the content domain, or `None` if `self` is the phantom
     /// trailing line (or past it).
     pub fn to_content(self, rope: &Rope) -> Option<ContentLine> {

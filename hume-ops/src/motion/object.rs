@@ -5,7 +5,7 @@
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
 //! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
 //! caller whose `finder` is a lexical blank-line scan instead — `apply_object_motion`
-//! only cares that `finder` returns `Option<(CharOffset, CharOffset)>` and
+//! only cares that `finder` returns `Option<InclusiveRange<CharOffset>>` and
 //! honors the strict-progress contract described below, not how the span was
 //! found.
 
@@ -41,7 +41,7 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 /// skip every object between the anchor and the head.
 ///
 /// The result is the *union* of the current selection with the found span —
-/// `current.union_span((start, end), !backward)` — rather than a plain
+/// `current.union_span(span, !backward)` — rather than a plain
 /// replacement of the anchor-opposite edge: `adjacent` only guarantees
 /// `start > origin` (or `<` backward), not that the found span extends past
 /// the current selection's far edge. Searching from `head()` on a Move
@@ -72,7 +72,7 @@ pub fn apply_object_motion(
     mode: MotionMode,
     count: usize,
     backward: bool,
-    finder: impl Fn(CharOffset) -> Option<(CharOffset, CharOffset)>,
+    finder: impl Fn(CharOffset) -> Option<InclusiveRange<CharOffset>>,
 ) -> SelectionSet {
     let result = sels.map(|sel| {
         let mut current = sel;
@@ -82,14 +82,12 @@ pub fn apply_object_motion(
                 MotionMode::Move => current.end(),
                 MotionMode::Extend => current.head(),
             };
-            let Some((start, end)) = finder(origin) else {
+            let Some(span) = finder(origin) else {
                 break;
             };
             current = match mode {
-                MotionMode::Move => Selection::new(end, start),
-                MotionMode::Extend => {
-                    current.union_span(InclusiveRange::new(start, end), !backward)
-                }
+                MotionMode::Move => Selection::new(span.end, span.start),
+                MotionMode::Extend => current.union_span(span, !backward),
             };
         }
         current

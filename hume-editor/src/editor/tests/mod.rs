@@ -73,6 +73,11 @@ pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
     hume_rope::offset::CharOffset::new(n)
 }
 
+/// See [`co`] — the same convenience, for a line-relative byte offset.
+pub(crate) fn bc(n: usize) -> hume_rope::column::ByteCol {
+    hume_rope::column::ByteCol::new(n)
+}
+
 /// `editor_from`'s sibling for `ui::statusline::tests`, which needs a
 /// language-tagged buffer but has no reason to reach `Buffer::language` or
 /// `Editor::doc_mut`'s unrestricted `&mut Buffer` directly — those stay
@@ -314,7 +319,12 @@ fn pane_highlights(
     ed: &Editor,
     pid: PaneId,
     tier: impl Fn(&PaneHighlights) -> &ScopedHighlightRanges,
-) -> Vec<(hume_rope::line::ContentLine, usize, usize, ScopeId)> {
+) -> Vec<(
+    hume_rope::line::ContentLine,
+    hume_rope::column::ByteCol,
+    hume_rope::column::ByteCol,
+    ScopeId,
+)> {
     tier(&ed.state.panes.render[pid].highlights)
         .read()
         .unwrap()

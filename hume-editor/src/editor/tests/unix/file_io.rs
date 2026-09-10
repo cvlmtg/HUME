@@ -508,7 +508,7 @@ fn apply_startup_positions_places_focused_cursor() {
     ed.queue_startup_position(
         bid,
         CliPosition {
-            line: 2,
+            line: hume_rope::line::ContentLine::from_number(2).unwrap(),
             grapheme_col: GraphemeCol::from_number(6).unwrap(),
         },
     );
@@ -539,7 +539,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     ed.queue_startup_position(
         bid,
         CliPosition {
-            line: 150,
+            line: hume_rope::line::ContentLine::from_number(150).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );
@@ -578,7 +578,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     ed.queue_startup_position(
         extra_bid,
         CliPosition {
-            line: 3,
+            line: hume_rope::line::ContentLine::from_number(3).unwrap(),
             grapheme_col: GraphemeCol::from_number(2).unwrap(),
         },
     );
@@ -619,7 +619,7 @@ fn apply_startup_positions_clamps_a_line_past_the_end() {
     ed.queue_startup_position(
         bid,
         CliPosition {
-            line: 999,
+            line: hume_rope::line::ContentLine::from_number(999).unwrap(),
             grapheme_col: GraphemeCol::from_number(1).unwrap(),
         },
     );

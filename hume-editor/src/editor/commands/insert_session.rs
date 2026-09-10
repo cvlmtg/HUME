@@ -258,7 +258,7 @@ fn typed_span(
         if prev < anchor {
             return None;
         }
-        if text.char_at(prev.index()) != Some('\n') {
+        if text.char_at(prev) != Some('\n') {
             return Some(InclusiveRange::new(anchor, prev));
         }
         cursor = prev;

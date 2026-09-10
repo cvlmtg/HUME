@@ -4,7 +4,6 @@ use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
 
 use super::apply_edit;
 use crate::register;
@@ -117,7 +116,7 @@ fn paste_impl(
             let last_line = text.char_to_line(end_incl);
             let newline_pos = line_break_char(text, last_line);
             let del_end = if sel.end_exclusive(text) == newline_pos {
-                CharOffset::new(newline_pos.index() + 1)
+                newline_pos.shift(1)
             } else {
                 sel.end_exclusive(text)
             };

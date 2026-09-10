@@ -26,7 +26,7 @@ pub fn inner_word_impl(
     is_boundary: impl Fn(CharClass, CharClass) -> bool,
     chars: WordChars<'_>,
 ) -> Option<InclusiveRange<CharOffset>> {
-    let class = chars.classify(text.char_at(pos.index())?);
+    let class = chars.classify(text.char_at(pos)?);
 
     // Scan left: walk back by grapheme cluster boundaries while the preceding
     // grapheme belongs to the same class. Using prev_grapheme_boundary ensures
@@ -35,7 +35,7 @@ pub fn inner_word_impl(
     let mut start = pos;
     while start > CharOffset::new(0) {
         let prev_pos = prev_grapheme_boundary(text, start);
-        let prev = chars.classify(text.char_at(prev_pos.index())?);
+        let prev = chars.classify(text.char_at(prev_pos)?);
         if is_boundary(prev, class) {
             break;
         }
@@ -52,7 +52,7 @@ pub fn inner_word_impl(
         if next_pos >= text.end() {
             break;
         }
-        let next = chars.classify(text.char_at(next_pos.index())?);
+        let next = chars.classify(text.char_at(next_pos)?);
         if is_boundary(class, next) {
             break;
         }
@@ -95,7 +95,7 @@ pub fn expand_word_unit(
 ) -> InclusiveRange<CharOffset> {
     let min_start_is_bol = min_start == CharOffset::new(0)
         || blank_class(
-            text.char_at(prev_grapheme_boundary(text, min_start).index())
+            text.char_at(prev_grapheme_boundary(text, min_start))
                 .expect("min_start > 0 implies a preceding char"),
         ) == Some(CharClass::Eol);
 
@@ -105,7 +105,7 @@ pub fn expand_word_unit(
     let mut hit_eol = false;
     while run_start > min_start {
         let prev_pos = prev_grapheme_boundary(text, run_start);
-        match blank_class(text.char_at(prev_pos.index()).expect("prev_pos < len")) {
+        match blank_class(text.char_at(prev_pos).expect("prev_pos < len")) {
             Some(CharClass::Space) => run_start = prev_pos,
             Some(CharClass::Eol) => {
                 hit_eol = true;
@@ -128,9 +128,7 @@ pub fn expand_word_unit(
         if next_pos >= text.end() {
             break;
         }
-        if blank_class(text.char_at(next_pos.index()).expect("next_pos < len"))
-            != Some(CharClass::Space)
-        {
+        if blank_class(text.char_at(next_pos).expect("next_pos < len")) != Some(CharClass::Space) {
             break;
         }
         run_end_start = next_pos;
@@ -171,7 +169,7 @@ pub fn word_unit_at(
     // doc for why this snap to the cluster start matters before classifying.
     let pos = snap_to_cluster_start(text, pos);
     let range = inner_word_impl(text, pos, is_boundary, chars)?;
-    let class = chars.classify(text.char_at(pos.index())?);
+    let class = chars.classify(text.char_at(pos)?);
     if class != CharClass::Space && class != CharClass::Eol {
         return Some(expand_word_unit(text, range.start, range.end, min_start));
     }
@@ -181,18 +179,17 @@ pub fn word_unit_at(
     // the normal rule instead.
     let is_word = |c: CharClass| c != CharClass::Space && c != CharClass::Eol;
     let next_pos = next_grapheme_boundary(text, range.end);
-    let word_pos =
-        if next_pos < text.end() && is_word(chars.classify(text.char_at(next_pos.index())?)) {
-            next_pos
-        } else if range.start > CharOffset::new(0) {
-            let prev_pos = prev_grapheme_boundary(text, range.start);
-            if !is_word(chars.classify(text.char_at(prev_pos.index())?)) {
-                return None;
-            }
-            prev_pos
-        } else {
+    let word_pos = if next_pos < text.end() && is_word(chars.classify(text.char_at(next_pos)?)) {
+        next_pos
+    } else if range.start > CharOffset::new(0) {
+        let prev_pos = prev_grapheme_boundary(text, range.start);
+        if !is_word(chars.classify(text.char_at(prev_pos)?)) {
             return None;
-        };
+        }
+        prev_pos
+    } else {
+        return None;
+    };
     let range = inner_word_impl(text, word_pos, is_boundary, chars)?;
     Some(expand_word_unit(text, range.start, range.end, min_start))
 }
@@ -229,7 +226,7 @@ pub fn nearest_word_on_line(
         }
     };
 
-    let class = chars.classify(text.char_at(head.index())?);
+    let class = chars.classify(text.char_at(head)?);
 
     // Fast path: head is already on a word/punct — delegate to inner/around unit.
     if class != CharClass::Space && class != CharClass::Eol {
@@ -242,7 +239,7 @@ pub fn nearest_word_on_line(
         let mut found = None;
         while pos > line_start {
             pos = prev_grapheme_boundary(text, pos);
-            let c = chars.classify(text.char_at(pos.index())?);
+            let c = chars.classify(text.char_at(pos)?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(pos);
                 break;
@@ -260,7 +257,7 @@ pub fn nearest_word_on_line(
             if next_pos >= line_end_excl {
                 break;
             }
-            let c = chars.classify(text.char_at(next_pos.index())?);
+            let c = chars.classify(text.char_at(next_pos)?);
             if c != CharClass::Space && c != CharClass::Eol {
                 found = Some(next_pos);
                 break;

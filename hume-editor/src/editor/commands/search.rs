@@ -11,7 +11,7 @@ use hume_ops::search::{
     find_next_match, word_search_pattern,
 };
 use hume_ops::text_object::inner_word_impl;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, InclusiveRange};
 
 use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
@@ -162,7 +162,7 @@ fn search_jump(
         )
     };
 
-    let mut last_match: Option<(CharOffset, CharOffset)> = None;
+    let mut last_match: Option<InclusiveRange<CharOffset>> = None;
     let mut any_wrapped = false;
 
     // When the match cache is populated we binary-search it (O(log M) per
@@ -172,14 +172,14 @@ fn search_jump(
         let cached_matches = &state.buffers.get(bid).search_matches.matches;
         for _ in 0..count {
             match find_match_from_cache(cached_matches, from_char, direction) {
-                Some((start, end_incl, wrapped)) => {
+                Some((span, wrapped)) => {
                     any_wrapped |= wrapped;
-                    last_match = Some((start, end_incl));
+                    last_match = Some(span);
                     from_char = match direction {
                         SearchDirection::Forward => {
-                            next_grapheme_boundary(doc(state, view).text(), end_incl)
+                            next_grapheme_boundary(doc(state, view).text(), span.end)
                         }
-                        SearchDirection::Backward => start,
+                        SearchDirection::Backward => span.start,
                     };
                 }
                 None => {
@@ -191,14 +191,14 @@ fn search_jump(
     } else {
         for _ in 0..count {
             match find_next_match(doc(state, view).text(), &regex, from_char, direction) {
-                Some((start, end_incl, wrapped)) => {
+                Some((span, wrapped)) => {
                     any_wrapped |= wrapped;
-                    last_match = Some((start, end_incl));
+                    last_match = Some(span);
                     from_char = match direction {
                         SearchDirection::Forward => {
-                            next_grapheme_boundary(doc(state, view).text(), end_incl)
+                            next_grapheme_boundary(doc(state, view).text(), span.end)
                         }
-                        SearchDirection::Backward => start,
+                        SearchDirection::Backward => span.start,
                     };
                 }
                 None => {
@@ -210,10 +210,10 @@ fn search_jump(
     }
 
     match last_match {
-        Some((start, end_incl)) => {
+        Some(span) => {
             let pid = state.focused_pane_id;
             state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
-            let new_sel = search_sel(start, end_incl, anchor, direction);
+            let new_sel = search_sel(span.start, span.end, anchor, direction);
             set_primary_selection(state, view, new_sel);
             Ok(())
         }
@@ -274,7 +274,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
 
     let sels: Vec<Selection> = matches
         .into_iter()
-        .map(|(s, e)| Selection::new(s, e))
+        .map(|span| Selection::new(span.start, span.end))
         .collect();
     set_current_selections(state, view, SelectionSet::from_vec(sels, 0));
     Ok(())
@@ -327,7 +327,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     // newline regex; on whitespace, it would expand to the whitespace run itself
     // and set a bare-space pattern (Vim instead scans to the nearest word — HUME
     // deliberately no-ops rather than adding that scan).
-    match chars.classify(text.char_at(primary.head().index()).unwrap_or('\n')) {
+    match chars.classify(text.char_at(primary.head()).unwrap_or('\n')) {
         CharClass::Eol | CharClass::Space => return Ok(()),
         _ => {}
     }

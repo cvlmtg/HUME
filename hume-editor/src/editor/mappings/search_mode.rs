@@ -156,7 +156,7 @@ impl Editor {
         };
 
         match find_next_match(self.doc().text(), &regex, from_char, direction) {
-            Some((start, end_incl, _wrapped)) => {
+            Some((span, _wrapped)) => {
                 let anchor = if self.state.panes.transient[pid].search_extend {
                     // Extend from the original anchor.
                     Some(
@@ -164,12 +164,12 @@ impl Editor {
                             .pre_search_sels
                             .as_ref()
                             .map(|s| s.primary().anchor())
-                            .unwrap_or(start),
+                            .unwrap_or(span.start),
                     )
                 } else {
                     None
                 };
-                self.set_primary_selection(search_sel(start, end_incl, anchor, direction));
+                self.set_primary_selection(search_sel(span.start, span.end, anchor, direction));
             }
             None => {
                 // No match — restore position to pre-search.

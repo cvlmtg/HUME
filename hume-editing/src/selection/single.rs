@@ -227,7 +227,7 @@ impl Selection {
     /// A selection produced by `select-line` always ends on the line's trailing
     /// `\n`. Charwise and word selections end on content characters.
     pub fn ends_on_newline(&self, text: &BufferText) -> bool {
-        text.char_at(self.end().index()) == Some('\n')
+        text.char_at(self.end()) == Some('\n')
     }
 
     /// The last char offset to delete from this selection without touching the

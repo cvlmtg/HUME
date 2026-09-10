@@ -34,7 +34,7 @@ pub fn grapheme_col_in_line(
     line_idx: ContentLine,
     char_pos: CharOffset,
 ) -> GraphemeCol {
-    hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx.index(), char_pos)
+    hume_rope::grapheme::grapheme_col_in_line(text.full_slice(), line_idx, char_pos)
 }
 
 /// See [`hume_rope::grapheme::display_col_in_line`].
@@ -44,12 +44,7 @@ pub fn display_col_in_line(
     char_pos: CharOffset,
     tab_width: u8,
 ) -> BufferLineCol {
-    hume_rope::grapheme::display_col_in_line(
-        text.full_slice(),
-        line_idx.index(),
-        char_pos,
-        tab_width,
-    )
+    hume_rope::grapheme::display_col_in_line(text.full_slice(), line_idx, char_pos, tab_width)
 }
 
 /// See [`hume_rope::grapheme::char_pos_at_display_col`].
@@ -61,7 +56,7 @@ pub fn char_pos_at_display_col(
 ) -> CharOffset {
     hume_rope::grapheme::char_pos_at_display_col(
         text.full_slice(),
-        line_idx.index(),
+        line_idx,
         target_display_col,
         tab_width,
     )

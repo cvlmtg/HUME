@@ -170,7 +170,7 @@ fn scope_becomes_the_line_s_base_scope_segments_stay_sparse() {
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].segments,
-        vec![(2, 4, kw)],
+        vec![(bc(2), bc(4), kw)],
         "'segments passes through sparse — the engine, not the editor, fills gaps from base_scope"
     );
     assert_eq!(
@@ -404,7 +404,7 @@ fn segments_touching_both_ends_yield_no_zero_length_filler() {
     assert_eq!(lines.len(), 1);
     assert_eq!(
         lines[0].segments,
-        vec![(0, 3, a), (3, 6, b)],
+        vec![(bc(0), bc(3), a), (bc(3), bc(6), b)],
         "segments already covering the whole text must produce no zero-length filler"
     );
 }

@@ -280,8 +280,14 @@ fn grapheme_col_and_display_col_diverge_after_a_tab() {
     // Rendering the display column as "the column" would report 5 for a
     // cursor the user reached with a single press of →.
     let buf = rope("\tx\n");
-    assert_eq!(grapheme_col_in_line(buf.slice(..), 0, co(1)), gc(1));
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(1), 4), dc(4));
+    assert_eq!(
+        grapheme_col_in_line(buf.slice(..), ContentLine::new(0), co(1)),
+        gc(1)
+    );
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(1), 4),
+        dc(4)
+    );
 }
 
 // ── display_col_in_line ───────────────────────────────────────────────────
@@ -290,9 +296,18 @@ fn grapheme_col_and_display_col_diverge_after_a_tab() {
 fn display_col_no_tabs_matches_grapheme_col() {
     // No tabs → display col == grapheme col.
     let buf = rope("hello\n");
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(0), 4), dc(0));
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(2), 4), dc(2));
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(5), 4), dc(5));
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(0), 4),
+        dc(0)
+    );
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(2), 4),
+        dc(2)
+    );
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(5), 4),
+        dc(5)
+    );
 }
 
 #[test]
@@ -300,33 +315,60 @@ fn display_col_tab_advances_to_next_stop() {
     // "\tx\n": tab at display col 0 → display col 4; 'x' at display col 4 →
     // display col 5.
     let buf = rope("\tx\n");
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(0), 4), dc(0)); // at the tab itself
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(1), 4), dc(4)); // past the tab
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(2), 4), dc(5)); // past 'x'
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(0), 4),
+        dc(0)
+    ); // at the tab itself
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(1), 4),
+        dc(4)
+    ); // past the tab
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(2), 4),
+        dc(5)
+    ); // past 'x'
 }
 
 #[test]
 fn display_col_tab_mid_line_uses_current_display_col() {
     // "ab\tcd\n" with tw=4: 'a'(1) 'b'(2) '\t' → next stop of 2 is 4; then 'c'(5).
     let buf = rope("ab\tcd\n");
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(2), 4), dc(2)); // before the tab
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(3), 4), dc(4)); // past the tab
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(4), 4), dc(5)); // past 'c'
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(2), 4),
+        dc(2)
+    ); // before the tab
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(3), 4),
+        dc(4)
+    ); // past the tab
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(4), 4),
+        dc(5)
+    ); // past 'c'
 }
 
 #[test]
 fn display_col_tab_width_8() {
     // "\t\n" with tw=8: tab → display col 8.
     let buf = rope("\t\n");
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(1), 8), dc(8));
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(1), 8),
+        dc(8)
+    );
 }
 
 #[test]
 fn display_col_at_line_start_is_zero() {
     let buf = rope("ab\ncd\n");
     // char 3 is the start of line 1.
-    assert_eq!(display_col_in_line(buf.slice(..), 1, co(3), 4), dc(0));
-    assert_eq!(display_col_in_line(buf.slice(..), 1, co(4), 4), dc(1));
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(1), co(3), 4),
+        dc(0)
+    );
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(1), co(4), 4),
+        dc(1)
+    );
 }
 
 #[test]
@@ -337,9 +379,18 @@ fn display_col_wide_cjk_before_tab_shifts_the_stop() {
     // display-column-counting) walk would have put the tab's stop at
     // display col 3 instead — the bug this module fixes.
     let buf = rope("\u{6F22}\tx\n");
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(1), 4), dc(2)); // past 漢
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(2), 4), dc(4)); // past the tab
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(3), 4), dc(5)); // past 'x'
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(1), 4),
+        dc(2)
+    ); // past 漢
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(2), 4),
+        dc(4)
+    ); // past the tab
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(3), 4),
+        dc(5)
+    ); // past 'x'
 }
 
 #[test]
@@ -349,9 +400,18 @@ fn display_col_decomposed_e_acute_before_tab_counts_as_one_display_column() {
     // after it behaves exactly as it would after a plain 'e'.
     let buf = rope("e\u{0301}\tx\n");
     assert_eq!(buf.len_chars(), 5); // e, U+0301, \t, x, \n
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(2), 4), dc(1)); // past the é cluster
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(3), 4), dc(4)); // past the tab
-    assert_eq!(display_col_in_line(buf.slice(..), 0, co(4), 4), dc(5)); // past 'x'
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(2), 4),
+        dc(1)
+    ); // past the é cluster
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(3), 4),
+        dc(4)
+    ); // past the tab
+    assert_eq!(
+        display_col_in_line(buf.slice(..), ContentLine::new(0), co(4), 4),
+        dc(5)
+    ); // past 'x'
 }
 
 // ── char_pos_at_display_col ───────────────────────────────────────────────
@@ -359,7 +419,10 @@ fn display_col_decomposed_e_acute_before_tab_counts_as_one_display_column() {
 #[test]
 fn char_pos_at_display_col_zero_is_line_start() {
     let buf = rope("\tfoo\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(0), 4), co(0));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4),
+        co(0)
+    );
 }
 
 #[test]
@@ -367,7 +430,10 @@ fn char_pos_at_tab_stop_after_tab() {
     // "\tx\n": tab takes display col 0→4. char at display col 4 is past the
     // tab (char 1).
     let buf = rope("\tx\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(4), 4), co(1));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        co(1)
+    );
 }
 
 #[test]
@@ -379,16 +445,28 @@ fn char_pos_at_display_col_inside_a_wide_cluster_stays_on_its_start() {
     // where the caller pointed. Every other test here targets a cluster
     // start, where the overshoot branch never fires.
     let buf = rope("\u{6F22}bc\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(0), 4), co(0));
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(1), 4), co(0));
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(2), 4), co(1)); // 'b'
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(0), 4),
+        co(0)
+    );
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(1), 4),
+        co(0)
+    );
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        co(1)
+    ); // 'b'
 }
 
 #[test]
 fn char_pos_at_display_col_two_in_spaces() {
     // "    \n": 4 spaces. char at display col 2 is char 2 (third space).
     let buf = rope("    \n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(2), 4), co(2));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        co(2)
+    );
 }
 
 #[test]
@@ -396,9 +474,15 @@ fn char_pos_at_display_col_eight_two_tabs() {
     // "\t\t\n": tab→col4, tab→col8. char at display col 8 is past second tab
     // (char 2).
     let buf = rope("\t\t\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(8), 4), co(2));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(8), 4),
+        co(2)
+    );
     // Mid stop: display col 4 is past first tab (char 1).
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(4), 4), co(1));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        co(1)
+    );
 }
 
 #[test]
@@ -406,8 +490,14 @@ fn char_pos_mixed_spaces_and_tab() {
     // "  \t\n": 2 spaces (display col 0,1) + tab (display col 2→4). char at
     // display col 4 is char 3.
     let buf = rope("  \t\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(4), 4), co(3));
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(2), 4), co(2));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        co(3)
+    );
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        co(2)
+    );
 }
 
 #[test]
@@ -415,7 +505,10 @@ fn char_pos_overshoot_stops_short() {
     // "\t\n" with tw=4, target display col 2: the tab would jump display col
     // 0→4, overshooting 2. Walk stops at line_start (display col 0).
     let buf = rope("\t\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(2), 4), co(0));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(2), 4),
+        co(0)
+    );
 }
 
 #[test]
@@ -423,7 +516,10 @@ fn char_pos_at_display_col_after_wide_cjk_and_tab() {
     // "\u{6F22}\tx\n" with tw=4: 漢 spans display col 0→2, tab spans display
     // col 2→4 — the char at display col 4 is 'x' (char index 2).
     let buf = rope("\u{6F22}\tx\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(4), 4), co(2));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        co(2)
+    );
 }
 
 #[test]
@@ -431,7 +527,13 @@ fn char_pos_target_beyond_line_width_stops_at_newline() {
     // "ab\ncd\n" — line 0 is 2 display columns wide. A target past that must
     // stop on line 0's '\n' (char 2), never walk onto line 1.
     let buf = rope("ab\ncd\n");
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 0, dc(4), 4), co(2));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(0), dc(4), 4),
+        co(2)
+    );
     // Same guard on the last content line: stops at its structural '\n'.
-    assert_eq!(char_pos_at_display_col(buf.slice(..), 1, dc(99), 4), co(5));
+    assert_eq!(
+        char_pos_at_display_col(buf.slice(..), ContentLine::new(1), dc(99), 4),
+        co(5)
+    );
 }

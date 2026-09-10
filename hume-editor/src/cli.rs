@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use hume_rope::column::GraphemeCol;
+use hume_rope::line::ContentLine;
 
 /// Error text for a `0` in either position of a `:goto` target or a CLI
 /// `path:line[:col]` position — both contracts are 1-based. Lives here
@@ -22,14 +23,15 @@ pub(crate) const LINE_NUMBERS_START_AT_1: &str = "line numbers start at 1";
 const GRAPHEME_COL_NUMBERS_START_AT_1: &str = "column numbers start at 1";
 
 /// A startup cursor position, in the units the statusline shows: `line`
-/// counts buffer lines (1-based, as typed), `grapheme_col` counts grapheme
-/// clusters within that line (see `hume_editing::lines::place_grapheme_column`)
-/// — not chars, so it agrees with what the user read off a `file:line:col`
-/// diagnostic or the statusline itself. `0`-based: decoded from the 1-based
-/// CLI digits via `GraphemeCol::from_number` at parse time below.
+/// counts buffer lines, `grapheme_col` counts grapheme clusters within that
+/// line (see `hume_editing::lines::place_grapheme_column`) — not chars, so
+/// it agrees with what the user read off a `file:line:col` diagnostic or the
+/// statusline itself. Both are 0-based: decoded from the 1-based CLI digits
+/// via `ContentLine::from_number`/`GraphemeCol::from_number` at parse time
+/// below.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliPosition {
-    pub line: usize,
+    pub line: ContentLine,
     pub grapheme_col: GraphemeCol,
 }
 
@@ -98,9 +100,9 @@ pub fn parse_file_arg(raw: &Path) -> Result<FileArg, String> {
         Some((rest2, prev)) => (rest2, prev, last),
         None => (rest, last, 1),
     };
-    if line == 0 {
+    let Some(line) = ContentLine::from_number(line) else {
         return Err(format!("{}: {LINE_NUMBERS_START_AT_1}", raw.display()));
-    }
+    };
     let Some(grapheme_col) = GraphemeCol::from_number(grapheme_col) else {
         return Err(format!(
             "{}: {GRAPHEME_COL_NUMBERS_START_AT_1}",

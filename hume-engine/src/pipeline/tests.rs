@@ -11,6 +11,7 @@ use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
 };
 use crate::types::{DisplayLineKind, ResolvedStyle};
+use hume_rope::column::ByteCol;
 use hume_rope::line::{ContentLine, RopeyLine};
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
@@ -95,7 +96,7 @@ impl DecorationSource for ScopedVirtualLine {
                 text: "H~".to_string(),
                 // "H" (byte 0..1) carries the scope; "~" (byte 1..2) carries
                 // none and must fall back to `ui.virtual_text`.
-                segments: vec![(0, 1, self.scope)],
+                segments: vec![(ByteCol::new(0), ByteCol::new(1), self.scope)],
                 base_scope: None,
             }));
         }
@@ -167,10 +168,10 @@ impl DecorationSource for UnsortedScopedVirtualLine {
                 provider_id: 0,
                 text: "ABCD".to_string(),
                 segments: vec![
-                    (3, 4, self.scopes[3]),
-                    (2, 3, self.scopes[2]),
-                    (1, 2, self.scopes[1]),
-                    (0, 1, self.scopes[0]),
+                    (ByteCol::new(3), ByteCol::new(4), self.scopes[3]),
+                    (ByteCol::new(2), ByteCol::new(3), self.scopes[2]),
+                    (ByteCol::new(1), ByteCol::new(2), self.scopes[1]),
+                    (ByteCol::new(0), ByteCol::new(1), self.scopes[0]),
                 ],
                 base_scope: None,
             }));
@@ -304,7 +305,11 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
         "a",
         "offset 1 skips V only, wrap display line 0 shows"
     );
-    assert_eq!(cell_symbol(&offset1, 0, 1), "b", "wrap display line 1 follows");
+    assert_eq!(
+        cell_symbol(&offset1, 0, 1),
+        "b",
+        "wrap display line 1 follows"
+    );
 
     let offset2 =
         render_wrapped_pane_with_virtual_line(2, VirtualLineAnchor::Before(ContentLine::new(0)));

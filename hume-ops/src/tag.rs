@@ -47,7 +47,7 @@ fn same_name(
 
 /// True if `<!--` starts at `lt_pos`.
 fn is_comment_start(text: &BufferText, lt_pos: CharOffset) -> bool {
-    let mut cursor = text.chars_at(lt_pos.index());
+    let mut cursor = text.chars_at(lt_pos);
     "<!--"
         .chars()
         .all(|expected| cursor.next().is_some_and(|(_, ch)| ch == expected))
@@ -185,7 +185,7 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
         // Failed to parse a tag at `lt_pos` — resume right after it,
         // discarding whatever the comment check or `parse_tag` looked ahead
         // at, which could itself be the next tag's own `<` (as in `a<b\n<div>`).
-        *cursor = text.chars_at(lt_pos + 1);
+        *cursor = text.chars_at(CharOffset::new(lt_pos + 1));
     }
 }
 
@@ -207,7 +207,7 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
 /// This keeps the common case — `#` pressed somewhere that isn't inside any
 /// tag — to a short local walk instead of a whole-buffer parse.
 fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
-    let mut cursor = text.chars_at(pos.index() + 1);
+    let mut cursor = text.chars_at(pos.shift(1));
     while let Some((i, ch)) = cursor.prev() {
         if ch != '<' {
             continue;
@@ -232,7 +232,7 @@ fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
 /// caller — sharing a cursor across calls buys nothing there, unlike
 /// [`next_tag`]'s forward multi-tag scans.
 fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
-    let mut cursor = text.chars_at(lt_pos.shift(1).index());
+    let mut cursor = text.chars_at(lt_pos.shift(1));
     let first = cursor.next()?;
     parse_tag(&mut cursor, lt_pos, first)
 }
@@ -243,7 +243,7 @@ fn parse_tag_at(text: &BufferText, lt_pos: CharOffset) -> Option<Tag> {
 /// `open` must be a non-closing, non-self-closing tag.
 fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
     let mut depth = 0usize;
-    let mut cursor = text.chars_at(open.gt_pos.shift(1).index());
+    let mut cursor = text.chars_at(open.gt_pos.shift(1));
     while let Some(tag) = next_tag(text, &mut cursor) {
         if tag.self_closing || !same_name(text, tag.name, open.name) {
             continue;
@@ -279,7 +279,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
 /// limitation of the lexical scanner rather than fixed, since a
 /// tree-sitter-backed matcher is expected to supersede this path.
 fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
-    let mut cursor = text.chars_at(before.index());
+    let mut cursor = text.chars_at(before);
     while let Some((i, ch)) = cursor.prev() {
         let lt_pos = CharOffset::new(i);
         if ch == '<'

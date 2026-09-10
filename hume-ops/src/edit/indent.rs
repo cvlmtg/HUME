@@ -113,7 +113,7 @@ fn shift_indent(
         // off the end without finding a non-whitespace char. Skipped
         // untouched — matches Vim's `>>`, so a blank separator line never
         // collects trailing whitespace.
-        if text.char_at(ws_end.index()) == Some('\n') {
+        if text.char_at(ws_end) == Some('\n') {
             continue;
         }
         let new_width = old_width.saturating_add_signed(delta_display_col);
