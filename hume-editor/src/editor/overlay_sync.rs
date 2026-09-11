@@ -45,7 +45,7 @@ impl Editor {
     /// LSP completion menu, which anchors at the session's token-start
     /// char instead, via a separately-computed `anchor_char`).
     fn focused_cursor_char(&self) -> hume_rope::offset::CharOffset {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         self.state.panes.state[pid][self.focused_buffer_id()]
             .selections
             .primary()
@@ -63,7 +63,7 @@ impl Editor {
         ctx: &mut RenderContext,
         anchor_char: hume_rope::offset::CharOffset,
     ) -> Option<hume_ui::popup::PopupPlacement> {
-        let focused = self.state.focused_pane_id;
+        let focused = self.state.focus.id();
         let pane_rect = self.view.pane_rect(focused)?;
         let gutter_w = self.pane_gutter_width(focused);
         let content_width = pane_rect.width.saturating_sub(gutter_w);

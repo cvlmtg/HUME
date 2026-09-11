@@ -111,7 +111,7 @@ fn zz_in_wrap_mode_walks_display_lines() {
         + 8);
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
     });
@@ -144,7 +144,7 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
         + 9);
     let sels = SelectionSet::single(Selection::collapsed(head));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 4 }),
         saved: None,
     });

@@ -55,7 +55,7 @@ impl Editor {
                     return;
                 }
                 self.state.status_msg.take();
-                let focused = self.state.focused_pane_id;
+                let focused = self.state.focus.id();
                 let buf = self.focused_buffer_id();
                 doc_ops::apply_doc_edit(
                     &mut self.state.buffers,
@@ -93,7 +93,7 @@ impl Editor {
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
     pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
-        let focused = self.state.focused_pane_id;
+        let focused = self.state.focus.id();
         let buf = self.focused_buffer_id();
         doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,

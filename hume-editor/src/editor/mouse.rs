@@ -97,7 +97,7 @@ impl Editor {
         // first would resolve against a buffer length the exit is about to
         // invalidate: the offset could land past the new end, or simply on
         // the wrong char once positions shift.
-        super::commands::focus_pane(&mut self.state, &self.view, pid);
+        super::focus::focus_pane(&mut self.state, &self.view, pid);
 
         if let Some(char_off) = self.click_to_char(pid, pane_x, pane_y) {
             // Collapse the primary selection to the clicked position.
@@ -136,7 +136,7 @@ impl Editor {
         // that pane's own rect, so a drag that leaves it (as a fast mouse
         // move easily can) is ignored rather than resolving against the
         // wrong pane.
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let Some((pane_x, pane_y)) = self
             .view
             .pane_rect(pid)
@@ -156,11 +156,11 @@ impl Editor {
     fn mouse_scroll(&mut self, down: bool) {
         let scroll_lines = self.state.settings.mouse_scroll_lines;
         let vp_before = {
-            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focus.id()].viewport;
             (vp.top_line, vp.top_slot)
         };
         {
-            let pid = self.state.focused_pane_id;
+            let pid = self.state.focus.id();
             let buf_id = self.focused_buffer_id();
             let key = self.state.format_key(&self.view.panes[pid]);
             let (mut dlm, viewport) = pane_display_lines(
@@ -175,7 +175,7 @@ impl Editor {
             }
         }
         let vp_after = {
-            let vp = &self.view.panes[self.state.focused_pane_id].viewport;
+            let vp = &self.view.panes[self.state.focus.id()].viewport;
             (vp.top_line, vp.top_slot)
         };
         // Only move cursors if the viewport actually moved (file may already be

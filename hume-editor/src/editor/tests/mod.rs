@@ -49,7 +49,7 @@ fn editor_from_kitty(input: &str) -> Editor {
 /// `hume-engine/src/pane.rs`). Shared by every test that reasons about
 /// buffer-line columns or viewport rows rather than display-line wrapping.
 fn pin_no_wrap(ed: &mut Editor) {
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::None),
         saved: None,
     });
@@ -544,7 +544,7 @@ impl Editor {
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
-                focused_pane_id: pane_id,
+                focus: super::focus::Focus::new(pane_id),
                 tabs: super::tab::TabStore::new(pane_id).0,
                 tabline_view,
                 cwd: std::env::temp_dir(),
@@ -594,7 +594,7 @@ impl Editor {
             "focus-switch must only happen in Normal mode, got {:?}",
             self.state.mode(),
         );
-        self.state.focused_pane_id = target;
+        self.state.focus.set_for_test(target);
         if !self.state.panes.transient.contains_key(target) {
             self.state
                 .panes
@@ -1048,7 +1048,7 @@ pub(super) struct BookkeepingSnapshot {
 /// Call once before dispatch and once after; `assert_eq!` the two snapshots on
 /// a path-parity test or diff them for targeted assertions.
 pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
-    let pane_id = ed.state.focused_pane_id;
+    let pane_id = ed.state.focus.id();
     // Shared by every "does any (pane, buffer) pair satisfy this predicate"
     // field below, so a future one doesn't add a third copy of the walk.
     let any_pbs = |pred: fn(&crate::editor::pane_state::PaneBufferState) -> bool| {

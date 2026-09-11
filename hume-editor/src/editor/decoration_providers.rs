@@ -164,14 +164,8 @@ impl Editor {
                 r.set_bracket(None);
             }
         }
-        if !in_insert
-            && self
-                .state
-                .panes
-                .render
-                .contains_key(self.state.focused_pane_id)
-        {
-            let focused = self.state.focused_pane_id;
+        if !in_insert && self.state.panes.render.contains_key(self.state.focus.id()) {
+            let focused = self.state.focus.id();
             let text = self.doc().text();
             let primary = self.state.panes.state[focused][self.focused_buffer_id()]
                 .selections

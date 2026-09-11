@@ -5,7 +5,7 @@
 //!
 //! This module holds the one chokepoint every tab *switch* goes through,
 //! [`switch_to_tab`], plus [`take_live`]/[`install_live`] — the shared
-//! exchange between `view.layout`/`state.focused_pane_id` (the live tab) and
+//! exchange between `view.layout`/`state.focus` (the live tab) and
 //! a `TabStore` call's own layout/focus pair. Opening/closing a tab also has
 //! to create or tear down panes (`commands::pane::open_pane_as_new_tab`/
 //! `drop_pane_state`), which is a `commands`-layer concern — see
@@ -28,7 +28,7 @@ use crate::editor::EditorState;
 /// that replaces the whole live tab.
 ///
 /// Ends the outgoing pane's open Insert session first, before reading:
-/// `view.layout()` names the outgoing tab and `state.focused_pane_id` names
+/// `view.layout()` names the outgoing tab and `state.focus.id()` names
 /// its focused pane together, right up to this point — the last moment
 /// either is true until `install_live` runs. `end_insert_session_if_active`'s
 /// own edit can shrink the outgoing pane's buffer (the blank-line indent
@@ -40,18 +40,18 @@ pub(in crate::editor) fn take_live(
     view: &EngineView,
 ) -> (LayoutTree, PaneId) {
     super::commands::end_insert_session_if_active(state, view);
-    (view.layout().clone(), state.focused_pane_id)
+    (view.layout().clone(), state.focus.id())
 }
 
 /// Install `layout`/`focus` as the live tab. Shared second half of every op
-/// that replaces `view.layout()`/`state.focused_pane_id` together — the pair
-/// that jointly define which tab is on screen. The focus half goes through
-/// `commands::focus_pane` rather than a bare assignment: its Insert-session
+/// that replaces `view.layout`/`state.focus` together — the pair that
+/// jointly define which tab is on screen. The focus half goes through
+/// `focus::focus_pane` rather than a bare assignment: its Insert-session
 /// teardown is already done by `take_live` above by the time this runs (a
 /// no-op here as a result), but its paste-session commit isn't — that one
 /// resolves the outgoing pane/buffer by id rather than through the layout
 /// tree, so it has no matching earlier call and still needs to run here,
-/// before `focused_pane_id` moves to `focus`.
+/// before focus moves to `focus`.
 ///
 /// `replace_layout`'s return (the tree being displaced) is discarded: it
 /// names the exact same pool entries `take_live` already read moments
@@ -65,7 +65,7 @@ pub(in crate::editor) fn install_live(
     focus: PaneId,
 ) {
     let _ = view.replace_layout(layout);
-    super::commands::focus_pane(state, view, focus);
+    super::focus::focus_pane(state, view, focus);
 }
 
 /// Switch the active tab to `target`, snapshotting the outgoing tab's live

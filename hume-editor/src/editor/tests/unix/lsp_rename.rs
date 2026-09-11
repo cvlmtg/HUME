@@ -59,7 +59,7 @@ fn setup(
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     // Land the cursor inside "helper" (line 1, col 4) so
     // symbol-under-cursor has something real to extract.
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes

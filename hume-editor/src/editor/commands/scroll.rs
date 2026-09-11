@@ -67,7 +67,7 @@ fn cmd_view_scroll_to_display_line(
     target_display_line: usize,
 ) {
     let cursor_char = current_selections(state, view).primary().head();
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let buf_id = focused_buffer_id(state, view);
     let key = state.format_key(&view.panes[pid]);
     let (mut dlm, viewport) =

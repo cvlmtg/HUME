@@ -17,7 +17,7 @@ impl Editor {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_sift(),
             MiniBufferEvent::Confirm(_) => {
                 // Keep the selections that live preview already set.
-                let pid = self.state.focused_pane_id;
+                let pid = self.state.focus.id();
                 self.state.panes.transient[pid].pre_sift_sels = None;
                 // Do NOT write to the search register or clear search state —
                 // sift-within is a selection op, not a search. The previous
@@ -42,7 +42,7 @@ impl Editor {
 
     /// Cancel sift mode: restore original selections, return to Normal.
     fn cancel_sift(&mut self) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.take() {
             self.set_current_selections(sels);
         }
@@ -68,7 +68,7 @@ impl Editor {
 
         // Compute matches in a limited scope so the borrow on
         // pre_sift_sels is released before we need to restore.
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let result = self.state.panes.transient[pid]
             .pre_sift_sels
             .as_ref()
@@ -84,7 +84,7 @@ impl Editor {
 
     /// Restore selections from the sift-mode snapshot without consuming it.
     fn restore_sift_snapshot(&mut self) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
         if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.as_ref() {

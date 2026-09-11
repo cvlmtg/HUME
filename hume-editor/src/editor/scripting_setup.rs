@@ -360,10 +360,11 @@ impl Editor {
     }
 
     /// Observation point for `focused_buffer_id()` — a derived join of
-    /// `focused_pane_id` (5 write sites) and `pane.buffer_id` (1 write
-    /// site), so it has no write-site chokepoint to hang a raise on: a raise
-    /// wired into just one of those six sites would miss a switch caused
-    /// through any of the other five. Diffed against
+    /// `state.focus` and `pane.buffer_id`, each written by its own
+    /// chokepoint (`focus_pane`, `switch_pane_to_buffer`), so it has no
+    /// single write-site chokepoint to hang a raise on: a raise wired into
+    /// just one of those two would miss a switch caused through the other.
+    /// Diffed against
     /// `EditorState::last_entered_buffer` every pass of `settle`'s loop
     /// rather than once before it, so a pane-focus move and a buffer switch
     /// in the same pass coalesce into one event, and a handler that itself
@@ -488,7 +489,7 @@ impl Editor {
         // Built only once a handler is confirmed registered — an event
         // nobody subscribes to never allocates a `SteelVal`.
         let args = event.steel_args();
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let bid = self.focused_buffer_id();
         let result = {
             let host_scr = self.scripting.as_mut().expect("checked above");
@@ -515,7 +516,7 @@ impl Editor {
     /// `run_steel_calls`' existing "one session, first error aborts the
     /// rest" semantics for calls that were queued back-to-back.
     fn run_call_batch(&mut self, calls: Vec<(SteelVal, Vec<SteelVal>)>) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let bid = self.focused_buffer_id();
         let Some(host_scr) = self.scripting.as_mut() else {
             return;

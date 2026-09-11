@@ -69,7 +69,7 @@ impl Editor {
         let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
-        let is_focused = pid == self.state.focused_pane_id;
+        let is_focused = pid == self.state.focus.id();
         let mode = if is_focused {
             self.state.mode()
         } else {
@@ -111,7 +111,7 @@ impl Editor {
                 .iter()
                 .map(|&pid| (pid, self.resolve_pane_settings(pid))),
         );
-        let focused_pane_id = self.state.focused_pane_id;
+        let focused_pane_id = self.state.focus.id();
         let draw_dividers = self.state.settings.pane_dividers;
         let focused_bid = self.focused_buffer_id();
 
@@ -302,7 +302,7 @@ impl Editor {
             for &id in self.state.tabs.order() {
                 id.hash(&mut hasher);
                 let pid = if id == current {
-                    self.state.focused_pane_id
+                    self.state.focus.id()
                 } else {
                     self.state.tabs.stashed_focus(id)
                 };
@@ -365,7 +365,7 @@ impl Editor {
             .iter()
             .map(|&id| {
                 let pid = if id == current {
-                    self.state.focused_pane_id
+                    self.state.focus.id()
                 } else {
                     self.state.tabs.stashed_focus(id)
                 };
@@ -589,7 +589,7 @@ impl Editor {
                 format_key,
                 scrolloff,
             );
-            if pid == self.state.focused_pane_id {
+            if pid == self.state.focus.id() {
                 ctx.cursor_content_pos = cursor_screen;
             }
 
@@ -672,7 +672,7 @@ impl Editor {
 
     #[cfg(test)]
     pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::ViewportState {
-        &self.view.panes[self.state.focused_pane_id].viewport
+        &self.view.panes[self.state.focus.id()].viewport
     }
 
     /// How many times `ensure_inline_output_screen` has actually entered the
@@ -687,7 +687,7 @@ impl Editor {
     }
 
     pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {
-        &mut self.view.panes[self.state.focused_pane_id].viewport
+        &mut self.view.panes[self.state.focus.id()].viewport
     }
 }
 

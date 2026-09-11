@@ -69,7 +69,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
 
     let pane_rect = ed
         .view
-        .pane_rect(ed.state.focused_pane_id)
+        .pane_rect(ed.state.focus.id())
         .expect("focused pane has a rect after prepare_frame");
     let view = ed.state.views.completion_menu.read();
     let state = view
@@ -100,7 +100,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
 
     let pane_rect = ed
         .view
-        .pane_rect(ed.state.focused_pane_id)
+        .pane_rect(ed.state.focus.id())
         .expect("focused pane has a rect after prepare_frame");
     let view = ed.state.views.completion_menu.read();
     let state = view
@@ -665,7 +665,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
 #[test]
 fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     // Explicit non-zero width, independent of the terminal size passed to
     // `prepare_frame` below, so the cursor lands several display lines into
     // the wrapped line regardless of pane width.

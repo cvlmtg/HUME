@@ -57,7 +57,7 @@ fn visual_test_editor(head: usize) -> Editor {
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     // Pin to 76-column indent-wrap so the char-offset expectations in the tests
     // are stable regardless of terminal size.
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });
@@ -544,7 +544,7 @@ fn resize_invalidates_a_display_line_latch_measured_at_the_old_wrap_width() {
     let text = BufferText::from("0123456789ABCDE\nFGHIJ\n");
     let sels = SelectionSet::single(Selection::collapsed(co(2))); // '2', display line 0 col 2
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
         saved: None,
@@ -682,7 +682,7 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
     let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(co(40))); // display line 0, display col 40
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });
@@ -815,7 +815,7 @@ fn visual_move_per_selection_sticky_display_col() {
         1, // primary is B
     );
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });
@@ -868,7 +868,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
     );
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     pin_no_wrap(&mut ed);
-    ed.view.panes[ed.state.focused_pane_id]
+    ed.view.panes[ed.state.focus.id()]
         .providers
         .add_decoration_source(Box::new(InlineHint::new(0, 0, "HHH")));
 
@@ -899,11 +899,11 @@ fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     // Wide enough that nothing actually wraps — only `is_wrapping()` matters,
     // to force bare `j` to tag `DisplayLine` instead of `BufferLine`.
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 200 }),
         saved: None,
     });
-    ed.view.panes[ed.state.focused_pane_id]
+    ed.view.panes[ed.state.focus.id()]
         .providers
         .add_decoration_source(Box::new(InlineHint::new(1, 0, "HHH")));
 
@@ -1017,7 +1017,7 @@ fn word_wrap_editor() -> Editor {
     let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });
@@ -1141,7 +1141,7 @@ fn select_word_nearest_does_not_absorb_previous_display_line_whitespace() {
     let text = BufferText::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(co(8))); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
         saved: None,
     });
@@ -1183,7 +1183,7 @@ fn select_word_absorbs_previous_display_line_whitespace_unlike_nearest_on_line()
     let text = BufferText::from("hello wordB\n");
     let sels = SelectionSet::single(Selection::collapsed(co(8))); // 'r' inside "wordB"
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 6 }),
         saved: None,
     });
@@ -1364,7 +1364,7 @@ fn steel_wrapper_explicit_count_moves_buffer_lines() {
     let text = BufferText::from(content.as_str());
     let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    ed.view.panes[ed.state.focused_pane_id].set_wrap(hume_engine::pane::WrapOverride {
+    ed.view.panes[ed.state.focus.id()].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Indent { width: 76 }),
         saved: None,
     });

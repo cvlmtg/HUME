@@ -245,7 +245,7 @@ fn sift_within_enters_sift_mode() {
     ed.handle_key(key('s'));
     assert_eq!(ed.state.mode, Mode::Sift);
     assert!(
-        ed.state.panes.transient[ed.state.focused_pane_id]
+        ed.state.panes.transient[ed.state.focus.id()]
             .pre_sift_sels
             .is_some()
     );
@@ -264,7 +264,7 @@ fn sift_within_confirm_replaces_selections() {
 
     assert_eq!(ed.state.mode, Mode::Normal);
     assert!(
-        ed.state.panes.transient[ed.state.focused_pane_id]
+        ed.state.panes.transient[ed.state.focus.id()]
             .pre_sift_sels
             .is_none()
     );

@@ -82,7 +82,7 @@ pub(in crate::editor) fn run_native_body(
         MotionMode::Move
     };
     let buf = focused_buffer_id(state, view);
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     match cmd {
         MappableCommand::Motion { fun, .. } | MappableCommand::Selection { fun, .. } => match fun.0
         {
@@ -231,7 +231,7 @@ pub(in crate::editor::commands::pipeline) fn step_clear_typed_run(
     if state.mode() != Mode::Insert || !meta.moves_cursor() {
         return;
     }
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     state.panes.state[pid][bid].typed_run = None;
 }
@@ -298,7 +298,7 @@ pub(in crate::editor::commands::pipeline) fn step_record_jump(
         && (is_jump
             || pre_line.index().abs_diff(post_line.index()) > state.settings.jump_line_threshold)
     {
-        state.panes.jumps[state.focused_pane_id].push(JumpEntry::from_pre_motion(
+        state.panes.jumps[state.focus.id()].push(JumpEntry::from_pre_motion(
             pre_primary,
             pre_line,
             pre_bid,

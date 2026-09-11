@@ -128,7 +128,7 @@ impl Editor {
 
     /// Open a new edit group on the focused (pane, buffer) pair.
     fn begin_edit_group_current(&mut self) {
-        let pane_id = self.state.focused_pane_id;
+        let pane_id = self.state.focus.id();
         let buf_id = self.focused_buffer_id();
         doc_ops::begin_edit_group(
             &self.state.buffers,
@@ -140,7 +140,7 @@ impl Editor {
 
     /// Commit and close the open edit group on the focused (pane, buffer) pair.
     fn commit_edit_group_current(&mut self) {
-        let pane_id = self.state.focused_pane_id;
+        let pane_id = self.state.focus.id();
         let buf_id = self.focused_buffer_id();
         doc_ops::commit_edit_group(
             &mut self.state.buffers,

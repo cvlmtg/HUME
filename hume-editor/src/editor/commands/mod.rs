@@ -76,7 +76,7 @@ impl EditorState {
 
 /// Buffer id the focused pane is viewing.
 pub(super) fn focused_buffer_id(state: &EditorState, view: &EngineView) -> BufferId {
-    view.panes[state.focused_pane_id].buffer_id
+    view.panes[state.focus.id()].buffer_id
 }
 
 /// Shared reference to the focused buffer.
@@ -93,7 +93,7 @@ pub(super) fn apply_focused_motion(
     view: &EngineView,
     f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.state, focused, buf, f);
 }
@@ -109,7 +109,7 @@ pub(in crate::editor::commands) fn apply_focused_edit(
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit(
         &mut state.buffers,
@@ -135,7 +135,7 @@ pub(in crate::editor::commands) fn apply_focused_edit_grouped(
         SelectionSet,
     ) -> (BufferText, SelectionSet, hume_editing::changeset::ChangeSet),
 ) {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     doc_ops::apply_doc_edit_grouped(
         &mut state.buffers,
@@ -186,14 +186,14 @@ pub(super) fn alternate_buffer(state: &EditorState, view: &EngineView) -> Option
 
 /// Open a new edit group on the focused (pane, buffer) pair.
 pub(super) fn begin_edit_group_current(state: &mut EditorState, view: &EngineView) {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     doc_ops::begin_edit_group(&state.buffers, &mut state.panes.state, pid, bid);
 }
 
 /// Commit and close the open edit group on the focused (pane, buffer) pair.
 pub(super) fn commit_edit_group_current(state: &mut EditorState, view: &EngineView) {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     doc_ops::commit_edit_group(&mut state.buffers, &mut state.panes.state, pid, bid);
 }
@@ -215,7 +215,7 @@ pub(super) fn viewport<'a>(
     state: &EditorState,
     view: &'a EngineView,
 ) -> &'a hume_engine::pane::ViewportState {
-    &view.panes[state.focused_pane_id].viewport
+    &view.panes[state.focus.id()].viewport
 }
 
 /// `doc`'s effective `tab-style`/`tab-width` pair: buffer override → global
@@ -307,7 +307,7 @@ pub(super) fn pane_display_lines<'a>(
 
 /// Snapshot the focused pane's current cursor as a `JumpEntry`.
 pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> JumpEntry {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     let sels = state.panes.state[pid][bid].selections.clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
@@ -325,7 +325,7 @@ pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> Jump
 pub(super) fn record_jump_if_moved(state: &mut EditorState, view: &EngineView, pre: JumpEntry) {
     let post_bid = focused_buffer_id(state, view);
     if pre.buffer_id != post_bid || pre.selections != *current_selections(state, view) {
-        state.panes.jumps[state.focused_pane_id].push(pre);
+        state.panes.jumps[state.focus.id()].push(pre);
     }
 }
 
@@ -335,7 +335,7 @@ pub(super) fn switch_to_buffer_without_jump(
     view: &mut EngineView,
     target: BufferId,
 ) {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     super::buffer::lifecycle::switch_pane_to_buffer(
         view,
         &state.buffers,
@@ -352,7 +352,7 @@ pub(super) fn set_current_selections(
     sels: SelectionSet,
 ) {
     let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focused_pane_id][bid].selections = sels;
+    state.panes.state[state.focus.id()][bid].selections = sels;
 }
 
 /// Replace the primary selection in the focused pane (merging overlaps).
@@ -361,7 +361,7 @@ pub(super) fn set_primary_selection(
     view: &EngineView,
     new_sel: hume_editing::selection::Selection,
 ) {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     let idx = state.panes.state[pid][bid].selections.primary_index();
     let sels = std::mem::take(&mut state.panes.state[pid][bid].selections);
@@ -408,9 +408,7 @@ pub(super) use typed_misc::*;
 // breadth.
 pub(in crate::editor) use insert_session::end_insert_session;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
-pub(in crate::editor) use pane::{
-    end_insert_session_if_active, fits_split, focus_pane, split_pane_onto,
-};
+pub(in crate::editor) use pane::{end_insert_session_if_active, fits_split, split_pane_onto};
 // `open_pane` itself (the raw, unspliced constructor) is private to
 // `pane.rs` — not re-exported here or anywhere. `open_pane_in_layout` and
 // `open_pane_as_new_tab` are the only two ways, anywhere in the crate, to

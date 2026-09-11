@@ -40,7 +40,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
     ed.sync_viewport_dims(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
@@ -90,7 +90,7 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
     ed.sync_viewport_dims(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))
@@ -143,7 +143,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
     ed.sync_viewport_dims(60, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let by_line = ed.state.panes.render.get(pid).unwrap().eol_text();
     let inserts = by_line
         .get(&hume_rope::line::ContentLine::new(0))

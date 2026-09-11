@@ -86,7 +86,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     let mut ed =
         editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focused_pane_id; // vsplit focuses the new (right) pane
+    let pid_b = ed.state.focus.id(); // vsplit focuses the new (right) pane
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(100, 25);
@@ -96,7 +96,7 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
     // Click pane B (right half, gutter 4): screen col 57 = rect.x(50) +
     // gutter(4) + content col 3 (see vsplit_click_... below for the geometry).
     ed.handle_input(mouse_left_down(57, 0));
-    assert_eq!(ed.state.focused_pane_id, pid_b);
+    assert_eq!(ed.state.focus.id(), pid_b);
     let head_after_click = ed.current_selections().primary().head();
 
     // Drag to col 0 — inside pane A's rect (x ∈ [0, 49)), left of pane B's
@@ -129,7 +129,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     // that same top line — the state a real scroll-then-click leaves
     // behind, and the case that distinguishes "viewport moved" from
     // "cursor moved with it".
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].viewport.top_line = hume_rope::line::ContentLine::new(10);
     let head = ed
         .doc()
@@ -162,7 +162,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 
     ed.handle_input(mouse_wheel(false));
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     assert_eq!(
         ed.view.panes[pid].viewport.top_line,
         hume_rope::line::ContentLine::new(0)
@@ -194,9 +194,9 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     let mut ed =
         editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.execute_typed("vsplit", None).unwrap();
-    let pid_b = ed.state.focused_pane_id; // vsplit focuses the new pane
+    let pid_b = ed.state.focus.id(); // vsplit focuses the new pane
     assert_ne!(pid_a, pid_b);
     let bid = ed.view.panes[pid_a].buffer_id; // vsplit shares the source buffer
 
@@ -221,7 +221,8 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     // gutter(0) + content col 7 → the '7' in "0123456789...".
     ed.handle_input(mouse_left_down(7, 0));
     assert_eq!(
-        ed.state.focused_pane_id, pid_a,
+        ed.state.focus.id(),
+        pid_a,
         "click in pane A must move focus there"
     );
     assert_eq!(head(&ed, pid_a), co(7), "must land on content col 7 ('7')");
@@ -235,7 +236,8 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     // + gutter(4) + content col 3 → the '3'.
     ed.handle_input(mouse_left_down(57, 0));
     assert_eq!(
-        ed.state.focused_pane_id, pid_b,
+        ed.state.focus.id(),
+        pid_b,
         "click in pane B must move focus back there"
     );
     assert_eq!(head(&ed, pid_b), co(3), "must land on content col 3 ('3')");
@@ -249,7 +251,8 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     // statusline reservation, so row 24 is outside every pane's rect).
     ed.handle_input(mouse_left_down(10, 24));
     assert_eq!(
-        ed.state.focused_pane_id, pid_b,
+        ed.state.focus.id(),
+        pid_b,
         "a click outside every pane rect must not move focus"
     );
     assert_eq!(
@@ -282,7 +285,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
 fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     let mut ed = editor_from("-[A]>\nBBBB\nCCCC\nDDDD\nEEEE\n");
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focused_pane_id; // split focuses the new (bottom) pane
+    let pid_b = ed.state.focus.id(); // split focuses the new (bottom) pane
     let bid = ed.view.panes[pid_b].buffer_id;
 
     let mut ctx = hume_engine::pipeline::RenderContext::new();
@@ -314,7 +317,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
 fn click_on_a_tab_switches_to_it() {
     let mut ed = editor_from("-[a]>bc\n");
     let tab_a = ed.state.tabs.current();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.execute_typed("tabnew", None).unwrap();
     let tab_b = ed.state.tabs.current();
     assert_ne!(tab_a, tab_b, "setup: tabnew must have opened a second tab");
@@ -330,7 +333,7 @@ fn click_on_a_tab_switches_to_it() {
     ed.handle_input(mouse_left_down(0, 0));
 
     assert_eq!(ed.state.tabs.current(), tab_a, "click must switch to tab A");
-    assert_eq!(ed.state.focused_pane_id, pid_a);
+    assert_eq!(ed.state.focus.id(), pid_a);
 }
 
 /// A click past every tab's extent (the row's blank tail) is a no-op —
@@ -341,7 +344,7 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.execute_typed("tabnew", None).unwrap();
     let tab_b = ed.state.tabs.current();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
 
     frame(&mut ed, 40, 10);
 
@@ -350,7 +353,7 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
     ed.handle_input(mouse_left_down(39, 0));
 
     assert_eq!(ed.state.tabs.current(), tab_b, "no tab switch");
-    assert_eq!(ed.state.focused_pane_id, pid_b, "no pane focus change");
+    assert_eq!(ed.state.focus.id(), pid_b, "no pane focus change");
 }
 
 /// A terminal too short to fit the tab bar plus the statusline pushes
@@ -453,7 +456,7 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
 fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
     let mut ed = editor_from("-[hello]>world\n");
     let tab_a = ed.state.tabs.current();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let bid_a = ed.focused_buffer_id();
 
     ed.execute_typed("tabnew", None).unwrap();

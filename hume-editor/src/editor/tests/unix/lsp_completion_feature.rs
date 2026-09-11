@@ -248,7 +248,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
     );
     // Char 1 is the start of "foo" on line 1 (char 0 is line 0's newline).
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -312,7 +312,7 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
         },
     );
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -386,7 +386,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     // Char 5 is right after "foo.b" — matches the server's textEdit end
     // exactly, so accept() never extends the range past what's specified.
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -452,7 +452,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
     // Char 6: right after "🎉foo.b" (1 + 5 = 6) — matches the server's
     // textEdit end exactly.
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -521,7 +521,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
         },
     );
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -586,7 +586,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
         },
     );
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes
@@ -644,7 +644,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
         },
     );
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pbs = ed
         .state
         .panes

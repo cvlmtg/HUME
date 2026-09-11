@@ -163,7 +163,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -489,7 +489,7 @@ fn steel_call_jump_cmd_records_jump_entry() {
                  (lambda () (call! "goto-last-line")))"#,
     );
 
-    let pane_id = ed.state.focused_pane_id;
+    let pane_id = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     // Fresh editor: no jump entries yet.
     let had_entries_before = ed.state.panes.jumps[pane_id].entries_for_buffer(bid);
@@ -665,8 +665,7 @@ fn mouse_click_leaves_hook_queued_until_the_next_settle() {
     ));
 
     // Give the pane a viewport big enough that a click at row=0,col=0 lands in content.
-    ed.view.panes[ed.state.focused_pane_id].viewport =
-        hume_engine::pane::ViewportState::new(80, 24);
+    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::ViewportState::new(80, 24);
 
     // Seed a pending hook (OnBufferSave — no handler registered, so
     // settle() skips the Steel call but still removes it from the queue).
@@ -733,7 +732,7 @@ fn steel_lambda_receives_count_and_extend() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -754,7 +753,7 @@ fn steel_lambda_receives_count_and_extend() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -789,7 +788,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -802,7 +801,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -846,7 +845,7 @@ fn steel_arity_1_lambda_receives_count_only() {
         .state
         .panes
         .state
-        .get(ed.state.focused_pane_id)
+        .get(ed.state.focus.id())
         .unwrap()
         .values()
         .next()
@@ -1068,7 +1067,7 @@ fn parity_steel_branch_cluster_vs_native() {
     // resolution falls back to the ring head regardless.
     ed2.state.kill_ring.push(vec!["X".to_string()]);
     ed2.feed_key(key('p')); // smart-paste-after → resolves ring head, opens paste session
-    let pane_id = ed2.state.focused_pane_id;
+    let pane_id = ed2.state.focus.id();
     let buf_id = ed2.focused_buffer_id();
     assert!(
         ed2.state.panes.state[pane_id][buf_id].paste_group.is_some(),

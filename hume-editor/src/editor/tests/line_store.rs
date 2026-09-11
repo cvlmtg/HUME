@@ -93,7 +93,7 @@ fn buffer_tag_changes_across_a_set_view_content_refresh() {
 #[test]
 fn line_store_does_not_leak_between_panes() {
     let mut ed = many_lines_editor();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     const TARGET: usize = 25;
 
     let calls_a = Rc::new(Cell::new(0));
@@ -118,7 +118,7 @@ fn line_store_does_not_leak_between_panes() {
     // an unsized pane B walks a different display-line list from pane A's, which
     // would mask the isolation this test exists to check.
     ed.sync_viewport_dims(80, 24);
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(pid_b, pid_a, "split must move focus to the new pane");
 
     let calls_b = Rc::new(Cell::new(0));
@@ -154,7 +154,7 @@ fn line_store_does_not_leak_between_panes() {
 #[test]
 fn a_between_frame_walk_does_not_survive_a_frame() {
     let mut ed = many_lines_editor();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     const TARGET: usize = 25;
 
     let calls = Rc::new(Cell::new(0));
@@ -229,7 +229,7 @@ fn a_rendered_frames_entries_do_not_survive_it() {
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.state.settings.scrolloff = 0;
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
         saved: None,
@@ -291,7 +291,7 @@ fn the_two_frame_passes_format_each_visible_line_once() {
         .collect();
     let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(BufferText::from(text.as_str()), sels));
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.state.settings.wrap_mode = hume_engine::pane::WrapMode::Soft { width: 0 };
 
     let formats = Rc::new(Cell::new(0));

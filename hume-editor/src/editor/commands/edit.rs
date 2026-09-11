@@ -92,7 +92,7 @@ pub(in crate::editor) fn cmd_change(
     // on `PaneBufferState`, not `InsertSession`, for the same reason
     // `step_back_on_exit` does (see its doc).
     if state.route_kill(yanked) {
-        let pid = state.focused_pane_id;
+        let pid = state.focus.id();
         let bid = focused_buffer_id(state, view);
         state.panes.state[pid][bid].kill_opened_session = true;
     }
@@ -193,7 +193,7 @@ fn history_step(
     apply: doc_ops::ApplyDocFn,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     for _ in 0..count {
         if !can(state.buffers.get(buf)) {

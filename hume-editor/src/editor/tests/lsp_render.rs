@@ -83,7 +83,7 @@ fn setup_with_diagnostics(content: &str, diags: &[DiagFixture]) -> DiagCtx {
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     ed.drain_lsp();
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -252,7 +252,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
     ed.scripting = Some(host);
     type_cmd(&mut ed, ":arm");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -290,7 +290,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     type_cmd(&mut ed, ":arm-a");
     type_cmd(&mut ed, ":arm-b");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();
@@ -330,7 +330,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
     type_cmd(&mut ed, ":arm-zzz");
     type_cmd(&mut ed, ":arm-aaa");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();

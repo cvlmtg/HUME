@@ -35,7 +35,7 @@ impl Editor {
         &mut self,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
     ) {
-        let focused = self.state.focused_pane_id;
+        let focused = self.state.focus.id();
         let buf = self.focused_buffer_id();
         let cs = doc_ops::apply_doc_edit_grouped(
             &mut self.state.buffers,
@@ -142,7 +142,7 @@ impl Editor {
         }
 
         // ── Character input ───────────────────────────────────────────────────
-        let focused = self.state.focused_pane_id;
+        let focused = self.state.focus.id();
         let buf = self.focused_buffer_id();
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {

@@ -20,7 +20,7 @@ use super::{
 /// `true` when the focused (pane, buffer) has an open edit group.
 fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
     let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focused_pane_id][bid]
+    state.panes.state[state.focus.id()][bid]
         .edit_group
         .is_some()
 }
@@ -83,7 +83,7 @@ pub(super) fn begin_typed_run(state: &mut EditorState, view: &EngineView, exit: 
         .iter_sorted()
         .map(|s| s.head())
         .collect();
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
     let pbs = &mut state.panes.state[pid][bid];
     // `ends` starts equal to `anchors` — an empty run — and is pushed
@@ -173,7 +173,7 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     // nothing to the `mii` stash and, for an empty run, falls back to
     // `exit_cursor`'s step-back handling below.
     let (typed_run, step_back, kill_opened) = {
-        let pid = state.focused_pane_id;
+        let pid = state.focus.id();
         let bid = focused_buffer_id(state, view);
         let pbs = &mut state.panes.state[pid][bid];
         (

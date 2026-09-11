@@ -156,7 +156,7 @@ impl Editor {
     /// Recompute the match list and pane search cursor for the focused buffer,
     /// if stale. No-op when no search is active.
     pub(in crate::editor) fn sync_search_cache(&mut self) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let bid = self.focused_buffer_id();
         sync_search_cache(
             &mut self.state.buffers,

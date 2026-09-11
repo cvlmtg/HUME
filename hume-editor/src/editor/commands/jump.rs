@@ -3,10 +3,11 @@ use hume_ops::MotionMode;
 
 use super::super::{EditorState, Severity};
 use super::{
-    alternate_buffer, current_jump_entry, focus_pane, focused_buffer_id, set_current_selections,
+    alternate_buffer, current_jump_entry, focused_buffer_id, set_current_selections,
     switch_to_buffer_without_jump,
 };
 use crate::editor::error::CommandError;
+use crate::editor::focus::focus_pane;
 
 // ── Jump list navigation ─────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ pub(in crate::editor) fn cmd_jump_backward(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let current = current_jump_entry(state, view);
     let nav = state.panes.jumps[pid]
         .backward(current)
@@ -50,7 +51,7 @@ pub(in crate::editor) fn cmd_jump_forward(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     let nav = state.panes.jumps[pid]
         .forward()
         .map(|e| (e.buffer_id, e.selections.clone()));
@@ -155,7 +156,7 @@ fn focus_in_direction(
     view: &EngineView,
     dir: Dir,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let rects = view.pane_rects();
     let Some(&(_, cur)) = rects.iter().find(|(p, _)| *p == focused) else {
         return Ok(());
@@ -207,7 +208,7 @@ pub(in crate::editor) fn cmd_pane_focus_next(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let rects = view.pane_rects();
     let Some(idx) = rects.iter().position(|(p, _)| *p == focused) else {
         return Ok(());

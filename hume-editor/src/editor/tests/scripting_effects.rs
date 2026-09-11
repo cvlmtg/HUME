@@ -34,7 +34,7 @@ fn failed_command_eval_effects_do_not_leak() {
     }
     .expect("define-command! must succeed");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     let result = {
         let mut ih = init_host!(ed);

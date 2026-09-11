@@ -20,7 +20,7 @@ fn error_line_gets_a_sign_with_the_error_scope() {
         _dirs,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
 
     let error_scope = ed
@@ -56,7 +56,7 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
         _dirs,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
 
     let gutter_scope = ed
@@ -99,7 +99,7 @@ fn error_beats_warning_on_the_same_line() {
         _dirs,
         ..
     } = setup_diagnostics("abcdefgh\n", &[warning, error]);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
     let error_scope = scope(&ed, "error");
 
@@ -125,7 +125,7 @@ fn multiline_diagnostic_marks_every_line_it_touches() {
         _dirs,
         ..
     } = setup_diagnostics("abc\ndef\n", &[diag]);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
     let signs = pane_signs(&ed, pid);
     assert_eq!(
@@ -183,7 +183,7 @@ fn zero_diagnostics_produce_no_signs() {
         ..
     } = setup_diagnostics("abcdefgh\n", &[]);
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
     assert!(pane_signs(&ed, pid).is_empty());
     assert_eq!(
@@ -204,7 +204,7 @@ fn gutter_width_is_the_default_when_a_diagnostic_exists() {
         _dirs,
         ..
     } = setup_diagnostics("abcdefgh\n", &[diag]);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -224,7 +224,7 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
     } = setup_diagnostics("abcdefgh\n", &[diag]);
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).overrides.signcolumn = Some("auto:2".parse().unwrap());
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
     assert_eq!(
         sign_column_width(&ed, pid),
@@ -273,7 +273,7 @@ fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {
     );
     type_cmd(&mut ed, ":arm");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
 
     let rope = ed.state.buffers.get(bid).text().rope().clone();
@@ -339,7 +339,7 @@ fn ladder_is_buffer_wide_not_viewport_restricted() {
     );
     type_cmd(&mut ed, ":arm");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed);
 
     let signs = pane_signs(&ed, pid);
@@ -393,7 +393,7 @@ fn reload_to_shorter_text_clears_stale_diagnostics_and_does_not_panic() {
         "reload must clear diagnostics computed against the pre-reload text"
     );
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     render(&mut ed); // must not panic
 
     let signs = pane_signs(&ed, pid);

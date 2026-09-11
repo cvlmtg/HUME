@@ -92,7 +92,7 @@ impl CompletionSession {
         // is right for "a background buffer with no selection state yet",
         // not for "this session's own point of reference is gone" — so this
         // errors instead of silently landing the edit at the top of the file.
-        if state.focused_pane_id != self.pane_id {
+        if state.focus.id() != self.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
         }
         let pid = self.pane_id;

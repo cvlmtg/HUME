@@ -141,7 +141,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
     pane_state::ensure(
         &mut state.panes.state,
         &state.buffers,
-        state.focused_pane_id,
+        state.focus.id(),
         bid,
     );
     let cs_for_return = cs.clone();
@@ -150,7 +150,7 @@ fn commit_changeset(state: &mut EditorState, bid: BufferId, cs: ChangeSet) -> Ch
         &state.config.decorations,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        state.focused_pane_id,
+        state.focus.id(),
         bid,
         move |text, mut sels| {
             let text_pre = text.clone();
@@ -527,7 +527,7 @@ pub(in crate::editor) fn goto_location(
 
     let entry = crate::editor::commands::current_jump_entry(state, view);
 
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     crate::editor::buffer::lifecycle::switch_pane_to_buffer(
         view,
         &state.buffers,

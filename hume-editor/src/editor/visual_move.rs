@@ -141,7 +141,7 @@ pub(super) fn apply_visual_vertical(
     mode: MotionMode,
     unit: VerticalUnit,
 ) {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     // Every unit now resolves its column through `DisplayLineMap` — `ContentDisplayLine`/
     // `AnyDisplayLine` via `move_vertical`'s display-line walk, `BufferLine` (`9j`/`9k`) via
     // `move_buffer_line`'s direct line jump — so all three latch a column
@@ -381,7 +381,7 @@ fn copy_selection_on_line(
     count: usize,
     down: bool,
 ) {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf_id = focused_buffer_id(state, view);
     let key = state.format_key(&view.panes[focused]);
     let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[focused], key);
@@ -493,15 +493,14 @@ pub(super) fn cmd_visual_select_word_nearest_on_line(
         chars,
     };
 
-    if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focused_pane_id]).is_wrapping()
-    {
+    if !effective_wrap_mode(doc, &state.settings, &view.panes[state.focus.id()]).is_wrapping() {
         apply_focused_motion(state, view, |text, sels| {
             cmd_select_word_nearest_on_line(text, sels, 0, ctx)
         });
         return Ok(());
     }
 
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let key = state.format_key(&view.panes[focused]);
     let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[focused], key);
 

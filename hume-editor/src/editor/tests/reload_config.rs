@@ -1115,7 +1115,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     assert!(is_new, "sanity: this must be a genuinely new buffer");
     ed.detect_pending_languages();
     ed.settle();
-    let first_pid = ed.state.focused_pane_id;
+    let first_pid = ed.state.focus.id();
     open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -1174,7 +1174,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     .unwrap();
     ed.detect_pending_languages();
     ed.settle();
-    let first_pid = ed.state.focused_pane_id;
+    let first_pid = ed.state.focus.id();
     open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,

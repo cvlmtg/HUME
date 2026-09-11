@@ -355,7 +355,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     );
     ed.scripting = Some(host);
 
-    let pane_id = ed.state.focused_pane_id;
+    let pane_id = ed.state.focus.id();
     // Simulate a scroll burst: each call cancels the previous pending timer
     // and reschedules — three rapid calls must still yield one fire.
     ed.debounce_viewport_change(pane_id);

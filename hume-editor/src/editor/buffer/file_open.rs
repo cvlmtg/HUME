@@ -216,7 +216,7 @@ impl Editor {
             .filter(|(_, p)| p.buffer_id == id)
             .map(|(pid, _)| pid)
             .collect();
-        let focused = self.state.focused_pane_id;
+        let focused = self.state.focus.id();
         let pre_sels = self.state.panes.state[focused][id].selections.clone();
 
         let cursor_coords: Vec<(
@@ -369,7 +369,7 @@ impl Editor {
 
     /// Redirect the focused pane to `target` without recording a jump.
     pub(in crate::editor) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         lifecycle::switch_pane_to_buffer(
             &mut self.view,
             &self.state.buffers,
@@ -391,7 +391,7 @@ impl Editor {
             &self.state.buffers,
             &mut self.state.panes.state,
             &mut self.state.panes.jumps,
-            self.state.focused_pane_id,
+            self.state.focus.id(),
             current,
             target,
         );
@@ -466,7 +466,7 @@ impl Editor {
         }
 
         // Position cursor at the requested line (clamped to last content line).
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         crate::editor::pane_state::park_cursor_at(
             &mut self.state.panes.state,
             &self.state.buffers,

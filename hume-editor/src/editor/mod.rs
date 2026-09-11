@@ -26,6 +26,7 @@ mod async_source;
 mod decoration_providers;
 mod diff_bridge;
 mod error;
+mod focus;
 mod frame;
 mod host_impl;
 mod inline_output;
@@ -327,8 +328,11 @@ pub(crate) struct EditorState {
     pub(super) search: SearchState,
     /// The single pane focused in the current editing session — the
     /// *active tab's* focused pane. Every other open tab's own focused pane
-    /// is stashed on `tabs` instead (see its module doc).
-    pub(in crate::editor) focused_pane_id: PaneId,
+    /// is stashed on `tabs` instead (see its module doc). `pub(in
+    /// crate::editor)` on the field itself only gets a reader `Focus::id()`
+    /// — see `focus`'s module doc for why the `PaneId` inside stays
+    /// unreachable to a raw write from anywhere but `focus::focus_pane`.
+    pub(in crate::editor) focus: focus::Focus,
     /// Every open tab's display order and stashed window layout — see
     /// `tab::store`'s module doc for the model (the active tab's layout
     /// lives in `EngineView::layout`, not here).
@@ -491,7 +495,7 @@ pub(crate) struct EditorState {
 /// The trivial-field baseline both `EditorState` constructors build on.
 ///
 /// Not a usable editor on its own — no buffers, no panes, a null
-/// `focused_pane_id`, a clipboard with no handle, and a no-op waker. It exists
+/// `focus`, a clipboard with no handle, and a no-op waker. It exists
 /// so the fields that are identical at both construction sites (`Editor::open`
 /// and `Editor::for_testing`) are written once. Every field whose real value
 /// differs between those two sites is set here to its inert (test) form and
@@ -527,8 +531,8 @@ impl Default for EditorState {
             settings,
             last_find: None,
             search: SearchState::default(),
-            focused_pane_id: PaneId::default(),
-            // Placeholder, like `focused_pane_id` above — every real caller
+            focus: focus::Focus::default(),
+            // Placeholder, like `focus` above — every real caller
             // (`Editor::open`, `for_testing`) overrides both together with a
             // real seeded pane, never relies on this default.
             tabs: tab::TabStore::new(PaneId::default()).0,
@@ -876,7 +880,7 @@ impl Editor {
 
     /// The `BufferId` the focused pane is currently viewing.
     pub(crate) fn focused_buffer_id(&self) -> BufferId {
-        self.view.panes[self.state.focused_pane_id].buffer_id
+        self.view.panes[self.state.focus.id()].buffer_id
     }
 
     /// Shared reference to the focused buffer.
@@ -996,7 +1000,7 @@ mod field_classification {
                 settings: _,
                 last_find: _,                       // preserved
                 search: _,                          // preserved
-                focused_pane_id: _,                 // preserved
+                focus: _,                           // preserved
                 tabs: _,                            // preserved
                 panes: _,                           // preserved
                 history: _,                         // preserved

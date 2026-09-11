@@ -552,7 +552,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     // `cmd_view_center` call, or ran it before `sync_viewport_dims` (which
     // would center against `Pane::new`'s 80x24 placeholder instead).
     assert_eq!(
-        ed.view.panes[ed.state.focused_pane_id].viewport.top_line,
+        ed.view.panes[ed.state.focus.id()].viewport.top_line,
         hume_rope::line::ContentLine::new(138)
     );
 }
@@ -584,7 +584,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
     );
     ed.apply_startup_positions();
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     assert_eq!(
         ed.state.panes.state[pid][extra_bid].selections,
         SelectionSet::single(hume_editing::selection::Selection::collapsed(co(12))),

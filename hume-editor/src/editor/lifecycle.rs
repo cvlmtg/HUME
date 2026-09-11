@@ -148,7 +148,7 @@ impl Editor {
                     }
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
-                focused_pane_id: pane_id,
+                focus: super::focus::Focus::new(pane_id),
                 tabs: super::tab::TabStore::new(pane_id).0,
                 cwd: startup_cwd,
                 views,
@@ -233,7 +233,7 @@ impl Editor {
         }
 
         let focused_bid = self.focused_buffer_id();
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let mut center_focused = false;
         for (bid, pos) in placements {
             crate::editor::pane_state::park_cursor_at(
@@ -443,10 +443,10 @@ impl Editor {
                     // so the cursor lands inside the pane, not at the origin. The
                     // focused pane is always a live layout leaf (see
                     // `close_focused_pane`/`split_pane_onto`), so this can't miss.
-                    let gutter_w = self.pane_gutter_width(self.state.focused_pane_id);
+                    let gutter_w = self.pane_gutter_width(self.state.focus.id());
                     let pane_rect = self
                         .view
-                        .pane_rect(self.state.focused_pane_id)
+                        .pane_rect(self.state.focus.id())
                         .expect("focused pane must have a rect after prepare_frame");
                     ctx.cursor_content_pos.map(|(content_x, row)| {
                         let (x, y) = super::mouse::content_pos_to_screen(

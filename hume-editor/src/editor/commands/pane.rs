@@ -8,6 +8,7 @@ use slotmap::SecondaryMap;
 
 use super::end_insert_session;
 use crate::editor::error::CommandError;
+use crate::editor::focus::focus_pane;
 use crate::editor::pane_state::PaneTransient;
 use crate::editor::tab::{TabId, install_live, take_live};
 use crate::editor::{EditorState, Mode, Severity};
@@ -110,52 +111,14 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 /// mode check otherwise, so every caller can route through this
 /// unconditionally instead of repeating the check itself.
 ///
-/// Split out of `focus_pane` below so `tab::take_live` can run it *before*
-/// `view.layout` is displaced, not just before `focused_pane_id` is
-/// reassigned — see `take_live`'s own doc for why the layout has to stay
-/// the outgoing tab's for the duration of this call.
+/// Split out of `focus::focus_pane` so `tab::take_live` can run it *before*
+/// `view.layout` is displaced, not just before focus is reassigned — see
+/// `take_live`'s own doc for why the layout has to stay the outgoing tab's
+/// for the duration of this call.
 pub(in crate::editor) fn end_insert_session_if_active(state: &mut EditorState, view: &EngineView) {
     if state.mode() == Mode::Insert {
         end_insert_session(state, view);
     }
-}
-
-/// Move focus to `pid`, ending any open Insert session and any open paste
-/// session first — the one production chokepoint every `focused_pane_id`
-/// write goes through (`close_focused_pane`/`split_pane_onto` below,
-/// `jump::focus_in_direction`/`cmd_pane_focus_next`, `tab::install_live`,
-/// `mouse::mouse_left_down`). Both teardowns read state keyed on the
-/// *outgoing* pane (`end_insert_session`'s blank-line indent trim,
-/// `commit_paste_session`'s focused-pane paste group) and so must run —
-/// while `state.focused_pane_id` still names that outgoing pane — before the
-/// assignment below, not after: done later, they'd land on `pid`'s buffer
-/// instead of the one actually being left.
-///
-/// The Insert-session half is usually already done by the time this runs —
-/// `tab::take_live` and `commands::tab::close_tab` both call
-/// `end_insert_session_if_active` themselves before touching the layout (see
-/// `take_live`'s doc), and this call is then a no-op past the mode check.
-/// Kept here too rather than only at those two call sites, since
-/// `jump::focus_in_direction`/`cmd_pane_focus_next`/`mouse::mouse_left_down`
-/// switch focus *within* a tab, where no layout displacement happens and no
-/// earlier teardown has run.
-///
-/// `commit_paste_session` is otherwise reached only from the dispatch
-/// pipeline (`step_paste_commit`), which every *keyboard* command passes
-/// through. A tabline click (`mouse::tabline_click`) switches tabs by
-/// calling `tab::switch_to_tab` directly, bypassing dispatch — this is the
-/// only place left that closes that gap for it. It is timing-agnostic with
-/// respect to the layout (it resolves the outgoing pane/buffer by id, never
-/// through the layout tree), so — unlike the Insert-session half — it has
-/// no matching earlier call in `take_live`/`close_tab`.
-///
-/// Both calls are no-ops past their own guard (mode check; `paste_group`
-/// check) whenever nothing is open, so every writer above can route through
-/// this unconditionally instead of repeating either check itself.
-pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &EngineView, pid: PaneId) {
-    end_insert_session_if_active(state, view);
-    state.commit_paste_session(view);
-    state.focused_pane_id = pid;
 }
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,
@@ -184,7 +147,7 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
 /// stays true whenever any other tab holds a pane, even when the active tab
 /// has only this one. `remove_leaf` returning `None` here is a bug.
 pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView) {
-    let old = state.focused_pane_id;
+    let old = state.focus.id();
     let Pruned { detached, survivor } = view
         .remove_leaf(old)
         .expect("close_focused_pane requires the active tab's layout to be split");
@@ -230,7 +193,7 @@ pub(in crate::editor) fn fits_split(
         return true;
     }
     let Some(rect) = view.layout().predicted_split_rect(
-        state.focused_pane_id,
+        state.focus.id(),
         view.last_pane_area,
         view.reserve_seam,
         direction,
@@ -261,7 +224,7 @@ pub(in crate::editor) fn split_pane_onto(
         state.report(Severity::Info, SPLIT_TOO_SMALL_MSG.to_string());
         return Ok(());
     }
-    let old_focused = state.focused_pane_id;
+    let old_focused = state.focus.id();
     let old_buffer_id = view.panes[old_focused].buffer_id;
     let new_pid = open_pane_in_layout(state, view, old_focused, bid, direction)?;
 

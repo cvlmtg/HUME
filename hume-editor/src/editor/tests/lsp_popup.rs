@@ -314,7 +314,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
         "sanity: model closed by the dismiss key"
     );
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let buf = ed.render_to_buf(rect); // frame 2: the close frame
     assert_eq!(
         ed.view.panes[pid].viewport.height,
@@ -382,7 +382,7 @@ fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next
         "sanity: popup still open before settle drains the queued hook"
     );
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let buf = ed.render_to_buf(rect); // frame 2: settle() drains the hook, which closes the popup
     assert!(
         ed.state.config.popup.is_none(),

@@ -981,7 +981,7 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
     ed.init_scripting(&mut Default::default());
 
     let pre_reload_bid = ed.focused_buffer_id();
-    let pre_reload_pid = ed.state.focused_pane_id;
+    let pre_reload_pid = ed.state.focus.id();
     let text_before_edit = ed.doc().text().to_string();
 
     // Jump list: a large motion (goto-last-line) records the pre-jump
@@ -1036,7 +1036,8 @@ fn reload_config_preserves_undo_jumplist_history_registers_mode_and_focus() {
         "the focused buffer must not change"
     );
     assert_eq!(
-        ed.state.focused_pane_id, pre_reload_pid,
+        ed.state.focus.id(),
+        pre_reload_pid,
         "the focused pane must not change"
     );
     assert_eq!(

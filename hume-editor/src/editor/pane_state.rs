@@ -319,7 +319,7 @@ impl super::EditorState {
         &self,
         bid: BufferId,
     ) -> Option<&PaneBufferState> {
-        self.panes.buffer_state(self.focused_pane_id, bid)
+        self.panes.buffer_state(self.focus.id(), bid)
     }
 
     /// [`focused_buffer_state`](Self::focused_buffer_state) for the buffer the
@@ -361,10 +361,10 @@ impl super::EditorState {
     ) -> Option<PaneId> {
         if view
             .panes
-            .get(self.focused_pane_id)
+            .get(self.focus.id())
             .is_some_and(|p| p.buffer_id == bid)
         {
-            return Some(self.focused_pane_id);
+            return Some(self.focus.id());
         }
         view.active_pane_ids()
             .into_iter()
@@ -421,7 +421,7 @@ impl Editor {
     /// The focused pane's effective wrap mode: pane override → buffer
     /// override → global default (see `commands::effective_wrap_mode`).
     pub(in crate::editor) fn focused_wrap_mode(&self) -> hume_engine::pane::WrapMode {
-        let pane = &self.view.panes[self.state.focused_pane_id];
+        let pane = &self.view.panes[self.state.focus.id()];
         let doc = self.state.buffers.get(pane.buffer_id);
         super::commands::effective_wrap_mode(doc, &self.state.settings, pane)
     }
@@ -452,7 +452,7 @@ impl Editor {
         mode: hume_engine::pane::WrapMode,
     ) {
         let before = self.focused_wrap_mode();
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let pane = &mut self.view.panes[pid];
         let mut wrap = pane.wrap();
         wrap.mode = Some(mode);
@@ -516,7 +516,7 @@ impl Editor {
     pub(in crate::editor) fn toggle_focused_wrap(&mut self) -> bool {
         use hume_engine::pane::{DEFAULT_WRAP_STYLE, WrapMode};
 
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let now_wrapping = if self.focused_wrap_mode().is_wrapping() {
             let pane = &mut self.view.panes[pid];
             let mut wrap = pane.wrap();

@@ -286,7 +286,7 @@ impl Editor {
         effective_args: Vec<steel::rvals::SteelVal>,
         inline_output: bool,
     ) -> bool {
-        let focused_pane_id = self.state.focused_pane_id;
+        let focused_pane_id = self.state.focus.id();
         let focused_buffer_id = self.focused_buffer_id();
 
         let Some(scripting) = self.scripting.as_mut() else {

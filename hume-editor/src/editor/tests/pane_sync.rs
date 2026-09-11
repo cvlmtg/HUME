@@ -10,7 +10,7 @@ use pretty_assertions::assert_eq;
 
 /// Return the pane's primary cursor as an absolute char offset.
 fn pane_head(ed: &Editor) -> hume_rope::offset::CharOffset {
-    ed.view.panes[ed.state.focused_pane_id].selections[0].head
+    ed.view.panes[ed.state.focus.id()].selections[0].head
 }
 
 /// After `c` (change): the selection is deleted and Insert mode entered — the
@@ -100,7 +100,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Selections are passed in sorted document order; primary_idx identifies the primary.
-    let pane = &ed.view.panes[ed.state.focused_pane_id];
+    let pane = &ed.view.panes[ed.state.focus.id()];
     assert_eq!(
         pane.selections[0].head,
         co(0),
@@ -154,7 +154,7 @@ fn pane_selections_sorted_by_head_not_start() {
 
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
-    let pane = &ed.view.panes[ed.state.focused_pane_id];
+    let pane = &ed.view.panes[ed.state.focus.id()];
     // After sort-by-head: [A(head=3), B(head=8)]
     assert_eq!(pane.selections[0].head, co(3), "first in head order is A");
     assert_eq!(pane.selections[1].head, co(8), "second in head order is B");

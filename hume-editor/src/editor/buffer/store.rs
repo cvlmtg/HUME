@@ -26,7 +26,7 @@ pub(crate) struct BufferStore {
     /// Most-recently-*focused* list, tail = most recently focused. Seeded at
     /// open (see `open`'s own doc for why) and otherwise promoted only by
     /// `Editor::detect_buffer_enter` (`scripting_setup.rs`) — the join of
-    /// `focused_pane_id` and `pane.buffer_id` has no write-site chokepoint of
+    /// `state.focus` and `pane.buffer_id` has no write-site chokepoint of
     /// its own, so promoting on a buffer-switch primitive alone would miss a
     /// plain pane-focus move.
     /// Length is always ≤ `order.len()`; entries are unique.

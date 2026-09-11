@@ -28,7 +28,7 @@ fn editor_with_before_line() -> Editor {
     let text = BufferText::from("x\ny\n");
     let sels = SelectionSet::single(Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
         saved: None,
@@ -65,7 +65,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // `render_to_buf` already ran `prepare_frame` (settling the viewport);
     // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
@@ -94,7 +94,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     // something to scroll.
     let mut ed = editor_with_before_line();
     ed.state.settings.mouse_scroll_lines = 1;
-    ed.view.panes[ed.state.focused_pane_id].viewport.height = 2;
+    ed.view.panes[ed.state.focus.id()].viewport.height = 2;
 
     let scroll_down = || mouse_wheel(true);
 
@@ -140,7 +140,7 @@ fn any_display_line_cursor_follow_counts_virtual_lines_toward_its_budget() {
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 0 }] {
         let mut ed = Editor::for_testing(Buffer::new(text.clone(), sels.clone()));
-        let pid = ed.state.focused_pane_id;
+        let pid = ed.state.focus.id();
         ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(wrap),
             saved: None,
@@ -195,7 +195,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let sels = SelectionSet::single(Selection::collapsed(co(7)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
     ed.state.settings.scrolloff = 0;
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(WrapMode::Soft { width: 0 }),
         saved: None,

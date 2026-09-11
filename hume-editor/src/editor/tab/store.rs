@@ -27,7 +27,7 @@ new_key_type! {
 
 /// One inactive tab's saved window layout. The *active* tab's equivalent
 /// data lives directly in `EngineView::layout` /
-/// `EditorState::focused_pane_id` — never duplicated here while a tab is
+/// `EditorState::focus` — never duplicated here while a tab is
 /// active (see [`TabStore`]'s doc for why: reading `stash[current]` would
 /// return a stale snapshot, not the live tree).
 struct TabState {
@@ -86,9 +86,9 @@ impl TabStore {
 
     /// The `PaneId` a tab last focused. For `id == current()` this is the
     /// stale entry (see the struct doc) — callers wanting the *live*
-    /// focused pane of the active tab must read
-    /// `EditorState::focused_pane_id` instead. Panics on an unknown id (a
-    /// `tab` module bug, not a user-reachable state).
+    /// focused pane of the active tab must read `EditorState::focus`
+    /// instead. Panics on an unknown id (a `tab` module bug, not a
+    /// user-reachable state).
     pub(in crate::editor) fn stashed_focus(&self, id: TabId) -> PaneId {
         self.stash[id].focused_pane_id
     }
@@ -125,7 +125,7 @@ impl TabStore {
     }
 
     /// `id`'s stashed layout/focus, for the caller to write into
-    /// `EngineView::layout`/`EditorState::focused_pane_id`.
+    /// `EngineView::layout`/`EditorState::focus`.
     ///
     /// A clone of the stash entry rather than a `mem::replace`-out: the
     /// entry stays valid for the *next* switch away from `id` (see the
@@ -141,7 +141,7 @@ impl TabStore {
     /// Snapshot the *currently active* tab's live layout/focus into its
     /// stash slot, make `target` current, and return `target`'s stashed
     /// layout/focus for the caller to write into `EngineView::layout` /
-    /// `EditorState::focused_pane_id`. `outgoing_layout` is the live tree
+    /// `EditorState::focus`. `outgoing_layout` is the live tree
     /// being displaced — the caller reads it out of `EngineView::layout`
     /// before calling, since `TabStore` never borrows `EngineView`.
     pub(in crate::editor) fn switch(

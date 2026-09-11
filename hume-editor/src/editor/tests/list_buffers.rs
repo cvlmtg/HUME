@@ -301,7 +301,7 @@ fn ls_does_not_list_itself_on_second_call() {
 fn ls_does_not_pollute_jump_list() {
     let mut ed = editor_from("-[h]>ello\n");
     let scratch_id = ed.focused_buffer_id(); // the buffer we switch away from
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
 
     // No jump entries for the scratch buffer before :ls.
     assert!(!ed.state.panes.jumps[pid].entries_for_buffer(scratch_id));

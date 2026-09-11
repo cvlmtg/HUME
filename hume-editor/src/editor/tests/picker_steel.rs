@@ -424,7 +424,7 @@ fn picker_accept_switching_to_shorter_buffer_mid_frame_does_not_panic() {
     let bid = ed.focused_buffer_id();
     assert_eq!(ed.state.buffers.get(bid).text().to_string(), "hi\n");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let pane = &ed.view.panes[pid];
     assert_eq!(pane.buffer_id, bid);
     assert_eq!(
@@ -474,7 +474,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
     // rendering — not the pane's viewport from before the switch.
     let _ = ed.render_to_buf(rect);
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     assert_eq!(
         ed.state.buffers.get(bid).text().to_string(),

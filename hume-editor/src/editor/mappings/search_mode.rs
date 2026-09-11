@@ -35,7 +35,7 @@ impl Editor {
                 // Record the pre-search position in the jump list before
                 // discarding it, unless the match confirmed is the position
                 // search started from (record_jump_if_moved).
-                let pid = self.state.focused_pane_id;
+                let pid = self.state.focus.id();
                 if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();
                     let entry = JumpEntry::new(sels, self.doc().text(), bid);
@@ -104,7 +104,7 @@ impl Editor {
 
     /// Cancel search: restore pre-search position, clear all search state, return to Normal.
     fn cancel_search(&mut self) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
             self.set_current_selections(sels);
         }
@@ -136,7 +136,7 @@ impl Editor {
         };
 
         let direction = self.state.search.direction;
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
 
         // Start from the original pre-search position (not the current position),
         // so each additional character refines from the same anchor point.
@@ -188,7 +188,7 @@ impl Editor {
 
     /// Restore selections from the search-mode snapshot without consuming it.
     fn restore_search_snapshot(&mut self) {
-        let pid = self.state.focused_pane_id;
+        let pid = self.state.focus.id();
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
         if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.as_ref() {

@@ -637,7 +637,7 @@ fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     let text = hume_editing::text::BufferText::from(content.as_str());
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let mut ed = Editor::for_testing(Buffer::new(text, sels));
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.execute_typed("set", Some("pane wrap-mode=soft:10"))
         .unwrap();
     ed.view.panes[pid].viewport.height = 10;

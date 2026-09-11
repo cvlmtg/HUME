@@ -81,7 +81,7 @@ fn fire_viewport_change(ed: &mut Editor) {
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.queue_viewport_change(pid);
 }
 
@@ -596,7 +596,7 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
     // Both buffers must be *shown* — `lsp/refresh-hints` skips a hidden bid.
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -704,7 +704,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
         .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
         .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let pane_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,

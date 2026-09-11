@@ -89,13 +89,10 @@ fn ctrl_p_s_splits_pane() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('s'));
-    assert_ne!(
-        ed.state.focused_pane_id, pid_a,
-        "focus moves to the new pane"
-    );
+    assert_ne!(ed.state.focus.id(), pid_a, "focus moves to the new pane");
     assert!(
         matches!(*ed.view.layout(), LayoutTree::Split { .. }),
         "layout is a Split"
@@ -109,13 +106,10 @@ fn ctrl_p_v_vsplits_pane() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('v'));
-    assert_ne!(
-        ed.state.focused_pane_id, pid_a,
-        "focus moves to the new pane"
-    );
+    assert_ne!(ed.state.focus.id(), pid_a, "focus moves to the new pane");
     assert!(
         matches!(*ed.view.layout(), LayoutTree::Split { .. }),
         "layout is a Split"
@@ -129,10 +123,10 @@ fn ctrl_p_c_closes_pane() {
     use hume_engine::pipeline::LayoutTree;
 
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('s')); // split: focus moves to the new pane, B
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(pid_b, pid_a);
 
     ed.handle_key(key_ctrl('p'));
@@ -140,7 +134,8 @@ fn ctrl_p_c_closes_pane() {
 
     assert_eq!(ed.view.panes.len(), 1, "closing B leaves only A");
     assert_eq!(
-        ed.state.focused_pane_id, pid_a,
+        ed.state.focus.id(),
+        pid_a,
         "focus returns to the surviving pane"
     );
     assert!(
@@ -154,12 +149,12 @@ fn ctrl_p_c_closes_pane() {
 #[test]
 fn ctrl_p_c_is_noop_with_single_pane() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.handle_key(key_ctrl('p'));
     ed.handle_key(key('c'));
 
     assert_eq!(ed.view.panes.len(), 1, "sole pane is not closed");
-    assert_eq!(ed.state.focused_pane_id, pid_a);
+    assert_eq!(ed.state.focus.id(), pid_a);
     assert!(!ed.state.should_quit, "pane-close must not quit the editor");
     assert_eq!(
         ed.state.status_msg.as_deref(),

@@ -951,10 +951,11 @@ fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
     );
 }
 
-/// Cycling pane focus (`Ctrl+p p`, `pane-focus-next`) is a bare
-/// `state.focused_pane_id = …` assignment (`commands/jump.rs`) — without the
-/// check, cycling onto a pane showing an externally-changed file would show
-/// stale content with `:w` free to clobber the external edit.
+/// Cycling pane focus (`Ctrl+p p`, `pane-focus-next`) routes through
+/// `focus_pane` (`commands/jump.rs`), which changes which pane is focused but
+/// has no notion of disk state — without this check, cycling onto a pane
+/// showing an externally-changed file would show stale content with `:w`
+/// free to clobber the external edit.
 #[test]
 fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -978,10 +979,10 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
     );
 }
 
-/// A click into another pane (`mouse_left_down`'s click-to-focus) is the
-/// same bare `focused_pane_id` assignment and never touches `handle_key` at
-/// all — a chokepoint placed only in `handle_key`/`handle_mouse` would have
-/// to duplicate itself to cover this; `handle_input` covers both for free.
+/// A click into another pane (`mouse_left_down`'s click-to-focus) routes
+/// through the same `focus_pane` and never touches `handle_key` at all — a
+/// chokepoint placed only in `handle_key`/`handle_mouse` would have to
+/// duplicate itself to cover this; `handle_input` covers both for free.
 #[test]
 fn clicking_into_another_pane_prompts_that_panes_buffer() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();

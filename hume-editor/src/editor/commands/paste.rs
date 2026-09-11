@@ -87,7 +87,7 @@ impl EditorState {
     /// clears `paste_group` explicitly. The debug assert below fails fast if that
     /// invariant is ever violated instead of silently leaving a stray session open.
     pub(in crate::editor) fn commit_paste_session(&mut self, view: &EngineView) {
-        let focused = self.focused_pane_id;
+        let focused = self.focus.id();
         let buf = focused_buffer_id(self, view);
 
         debug_assert!(
@@ -360,7 +360,7 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool)
     let Some(resolved) = resolve_plain(state) else {
         return;
     };
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
     do_paste(state, focused, buf, before, resolved, sels);
@@ -378,7 +378,7 @@ fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) 
     let Some(resolved) = resolve_smart(state) else {
         return;
     };
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     let mut sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
     if resolved.bare {
@@ -443,7 +443,7 @@ fn do_paste_cycle(
     view: &mut EngineView,
     older: bool,
 ) -> Result<(), CommandError> {
-    let focused = state.focused_pane_id;
+    let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
     if state.panes.state[focused][buf].paste_group.is_none() {
         return Ok(());

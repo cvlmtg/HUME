@@ -399,7 +399,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             &self.state.buffers,
             &mut self.state.panes.state,
             &mut self.state.panes.jumps,
-            self.state.focused_pane_id,
+            self.state.focus.id(),
             current,
             target,
         );

@@ -15,7 +15,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
     let mut ed = Editor::open(None, Arc::new(|| {})).unwrap();
     type_text(&mut ed, "(x) y");
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     // "(x) y\n": '(' 0, 'x' 1, ')' 2, ' ' 3, 'y' 4, '\n' 5 — selection covers
     // ") " with the head on the space (3), same shape as a `w` landing.
     ed.set_current_selections(SelectionSet::single(Selection::new(co(2), co(3))));

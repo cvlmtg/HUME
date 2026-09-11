@@ -79,7 +79,7 @@ pub(in crate::editor::buffer) fn open_buffer_and_notify(
         ev,
         &mut state.buffers,
         &mut state.panes.state,
-        state.focused_pane_id,
+        state.focus.id(),
         doc,
         state.settings.undo_levels,
     );
@@ -269,7 +269,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
         &mut state.buffers,
         &mut state.panes.state,
         &mut state.panes.jumps,
-        state.focused_pane_id,
+        state.focus.id(),
         id,
         state.settings.undo_levels,
     );

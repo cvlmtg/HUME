@@ -18,7 +18,7 @@ type Cmd = fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<()
 fn build_2x2() -> (Editor, [PaneId; 4]) {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focused_pane_id; // top-left
+    let pid_a = ed.state.focus.id(); // top-left
     let pid_b =
         open_pane_in_layout(&mut ed.state, &mut ed.view, pid_a, bid, Direction::Vertical).unwrap(); // stack a over b
     let pid_c = open_pane_in_layout(
@@ -44,12 +44,12 @@ fn build_2x2() -> (Editor, [PaneId; 4]) {
     (ed, [pid_a, pid_c, pid_b, pid_d])
 }
 
-/// Drive `cmd` on `ed`, asserting `focused_pane_id` is `expected` afterwards
-/// and no status message was raised.
+/// Drive `cmd` on `ed`, asserting `focus` is `expected` afterwards and no
+/// status message was raised.
 fn expect_focus(ed: &mut Editor, start: PaneId, expected: PaneId, cmd: Cmd) {
-    ed.state.focused_pane_id = start;
+    ed.state.focus.set_for_test(start);
     cmd(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
-    assert_eq!(ed.state.focused_pane_id, expected);
+    assert_eq!(ed.state.focus.id(), expected);
     assert!(ed.state.status_msg.is_none());
 }
 
@@ -101,7 +101,7 @@ fn t4_directional_focus_in_2x2_grid() {
 fn t4_tie_break_uses_center_distance_not_origin() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -143,9 +143,9 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    ed.state.focused_pane_id = pid_a;
+    ed.state.focus.set_for_test(pid_a);
     cmd_pane_focus_right(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
-    assert_eq!(ed.state.focused_pane_id, pid_c);
+    assert_eq!(ed.state.focus.id(), pid_c);
 }
 
 #[test]
@@ -159,9 +159,9 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
         (pid_b, pid_d),
         (pid_d, pid_a),
     ] {
-        ed.state.focused_pane_id = start;
+        ed.state.focus.set_for_test(start);
         cmd_pane_focus_next(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
-        assert_eq!(ed.state.focused_pane_id, expected);
+        assert_eq!(ed.state.focus.id(), expected);
         assert!(ed.state.status_msg.is_none());
     }
 }
@@ -169,16 +169,16 @@ fn t4_pane_focus_next_cycles_dfs_order_and_wraps() {
 #[test]
 fn t4_pane_focus_next_single_pane_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
-    let before = ed.state.focused_pane_id;
+    let before = ed.state.focus.id();
     cmd_pane_focus_next(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
-    assert_eq!(ed.state.focused_pane_id, before);
+    assert_eq!(ed.state.focus.id(), before);
     assert!(ed.state.status_msg.is_none());
 }
 
 #[test]
 fn t4_directional_no_neighbour_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
-    let before = ed.state.focused_pane_id;
+    let before = ed.state.focus.id();
     for cmd in [
         cmd_pane_focus_left as Cmd,
         cmd_pane_focus_right as Cmd,
@@ -186,7 +186,7 @@ fn t4_directional_no_neighbour_is_noop() {
         cmd_pane_focus_down as Cmd,
     ] {
         cmd(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
-        assert_eq!(ed.state.focused_pane_id, before);
+        assert_eq!(ed.state.focus.id(), before);
         assert!(ed.state.status_msg.is_none());
     }
 }

@@ -473,7 +473,7 @@ pub(in crate::editor) fn typed_goto_line(
     // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view);
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     crate::editor::pane_state::park_cursor_at(
         &mut ed.state.panes.state,

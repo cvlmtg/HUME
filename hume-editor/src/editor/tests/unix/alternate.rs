@@ -168,7 +168,7 @@ fn alternate_follows_pane_focus_moves_alone() {
     // Two extra panes, each pinned to an older buffer — from here on, moving
     // focus between them (never `:e`, which is already covered above) is the
     // only thing that can reorder A or B.
-    let start_pid = ed.state.focused_pane_id;
+    let start_pid = ed.state.focus.id();
     let pid_a = crate::editor::commands::open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,

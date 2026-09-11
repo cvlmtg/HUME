@@ -196,7 +196,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let start_pid = ed.state.focused_pane_id;
+    let start_pid = ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
@@ -205,7 +205,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
         hume_engine::pipeline::Direction::Horizontal,
     )
     .unwrap();
-    ed.state.focused_pane_id = other_pid;
+    ed.state.focus.set_for_test(other_pid);
 
     let fired = run_probe(
         &mut ed,

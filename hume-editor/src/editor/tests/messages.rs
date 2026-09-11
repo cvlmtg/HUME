@@ -104,7 +104,7 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
         .push(Severity::Error, "crash".to_string());
 
     ed.execute_typed("messages", None).unwrap();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);
     ed.settle();

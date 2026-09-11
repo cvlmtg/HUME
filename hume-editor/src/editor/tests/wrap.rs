@@ -7,7 +7,7 @@ use hume_engine::pane::WrapMode;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn focused_pane(ed: &Editor) -> &hume_engine::pane::Pane {
-    &ed.view.panes[ed.state.focused_pane_id]
+    &ed.view.panes[ed.state.focus.id()]
 }
 
 /// `pane`'s effective wrap mode, resolved pane → buffer → global — the same
@@ -209,9 +209,9 @@ fn set_global_wrap_mode_is_retroactive_for_unpinned_panes() {
 #[test]
 fn set_buffer_wrap_mode_affects_only_the_unpinned_sibling() {
     let mut ed = editor_from("-[a]>b\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     ed.execute_typed("split", None).unwrap();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(pid_a, pid_b);
 
     // Focus is on B after the split — pin it explicitly. A stays unpinned.
@@ -371,7 +371,7 @@ fn wrap_toggle_off_then_on_restores_an_explicit_pane_pin() {
 fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     let mut ed = editor_from("-[a]>b\n");
     {
-        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        let pane = &mut ed.view.panes[ed.state.focus.id()];
         pane.set_wrap(hume_engine::pane::WrapOverride {
             mode: Some(WrapMode::None),
             saved: None,
@@ -438,7 +438,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     {
-        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        let pane = &mut ed.view.panes[ed.state.focus.id()];
         pane.viewport.top_slot = 3;
     }
     ed.execute_typed("wrap", None).unwrap(); // off
@@ -470,7 +470,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft:80").expect(":set pane wrap-mode=soft:80 failed");
     {
-        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        let pane = &mut ed.view.panes[ed.state.focus.id()];
         pane.viewport.top_slot = 3;
     }
     run_set(&mut ed, "pane wrap-mode=soft:20").expect(":set pane wrap-mode=soft:20 failed");
@@ -500,7 +500,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
-    ed.view.panes[ed.state.focused_pane_id]
+    ed.view.panes[ed.state.focus.id()]
         .providers
         .add_decoration_source(Box::new(VirtualLineBlock::uniform(
             hume_engine::providers::VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(0)),
@@ -508,7 +508,7 @@ fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block()
             "V",
         )));
     {
-        let pane = &mut ed.view.panes[ed.state.focused_pane_id];
+        let pane = &mut ed.view.panes[ed.state.focus.id()];
         pane.viewport.top_line = hume_rope::line::ContentLine::new(0);
         pane.viewport.top_slot = 1; // inside the Before(0) block
     }
@@ -555,7 +555,7 @@ fn resolve_pane_settings_honours_the_buffer_rung() {
     let mut ed = editor_from("-[a]>b\n");
     // Global default (Indent) wraps; only a buffer override can produce None.
     run_set(&mut ed, "buffer wrap-mode=none").expect("set buffer failed");
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let settings = ed.resolve_pane_settings(pid);
     assert_eq!(
         settings.format.wrap_mode,
@@ -657,7 +657,7 @@ fn closing_a_buffer_drops_its_wrap_override() {
         "sanity: closing bid_first leaves the pane on the other open buffer"
     );
 
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     assert!(
         !ed.view.panes[pid].wraps.contains_key(bid_first),
         "the closed buffer's wrap override is dropped, not leaked in the map forever"

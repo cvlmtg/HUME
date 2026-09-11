@@ -79,7 +79,7 @@ fn set_option_applies_jump_list_capacity() {
     // never resyncs, so it's the post-push assertion at the bottom (verified
     // empirically: fails "left: 6, right: 2") that goes red.
     let mut ed = editor_from("-[h]>ello\n");
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     for i in 0..5 {
         ed.state.panes.jumps[pid].push(crate::editor::jump_list::JumpEntry {
@@ -691,7 +691,7 @@ fn cursor_shape_insert_only_applies_to_insert_mode() {
 fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.execute_typed("vsplit", None).unwrap();
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
     let other = ed
         .view
         .panes

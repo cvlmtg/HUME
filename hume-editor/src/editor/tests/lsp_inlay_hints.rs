@@ -87,7 +87,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     ed.set_current_selections(hume_editing::selection::SelectionSet::single(
         hume_editing::selection::Selection::collapsed(co(4)), // 'b', line 2
     ));
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::Soft { width: 3 }),
         saved: None,
@@ -202,7 +202,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
     ed.sync_viewport_dims(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let has_hint_before = ed
         .state
         .panes
@@ -259,7 +259,7 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
             before: false,
         }],
     );
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let has_hint = |ed: &mut Editor, ctx: &mut RenderContext| {
         ed.sync_viewport_dims(40, 8);
         ed.settle();

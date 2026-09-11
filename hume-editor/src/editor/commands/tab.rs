@@ -10,12 +10,11 @@
 //!
 //! `goto-next-tab`/`goto-prev-tab` deliberately carry no `.jump()` meta,
 //! unlike `goto-next-buffer`/`goto-prev-buffer`: a tab switch changes
-//! `focused_pane_id` itself (a different pane, possibly in a different
-//! tab), and the jump list is written to `state.panes.jumps[focused_pane_id]`
-//! read *after* the switch — the same reason `pane-focus-next`/`-left`/
-//! `-right`/`-up`/`-down` (which also change `focused_pane_id`) carry no
-//! `.jump()` either, while buffer-switch commands (which keep the same
-//! pane) do.
+//! `state.focus` itself (a different pane, possibly in a different tab), and
+//! the jump list is written to `state.panes.jumps[state.focus.id()]` read
+//! *after* the switch — the same reason `pane-focus-next`/`-left`/`-right`/
+//! `-up`/`-down` (which also change `state.focus`) carry no `.jump()`
+//! either, while buffer-switch commands (which keep the same pane) do.
 
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_ops::MotionMode;
@@ -57,7 +56,7 @@ pub(in crate::editor) fn open_tab(
 ///
 /// Routes the closing tab's own layout/focus through `tab::take_live` rather
 /// than reading `view.layout` directly — `take_live` ends the closing tab's
-/// open Insert session at the one moment `view.layout`/`focused_pane_id`
+/// open Insert session at the one moment `view.layout`/`state.focus`
 /// still jointly name it, before `install_live` swaps them to the survivor.
 /// Left any later, the teardown's per-(pane, buffer) writes would land after
 /// `drop_pane_state` has already removed the closing pane's own state below.

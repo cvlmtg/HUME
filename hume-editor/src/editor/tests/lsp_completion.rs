@@ -381,7 +381,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     // A second pane showing the same buffer, still unfocused.
     let pid_b = open_pane_in_layout(
         &mut ed.state,
@@ -776,7 +776,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     std::fs::write(&file_b, "hello\n").unwrap();
 
     let mut ed = editor_from("-[a]>bcdef\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let bid_a = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,

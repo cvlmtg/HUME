@@ -11,12 +11,12 @@ fn vsplit_path_opens_that_buffer() {
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
 
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(pid_b, pid_a, "focus moves to the new pane");
     let bid_b = ed.view.panes[pid_b].buffer_id;
     assert_ne!(
@@ -159,7 +159,7 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = editor_from("-[h]>ello\n");
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let bid_a = ed.focused_buffer_id();
     ed.view.panes[pid_a].set_wrap(hume_engine::pane::WrapOverride {
         mode: Some(hume_engine::pane::WrapMode::None),
@@ -169,7 +169,7 @@ fn new_file_split_has_no_override_and_reads_the_global_default() {
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     let bid_b = ed.view.panes[pid_b].buffer_id;
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
@@ -203,7 +203,7 @@ fn split_path_arg_does_not_inherit_source_panes_view() {
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     let bid_b = ed.view.panes[pid_b].buffer_id;
     assert_ne!(bid_b, bid_a, "sanity: new pane views a different buffer");
 
@@ -221,7 +221,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = jump_editor(10);
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
 
     // Seed the source pane's jump list with one entry.
     ed.handle_key(key('g'));
@@ -230,7 +230,7 @@ fn split_different_buffer_keeps_empty_jump_list() {
 
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(
         ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,
         "sanity: new pane views a different buffer"
@@ -253,7 +253,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     let (path, _tmp_path) = temp_file("other file\n");
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
 
     // Distinguishing content + an active search on buffer A.
     ed.feed_key(key('i'));
@@ -267,7 +267,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     // the new pane; the search stays on buffer A, which is no longer focused.
     ed.execute_typed("vsplit", Some(path.to_str().unwrap()))
         .unwrap();
-    let pid_b = ed.state.focused_pane_id;
+    let pid_b = ed.state.focus.id();
     assert_ne!(pid_a, pid_b, "sanity: split created a second pane");
     assert_ne!(
         ed.view.panes[pid_b].buffer_id, ed.view.panes[pid_a].buffer_id,

@@ -16,7 +16,7 @@ use hume_grid::{Rect, Rgb};
 /// `prepare_frame` — the same read `clearing_the_store_removes_the_virtual_line_next_frame`
 /// does, generalized to inspect segments rather than just presence.
 fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::VirtualLine> {
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     ed.state
         .panes
         .render
@@ -429,7 +429,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     ed.sync_viewport_dims(40, 8);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let has_line_before = ed
         .state
         .panes

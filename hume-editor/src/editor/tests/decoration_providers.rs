@@ -65,7 +65,7 @@ fn virtual_line_bridge_skips_sync_stamp_for_handleless_pane() {
     assert!(ed.state.panes.render.is_empty());
 
     let bid = ed.focused_buffer_id();
-    let pid = ed.state.focused_pane_id;
+    let pid = ed.state.focus.id();
     let scope = ed.view.registry.intern("ui.virtual");
     ed.state.config.decorations.set_virtual_lines(
         "test-source".to_string(),

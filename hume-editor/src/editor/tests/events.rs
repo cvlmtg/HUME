@@ -79,8 +79,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.view.panes[ed.state.focused_pane_id].viewport =
-        hume_engine::pane::ViewportState::new(80, 24);
+    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::ViewportState::new(80, 24);
     // The click below is hit-tested against pane rects, which only
     // `prepare_frame` normally populates — set it directly, matching the
     // viewport size above, since this test exercises hook dispatch, not a
@@ -482,7 +481,7 @@ fn hook_call_is_dispatched() {
 fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let mut ed = editor_from("-[a]>b\n");
     let buf_id = ed.focused_buffer_id();
-    let first_pane = ed.state.focused_pane_id;
+    let first_pane = ed.state.focus.id();
 
     // Create a second pane (not the focused one) viewing the same buffer.
     let second_pane = open_pane_in_layout(
@@ -898,7 +897,7 @@ fn settle_with_no_focus_change_raises_no_further_on_buffer_enter() {
 /// several Steel effects landing in one batch) must coalesce into a single
 /// `OnBufferEnter`, for the *final* buffer — not one per intermediate write.
 /// The diff is taken against `last_entered_buffer`, not against every raw
-/// write to `focused_pane_id`/`pane.buffer_id`.
+/// write to `state.focus`/`pane.buffer_id`.
 ///
 /// Fail oracle: a raise site on the write itself (instead of a diff at
 /// `settle()`'s observation point) would fire twice here.
@@ -950,8 +949,9 @@ fn consecutive_switches_before_settle_coalesce_into_one_event_for_the_final_buff
 }
 
 /// The mixed case: a pass that changes **both**
-/// `focused_pane_id` (a bare field write, like pane-focus cycling) *and*
-/// `pane.buffer_id` (like a buffer switch) before any `settle()` runs must
+/// `state.focus` (a bare field write via `set_for_test`, standing in for a
+/// real focus change like pane-focus cycling) *and* `pane.buffer_id` (like a
+/// buffer switch) before any `settle()` runs must
 /// still coalesce into a single `OnBufferEnter` for wherever focus ends up
 /// — `focused_buffer_id()` is one join evaluated once per pass, not two
 /// independent things to diff separately.
@@ -984,7 +984,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
         .count();
     assert_eq!(baseline, 1, "sanity: the startup buffer fires once");
 
-    let pid_a = ed.state.focused_pane_id;
+    let pid_a = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
@@ -996,8 +996,8 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
     .unwrap();
     let buf2 = ed.open_buffer(Buffer::scratch());
 
-    // Bare `focused_pane_id` write (no settle() in between)...
-    ed.state.focused_pane_id = pid_b;
+    // Bare `focus` write (no settle() in between)...
+    ed.state.focus.set_for_test(pid_b);
     // ...then a `pane.buffer_id` write on the pane that write just focused.
     ed.switch_to_buffer_with_jump(buf2);
     assert_ne!(pid_a, pid_b, "sanity: a genuinely different pane");
@@ -1016,7 +1016,7 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
         "a pane-focus move and a buffer switch in the same pass must coalesce \
          into a single OnBufferEnter"
     );
-    assert_eq!(ed.state.focused_pane_id, pid_b);
+    assert_eq!(ed.state.focus.id(), pid_b);
     assert_eq!(ed.focused_buffer_id(), buf2);
 }
 
@@ -1352,7 +1352,7 @@ fn read_only_refused_edit_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
     let before_gen = ed.state.buffers.get(bid).text_gen;
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
@@ -1603,7 +1603,7 @@ fn identity_edit_fires_no_on_text_changed() {
     ed.scripting = Some(host);
     ed.settle();
 
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
     let before_gen = ed.state.buffers.get(bid).text_gen;
     let before_edit_seq = ed.state.buffers.edit_seq();
     doc_ops::apply_doc_edit(
@@ -1670,7 +1670,7 @@ fn identity_edit_records_no_undo_revision() {
     );
 
     // An identity edit: no-op, must not land on the undo stack.
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
     doc_ops::apply_doc_edit(
         &mut ed.state.buffers,
         &ed.state.config.decorations,
@@ -1903,7 +1903,7 @@ fn on_text_changed_skips_a_buffer_closed_earlier_in_the_batch() {
 
 /// **Exactly one `OnBufferEnter` per focus-changing action.** Pane-focus
 /// cycling and a mouse click into another pane both move focus with no
-/// write to `pane.buffer_id` at all — `focused_pane_id` is the only field
+/// write to `pane.buffer_id` at all — `state.focus` is the only field
 /// that changes. Counting fires (not just checking a confirm opened, which
 /// a duplicate fire would still satisfy) pins that `settle()`'s diff raises
 /// exactly one event per action, not once per write site it happens to
@@ -1950,8 +1950,8 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     };
 
     // `:e` left the right pane (B) focused. Ctrl+p p, with only two panes,
-    // cycles focus onto the left pane (A) — a bare `focused_pane_id` write,
-    // never touching `buffer_id`.
+    // cycles focus onto the left pane (A) through `focus_pane`, never
+    // touching `buffer_id`.
     let before = count(&ed);
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
@@ -1962,8 +1962,8 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
     );
 
     // Now A (left) is focused. Click into the right pane (B) — the same
-    // bare `focused_pane_id` write, via `handle_input`'s mouse arm instead
-    // of the keymap.
+    // `focus_pane` chokepoint, via `handle_input`'s mouse arm instead of the
+    // keymap.
     let before = count(&ed);
     ed.handle_input(mouse_left_down(60, 0));
     ed.settle();

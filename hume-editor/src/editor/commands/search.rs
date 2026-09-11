@@ -34,7 +34,7 @@ pub(in crate::editor) fn cmd_search_forward(
 ) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
     let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     state.search.direction = SearchDirection::Forward;
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
@@ -57,7 +57,7 @@ pub(in crate::editor) fn cmd_search_backward(
 ) -> Result<(), CommandError> {
     let pre_sels = current_selections(state, view).clone();
     let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     state.search.direction = SearchDirection::Backward;
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
@@ -211,7 +211,7 @@ fn search_jump(
 
     match last_match {
         Some(span) => {
-            let pid = state.focused_pane_id;
+            let pid = state.focus.id();
             state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
             let new_sel = search_sel(span.start, span.end, anchor, direction);
             set_primary_selection(state, view, new_sel);
@@ -295,7 +295,7 @@ pub(in crate::editor) fn cmd_sift_within(
         return Ok(());
     }
     let pre_sels = current_selections(state, view).clone();
-    let pid = state.focused_pane_id;
+    let pid = state.focus.id();
     state.panes.transient[pid].pre_sift_sels = Some(pre_sels);
     state.set_mode(Mode::Sift);
     state.minibuf = Some(MiniBuffer {

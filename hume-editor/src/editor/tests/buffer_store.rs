@@ -22,7 +22,7 @@ fn p6_open_buffer_seeds_pane_state() {
     assert_ne!(bid2, initial_bid);
     // pane_state should be seeded for bid2 on the focused pane.
     assert!(
-        ed.selections_for(ed.state.focused_pane_id, bid2).is_some(),
+        ed.selections_for(ed.state.focus.id(), bid2).is_some(),
         "pane_state seeded for new buffer"
     );
 }
@@ -86,7 +86,7 @@ fn p6_close_last_buffer_reseeds_selections() {
     ));
     let bid = ed.focused_buffer_id();
     // Move the cursor somewhere non-zero.
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
     doc_ops::apply_doc_motion(
         &ed.state.buffers,
         &mut ed.state.panes.state,
@@ -265,7 +265,7 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
         SelectionSet::default(),
     ));
 
-    let pid_1 = ed.state.focused_pane_id;
+    let pid_1 = ed.state.focus.id();
     // Second pane also views A.
     let pid_2 = open_pane_in_layout(
         &mut ed.state,
@@ -317,7 +317,7 @@ fn p6_reload_preserves_cursor_same_content() {
         SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
 
     // Place cursor at line 2, col 3 (char offset = 6+6+3 = 15).
     let expected_head = co(15);
@@ -353,7 +353,7 @@ fn p6_reload_clamps_cursor_to_last_line() {
         SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
 
     // line 4 starts at char 24.
     doc_ops::apply_doc_motion(
@@ -389,7 +389,7 @@ fn p6_reload_clamps_char_col_to_line_end() {
         SelectionSet::default(),
     ));
     let bid = ed.focused_buffer_id();
-    let focused = ed.state.focused_pane_id;
+    let focused = ed.state.focus.id();
 
     // Cursor at col 10 ('d' in "hello world\n"). head=10.
     doc_ops::apply_doc_motion(

@@ -170,7 +170,7 @@ impl CompletionSession {
         items: Vec<StoredCompletionItem>,
         incomplete: bool,
     ) -> Option<Self> {
-        let pid = state.focused_pane_id;
+        let pid = state.focus.id();
         let anchor = state.focused_buffer_state(bid)?.selections.primary().head();
         let rope_at_begin = state.buffers.get(bid).text().rope().clone();
         let mut session = Self {
