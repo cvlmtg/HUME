@@ -24,10 +24,10 @@ use crate::editor::buffer::Buffer;
 /// discipline `doc_ops.rs` already uses for `propagate_cs_to_panes`);
 /// `version` is the buffer's `text_gen` *after* this edit, the version the
 /// eventual `didChange` notification claims.
-pub(crate) struct LspPendingChange {
-    pub(crate) cs: ChangeSet,
-    pub(crate) before: Rope,
-    pub(crate) version: u64,
+pub(in crate::editor) struct LspPendingChange {
+    pub(in crate::editor) cs: ChangeSet,
+    pub(in crate::editor) before: Rope,
+    pub(in crate::editor) version: u64,
 }
 
 impl Editor {

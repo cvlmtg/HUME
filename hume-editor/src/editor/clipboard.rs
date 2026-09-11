@@ -25,7 +25,7 @@ pub(crate) struct SystemClipboard {
 }
 
 impl SystemClipboard {
-    pub(crate) fn new() -> Self {
+    pub(in crate::editor) fn new() -> Self {
         Self {
             handle: arboard::Clipboard::new().ok(),
             #[cfg(test)]
@@ -35,7 +35,7 @@ impl SystemClipboard {
         }
     }
 
-    pub(crate) fn read(&mut self) -> Result<String, String> {
+    pub(in crate::editor) fn read(&mut self) -> Result<String, String> {
         #[cfg(test)]
         if self.mock_active {
             return self
@@ -49,7 +49,7 @@ impl SystemClipboard {
         }
     }
 
-    pub(crate) fn write(&mut self, text: &str) -> Result<(), String> {
+    pub(in crate::editor) fn write(&mut self, text: &str) -> Result<(), String> {
         #[cfg(test)]
         if self.mock_active {
             self.mock_content = Some(text.to_string());

@@ -11,7 +11,7 @@
 //! not tied to a buffer: the current direction. Everything else (regex,
 //! matches, match count) lives in the per-buffer / per-pane tier above.
 
-pub(crate) mod ops;
+pub(in crate::editor) mod ops;
 
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 /// no deep clone, no take/put-back dance. A present `SearchPattern` is always
 /// fully-valid by construction (invalid regexes are rejected at compile time and
 /// leave `Buffer.search_pattern = None`).
-pub(crate) struct SearchPattern {
+pub(in crate::editor) struct SearchPattern {
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
     /// Raw pattern string — used as an invalidation key for `SearchMatches`.
     pub pattern_str: String,
@@ -35,7 +35,7 @@ pub(crate) struct SearchPattern {
 
 /// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.
 #[derive(Default)]
-pub(crate) struct SearchMatches {
+pub(in crate::editor) struct SearchMatches {
     /// All non-overlapping matches as inclusive char ranges, sorted in
     /// document order.
     pub matches: Vec<InclusiveRange<CharOffset>>,

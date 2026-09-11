@@ -19,7 +19,7 @@ use super::EditorState;
 /// | Error    | Yes     | Yes                    |
 /// | Trace    | Yes     | No                     |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Severity {
+pub(in crate::editor) enum Severity {
     /// Ephemeral confirmation (e.g. "Written 42 lines"). Shown, not logged.
     Info,
     /// Something the user should review (e.g. unknown config key). Logged and shown.
@@ -76,9 +76,9 @@ impl Severity {
 
 /// A single entry in the persistent message log.
 #[derive(Debug, Clone)]
-pub(crate) struct LogEntry {
-    pub(crate) severity: Severity,
-    pub(crate) text: String,
+pub(in crate::editor) struct LogEntry {
+    pub(in crate::editor) severity: Severity,
+    pub(in crate::editor) text: String,
 }
 
 // ── MessageLog ───────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ pub(crate) struct MessageLog {
 }
 
 impl MessageLog {
-    pub(crate) fn new() -> Self {
+    pub(in crate::editor) fn new() -> Self {
         Self {
             entries: VecDeque::new(),
             seen_up_to: 0,
@@ -128,7 +128,7 @@ impl MessageLog {
     ///
     /// When the entry count would exceed [`MAX_ENTRIES`], the oldest entry is
     /// evicted and `seen_up_to` is shifted so it stays in bounds.
-    pub(crate) fn push(&mut self, severity: Severity, text: String) {
+    pub(in crate::editor) fn push(&mut self, severity: Severity, text: String) {
         match severity {
             Severity::Error => self.total_errors += 1,
             Severity::Warning => self.total_warnings += 1,

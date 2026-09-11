@@ -39,13 +39,13 @@ use crate::editor::error::CommandError;
 /// does not stamp — it is a plain edit as far as this mechanism is concerned.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PasteStamp {
-    pub(crate) seq: u64,
-    pub(crate) source: PasteSource,
+    pub(in crate::editor) seq: u64,
+    pub(in crate::editor) source: PasteSource,
 }
 
 /// See [`PasteStamp`].
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum PasteSource {
+pub(in crate::editor) enum PasteSource {
     /// Kill-ring slot (`0` = head). Looked up fresh via `KillRing::slot` at
     /// read time rather than snapshotting the text, so a stamp always
     /// reflects the ring's current contents at that slot.

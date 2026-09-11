@@ -7,13 +7,13 @@
 /// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
 /// hook and `completionItem/resolve` both see the server's original text).
 pub(in crate::editor) struct StoredCompletionItem {
-    pub(crate) label: String,
+    pub(in crate::editor) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
     /// typed field: `CompletionItemKind` wraps a private `i32` with no
     /// accessor.
-    pub(crate) kind: Option<i64>,
-    pub(crate) detail: Option<String>,
+    pub(in crate::editor) kind: Option<i64>,
+    pub(in crate::editor) detail: Option<String>,
     pub(super) sort_text: String,
     pub(super) filter_text: String,
     pub(super) insert_text: String,

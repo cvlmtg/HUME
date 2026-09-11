@@ -27,7 +27,7 @@ pub(in crate::editor::jump_list) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct JumpEntry {
+pub(in crate::editor) struct JumpEntry {
     /// Buffer this position belongs to — needed for cross-buffer Ctrl+O/I.
     pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
@@ -61,7 +61,11 @@ impl JumpEntry {
 
     /// Build a jump entry from the current selection state, deriving
     /// `primary_line` from the buffer so callers don't have to.
-    pub(crate) fn new(selections: SelectionSet, text: &BufferText, buffer_id: BufferId) -> Self {
+    pub(in crate::editor) fn new(
+        selections: SelectionSet,
+        text: &BufferText,
+        buffer_id: BufferId,
+    ) -> Self {
         let primary_line = Self::primary_line_of(&selections, text);
         Self {
             buffer_id,
@@ -94,7 +98,7 @@ impl JumpEntry {
 /// decrements cursor; navigating forward increments it. A new `push` truncates
 /// any forward history (entries after cursor) before appending.
 #[derive(Debug, Clone)]
-pub(crate) struct JumpList {
+pub(in crate::editor) struct JumpList {
     entries: VecDeque<JumpEntry>,
     /// Current position. `cursor == entries.len()` means "at the present".
     cursor: usize,
@@ -111,7 +115,7 @@ impl JumpList {
     /// parser (`usize_nonzero`) already rejects `0` for `jump-list-capacity`
     /// before it can reach here; this just makes the trap loud if that
     /// guard is ever bypassed (a test constructing a `JumpList` directly).
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub(in crate::editor) fn new(capacity: usize) -> Self {
         debug_assert!(capacity > 0, "JumpList capacity must be non-zero");
         Self {
             entries: VecDeque::new(),
@@ -134,7 +138,7 @@ impl JumpList {
     /// last entry by line number, and caps the list at `self.capacity` — a
     /// `while`, not an `if`, so a `set_capacity` shrink of any size converges
     /// to the new cap in this one call rather than one entry per push.
-    pub(crate) fn push(&mut self, entry: JumpEntry) {
+    pub(in crate::editor) fn push(&mut self, entry: JumpEntry) {
         self.entries.truncate(self.cursor);
 
         // Deduplicate against the immediately preceding entry only, by (line,
@@ -318,7 +322,7 @@ impl JumpList {
     }
 
     #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
+    pub(in crate::editor) fn len(&self) -> usize {
         self.entries.len()
     }
 
@@ -338,14 +342,14 @@ impl JumpList {
 /// change — is one named method instead of a `for jumps in
 /// …values_mut() { … }` loop hand-written at each call site.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct JumpLists(SecondaryMap<PaneId, JumpList>);
+pub(in crate::editor) struct JumpLists(SecondaryMap<PaneId, JumpList>);
 
 impl JumpLists {
-    pub(crate) fn insert(&mut self, pid: PaneId, list: JumpList) {
+    pub(in crate::editor) fn insert(&mut self, pid: PaneId, list: JumpList) {
         self.0.insert(pid, list);
     }
 
-    pub(crate) fn remove(&mut self, pid: PaneId) {
+    pub(in crate::editor) fn remove(&mut self, pid: PaneId) {
         self.0.remove(pid);
     }
 

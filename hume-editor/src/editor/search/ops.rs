@@ -136,7 +136,7 @@ impl Editor {
 
     /// Accessor for the focused buffer's match cache.
     #[cfg(test)]
-    pub(crate) fn search_matches(&self) -> &SearchMatches {
+    pub(in crate::editor) fn search_matches(&self) -> &SearchMatches {
         &self
             .state
             .buffers
@@ -146,7 +146,7 @@ impl Editor {
 
     /// Accessor for the focused pane's search cursor (match count, wrapped flag).
     #[cfg(test)]
-    pub(crate) fn current_search_cursor(&self) -> &SearchCursor {
+    pub(in crate::editor) fn current_search_cursor(&self) -> &SearchCursor {
         &self
             .state
             .focused_buffer_state_or_panic(self.focused_buffer_id())

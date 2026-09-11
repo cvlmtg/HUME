@@ -32,7 +32,7 @@ pub(in crate::editor) use simple::{BufferNameCompleter, CommandCompleter, ThemeC
 /// The two fields are often identical; they differ for e.g. buffer names where
 /// the display is the basename but the replacement is the full path.
 #[derive(Debug, Clone)]
-pub(crate) struct Completion {
+pub(in crate::editor) struct Completion {
     /// BufferText to insert at the span location in the minibuffer input.
     pub replacement: String,
     /// BufferText shown in the completion popup row.
@@ -43,7 +43,7 @@ pub(crate) struct Completion {
 ///
 /// Invariant: `selected < candidates.len()`. Created only when there are ≥2
 /// candidates (single-candidate completion is applied silently without state).
-pub(crate) struct MinibufCompletionState {
+pub(in crate::editor) struct MinibufCompletionState {
     pub candidates: Vec<Completion>,
     /// Index of the currently-displayed candidate.
     pub selected: usize,

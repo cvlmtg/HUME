@@ -380,7 +380,7 @@ impl MappableCommand {
     /// clones with no heap allocation; only `Cow::Owned` Steel names allocate.
     /// Pure field extraction — distinct from [`MappableCommand::meta`], which is
     /// the single source of truth for derived bookkeeping properties.
-    pub(crate) fn name(&self) -> &Cow<'static, str> {
+    pub(in crate::editor) fn name(&self) -> &Cow<'static, str> {
         match self {
             Self::Motion { name, .. }
             | Self::Selection { name, .. }
@@ -393,7 +393,7 @@ impl MappableCommand {
 
     /// One-line description of the command, for `:help` and command-palette display.
     #[cfg(test)]
-    pub(crate) fn doc(&self) -> &str {
+    pub(in crate::editor) fn doc(&self) -> &str {
         match self {
             Self::Motion { doc, .. }
             | Self::Selection { doc, .. }

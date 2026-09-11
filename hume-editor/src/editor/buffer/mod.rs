@@ -26,8 +26,8 @@ pub(in crate::editor) use disk::DiskCheckTrigger;
 #[cfg(test)]
 pub(in crate::editor) use disk::DiskState;
 mod file_open;
-pub(crate) mod lifecycle;
-pub(crate) mod store;
+pub(in crate::editor) mod lifecycle;
+pub(in crate::editor) mod store;
 use hume_treesitter::registry::LanguageId;
 use hume_treesitter::syntax::Syntax;
 
@@ -40,11 +40,11 @@ use hume_treesitter::syntax::Syntax;
 /// live generation before using `spans` — any intervening mutation (an edit,
 /// undo, or redo, all of which bump `text_gen`) invalidates it rather than
 /// trying to remap positions through the change.
-pub(crate) struct LastInsert {
+pub(in crate::editor) struct LastInsert {
     /// One inclusive char range per selection that was active during the
     /// session, sorted by `start`.
-    pub(crate) spans: Vec<InclusiveRange<CharOffset>>,
-    pub(crate) text_gen: u64,
+    pub(in crate::editor) spans: Vec<InclusiveRange<CharOffset>>,
+    pub(in crate::editor) text_gen: u64,
 }
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
@@ -86,17 +86,17 @@ pub(crate) struct Buffer {
     pub(super) display_path: Option<String>,
     /// File metadata captured at open/save time (permissions, uid/gid).
     /// `None` for scratch buffers; populated after a successful save.
-    pub(crate) file_meta: Option<FileMeta>,
+    pub(in crate::editor) file_meta: Option<FileMeta>,
     /// Active search pattern shared by all panes viewing this buffer.
     /// `None` when no search is active. A present `SearchPattern` is always
     /// fully-valid — invalid regexes leave this as `None`.
-    pub(crate) search_pattern: Option<SearchPattern>,
+    pub(in crate::editor) search_pattern: Option<SearchPattern>,
     /// Cached match list for `search_pattern`. Invalidated by revision change
     /// or pattern change; rebuilt lazily by `update_buffer_matches`.
-    pub(crate) search_matches: SearchMatches,
+    pub(in crate::editor) search_matches: SearchMatches,
     /// Per-buffer setting overrides. `None` fields inherit from
     /// [`crate::editor::settings::EditorSettings`].
-    pub(crate) overrides: BufferOverrides,
+    pub(in crate::editor) overrides: BufferOverrides,
     /// Detected or explicitly set language identity (e.g. `rust`, `json`).
     /// `None` for unrecognised filetypes and scratch buffers.
     pub(crate) language: Option<LanguageId>,
@@ -105,43 +105,43 @@ pub(crate) struct Buffer {
     /// reset reads this (before clearing it) to restore the user's own
     /// assertion across the reload instead of letting re-detection silently
     /// pick something else — see `clear_languages_all`.
-    pub(crate) language_explicit: bool,
+    pub(in crate::editor) language_explicit: bool,
     /// Monotonically increasing counter, bumped on every text mutation.
     /// `reparse_stale_buffers` skips a buffer when this equals
     /// `syntax.parsed_gen()`.
-    pub(crate) text_gen: u64,
+    pub(in crate::editor) text_gen: u64,
     /// The `text_gen` value most recently announced as an `on-text-changed`
     /// event. `Buffer` cannot reach the event queue (it holds no
     /// `EditorState`), so the hook is raised by diffing this against
     /// `text_gen` at a drain observation point — see
     /// `BufferStore::take_text_changed` — rather than at `set_text` itself.
-    pub(crate) announced_text_gen: u64,
+    pub(in crate::editor) announced_text_gen: u64,
     /// Per-buffer tree-sitter syntax attachment: grammar identity, committed
     /// parse layers, generation bookkeeping, and in-flight state, all in one
     /// place. `None` when no grammar is attached or the buffer exceeds
     /// `syntax-highlight-max-bytes`.
-    pub(crate) syntax: Option<Syntax>,
+    pub(in crate::editor) syntax: Option<Syntax>,
     /// When `true`, all forward text mutations are blocked at the `doc_ops`
     /// layer. Entering Insert mode is also refused. Read-only is orthogonal to
     /// language/syntax — a read-only buffer may still be highlighted.
-    pub(crate) read_only: bool,
+    pub(in crate::editor) read_only: bool,
     /// Display name used for synthetic, path-less view buffers (e.g. `"[messages]"`).
     /// Shown in the statusline and `:ls` instead of `*scratch*`.
-    pub(crate) label: Option<String>,
+    pub(in crate::editor) label: Option<String>,
     /// The LSP server this buffer is attached to, if any. Set by
     /// `Editor::lsp_attach_buffer`; `None` for unnamed buffers, buffers with
     /// no registered server, before the open-time attach attempt runs, or
     /// after the attached server is detached.
-    pub(crate) lsp_server: Option<hume_lsp::backend::ServerId>,
+    pub(in crate::editor) lsp_server: Option<hume_lsp::backend::ServerId>,
     /// BufferText mutations queued for `textDocument/didChange` conversion, in
     /// order. Recorded at the same chokepoint as tree-sitter's pending
     /// edits (`doc_ops.rs`'s five apply functions); drained by the LSP
     /// per-frame flush. Always empty when `lsp_server` is `None`.
-    pub(crate) lsp_pending: Vec<super::lsp::sync::LspPendingChange>,
+    pub(in crate::editor) lsp_pending: Vec<super::lsp::sync::LspPendingChange>,
     /// Spans typed during the most recently completed insert session, for
     /// `mii` (`select-last-insertion`). `None` before any session completes,
     /// or once `text_gen` has moved past the stamp (see [`LastInsert`]).
-    pub(crate) last_insert: Option<LastInsert>,
+    pub(in crate::editor) last_insert: Option<LastInsert>,
     /// True from chokepoint open (`lifecycle::open_buffer_and_notify`) until
     /// `Editor::detect_pending_languages` fires this buffer's `OnBufferOpen`.
     /// Read by `lifecycle::close_buffer_and_notify`: a still-pending buffer
@@ -150,12 +150,12 @@ pub(crate) struct Buffer {
     /// created outside the chokepoint (the startup buffer, the last-buffer
     /// scratch replacement) default to `false` — their close always
     /// announces.
-    pub(crate) open_hook_pending: bool,
+    pub(in crate::editor) open_hook_pending: bool,
     /// The buffer's disk state as of the last check — set by
     /// `Editor::check_buffer_disk_state`, cleared to `InSync` by a reload or
     /// a successful write. Always `InSync` for scratch/synthetic buffers,
     /// which the check skips.
-    pub(crate) disk_state: disk::DiskState,
+    pub(in crate::editor) disk_state: disk::DiskState,
     /// Bumped by [`lifecycle::replace_buffer_in_place`] — the only path that
     /// swaps a `BufferId`'s content without a close/open pair (the
     /// last-buffer scratch replacement in `close_buffer`). A versioned
@@ -167,7 +167,7 @@ pub(crate) struct Buffer {
     /// pre-reload `BufferId` with this stamp; `resync_config_state` and the
     /// explicit-language restore treat a bid whose current stamp has moved
     /// on as a different buffer, not the one the snapshot meant.
-    pub(crate) replace_stamp: u64,
+    pub(in crate::editor) replace_stamp: u64,
 }
 
 impl Buffer {
@@ -356,7 +356,7 @@ impl Buffer {
     }
 
     /// Canonical backing-file path, or `None` for scratch buffers.
-    pub(crate) fn path(&self) -> Option<&Path> {
+    pub(in crate::editor) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 

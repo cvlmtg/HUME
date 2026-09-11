@@ -318,7 +318,7 @@ settings_enum!(CursorShape, "cursor-shape-insert", [
 /// with no pane-level override still resolves through the buffer/global
 /// chain (see `commands::effective_wrap_mode`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Scope {
+pub(in crate::editor) enum Scope {
     Global,
     Buffer,
     Pane,
@@ -333,7 +333,7 @@ impl Scope {
     /// The wire-format string for this scope — the single source `Display`
     /// delegates to and completion/error messages format with, so the two
     /// can never drift out of sync.
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub(in crate::editor) const fn as_str(self) -> &'static str {
         match self {
             Scope::Global => "global",
             Scope::Buffer => "buffer",
@@ -496,13 +496,13 @@ macro_rules! option_value {
 macro_rules! buffer_accessor {
     ($bname:ident, $btype:ty, word_chars) => {
         /// Effective value: buffer override → global default.
-        pub(crate) fn $bname<'a>(&'a self, global: &'a EditorSettings) -> &'a str {
+        pub(in crate::editor) fn $bname<'a>(&'a self, global: &'a EditorSettings) -> &'a str {
             self.$bname.as_deref().unwrap_or(&global.$bname)
         }
     };
     ($bname:ident, $btype:ty, $bparser:ident) => {
         /// Effective value: buffer override → global default.
-        pub(crate) fn $bname(&self, global: &EditorSettings) -> $btype {
+        pub(in crate::editor) fn $bname(&self, global: &EditorSettings) -> $btype {
             self.$bname.clone().unwrap_or_else(|| global.$bname.clone())
         }
     };

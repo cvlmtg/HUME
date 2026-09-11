@@ -5,14 +5,14 @@
 //! registration, and observability commands.
 
 mod bridge;
-pub(crate) mod completion;
-pub(crate) mod diagnostics;
+pub(in crate::editor) mod completion;
+pub(in crate::editor) mod diagnostics;
 mod drain;
-pub(crate) mod edits;
+pub(in crate::editor) mod edits;
 pub(crate) mod introspect;
 mod progress;
 mod registry;
-pub(crate) mod sync;
+pub(in crate::editor) mod sync;
 
 #[cfg(test)]
 use std::path::PathBuf;
@@ -526,7 +526,7 @@ impl Editor {
     /// Steel; `self.lsp` is private to `editor` and its descendants, so
     /// callers outside it, like `ui::statusline`, go through this).
     #[cfg(test)]
-    pub(crate) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
+    pub(in crate::editor) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         introspect::diagnostic_counts(&self.lsp, bid)
     }
 
@@ -535,7 +535,7 @@ impl Editor {
     /// loading spinner instead of counts. Same access rationale as
     /// `diagnostic_counts` above.
     #[cfg(test)]
-    pub(crate) fn lsp_activity(&self, bid: BufferId) -> introspect::LspActivity {
+    pub(in crate::editor) fn lsp_activity(&self, bid: BufferId) -> introspect::LspActivity {
         introspect::activity(&self.state, &self.lsp, bid)
     }
 }

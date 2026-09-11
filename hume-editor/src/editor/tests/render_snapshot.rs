@@ -7,7 +7,7 @@ use hume_grid::{Rect, Rgb};
 /// Styled runs are wrapped as `<fg=#rrggbb,bg=#rrggbb,bold>text</>`. Unstyled
 /// text is emitted bare. Trailing spaces are stripped per row. Used by snapshot
 /// tests to lock down the styled render output without a live terminal.
-pub(crate) fn render_to_styled_string(ed: &mut Editor, rect: Rect) -> String {
+pub(in crate::editor) fn render_to_styled_string(ed: &mut Editor, rect: Rect) -> String {
     let buf = ed.render_to_buf(rect);
 
     let mut out = String::new();

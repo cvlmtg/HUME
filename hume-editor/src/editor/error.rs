@@ -11,7 +11,7 @@ use super::message_log::Severity;
 /// errors) — `CommandError` represents a user-level failure such as an I/O
 /// error during a file write, or a boundary condition like "no match".
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CommandError {
+pub(in crate::editor) struct CommandError {
     message: String,
     severity: Severity,
 }
@@ -25,7 +25,7 @@ impl CommandError {
     /// site that hasn't been triaged, so an unclassified failure keeps its
     /// permanent record rather than silently disappearing — see
     /// [`Self::transient`] for the other case.
-    pub(crate) fn new(msg: impl Into<String>) -> Self {
+    pub(in crate::editor) fn new(msg: impl Into<String>) -> Self {
         Self {
             message: msg.into(),
             severity: Severity::Error,

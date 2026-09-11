@@ -666,7 +666,7 @@ pub(in crate::editor) fn pane_visible_range(
 /// pane's range wins — no less arbitrary than any other tie-break, since a
 /// per-buffer decoration store (inlay hints) can only hold one range per
 /// buffer regardless of how many panes show it.
-pub(crate) fn viewport_range(
+pub(in crate::editor) fn viewport_range(
     state: &EditorState,
     view: &EngineView,
     id: BufferId,

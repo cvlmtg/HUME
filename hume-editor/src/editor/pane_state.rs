@@ -199,7 +199,7 @@ pub(in crate::editor) fn park_cursor_at(
 /// state to restore if the user cancels Search mode — it belongs to the pane
 /// that entered Search mode, independent of which buffer that pane is viewing.
 #[derive(Default)]
-pub(crate) struct PaneTransient {
+pub(in crate::editor) struct PaneTransient {
     /// Snapshot of selections taken when this pane entered Search mode.
     /// Restored on cancel; discarded on confirm. `None` when not in Search mode.
     pub pre_search_sels: Option<SelectionSet>,
@@ -226,10 +226,10 @@ pub(crate) struct PaneTransient {
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
 #[derive(Default)]
 pub(crate) struct PaneView {
-    pub(crate) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pub(crate) transient: SecondaryMap<PaneId, PaneTransient>,
-    pub(crate) jumps: super::jump_list::JumpLists,
-    pub(crate) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
+    pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
+    pub(in crate::editor) transient: SecondaryMap<PaneId, PaneTransient>,
+    pub(in crate::editor) jumps: super::jump_list::JumpLists,
+    pub(in crate::editor) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
 }
 
 impl PaneView {

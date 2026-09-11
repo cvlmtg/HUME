@@ -15,9 +15,9 @@ use super::Editor;
 /// outgoing Steel engine and must never be invoked after it's gone — the
 /// same hazard `LspState::reset_config_state` documents for its own
 /// callback map.
-pub(crate) struct PendingJob {
-    pub(crate) job: hume_platform::process::job::SpawnedJob,
-    pub(crate) callback: SteelVal,
+pub(in crate::editor) struct PendingJob {
+    pub(in crate::editor) job: hume_platform::process::job::SpawnedJob,
+    pub(in crate::editor) callback: SteelVal,
 }
 
 impl Editor {

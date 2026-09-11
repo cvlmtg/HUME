@@ -26,9 +26,9 @@ use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 /// payload handed back to `on_select` verbatim. Rust never interprets
 /// `payload` — mirrors the drawer's "rows are pre-formatted display
 /// strings" contract.
-pub(crate) struct PickerItem {
-    pub(crate) display: String,
-    pub(crate) payload: SteelVal,
+pub(in crate::editor) struct PickerItem {
+    pub(in crate::editor) display: String,
+    pub(in crate::editor) payload: SteelVal,
 }
 
 /// `UiHost`'s wire shape for a batch of items, converted — `open_picker` and
@@ -112,7 +112,7 @@ enum Population {
 /// it through `picker!`/`live-picker!`/`picker-push!`/`picker-replace!`/
 /// `picker-close!`;
 /// this module has no Steel-facing surface of its own.
-pub(crate) struct PickerSession {
+pub(in crate::editor) struct PickerSession {
     /// Append-only via `push`/`seed` — the common case, and what lets
     /// `push` preserve a selection by index (see `rerank_keeping_selection`).
     /// `replace` is the one mutator that breaks this: it clears the vec
@@ -172,7 +172,7 @@ impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch: open empty, then
     /// attach a source.
-    pub(crate) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
+    pub(in crate::editor) fn new(on_select: SteelVal, opts: PickerOpts) -> Self {
         let population = if opts.pending {
             Population::Awaiting
         } else {
@@ -238,11 +238,11 @@ impl PickerSession {
         self.token
     }
 
-    pub(crate) fn truncate(&self) -> TruncateEnd {
+    pub(in crate::editor) fn truncate(&self) -> TruncateEnd {
         self.truncate
     }
 
-    pub(crate) fn prompt(&self) -> &str {
+    pub(in crate::editor) fn prompt(&self) -> &str {
         &self.prompt
     }
 
@@ -295,7 +295,7 @@ impl PickerSession {
     /// `AttachedSource::supersedes_rows`'s doc. That's `replace`'s job, not
     /// a hand-rolled clear-then-extend here, so it also gets `replace`'s
     /// row-0 reset.
-    pub(crate) fn push(&mut self, items: Vec<PickerItem>) {
+    pub(in crate::editor) fn push(&mut self, items: Vec<PickerItem>) {
         if self.take_supersede() {
             self.replace(items);
             return;
@@ -452,7 +452,7 @@ impl PickerSession {
     /// `set_query`) a type error instead of a silent desync between the
     /// visible query and a live source.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
-    pub(crate) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
+    pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<SteelVal> {
         self.query.push(ch);
         self.rerank();
         self.notify_query_change()
@@ -517,15 +517,15 @@ impl PickerSession {
         debug_assert!(self.scroll <= self.selected && self.selected < self.scroll + visible_rows);
     }
 
-    pub(crate) fn query(&self) -> &str {
+    pub(in crate::editor) fn query(&self) -> &str {
         &self.query
     }
 
-    pub(crate) fn selected(&self) -> usize {
+    pub(in crate::editor) fn selected(&self) -> usize {
         self.selected
     }
 
-    pub(crate) fn scroll(&self) -> usize {
+    pub(in crate::editor) fn scroll(&self) -> usize {
         self.scroll
     }
 
@@ -542,7 +542,7 @@ impl PickerSession {
     /// Display strings of up to `rows` items starting at `scroll`, in ranked
     /// order — the window the picker panel paints. The selected row's
     /// on-screen position is `selected - scroll`.
-    pub(crate) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
+    pub(in crate::editor) fn window(&self, rows: usize) -> impl Iterator<Item = &str> + '_ {
         self.filtered
             .iter()
             .skip(self.scroll)
@@ -719,7 +719,7 @@ pub(in crate::editor) fn close_picker(state: &mut super::EditorState, payload: S
 /// module's own tests and `tests/unix/picker_source.rs`, which spawns real
 /// child processes and so can't live in this (non-unix-gated) module.
 #[cfg(test)]
-pub(crate) fn item(display: &str) -> PickerItem {
+pub(in crate::editor) fn item(display: &str) -> PickerItem {
     PickerItem {
         display: display.to_string(),
         payload: SteelVal::StringV(display.into()),

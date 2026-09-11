@@ -50,7 +50,7 @@ pub(in crate::editor::buffer::disk) enum DiskChange {
 /// stat genuinely matches the baseline again (a change followed by an
 /// external revert) — see `check_buffer_disk_state`'s `Unchanged` arm.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum DiskState {
+pub(in crate::editor) enum DiskState {
     /// Matches what the editor last read or wrote — nothing to guard against.
     InSync,
     /// Changed externally; carries the signature that was reported.

@@ -84,7 +84,7 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
 /// The two are strictly separate: `:` resolves only typed commands ([`Self::get_typed`]),
 /// a key binding resolves only mappable commands ([`Self::get_mappable`]). The single
 /// `commands` map still prevents name collisions between them.
-pub(crate) struct CommandRegistry {
+pub(in crate::editor) struct CommandRegistry {
     /// All commands keyed by canonical name.
     commands: FxHashMap<Cow<'static, str>, Command>,
     /// Maps typed-command alias → canonical name, for O(1) alias lookup.
@@ -95,7 +95,7 @@ pub(crate) struct CommandRegistry {
 ///
 /// Mappable and typed commands share the same namespace but have different
 /// signatures and dispatch paths.
-pub(crate) enum Command {
+pub(in crate::editor) enum Command {
     Mappable(MappableCommand),
     Typed(TypedCommand),
 }
@@ -144,7 +144,7 @@ impl CommandRegistry {
     ///
     /// Unlike [`Self::get_mappable`], this also matches typed commands — use it
     /// when checking whether a name is already claimed by anything in the registry.
-    pub(crate) fn contains(&self, name: &str) -> bool {
+    pub(in crate::editor) fn contains(&self, name: &str) -> bool {
         self.commands.contains_key(name)
     }
 
@@ -215,7 +215,7 @@ impl CommandRegistry {
     }
 
     /// Iterate over all registered canonical command names (not aliases).
-    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+    pub(in crate::editor) fn names(&self) -> impl Iterator<Item = &str> {
         self.commands.keys().map(|k| k.as_ref())
     }
 
@@ -245,7 +245,7 @@ impl CommandRegistry {
 
     /// Total number of registered commands (mappable + typed, not counting aliases).
     #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
+    pub(in crate::editor) fn len(&self) -> usize {
         self.commands.len()
     }
 
@@ -314,7 +314,7 @@ impl CommandRegistry {
     /// stubs_of`) on both the success and failure path — never touches a
     /// resolved `SteelBacked`/`Steel` command, even one that just replaced a
     /// stub of the same name for this plugin.
-    pub(crate) fn unregister_lazy_stubs_of(
+    pub(in crate::editor) fn unregister_lazy_stubs_of(
         &mut self,
         plugin: &hume_scripting::attribution::PluginId,
     ) {

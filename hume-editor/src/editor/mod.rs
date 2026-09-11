@@ -86,9 +86,9 @@ pub(in crate::editor) use message_log::Severity;
 // represented as `EditorMode::Extend`. One-shot ctrl-extend is a per-dispatch
 // local variable and is NOT a mode change.
 //
-// `pub(crate) use EditorMode as Mode;` lets all internal modules use `Mode`
+// `pub(in crate::editor) use EditorMode as Mode;` lets all internal modules use `Mode`
 // as an unqualified alias.
-pub(crate) use hume_engine::types::EditorMode as Mode;
+pub(in crate::editor) use hume_engine::types::EditorMode as Mode;
 
 use self::inline_output::InlineOutput;
 use self::tui::Tui;
@@ -112,10 +112,10 @@ use self::tui::Tui;
 /// reviewable "preserved across reload" set.
 pub(crate) struct ConfigState {
     /// The trie-based keymap for each mode.
-    pub(crate) keymap: Keymap,
+    pub(in crate::editor) keymap: Keymap,
     /// Registry of all mappable commands (motions, selections, edits), plus
     /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
-    pub(crate) registry: CommandRegistry,
+    pub(in crate::editor) registry: CommandRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
     /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
@@ -125,11 +125,11 @@ pub(crate) struct ConfigState {
     /// completion"` source registered separately for `"rust"` and
     /// `"python"`) never clobber each other. An empty `chars` removes the
     /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
-    pub(crate) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
+    pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds) — the render
     /// providers read these.
-    pub(crate) decorations: decorations::DecorationStores,
+    pub(in crate::editor) decorations: decorations::DecorationStores,
     /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
     /// rather than flat like `trigger_chars` above: the render side needs a
@@ -151,7 +151,7 @@ pub(crate) struct ConfigState {
     /// One queue, not two: see `event::PendingWork`'s doc for why the merge
     /// matters. No work item is ever evaluated inline during command
     /// execution or a completion callback.
-    pub(crate) pending_work: VecDeque<event::PendingWork>,
+    pub(in crate::editor) pending_work: VecDeque<event::PendingWork>,
     /// Buffers awaiting language detection, drained by
     /// `Editor::detect_pending_languages`. Detection needs `self.scripting`
     /// (lazy-plugin activation), which the disjoint-borrow buffer-open
@@ -161,38 +161,38 @@ pub(crate) struct ConfigState {
     /// with a full `&mut Editor` drains this explicitly after opening
     /// buffers; every Steel-eval path drains it at the tail of
     /// `apply_script_effects`.
-    pub(crate) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
+    pub(in crate::editor) pending_language_detection: Vec<hume_engine::pipeline::BufferId>,
     /// In-flight `spawn-async!` jobs, keyed by the id `spawn-async!`
     /// returned to Steel. Drained by `Editor::drain_async_jobs`; dropping
     /// this map (a `:reload-config` wholesale rebuild) kills every
     /// in-flight child for free — see `async_job::PendingJob`'s doc.
-    pub(crate) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
+    pub(in crate::editor) async_jobs: rustc_hash::FxHashMap<u64, async_job::PendingJob>,
     /// Monotonic counter minting the next `spawn-async!` job id — mirrors
     /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
     /// than reusing either) since a job id is neither.
-    pub(crate) next_async_job_id: u64,
+    pub(in crate::editor) next_async_job_id: u64,
     /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
     /// the prompt session (unlike a queued `PendingWork::Call`, which drains
     /// the same `settle()` it's pushed to). `handle_command`'s Confirm/Cancel
     /// arms take this and queue exactly one `(callback text-or-#f)` call via
     /// `queue_steel_call`.
-    pub(crate) steel_prompt_callback: Option<steel::rvals::SteelVal>,
+    pub(in crate::editor) steel_prompt_callback: Option<steel::rvals::SteelVal>,
     /// `(show-popup! text)`'s raw content — resolved into a positioned
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
-    pub(crate) popup: Option<crate::ui::popup::PopupModel>,
+    pub(in crate::editor) popup: Option<crate::ui::popup::PopupModel>,
     /// `(show-menu! items on-select)`'s raw content, including the
     /// not-yet-fired Steel callback — cleared by the key intercept in
     /// `handle_key`, not by `sync_menu_view`.
-    pub(crate) menu: Option<crate::ui::popup::MenuModel>,
+    pub(in crate::editor) menu: Option<crate::ui::popup::MenuModel>,
     /// `(show-drawer-list! items on-select)`'s raw content, including the
     /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
     /// drawer stays open across selections, unlike the popup/menu).
-    pub(crate) drawer: Option<crate::ui::drawer::DrawerModel>,
+    pub(in crate::editor) drawer: Option<crate::ui::drawer::DrawerModel>,
     /// The open picker session — driven by the key intercept in `handle_key`;
     /// opened via `editor::picker::open_picker` (Steel's `picker!` builtin,
     /// or directly in tests).
-    pub(crate) picker: Option<crate::editor::picker::PickerSession>,
+    pub(in crate::editor) picker: Option<crate::editor::picker::PickerSession>,
     /// The open native yes/no confirmation, if any — see
     /// [`crate::ui::confirm`]. Mode-agnostic: unlike `menu`/`drawer`, this
     /// intercepts before mode dispatch regardless of `Mode`, since a
@@ -312,12 +312,12 @@ pub(crate) struct EditorState {
     /// Active when the user is typing a command (`:`) or a search (`/`).
     pub(crate) minibuf: Option<MiniBuffer>,
     /// Active completion session while a popup is showing.
-    pub(crate) minibuf_completion: Option<completion::MinibufCompletionState>,
+    pub(in crate::editor) minibuf_completion: Option<completion::MinibufCompletionState>,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
     /// Armed when `status_msg` clears with unseen entries; ticked down in `handle_key`.
-    pub(crate) summary_ttl: u8,
+    pub(in crate::editor) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
     /// All editor settings — global defaults and per-buffer-overridable values.
@@ -326,13 +326,13 @@ pub(crate) struct EditorState {
     pub(super) last_find: Option<commands::FindChar>,
     pub(super) search: SearchState,
     /// The single pane focused in the current editing session.
-    pub(crate) focused_pane_id: PaneId,
+    pub(in crate::editor) focused_pane_id: PaneId,
     /// Per-pane maps: (pane,buffer) selections/groups, transient mode snapshots, jump history.
     pub(super) panes: PaneView,
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
     pub(super) history: self::minibuf::history::HistoryStore,
     /// Set by the inline-output dispatch arm to trigger a full repaint.
-    pub(crate) force_full_redraw: bool,
+    pub(in crate::editor) force_full_redraw: bool,
     /// State of the `#:inline-output` bracket for the Steel command(s)
     /// currently on the call stack — pushed/truncated by `OutputHost::
     /// arm_inline_output`/`truncate_inline_output`, read and driven by
@@ -340,7 +340,7 @@ pub(crate) struct EditorState {
     /// so `SteelCtx` (and the gated print shims) know it's safe to write to
     /// the real stdout, and so the screen is only entered lazily, on the
     /// first byte of actual output. See [`InlineOutput`].
-    pub(crate) inline_output: InlineOutput,
+    pub(in crate::editor) inline_output: InlineOutput,
     /// Reusable sticky-column buffer for vertical motion — shared by all
     /// three units `apply_visual_vertical` handles (row-domain `j`/`k`,
     /// scroll/wheel, and buffer-line `9j`/`9k`).
@@ -464,31 +464,32 @@ pub(crate) struct EditorState {
     /// menu's generic
     /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
     /// selection menu) via its own `Arc` and pane registration.
-    pub(crate) completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    pub(in crate::editor) completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(crate) minibuf_completion_view:
+    pub(in crate::editor) minibuf_completion_view:
         Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
     /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
     /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `config.popup`
     /// is `None` or docked (see `popup_band_view`).
-    pub(crate) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    pub(in crate::editor) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared popup-band view for `PopupLayout::Docked`: written by
     /// `prepare_frame`, read by `PopupBandWidget` (chrome, like the
     /// drawer). Empty whenever `config.popup` is `None` or cursor-anchored.
-    pub(crate) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
+    pub(in crate::editor) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
     /// Shared menu-overlay view: written by `prepare_frame`, read by its own
     /// `PopupOverlay` registration (separate from the hover popup's, so both
     /// can in principle show at once — the menu paints on top).
-    pub(crate) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
+    pub(in crate::editor) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
     /// Shared drawer-overlay view: written every frame by `prepare_frame`
     /// (self-healing against a direct `self.state.config.drawer = None` that
     /// bypasses the mutation-site sync — see `sync_drawer_view`'s doc), read
     /// by `DrawerWidget`.
-    pub(crate) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
+    pub(in crate::editor) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
     /// Shared picker-overlay view: written per-frame by `sync_picker_view`
     /// (geometry depends on the current panes region, like popup/menu, not
     /// on-change like the drawer), read by `PickerOverlay`.
-    pub(crate) picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>>,
+    pub(in crate::editor) picker_view:
+        Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>>,
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
     /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
     /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
@@ -673,7 +674,7 @@ impl EditorState {
 
     /// Unconditional quit-the-whole-editor. Used by `:qa!`'s force path —
     /// "quit all, no confirmation".
-    pub(crate) fn request_quit(&mut self) {
+    pub(in crate::editor) fn request_quit(&mut self) {
         self.should_quit = true;
     }
 
@@ -789,9 +790,9 @@ pub(crate) struct Editor {
     /// can borrow `state` and `scripting.steel` simultaneously without aliasing.
     pub(crate) state: EditorState,
     /// Engine rendering state: layout, panes, buffers, theme.
-    pub(crate) view: EngineView,
+    pub(in crate::editor) view: EngineView,
     /// Whether the kitty keyboard protocol was successfully activated at startup.
-    pub(crate) kitty_enabled: bool,
+    pub(in crate::editor) kitty_enabled: bool,
     /// The embedded Steel scripting host.
     pub(super) scripting: Option<hume_scripting::ScriptingHost>,
     /// Where this session's config comes from — `--config FILE`,

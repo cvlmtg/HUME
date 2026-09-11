@@ -88,7 +88,7 @@ impl<'a> EditorHostImpl<'a> {
     /// lazy activation can run with `Editor::run` already owning the
     /// terminal, so a hardcoded `Tui::Off` here would silently let a
     /// `call!`-armed nested command corrupt a live screen.
-    pub(crate) fn init(
+    pub(in crate::editor) fn init(
         state: &'a mut EditorState,
         view: &'a mut EngineView,
         tui: Tui,
@@ -107,7 +107,7 @@ impl<'a> EditorHostImpl<'a> {
     /// at any point — including inside a live `Editor::run` loop — with no
     /// risk of it entering or mis-reading a bracket armed by whichever host
     /// actually owns the current dispatch.
-    pub(crate) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
+    pub(in crate::editor) fn new(state: &'a mut EditorState, view: &'a mut EngineView) -> Self {
         Self::with_tui(state, view, None, false)
     }
 

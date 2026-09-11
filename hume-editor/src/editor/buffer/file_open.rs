@@ -155,7 +155,7 @@ impl Editor {
 
     /// Allocate a new buffer slot (engine + BufferStore), seed the focused pane's
     /// per-buffer state (`state.panes.state`), and return the allocated `BufferId`.
-    pub(crate) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
+    pub(in crate::editor) fn open_buffer(&mut self, doc: Buffer) -> BufferId {
         let bid = lifecycle::open_buffer_and_notify(&mut self.view, &mut self.state, doc);
         // Steel eval capability only `&mut Editor` has — see
         // `open_buffer_and_notify`'s doc for why detection can't live there.
@@ -168,7 +168,7 @@ impl Editor {
     /// - At least one other buffer: redirect every pane viewing `id` to the
     ///   MRU replacement, then free the slot.
     /// - Only buffer: replace in-place with a fresh scratch buffer.
-    pub(crate) fn close_buffer(&mut self, id: BufferId) {
+    pub(in crate::editor) fn close_buffer(&mut self, id: BufferId) {
         lifecycle::close_buffer_and_notify(
             &mut self.view,
             &mut self.state,

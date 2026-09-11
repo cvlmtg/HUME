@@ -43,7 +43,7 @@ enum BlockText {
 
 /// A VIRTUAL_LINE source emitting `count` display lines at one anchor, and
 /// nothing for any other line.
-pub(crate) struct VirtualLineBlock {
+pub(in crate::editor) struct VirtualLineBlock {
     anchor: VirtualLineAnchor,
     count: usize,
     text: BlockText,
@@ -52,7 +52,11 @@ pub(crate) struct VirtualLineBlock {
 
 impl VirtualLineBlock {
     /// `count` display lines at `anchor`, every one texted `text`.
-    pub(crate) fn uniform(anchor: VirtualLineAnchor, count: usize, text: &'static str) -> Self {
+    pub(in crate::editor) fn uniform(
+        anchor: VirtualLineAnchor,
+        count: usize,
+        text: &'static str,
+    ) -> Self {
         Self {
             anchor,
             count,
@@ -63,7 +67,7 @@ impl VirtualLineBlock {
 
     /// `count` display lines at `anchor`, texted "1", "2", … so a test can
     /// tell which one of the block it is looking at.
-    pub(crate) fn numbered(anchor: VirtualLineAnchor, count: usize) -> Self {
+    pub(in crate::editor) fn numbered(anchor: VirtualLineAnchor, count: usize) -> Self {
         Self {
             anchor,
             count,
@@ -79,7 +83,7 @@ impl VirtualLineBlock {
     /// line it walks, including whichever one the cursor happens to sit on, so
     /// an unnarrowed counter measures the walk rather than the caching under
     /// test.
-    pub(crate) fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
+    pub(in crate::editor) fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
         self.calls = Some(calls);
         self
     }
@@ -126,7 +130,7 @@ impl DecorationSource for VirtualLineBlock {
 }
 
 /// An INLINE source emitting one insert on one line — an inlay hint, say.
-pub(crate) struct InlineHint {
+pub(in crate::editor) struct InlineHint {
     line: hume_rope::line::ContentLine,
     byte_offset: usize,
     text: &'static str,
@@ -136,7 +140,7 @@ pub(crate) struct InlineHint {
 
 impl InlineHint {
     /// An insert of `text` at `byte_offset` on `line`, unstyled.
-    pub(crate) fn new(line: usize, byte_offset: usize, text: &'static str) -> Self {
+    pub(in crate::editor) fn new(line: usize, byte_offset: usize, text: &'static str) -> Self {
         Self {
             line: hume_rope::line::ContentLine::new(line),
             byte_offset,
@@ -148,14 +152,14 @@ impl InlineHint {
 
     /// Carry an already-interned scope, the contract real providers follow —
     /// for a test that asserts on the styling, not just the columns.
-    pub(crate) fn with_scope(mut self, scope: ScopeId) -> Self {
+    pub(in crate::editor) fn with_scope(mut self, scope: ScopeId) -> Self {
         self.scope = scope;
         self
     }
 
     /// Emit only while `on` is set, so one registered provider can answer
     /// differently on two frames driven through the same `RenderContext`.
-    pub(crate) fn gated(mut self, on: Rc<Cell<bool>>) -> Self {
+    pub(in crate::editor) fn gated(mut self, on: Rc<Cell<bool>>) -> Self {
         self.gate = Some(on);
         self
     }
@@ -189,13 +193,13 @@ impl DecorationSource for InlineHint {
 /// formats that depends on nothing the display-line map reports about
 /// itself. Emitting no insert keeps the line's layout the one it would have
 /// had unobserved.
-pub(crate) struct FormatProbe {
+pub(in crate::editor) struct FormatProbe {
     line: hume_rope::line::ContentLine,
     formats: Rc<Cell<usize>>,
 }
 
 impl FormatProbe {
-    pub(crate) fn new(line: usize, formats: Rc<Cell<usize>>) -> Self {
+    pub(in crate::editor) fn new(line: usize, formats: Rc<Cell<usize>>) -> Self {
         Self {
             line: hume_rope::line::ContentLine::new(line),
             formats,
@@ -221,12 +225,12 @@ impl DecorationSource for FormatProbe {
 
 /// No decoration source registered — every line's block reduces to its content
 /// rows, which is what a test with virtual-line-unaware expectations needs.
-pub(crate) fn no_providers() -> ProviderSet {
+pub(in crate::editor) fn no_providers() -> ProviderSet {
     ProviderSet::new()
 }
 
 /// One `Before(line)` row, the shape most virtual-line tests want.
-pub(crate) fn providers_with_before_line(line: usize) -> ProviderSet {
+pub(in crate::editor) fn providers_with_before_line(line: usize) -> ProviderSet {
     let mut p = ProviderSet::new();
     p.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(hume_rope::line::ContentLine::new(line)),

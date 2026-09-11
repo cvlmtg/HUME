@@ -1,4 +1,4 @@
-pub(crate) mod history;
+pub(in crate::editor) mod history;
 
 use crate::ui::width::text_width;
 

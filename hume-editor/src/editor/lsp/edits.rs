@@ -266,8 +266,8 @@ pub(in crate::editor::lsp) fn commit_char_edits(
     Ok(Some(commit_changeset(state, bid, cs)))
 }
 
-pub(crate) struct WorkspaceEditSummary {
-    pub(crate) buffers_modified: usize,
+pub(in crate::editor) struct WorkspaceEditSummary {
+    pub(in crate::editor) buffers_modified: usize,
 }
 
 /// One resolved file entry: its URI, plain `TextEdit`s (annotations

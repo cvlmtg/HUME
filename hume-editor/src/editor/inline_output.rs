@@ -55,20 +55,20 @@ struct Frame {
 /// than re-reading `Editor`/`EditorSettings` fields that may have changed
 /// mid-command (`:set global mouse-enabled=…` inside the very body that's
 /// running, say).
-pub(crate) struct Entered {
-    pub(crate) kitty: bool,
-    pub(crate) mouse: bool,
-    pub(crate) mouse_select: bool,
+pub(in crate::editor) struct Entered {
+    pub(in crate::editor) kitty: bool,
+    pub(in crate::editor) mouse: bool,
+    pub(in crate::editor) mouse_select: bool,
     /// The same `ActiveTui` [`InlineOutput::needs_enter`] returned for this
     /// bracket, so the close reads what was actually entered instead of a
     /// fresh (and possibly different-host's) `Tui`.
-    pub(crate) tui: ActiveTui,
+    pub(in crate::editor) tui: ActiveTui,
 }
 
 /// See the module doc for the two facts this tracks and why they're separate
 /// fields rather than one enum.
 #[derive(Default)]
-pub(crate) struct InlineOutput {
+pub(in crate::editor) struct InlineOutput {
     frames: Vec<Frame>,
     entered: Option<Entered>,
     ran: bool,
@@ -86,7 +86,12 @@ impl InlineOutput {
     /// when `tui` is `Some` — see the module doc. Returns the depth to
     /// [`Self::truncate`] back to at the matching restore — the frame count
     /// before this push, i.e. this frame's own index.
-    pub(crate) fn push(&mut self, name: &str, tui: Option<ActiveTui>, kitty: bool) -> usize {
+    pub(in crate::editor) fn push(
+        &mut self,
+        name: &str,
+        tui: Option<ActiveTui>,
+        kitty: bool,
+    ) -> usize {
         let depth = self.frames.len();
         if tui.is_some() {
             self.ran = true;
@@ -111,7 +116,7 @@ impl InlineOutput {
     /// and a blind pop would remove the leak instead of the frame that's
     /// actually closing. Never touches `entered`/`ran`: those are read at
     /// the Rust boundary right after this runs.
-    pub(crate) fn truncate(&mut self, depth: usize) {
+    pub(in crate::editor) fn truncate(&mut self, depth: usize) {
         self.frames.truncate(depth);
     }
 

@@ -41,7 +41,7 @@ impl Tui {
     /// The terminal handle, if there is one — makes no claim about whether
     /// the event loop is active. Safe to call from code that can legitimately
     /// run with no terminal attached at all (e.g. `resync_mouse_mode`).
-    pub(crate) fn terminal(&self) -> Option<&SharedTerm> {
+    pub(in crate::editor) fn terminal(&self) -> Option<&SharedTerm> {
         match self {
             Tui::On(term) => Some(term),
             #[cfg(test)]
@@ -72,7 +72,7 @@ impl Tui {
 /// armed/entered, never a fresh `Editor`/`EditorHostImpl::tui` that may
 /// belong to a different host than the one that pushed the frame.
 #[derive(Clone)]
-pub(crate) enum ActiveTui {
+pub(in crate::editor) enum ActiveTui {
     On(SharedTerm),
     /// Test-only twin of [`Tui::OnHeadless`] — see that variant's doc.
     #[cfg(test)]
@@ -81,7 +81,7 @@ pub(crate) enum ActiveTui {
 
 impl ActiveTui {
     /// The terminal handle — `None` only for the test-only headless shape.
-    pub(crate) fn terminal(&self) -> Option<&SharedTerm> {
+    pub(in crate::editor) fn terminal(&self) -> Option<&SharedTerm> {
         match self {
             ActiveTui::On(term) => Some(term),
             #[cfg(test)]

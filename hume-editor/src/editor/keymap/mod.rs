@@ -68,7 +68,7 @@ pub(crate) struct WaitCharPending {
 ///
 /// [`CommandRegistry`]: super::registry::CommandRegistry
 #[derive(Debug, Clone)]
-pub(crate) struct KeymapCommand {
+pub(in crate::editor) struct KeymapCommand {
     /// The command name to look up in the registry.
     pub name: Cow<'static, str>,
     /// When `true`, the dispatcher always dispatches this command with
@@ -220,7 +220,7 @@ impl KeyTrie {
     /// [`WalkResult::NoMatch`]. Lets a caller skip building the sequence to
     /// walk with, which for the Extend trie (empty until a plugin binds into
     /// it) is the usual case.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(in crate::editor) fn is_empty(&self) -> bool {
         self.map.is_empty()
     }
 
@@ -371,7 +371,7 @@ pub(in crate::editor) enum BindMode {
 ///
 /// [`Editor`]: super::Editor
 #[derive(Clone)]
-pub(crate) struct Keymap {
+pub(in crate::editor) struct Keymap {
     pub(super) normal: KeyTrie,
     /// Sparse extend-mode overrides. Empty by default; plugins populate it
     /// (e.g. `core:vim-keybind`'s `o → flip-selections`).

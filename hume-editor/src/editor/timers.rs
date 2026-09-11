@@ -12,12 +12,12 @@ use rustc_hash::FxHashSet;
 
 use super::async_source::AsyncSource;
 
-/// Opaque handle to a scheduled timer. The inner `u64` is `pub(crate)` (not
+/// Opaque handle to a scheduled timer. The inner `u64` is `pub(in crate::editor)` (not
 /// exposed via a method) so `timer_bridge.rs` can convert to/from the plain
 /// integer Steel's `(after ms thunk)` returns — this module itself stays
 /// Steel-agnostic (see the module doc).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub(in crate::editor) struct TimerId(pub(crate) u64);
+pub(in crate::editor) struct TimerId(pub(in crate::editor) u64);
 
 /// Min-heap of `(deadline, id)`, plus a lazily-drained cancellation set.
 ///
@@ -34,7 +34,7 @@ pub(in crate::editor) struct TimerWheel {
 }
 
 impl TimerWheel {
-    pub(crate) fn new() -> Self {
+    pub(in crate::editor) fn new() -> Self {
         Self {
             heap: BinaryHeap::new(),
             cancelled: FxHashSet::default(),

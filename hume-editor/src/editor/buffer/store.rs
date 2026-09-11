@@ -43,7 +43,7 @@ pub(crate) struct BufferStore {
 }
 
 impl BufferStore {
-    pub(crate) fn new() -> Self {
+    pub(in crate::editor) fn new() -> Self {
         Self {
             buffers: SecondaryMap::new(),
             order: Vec::new(),
@@ -72,7 +72,7 @@ impl BufferStore {
     /// `close_buffer` replacement target (`mru_excluding`), and an absent
     /// entry there would wrongly fall into the "last buffer" scratch-replace
     /// branch instead.
-    pub(crate) fn open(&mut self, id: BufferId, doc: Buffer) {
+    pub(in crate::editor) fn open(&mut self, id: BufferId, doc: Buffer) {
         self.buffers.insert(id, doc);
         self.order.push(id);
         self.touch_mru(id);
@@ -132,7 +132,7 @@ impl BufferStore {
     }
 
     /// Iterate all open buffers in open-order.  Yields `(BufferId, &Buffer)`.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
+    pub(in crate::editor) fn iter(&self) -> impl Iterator<Item = (BufferId, &Buffer)> {
         self.order
             .iter()
             .filter_map(|&id| self.buffers.get(id).map(|buf| (id, buf)))
@@ -246,14 +246,14 @@ impl BufferStore {
     }
 
     /// Next buffer in open-order (wraps around). Returns `id` if only one buffer.
-    pub(crate) fn next(&self, current: BufferId) -> BufferId {
+    pub(in crate::editor) fn next(&self, current: BufferId) -> BufferId {
         let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);
         let next = (pos + 1) % self.order.len().max(1);
         self.order.get(next).copied().unwrap_or(current)
     }
 
     /// Previous buffer in open-order (wraps around). Returns `id` if only one buffer.
-    pub(crate) fn prev(&self, current: BufferId) -> BufferId {
+    pub(in crate::editor) fn prev(&self, current: BufferId) -> BufferId {
         let pos = self.order.iter().position(|&x| x == current).unwrap_or(0);
         let prev = if pos == 0 {
             self.order.len().saturating_sub(1)
@@ -264,7 +264,7 @@ impl BufferStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn len(&self) -> usize {
+    pub(in crate::editor) fn len(&self) -> usize {
         self.buffers.len()
     }
 }

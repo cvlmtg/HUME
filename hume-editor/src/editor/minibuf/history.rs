@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 /// An explicit ENUM (rather than a raw `char`) keeps the variant set closed,
 /// exhaustively matched, and serializable to a stable key in a future env file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum HistoryKind {
+pub(in crate::editor) enum HistoryKind {
     /// `:` command-mode prompt.
     Command,
     /// `/` forward-search prompt.
@@ -37,7 +37,7 @@ pub(in crate::editor) enum HistoryDir {
 /// Navigation state (`cursor`, `scratch`) is reset at the start of each
 /// minibuffer session and has no meaning between sessions.
 #[derive(Debug)]
-pub(crate) struct History {
+pub(in crate::editor) struct History {
     entries: VecDeque<String>,
     capacity: usize,
     /// `None` = not currently navigating (at "scratch" / no Up pressed yet).
@@ -57,7 +57,7 @@ impl History {
     /// parser (`usize_nonzero`) already rejects `0` for `history-capacity`
     /// before it can reach here; this just makes the trap loud if that
     /// guard is ever bypassed (a test constructing a `History` directly).
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub(in crate::editor) fn new(capacity: usize) -> Self {
         debug_assert!(capacity > 0, "History capacity must be non-zero");
         Self {
             entries: VecDeque::new(),
@@ -72,7 +72,7 @@ impl History {
     /// Caps the ring at `self.capacity` with a `while`, not an `if`, so a
     /// `set_capacity` shrink of any size converges to the new cap in this
     /// one call rather than one entry per push.
-    pub(crate) fn push(&mut self, entry: String) {
+    pub(in crate::editor) fn push(&mut self, entry: String) {
         self.begin_session();
         let is_duplicate = self.entries.back().is_some_and(|last| *last == entry);
         if !entry.is_empty() && !is_duplicate {
@@ -101,7 +101,7 @@ impl History {
     /// `scratch` on the first call). An empty prefix matches every entry, so a
     /// fresh prompt still walks the full ring. Returns the entry to install, or
     /// `None` if no older match exists (position unchanged).
-    pub(crate) fn prev(&mut self, current: &str) -> Option<String> {
+    pub(in crate::editor) fn prev(&mut self, current: &str) -> Option<String> {
         if self.entries.is_empty() {
             return None;
         }
@@ -125,7 +125,7 @@ impl History {
     /// Walk one step newer within the prefix match set. Past the newest match,
     /// restores the stashed prefix text and exits navigation. `None` if not
     /// currently navigating.
-    pub(crate) fn next(&mut self) -> Option<String> {
+    pub(in crate::editor) fn next(&mut self) -> Option<String> {
         let i = self.cursor?;
         let prefix = self.scratch.clone().unwrap_or_default();
         match ((i + 1)..self.entries.len()).find(|&idx| self.entries[idx].starts_with(&prefix)) {
@@ -173,7 +173,7 @@ pub(crate) struct HistoryStore {
 }
 
 impl HistoryStore {
-    pub(crate) fn new(capacity: usize) -> Self {
+    pub(in crate::editor) fn new(capacity: usize) -> Self {
         Self {
             command: History::new(capacity),
             search_f: History::new(capacity),
@@ -182,7 +182,7 @@ impl HistoryStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn get(&self, kind: HistoryKind) -> &History {
+    pub(in crate::editor) fn get(&self, kind: HistoryKind) -> &History {
         match kind {
             HistoryKind::Command => &self.command,
             HistoryKind::SearchForward => &self.search_f,

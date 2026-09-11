@@ -74,7 +74,7 @@ pub(crate) fn co(n: usize) -> hume_rope::offset::CharOffset {
 }
 
 /// See [`co`] — the same convenience, for a line-relative byte offset.
-pub(crate) fn bc(n: usize) -> hume_rope::column::ByteCol {
+pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
     hume_rope::column::ByteCol::new(n)
 }
 
@@ -454,7 +454,7 @@ macro_rules! live_host {
 // Used via `live_host!()` through submodules' `use super::*;` — the
 // unused_imports lint doesn't track macro re-exports used only that way.
 #[allow(unused_imports)]
-pub(crate) use live_host;
+pub(in crate::editor) use live_host;
 
 /// [`live_host!`]'s twin for the three init/activation call sites
 /// (`EditorHostImpl::init`, no LSP/timer access) — the test-harness mirror
@@ -471,7 +471,7 @@ macro_rules! init_host {
     }};
 }
 #[allow(unused_imports)]
-pub(crate) use init_host;
+pub(in crate::editor) use init_host;
 
 // ── Test constructors ─────────────────────────────────────────────────────────
 
@@ -558,7 +558,7 @@ impl Editor {
         }
     }
 
-    pub(crate) fn with_search_regex(mut self, pattern: &str) -> Self {
+    pub(in crate::editor) fn with_search_regex(mut self, pattern: &str) -> Self {
         if let Ok(regex) = regex_cursor::engines::meta::Regex::new(pattern) {
             let bid = self.focused_buffer_id();
             self.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
@@ -576,7 +576,7 @@ impl Editor {
     ///
     /// Precondition: editor must be in Normal mode. Focus switches are only
     /// bound in Normal mode; mode-changing commands must not switch panes.
-    pub(crate) fn switch_focused_pane(&mut self, target: PaneId) {
+    pub(in crate::editor) fn switch_focused_pane(&mut self, target: PaneId) {
         debug_assert!(
             self.state.mode() == Mode::Normal,
             "focus-switch must only happen in Normal mode, got {:?}",
@@ -605,7 +605,7 @@ impl Editor {
     }
 
     /// Read-only accessor used by tests to inspect any pane's selections.
-    pub(crate) fn selections_for(
+    pub(in crate::editor) fn selections_for(
         &self,
         pane: PaneId,
         buf: BufferId,
@@ -622,7 +622,7 @@ impl Editor {
     ///
     /// Parses the trailing `!` as `force=true` and splits `cmd_with_arg` on the
     /// first space to extract the optional argument. Returns the command result.
-    pub(crate) fn execute_typed(
+    pub(in crate::editor) fn execute_typed(
         &mut self,
         cmd_with_arg: &str,
         extra_arg: Option<&str>,
@@ -1077,10 +1077,10 @@ mod copy_selection;
 mod count_prefix;
 mod diff_steel;
 mod disk_change;
-// `pub(crate)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
+// `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}
 // ::tests` subtrees register the same doubles and reach them through here.
 mod dot_repeat;
-pub(crate) mod doubles;
+pub(in crate::editor) mod doubles;
 mod events;
 mod file_io;
 mod find;

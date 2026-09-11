@@ -48,8 +48,8 @@ pub(super) struct ProgressTask {
     // Kept so the `$/progress` begin/report merge machine has something to
     // assert against in tests, via `LspState::progress_title_for_test`.
     #[cfg(test)]
-    pub(crate) title: String,
-    pub(crate) percentage: Option<u32>,
+    pub(in crate::editor) title: String,
+    pub(in crate::editor) percentage: Option<u32>,
 }
 
 impl Editor {

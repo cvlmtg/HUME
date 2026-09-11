@@ -28,7 +28,7 @@ use crate::editor::pane_state::{self, PaneBufferState};
 ///
 /// `undo_levels` seeds `doc`'s `undo-levels` cap — the current global
 /// setting, since new buffers always start out tracking it.
-pub(crate) fn open_buffer(
+pub(in crate::editor) fn open_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -173,7 +173,7 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 ///   `undo_levels` (the current global `undo-levels` setting).
 ///
 /// Returns the `BufferId` that the focused pane is now viewing.
-pub(crate) fn close_buffer(
+pub(in crate::editor) fn close_buffer(
     ev: &mut EngineView,
     buffers: &mut BufferStore,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,

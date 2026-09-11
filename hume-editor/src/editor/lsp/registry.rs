@@ -21,21 +21,21 @@ pub(in crate::editor::lsp) type LanguageName = String;
 /// Config recorded by one `register-lsp-server!` call, keyed by language.
 #[derive(Debug, Clone)]
 pub(in crate::editor::lsp) struct LspServerConfig {
-    pub(crate) command: String,
-    pub(crate) args: Vec<String>,
-    pub(crate) root_markers: Vec<String>,
+    pub(in crate::editor) command: String,
+    pub(in crate::editor) args: Vec<String>,
+    pub(in crate::editor) root_markers: Vec<String>,
     /// Sent verbatim as `initializationOptions` in the `initialize` request
     /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_init_options`).
-    pub(crate) init_options: Option<serde_json::Value>,
+    pub(in crate::editor) init_options: Option<serde_json::Value>,
     /// Pushed as `workspace/didChangeConfiguration` after `initialized`
     /// (`lsp_attach_buffer`'s spawn branch, via `LspClient::set_settings`),
     /// and resolved per-item to answer `workspace/configuration` pull
     /// requests (`Editor::dispatch_lsp_action`'s `ServerRequest` arm).
-    pub(crate) settings: Option<serde_json::Value>,
+    pub(in crate::editor) settings: Option<serde_json::Value>,
     /// `#:env` — applied additively to the spawned process's inherited
     /// environment (`lsp_attach_buffer`'s spawn branch, via
     /// `LspBackend::start`).
-    pub(crate) env: Vec<(String, String)>,
+    pub(in crate::editor) env: Vec<(String, String)>,
 }
 
 /// Walks up from `file`'s directory to the first ancestor containing any of

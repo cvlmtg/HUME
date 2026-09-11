@@ -48,7 +48,7 @@ pub(in crate::editor) enum FuzzyProfile {
 /// query-parsing point): `Pattern` is itself a sequence of atoms, while
 /// completion needs exactly one atom spanning the whole query, whitespace
 /// included, which only a bare `Atom` gives.
-pub(crate) enum FuzzyPattern {
+pub(in crate::editor) enum FuzzyPattern {
     Words(Pattern),
     Whole(Atom),
 }
@@ -63,7 +63,7 @@ pub(in crate::editor) struct FuzzyMatcher {
 }
 
 impl FuzzyMatcher {
-    pub(crate) fn new(profile: FuzzyProfile) -> Self {
+    pub(in crate::editor) fn new(profile: FuzzyProfile) -> Self {
         let mut config = Config::DEFAULT;
         config.prefer_prefix = matches!(profile, FuzzyProfile::Autocomplete);
         Self {
@@ -78,7 +78,7 @@ impl FuzzyMatcher {
     /// Unicode normalization either way, differing in whether `query` is a
     /// whitespace-segmented multi-term `Pattern` or one whole-string `Atom`
     /// (see [`FuzzyProfile`]).
-    pub(crate) fn parse(&self, query: &str) -> FuzzyPattern {
+    pub(in crate::editor) fn parse(&self, query: &str) -> FuzzyPattern {
         match self.profile {
             FuzzyProfile::Picker => FuzzyPattern::Words(Pattern::parse(
                 query,

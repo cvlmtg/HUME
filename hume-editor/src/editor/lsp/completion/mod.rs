@@ -81,7 +81,7 @@ pub(in crate::editor) struct CompletionSession {
 /// `CompletionSession` itself (which deliberately has no `selected`) so the
 /// session's filtering/accept logic stays free of rendering concerns.
 pub(in crate::editor) struct CompletionMenuUi {
-    pub(crate) selected: usize,
+    pub(in crate::editor) selected: usize,
 }
 
 impl CompletionSession {
@@ -104,7 +104,7 @@ impl CompletionSession {
     /// rewrote that whole span, so every character in it was written by this
     /// session, and selecting the freshly completed token is the useful
     /// outcome.
-    pub(crate) fn anchor(&self) -> CharOffset {
+    pub(in crate::editor) fn anchor(&self) -> CharOffset {
         let mut positions = [self.anchor_at_begin];
         self.cs_since_begin
             .map_positions(&mut positions, Assoc::Before);
@@ -141,7 +141,7 @@ impl CompletionSession {
         self.incomplete
     }
 
-    pub(crate) fn bid(&self) -> BufferId {
+    pub(in crate::editor) fn bid(&self) -> BufferId {
         self.bid
     }
 
@@ -149,7 +149,7 @@ impl CompletionSession {
     /// callers (menu navigation, the visible-menu check) that don't need the
     /// items themselves; unlike `top(n).len()`, this doesn't serialize any
     /// candidate to JSON.
-    pub(crate) fn len(&self) -> usize {
+    pub(in crate::editor) fn len(&self) -> usize {
         self.filtered.len()
     }
 
@@ -157,7 +157,7 @@ impl CompletionSession {
     /// with this `true` — narrowed to empty by continued typing, or an
     /// `isIncomplete` list awaiting an async re-request — in which case no
     /// menu is visibly shown.
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(in crate::editor) fn is_empty(&self) -> bool {
         self.filtered.is_empty()
     }
 
@@ -231,7 +231,7 @@ impl CompletionSession {
             .extend(self.rank_scratch.iter().map(|&(_, i)| i));
     }
 
-    pub(crate) fn top(&self, n: usize) -> Vec<serde_json::Value> {
+    pub(in crate::editor) fn top(&self, n: usize) -> Vec<serde_json::Value> {
         self.filtered
             .iter()
             .take(n)

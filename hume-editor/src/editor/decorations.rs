@@ -26,9 +26,9 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// One `(set-inlay-hints! …)` entry: `text` rendered `before` or after the
 /// char at `pos`.
 pub(in crate::editor) struct InlayHintEntry {
-    pub(crate) pos: CharOffset,
-    pub(crate) text: String,
-    pub(crate) before: bool,
+    pub(in crate::editor) pos: CharOffset,
+    pub(in crate::editor) text: String,
+    pub(in crate::editor) before: bool,
 }
 
 /// One `(set-signs! …)` entry: a gutter marker on the line `pos` starts.
@@ -46,9 +46,9 @@ pub(in crate::editor) struct InlayHintEntry {
 /// `Arc<str>`) for every visible line, every frame — a refcount bump
 /// instead of a fresh allocation per sign per frame.
 pub(in crate::editor) struct SignEntry {
-    pub(crate) pos: CharOffset,
-    pub(crate) text: std::sync::Arc<str>,
-    pub(crate) scope: ScopeId,
+    pub(in crate::editor) pos: CharOffset,
+    pub(in crate::editor) text: std::sync::Arc<str>,
+    pub(in crate::editor) scope: ScopeId,
 }
 
 /// One `(set-virtual-lines! …)` entry: a synthetic line of text anchored to
@@ -70,11 +70,11 @@ pub(in crate::editor) struct SignEntry {
 /// are validated byte offsets naming already-interned `ScopeId`s —
 /// deliberately different shapes, not merely a field rename.
 pub(in crate::editor) struct VirtualLineEntry {
-    pub(crate) pos: CharOffset,
-    pub(crate) text: String,
-    pub(crate) before: bool,
-    pub(crate) scope: ScopeId,
-    pub(crate) segments: Vec<(
+    pub(in crate::editor) pos: CharOffset,
+    pub(in crate::editor) text: String,
+    pub(in crate::editor) before: bool,
+    pub(in crate::editor) scope: ScopeId,
+    pub(in crate::editor) segments: Vec<(
         hume_rope::column::ByteCol,
         hume_rope::column::ByteCol,
         ScopeId,
@@ -92,18 +92,18 @@ pub(in crate::editor) struct VirtualLineEntry {
 /// `scope` is interned by `host_impl.rs`'s `set_eol_text` at the
 /// `set-eol-text!` boundary.
 pub(in crate::editor) struct EolTextEntry {
-    pub(crate) pos: CharOffset,
-    pub(crate) text: String,
-    pub(crate) scope: ScopeId,
+    pub(in crate::editor) pos: CharOffset,
+    pub(in crate::editor) text: String,
+    pub(in crate::editor) scope: ScopeId,
 }
 
 /// One `(set-extra-highlights! …)` entry: a char range styled with `scope`,
 /// interned by `host_impl.rs`'s `set_extra_highlights` at the
 /// `set-extra-highlights!` boundary.
 pub(in crate::editor) struct ExtraHighlightEntry {
-    pub(crate) start: CharOffset,
-    pub(crate) end: CharOffset,
-    pub(crate) scope: ScopeId,
+    pub(in crate::editor) start: CharOffset,
+    pub(in crate::editor) end: CharOffset,
+    pub(in crate::editor) scope: ScopeId,
 }
 
 /// One `(set-line-backgrounds! …)` entry: a full-row background tint on the
@@ -118,15 +118,15 @@ pub(in crate::editor) struct ExtraHighlightEntry {
 /// `scope` is interned by `host_impl.rs`'s `set_line_backgrounds` at the
 /// `set-line-backgrounds!` boundary.
 pub(in crate::editor) struct LineBgEntry {
-    pub(crate) pos: CharOffset,
-    pub(crate) scope: ScopeId,
+    pub(in crate::editor) pos: CharOffset,
+    pub(in crate::editor) scope: ScopeId,
 }
 
 /// Sort key every entry kind provides — [`SourceStore::set`] sorts by this
 /// so the remap chokepoint's batch position/range mapping
 /// (`ChangeSet::map_positions`/`map_ranges`) can rely on ascending input,
 /// its documented precondition.
-pub(crate) trait Positioned {
+pub(in crate::editor) trait Positioned {
     fn pos(&self) -> CharOffset;
 }
 
@@ -170,7 +170,7 @@ impl Positioned for LineBgEntry {
 /// which remaps as a range instead via `RangeAnchored` — see
 /// [`SourceStore::remap_ranges`]) — drives [`SourceStore::remap_points`]' batch
 /// `ChangeSet::map_positions` call.
-pub(crate) trait PointAnchored: Positioned {
+pub(in crate::editor) trait PointAnchored: Positioned {
     /// Sticky side for an edit landing exactly at this kind's position —
     /// see `ChangeSet::Assoc`'s doc and each impl below for the reasoning.
     const ASSOC: Assoc;
@@ -327,7 +327,7 @@ impl<K, T> SourceStore<K, T> {
 
     /// Every buffer with at least one source registered, of any kind —
     /// `DiagnosticsStore::buffers_with_diagnostics`'s sole caller.
-    pub(crate) fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
+    pub(in crate::editor) fn buffers(&self) -> impl Iterator<Item = BufferId> + '_ {
         self.by_buffer.keys().copied()
     }
 
@@ -484,7 +484,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
 }
 
 #[derive(Default)]
-pub(crate) struct DecorationStores {
+pub(in crate::editor) struct DecorationStores {
     inlay_hints: SourceStore<String, InlayHintEntry>,
     signs: SourceStore<String, SignEntry>,
     virtual_lines: SourceStore<String, VirtualLineEntry>,

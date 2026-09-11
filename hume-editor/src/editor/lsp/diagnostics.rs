@@ -30,7 +30,8 @@ impl DiagSeverity {
     /// The wire-format strings `FromStr` accepts — the single source
     /// `:set global lsp.diagnostics-severity-floor=<Tab>` completion mirrors,
     /// so the two can never drift out of sync (same convention as `TabStyle`).
-    pub(crate) const VALUES: &'static [&'static str] = &["error", "warning", "info", "hint"];
+    pub(in crate::editor) const VALUES: &'static [&'static str] =
+        &["error", "warning", "info", "hint"];
 }
 
 impl std::fmt::Display for DiagSeverity {
@@ -61,13 +62,13 @@ impl std::str::FromStr for DiagSeverity {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct StoredDiag {
-    pub(crate) start: CharOffset,
-    pub(crate) end: CharOffset,
-    pub(crate) severity: DiagSeverity,
-    pub(crate) message: String,
-    pub(crate) code: Option<String>,
-    pub(crate) source: Option<String>,
+pub(in crate::editor) struct StoredDiag {
+    pub(in crate::editor) start: CharOffset,
+    pub(in crate::editor) end: CharOffset,
+    pub(in crate::editor) severity: DiagSeverity,
+    pub(in crate::editor) message: String,
+    pub(in crate::editor) code: Option<String>,
+    pub(in crate::editor) source: Option<String>,
     /// The original wire-shaped `Diagnostic`, serialized back from the
     /// parsed `lsp_types::Diagnostic` (`textDocument/codeAction` needs to
     /// echo this back verbatim as `context.diagnostics` — the server's
@@ -77,7 +78,7 @@ pub(crate) struct StoredDiag {
     /// encoding-safety rule forbids). The roundtrip preserves every spec
     /// field, including `data` (some servers need it echoed back for
     /// `codeAction` too).
-    pub(crate) raw: serde_json::Value,
+    pub(in crate::editor) raw: serde_json::Value,
 }
 
 impl Positioned for StoredDiag {
@@ -173,7 +174,7 @@ impl DiagnosticsStore {
     }
 
     /// Production callers: `:lsp-status` and the `(diagnostic-counts …)` builtin.
-    pub(crate) fn counts(&self, bid: BufferId) -> (usize, usize) {
+    pub(in crate::editor) fn counts(&self, bid: BufferId) -> (usize, usize) {
         let mut errors = 0;
         let mut warnings = 0;
         for (_server, d) in self.store.for_buffer(bid) {
