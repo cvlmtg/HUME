@@ -10,7 +10,8 @@
 //! ## Modules
 //! - `uri`: path ↔ `file://` URI conversion.
 //! - `location`: `Location`/`LocationLink` wire-object decoding.
-//! - `completion_item`: `textDocument/completion` item decoding.
+//! - `completion_item`: snippet stripping + lenient `TextEdit` decoding for
+//!   `textDocument/completion` items.
 //! - `codec`: JSON-RPC framing, message enum, id allocation.
 //! - `transport`: server process management — reader/writer/stderr threads.
 //! - `backend`: the `LspBackend` trait + `ThreadedLspBackend`.

@@ -1,229 +1,11 @@
-//! One completion item, typed via `lsp_types::CompletionItem`, plus the
-//! lenient JSON fallback for off-spec servers.
-//!
-//! Fields stay private to this module — every instance is built by
-//! [`StoredCompletionItem::from_json`], which enforces the strict/lenient
-//! parse contract (e.g. `has_additional_text_edits` tracking whether the
-//! server sent the key at all, distinct from an empty array); a hand-built
-//! struct literal from `hume-editor` could silently violate that. Accessors
-//! below expose exactly the fields `hume-editor`'s completion session and
-//! accept path read.
-
-/// One item, typed via `lsp_types::CompletionItem`. `insert_text`/`text_edit`
-/// have snippet syntax (`${n:default}`, `$n`) already stripped when the
-/// server declared `insertTextFormat: Snippet` — see [`strip_snippet`].
-/// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
-/// hook and `completionItem/resolve` both see the server's original text).
-pub struct StoredCompletionItem {
-    label: String,
-    /// Raw `CompletionItemKind` number — display-only (icon choice), no
-    /// v1 reader maps it to a name. Read straight from JSON rather than the
-    /// typed field: `CompletionItemKind` wraps a private `i32` with no
-    /// accessor.
-    kind: Option<i64>,
-    detail: Option<String>,
-    sort_text: String,
-    filter_text: String,
-    insert_text: String,
-    text_edit: Option<lsp_types::TextEdit>,
-    additional_text_edits: Vec<lsp_types::TextEdit>,
-    /// Distinguishes "server sent no `additionalTextEdits` key at all" from
-    /// "server sent an empty array" — an empty array still means "nothing
-    /// more to apply *and* don't bother resolving", same as a present-but-
-    /// empty list; only the key's absence means resolve might have more to
-    /// offer. See `CompletionSession::accept`'s resolve gate.
-    has_additional_text_edits: bool,
-    /// The full response item, unparsed — handed to `on-completion-accept`
-    /// so Steel can read `data` or any other field this store doesn't
-    /// parse, without Rust needing to grow a reader for every LSP field a
-    /// feature might eventually want. Deliberately the *pristine* item
-    /// (snippet syntax included) — Steel/resolve should see exactly what
-    /// the server sent, not this store's stripped/narrowed projection.
-    raw: serde_json::Value,
-}
-
-impl StoredCompletionItem {
-    /// Parses one item, strict first: `v` itself is never consumed, so
-    /// `raw: v.clone()` (below) still captures the full item, including
-    /// fields this projection drops. A strict deserialize into
-    /// `lsp_types::CompletionItem` rejects on *any* off-spec field (an
-    /// out-of-range `kind`, a malformed `textEdit`, ...), not just the ones
-    /// this store reads — [`Self::from_json_lenient`] then recovers what it
-    /// can straight from JSON. `Err` only when even that fails (`label`
-    /// itself missing/non-string); callers skip the item and report a Trace
-    /// line rather than fabricating a placeholder.
-    pub fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
-        match serde_json::from_value::<lsp_types::CompletionItem>(v.clone()) {
-            Ok(item) => Ok(Self::from_typed(item, v)),
-            Err(strict_err) => Self::from_json_lenient(v).ok_or(strict_err),
-        }
-    }
-
-    /// Builds from an already-typed item — the common case, when the whole
-    /// response round-trips through strict deserialize.
-    fn from_typed(item: lsp_types::CompletionItem, v: &serde_json::Value) -> Self {
-        let label = item.label;
-        let kind = v.get("kind").and_then(|x| x.as_i64());
-        let sort_text = item.sort_text.unwrap_or_else(|| label.clone());
-        let filter_text = item.filter_text.unwrap_or_else(|| label.clone());
-        let is_snippet = item.insert_text_format == Some(lsp_types::InsertTextFormat::SNIPPET);
-        let insert_text = item.insert_text.unwrap_or_else(|| label.clone());
-        let insert_text = if is_snippet {
-            strip_snippet(&insert_text)
-        } else {
-            insert_text
-        };
-        let text_edit = item.text_edit.map(|te| match te {
-            lsp_types::CompletionTextEdit::Edit(te) => te,
-            // Preserves the existing "use the narrower insert range" choice.
-            lsp_types::CompletionTextEdit::InsertAndReplace(ire) => lsp_types::TextEdit {
-                range: ire.insert,
-                new_text: ire.new_text,
-            },
-        });
-        let text_edit = text_edit.map(|te| {
-            if is_snippet {
-                lsp_types::TextEdit {
-                    new_text: strip_snippet(&te.new_text),
-                    ..te
-                }
-            } else {
-                te
-            }
-        });
-        // `Option<Vec<T>>` fields deserialize key-absent -> `None` (serde's
-        // built-in special case for `Option`, no `#[serde(default)]`
-        // needed), so `is_some()` here really does mean "the server sent
-        // this key" — not "the server sent a non-empty array".
-        let has_additional_text_edits = item.additional_text_edits.is_some();
-        let additional_text_edits = item.additional_text_edits.unwrap_or_default();
-        Self {
-            label,
-            kind,
-            detail: item.detail,
-            sort_text,
-            filter_text,
-            insert_text,
-            text_edit,
-            additional_text_edits,
-            has_additional_text_edits,
-            raw: v.clone(),
-        }
-    }
-
-    /// Raw-JSON fallback for an item that fails strict deserialize — reads
-    /// exactly the fields this store uses, tolerating an off-spec shape
-    /// anywhere else (a real-world server population: `$/progress` and
-    /// completion items are where spec drift concentrates, especially
-    /// outside the handful of mature, heavily-used servers). `None` only
-    /// when `label` is missing/non-string; every other field already
-    /// defaults sensibly.
-    fn from_json_lenient(v: &serde_json::Value) -> Option<Self> {
-        let label = v.get("label")?.as_str()?.to_string();
-        let kind = v.get("kind").and_then(|x| x.as_i64());
-        let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
-        let string_or_label = |key: &str| -> String {
-            v.get(key)
-                .and_then(|x| x.as_str())
-                .map(str::to_string)
-                .unwrap_or_else(|| label.clone())
-        };
-        let is_snippet = v.get("insertTextFormat").and_then(|x| x.as_i64()) == Some(2);
-        let sort_text = string_or_label("sortText");
-        let filter_text = string_or_label("filterText");
-        let insert_text = string_or_label("insertText");
-        let insert_text = if is_snippet {
-            strip_snippet(&insert_text)
-        } else {
-            insert_text
-        };
-        let text_edit = v.get("textEdit").and_then(text_edit_from_json_lenient);
-        let text_edit = text_edit.map(|te| {
-            if is_snippet {
-                lsp_types::TextEdit {
-                    new_text: strip_snippet(&te.new_text),
-                    ..te
-                }
-            } else {
-                te
-            }
-        });
-        let has_additional_text_edits = v.get("additionalTextEdits").is_some();
-        let additional_text_edits = parse_additional_text_edits_lenient(v);
-        Some(Self {
-            label,
-            kind,
-            detail,
-            sort_text,
-            filter_text,
-            insert_text,
-            text_edit,
-            additional_text_edits,
-            has_additional_text_edits,
-            raw: v.clone(),
-        })
-    }
-
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "label": self.label,
-            "kind": self.kind,
-            "detail": self.detail,
-        })
-    }
-
-    /// Formats this item as `"label  detail"`, uniformly styled — per-part
-    /// dimming would need segment-styled rows, which no card requires. The
-    /// menu's own row label: reads `label`/`detail` directly rather than
-    /// going through [`Self::to_json`], since the menu never needs `kind`.
-    pub fn menu_row_label(&self) -> String {
-        match self.detail.as_deref() {
-            Some(detail) if !detail.is_empty() => format!("{}  {detail}", self.label),
-            _ => self.label.clone(),
-        }
-    }
-
-    /// Ranking key for the fuzzy matcher (`hume-editor`'s completion
-    /// session filters/sorts against this, never `label`).
-    pub fn filter_text(&self) -> &str {
-        &self.filter_text
-    }
-
-    /// The server's own ordering hint — the sort-stability tiebreaker when
-    /// two items score equally on the current filter.
-    pub fn sort_text(&self) -> &str {
-        &self.sort_text
-    }
-
-    /// The server-provided replacement range/text, if any — `None` means
-    /// the accept path falls back to replacing the preceding identifier
-    /// token instead.
-    pub fn text_edit(&self) -> Option<&lsp_types::TextEdit> {
-        self.text_edit.as_ref()
-    }
-
-    /// The text to insert when no `text_edit` is present.
-    pub fn insert_text(&self) -> &str {
-        &self.insert_text
-    }
-
-    pub fn additional_text_edits(&self) -> &[lsp_types::TextEdit] {
-        &self.additional_text_edits
-    }
-
-    /// Whether the server sent an `additionalTextEdits` key at all — see
-    /// the field's own doc for why this differs from "the list is
-    /// non-empty".
-    pub fn has_additional_text_edits(&self) -> bool {
-        self.has_additional_text_edits
-    }
-
-    /// The pristine, unparsed response item — handed to Steel's
-    /// `on-completion-accept` hook and to `completionItem/resolve`.
-    pub fn raw(&self) -> &serde_json::Value {
-        &self.raw
-    }
-}
+//! Protocol-only decode helpers a `textDocument/completion` item's fields
+//! need: stripping snippet syntax HUME's v1 completion UI can't render, and
+//! the lenient `TextEdit` fallback for off-spec servers. `StoredCompletionItem`
+//! itself — the completion store's item type, ranked/filtered by
+//! `CompletionSession` and rendered as a menu row — is not a wire type and
+//! stays in `hume-editor/src/editor/lsp/completion/item/mod.rs`; only the
+//! decode logic it needs lives here, alongside the sibling `location.rs`
+//! wire decoder.
 
 /// Rewrites `${n:default}` -> `default` (empty string if no `:default`) and
 /// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text —
@@ -234,7 +16,7 @@ impl StoredCompletionItem {
 /// Steel `string-ref`/`substring` — this is text-content transformation on
 /// server-provided strings, not motion/selection code over buffer
 /// positions, so grapheme-cluster stepping doesn't apply here.
-fn strip_snippet(text: &str) -> String {
+pub fn strip_snippet(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     let mut out = String::with_capacity(text.len());
@@ -265,14 +47,12 @@ fn strip_snippet(text: &str) -> String {
     out
 }
 
-/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value for
-/// [`StoredCompletionItem::from_json_lenient`] — either shape (`Edit`:
-/// `{"range", "newText"}`, or `InsertReplaceEdit`: `{"insert", "replace",
-/// "newText"}`, using the narrower `insert` range). Tolerates a
-/// malformed/partial shape by returning `None` — drops just the edit, not
-/// the whole item; `accept` then falls back to a word-range edit built from
-/// `insert_text`.
-fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextEdit> {
+/// Extracts `(range, newText)` from a `CompletionTextEdit` JSON value —
+/// either shape (`Edit`: `{"range", "newText"}`, or `InsertReplaceEdit`:
+/// `{"insert", "replace", "newText"}`, using the narrower `insert` range).
+/// Tolerates a malformed/partial shape by returning `None` — the caller
+/// drops just the edit, not the whole item.
+pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextEdit> {
     let range = v.get("range").or_else(|| v.get("insert"))?;
     let new_text = v.get("newText")?.as_str()?.to_string();
     let start = range.get("start")?;
@@ -292,12 +72,11 @@ fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextE
     })
 }
 
-/// Lenient `additionalTextEdits` reader, shared by `from_json_lenient`
-/// (an off-spec completion item) and `hume-editor`'s
-/// `completionItem/resolve` response handler (which never goes through
-/// strict deserialize at all — a resolved item that's otherwise off-spec
-/// shouldn't lose a well-formed edit list over an unrelated malformed field
-/// elsewhere in the response).
+/// Lenient `additionalTextEdits` reader — shared by a completion item's own
+/// off-spec fallback parse and a `completionItem/resolve` response handler
+/// (which never goes through strict deserialize at all — a resolved item
+/// that's otherwise off-spec shouldn't lose a well-formed edit list over an
+/// unrelated malformed field elsewhere in the response).
 pub fn parse_additional_text_edits_lenient(
     resolved: &serde_json::Value,
 ) -> Vec<lsp_types::TextEdit> {

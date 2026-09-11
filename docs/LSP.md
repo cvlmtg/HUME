@@ -6,8 +6,8 @@ This file is the **hub**: architecture, decisions, shared reference (protocol pr
 
 | Topic | Where |
 |------|----------|
-| Transport, JSON-RPC codec, client state, location/completion-item wire decoding | `hume-lsp/src/` |
-| Document sync, diagnostics store, registration, decorations, completion session, edit/navigation primitives | `hume-editor/src/editor/lsp/` |
+| Transport, JSON-RPC codec, client state, location decoding, completion-item decode helpers | `hume-lsp/src/` |
+| Document sync, diagnostics store, registration, decorations, completion, edit/navigation primitives | `hume-editor/src/editor/lsp/` |
 | Scriptable widgets (popup, menu, drawer) | `hume-ui/src/{popup,drawer,picker_panel}.rs` |
 | The `core:lsp` feature plugin | `runtime/plugins/core/lsp/` |
 | End-user setup, install, keys, settings | `user-manual/docs/lsp.md` |
@@ -222,8 +222,8 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 
 Four tiers, cheapest first.
 
-1. **`hume-lsp` unit tests** (`cargo test -p hume-lsp`): codec framing round-trips, URI round-trips, the ChangeSet→LSP-edit converter against a string-mirror oracle, request-id correlation, completion-item strict/lenient parsing. No editor, no process spawns.
-2. **Editor integration with the inline double** (`cargo test -p hume-editor`): `InlineLspBackend` answers scripted `(method → response)` fixtures synchronously — the LSP analog of `InlineParseBackend`, and the workhorse for most editor-level LSP tests. Editor test helpers: `key()` / `key_enter()` (`editor/tests/mod.rs`); remember key sequences must match `keymap/defaults.rs` (e.g. goto-last-line is `ge`, not `G`).
+1. **`hume-lsp` unit tests** (`cargo test -p hume-lsp`): codec framing round-trips, URI round-trips, the ChangeSet→LSP-edit converter against a string-mirror oracle, request-id correlation, completion-item snippet-stripping and lenient `TextEdit` decoding. No editor, no process spawns.
+2. **Editor integration with the inline double** (`cargo test -p hume-editor`): `InlineLspBackend` answers scripted `(method → response)` fixtures synchronously — the LSP analog of `InlineParseBackend`, and the workhorse for most editor-level LSP tests. Editor test helpers: `key()` / `key_enter()` (`editor/tests/mod.rs`); remember key sequences must match `keymap/defaults.rs` (e.g. goto-last-line is `ge`, not `G`). `StoredCompletionItem`'s own strict/lenient item-parsing unit tests live alongside it (`hume-editor/src/editor/lsp/completion/item/`), outside this tier's inline-double machinery.
 3. **Steel-level tests** (`hume-editor/tests/scripting.rs` pattern): eval plugin code against `SteelCtxTestHarness` (`hume-scripting/src/context.rs`) or a full editor with the double — scripted server responses in, editor state assertions out. This is how `core:lsp` features are tested.
 4. **Manual smoke** (record what you did in the PR/commit message): `cargo run -- src/main.rs` with an `init.scm` containing `(register-lsp-server! "rust" #:command "rust-analyzer" #:root-markers '("Cargo.toml"))`; exercise the feature; check `:messages` for protocol errors.
 

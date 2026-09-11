@@ -5,9 +5,10 @@
 use hume_editing::changeset::Assoc;
 use hume_rope::offset::CharOffset;
 
-use hume_lsp::completion_item::{StoredCompletionItem, parse_additional_text_edits_lenient};
+use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
 use super::CompletionSession;
+use super::item::StoredCompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
@@ -54,8 +55,8 @@ impl CompletionSession {
     /// over each cursor's own identifier token when absent) at *every*
     /// cursor in the session's pane, as if the completion had been typed at
     /// each — a conforming server's completion range always contains the
-    /// request position (LSP spec, `completion.rs`'s `text_edit` doc), so
-    /// the primary's own edit, re-expressed as a char count behind/ahead of
+    /// request position (LSP spec, `item/mod.rs`'s `StoredCompletionItem`
+    /// doc), so the primary's own edit, re-expressed as a char count behind/ahead of
     /// its live head, is the same span typing would have consumed at any
     /// cursor. `additionalTextEdits` have no cursor of their own and are
     /// applied once, document-wide. Both land as one undo step — gen-checked
@@ -110,7 +111,7 @@ impl CompletionSession {
             pbs.selections.primary().head()
         };
 
-        let (span, new_text) = match item.text_edit() {
+        let (span, new_text) = match &item.text_edit {
             Some(te) => {
                 let rope_at_begin = &self.rope_at_begin;
                 let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
@@ -192,7 +193,7 @@ impl CompletionSession {
                         typed,
                         forward,
                     },
-                    item.insert_text().to_string(),
+                    item.insert_text.clone(),
                 )
             }
         };
@@ -206,16 +207,12 @@ impl CompletionSession {
         // Decoded and mapped here (pure — no mutation yet) so an overlap
         // with the main edit's own range (checked just below) can be caught
         // before either lands.
-        let additional_char_edits = if item.additional_text_edits().is_empty() {
-            Vec::new()
-        } else {
-            edits::build_edits_from_earlier_document(
-                &self.rope_at_begin,
-                &self.cs_since_begin,
-                encoding,
-                item.additional_text_edits(),
-            )?
-        };
+        let additional_char_edits = edits::build_edits_from_earlier_document(
+            &self.rope_at_begin,
+            &self.cs_since_begin,
+            encoding,
+            &item.additional_text_edits,
+        )?;
         // Scoped to the server-range case: only there does the main edit
         // have a single, well-defined [start, end) to check against — the
         // token-replacement fallback has no server-provided range to
@@ -408,10 +405,10 @@ impl CompletionSession {
         // parse (e.g. `command`); Rust now owns additionalTextEdits/resolve.
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: self.bid,
-            item: item.raw().clone(),
+            item: item.raw.clone(),
         });
 
-        if !item.has_additional_text_edits() {
+        if !item.has_additional_text_edits {
             self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
@@ -458,12 +455,9 @@ impl CompletionSession {
             deadline,
         };
         let gen_after = state.buffers.get(bid).text_gen;
-        let Some(id) = lsp.send_request(
-            server_id,
-            "completionItem/resolve",
-            item.raw().clone(),
-            meta,
-        ) else {
+        let Some(id) =
+            lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
+        else {
             return; // server gone between the capability check and now
         };
         let callback: LspCallback = Box::new(move |editor, outcome| match outcome {
