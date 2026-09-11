@@ -184,7 +184,7 @@ impl Editor {
                     let (line, byte) = char_to_line_byte(text, match_pos);
                     // Single-char match: byte_end = byte + utf8 length of the char.
                     let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                    let byte_end = ByteCol::new(byte.index() + ch_len);
+                    let byte_end = byte.advance(ch_len);
                     // Trusted narrow: a bracket match is always a real
                     // selection position, never the buffer's phantom line.
                     let line = hume_rope::line::ContentLine::new(line.index());

@@ -54,7 +54,7 @@ pub fn join_lines_select_spaces(
             let line = ContentLine::new(line_idx);
             let nl_pos = line_break_char(text, line);
             let next_start = next_line_start(text, line.into());
-            let next_end_excl = next_line_start(text, ContentLine::new(line_idx + 1).into());
+            let next_end_excl = next_line_start(text, line.down(1).into());
 
             let content_start = {
                 let mut p = next_start;

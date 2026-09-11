@@ -145,9 +145,8 @@ impl CompletionSession {
                 // programmatic/scripted callers, and by tests). Extending
                 // (never shrinking) to cover it here catches that case too,
                 // on top of whatever `cs_since_begin` mapped from real edits.
-                let end_now = end_pos[0].max(CharOffset::new(
-                    self.anchor().index() + self.filter.chars().count(),
-                ));
+                let end_now =
+                    end_pos[0].max(self.anchor().shift(self.filter.chars().count() as isize));
                 // The delta model below rests entirely on this containment:
                 // a conforming server's completion range always contains
                 // the request position (LSP spec). An off-spec server, or a
@@ -179,6 +178,11 @@ impl CompletionSession {
             None => {
                 let typed = self.filter.chars().count();
                 let anchor = self.anchor();
+                // Not `anchor.shift(typed as isize).chars_since(head_now)`:
+                // `chars_since` debug-panics on inversion, and `head_now` can
+                // sit past `anchor + typed` (a narrowed `self.filter` with no
+                // matching real edit, same case `end_now`'s doc above
+                // describes) — `forward` must saturate to 0 there, not panic.
                 let forward = (anchor.index() + typed).saturating_sub(head_now.index());
                 (
                     ReplaceSpan::TokenBefore {

@@ -1524,7 +1524,11 @@ fn validate_offset(
         ));
     }
     if !before {
-        let landing_line = text.ropey_char_to_line(CharOffset::new(pos + 1));
+        // `pos < text.len_chars()` is checked above, so `pos` shifted by one
+        // codepoint stays `<= len_chars()` — the one past-the-end position
+        // `ropey_char_to_line` (ropey domain) accepts, needed to find which
+        // line an 'after' hint at `pos + 1` actually lands on.
+        let landing_line = text.ropey_char_to_line(CharOffset::new(pos).shift(1));
         if landing_line.to_content(text.rope()).is_none() {
             return Err(format!(
                 "{builtin}: offset {pos} anchored 'after would land on the buffer's trailing \

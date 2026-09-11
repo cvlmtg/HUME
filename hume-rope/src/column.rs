@@ -39,9 +39,13 @@
 //! alone — each has exactly one origin's worth of real callers today)
 //! instead of forbidding it — the compile-time win here is keeping
 //! `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
-//! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`]/
-//! [`ByteCol`] see no such arithmetic in the codebase today and stay as
-//! strict as `CharOffset`.
+//! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`] see
+//! no such arithmetic in the codebase today and stay as strict as
+//! `CharOffset`. [`ByteCol`] has one named exception, `advance` — a byte
+//! length folded onto a byte column, the same shape as the display-column
+//! `advance` above — for its two real callers (a tree-sitter edit's end
+//! position, a bracket match's end byte); every other operation on it stays
+//! as strict as `CharOffset`.
 //!
 //! # No `checked`/`clamped` mint for the display types
 //! A display column has no fixed upper bound of its own to validate against
@@ -126,7 +130,6 @@ macro_rules! display_col_methods {
             pub fn cells_since_saturating(self, earlier: Self) -> u32 {
                 self.0.saturating_sub(earlier.0)
             }
-
         }
     };
 }
@@ -256,6 +259,15 @@ impl ByteCol {
     /// The bare 0-based byte offset.
     pub fn index(self) -> usize {
         self.0
+    }
+
+    /// `self` advanced by `bytes` — a matched token's own byte length folded
+    /// onto its start column (e.g. a bracket match's end byte from its
+    /// start byte plus the matched char's UTF-8 length). The one real caller
+    /// this type has for advancing at all, so it stays this narrow rather
+    /// than gaining `cells_since`/`shift`'s full arithmetic surface.
+    pub fn advance(self, bytes: usize) -> Self {
+        Self(self.0 + bytes)
     }
 }
 

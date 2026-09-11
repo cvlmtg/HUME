@@ -267,12 +267,13 @@ pub(crate) fn snap_to_grapheme_boundary(
 pub(crate) fn line_terminator_start(rope: &Rope, line: RopeyLine) -> CharOffset {
     let end_excl = next_line_start(rope, line);
     if line.down(1).index() < ropey_line_count(rope).get() {
-        // Trusted mint: `end_excl` is the start of the *next* ropey line
-        // (checked above to actually exist), so the char right before it is
-        // that next line's own terminator, always `'\n'` — a single
-        // codepoint, always its own complete grapheme cluster, never a
-        // combining-mark hazard.
-        CharOffset::new(end_excl.index() - 1)
+        // `end_excl` is the start of the *next* ropey line (checked above to
+        // actually exist), so the char right before it is that next line's
+        // own terminator, always `'\n'` — a single codepoint, always its own
+        // complete grapheme cluster, never a combining-mark hazard, so
+        // stepping back one char (rather than a grapheme boundary walk) is
+        // sound here.
+        end_excl.shift(-1)
     } else {
         end_excl
     }
@@ -468,7 +469,7 @@ pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, ByteC
 /// rather than either line-domain type.
 pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usize, ByteCol) {
     match inserted.rfind('\n') {
-        None => (row, ByteCol::new(byte_col.index() + inserted.len())),
+        None => (row, byte_col.advance(inserted.len())),
         Some(last_nl) => {
             let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
             (
@@ -504,11 +505,13 @@ pub fn line_segments(
     start: CharOffset,
     end_char_excl: CharOffset,
 ) -> impl Iterator<Item = (ContentLine, ByteCol, ByteCol)> + '_ {
-    // `- 1`: converts the exclusive bound to the range's own last char, only
-    // to find which *line* that char is on (`char_to_line` below) — never
-    // used as a cursor or slice position, so landing mid-cluster (a
-    // combining mark can't cross the line it's on) is harmless here.
-    let last_char = CharOffset::new(end_char_excl.index() - 1);
+    // Converts the exclusive bound to the range's own last char, only to
+    // find which *line* that char is on (`char_to_line` below) — never used
+    // as a cursor or slice position, so landing mid-cluster (a combining
+    // mark can't cross the line it's on) is harmless here. Never underflows:
+    // the caller-checked `start < end_char_excl` precondition puts
+    // `end_char_excl` at `>= 1`.
+    let last_char = end_char_excl.shift(-1);
     let start_line = rope.char_to_line(start.index());
     let end_line = rope.char_to_line(last_char.index());
     (start_line..=end_line).filter_map(move |line_idx| {

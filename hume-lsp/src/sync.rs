@@ -33,7 +33,7 @@ pub fn changeset_to_content_changes(
             Operation::Delete(n) => {
                 let range = ExclusiveRange::new(cursor, cursor.shift(*n as isize));
                 let event_range = wire_range(&working, range, enc);
-                working.remove(cursor.index()..cursor.index() + n);
+                working.remove(range.start.index()..range.end.index());
                 events.push(TextDocumentContentChangeEvent {
                     range: Some(event_range),
                     range_length: None,

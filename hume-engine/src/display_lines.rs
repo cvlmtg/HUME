@@ -765,7 +765,8 @@ impl<'a> DisplayLineMap<'a> {
                         // by `segment_virtual_line`) have no buffer position
                         // at all; unreachable from `char_at`, which only
                         // ever formats content display lines, but guarded
-                        // defensively.
+                        // defensively. `usize::MAX` is `Grapheme::char_offset`'s
+                        // no-buffer-position sentinel — see its doc (`types.rs`).
                         .filter(|g| g.char_offset != usize::MAX)
                         .filter(|g| match g.content {
                             CellContent::Grapheme => true,

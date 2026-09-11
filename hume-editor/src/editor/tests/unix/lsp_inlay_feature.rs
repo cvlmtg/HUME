@@ -355,8 +355,13 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
         "sanity: \"off\" clears, same as \"false\""
     );
 
-    crate::editor::settings::ops::apply_global(&mut ed.state, &mut ed.view, "lsp.inlay-hints", "on")
-        .unwrap();
+    crate::editor::settings::ops::apply_global(
+        &mut ed.state,
+        &mut ed.view,
+        "lsp.inlay-hints",
+        "on",
+    )
+    .unwrap();
     settle_after_debounce(&mut ed);
     assert_eq!(
         ed.state
