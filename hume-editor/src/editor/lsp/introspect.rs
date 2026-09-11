@@ -643,16 +643,21 @@ pub(in crate::editor) fn linewise_ranges_params(
 /// rows, e.g. one not yet laid out) still reports a one-line range rather
 /// than an empty one, so callers always get at least the pane's top line
 /// instead of a degenerate empty range.
-pub(in crate::editor) fn pane_visible_range(pane: &Pane, content_lines: usize) -> Range<usize> {
-    let first_line = pane.viewport.top_line.index();
+pub(in crate::editor) fn pane_visible_range(
+    pane: &Pane,
+    content_lines: hume_rope::line::ContentLineCount,
+) -> Range<usize> {
+    let first_line = pane.viewport.top_line;
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
     // rows than buffer lines), so this over-estimates how many buffer lines
     // are visible. Safe here — the range only needs to cover every buffer
     // line that *could* be visible, not name the true last one exactly.
     let height_rows = pane.viewport.height.max(1) as usize;
-    let end_line = (first_line + height_rows).min(content_lines);
-    first_line..end_line
+    let end_line = first_line
+        .down(height_rows)
+        .min(hume_rope::line::ContentLine::new(content_lines.get()));
+    first_line.index()..end_line.index()
 }
 
 /// `(viewport-range bid)` — the visible line range (end-exclusive) currently
@@ -668,7 +673,7 @@ pub(crate) fn viewport_range(
 ) -> Option<Range<usize>> {
     let pane_id = state.pane_showing_buffer(view, id)?;
     let pane = view.panes.get(pane_id)?;
-    let content_lines = state.buffers.try_get(id)?.text().content_line_count().get();
+    let content_lines = state.buffers.try_get(id)?.text().content_line_count();
     Some(pane_visible_range(pane, content_lines))
 }
 
