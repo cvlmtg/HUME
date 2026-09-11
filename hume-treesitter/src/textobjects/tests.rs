@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustc_hash::FxHashMap;
 
 use hume_editing::text::BufferText;
-use hume_test_fixtures::{helix_injections_path, helix_textobjects_path, require_grammars};
+use test_fixtures::{helix_injections_path, helix_textobjects_path, require_grammars};
 
 use super::*;
 use crate::registry::GrammarBundle;
@@ -192,7 +192,7 @@ fn rust_bundle_with_real_textobjects() -> Arc<GrammarBundle> {
 }
 
 /// The real `markdown` bundle carrying the fetched Helix `injections.scm` —
-/// the version PLUM actually installs (see `hume_test_fixtures`'s doc on
+/// the version PLUM actually installs (see `test_fixtures`'s doc on
 /// why that's distinct from the grammar's own bundled query).
 fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
     require_grammars(&["markdown"]);

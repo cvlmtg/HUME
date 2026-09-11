@@ -10,14 +10,14 @@ use super::*;
 
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::Selection;
-use hume_test_fixtures::{
+use hume_treesitter::registry::QueryPaths;
+use test_fixtures::{
     grammar_query_path, helix_textobjects_path, helix_textobjects_path_unchecked,
     require_fixture_file, require_grammars,
 };
-use hume_treesitter::registry::QueryPaths;
 
 /// Require this file's grammar fixture — see
-/// `hume_test_fixtures::require_grammars`/`require_fixture_file`.
+/// `test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["rust"]);
     require_fixture_file(

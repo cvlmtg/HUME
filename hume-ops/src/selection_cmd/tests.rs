@@ -1,8 +1,8 @@
 use super::*;
 use hume_rope::offset::CharOffset;
-use hume_test_fixtures::assert_state;
-use hume_test_fixtures::testing::parse_state;
 use pretty_assertions::assert_eq;
+use test_fixtures::assert_state;
+use test_fixtures::testing::parse_state;
 
 // ── cmd_collapse_selection_to_head ─────────────────────────────────────────────
 

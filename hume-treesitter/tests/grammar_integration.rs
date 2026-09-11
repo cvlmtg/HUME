@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
 use hume_treesitter::highlight::{TreeSitterHighlighter, layer_highlights_for_line};
 use hume_treesitter::layers::{SyntaxLayer, SyntaxLayers};
 use hume_treesitter::registry::GrammarBundle;
+use test_fixtures::{grammar_parser_path, grammar_query_path, require_grammars};
 
 /// Load `name`'s compiled grammar fixture and parse `source` with it —
 /// shared by every test below that needs a working tree.

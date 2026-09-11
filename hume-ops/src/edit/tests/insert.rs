@@ -1,6 +1,6 @@
 use super::super::*;
 use hume_editing::tab_style::TabStyle;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── insert_char ───────────────────────────────────────────────────────────
 

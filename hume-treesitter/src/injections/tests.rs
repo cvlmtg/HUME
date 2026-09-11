@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 
 use super::*;
 use crate::registry::GrammarBundle;
-use hume_test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
+use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 /// Load a real grammar fixture with an optional custom injections source
 /// (overriding whatever `injections.scm` the fixture ships, if any) —

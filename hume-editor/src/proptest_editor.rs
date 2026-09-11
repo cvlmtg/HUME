@@ -14,7 +14,7 @@ mod tests {
 
     use crate::editor::Editor;
     use crate::editor::buffer::Buffer;
-    use hume_test_fixtures::testing::parse_state;
+    use test_fixtures::testing::parse_state;
 
     // ── Invariant checker ─────────────────────────────────────────────────────
 

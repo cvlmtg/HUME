@@ -4,7 +4,7 @@ use globset::Glob;
 
 use super::{LanguageRegistry, QueryPaths, detect_language};
 use hume_engine::theme::ScopeRegistry;
-use hume_test_fixtures::{
+use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_textobjects_path, require_fixture_file,
     require_grammars,
 };

@@ -9,7 +9,7 @@ mod replace;
 mod sort;
 
 use super::*;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── repeat_edit (count prefix for edits) ──────────────────────────────────
 

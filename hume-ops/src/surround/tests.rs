@@ -2,7 +2,7 @@ use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 /// Helper: make a buffer + single-cursor SelectionSet and run a surround
 /// command, returning the resulting selections as `(anchor, head)` pairs.

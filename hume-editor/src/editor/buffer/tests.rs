@@ -5,8 +5,8 @@ use hume_ops::edit::{
     paste_before, repeat_edit,
 };
 use hume_ops::register::yank_selections;
-use hume_test_fixtures::testing::{parse_state, serialize_state};
 use pretty_assertions::assert_eq;
+use test_fixtures::testing::{parse_state, serialize_state};
 
 // ── DocHelper ─────────────────────────────────────────────────────────────
 //

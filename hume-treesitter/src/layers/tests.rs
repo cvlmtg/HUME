@@ -1,4 +1,4 @@
-use hume_test_fixtures::require_grammars;
+use test_fixtures::require_grammars;
 
 use super::{SyntaxLayer, layer_covers_line};
 use crate::test_support::{make_bundle, open_grammar, range};

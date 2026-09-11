@@ -26,8 +26,8 @@ use super::super::scripting_grammar::{
     grammar_fixture, grammar_source, helix_pin, runtime_scheme_dir,
 };
 use hume_scripting::ScriptingHost;
-use hume_test_fixtures::require_grammars;
 use hume_treesitter::registry::GrammarBundle;
+use test_fixtures::require_grammars;
 
 /// Blobless-clone `url` at `rev` into `dest`, test-fixture-only — mirrors the
 /// two-step shape `plum/install-grammar` now runs via `run-inline-output!`
@@ -252,7 +252,7 @@ fn register_grammar_injections_only_populates_injections() {
 fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
 
     let tmp = safe_tempdir();
     let data_dir = tmp.path().join("hume");
@@ -348,7 +348,7 @@ fn install_real_json_grammar_e2e() {
     std::fs::create_dir_all(data_dir.join("plugins")).unwrap();
 
     let src_dir = data_dir.join("grammars/sources/json");
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
 
     let status = git_clone_rev_for_test(url, &src_dir, rev);
@@ -891,7 +891,7 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
     );
 
     // Tripwire check: one compiled file forces the catalog, which then fails.
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
     let (errors, ..) = init_errors_with_catalog(broken, |data| {
         let grammars = data.join("grammars");
         std::fs::create_dir_all(&grammars).unwrap();
@@ -913,7 +913,7 @@ fn grammar_catalog_is_read_lazily_on_first_use() {
 #[test]
 fn orphan_compiled_grammar_is_skipped_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");
@@ -953,7 +953,7 @@ fn orphan_compiled_grammar_is_skipped_not_registered() {
 #[test]
 fn known_grammar_missing_highlights_warns_and_is_not_registered() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
 
     let (errors, ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");
@@ -1054,7 +1054,7 @@ fn wrong_extension_grammar_is_skipped_not_registered() {
 #[test]
 fn installed_grammars_sorts_by_stem_not_filename() {
     let catalog = "((\"json\" \"url\" \"rev\" \"tree_sitter_json\" \"\"))";
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
 
     let (errors, mut ed, _dirs) = init_errors_with_catalog(catalog, |data| {
         let grammars = data.join("grammars");

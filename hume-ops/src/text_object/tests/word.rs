@@ -4,7 +4,7 @@ use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::word::WordChars;
 use hume_rope::column::BufferLineCol;
 use hume_rope::offset::CharOffset;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 /// Test-only shorthand: these tests exercise the word-snap pass-through, not
 /// the `StickyDisplayCol` variants themselves, so every latch below is

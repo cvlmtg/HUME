@@ -18,7 +18,7 @@ pub mod testing;
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .expect("hume-test-fixtures sits directly under the workspace root")
+        .expect("test-fixtures sits directly under the workspace root")
         .join("tests/fixtures/grammars")
 }
 

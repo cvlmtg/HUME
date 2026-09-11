@@ -1,7 +1,7 @@
 use super::*;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── insert_pair_close — cursor ────────────────────────────────────────────
 

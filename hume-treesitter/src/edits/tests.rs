@@ -193,8 +193,8 @@ fn multibyte_utf8_byte_offsets() {
 fn multi_edit_changeset_incremental_tree_matches_full_reparse() {
     use crate::grammar::LoadedGrammar;
 
-    hume_test_fixtures::require_grammars(&["json"]);
-    let parser_path = hume_test_fixtures::grammar_parser_path("json");
+    test_fixtures::require_grammars(&["json"]);
+    let parser_path = test_fixtures::grammar_parser_path("json");
 
     let grammar = LoadedGrammar::open(&parser_path, "tree_sitter_json").expect("load json grammar");
     let mut parser = tree_sitter::Parser::new();

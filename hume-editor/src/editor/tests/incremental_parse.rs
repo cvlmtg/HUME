@@ -8,8 +8,8 @@
 
 use super::*;
 
-use hume_test_fixtures::{grammar_parser_path, require_grammars};
 use hume_treesitter::grammar::LoadedGrammar;
+use test_fixtures::{grammar_parser_path, require_grammars};
 
 use crate::editor::buffer::Buffer;
 use hume_editing::selection::SelectionSet;

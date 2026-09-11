@@ -1,6 +1,6 @@
 //! Test-only scaffolding shared across this crate's per-module test suites:
 //! bundle builders, id/gen helpers, and range construction. Every caller
-//! already calls `hume_test_fixtures::require_grammars` before using these,
+//! already calls `test_fixtures::require_grammars` before using these,
 //! so none of them re-check fixture existence themselves.
 
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub(crate) fn next_test_config_gen() -> u32 {
 
 /// Open `name`'s compiled grammar fixture.
 pub(crate) fn open_grammar(name: &str, symbol: &str) -> LoadedGrammar {
-    let path = hume_test_fixtures::grammar_parser_path(name);
+    let path = test_fixtures::grammar_parser_path(name);
     LoadedGrammar::open(&path, symbol).expect("load grammar")
 }
 

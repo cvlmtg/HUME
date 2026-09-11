@@ -6,11 +6,11 @@
 
 use super::*;
 
-use hume_test_fixtures::{
+use hume_treesitter::registry::QueryPaths;
+use test_fixtures::{
     grammar_parser_path, grammar_query_path, helix_injections_path, require_fixture_file,
     require_grammars,
 };
-use hume_treesitter::registry::QueryPaths;
 
 /// Attach the fixture grammar `name` (source name == attach identity — true
 /// for every real PLUM install; there is no renaming split in production).
@@ -32,7 +32,7 @@ fn attach(ed: &mut Editor, name: &str, symbol: &str, injections: bool) {
 }
 
 /// Require this file's grammar fixtures — see
-/// `hume_test_fixtures::require_grammars`/`require_fixture_file`.
+/// `test_fixtures::require_grammars`/`require_fixture_file`.
 fn require_fixtures() {
     require_grammars(&["markdown", "markdown.inline", "rust"]);
     let helix_path = grammar_parser_path("markdown").with_file_name("helix-injections.scm");

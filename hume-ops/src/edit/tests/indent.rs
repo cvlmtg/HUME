@@ -1,7 +1,7 @@
 use super::super::*;
 use hume_editing::changeset::Operation;
 use hume_editing::tab_style::TabStyle;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── indent_lines ──────────────────────────────────────────────────────────
 
@@ -10,7 +10,7 @@ fn indent_emits_insert_before_delete() {
     // Pins the op order the selection remap relies on: PosMapCursor must
     // reach the Insert before the Delete so an in-indent endpoint resolves
     // via Assoc rather than collapsing to the deletion point.
-    let (text, sels) = hume_test_fixtures::testing::parse_state("  -[f]>oo\n");
+    let (text, sels) = test_fixtures::testing::parse_state("  -[f]>oo\n");
     let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
     assert_eq!(
         cs.ops(),
@@ -81,7 +81,7 @@ fn indent_two_levels_at_once() {
 /// hang: the new width still saturates like any other huge indent).
 #[test]
 fn indent_huge_levels_does_not_overflow() {
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[f]>oo\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[f]>oo\n");
     let _ = indent_lines(text, sels, TabStyle::Soft, 4, usize::MAX);
 }
 
@@ -145,7 +145,7 @@ fn indent_all_blank_selection_returns_identity_changeset() {
     // Same input as `indent_all_blank_selection_is_noop`, but pinning the
     // property that test can't see: the identity fast path, not a full
     // retain-everything edit that happens to look like a no-op.
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[\n\n]>\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[\n\n]>\n");
     let (_, _, cs) = indent_lines(text, sels, TabStyle::Soft, 4, 1);
     assert!(cs.is_identity());
 }
@@ -240,7 +240,7 @@ fn unindent_flush_line_is_noop() {
 fn unindent_flush_line_returns_identity_changeset() {
     // Same input as `unindent_flush_line_is_noop`, pinning the identity fast
     // path rather than just its externally-indistinguishable no-op result.
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[f]>oo\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[f]>oo\n");
     let (_, _, cs) = unindent_lines(text, sels, TabStyle::Soft, 4, 1);
     assert!(cs.is_identity());
 }

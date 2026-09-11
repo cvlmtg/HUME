@@ -1,6 +1,6 @@
 use super::super::*;
 use hume_rope::offset::{CharOffset, InclusiveRange};
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // Stand-ins for `hume_treesitter::textobjects::ObjectSpans` — this crate
 // cannot depend on that crate, so these tests exercise `apply_object_motion`

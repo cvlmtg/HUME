@@ -9,7 +9,7 @@ use super::ParseBackend as _;
 use super::{BufferText, ParseOutcome, ParseRequest, ThreadedParseBackend, coalesce_one};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
-use hume_test_fixtures::require_grammars;
+use test_fixtures::require_grammars;
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", None, None)

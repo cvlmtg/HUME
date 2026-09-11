@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::WordCtx;
 use hume_editing::word::WordChars;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── cmd_select_next_word (w) ──────────────────────────────────────────────
 

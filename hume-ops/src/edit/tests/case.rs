@@ -1,5 +1,5 @@
 use super::super::*;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── make_text_lowercase / make_text_uppercase / make_text_capitalized ──────
 

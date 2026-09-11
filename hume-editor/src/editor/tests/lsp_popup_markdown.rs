@@ -10,7 +10,7 @@ use hume_grid::Rect;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_test_fixtures::require_grammars;
+use test_fixtures::require_grammars;
 
 /// Attach the real `markdown` grammar fixture, no injections — these tests
 /// only check that top-level spans reach the popup, not fenced-code

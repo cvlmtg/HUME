@@ -1,6 +1,6 @@
 use super::super::*;
 use hume_rope::offset::InclusiveRange;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // `inner_argument`/`around_argument` register from `register_structural`
 // (hume-editor's `commands/structural.rs`) as closures, not through a

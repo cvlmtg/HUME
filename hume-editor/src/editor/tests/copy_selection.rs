@@ -33,7 +33,7 @@ fn run_copy(ed: &mut Editor, down: bool, count: usize) {
 /// Build an editor from `initial`, run the copy command, and compare the
 /// resulting buffer+selections against `expected` — the `Editor`-driven
 /// counterpart of `assert_state!` for a command whose `DisplayLineMap` dependency
-/// keeps it out of `hume-test-fixtures`' pure-fn signature. Used for cases
+/// keeps it out of `test-fixtures`' pure-fn signature. Used for cases
 /// that don't need to distinguish which selection ends up primary.
 fn assert_copy_state(initial: &str, down: bool, count: usize, expected: &str) {
     let mut ed = copy_test_editor(initial);

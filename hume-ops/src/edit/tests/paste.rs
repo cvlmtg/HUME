@@ -1,6 +1,6 @@
 use super::super::*;
-use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
+use test_fixtures::assert_state;
 
 // ── paste_after ───────────────────────────────────────────────────────────
 
@@ -233,7 +233,7 @@ fn paste_before_replaces_selection() {
 
 #[test]
 fn paste_after_empty_values_is_noop() {
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ello\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
     let (new_text, new_sels, _cs) = paste_after(text, sels.clone(), &[]);
     assert_eq!(new_text.to_string(), buf_str);
@@ -242,7 +242,7 @@ fn paste_after_empty_values_is_noop() {
 
 #[test]
 fn paste_before_empty_values_is_noop() {
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ello\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let buf_str = text.to_string();
     let (new_text, new_sels, _cs) = paste_before(text, sels.clone(), &[]);
     assert_eq!(new_text.to_string(), buf_str);
@@ -500,7 +500,7 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_rope::offset::CharOffset;
     // parse_state requires at least one selection marker; we ignore the returned sels.
-    let (text, _) = hume_test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
+    let (text, _) = test_fixtures::testing::parse_state("-[a]>bc\nxyz\nfoo\n");
     let sels = SelectionSet::from_vec(
         vec![
             Selection::new(CharOffset::new(2), CharOffset::new(4)), // "c\nx" — first_line=0, last_line=1
@@ -526,7 +526,7 @@ fn paste_after_linewise_overlapping_line_ranges_each_replaced() {
 #[test]
 fn yank_then_paste_after_round_trip() {
     use crate::register::yank_selections;
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ello\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[h]>ello\n");
     let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h"], "yank captures the cursor char");
 
@@ -543,7 +543,7 @@ fn yank_then_paste_after_round_trip() {
 #[test]
 fn yank_multi_cursor_then_paste_after_n_to_n() {
     use crate::register::yank_selections;
-    let (text, sels) = hume_test_fixtures::testing::parse_state("-[h]>ell-[o]>\n");
+    let (text, sels) = test_fixtures::testing::parse_state("-[h]>ell-[o]>\n");
     let yanked = yank_selections(&text, &sels);
     assert_eq!(yanked, vec!["h", "o"]);
 

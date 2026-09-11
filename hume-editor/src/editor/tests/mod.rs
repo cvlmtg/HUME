@@ -18,13 +18,13 @@ use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView, LayoutTree, PaneId};
 use hume_engine::types::ScopeId;
 use hume_ops::search::SearchDirection;
-use hume_test_fixtures::testing::{parse_state, serialize_state};
 use hume_treesitter::parse_worker::InlineParseBackend;
 use hume_treesitter::registry::{GrammarBundle, QueryPaths};
 use slotmap::SecondaryMap;
 use termina::event::{
     Event as TerminalEvent, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use test_fixtures::testing::{parse_state, serialize_state};
 
 use super::{Editor, Mode, Severity};
 
@@ -123,7 +123,7 @@ pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor 
 /// Callers are responsible for `require_grammars` — a missing fixture must
 /// panic naming the fix, which is that helper's job, not this one's.
 fn attach_fixture_grammar(ed: &mut Editor, name: &str, symbol: &str) -> Arc<GrammarBundle> {
-    let highlights = hume_test_fixtures::grammar_query_path(name);
+    let highlights = test_fixtures::grammar_query_path(name);
     attach_fixture_grammar_with(ed, name, symbol, QueryPaths::highlights_only(&highlights))
 }
 
@@ -141,7 +141,7 @@ fn attach_fixture_grammar_with(
         .languages
         .attach_grammar(
             name,
-            &hume_test_fixtures::grammar_parser_path(name),
+            &test_fixtures::grammar_parser_path(name),
             symbol,
             queries,
             &mut ed.view.registry,

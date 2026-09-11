@@ -1,5 +1,5 @@
 use super::super::*;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── find_char_forward / find_char_backward ────────────────────────────────
 

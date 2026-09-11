@@ -1,8 +1,8 @@
 use super::super::*;
 use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
-use hume_test_fixtures::assert_state;
 use pretty_assertions::assert_eq;
+use test_fixtures::assert_state;
 
 // ── replace_around_cursors ───────────────────────────────────────────────────
 //

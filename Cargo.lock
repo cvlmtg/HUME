@@ -692,7 +692,6 @@ dependencies = [
  "hume-platform",
  "hume-rope",
  "hume-scripting",
- "hume-test-fixtures",
  "hume-treesitter",
  "insta",
  "lsp-types",
@@ -708,6 +707,7 @@ dependencies = [
  "steel-core",
  "tempfile",
  "termina",
+ "test-fixtures",
  "tree-sitter",
  "unicode-segmentation",
  "unicode-width 0.2.2",
@@ -759,13 +759,13 @@ version = "0.1.0"
 dependencies = [
  "hume-editing",
  "hume-rope",
- "hume-test-fixtures",
  "pretty_assertions",
  "regex-cursor",
  "regex-syntax",
  "ropey",
  "rustc-hash",
  "termina",
+ "test-fixtures",
  "unicode-segmentation",
 ]
 
@@ -808,15 +808,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hume-test-fixtures"
-version = "0.1.0"
-dependencies = [
- "hume-editing",
- "hume-rope",
- "pretty_assertions",
-]
-
-[[package]]
 name = "hume-treesitter"
 version = "0.1.0"
 dependencies = [
@@ -824,13 +815,13 @@ dependencies = [
  "hume-editing",
  "hume-engine",
  "hume-rope",
- "hume-test-fixtures",
  "libloading",
  "ropey",
  "rustc-hash",
  "slotmap",
  "streaming-iterator",
  "tempfile",
+ "test-fixtures",
  "tree-sitter",
  "tree-sitter-language",
 ]
@@ -1942,6 +1933,15 @@ dependencies = [
  "rustix",
  "signal-hook 0.3.18",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "test-fixtures"
+version = "0.1.0"
+dependencies = [
+ "hume-editing",
+ "hume-rope",
+ "pretty_assertions",
 ]
 
 [[package]]

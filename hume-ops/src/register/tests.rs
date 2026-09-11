@@ -1,5 +1,5 @@
 use super::*;
-use hume_test_fixtures::testing::parse_state;
+use test_fixtures::testing::parse_state;
 
 // ── RegisterSet ───────────────────────────────────────────────────────────
 

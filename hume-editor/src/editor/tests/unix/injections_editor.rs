@@ -391,7 +391,7 @@ fn plum_install_grammar_recovers_from_stale_source_dir_on_first_try() {
 
     type_cmd(&mut ed, ":plum-install-grammar json");
 
-    let ext = hume_test_fixtures::grammar_platform_ext();
+    let ext = test_fixtures::grammar_platform_ext();
     let out_path = data_dir.join("grammars").join(format!("json.{ext}"));
     let errors: Vec<String> = ed
         .state

@@ -387,7 +387,7 @@ impl StagedGrammarFixture {
             parser,
             grammars_dir.join(format!(
                 "{grammar_name}.{}",
-                hume_test_fixtures::grammar_platform_ext()
+                test_fixtures::grammar_platform_ext()
             )),
         )
         .unwrap();

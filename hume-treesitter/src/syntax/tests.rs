@@ -11,7 +11,7 @@ use super::Syntax;
 use crate::parse_worker::{ParseDone, ParseOutcome, ParsedLayers};
 use crate::registry::GrammarBundle;
 use crate::test_support::{empty_langs, fresh_bid};
-use hume_test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
+use test_fixtures::{grammar_query_path, require_fixture_file, require_grammars};
 
 fn make_bundle(name: &str, symbol: &str) -> Arc<GrammarBundle> {
     crate::test_support::make_bundle(name, symbol, "", None, None)
@@ -341,8 +341,7 @@ fn bake_mid_chain_gap_rejected() {
 #[test]
 fn bake_refreshes_injected_layer_ranges_after_an_edit_shifts_them() {
     require_grammars(&["markdown", "rust"]);
-    let inj_path =
-        hume_test_fixtures::grammar_query_path("markdown").with_file_name("injections.scm");
+    let inj_path = test_fixtures::grammar_query_path("markdown").with_file_name("injections.scm");
     require_fixture_file(&inj_path, "markdown injections.scm");
     let inj_src = std::fs::read_to_string(&inj_path).expect("read injections.scm");
     let markdown = make_bundle_with_injections("markdown", "tree_sitter_markdown", &inj_src);

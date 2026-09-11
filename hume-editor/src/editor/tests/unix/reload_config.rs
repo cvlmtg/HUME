@@ -697,7 +697,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// exists.
 #[test]
 fn reload_config_keeps_a_startup_grammar_registered() {
-    hume_test_fixtures::require_grammars(&["json"]);
+    test_fixtures::require_grammars(&["json"]);
     let (parser, hl) = grammar_fixture("json");
     let fixture = StagedGrammarFixture::new("json", &parser, &hl, "");
 

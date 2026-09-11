@@ -1,5 +1,5 @@
 use super::super::*;
-use hume_test_fixtures::assert_state;
+use test_fixtures::assert_state;
 
 // ── cmd_select_line / cmd_select_line_backward ────────────────────────────
 
