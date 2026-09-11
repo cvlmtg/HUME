@@ -402,6 +402,12 @@ impl Editor {
             // `prepare_frame`'s step 0 re-partitions from this same terminal
             // size again, after `settle`, so a bottom-band height change made
             // during the drain lands in this frame's render too.
+            //
+            // `frame.rs`'s `render_to_buf` mirrors this same
+            // `sync_viewport_dims` → `settle` → `prepare_frame` sequence for
+            // snapshot tests — a step added to this loop needs the same step
+            // added there, or every snapshot renders a frame this loop no
+            // longer produces.
             let (term_width, term_height) = screen.size()?;
             self.sync_viewport_dims(term_width, term_height);
             self.settle();
