@@ -517,7 +517,7 @@ path, so they waited for the next keystroke — forever, on an idle editor.
 **Root cause:** Diagnosing a display-width bug (git-diff's tab-stop math
 undercounting wide CJK graphemes), the plan asserted a second bug as fact:
 that decomposed combining sequences (e.g. `e` + U+0301) also misrender in
-`hume-engine`'s virtual-row renderer, because `segment_virtual_row`'s
+`hume-engine`'s virtual-display-line renderer, because `segment_virtual_line`'s
 `.clamp(1, 2)` differs from `push_insert_cells`'s `.min(255)` + skip-on-zero.
 The claim sounded structurally plausible — two different width-clamping
 policies in the same file *do* diverge somewhere — and was stated as
@@ -784,18 +784,21 @@ it did or didn't work.
 
 **Prevention rule:** When a scanning-style lint (L1, and the ones
 `docs/LESSONS.md`'s siblings-in-spirit replaced: line-count, grapheme-stepping,
-column-naming, statusline-writes, pane-focus, text-writer) is proposed for
-deletion, the replacement must be checked against what the lint actually
-caught, not against what the refactor intended to catch. A visibility change
-enforces reachability of a *type name*; it cannot enforce anything about a
-value already reachable through a variant already in scope. Enum variant
-payloads need a newtype with a private field (the pattern already used for
-`CharOffset`, `RopeyLine`/`ContentLine`, the column types, `Focus`,
-`ResyncKey`) — never a visibility annotation on the enum itself. When a lint
-is deleted in favor of a type-level fence, verify the fence with the lint's
-own fail oracle *and* against a surface the lint never scanned (its `tests/`
-blind spot, in this case) — the delta between the two is exactly what the
-newtype has to prove it closes.
+column-naming, statusline-writes, text-writer) is proposed for deletion, the
+replacement must be checked against what the lint actually caught, not
+against what the refactor intended to catch. A visibility change enforces
+reachability of a *type name*; it cannot enforce anything about a value
+already reachable through a variant already in scope. Enum variant payloads
+need a newtype with a private field (the pattern already used for
+`CharOffset`, `RopeyLine`/`ContentLine`, the column types, `ResyncKey`) —
+never a visibility annotation on the enum itself. When a lint is deleted in
+favor of a type-level fence, verify the fence with the lint's own fail oracle
+*and* against a surface the lint never scanned (its `tests/` blind spot, in
+this case) — the delta between the two is exactly what the newtype has to
+prove it closes.
+`EditorState::focused_pane_id` (`pub(crate)`, raw-written from `mouse.rs`,
+`commands/jump.rs`, `commands/pane.rs`) is this same class of gap, still
+open: no lint ever scanned it and no newtype fences it today.
 
 **Files:** `hume-editor/src/editor/commands/pipeline.rs` (`NativeBody`),
 `hume-editor/src/editor/registry/command.rs` (`MappableCommand`'s `fun`

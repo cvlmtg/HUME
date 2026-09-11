@@ -119,8 +119,7 @@ pub(in crate::editor) fn apply_buffer(
 /// only) — the caller rolls the setting back so a bad value never persists.
 ///
 /// Exhaustive over [`ResyncKey`] — see that type's own doc for why a new
-/// `resync: true` declaration with no arm here fails to compile instead of
-/// only tripping a runtime `debug_assert!`.
+/// `resync: true` declaration with no arm here fails to compile.
 fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: ResyncKey) -> bool {
     match rk {
         ResyncKey::history_capacity => {

@@ -16,10 +16,11 @@ bash scripts/fetch-test-grammars.sh
 # of the run has already passed.
 (cd tools/theme-editor && npm test)
 
-# Denies only `disallowed_methods` (clippy.toml) — the workspace-wide bans on
-# raw `unicode-width`/`std::env::set_var`/`remove_var` calls. Every other
-# clippy lint stays at its default (non-failing) level: adopting those is a
-# separate decision, not a side effect of this one.
+# Denies only `disallowed_methods` — the workspace-wide bans `clippy.toml`
+# lists (raw `unicode-width` calls, `std::env::set_var`/`remove_var`, raw
+# `ropey` line-index methods). Every other clippy lint stays at its default
+# (non-failing) level: adopting those is a separate decision, not a side
+# effect of this one.
 cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods
 
 # Every crate root denies `rustdoc::broken_intra_doc_links` — this is what

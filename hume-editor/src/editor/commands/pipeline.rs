@@ -36,11 +36,10 @@ use super::{current_selections, doc, effective_word_chars, focused_buffer_id};
 ///
 /// No public accessor by design: [`Self::new`] is the only part of this type
 /// that registration code outside `commands` (`registry/defaults/`) ever
-/// touches. This replaces the `single_native_dispatch_funnel` lint that used
-/// to grep for the destructuring pattern: a line-based scan misses a pattern
-/// `rustfmt` wraps across lines and skips `tests/` directories by
-/// construction, where a private field is enforced by the compiler
-/// everywhere, tests included.
+/// touches. A private field is enforced by the compiler everywhere, tests
+/// included — where a source-scanning lint checking for the destructuring
+/// pattern by hand would miss one `rustfmt` wraps across lines, and would
+/// skip `tests/` directories by construction.
 #[derive(Clone, Copy)]
 pub(in crate::editor) struct NativeBody<F>(F);
 

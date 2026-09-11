@@ -55,9 +55,10 @@ impl<'a> Canvas<'a> {
     /// pre-measured glyph rather than a run: `compose_display_line`/`compose_gutter`'s
     /// (`hume-engine`) per-cell fills and straddle fallbacks. `Grid::set_glyph`
     /// itself has no `right_edge` — only the grid's own physical edge — which
-    /// is what made a bare `set_cell` call unsafe to expose before this bound
-    /// existed: nothing stopped a write from crossing a pane, lane, or box
-    /// boundary that sits inside the grid's bounds. The trailing columns of
+    /// is what made a bare `Grid::set_glyph` call unsafe to expose before
+    /// this bound existed: nothing stopped a write from crossing a pane,
+    /// lane, or box boundary that sits inside the grid's bounds. The
+    /// trailing columns of
     /// a wide glyph are still the grid's business, not a caller's —
     /// `Grid::set_glyph` claims them itself.
     pub fn write_cell(

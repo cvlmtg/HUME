@@ -800,7 +800,7 @@ fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
 /// j → line 1: A should land at col 0 = char 81, B at col 3 = char 84.
 /// k → display line 1: A should return to col 0 = char 76, B to col 3 = char 79.
 #[test]
-fn visual_move_per_selection_sticky_col() {
+fn visual_move_per_selection_sticky_display_col() {
     use hume_editing::selection::{Selection, SelectionSet};
 
     let line0: String = "a".repeat(80);

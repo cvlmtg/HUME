@@ -14,8 +14,8 @@
 //! These four types make the two domains distinct at compile time, so a
 //! function taking a [`ContentLine`] cannot be handed a [`RopeyLine`] without
 //! an explicit (and fallible, via [`RopeyLine::to_content`]) conversion, and
-//! neither index type implements `Add`/`Sub` — the `+ 1`/`- 1` re-derivations
-//! that used to need a scanner to catch are now a compile error.
+//! neither index type implements `Add`/`Sub`, so the `+ 1`/`- 1`
+//! re-derivations these types exist to forbid are a compile error.
 //!
 //! Deliberately not a bare tuple struct with a `pub` field, unlike this
 //! workspace's other newtypes (`ScopeId`, `ServerId`, `TimerId`): a `pub`

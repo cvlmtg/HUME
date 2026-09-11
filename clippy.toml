@@ -1,10 +1,12 @@
-# Workspace-wide `clippy::disallowed_methods` entries — see CLAUDE.md's
-# "Display columns" section, and `hume-editor/src/editor/lints/test_globals.rs`'s
-# "Test-suite process-global hygiene" module doc, for the rules these enforce
-# and why the constant reachable from most crates (`unicode-width`'s methods)
-# or with essentially zero legitimate exceptions workspace-wide
-# (`std::env::set_var`/`remove_var`) is a better fit for this than a
-# hand-rolled scanner. A file with a real exception carries its own
+# Workspace-wide `clippy::disallowed_methods` entries, three groups: a
+# constant reachable from most crates (`unicode-width`'s methods — CLAUDE.md's
+# "Display columns" section), a set with essentially zero legitimate
+# exceptions workspace-wide (`std::env::set_var`/`remove_var` —
+# `hume-editor/src/editor/lints/test_globals.rs`'s "Test-suite process-global
+# hygiene" module doc), and a crate's own escape hatch around its own domain
+# types (raw `ropey` line-index methods — CLAUDE.md's "Line counts and
+# ranges" section). All three are a better fit for a compiler-checked ban
+# than a hand-rolled scanner. A file with a real exception carries its own
 # `#[allow(clippy::disallowed_methods)]` — grep the tree for the attribute to
 # find every one.
 disallowed-methods = [

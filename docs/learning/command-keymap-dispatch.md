@@ -249,12 +249,12 @@ A change in one layer cannot corrupt another because they communicate only
 through name strings.
 
 A related invariant is enforced at the dispatch layer: every native command's
-function body must run through one funnel. A test in the suite scans the
-editor's source for any second place that calls a native command's function
-directly, and fails if it finds one. The funnel is where the bookkeeping that
-surrounds every command — dot-repeat, paste-session commits, jump-list
-updates, extend-mode auto-exit — gets applied. Letting a
+function body must run through one funnel. Each command's function is stored
+wrapped in a type only the funnel can unwrap, so a second call site trying to
+invoke it directly is a compile error, not a runtime check. The funnel is
+where the bookkeeping that surrounds every command — dot-repeat, paste-session
+commits, jump-list updates, extend-mode auto-exit — gets applied. Letting a
 second call site bypass it would mean two paths for the same command, and the
 bookkeeping would silently regress on whichever path skipped the funnel;
-tests that pin the primary effect would stay green either way. The lint makes
-that mistake a test failure rather than a behavioural drift.
+tests that pin the primary effect would stay green either way. Wrapping the
+function this way rules that mistake out at compile time instead.

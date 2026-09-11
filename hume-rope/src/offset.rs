@@ -6,9 +6,9 @@
 //! U+0301) or a ZWJ emoji is more than one char wide, so the position right
 //! after its first char is not a cluster boundary at all.
 //!
-//! [`CharOffset`] makes that mistake a compile error rather than a lint
-//! finding: the field is private and the type implements no `Add`/`Sub`/
-//! `AddAssign`, so `offset + 1` doesn't type-check. The only ways to produce
+//! [`CharOffset`] makes that mistake a compile error: the field is private
+//! and the type implements no `Add`/`Sub`/`AddAssign`, so `offset + 1`
+//! doesn't type-check. The only ways to produce
 //! one are the boundary-walking functions in [`crate::grapheme`], the
 //! offset-returning functions in [`crate::lines`], a validated mint against a
 //! rope ([`CharOffset::checked`]), or [`CharOffset::new`] — a trusted mint

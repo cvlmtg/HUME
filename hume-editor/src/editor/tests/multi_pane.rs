@@ -88,7 +88,7 @@ fn d4a_search_pattern_is_per_buffer() {
 /// when its line is touched by an edit; survives translate_in_place on
 /// untouched lines.
 #[test]
-fn d4b_sticky_col_is_per_selection() {
+fn d4b_sticky_display_col_is_per_selection() {
     use hume_editing::changeset::ChangeSetBuilder;
     use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
     use hume_editing::text::BufferText;
