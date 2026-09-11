@@ -22,35 +22,29 @@ use hume_engine::pipeline::{EngineView, LayoutTree, PaneId};
 
 use crate::editor::EditorState;
 
-/// Take the live layout/focus out of `view`/`state`, leaving a placeholder
-/// behind — displaced immediately by the caller's own [`install_live`], so
-/// never observable as the live layout. Shared first half of every op that
-/// replaces the whole live tab.
+/// Read the live layout/focus out of `view`/`state`, leaving `view`
+/// unchanged — the caller's own [`install_live`] is what actually displaces
+/// it, via [`EngineView::replace_layout`]. Shared first half of every op
+/// that replaces the whole live tab.
 ///
-/// Ends the outgoing pane's open Insert session first, before the
-/// placeholder goes in: `view.layout` names the outgoing tab and
-/// `state.focused_pane_id` names its focused pane together, right up to
-/// this point — the last moment either is true until `install_live` runs.
-/// `end_insert_session_if_active`'s own edit can shrink the outgoing pane's
-/// buffer (the blank-line indent trim), and any per-(pane, buffer) state it
-/// touches should resolve against a still-consistent (layout, focus) pair,
-/// not against the placeholder `Leaf(PaneId::default())` below or a
-/// half-installed incoming tab.
+/// Ends the outgoing pane's open Insert session first, before reading:
+/// `view.layout()` names the outgoing tab and `state.focused_pane_id` names
+/// its focused pane together, right up to this point — the last moment
+/// either is true until `install_live` runs. `end_insert_session_if_active`'s
+/// own edit can shrink the outgoing pane's buffer (the blank-line indent
+/// trim), and any per-(pane, buffer) state it touches should resolve
+/// against a still-consistent (layout, focus) pair, not a half-installed
+/// incoming tab.
 pub(in crate::editor) fn take_live(
     state: &mut EditorState,
-    view: &mut EngineView,
+    view: &EngineView,
 ) -> (LayoutTree, PaneId) {
     super::commands::end_insert_session_if_active(state, view);
-    let focus = state.focused_pane_id;
-    let placeholder = LayoutTree::Leaf(PaneId::default());
-    // Swaps the live tab's whole tree out for a transient placeholder,
-    // displaced immediately by the caller's own install_live — the pool is
-    // untouched either way.
-    (std::mem::replace(&mut view.layout, placeholder), focus)
+    (view.layout().clone(), state.focused_pane_id)
 }
 
 /// Install `layout`/`focus` as the live tab. Shared second half of every op
-/// that replaces `view.layout`/`state.focused_pane_id` together — the pair
+/// that replaces `view.layout()`/`state.focused_pane_id` together — the pair
 /// that jointly define which tab is on screen. The focus half goes through
 /// `commands::focus_pane` rather than a bare assignment: its Insert-session
 /// teardown is already done by `take_live` above by the time this runs (a
@@ -58,13 +52,19 @@ pub(in crate::editor) fn take_live(
 /// resolves the outgoing pane/buffer by id rather than through the layout
 /// tree, so it has no matching earlier call and still needs to run here,
 /// before `focused_pane_id` moves to `focus`.
+///
+/// `replace_layout`'s return (the tree being displaced) is discarded: it
+/// names the exact same pool entries `take_live` already read moments
+/// earlier and the caller has already threaded onward (into `TabStore`'s
+/// stash, or dropped via `into_detached` for a closing tab) — nothing left
+/// to leak.
 pub(in crate::editor) fn install_live(
     state: &mut EditorState,
     view: &mut EngineView,
     layout: LayoutTree,
     focus: PaneId,
 ) {
-    view.layout = layout;
+    let _ = view.replace_layout(layout);
     super::commands::focus_pane(state, view, focus);
 }
 

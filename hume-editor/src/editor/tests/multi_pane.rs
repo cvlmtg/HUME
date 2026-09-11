@@ -603,7 +603,7 @@ fn split_stacks_pane_on_same_buffer() {
         "new pane views the same buffer"
     );
 
-    match &ed.view.layout {
+    match ed.view.layout() {
         LayoutTree::Split {
             direction,
             children,
@@ -635,7 +635,7 @@ fn vsplit_places_pane_side_by_side() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.execute_typed("vsplit", None).unwrap();
 
-    match &ed.view.layout {
+    match ed.view.layout() {
         LayoutTree::Split { direction, .. } => {
             assert_eq!(*direction, Direction::Horizontal, ":vsplit is side-by-side")
         }
@@ -664,7 +664,7 @@ fn split_via_command_mode_moves_focus() {
         "focus moves to the new pane through the real command-mode path"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        matches!(*ed.view.layout(), LayoutTree::Split { .. }),
         "layout is a Split"
     );
 }
@@ -844,7 +844,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
         "focus does not move — split was rejected"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(_)),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
         "layout is unchanged"
     );
     assert_eq!(
@@ -873,7 +873,7 @@ fn split_too_short_is_noop_with_warning() {
         "focus does not move — split was rejected"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(_)),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(_)),
         "layout is unchanged"
     );
     assert_eq!(
@@ -1175,7 +1175,7 @@ fn quit_with_multiple_panes_closes_focused_pane_not_editor() {
         "focus returns to the surviving pane"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == pid_a),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == pid_a),
         "layout collapses back to a single leaf"
     );
 }
@@ -1399,7 +1399,7 @@ fn quit_in_grid_promotes_correct_sibling() {
     );
     assert!(!ed.view.panes.contains_key(pid_d), "D was closed");
 
-    match &ed.view.layout {
+    match ed.view.layout() {
         LayoutTree::Split { children, .. } => {
             assert!(
                 matches!(&children.0, LayoutTree::Leaf(id) if *id == pid_a),

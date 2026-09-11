@@ -710,12 +710,12 @@ fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
         )
         .unwrap();
         assert_eq!(
-            ed.resolve_pane_settings(focused).unwrap().cursor_is_block,
+            ed.resolve_pane_settings(focused).cursor_is_block,
             expected_focused,
             "focused pane with cursor-shape-insert={shape}"
         );
         assert!(
-            ed.resolve_pane_settings(other).unwrap().cursor_is_block,
+            ed.resolve_pane_settings(other).cursor_is_block,
             "an unfocused pane paints its heads for every shape (cursor-shape-insert={shape})"
         );
     }

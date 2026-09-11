@@ -8,7 +8,9 @@ use hume_engine::theme::Theme;
 /// one, mirroring `BufferStore`'s own `make_id` test helper.
 fn make_pane(ev: &mut EngineView) -> PaneId {
     let bid = ev.buffers.insert(());
-    ev.panes.insert(Pane::new(bid)) // pane-lifecycle-safe: id-minter on a scratch, deliberately treeless EngineView
+    // Deliberately never spliced into any tree — a scratch id for this
+    // module's own tests, not a real pane.
+    ev.insert_pane(Pane::new(bid)).pane_id()
 }
 
 #[test]

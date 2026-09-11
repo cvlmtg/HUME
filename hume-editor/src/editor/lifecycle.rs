@@ -105,10 +105,14 @@ impl Editor {
         let settings = EditorSettings::default();
 
         // Build the initial pane. Every later split-created pane goes through
-        // the same `build_pane` (see `commands::open_pane`).
+        // the same `build_pane` (see `commands::pane::open_pane`, reached
+        // only through `open_pane_in_layout`/`open_pane_as_new_tab`).
         let (pane, render_handles) = build_pane(&mut engine_view.registry, &views, buffer_id);
-        let pane_id = engine_view.panes.insert(pane);
-        engine_view.layout = LayoutTree::Leaf(pane_id);
+        let unattached = engine_view.insert_pane(pane);
+        let pane_id = unattached.pane_id();
+        // Discards the placeholder EngineView::new seeded — no real pane
+        // behind it to leak.
+        let _ = engine_view.replace_layout(LayoutTree::leaf(unattached));
 
         let jump_list_capacity = settings.jump_list_capacity;
         let history_capacity = settings.history_capacity;

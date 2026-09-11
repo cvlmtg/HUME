@@ -42,7 +42,7 @@ pub(in crate::editor) fn typed_quit(
     // the tab or the editor. The buffer stays open (no edits lost), so no dirty
     // check — that guard belongs to the steps below, which actually close
     // something the user can't get back without saving.
-    if !ed.view.layout.is_single_pane() {
+    if !ed.view.layout().is_single_pane() {
         super::close_focused_pane(&mut ed.state, &mut ed.view);
         return Ok(());
     }

@@ -97,7 +97,7 @@ fn ctrl_p_s_splits_pane() {
         "focus moves to the new pane"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        matches!(*ed.view.layout(), LayoutTree::Split { .. }),
         "layout is a Split"
     );
 }
@@ -117,7 +117,7 @@ fn ctrl_p_v_vsplits_pane() {
         "focus moves to the new pane"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Split { .. }),
+        matches!(*ed.view.layout(), LayoutTree::Split { .. }),
         "layout is a Split"
     );
 }
@@ -144,7 +144,7 @@ fn ctrl_p_c_closes_pane() {
         "focus returns to the surviving pane"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == pid_a),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == pid_a),
         "layout collapses back to a single leaf"
     );
 }

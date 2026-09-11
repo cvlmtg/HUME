@@ -33,7 +33,7 @@ fn vsplit_path_opens_that_buffer() {
         "new pane's buffer resolves to the opened file"
     );
 
-    match &ed.view.layout {
+    match ed.view.layout() {
         LayoutTree::Split { direction, .. } => assert_eq!(*direction, Direction::Horizontal),
         other => panic!("expected Split layout, got {other:?}"),
     }

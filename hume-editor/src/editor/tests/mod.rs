@@ -509,8 +509,11 @@ impl Editor {
         let history_capacity = settings.history_capacity;
         let initial_mouse_mode = (settings.mouse_enabled, settings.mouse_select);
         let pane = Pane::new(buffer_id);
-        let pane_id = engine_view.panes.insert(pane);
-        engine_view.layout = LayoutTree::Leaf(pane_id);
+        let unattached = engine_view.insert_pane(pane);
+        let pane_id = unattached.pane_id();
+        // Discards the placeholder EngineView::new seeded — no real pane
+        // behind it to leak.
+        let _ = engine_view.replace_layout(LayoutTree::leaf(unattached));
 
         let mut buffers = BufferStore::new();
         buffers.open(buffer_id, doc);

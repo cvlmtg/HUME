@@ -244,7 +244,7 @@ impl Editor {
     /// what `click_to_char` and `screen_to_char_offset` expect. `None` for a
     /// click outside every pane's rect (statusline, tabline, a divider seam).
     fn pane_at_screen_pos(&self, x: u16, y: u16) -> Option<(PaneId, u16, u16)> {
-        let (pid, rect) = self.view.layout.find_containing(
+        let (pid, rect) = self.view.layout().find_containing(
             Position::new(x, y),
             self.view.last_pane_area,
             self.view.reserve_seam,

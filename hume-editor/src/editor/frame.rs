@@ -61,13 +61,12 @@ impl Editor {
     /// Split from gutter width ([`Self::pane_gutter_width`]) because every
     /// caller wants one or the other, never reliably both.
     ///
-    /// `None` when `pid` no longer names a live pane — `active_pane_ids()`
-    /// can transiently include `take_live`'s placeholder id if a panic
-    /// unwinds between `take_live` and `install_live`; `EngineView::render`
-    /// already skips such an id rather than drawing it, so this matches
-    /// that same tolerance instead of panicking one step earlier.
-    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> Option<PaneRenderSettings> {
-        let pane = self.view.panes.get(pid)?;
+    /// `pid` must name a live, active-tab pane — every caller reads it from
+    /// `active_pane_ids()`, which by construction (see `EngineView::layout`'s
+    /// privacy — no whole-tree write can install a leaf the pool doesn't
+    /// back) can never contain a stale id.
+    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
+        let pane = &self.view.panes[pid];
         let doc = self.state.buffers.get(pane.buffer_id);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let is_focused = pid == self.state.focused_pane_id;
@@ -78,12 +77,12 @@ impl Editor {
         };
         let cursor_is_block =
             !is_focused || self.state.cursor_shape() == crate::editor::settings::CursorShape::Block;
-        Some(PaneRenderSettings {
+        PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),
             show_indent_guides,
             cursor_is_block,
-        })
+        }
     }
 
     /// The gutter width a pane's own providers currently occupy — used to
@@ -110,7 +109,7 @@ impl Editor {
         ctx.set_pane_settings(
             active
                 .iter()
-                .filter_map(|&pid| Some((pid, self.resolve_pane_settings(pid)?))),
+                .map(|&pid| (pid, self.resolve_pane_settings(pid))),
         );
         let focused_pane_id = self.state.focused_pane_id;
         let draw_dividers = self.state.settings.pane_dividers;
@@ -260,7 +259,7 @@ impl Editor {
         let reserve_seam = self.state.settings.pane_dividers;
         let mut rects = Vec::new();
         self.view
-            .layout
+            .layout()
             .collect_rects_into(pane_area, reserve_seam, &mut rects);
 
         for &(pid, rect) in &rects {

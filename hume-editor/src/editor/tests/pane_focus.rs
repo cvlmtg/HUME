@@ -124,8 +124,9 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     // directly (not via `split_leaf`, which now equalizes every same-axis
     // split) so `b`/`c` keep the deliberate short/tall asymmetry this
     // tie-break test needs. Rebuilds the tree over the same pane set created
-    // above; nothing detached or leaked.
-    ed.view.layout = LayoutTree::Split {
+    // above; nothing detached or leaked — the discarded tree names the same
+    // pool entries the replacement does, just reshaped.
+    let _ = ed.view.replace_layout(LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,
         children: Box::new((
@@ -136,7 +137,7 @@ fn t4_tie_break_uses_center_distance_not_origin() {
                 children: Box::new((LayoutTree::Leaf(pid_b), LayoutTree::Leaf(pid_c))),
             },
         )),
-    };
+    });
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();

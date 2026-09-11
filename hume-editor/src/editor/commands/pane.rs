@@ -2,7 +2,7 @@
 //! tearing down a pane's per-pane state maps.
 
 use hume_engine::pipeline::{
-    BufferId, DetachedPane, Direction, EngineView, LayoutTree, PaneId, Pruned,
+    BufferId, DetachedPane, Direction, EngineView, LayoutTree, PaneId, Pruned, UnattachedPane,
 };
 use slotmap::SecondaryMap;
 
@@ -23,7 +23,11 @@ use crate::editor::{EditorState, Mode, Severity};
 /// *only* sanctioned ways to reach it, in production or in tests. Nothing
 /// else, anywhere, may call this directly; there is no third legitimate way
 /// to create a pane.
-fn open_pane(state: &mut EditorState, view: &mut EngineView, buffer_id: BufferId) -> PaneId {
+fn open_pane(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    buffer_id: BufferId,
+) -> UnattachedPane {
     // Every pane gets the same providers (sign column + gutter + bracket/
     // search/diagnostic/extra highlight + inlay hints + virtual lines +
     // completion overlay + popup overlay + menu overlay + LSP
@@ -33,7 +37,8 @@ fn open_pane(state: &mut EditorState, view: &mut EngineView, buffer_id: BufferId
     // can never bleed across panes.
     let (pane, render_handles) =
         crate::editor::pane_state::build_pane(&mut view.registry, &state.views, buffer_id);
-    let pid = view.panes.insert(pane);
+    let unattached = view.insert_pane(pane);
+    let pid = unattached.pane_id();
     state.panes.state.insert(pid, SecondaryMap::new());
     crate::editor::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);
     state.panes.transient.insert(pid, PaneTransient::default());
@@ -42,7 +47,7 @@ fn open_pane(state: &mut EditorState, view: &mut EngineView, buffer_id: BufferId
         crate::editor::jump_list::JumpList::new(state.settings.jump_list_capacity),
     );
     state.panes.render.insert(pid, render_handles);
-    pid
+    unattached
 }
 
 /// Create a pane viewing `bid` and splice it into the layout beside
@@ -60,14 +65,15 @@ pub(in crate::editor) fn open_pane_in_layout(
     bid: BufferId,
     direction: Direction,
 ) -> Result<PaneId, CommandError> {
-    if !view.layout.contains_leaf(target) {
+    if !view.layout().contains_leaf(target) {
         return Err(CommandError::new(format!(
             "internal error: split target {target:?} missing from pane layout"
         )));
     }
-    let new_pid = open_pane(state, view, bid);
-    let grafted = view.layout.split_leaf(target, new_pid, direction);
-    debug_assert!(grafted, "contains_leaf just confirmed target is present");
+    let unattached = open_pane(state, view, bid);
+    let new_pid = view
+        .split_leaf(target, unattached, direction)
+        .expect("contains_leaf just confirmed target is present");
     Ok(new_pid)
 }
 
@@ -87,12 +93,13 @@ pub(in crate::editor) fn open_pane_as_new_tab(
     view: &mut EngineView,
     bid: BufferId,
 ) -> (PaneId, TabId) {
-    let new_pid = open_pane(state, view, bid);
+    let unattached = open_pane(state, view, bid);
+    let new_pid = unattached.pane_id();
     let (outgoing_layout, outgoing_focus) = take_live(state, view);
     let tab_id = state.tabs.open_after_current(
         outgoing_layout,
         outgoing_focus,
-        LayoutTree::Leaf(new_pid),
+        LayoutTree::leaf(unattached),
         new_pid,
     );
     install_live(state, view, LayoutTree::Leaf(new_pid), new_pid);
@@ -161,7 +168,7 @@ pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &EngineView, 
 /// yields for the closing tab's tree).
 pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pane: DetachedPane) {
     let pid = pane.pane_id();
-    view.panes.remove(pid);
+    view.remove_pane(pane);
     state.panes.state.remove(pid);
     state.panes.transient.remove(pid);
     state.panes.jumps.remove(pid);
@@ -172,14 +179,13 @@ pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pa
 /// promoted sibling, and drop all its per-pane state.
 ///
 /// Precondition: the active tab's layout is split — callers check
-/// `!view.layout.is_single_pane()` before calling. `view.panes.len() > 1` is
+/// `!view.layout().is_single_pane()` before calling. `view.panes.len() > 1` is
 /// NOT the right count: panes are a global pool shared by every tab, so it
 /// stays true whenever any other tab holds a pane, even when the active tab
 /// has only this one. `remove_leaf` returning `None` here is a bug.
 pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView) {
     let old = state.focused_pane_id;
     let Pruned { detached, survivor } = view
-        .layout
         .remove_leaf(old)
         .expect("close_focused_pane requires the active tab's layout to be split");
     focus_pane(state, view, survivor);
@@ -223,7 +229,7 @@ pub(in crate::editor) fn fits_split(
     if view.last_pane_area.area() == 0 {
         return true;
     }
-    let Some(rect) = view.layout.predicted_split_rect(
+    let Some(rect) = view.layout().predicted_split_rect(
         state.focused_pane_id,
         view.last_pane_area,
         view.reserve_seam,

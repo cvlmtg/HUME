@@ -22,7 +22,7 @@ use layout::{
     junction_glyph,
 };
 pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Seam};
-pub use pane_pool::PanePool;
+pub use pane_pool::{PanePool, UnattachedPane};
 use pane_render::render_pane;
 
 new_key_type! {
@@ -153,7 +153,15 @@ impl Default for RenderContext {
 
 /// The root of the editor's rendering state.
 pub struct EngineView {
-    pub layout: LayoutTree,
+    /// The active tab's tree — private so every whole-tree replacement
+    /// routes through [`Self::replace_layout`], which is `#[must_use]`: an
+    /// outgoing tree silently dropped here would leak every pane it still
+    /// reaches (see [`DetachedPane`]'s own doc). In-place mutation goes
+    /// through [`Self::split_leaf`]/[`Self::remove_leaf`], which themselves
+    /// mint or consume a pool token — there is no general `&mut LayoutTree`
+    /// accessor, so a caller can't reach `LayoutTree`'s own mutating methods
+    /// (`split_leaf`/`remove_leaf`) without going through one of these two.
+    layout: LayoutTree,
     pub panes: PanePool,
     /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
     /// live in the editor's `Document`/`Buffer` — this slotmap only mints and
@@ -240,6 +248,52 @@ impl EngineView {
     pub fn pane_rect(&self, pid: PaneId) -> Option<Rect> {
         self.layout
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
+    }
+
+    /// The active tab's tree.
+    pub fn layout(&self) -> &LayoutTree {
+        &self.layout
+    }
+
+    /// Replace the whole active-tab tree, returning what was there before.
+    /// `#[must_use]`: the outgoing tree may still reach live panes (see
+    /// [`DetachedPane`]'s own doc) — a caller that means to discard it
+    /// outright (installing a placeholder over a tree with nothing real
+    /// left in it, or replacing it with a tree that names the exact same
+    /// pool entries just reshaped) must say so explicitly with `let _ = `.
+    #[must_use]
+    pub fn replace_layout(&mut self, layout: LayoutTree) -> LayoutTree {
+        std::mem::replace(&mut self.layout, layout)
+    }
+
+    /// Splice a freshly inserted, not-yet-attached pane into the active
+    /// tab's tree beside `target`. See [`LayoutTree::split_leaf`].
+    pub fn split_leaf(
+        &mut self,
+        target: PaneId,
+        pane: UnattachedPane,
+        direction: Direction,
+    ) -> Result<PaneId, UnattachedPane> {
+        self.layout.split_leaf(target, pane, direction)
+    }
+
+    /// Prune `target` from the active tab's tree. See
+    /// [`LayoutTree::remove_leaf`].
+    pub fn remove_leaf(&mut self, target: PaneId) -> Option<Pruned> {
+        self.layout.remove_leaf(target)
+    }
+
+    /// Insert a pane into the pool, returning the [`UnattachedPane`] token
+    /// proving it isn't yet reachable from any layout tree — splice it in
+    /// with [`Self::split_leaf`] or [`LayoutTree::leaf`].
+    pub fn insert_pane(&mut self, pane: Pane) -> UnattachedPane {
+        self.panes.insert(pane)
+    }
+
+    /// Remove a pane the caller has already detached from every layout tree
+    /// that could reach it (see [`DetachedPane`]'s own doc).
+    pub fn remove_pane(&mut self, detached: DetachedPane) {
+        self.panes.remove(detached);
     }
 
     /// Every pane `self.layout` — the active tab's — currently reaches. The

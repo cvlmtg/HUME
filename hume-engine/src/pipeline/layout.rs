@@ -5,7 +5,7 @@ use hume_grid::box_glyphs::{
 use hume_grid::{Position, Rect};
 use rustc_hash::FxHashMap;
 
-use super::PaneId;
+use super::{PaneId, UnattachedPane};
 
 // ---------------------------------------------------------------------------
 // Layout tree
@@ -39,7 +39,11 @@ pub struct Seam {
 /// [`LayoutTree::into_detached`], both in this module, and consumed by
 /// `hume-editor`'s `drop_pane_state` to free the pane's state. Not
 /// `Clone`/`Copy`: a duplicable token would let the same pane be freed
-/// twice.
+/// twice. Together with [`super::UnattachedPane`] (the opposite
+/// transition, minted on insert) and `EngineView::layout`'s privacy, this
+/// is the compiler-checked pane/layout sync invariant: a pane in the pool
+/// with no tree leaf naming it is a leak, and a leaf naming a pane the
+/// pool no longer holds is a dangling reference.
 #[must_use = "a detached pane's per-pane state must be dropped"]
 #[derive(Debug)]
 pub struct DetachedPane(PaneId);
@@ -201,16 +205,35 @@ impl LayoutTree {
         }
     }
 
-    /// Replace `Leaf(target)` with a `Split` of `(Leaf(target), Leaf(new_pane))`,
-    /// then re-derive every split ratio in the tree so panes sharing a split
-    /// axis stay equal-sized (see `equalize`). Returns whether
-    /// `target` was found.
-    pub fn split_leaf(&mut self, target: PaneId, new_pane: PaneId, direction: Direction) -> bool {
-        let found = self.insert_split(target, new_pane, direction);
-        if found {
+    /// Splice a freshly inserted, not-yet-attached pane in beside
+    /// `target`: replace `Leaf(target)` with a `Split` of `(Leaf(target),
+    /// Leaf(new_pane))`, then re-derive every split ratio in the tree so
+    /// panes sharing a split axis stay equal-sized (see `equalize`). Takes
+    /// the [`UnattachedPane`] token by value and hands it back on `Err` when
+    /// `target` isn't found — the token is consumed only on the success
+    /// path, so a caller can never end up with a pane the tree lost track
+    /// of.
+    pub fn split_leaf(
+        &mut self,
+        target: PaneId,
+        new_pane: UnattachedPane,
+        direction: Direction,
+    ) -> Result<PaneId, UnattachedPane> {
+        let new_id = new_pane.pane_id();
+        if self.insert_split(target, new_id, direction) {
             self.equalize();
+            Ok(new_id)
+        } else {
+            Err(new_pane)
         }
-        found
+    }
+
+    /// A freshly inserted, not-yet-attached pane as the sole content of a
+    /// brand-new tree — the new-tab and first-pane-bootstrap counterpart of
+    /// [`Self::split_leaf`]. Infallible: there is no existing tree to fail
+    /// to find a target in.
+    pub fn leaf(new_pane: UnattachedPane) -> LayoutTree {
+        LayoutTree::Leaf(new_pane.pane_id())
     }
 
     /// The recursive body of [`Self::split_leaf`], without the equalize pass

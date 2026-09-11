@@ -1190,7 +1190,10 @@ fn junction_glyph_at_t_and_cross_scenarios_matches_collect_seam_arms() {
 fn split_leaf_on_root() {
     let [a, b] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.split_leaf(a, b, Direction::Vertical));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Vertical)
+            .is_ok()
+    );
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1205,7 +1208,10 @@ fn split_leaf_on_root() {
 fn split_leaf_missing_target_is_noop() {
     let [a, b, missing] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(!tree.split_leaf(missing, b, Direction::Vertical));
+    assert!(
+        tree.split_leaf(missing, UnattachedPane::for_test(b), Direction::Vertical)
+            .is_err()
+    );
     assert_eq!(tree, LayoutTree::Leaf(a));
 }
 
@@ -1217,7 +1223,10 @@ fn split_leaf_on_nested_target() {
         ratio: 0.5,
         children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
     };
-    assert!(tree.split_leaf(b, c, Direction::Vertical));
+    assert!(
+        tree.split_leaf(b, UnattachedPane::for_test(c), Direction::Vertical)
+            .is_ok()
+    );
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1243,8 +1252,14 @@ fn split_leaf_on_nested_target() {
 fn split_leaf_thrice_gives_equal_thirds() {
     let [a, b, c] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.split_leaf(a, b, Direction::Horizontal));
-    assert!(tree.split_leaf(a, c, Direction::Horizontal));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
+            .is_ok()
+    );
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Horizontal)
+            .is_ok()
+    );
 
     // `a` is split again, so it (now paired with `c`) occupies 2 of the 3
     // slots on the horizontal axis — hence 2/3, not 1/3 — with the nested
@@ -1294,7 +1309,10 @@ fn split_leaf_counts_perpendicular_subtree_as_one_share() {
             },
         )),
     };
-    assert!(tree.split_leaf(a, d, Direction::Horizontal));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(d), Direction::Horizontal)
+            .is_ok()
+    );
     let LayoutTree::Split { ratio, .. } = &tree else {
         panic!("root must still be a split");
     };
@@ -1378,8 +1396,14 @@ fn remove_leaf_missing_target_is_noop() {
 fn remove_leaf_equalizes_survivors() {
     let [a, b, c] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.split_leaf(a, b, Direction::Horizontal));
-    assert!(tree.split_leaf(a, c, Direction::Horizontal));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
+            .is_ok()
+    );
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Horizontal)
+            .is_ok()
+    );
 
     let Pruned { detached, survivor } = tree.remove_leaf(c).unwrap();
     assert_eq!(detached.pane_id(), c);
@@ -1450,8 +1474,14 @@ fn into_detached_yields_one_token_per_leaf() {
 fn leaves_collects_every_pane_in_a_split_tree() {
     let [a, b, c] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert!(tree.split_leaf(a, b, Direction::Horizontal));
-    assert!(tree.split_leaf(a, c, Direction::Vertical));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
+            .is_ok()
+    );
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(c), Direction::Vertical)
+            .is_ok()
+    );
 
     // Order-independent: `leaves` promises a depth-first walk, not a
     // specific one, and `PaneId` has no `Ord` to sort by.
@@ -1473,7 +1503,10 @@ fn is_single_pane_true_for_a_leaf_false_for_a_split() {
     let mut tree = LayoutTree::Leaf(a);
     assert!(tree.is_single_pane());
 
-    assert!(tree.split_leaf(a, b, Direction::Horizontal));
+    assert!(
+        tree.split_leaf(a, UnattachedPane::for_test(b), Direction::Horizontal)
+            .is_ok()
+    );
     assert!(!tree.is_single_pane());
 }
 

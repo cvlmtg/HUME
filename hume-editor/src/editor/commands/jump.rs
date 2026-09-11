@@ -291,7 +291,7 @@ pub(in crate::editor) fn cmd_close_pane(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if view.layout.is_single_pane() {
+    if view.layout().is_single_pane() {
         state.report(Severity::Info, "cannot close last pane".to_string());
     } else {
         super::close_focused_pane(state, view);

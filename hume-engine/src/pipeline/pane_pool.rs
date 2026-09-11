@@ -4,7 +4,41 @@ use slotmap::SlotMap;
 
 use crate::pane::Pane;
 
-use super::PaneId;
+use super::{DetachedPane, PaneId};
+
+/// Proof that a pane was just inserted into the pool and isn't yet reachable
+/// from any `LayoutTree` — minted only by [`PanePool::insert`], in this
+/// module, and consumed by [`super::LayoutTree::split_leaf`]/
+/// [`super::LayoutTree::leaf`] to splice it in. Not `Clone`/`Copy`: a
+/// duplicable token would defeat the "exactly one tree ends up naming this
+/// pane" guarantee. Mirrors [`DetachedPane`]'s enforcement on the opposite
+/// transition (a pane about to leave the pool) at the same strength: this is
+/// the compiler-checked half of "a pane in the pool with no tree leaf naming
+/// it is a leak" — nothing stops a determined caller from pulling the id out
+/// via [`Self::pane_id`] and never grafting it in, same as `DetachedPane`
+/// allows for the destroy side, but the natural, ergonomic path requires a
+/// real graft.
+#[must_use = "an unattached pane must be spliced into a layout tree"]
+#[derive(Debug)]
+pub struct UnattachedPane(PaneId);
+
+impl UnattachedPane {
+    pub fn pane_id(&self) -> PaneId {
+        self.0
+    }
+}
+
+#[cfg(test)]
+impl UnattachedPane {
+    /// Mint a token for a `PaneId` never actually inserted into a pool —
+    /// `LayoutTree`'s own unit tests (`pipeline::tests`) exercise tree
+    /// shape in isolation from `PanePool`, off ids minted by a throwaway
+    /// `SlotMap` (see that module's own `pane_ids` helper), and need a
+    /// token to hand `split_leaf` without building a real `EngineView`.
+    pub(crate) fn for_test(id: PaneId) -> Self {
+        Self(id)
+    }
+}
 
 /// Every pane that exists, across every tab — active or stashed — regardless
 /// of which one is on screen. Wraps the raw `SlotMap` so the type itself
@@ -47,12 +81,20 @@ impl PanePool {
         self.0.is_empty()
     }
 
-    pub fn insert(&mut self, pane: Pane) -> PaneId {
-        self.0.insert(pane)
+    /// Insert a pane and mint the [`UnattachedPane`] token proving it isn't
+    /// yet reachable from any layout tree. `pub(super)`: `EngineView::
+    /// insert_pane` (`pipeline/mod.rs`) is the one sanctioned public
+    /// wrapper — see `UnattachedPane`'s own doc.
+    pub(super) fn insert(&mut self, pane: Pane) -> UnattachedPane {
+        UnattachedPane(self.0.insert(pane))
     }
 
-    pub fn remove(&mut self, id: PaneId) -> Option<Pane> {
-        self.0.remove(id)
+    /// Remove a pane, taking the [`DetachedPane`] token proving it has
+    /// already been pruned from every layout tree that could reach it.
+    /// `pub(super)`: `EngineView::remove_pane` is the one sanctioned public
+    /// wrapper.
+    pub(super) fn remove(&mut self, detached: DetachedPane) -> Option<Pane> {
+        self.0.remove(detached.pane_id())
     }
 
     pub fn get_disjoint_mut<const N: usize>(&mut self, ids: [PaneId; N]) -> Option<[&mut Pane; N]> {

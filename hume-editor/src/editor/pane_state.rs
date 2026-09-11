@@ -366,13 +366,9 @@ impl super::EditorState {
         {
             return Some(self.focused_pane_id);
         }
-        // `.get` rather than indexing: `active_pane_ids()` can transiently
-        // include `take_live`'s placeholder id if a panic unwinds between
-        // `take_live` and `install_live` — skip it like `EngineView::render`
-        // already does, rather than panicking one step earlier.
         view.active_pane_ids()
             .into_iter()
-            .find(|&pid| view.panes.get(pid).is_some_and(|p| p.buffer_id == bid))
+            .find(|&pid| view.panes[pid].buffer_id == bid)
     }
 
     /// The pane whose *cursor state* should answer for `bid`: same as

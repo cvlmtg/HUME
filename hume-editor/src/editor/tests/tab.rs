@@ -32,7 +32,7 @@ fn tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it() {
         "the new tab's pane is a real, separate pane — not a rename of A's"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == ed.state.focused_pane_id),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == ed.state.focused_pane_id),
         "the new tab's layout is a fresh single-leaf tree, not inherited from A's"
     );
 }
@@ -96,7 +96,7 @@ fn tabclose_frees_every_pane_the_closed_tab_owns_and_restores_the_previous_tab()
         "both of the closed tab's panes are gone, not just the focused one"
     );
     assert!(
-        matches!(ed.view.layout, LayoutTree::Leaf(id) if id == pid_a),
+        matches!(*ed.view.layout(), LayoutTree::Leaf(id) if id == pid_a),
         "A's own single-leaf layout is restored, not left as a dangling split"
     );
 }
@@ -261,15 +261,16 @@ fn splitting_inside_one_tab_never_touches_another_tab_s_layout() {
     // The defining property of "a tab is a saved layout": a split issued
     // while tab B is focused must never appear in tab A's own tree.
     let mut ed = editor_from("-[h]>ello\n");
-    let tab_a_layout_before = ed.view.layout.clone();
+    let tab_a_layout_before = ed.view.layout().clone();
 
     ed.execute_typed("tabnew", None).unwrap();
     ed.execute_typed("split", None).unwrap();
-    assert!(matches!(ed.view.layout, LayoutTree::Split { .. }));
+    assert!(matches!(*ed.view.layout(), LayoutTree::Split { .. }));
 
     ed.execute_typed("tabprev", None).unwrap();
     assert_eq!(
-        ed.view.layout, tab_a_layout_before,
+        *ed.view.layout(),
+        tab_a_layout_before,
         "switching back to A must restore its own untouched single-leaf layout"
     );
 }
