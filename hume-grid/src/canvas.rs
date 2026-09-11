@@ -133,11 +133,14 @@ impl<'a> Canvas<'a> {
     /// codepoint placeholder instead, the same substitution buffer text gets
     /// from `hume-engine`'s `format::grapheme_display` — `grapheme_width`
     /// already sized the run for that placeholder, so it spans exactly the
-    /// columns reserved for it. That placeholder is drawn in this canvas's
-    /// `invisible_style` rather than `style`, so it reads distinctly from
-    /// ordinary text — buffer text gets the same layering via `style_display_line`'s
-    /// Tier 2d½; chrome has no per-cell style tiers, so this is its
-    /// equivalent.
+    /// columns reserved for it. The placeholder is drawn as the codepoint
+    /// rather than as a blank deliberately: a bidi override that renders like
+    /// a space is the Trojan Source attack, so the cluster has to stay
+    /// visibly present rather than disappear. That placeholder is drawn in
+    /// this canvas's `invisible_style` rather than `style`, so it reads
+    /// distinctly from ordinary text — buffer text gets the same layering
+    /// via `style_display_line`'s Tier 2d½; chrome has no per-cell style
+    /// tiers, so this is its equivalent.
     ///
     /// **`right_edge` is required, not implied.** `Grid::set_glyph`/
     /// `fill_span` clip only at the grid's own edge and nothing narrower, so

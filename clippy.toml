@@ -13,8 +13,9 @@ disallowed-methods = [
     # Display-column math goes through `hume_rope::width`
     # (`tab_advance`/`grapheme_width`/`str_width`), never a direct
     # `unicode-width` call — `hume-rope/src/width.rs` itself is the sanctioned
-    # exception. `hume-editor`'s chrome-test oracles (an independent
-    # width assertion against the code under test) are the other exception.
+    # exception. A handful of chrome-test oracles in `hume-ui` and
+    # `hume-editor` (an independent width assertion against the code under
+    # test) are the other exception.
     "unicode_width::UnicodeWidthStr::width",
     "unicode_width::UnicodeWidthStr::width_cjk",
     "unicode_width::UnicodeWidthChar::width",

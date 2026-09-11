@@ -263,9 +263,10 @@ impl ByteCol {
 
     /// `self` advanced by `bytes` — a matched token's own byte length folded
     /// onto its start column (e.g. a bracket match's end byte from its
-    /// start byte plus the matched char's UTF-8 length). The one real caller
-    /// this type has for advancing at all, so it stays this narrow rather
-    /// than gaining `cells_since`/`shift`'s full arithmetic surface.
+    /// start byte plus the matched char's UTF-8 length). The two real callers
+    /// this type has for advancing at all (a tree-sitter edit's end position,
+    /// a bracket match's end byte), so it stays this narrow rather than
+    /// gaining `cells_since`/`shift`'s full arithmetic surface.
     pub fn advance(self, bytes: usize) -> Self {
         Self(self.0 + bytes)
     }

@@ -97,7 +97,7 @@ impl CharOffset {
     /// a selection across an edit by a delta already known to preserve
     /// grapheme alignment (the shifted span's content is unchanged, only its
     /// offset is — e.g. an edit-delta reposition of `anchor`/`head` across a
-    /// retained span). Debug-panics if the result would be negative.
+    /// retained span). Panics if the result would be negative.
     pub fn shift(self, delta: isize) -> CharOffset {
         Self(
             self.0
