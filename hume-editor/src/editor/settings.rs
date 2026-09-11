@@ -48,7 +48,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceConfig, WhitespaceRender, WrapMode};
 
-use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use crate::statusline::{StatusElement, StatusLineConfig};
 use hume_ops::auto_pairs::Pair;
 
 // ── settings_enum! ────────────────────────────────────────────────────────────
@@ -1182,3 +1182,6 @@ pub(crate) mod ops;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod manual_options_drift;

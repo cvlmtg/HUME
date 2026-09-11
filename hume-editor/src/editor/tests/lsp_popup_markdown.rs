@@ -24,22 +24,20 @@ fn register_markdown(ed: &mut Editor) {
     attach_fixture_grammar(ed, "markdown", "tree_sitter_markdown");
 }
 
-fn styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
+fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
-        .popup_view
-        .read()
-        .unwrap()
+        .views
+        .popup()
         .as_ref()
         .and_then(|s| s.styled_rows.as_deref().cloned())
 }
 
 /// The docked (`#:anchor 'bottom`) counterpart of [`styled_rows`] — reads
-/// `popup_band_view`, not `popup_view` (empty for a docked popup).
-fn band_styled_rows(ed: &Editor) -> Option<Vec<crate::ui::popup::StyledRow>> {
+/// `views.popup_band()`, not `views.popup()` (empty for a docked popup).
+fn band_styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
-        .popup_band_view
-        .read()
-        .unwrap()
+        .views
+        .popup_band()
         .as_ref()
         .and_then(|s| s.styled_rows.as_deref().cloned())
 }
@@ -120,8 +118,9 @@ fn markdown_popup_paints_per_run_styles() {
 #[test]
 fn docked_popup_highlights_when_the_grammar_is_registered() {
     // Same syntax-build path as the cursor popup (`#:lang` is layout-
-    // independent) but resolved into `popup_band_view`, not `popup_view` —
-    // the docked layout hover overflow actually uses (`#:anchor 'bottom`).
+    // independent) but resolved into `views.popup_band()`, not
+    // `views.popup()` — the docked layout hover overflow actually uses
+    // (`#:anchor 'bottom`).
     require_grammars(&["markdown"]);
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
@@ -245,7 +244,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
         styled_rows(&ed).is_none(),
         "grammar-absent fallback must not populate styled_rows"
     );
-    let lines = (*ed.state.popup_view.read().unwrap().as_ref().unwrap().lines).clone();
+    let lines = (*ed.state.views.popup().as_ref().unwrap().lines).clone();
     assert_eq!(
         lines,
         vec!["# heading".to_string()],

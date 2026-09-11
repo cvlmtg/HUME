@@ -1085,7 +1085,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
     assert!(
         matches!(
             ed.state.config.confirm.as_ref().unwrap().action,
-            crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_a
+            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "A's confirm must survive B's check untouched"
     );
@@ -1542,7 +1542,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     assert!(
         matches!(
             ed.state.config.confirm.as_ref().unwrap().action,
-            crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_b
+            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_b
         ),
         "setup: B's own confirm is open"
     );
@@ -1560,7 +1560,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     assert!(
         matches!(
             ed.state.config.confirm.as_ref().unwrap().action,
-            crate::ui::confirm::ConfirmAction::ReloadBuffer(id) if id == bid_a
+            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "B's orphaned confirm must be retired and A's own prompt opened in its place"
     );

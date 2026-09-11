@@ -1,0 +1,26 @@
+use hume_engine::types::ResolvedStyle;
+use std::borrow::Cow;
+
+use super::StatuslineElement;
+use crate::statusline::HumeStatusline;
+use crate::statusline::colors::EditorColors;
+
+pub(in crate::statusline) struct LanguageElement;
+
+impl StatuslineElement for LanguageElement {
+    type Data = Option<String>;
+
+    fn read(editor: &HumeStatusline<'_>) -> Self::Data {
+        editor
+            .doc()
+            .language
+            .map(|id| editor.state.config.languages.name_of(id).to_owned())
+    }
+
+    fn format(lang: Self::Data, colors: &EditorColors) -> (Cow<'static, str>, ResolvedStyle) {
+        match lang {
+            Some(lang) => (Cow::Owned(format!("[{lang}]")), colors.statusline),
+            None => (Cow::Borrowed(""), colors.statusline),
+        }
+    }
+}

@@ -2,7 +2,7 @@
 # constant reachable from most crates (`unicode-width`'s methods — CLAUDE.md's
 # "Display columns" section), a set with essentially zero legitimate
 # exceptions workspace-wide (`std::env::set_var`/`remove_var` —
-# `hume-editor/src/editor/lints/test_globals.rs`'s "Test-suite process-global
+# `arch-lints/tests/test_globals.rs`'s "Test-suite process-global
 # hygiene" module doc), and a crate's own escape hatch around its own domain
 # types (raw `ropey` line-index methods — CLAUDE.md's "Line counts and
 # ranges" section). All three are a better fit for a compiler-checked ban

@@ -13,7 +13,6 @@ use hume_rope::offset::CharOffset;
 use super::LspState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use crate::editor::{Editor, EditorState};
-use crate::lock_ext::LockExt;
 
 pub(in crate::editor) use item::StoredCompletionItem;
 
@@ -64,17 +63,17 @@ pub(in crate::editor) struct CompletionSession {
     /// Buffer generation as of the last `begin`/`update_filter` call —
     /// `accept!` rejects if the buffer changed by any other path since.
     generation_at_begin: u64,
-    /// Row labels for the current `filtered` set and their menu box width
-    /// (`menu_box::menu_inner_width`), built lazily by
-    /// [`Self::menu_labels_and_width`] and invalidated by `update_filter`.
-    /// `filtered` only changes there — not on menu navigation (selecting a
-    /// different row) or on an unrelated frame redraw — so caching here
-    /// means `sync_completion_menu_view`'s once-a-frame call doesn't
-    /// re-format and re-measure every candidate for a menu whose contents
-    /// haven't moved. `Arc`, not a plain `Vec`, so a caller building a
-    /// `PopupState` (which itself shares its `lines` by `Arc`) gets a cheap
-    /// refcount bump instead of a fresh clone of every label.
-    menu_cache: Option<(std::sync::Arc<Vec<String>>, u16)>,
+    /// Row labels for the current `filtered` set, pre-measured to a menu box
+    /// width, built lazily by [`Self::menu_rows`] and invalidated by
+    /// `update_filter`. `filtered` only changes there — not on menu
+    /// navigation (selecting a different row) or on an unrelated frame
+    /// redraw — so caching here means `sync_completion_menu_view`'s
+    /// once-a-frame call doesn't re-format and re-measure every candidate
+    /// for a menu whose contents haven't moved. `MenuRows` carries its
+    /// labels by `Arc`, so a caller building a `PopupState` (which itself
+    /// shares its `lines` by `Arc`) gets a cheap refcount bump instead of a
+    /// fresh clone of every label.
+    menu_cache: Option<hume_ui::popup::MenuRows>,
 }
 
 /// Insert-mode UI state for an open completion session — kept separate from
@@ -241,28 +240,24 @@ impl CompletionSession {
 
     /// Row labels for every candidate in `filtered` (not just the visible
     /// window — the menu box's width has to stay stable as the user scrolls
-    /// past wider or narrower rows, see `menu_box::menu_inner_width`'s own
-    /// doc) and the box width they measure to. Built once per `filtered` set
-    /// — see [`Self::menu_cache`]'s doc — so a caller redrawing the same
-    /// unchanged menu every frame reads the cache instead of reformatting
-    /// and re-measuring every candidate again.
-    pub(in crate::editor) fn menu_labels_and_width(
-        &mut self,
-    ) -> (std::sync::Arc<Vec<String>>, u16) {
+    /// past wider or narrower rows), pre-measured to their menu box width.
+    /// Built once per `filtered` set — see [`Self::menu_cache`]'s doc — so a
+    /// caller redrawing the same unchanged menu every frame reads the cache
+    /// instead of reformatting and re-measuring every candidate again.
+    pub(in crate::editor) fn menu_rows(&mut self) -> hume_ui::popup::MenuRows {
         if self.menu_cache.is_none() {
             let labels: Vec<String> = self
                 .filtered
                 .iter()
                 .map(|&i| self.items[i as usize].menu_row_label())
                 .collect();
-            let width = crate::ui::menu_box::menu_inner_width(&labels);
-            self.menu_cache = Some((std::sync::Arc::new(labels), width));
+            self.menu_cache = Some(hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
+                labels,
+            )));
         }
-        let (labels, width) = self
-            .menu_cache
-            .as_ref()
-            .expect("populated by the check above");
-        (std::sync::Arc::clone(labels), *width)
+        self.menu_cache
+            .clone()
+            .expect("populated by the check above")
     }
 }
 
@@ -283,7 +278,7 @@ pub(in crate::editor) fn clear_completion_state(lsp: &mut LspState) {
 /// owner at a time). `lsp`
 /// is `None` at call sites that hold no `LspState` borrow — a no-op there,
 /// same as when `lsp` is `Some` but no session is open. Always clears the
-/// shared `completion_menu_view` Arc regardless of `lsp`.
+/// shared completion-menu view regardless of `lsp`.
 pub(in crate::editor) fn clear_completion_menu(
     state: &mut EditorState,
     lsp: Option<&mut LspState>,
@@ -291,7 +286,7 @@ pub(in crate::editor) fn clear_completion_menu(
     if let Some(lsp) = lsp {
         clear_completion_state(lsp);
     }
-    *state.completion_menu_view.write_or_panic() = None;
+    state.views.set_completion_menu(None);
 }
 
 impl Editor {

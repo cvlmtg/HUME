@@ -24,8 +24,7 @@ use crate::editor::lsp::LspState;
 use crate::editor::register_ops;
 use crate::editor::registry::{MappableCommand, TypedBody, TypedCommand};
 use crate::editor::timer_bridge::TimerHandle;
-use crate::lock_ext::LockExt;
-use crate::ui::statusline::{StatusElement, StatusLineConfig};
+use crate::statusline::{StatusElement, StatusLineConfig};
 use hume_scripting::GrammarReg;
 use hume_scripting::host::{
     AsyncProcessHost, BufferHost, CommandHost, CompletionHost, CursorHost, DecorationHost,
@@ -233,7 +232,7 @@ impl<'a> EditorHostImpl<'a> {
         &self,
         lang: &str,
         text: &str,
-    ) -> Option<crate::ui::popup::MarkupSyntax> {
+    ) -> Option<crate::editor::popup_syntax::MarkupSyntax> {
         let lang_id = self.state.config.languages.id_of(lang)?;
         let bundle = std::sync::Arc::clone(self.state.config.languages.grammar(lang_id)?);
         let text = hume_editing::text::BufferText::from(text);
@@ -242,7 +241,7 @@ impl<'a> EditorHostImpl<'a> {
             &text,
             &self.state.config.languages.grammar_snapshot(),
         );
-        Some(crate::ui::popup::MarkupSyntax { syntax, text })
+        Some(crate::editor::popup_syntax::MarkupSyntax { syntax, text })
     }
 
     /// Shared guard behind `register_lazy_command`/`register_lazy_typed_command`:
@@ -471,9 +470,9 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         // `settings::ops::apply_global`'s doc for why a raw field write must
         // not bypass it.
         let cfg = StatusLineConfig {
-            left: crate::ui::statusline::parse_statusline_section(left, "left")?,
-            center: crate::ui::statusline::parse_statusline_section(center, "center")?,
-            right: crate::ui::statusline::parse_statusline_section(right, "right")?,
+            left: crate::statusline::parse_statusline_section(left, "left")?,
+            center: crate::statusline::parse_statusline_section(center, "center")?,
+            right: crate::statusline::parse_statusline_section(right, "right")?,
         };
         let wire = crate::editor::settings::format_statusline(&cfg);
 
@@ -865,7 +864,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // matches `clear_completion_menu`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
         crate::editor::lsp::completion::clear_completion_state(lsp);
-        *self.state.completion_menu_view.write_or_panic() = None;
+        self.state.views.set_completion_menu(None);
         session.accept(self.state, lsp, idx)
     }
 
@@ -1144,7 +1143,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(pos, hint_text, before)| {
                 validate_offset(text, pos, before, "set-inlay-hints!")?;
-                Ok(crate::editor::decorations::InlayHintEntry {
+                Ok(hume_decorations::decorations::InlayHintEntry {
                     pos: CharOffset::new(pos),
                     text: hint_text,
                     before,
@@ -1193,7 +1192,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = signs
             .into_iter()
             .map(|(line, sign_text, scope)| {
-                Ok(crate::editor::decorations::SignEntry {
+                Ok(hume_decorations::decorations::SignEntry {
                     pos: line_start_offset(text, line, "set-signs!")?,
                     text: sign_text.into(),
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1232,7 +1231,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                         )
                     })
                     .collect();
-                Ok(crate::editor::decorations::VirtualLineEntry {
+                Ok(hume_decorations::decorations::VirtualLineEntry {
                     pos,
                     text: spec.text,
                     before: spec.before,
@@ -1259,7 +1258,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(start, end, scope)| {
                 validate_range(text, start, end, "set-extra-highlights!")?;
-                Ok(crate::editor::decorations::ExtraHighlightEntry {
+                Ok(hume_decorations::decorations::ExtraHighlightEntry {
                     start: CharOffset::new(start),
                     end: CharOffset::new(end),
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1283,7 +1282,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = lines
             .into_iter()
             .map(|(line, eol_text, scope)| {
-                Ok(crate::editor::decorations::EolTextEntry {
+                Ok(hume_decorations::decorations::EolTextEntry {
                     pos: line_start_offset(text, line, "set-eol-text!")?,
                     text: eol_text,
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1307,7 +1306,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = entries
             .into_iter()
             .map(|(line, scope)| {
-                Ok(crate::editor::decorations::LineBgEntry {
+                Ok(hume_decorations::decorations::LineBgEntry {
                     pos: line_start_offset(text, line, "set-line-backgrounds!")?,
                     scope: self.view.registry.intern_runtime(&scope),
                 })
@@ -1694,18 +1693,18 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         lang: Option<String>,
     ) -> Result<(), String> {
         let layout = if docked {
-            crate::ui::popup::PopupLayout::Docked
+            hume_ui::popup::PopupLayout::Docked
         } else {
-            crate::ui::popup::PopupLayout::Cursor
+            hume_ui::popup::PopupLayout::Cursor
         };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
-        self.state.config.popup = Some(crate::ui::popup::PopupModel {
+        self.state.config.popup = Some(crate::editor::overlay_models::PopupModel {
             text,
             kind,
             scroll: 0,
             syntax,
             layout,
-            resolved: None,
+            content: None,
         });
         Ok(())
     }
@@ -1729,8 +1728,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if self.state.mode() == hume_engine::types::EditorMode::Insert {
             return Err("show-menu!: not available in Insert mode".to_string());
         }
-        self.state.config.menu = Some(crate::ui::popup::MenuModel {
-            items,
+        self.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
+            items: std::sync::Arc::new(items),
             selected: 0,
             callback,
         });
@@ -1748,7 +1747,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        self.state.config.drawer = Some(crate::ui::drawer::DrawerModel {
+        self.state.config.drawer = Some(crate::editor::overlay_models::DrawerModel {
             items: std::sync::Arc::new(items),
             selected: 0,
             scroll: 0,

@@ -11,7 +11,7 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
-use crate::ui::highlight_providers::{PaneHighlights, ScopedHighlightRanges};
+use hume_decorations::highlight_providers::{PaneHighlights, ScopedHighlightRanges};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
@@ -78,11 +78,11 @@ pub(in crate::editor) fn bc(n: usize) -> hume_rope::column::ByteCol {
     hume_rope::column::ByteCol::new(n)
 }
 
-/// `editor_from`'s sibling for `ui::statusline::tests`, which needs a
+/// `editor_from`'s sibling for `statusline::tests`, which needs a
 /// language-tagged buffer but has no reason to reach `Buffer::language` or
 /// `Editor::doc_mut`'s unrestricted `&mut Buffer` directly — those stay
 /// `pub(in crate::editor)`, and this narrow, purpose-built fixture is the
-/// only thing `ui::statusline::tests` imports across the subtree boundary.
+/// only thing `statusline::tests` imports across the subtree boundary.
 pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
     let text = BufferText::from(content);
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
@@ -92,7 +92,7 @@ pub(crate) fn editor_with_language(content: &str, lang_name: &str) -> Editor {
     ed
 }
 
-/// `ui::statusline::tests`' other cross-boundary shape: a read-only view
+/// `statusline::tests`' other cross-boundary shape: a read-only view
 /// buffer, without handing that suite `Buffer::read_only_view` itself.
 pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
     Editor::for_testing(Buffer::read_only_view(
@@ -101,7 +101,7 @@ pub(crate) fn editor_with_read_only_view(content: &str, label: &str) -> Editor {
     ))
 }
 
-/// `ui::statusline::tests`' third cross-boundary shape: a buffer with an
+/// `statusline::tests`' third cross-boundary shape: a buffer with an
 /// explicit path, without handing that suite `Buffer::set_path` itself.
 pub(crate) fn editor_with_path(content: &str, path: &std::path::Path) -> Editor {
     let text = BufferText::from(content);
@@ -174,9 +174,9 @@ fn pending_calls(ed: &Editor) -> Vec<(&steel::rvals::SteelVal, &Vec<steel::rvals
 /// the render side of `(set-statusline-text! name bid text)`. Shared by
 /// `statusline_steel.rs`, `unix/git_diff_plugin.rs`, and `unix/reload_config.rs`.
 fn custom_text(ed: &Editor, name: &str) -> String {
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) = crate::ui::statusline::render_element(
-        &crate::ui::statusline::StatusElement::Custom(name.into()),
+    let colors = crate::statusline::colors::EditorColors::default();
+    let (text, _) = crate::statusline::render_element(
+        &crate::statusline::StatusElement::Custom(name.into()),
         &ed.statusline(),
         &colors,
         "",
@@ -309,7 +309,7 @@ fn pane_signs(
     hume_rope::line::ContentLine,
     Vec<hume_engine::builtins::sign_column::Sign>,
 > {
-    ed.state.panes.render[pid].signs.read().unwrap().clone()
+    ed.state.panes.render[pid].signs().read().unwrap().clone()
 }
 
 /// The highlight spans synced onto pane `pid`'s given tier (bracket, search,
@@ -325,7 +325,7 @@ fn pane_highlights(
     hume_rope::column::ByteCol,
     ScopeId,
 )> {
-    tier(&ed.state.panes.render[pid].highlights)
+    tier(ed.state.panes.render[pid].highlights())
         .read()
         .unwrap()
         .clone()
@@ -495,7 +495,7 @@ impl Editor {
     /// Use the builder methods below to override specific fields.
     pub(crate) fn for_testing(doc: Buffer) -> Self {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
-        let theme = crate::ui::theme::build_default_theme();
+        let theme = crate::editor::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
@@ -1075,6 +1075,7 @@ mod commands;
 mod completion;
 mod copy_selection;
 mod count_prefix;
+mod decoration_providers;
 mod diff_steel;
 mod disk_change;
 // `pub(in crate::editor)`, unlike its siblings: the sibling `editor::{cursor,scroll,mouse}

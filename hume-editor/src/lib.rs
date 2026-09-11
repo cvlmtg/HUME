@@ -4,8 +4,10 @@ pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), env!("HUME_VERSION_
 
 pub mod cli;
 pub(crate) mod editor;
-mod lock_ext;
-pub mod ui;
+// `pub`, not `pub(crate)`: `tests/scripting.rs` is a separate crate that
+// links against this lib and names `hume_editor::statusline::StatusElement`
+// directly.
+pub mod statusline;
 
 // `extern crate self as hume` lets `hume::testing::MockHost` (reached both
 // from the lib's own `#[cfg(test)]` build and from `tests/scripting.rs`/

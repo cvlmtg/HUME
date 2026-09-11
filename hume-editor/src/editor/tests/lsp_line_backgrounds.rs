@@ -283,7 +283,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     );
 
     let by_line = ed.state.panes.render[pid]
-        .line_backgrounds
+        .line_backgrounds()
         .read()
         .unwrap()
         .clone();

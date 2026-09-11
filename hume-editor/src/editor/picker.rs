@@ -513,7 +513,7 @@ impl PickerSession {
             return;
         }
         self.scroll =
-            crate::ui::menu_box::clamp_scroll_to_window(self.selected, self.scroll, visible_rows);
+            hume_ui::menu_box::clamp_scroll_to_window(self.selected, self.scroll, visible_rows);
         debug_assert!(self.scroll <= self.selected && self.selected < self.scroll + visible_rows);
     }
 

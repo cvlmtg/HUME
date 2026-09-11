@@ -1,7 +1,7 @@
 // Column display agreement: `:diagnostics` and the LSP goto/references
 // drawer must show the same grapheme column the statusline shows for the
 // same position, not the char column or the raw UTF-16 wire column. See
-// `hume-editor/src/ui/statusline/tests.rs`'s
+// `hume-editor/src/statusline/tests.rs`'s
 // `position_element_shows_grapheme_column_not_char_or_utf16_count` for the
 // statusline half and the independent-oracle derivation of this file's
 // shared fixture line (grapheme col 2 / char col 3 / UTF-16 col 4 before
@@ -115,7 +115,7 @@ fn diagnostics_drawer_shows_grapheme_column() {
     ed.settle();
 
     let rows = {
-        let guard = ed.state.drawer_view.read().unwrap();
+        let guard = ed.state.views.drawer();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 1);
@@ -266,7 +266,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     run_references(&mut ed);
 
     let rows = {
-        let guard = ed.state.drawer_view.read().unwrap();
+        let guard = ed.state.views.drawer();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 9);
@@ -368,7 +368,7 @@ fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     run_references(&mut ed);
 
     assert!(
-        ed.state.drawer_view.read().unwrap().is_none(),
+        ed.state.views.drawer().is_none(),
         "a malformed location must abort before the drawer ever opens, \
          not open it with the good rows and drop the bad one"
     );

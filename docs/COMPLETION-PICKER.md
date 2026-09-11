@@ -73,7 +73,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 **Rendering:**
 
 - `sync_completion_menu_view` (`hume-editor/src/editor/overlay_sync.rs`, runs in `prepare_frame`): `session.top(8)` → `StoredCompletionItem::menu_row_label` (`"label  detail"`, uniform style — per-part dimming would need segment-styled rows, which nothing requires yet) → `resolve_popup_geometry` → writes a `PopupState` into `EditorState.completion_menu_view: Arc<RwLock<Option<PopupState>>>`.
-- Painted by the **generic** `PopupOverlay` (`hume-editor/src/ui/popup.rs`) — registered in `build_pane` (`hume-editor/src/ui/mod.rs`) as a third instance with its own `Arc`, scopes `ui.menu` / `ui.menu.selected` (same theme scopes as the selection menu). `PopupState { lines, x, y, selected }`; geometry (below-right preferred, flip above, clamp, max width `min(60, pane_width - 4)`, max height ⅓ pane) resolved once per frame on the write side.
+- Painted by the **generic** `PopupOverlay` (`hume-ui/src/popup.rs`) — registered in `register_overlays` (`hume-ui/src/lib.rs`) as a third instance with its own `Arc`, scopes `ui.menu` / `ui.menu.selected` (same theme scopes as the selection menu). `PopupState { lines, x, y, selected }`; geometry (below-right preferred, flip above, clamp, max width `min(60, pane_width - 4)`, max height ⅓ pane) resolved once per frame on the write side.
 
 ### What is genuinely LSP-coupled vs. already generic
 

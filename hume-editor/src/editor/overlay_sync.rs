@@ -7,13 +7,11 @@
 //! instead, so they sync later, from step 7.
 
 use hume_engine::pipeline::RenderContext;
-use hume_grid::Rect;
 
 use super::Editor;
-use crate::lock_ext::LockExt;
 
 impl Editor {
-    /// Write the current completion state into the shared `MinibufCompletionView` Arc
+    /// Write the current completion state into the shared `MinibufCompletionView`
     /// so `MinibufCompletionOverlay` can render it during this frame.
     ///
     /// Called from `prepare_frame` after highlight data is synced.
@@ -21,7 +19,7 @@ impl Editor {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if self.state.minibuf_completion.is_none()
-            && self.state.minibuf_completion_view.read_or_panic().is_none()
+            && self.state.views.minibuf_completion().is_none()
         {
             return;
         }
@@ -32,14 +30,14 @@ impl Editor {
                 .as_ref()
                 .map(|mb| mb.cursor_x_at(state.span_start))
                 .unwrap_or(0);
-            crate::ui::completion_overlay::MinibufCompletionView {
+            hume_ui::completion_overlay::MinibufCompletionView {
                 rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
                 selected: state.selected,
                 anchor_x,
                 border: self.state.settings.popup_border,
             }
         });
-        *self.state.minibuf_completion_view.write_or_panic() = view;
+        self.state.views.set_minibuf_completion(view);
     }
 
     /// The focused pane's primary cursor position — the anchor char for
@@ -54,17 +52,17 @@ impl Editor {
             .head()
     }
 
-    /// Screen anchor (absolute cell) + geometry bounds for the focused
-    /// pane, given an arbitrary buffer char position — shared by
-    /// [`Self::sync_popup_view`], [`Self::sync_menu_view`], and the LSP
-    /// completion menu (each passes a different `anchor_char`). Returns
-    /// `(anchor, pane_rect, max_width, max_height)`; `None` when the pane
-    /// has no rect yet or `anchor_char` isn't currently visible.
-    fn popup_anchor_and_bounds(
+    /// Screen anchor (absolute cell) + containing pane + text-column budget
+    /// for the focused pane, given an arbitrary buffer char position —
+    /// shared by [`Self::sync_popup_view`], [`Self::sync_menu_view`], and
+    /// the LSP completion menu (each passes a different `anchor_char`).
+    /// `None` when the pane has no rect yet or `anchor_char` isn't
+    /// currently visible.
+    fn popup_placement(
         &mut self,
         ctx: &mut RenderContext,
         anchor_char: hume_rope::offset::CharOffset,
-    ) -> Option<((u16, u16), Rect, u16, u16)> {
+    ) -> Option<hume_ui::popup::PopupPlacement> {
         let focused = self.state.focused_pane_id;
         let pane_rect = self.view.pane_rect(focused)?;
         let gutter_w = self.pane_gutter_width(focused);
@@ -93,14 +91,11 @@ impl Editor {
             }
         };
         let anchor = super::mouse::content_pos_to_screen(content_x, row, gutter_w, pane_rect);
-        // Reserve 2 cells on each axis for the popup's 1-cell frame, so
-        // content + border together fit the same envelope this budget used
-        // to give to content alone.
-        let max_width = crate::ui::popup::MAX_POPUP_WIDTH
-            .min(content_width.saturating_sub(4))
-            .saturating_sub(2);
-        let max_height = (pane_rect.height / 3).max(1).saturating_sub(2).max(1);
-        Some((anchor, pane_rect, max_width, max_height))
+        Some(hume_ui::popup::PopupPlacement {
+            anchor,
+            pane_rect,
+            content_width,
+        })
     }
 
     /// Write the current *cursor-anchored* popup content into the shared
@@ -109,8 +104,8 @@ impl Editor {
     /// frame against the focused pane's *current* rect — never pre-computed
     /// at `show-popup!` call time — so a resize or scroll never leaves it
     /// stale. A docked popup (`PopupLayout::Docked`) is handled by
-    /// [`Self::sync_popup_band_view`] instead — this clears `popup_view` for
-    /// that case, same as when no popup is open at all.
+    /// [`Self::sync_popup_band_view`] instead — this clears the popup view
+    /// slot for that case, same as when no popup is open at all.
     ///
     /// Called from `prepare_frame` after `last_pane_area` is set (step 10):
     /// `EngineView::pane_rect` reads that field, so calling this any earlier
@@ -118,86 +113,31 @@ impl Editor {
     pub(super) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
         let is_cursor = matches!(
             self.state.config.popup.as_ref().map(|m| &m.layout),
-            Some(crate::ui::popup::PopupLayout::Cursor)
+            Some(hume_ui::popup::PopupLayout::Cursor)
         );
-        if !is_cursor && self.state.popup_view.read_or_panic().is_none() {
-            return;
-        }
         if !is_cursor {
-            *self.state.popup_view.write_or_panic() = None;
+            if self.state.views.popup().is_some() {
+                self.state.views.set_popup(None);
+            }
             return;
         }
 
-        let bounds = self.popup_anchor_and_bounds(ctx, self.focused_cursor_char());
-        let resolved = bounds.and_then(|(anchor, pane_rect, max_width, max_height)| {
-            // Wrap the *full* text, unbounded — a scrollable popup must keep
-            // every row reachable, not just the first `max_height` of them.
-            // The box itself still caps at `max_height` via `outer_dims`
-            // below; `scroll` (clamped against that cap) picks which window
-            // of `lines` is visible. `resolve_popup_text` caches this by
-            // `max_width`, so an unchanged width across frames is O(1), not
-            // a re-wrap.
-            let text = self.resolve_popup_text(max_width)?;
-            let model_scroll = self.state.config.popup.as_ref()?.scroll;
-            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims(&text.lines, max_height);
-            let (x, y, outer_w, outer_h) =
-                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
-            let inner_h = outer_h.saturating_sub(2) as usize;
-            let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
-            Some(crate::ui::popup::PopupState {
-                lines: text.lines,
-                rect: Rect::new(x, y, outer_w, outer_h),
-                selected: None,
-                scroll,
-                styled_rows: text.styled_rows,
-                border: self.state.settings.popup_border,
-            })
-        });
-
-        *self.state.popup_view.write_or_panic() = resolved;
-    }
-
-    /// Resolve (or reuse the cached) wrap+highlight of the open popup's text
-    /// at `max_width` — shared by [`Self::sync_popup_view`] (cursor layout)
-    /// and [`Self::sync_popup_band_view`] (docked layout), which never run in
-    /// the same frame (mutually exclusive on `PopupModel::layout`), so there
-    /// is one cache and one width per frame. See
-    /// [`crate::ui::popup::ResolvedPopupText`] for the invalidation contract.
-    ///
-    /// Returns `None` only if no popup is open — should not happen at either
-    /// call site (both gated on `self.state.config.popup` being `Some`), but mirrors
-    /// the `Option`-chaining style of the surrounding sync functions rather
-    /// than `.expect`-ing a caller invariant.
-    fn resolve_popup_text(
-        &mut self,
-        max_width: u16,
-    ) -> Option<crate::ui::popup::ResolvedPopupText> {
+        let Some(placement) = self.popup_placement(ctx, self.focused_cursor_char()) else {
+            self.state.views.set_popup(None);
+            return;
+        };
+        let border = self.state.settings.popup_border;
         let theme = &self.view.theme;
-        let model = self.state.config.popup.as_mut()?;
-        let stale = model.resolved.as_ref().is_none_or(|r| r.width != max_width);
-        if stale {
-            let (lines, styled_rows) = if let Some(popup_syntax) = model.syntax.as_ref() {
-                let base_style = theme.resolve_by_name(hume_engine::types::Scope("ui.popup"));
-                let runs = popup_syntax.styled_runs(&model.text, theme, base_style);
-                let rows = crate::ui::popup::wrap_styled(&runs, max_width);
-                let lines: Vec<String> = rows
-                    .iter()
-                    .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
-                    .collect();
-                (std::sync::Arc::new(lines), Some(std::sync::Arc::new(rows)))
-            } else {
-                (
-                    std::sync::Arc::new(crate::ui::popup::wrap_text(&model.text, max_width)),
-                    None,
-                )
-            };
-            model.resolved = Some(crate::ui::popup::ResolvedPopupText {
-                width: max_width,
-                lines,
-                styled_rows,
-            });
-        }
-        model.resolved.clone()
+        let Some(model) = self.state.config.popup.as_mut() else {
+            return;
+        };
+        // Read before the `&mut` below — a second `self.state.config.popup`
+        // borrow once `content` is live would conflict with it.
+        let scroll = model.scroll;
+        let content = model.content_mut(theme);
+        let resolved = hume_ui::popup::resolve_popup(content, placement, scroll, border);
+
+        self.state.views.set_popup(Some(resolved));
     }
 
     /// Write the current *docked* popup content into the shared
@@ -216,37 +156,27 @@ impl Editor {
     pub(super) fn sync_popup_band_view(&mut self) {
         let is_docked = matches!(
             self.state.config.popup.as_ref().map(|m| &m.layout),
-            Some(crate::ui::popup::PopupLayout::Docked)
+            Some(hume_ui::popup::PopupLayout::Docked)
         );
-        if !is_docked && self.state.popup_band_view.read_or_panic().is_none() {
-            return;
-        }
         if !is_docked {
-            *self.state.popup_band_view.write_or_panic() = None;
+            if self.state.views.popup_band().is_some() {
+                self.state.views.set_popup_band(None);
+            }
             return;
         }
 
         let area = self.view.last_terminal_area;
-        let max_width = area.width.saturating_sub(2);
-        let resolved = self.resolve_popup_text(max_width).map(|text| {
-            let model_scroll = self.state.config.popup.as_ref().map_or(0, |m| m.scroll);
-            // Shares `crate::ui::popup::band_capacity` with
-            // `PopupBandWidget::height`, so the scroll clamp always agrees
-            // with what the engine will next paint (same pattern as
-            // `drawer_visible_rows`).
-            let max_rows = area.height / 2;
-            let capacity = crate::ui::popup::band_capacity(text.lines.len(), max_rows);
-            let inner_h = capacity.saturating_sub(2) as usize;
-            let scroll = model_scroll.min(text.lines.len().saturating_sub(inner_h));
-            crate::ui::popup::PopupBandState {
-                lines: text.lines,
-                scroll,
-                styled_rows: text.styled_rows,
-                border: self.state.settings.popup_border,
-            }
-        });
+        let max_rows = area.height / 2;
+        let border = self.state.settings.popup_border;
+        let theme = &self.view.theme;
+        let Some(model) = self.state.config.popup.as_mut() else {
+            return;
+        };
+        let scroll = model.scroll;
+        let content = model.content_mut(theme);
+        let resolved = hume_ui::popup::resolve_band(content, area.width, max_rows, scroll, border);
 
-        *self.state.popup_band_view.write_or_panic() = resolved;
+        self.state.views.set_popup_band(Some(resolved));
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so
@@ -258,10 +188,10 @@ impl Editor {
         if self.state.config.menu.is_none() {
             // Skip the write-lock when both sides are already None — common
             // case while no menu is open.
-            if self.state.menu_view.read_or_panic().is_none() {
+            if self.state.views.menu().is_none() {
                 return;
             }
-            *self.state.menu_view.write_or_panic() = None;
+            self.state.views.set_menu(None);
             return;
         }
 
@@ -269,31 +199,24 @@ impl Editor {
         // `&mut self` (it may walk the pane's display-line map), which cannot overlap
         // the `&self.state.config.menu` that closure's receiver holds.
         let anchor_char = self.focused_cursor_char();
-        let bounds = self.popup_anchor_and_bounds(ctx, anchor_char);
+        let placement = self.popup_placement(ctx, anchor_char);
+        let border = self.state.settings.popup_border;
 
-        let resolved = bounds.and_then(|(anchor, pane_rect, _max_width, _max_height)| {
+        let resolved = placement.and_then(|placement| {
             let model = self.state.config.menu.as_ref()?;
-            let lines: Vec<String> = model.items.clone();
-            let (outer_w, outer_h) =
-                crate::ui::menu_box::outer_dims(&lines, crate::ui::menu_box::MAX_MENU_ROWS);
-            let (x, y, outer_w, outer_h) =
-                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
-            let selected = if lines.is_empty() {
-                None
-            } else {
-                Some(model.selected.min(lines.len() - 1))
-            };
-            Some(crate::ui::popup::PopupState {
-                lines: std::sync::Arc::new(lines),
-                rect: Rect::new(x, y, outer_w, outer_h),
-                selected,
-                scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
-                styled_rows: None, // menus never highlight per-span, only per-row
-                border: self.state.settings.popup_border,
-            })
+            // Arc-cloned, not deep-copied: `MenuModel::items` is already the
+            // exact `Vec` a menu shows (never re-filtered), so there's
+            // nothing for this snapshot to transform.
+            let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::clone(&model.items));
+            Some(hume_ui::popup::resolve_menu(
+                rows,
+                model.selected,
+                placement,
+                border,
+            ))
         });
 
-        *self.state.menu_view.write_or_panic() = resolved;
+        self.state.views.set_menu(resolved);
     }
 
     /// Write the LSP completion menu into the shared `PopupState` Arc —
@@ -306,9 +229,7 @@ impl Editor {
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
-        if self.lsp.completion.is_none()
-            && self.state.completion_menu_view.read_or_panic().is_none()
-        {
+        if self.lsp.completion.is_none() && self.state.views.completion_menu().is_none() {
             return;
         }
 
@@ -317,14 +238,14 @@ impl Editor {
         // (LSP applyEdit, file reload) or a pane switch since can leave it
         // pointing past the focused buffer's current end, or at a buffer
         // that isn't even the one on screen. `DisplayLineMap::locate` (reached via
-        // `popup_anchor_and_bounds`) has no way to tell a stale offset from
-        // a live one, so check both here.
+        // `popup_placement`) has no way to tell a stale offset from a live
+        // one, so check both here.
         //
         // Sequential borrows rather than one closure over
         // `self.lsp.completion`: the session's shared borrow has to end
-        // before `popup_anchor_and_bounds` and `menu_labels_and_width` each
-        // take `&mut self`.
-        let resolved = (|| -> Option<crate::ui::popup::PopupState> {
+        // before `popup_placement` and `menu_rows` each take `&mut self`.
+        let border = self.state.settings.popup_border;
+        let resolved = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.lsp.completion.as_ref()?;
             if session.bid() != self.focused_buffer_id() {
                 return None;
@@ -334,35 +255,20 @@ impl Editor {
             if anchor_char >= len {
                 return None;
             }
-            let (anchor, pane_rect, _max_width, _max_height) =
-                self.popup_anchor_and_bounds(ctx, anchor_char)?;
+            let placement = self.popup_placement(ctx, anchor_char)?;
 
             let selected_idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
             let session = self.lsp.completion.as_mut()?;
-            let (lines, inner_w) = session.menu_labels_and_width();
-            let (outer_w, outer_h) = crate::ui::menu_box::outer_dims_from_width(
-                inner_w,
-                lines.len(),
-                crate::ui::menu_box::MAX_MENU_ROWS,
-            );
-            let (x, y, outer_w, outer_h) =
-                crate::ui::popup::resolve_popup_geometry(outer_w, outer_h, anchor, pane_rect);
-            let selected = if lines.is_empty() {
-                None
-            } else {
-                Some(selected_idx.min(lines.len() - 1))
-            };
-            Some(crate::ui::popup::PopupState {
-                lines,
-                rect: Rect::new(x, y, outer_w, outer_h),
-                selected,
-                scroll: 0, // ignored: a menu windows around `selected`, not `scroll`
-                styled_rows: None, // menus never highlight per-span, only per-row
-                border: self.state.settings.popup_border,
-            })
+            let rows = session.menu_rows();
+            Some(hume_ui::popup::resolve_menu(
+                rows,
+                selected_idx,
+                placement,
+                border,
+            ))
         })();
 
-        *self.state.completion_menu_view.write_or_panic() = resolved;
+        self.state.views.set_completion_menu(resolved);
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
@@ -378,18 +284,18 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.config.picker.is_none() && self.state.picker_view.read_or_panic().is_none() {
+        if self.state.config.picker.is_none() && self.state.views.picker().is_none() {
             return;
         }
 
-        let geo = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area);
+        let geo = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area);
         let resolved = match (self.state.config.picker.as_mut(), geo) {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
                 let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();
                 let selected_row =
                     (!rows.is_empty()).then(|| session.selected() - session.scroll());
-                Some(crate::ui::picker_panel::PickerViewState {
+                Some(hume_ui::picker_panel::PickerViewState {
                     prompt: session.prompt().to_string(),
                     query: session.query().to_string(),
                     rows,
@@ -406,6 +312,6 @@ impl Editor {
             _ => None,
         };
 
-        *self.state.picker_view.write_or_panic() = resolved;
+        self.state.views.set_picker(resolved);
     }
 }

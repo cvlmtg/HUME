@@ -1,19 +1,19 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
-use std::sync::{Arc, RwLock};
 
 use termina::event::KeyEvent;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
+use self::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
 use self::registry::CommandRegistry;
 use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::PaneView;
 use crate::editor::settings::EditorSettings;
-use crate::lock_ext::LockExt;
 use hume_editing::selection::SelectionSet;
 use hume_ops::register::{KillRing, RegisterSet};
 use hume_treesitter::parse_worker::ParseBackend;
@@ -30,6 +30,7 @@ mod frame;
 mod host_impl;
 mod inline_output;
 mod lifecycle;
+mod overlay_models;
 mod overlay_sync;
 mod reload;
 mod scripting_setup;
@@ -40,15 +41,12 @@ mod clipboard;
 mod commands;
 mod completion;
 mod cursor;
-mod decorations;
 mod dispatch;
 mod doc_ops;
 pub(crate) mod event;
 mod fuzzy;
 mod jump_list;
 mod keymap;
-#[cfg(test)]
-mod lints;
 pub(crate) mod lsp;
 mod mappings;
 mod message_log;
@@ -57,6 +55,7 @@ mod mouse;
 mod pane_state;
 mod picker;
 mod picker_source;
+mod popup_syntax;
 mod register_ops;
 mod registry;
 mod replay;
@@ -129,7 +128,7 @@ pub(crate) struct ConfigState {
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds) — the render
     /// providers read these.
-    pub(in crate::editor) decorations: decorations::DecorationStores,
+    pub(in crate::editor) decorations: hume_decorations::decorations::DecorationStores,
     /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
     /// rather than flat like `trigger_chars` above: the render side needs a
@@ -180,24 +179,24 @@ pub(crate) struct ConfigState {
     /// `(show-popup! text)`'s raw content — resolved into a positioned
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
-    pub(in crate::editor) popup: Option<crate::ui::popup::PopupModel>,
+    pub(in crate::editor) popup: Option<PopupModel>,
     /// `(show-menu! items on-select)`'s raw content, including the
     /// not-yet-fired Steel callback — cleared by the key intercept in
     /// `handle_key`, not by `sync_menu_view`.
-    pub(in crate::editor) menu: Option<crate::ui::popup::MenuModel>,
+    pub(in crate::editor) menu: Option<MenuModel>,
     /// `(show-drawer-list! items on-select)`'s raw content, including the
     /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
     /// drawer stays open across selections, unlike the popup/menu).
-    pub(in crate::editor) drawer: Option<crate::ui::drawer::DrawerModel>,
+    pub(in crate::editor) drawer: Option<DrawerModel>,
     /// The open picker session — driven by the key intercept in `handle_key`;
     /// opened via `editor::picker::open_picker` (Steel's `picker!` builtin,
     /// or directly in tests).
     pub(in crate::editor) picker: Option<crate::editor::picker::PickerSession>,
     /// The open native yes/no confirmation, if any — see
-    /// [`crate::ui::confirm`]. Mode-agnostic: unlike `menu`/`drawer`, this
+    /// [`overlay_models`]. Mode-agnostic: unlike `menu`/`drawer`, this
     /// intercepts before mode dispatch regardless of `Mode`, since a
     /// disk-change check can fire while the user is mid-Insert.
-    pub(crate) confirm: Option<crate::ui::confirm::ConfirmModel>,
+    pub(crate) confirm: Option<ConfirmModel>,
 }
 
 impl ConfigState {
@@ -209,7 +208,7 @@ impl ConfigState {
     ///
     /// `prior_clock` is `0` at session start (nothing to carry forward) and
     /// the outgoing `ConfigState.decorations`'s own shared clock on
-    /// `:reload-config` — see [`decorations::DecorationStores::reset`]'s
+    /// `:reload-config` — see [`hume_decorations::decorations::DecorationStores::reset`]'s
     /// doc for why this can't just be `Default::default()` like every other
     /// field here.
     pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
@@ -218,7 +217,7 @@ impl ConfigState {
             registry: CommandRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
-            decorations: decorations::DecorationStores::reset(prior_clock),
+            decorations: hume_decorations::decorations::DecorationStores::reset(prior_clock),
             statusline_text: rustc_hash::FxHashMap::default(),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
@@ -460,36 +459,13 @@ pub(crate) struct EditorState {
     /// site, so no separate render-time call is needed. Same deferral
     /// channel philosophy as `pending_work`.
     pub(super) lsp_completion_dismiss_pending: bool,
-    /// Shared view for the LSP completion menu — reuses the popup/selection
-    /// menu's generic
-    /// `PopupState`/`PopupOverlay` (selected-row styling, same as the
-    /// selection menu) via its own `Arc` and pane registration.
-    pub(in crate::editor) completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
-    /// Shared completion-popup view: written by `prepare_frame`, read by provider.
-    pub(in crate::editor) minibuf_completion_view:
-        Arc<RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>>,
-    /// Shared popup-overlay view for `PopupLayout::Cursor`: written by
-    /// `prepare_frame`, read by `PopupOverlay`. Empty whenever `config.popup`
-    /// is `None` or docked (see `popup_band_view`).
-    pub(in crate::editor) popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
-    /// Shared popup-band view for `PopupLayout::Docked`: written by
-    /// `prepare_frame`, read by `PopupBandWidget` (chrome, like the
-    /// drawer). Empty whenever `config.popup` is `None` or cursor-anchored.
-    pub(in crate::editor) popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>>,
-    /// Shared menu-overlay view: written by `prepare_frame`, read by its own
-    /// `PopupOverlay` registration (separate from the hover popup's, so both
-    /// can in principle show at once — the menu paints on top).
-    pub(in crate::editor) menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>>,
-    /// Shared drawer-overlay view: written every frame by `prepare_frame`
-    /// (self-healing against a direct `self.state.config.drawer = None` that
-    /// bypasses the mutation-site sync — see `sync_drawer_view`'s doc), read
-    /// by `DrawerWidget`.
-    pub(in crate::editor) drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>>,
-    /// Shared picker-overlay view: written per-frame by `sync_picker_view`
-    /// (geometry depends on the current panes region, like popup/menu, not
-    /// on-change like the drawer), read by `PickerOverlay`.
-    pub(in crate::editor) picker_view:
-        Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>>,
+    /// Every overlay view shared between the per-frame write side below
+    /// (`overlay_sync.rs`) and the engine's render side — minibuf-completion,
+    /// popup (cursor + docked), menu, completion menu, drawer, picker. One
+    /// `hume_ui::OverlayViews` instead of seven hand-allocated `Arc`s, each
+    /// wired through `build_pane`'s parameter list and `Editor::open`'s
+    /// bootstrap by hand; see that type's own doc for why.
+    pub(in crate::editor) views: hume_ui::OverlayViews,
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
     /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
     /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
@@ -563,13 +539,7 @@ impl Default for EditorState {
             mouse_drag_anchor: None,
             cwd: PathBuf::new(),
             lsp_completion_dismiss_pending: false,
-            completion_menu_view: Arc::new(RwLock::new(None)),
-            minibuf_completion_view: Arc::new(RwLock::new(None)),
-            popup_view: Arc::new(RwLock::new(None)),
-            popup_band_view: Arc::new(RwLock::new(None)),
-            menu_view: Arc::new(RwLock::new(None)),
-            drawer_view: Arc::new(RwLock::new(None)),
-            picker_view: Arc::new(RwLock::new(None)),
+            views: hume_ui::OverlayViews::default(),
             wake: Arc::new(|| {}),
         }
     }
@@ -680,7 +650,7 @@ impl EditorState {
 
     // ── Drawer ──────────────────────────────────────────────────────────
 
-    /// Mirror `self.config.drawer` into `self.drawer_view` for `DrawerWidget`
+    /// Mirror `self.config.drawer` into `self.views`' drawer slot for `DrawerWidget`
     /// to read. Called directly at every drawer mutation site (open,
     /// selection move, scroll, close) for immediacy, *and* unconditionally
     /// every frame from `Editor::prepare_frame` (like the popup/menu/picker
@@ -694,12 +664,12 @@ impl EditorState {
             .config
             .drawer
             .as_ref()
-            .map(|d| crate::ui::drawer::DrawerViewState {
+            .map(|d| hume_ui::drawer::DrawerViewState {
                 rows: Arc::clone(&d.items),
                 selected: d.selected,
                 scroll: d.scroll,
             });
-        *self.drawer_view.write_or_panic() = resolved;
+        self.views.set_drawer(resolved);
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire
@@ -1014,16 +984,8 @@ mod field_classification {
                 mouse_drag_anchor: _,              // preserved
                 cwd: _,                            // preserved
                 lsp_completion_dismiss_pending: _, // preserved
-                // preserved: Arc view, self-healing per-frame regardless
-                // of config
-                completion_menu_view: _,
-                minibuf_completion_view: _, // preserved: Arc view, self-healing per-frame
-                popup_view: _,              // preserved: Arc view, self-healing per-frame
-                popup_band_view: _,         // preserved: Arc view, self-healing per-frame
-                menu_view: _,               // preserved: Arc view, self-healing per-frame
-                drawer_view: _,             // preserved: Arc view, self-healing per-frame
-                picker_view: _,             // preserved: Arc view, self-healing per-frame
-                wake: _,                    // preserved: cross-thread waker infra, not config
+                views: _, // preserved: Arc views, self-healing per-frame regardless of config
+                wake: _,  // preserved: cross-thread waker infra, not config
             } = e;
         }
     }

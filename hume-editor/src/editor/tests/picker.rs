@@ -7,10 +7,10 @@
 use super::*;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::picker::{self, PickerItem, PickerSession};
-use crate::ui::picker_panel::panel_geometry;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
+use hume_ui::picker_panel::panel_geometry;
 use steel::rvals::SteelVal;
 
 fn marker(name: &str) -> SteelVal {
@@ -425,8 +425,8 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
 #[test]
 fn picker_intercepts_ahead_of_menu() {
     let mut ed = editor_from("-[a]>bc\n");
-    ed.state.config.menu = Some(crate::ui::popup::MenuModel {
-        items: vec!["m0".into(), "m1".into()],
+    ed.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
+        items: std::sync::Arc::new(vec!["m0".into(), "m1".into()]),
         selected: 0,
         callback: marker("menu-cb"),
     });
@@ -473,14 +473,14 @@ fn close_clears_view_next_frame() {
     open_test_picker(&mut ed, &["one"]);
     frame(&mut ed, 60, 16);
     assert!(
-        ed.state.picker_view.read().unwrap().is_some(),
+        ed.state.views.picker().is_some(),
         "sanity: view populated while open"
     );
 
     ed.feed_key(key_esc());
     frame(&mut ed, 60, 16);
     assert!(
-        ed.state.picker_view.read().unwrap().is_none(),
+        ed.state.views.picker().is_none(),
         "view must clear the frame after close"
     );
 }
@@ -500,7 +500,7 @@ fn shrinking_terminal_self_heals_scroll() {
     // Shrinking between frames must not panic, and the next sync must keep
     // `selected_row` valid against the new, smaller window.
     frame(&mut ed, 30, 12);
-    let guard = ed.state.picker_view.read().unwrap();
+    let guard = ed.state.views.picker();
     let state = guard.as_ref().expect("picker still open");
     let row = state
         .selected_row

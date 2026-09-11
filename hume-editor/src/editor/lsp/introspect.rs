@@ -122,7 +122,7 @@ pub(in crate::editor) fn server_for_buffer(
 }
 
 /// A buffer's attached server's loading state — drives the statusline's
-/// loading spinner (`ui::statusline::elements::diagnostics`).
+/// loading spinner (`statusline::elements::diagnostics`).
 pub(crate) enum LspActivity {
     /// No attached server, a `Running` server with no progress task in
     /// flight, or a `Crashed`/`Dead` one — nothing to animate.
@@ -132,7 +132,7 @@ pub(crate) enum LspActivity {
     /// A `$/progress` task (indexing, loading, ...) is in flight — the most
     /// recently begun one, if the server is running more than one. Carries
     /// no title: the statusline only shows the spinner + percentage
-    /// (`ui::statusline::elements::diagnostics`); the underlying task's
+    /// (`statusline::elements::diagnostics`); the underlying task's
     /// title is reachable via `LspState::progress_title_for_test` for tests
     /// that need to assert the begin/report merge machine.
     Progress { percentage: Option<u32> },

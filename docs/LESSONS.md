@@ -406,7 +406,7 @@ Reentrancy alone would let a *nested guard* (as opposed to a momentary
 `safe_tempdir()` visit) silently corrupt teardown instead of hanging, so
 `TestGlobals::claim` tracks per-resource exclusivity and panics loudly on a
 same-thread double-claim rather than allowing it. A lint
-(`hume-editor/src/editor/lints/test_globals.rs`) forbids a bare
+(`arch-lints/tests/test_globals.rs`) forbids a bare
 `tempfile::tempdir()`/`NamedTempFile::new()` anywhere in the test tree
 outside the sanctioned constructors; the `std::env::set_var`/`remove_var`
 half of the same hazard moved to `clippy.toml`'s `disallowed-methods`
@@ -415,7 +415,7 @@ tree — so a new test can't reintroduce either hazard even by accident.
 
 **Files:** `hume-editor/src/editor/tests/mod.rs` (`TestGlobals`, `Global`,
 `ClaimGuard`, `safe_tempdir`, `safe_named_tempfile`, `EnvVarGuard`),
-`hume-editor/src/editor/lints/test_globals.rs`.
+`arch-lints/tests/test_globals.rs`.
 
 ---
 
@@ -560,7 +560,7 @@ so tests that redirect process-global `PATH`/`TMPDIR`/`HUME_RUNTIME`/cwd
 don't race each other, and its own module doc already stated the real
 hazard: mutating one of these "races every other test *reading or writing*
 the same var." But the two enforcement lints
-(`hume-editor/src/editor/lints/test_globals.rs`) only ever checked for
+(`arch-lints/tests/test_globals.rs`) only ever checked for
 *mutation* outside a claim-holding file. A test that spawns a subprocess by
 unqualified name (`Command::new("tree-sitter")`, `Command::new("sh")`) is a
 `PATH` reader — the OS resolves that name against the live process `PATH` at

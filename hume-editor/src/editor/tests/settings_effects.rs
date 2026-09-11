@@ -365,7 +365,9 @@ fn typed_theme_bad_name_leaves_setting() {
 /// a test, so `theme::load_theme_by_name` can find real theme files.
 /// Mirrors `editor/tests/unix/mod.rs`'s `RealRuntimeGuard`, minus the
 /// `XDG_DATA_HOME` redirect (unneeded for a read-only theme load).
-struct RealThemeRuntimeGuard {
+/// `pub(in crate::editor::tests)`: shared with `lsp_popup.rs`'s own
+/// real-theme-reload regression test, not just this module's.
+pub(in crate::editor::tests) struct RealThemeRuntimeGuard {
     _lock: ClaimGuard,
 }
 
@@ -375,7 +377,7 @@ impl RealThemeRuntimeGuard {
     // above, which is what makes this the sanctioned caller `clippy.toml`'s
     // `disallowed-methods` entry lists as exempt.
     #[allow(clippy::disallowed_methods)]
-    fn new() -> Self {
+    pub(in crate::editor::tests) fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
         // SAFETY: not unsafe in the memory-safety sense — Rust 2024 requires

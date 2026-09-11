@@ -3,7 +3,7 @@
 // live in `unix/lsp_diagnostics_inline.rs`.
 
 use super::*;
-use crate::editor::decorations::EolTextEntry;
+use hume_decorations::decorations::EolTextEntry;
 use hume_engine::pipeline::RenderContext;
 
 /// `update_eol_text_providers` (`decoration_providers.rs`) must hand the full,
@@ -47,7 +47,7 @@ fn full_message_reaches_the_render_provider_untruncated() {
         .render
         .get(pid)
         .unwrap()
-        .eol_text
+        .eol_text()
         .read()
         .unwrap();
     let inserts = by_line
@@ -105,7 +105,7 @@ fn two_entries_from_one_source_on_the_same_line_collapse_to_the_last_one() {
         .render
         .get(pid)
         .unwrap()
-        .eol_text
+        .eol_text()
         .read()
         .unwrap();
     let inserts = by_line
@@ -166,7 +166,7 @@ fn two_sources_on_the_same_line_break_ties_alphabetically_first() {
         .render
         .get(pid)
         .unwrap()
-        .eol_text
+        .eol_text()
         .read()
         .unwrap();
     let inserts = by_line

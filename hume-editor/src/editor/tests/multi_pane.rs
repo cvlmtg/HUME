@@ -1221,8 +1221,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
 /// switching a buffer doesn't bump the generation.
 #[test]
 fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
-    use crate::editor::decorations::VirtualLineEntry;
-    use crate::lock_ext::LockExt;
+    use hume_decorations::decorations::VirtualLineEntry;
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
@@ -1256,11 +1255,12 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
         .render
         .get(pid)
         .unwrap()
-        .virtual_lines
+        .virtual_lines()
         .clone();
     assert!(
         virtual_lines_arc
-            .read_or_panic()
+            .read()
+            .unwrap()
             .contains_key(&hume_rope::line::ContentLine::new(0)),
         "sanity: pane A mirrors buffer A's virtual line at line 0"
     );
@@ -1273,7 +1273,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
     assert!(
-        virtual_lines_arc.read_or_panic().is_empty(),
+        virtual_lines_arc.read().unwrap().is_empty(),
         "after switching to buffer B, the pane must no longer mirror buffer \
          A's virtual lines — a generation-only sync gate would leave line 0 \
          populated with A's stale entry"

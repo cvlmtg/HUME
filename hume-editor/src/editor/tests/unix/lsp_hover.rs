@@ -87,12 +87,7 @@ fn setup(
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state
-        .popup_view
-        .read()
-        .unwrap()
-        .as_ref()
-        .map(|s| (*s.lines).clone())
+    ed.state.views.popup().as_ref().map(|s| (*s.lines).clone())
 }
 
 fn run_hover(ed: &mut Editor) {
@@ -234,9 +229,8 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     // `tall_content_docks_instead_of_using_the_drawer`.
     assert!(
         ed.state
-            .popup_band_view
-            .read()
-            .unwrap()
+            .views
+            .popup_band()
             .as_ref()
             .is_some_and(|s| !s.lines.is_empty()),
         "sanity: docked popup shown"
@@ -355,7 +349,7 @@ fn visible_lines_threshold_has_no_off_by_one_from_the_old_inclusive_range() {
     assert!(
         matches!(
             ed.state.config.popup.as_ref().map(|p| &p.layout),
-            Some(crate::ui::popup::PopupLayout::Docked)
+            Some(hume_ui::popup::PopupLayout::Docked)
         ),
         "must be a docked popup, not the drawer"
     );
@@ -394,15 +388,14 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     assert!(
         matches!(
             ed.state.config.popup.as_ref().map(|p| &p.layout),
-            Some(crate::ui::popup::PopupLayout::Docked)
+            Some(hume_ui::popup::PopupLayout::Docked)
         ),
         "tall content must still be a popup — just docked, never the drawer"
     );
     assert!(
         ed.state
-            .popup_band_view
-            .read()
-            .unwrap()
+            .views
+            .popup_band()
             .as_ref()
             .is_some_and(|s| !s.lines.is_empty()),
         "the docked band's view must resolve after a frame"

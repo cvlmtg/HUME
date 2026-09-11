@@ -5,14 +5,12 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use crate::lock_ext::LockExt;
-use crate::ui::confirm::ConfirmAction;
-
 use super::super::Editor;
+use super::super::overlay_models::ConfirmAction;
 
 impl Editor {
     /// Handles one key while a native confirm overlay
-    /// ([`crate::ui::confirm::ConfirmModel`]) is open. Always consumes —
+    /// ([`crate::editor::overlay_models::ConfirmModel`]) is open. Always consumes —
     /// full-modal, like the picker. `choices[0]`'s key runs `action`;
     /// `choices[1]`'s key (currently always "keep", set by
     /// `open_disk_change_confirm`) records an explicit decline
@@ -189,11 +187,11 @@ impl Editor {
             return false;
         };
         let (inner_h, total) = match layout {
-            crate::ui::popup::PopupLayout::Cursor => {
+            hume_ui::popup::PopupLayout::Cursor => {
                 let Some(pair) = self
                     .state
-                    .popup_view
-                    .read_or_panic()
+                    .views
+                    .popup()
                     .as_ref()
                     .map(|s| (s.rect.height.saturating_sub(2) as usize, s.lines.len()))
                 else {
@@ -201,17 +199,18 @@ impl Editor {
                 };
                 pair
             }
-            crate::ui::popup::PopupLayout::Docked => {
+            hume_ui::popup::PopupLayout::Docked => {
                 let Some(total) = self
                     .state
-                    .popup_band_view
-                    .read_or_panic()
+                    .views
+                    .popup_band()
                     .as_ref()
                     .map(|s| s.lines.len())
                 else {
                     return false;
                 };
-                (self.popup_band_visible_rows(total), total)
+                let max = self.view.last_terminal_area.height / 2;
+                (hume_ui::popup::band_visible_rows(total, max), total)
             }
         };
         let max_scroll = total.saturating_sub(inner_h);
@@ -236,20 +235,9 @@ impl Editor {
         true
     }
 
-    /// Number of docked-popup rows visible at once, given `total` wrapped
-    /// lines — computed via `crate::ui::popup::band_capacity`, the same
-    /// helper `PopupBandWidget::height` calls to size what it paints next
-    /// frame (`max` = half the last-rendered *terminal* height). Mirrors
-    /// `drawer_visible_rows`'s contract for the drawer's own band.
-    fn popup_band_visible_rows(&self, total: usize) -> usize {
-        let max = self.view.last_terminal_area.height / 2;
-        let capacity = crate::ui::popup::band_capacity(total, max);
-        capacity.saturating_sub(2) as usize
-    }
-
     /// Number of drawer rows visible at once — computed via
-    /// `crate::ui::drawer::band_capacity`, the same helper
-    /// `DrawerWidget::height` calls to size what it paints next frame. `max`
+    /// `hume_ui::drawer::visible_rows`, the same arithmetic
+    /// `DrawerWidget::height` uses to size what it paints next frame. `max`
     /// mirrors that provider's own ceiling (half the last-rendered
     /// *terminal* height, not the already-chrome-reduced pane height).
     /// Shared by `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d half-page
@@ -259,8 +247,7 @@ impl Editor {
         let Some(drawer) = self.state.config.drawer.as_ref() else {
             return 0;
         };
-        let capacity = crate::ui::drawer::band_capacity(drawer.items.len(), max);
-        capacity.saturating_sub(1) as usize
+        hume_ui::drawer::visible_rows(drawer.items.len(), max)
     }
 
     /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
@@ -271,11 +258,8 @@ impl Editor {
         let Some(drawer) = self.state.config.drawer.as_mut() else {
             return;
         };
-        drawer.scroll = crate::ui::menu_box::clamp_scroll_to_window(
-            drawer.selected,
-            drawer.scroll,
-            visible_rows,
-        );
+        drawer.scroll =
+            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible_rows);
         self.state.sync_drawer_view();
     }
 
@@ -294,7 +278,7 @@ impl Editor {
     /// visible (before the first frame, geometry is `None` and paging is a
     /// documented no-op on the store).
     pub(super) fn handle_picker_key(&mut self, key: KeyEvent) -> bool {
-        let visible_rows = crate::ui::picker_panel::panel_geometry(self.view.last_pane_area)
+        let visible_rows = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
             .map_or(0, |geo| geo.list_rows);
 
         // Every movement key differs only in the delta passed to

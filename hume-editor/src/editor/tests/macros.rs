@@ -258,7 +258,7 @@ fn macro_trailing_q_does_not_arm_pending() {
 /// is in `statusline.rs::tests::macro_recording_element_renders`.
 #[test]
 fn macro_status_indicator() {
-    use crate::ui::statusline::StatusElement;
+    use crate::statusline::StatusElement;
 
     let ed = editor_from("-[a]>bcd\n");
     let config = ed.state.settings.statusline();

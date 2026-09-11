@@ -1,0 +1,18 @@
+[package]
+name = "hume-decorations"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hume-editing = { path = "../hume-editing" }
+hume-engine = { path = "../hume-engine" }
+hume-rope = { path = "../hume-rope" }
+rustc-hash.workspace = true
+
+[features]
+# Exposes DecorationStores' test-only accessors (signs_for,
+# virtual_lines_for, line_backgrounds_for, extra_highlights_for,
+# inlay_hints_for_buffer) to hume-editor's own test code, which asserts on
+# what a plugin published rather than what a viewport shows. Mirrors the
+# hume-lsp/hume-treesitter/hume-scripting precedent.
+test-util = []

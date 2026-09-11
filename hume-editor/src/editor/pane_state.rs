@@ -218,18 +218,19 @@ pub(in crate::editor) struct PaneTransient {
 ///
 /// Bundles `state` (per-(pane,buffer) selections/groups), `transient` (search/select
 /// snapshots), `jumps` (cursor history), and `render` (per-pane highlight/sign/
-/// inlay-hint/virtual-line handles, bundled in [`crate::ui::PaneRenderHandles`]
-/// since `build_pane` always allocates and `drop_pane_state` always drops them
-/// together) so `EditorState` exposes one field instead of four. The map
-/// types and keying are unchanged; NLL still allows simultaneous mutable borrows
-/// of different fields (e.g. `panes.state` and `panes.jumps` in
+/// inlay-hint/virtual-line handles, bundled in
+/// [`hume_decorations::PaneDecorationHandles`] since `build_pane` always
+/// allocates and `drop_pane_state` always drops them together) so
+/// `EditorState` exposes one field instead of four. The map types and
+/// keying are unchanged; NLL still allows simultaneous mutable borrows of
+/// different fields (e.g. `panes.state` and `panes.jumps` in
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
 #[derive(Default)]
 pub(crate) struct PaneView {
     pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pub(in crate::editor) transient: SecondaryMap<PaneId, PaneTransient>,
     pub(in crate::editor) jumps: super::jump_list::JumpLists,
-    pub(in crate::editor) render: SecondaryMap<PaneId, crate::ui::PaneRenderHandles>,
+    pub(in crate::editor) render: SecondaryMap<PaneId, hume_decorations::PaneDecorationHandles>,
 }
 
 impl PaneView {
@@ -243,6 +244,73 @@ impl PaneView {
     ) -> Option<&PaneBufferState> {
         self.state.get(pid)?.get(bid)
     }
+}
+
+/// Build a new pane viewing `buffer_id`: sign column, line-number gutter,
+/// bracket-match/search-match/diagnostic/extra-highlight sources, inlay-hint
+/// decoration, virtual-line source, line-background tint (all from
+/// [`hume_decorations::build_providers`]), and completion/hover/selection-
+/// menu/LSP overlays (from [`hume_ui::register_overlays`]). Wrap mode is not
+/// seeded here — the new pane starts with no override for any buffer
+/// (`Pane::new`'s empty `wraps` map) and resolves it lazily on every read
+/// (`commands::effective_wrap_mode`).
+///
+/// Returns the pane with its freshly-allocated `PaneDecorationHandles` —
+/// every pane gets its own buffers (never shared), so each pane's
+/// decorations come from that pane's own buffer and viewport. The caller
+/// stores them in `EditorState.panes.render` keyed by the new pane's id.
+///
+/// The gutter column is added with its default style; `prepare_frame` syncs
+/// the buffer-resolved `line-number-style` into every pane's gutter before
+/// each render (see `sync_line_number_style`), so the seeded style never
+/// reaches a frame.
+///
+/// Single source of truth for pane construction — every creation site
+/// (`Editor::open`'s bootstrap pane, `commands::open_pane`) goes through
+/// this, so panes render identically. `Pane::new` alone has an empty
+/// `ProviderSet` (no gutter column). Sole caller of
+/// `hume_decorations::build_providers`/`hume_ui::register_overlays` — the
+/// two sibling calls that together populate one pane's `ProviderSet`, one
+/// per crate now that decoration providers and overlay widgets live apart.
+pub(in crate::editor) fn build_pane(
+    registry: &mut hume_engine::theme::ScopeRegistry,
+    views: &hume_ui::OverlayViews,
+    buffer_id: BufferId,
+) -> (
+    hume_engine::pane::Pane,
+    hume_decorations::PaneDecorationHandles,
+) {
+    // Interns the engine's own `DEFAULT_GUTTER_SCOPE` constant rather than
+    // repeating the "ui.linenr" literal here — the two must resolve to the
+    // same scope: `compose_gutter`'s own fallback
+    // (`EngineView::default_gutter_scope`) interns that same constant, and a
+    // blank sign slot / line-number cell rendering under a different
+    // `ScopeId` than the row-fill fallback would silently disagree on
+    // styling.
+    let linenr_scope = registry.intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
+    let linenr_selected_scope = registry.intern("ui.linenr.selected");
+
+    let (sign_column, decoration_sources, decoration_handles) =
+        hume_decorations::build_providers(linenr_scope);
+
+    let mut providers = hume_engine::providers::ProviderSet::new();
+    providers.add_gutter_column(sign_column);
+    providers.add_gutter_column(Box::new(
+        hume_engine::builtins::line_number::LineNumberColumn::new(
+            linenr_scope,
+            linenr_selected_scope,
+        ),
+    ));
+    for source in decoration_sources {
+        providers.add_decoration_source(source);
+    }
+    hume_ui::register_overlays(&mut providers, views);
+
+    let pane = hume_engine::pane::Pane {
+        providers,
+        ..hume_engine::pane::Pane::new(buffer_id)
+    };
+    (pane, decoration_handles)
 }
 
 impl super::EditorState {

@@ -18,20 +18,18 @@ fn oracle_width(s: &str) -> usize {
 
 fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
     ed.state
-        .popup_view
-        .read()
-        .unwrap()
+        .views
+        .popup()
         .as_ref()
         .map(|s| ((*s.lines).clone(), s.rect.x, s.rect.y))
 }
 
 /// The `Arc` handle itself, not a deref-cloned copy — for `Arc::ptr_eq`
-/// identity checks that pin `PopupModel::resolved`'s per-`max_width` cache.
+/// identity checks that pin `PopupModel::content`'s per-`max_width` cache.
 fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
     ed.state
-        .popup_view
-        .read()
-        .unwrap()
+        .views
+        .popup()
         .as_ref()
         .map(|s| Arc::clone(&s.lines))
 }
@@ -127,9 +125,8 @@ fn show_popup_rejects_an_unknown_anchor() {
 
 fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
     ed.state
-        .popup_band_view
-        .read()
-        .unwrap()
+        .views
+        .popup_band()
         .as_ref()
         .map(|s| (*s.lines).clone())
 }
@@ -493,6 +490,48 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     );
 }
 
+/// A theme reload must invalidate `PopupModel::content` (the per-`show-popup!`
+/// baked-style cache `content_mut` builds once and reuses), not just the
+/// per-width wrap cache inside it: `content_mut`'s bake reads the theme, but
+/// nothing re-ran it on a theme swap, so a `#:lang` popup would keep
+/// painting the outgoing theme's colors until an unrelated width change
+/// forced a re-wrap. Checked here via `PopupContent` object identity (a
+/// fresh `content_mut` build always allocates a fresh `Arc`, styled or
+/// plain alike), not by comparing colors, so it doesn't need a `#:lang`
+/// grammar fixture. Regression test for commit ece649a2's
+/// `resolve_popup_text` → `content_mut` migration, which dropped the
+/// per-width re-resolve that used to double as the theme's only
+/// invalidation trigger.
+#[test]
+fn popup_content_is_rebuilt_after_a_theme_reload() {
+    let _guard = crate::editor::tests::settings_effects::RealThemeRuntimeGuard::new();
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda () (show-popup! "hello")))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let first = popup_view_lines_arc(&ed).expect("popup must be showing after a frame");
+
+    crate::editor::commands::typed_theme(&mut ed, Some("gruvbox"), false)
+        .expect(":theme gruvbox must succeed");
+
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let second = popup_view_lines_arc(&ed).expect("popup must still be showing after the reload");
+    assert!(
+        !Arc::ptr_eq(&first, &second),
+        "a theme reload must rebuild the popup's baked content, not reuse the pre-reload cache"
+    );
+}
+
 // ── Scrollable popup (`#:kind 'scrollable`) dismissal + Ctrl+u/Ctrl+d ───────
 
 #[test]
@@ -600,7 +639,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let max_scroll_before_key = {
-        let guard = ed.state.popup_view.read().unwrap();
+        let guard = ed.state.views.popup();
         let view = guard.as_ref().expect("popup still open");
         let inner_h = view.rect.height.saturating_sub(2) as usize;
         view.lines.len().saturating_sub(inner_h)

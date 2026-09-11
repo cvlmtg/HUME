@@ -205,7 +205,7 @@ impl SettingsHost for MockHost {
         // this re-serializes to the wire format and writes through
         // `write_global` — the same path `EditorHostImpl::configure_statusline`
         // (`host_impl.rs`) uses, rather than a second, mock-only writer.
-        use hume::ui::statusline::{StatusLineConfig, parse_statusline_section};
+        use hume::statusline::{StatusLineConfig, parse_statusline_section};
         let cfg = StatusLineConfig {
             left: parse_statusline_section(left, "left")?,
             center: parse_statusline_section(center, "center")?,

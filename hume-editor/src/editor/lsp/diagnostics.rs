@@ -12,8 +12,8 @@ use lsp_types::PublishDiagnosticsParams;
 use ropey::Rope;
 
 use crate::editor::Editor;
-use crate::editor::decorations::{Positioned, RangeAnchored, SourceStore};
 use crate::editor::message_log::Severity;
+use hume_decorations::decorations::{Positioned, RangeAnchored, SourceStore};
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
 /// severe as floor" — e.g. `floor = Warning` keeps `Error` and `Warning`,
@@ -98,7 +98,7 @@ impl RangeAnchored for StoredDiag {
 }
 
 /// Wraps the same generic `SourceStore<K, T>` the decoration kinds share
-/// (`decorations.rs`), keyed by `ServerId` instead of a plugin-chosen
+/// (`hume-decorations`'s `decorations.rs`), keyed by `ServerId` instead of a plugin-chosen
 /// source name — `set`/`remap_ranges`/`remove_buffer` are the shared
 /// write/remap machinery; the diagnostics-specific reads (`for_range`'s
 /// severity/range filter, `counts`) stay here since no decoration kind

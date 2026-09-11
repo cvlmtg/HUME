@@ -14,7 +14,7 @@ remaining work below ships.
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
 | Store, ranking, chokepoints | `hume-editor/src/editor/picker.rs` |
 | Fuzzy matcher + budget | `hume-editor/src/editor/fuzzy.rs` |
-| Panel widget, theme scopes, geometry | `hume-editor/src/ui/picker_panel.rs` |
+| Panel widget, theme scopes, geometry | `hume-ui/src/picker_panel.rs` |
 | Streaming external-command source | `hume-platform/src/process/line_source.rs`, `hume-editor/src/editor/picker_source.rs` |
 | Steel builtin semantics (tokens, kill-on-cancel, exactly-once) | `hume-scripting/src/builtins/mod.rs`, `builtins/ui.rs`, `host.rs` |
 | Frequency-cut / bulk-data guardrail (architecture this all follows) | `docs/LSP.md` Decisions table |

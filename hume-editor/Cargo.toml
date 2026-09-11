@@ -16,6 +16,8 @@ hume-rope = { path = "../hume-rope" }
 hume-ops = { path = "../hume-ops" }
 hume-treesitter = { path = "../hume-treesitter" }
 hume-lsp = { path = "../hume-lsp" }
+hume-ui = { path = "../hume-ui" }
+hume-decorations = { path = "../hume-decorations" }
 lsp-types = "0.97"
 serde_json.workspace = true
 globset = "0.4"
@@ -69,4 +71,5 @@ hume-treesitter = { path = "../hume-treesitter", features = ["test-util"] }
 hume-lsp = { path = "../hume-lsp", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
 hume-ops = { path = "../hume-ops", features = ["test-util"] }
+hume-decorations = { path = "../hume-decorations", features = ["test-util"] }
 test-fixtures = { path = "../test-fixtures" }

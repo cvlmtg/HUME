@@ -539,7 +539,7 @@ fn declared_plugins_includes_core_plugins() {
 
 #[test]
 fn configure_statusline_sets_left_section() {
-    use hume_editor::ui::statusline::StatusElement;
+    use hume_editor::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -562,7 +562,7 @@ fn configure_statusline_sets_left_section() {
 
 #[test]
 fn configure_statusline_all_sections() {
-    use hume_editor::ui::statusline::StatusElement;
+    use hume_editor::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 
@@ -622,7 +622,7 @@ fn configure_statusline_unknown_element_errors() {
 
 #[test]
 fn configure_statusline_new_elements() {
-    use hume_editor::ui::statusline::StatusElement;
+    use hume_editor::statusline::StatusElement;
     let mut h = host();
     let mut mock = MockHost::new();
 

@@ -733,7 +733,7 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
 }
 
 /// Reproduces the "hint doesn't come back after undo" bug: a hint dropped by
-/// `remap_points`'s deletion-anchor fix (`decorations.rs`) must be
+/// `remap_points`'s deletion-anchor fix (`hume-decorations`'s `decorations.rs`) must be
 /// re-requested once the deleting edit is undone — `on-text-changed` fires
 /// for undo exactly like any other edit (`event.rs`'s doc comment), so
 /// `inlay.scm` hooking it must pick this up without any viewport scroll or

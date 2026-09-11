@@ -10,8 +10,8 @@
 
 use hume_engine::pipeline::BufferId;
 
+use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice, ConfirmModel};
 use crate::editor::{Editor, Mode, Severity};
-use crate::ui::confirm::{ConfirmChoice, ConfirmModel};
 
 use super::Buffer;
 
@@ -403,7 +403,7 @@ impl Editor {
                     label: "keep",
                 },
             ],
-            action: crate::ui::confirm::ConfirmAction::ReloadBuffer(bid),
+            action: ConfirmAction::ReloadBuffer(bid),
         });
     }
 

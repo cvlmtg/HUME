@@ -26,15 +26,8 @@ pub(in crate::editor) fn open_pane(
     // pane's Arcs are freshly allocated here, never shared with any other
     // pane (see `PaneHighlights`/`SignMap`), so per-pane decoration data
     // can never bleed across panes.
-    let (pane, render_handles) = crate::ui::build_pane(
-        &mut view.registry,
-        &state.minibuf_completion_view,
-        &state.popup_view,
-        &state.menu_view,
-        &state.completion_menu_view,
-        &state.picker_view,
-        buffer_id,
-    );
+    let (pane, render_handles) =
+        crate::editor::pane_state::build_pane(&mut view.registry, &state.views, buffer_id);
     let pid = view.panes.insert(pane);
     state.panes.state.insert(pid, SecondaryMap::new());
     crate::editor::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);

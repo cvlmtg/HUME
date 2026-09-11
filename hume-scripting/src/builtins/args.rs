@@ -4,7 +4,7 @@
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family —
 //! enforced by `cargo test absent_marker_is_decoded_only_in_args_rs`
-//! (`hume-editor/src/editor/lints/absent_decode.rs`).
+//! (`arch-lints/tests/absent_decode.rs`).
 
 use std::ops::RangeInclusive;
 use std::path::PathBuf;

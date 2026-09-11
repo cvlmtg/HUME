@@ -1,0 +1,16 @@
+[package]
+name = "hume-ui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+hume-engine = { path = "../hume-engine" }
+hume-grid = { path = "../hume-grid" }
+hume-rope = { path = "../hume-rope" }
+unicode-segmentation.workspace = true
+
+[dev-dependencies]
+insta = "1.47"
+# Independent width oracle for UI-chrome tests: asserts against `unicode-width`
+# directly rather than through `hume_rope::width`, the code under test.
+unicode-width.workspace = true

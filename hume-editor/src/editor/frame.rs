@@ -119,7 +119,7 @@ impl Editor {
             kitty_enabled,
             ..
         } = self;
-        let statusline = crate::ui::statusline::HumeStatusline {
+        let statusline = crate::statusline::HumeStatusline {
             state,
             lsp,
             kitty_enabled: *kitty_enabled,
@@ -148,8 +148,8 @@ impl Editor {
     /// disjoint borrows that a test holding a whole `&Editor` doesn't have to
     /// bother splitting.
     #[cfg(test)]
-    pub(crate) fn statusline(&self) -> crate::ui::statusline::HumeStatusline<'_> {
-        crate::ui::statusline::HumeStatusline {
+    pub(crate) fn statusline(&self) -> crate::statusline::HumeStatusline<'_> {
+        crate::statusline::HumeStatusline {
             state: &self.state,
             lsp: &self.lsp,
             kitty_enabled: self.kitty_enabled,

@@ -10,10 +10,11 @@ use std::sync::Arc;
 use crate::codec::Message;
 use crate::transport::{InboundEvent, ServerHandle, WakeCallback};
 
-/// `Ord` derives so `hume-editor`'s `DecorationStores`/`DiagnosticsStore`
-/// generic `SourceStore<K, T>` can key its per-buffer source list by
-/// `ServerId` (`decorations.rs`'s `set` needs `K: Ord` for a binary-search
-/// insert) — otherwise unused within this crate.
+/// `Ord` derives so `hume-decorations`'s `DecorationStores` and
+/// `hume-editor`'s `DiagnosticsStore` — both built on the generic
+/// `SourceStore<K, T>` — can key their per-buffer source list by `ServerId`
+/// (`hume-decorations`'s `decorations.rs`'s `set` needs `K: Ord` for a
+/// binary-search insert) — otherwise unused within this crate.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ServerId(pub u32);
 

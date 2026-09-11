@@ -6,16 +6,17 @@
 //! than one HUME tunes for its own sake, so it stays stable for the same
 //! reason `sand.toml` doesn't serve this role.
 //!
-//! Lives here rather than in `ui::theme` (where it once did): it is a test
-//! fixture used from `editor::tests`, not a `ui::theme` internal, and its
-//! crate-wide reach is a fixture's ordinary shape rather than a leak.
+//! Lives here rather than in `editor::theme` (where `build_default_theme`
+//! lives): it is a test fixture used from `editor::tests`, not an
+//! `editor::theme` internal, and its crate-wide reach is a fixture's
+//! ordinary shape rather than a leak.
 
 const SNAPSHOT_THEME_TOML: &str = include_str!("../../../runtime/themes/gruvbox.toml");
 
 pub(crate) fn build_snapshot_theme() -> hume_engine::theme::Theme {
     let loaded = hume_engine::theme::loader::parse_theme(SNAPSHOT_THEME_TOML)
         .expect("embedded gruvbox.toml must parse — file is compile-time embedded");
-    // A real `assert!`, not `debug_assert!` — see `ui::theme::build_default_theme`'s
+    // A real `assert!`, not `debug_assert!` — see `editor::theme::build_default_theme`'s
     // own copy of this reasoning.
     assert!(
         loaded.warnings.is_empty(),

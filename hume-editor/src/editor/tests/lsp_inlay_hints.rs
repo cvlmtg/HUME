@@ -10,7 +10,7 @@
 // these tests are about the render path, not the Steel/wire boundary.
 
 use super::*;
-use crate::editor::decorations::InlayHintEntry;
+use hume_decorations::decorations::InlayHintEntry;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 
@@ -209,7 +209,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .render
         .get(pid)
         .unwrap()
-        .inlay_hints
+        .inlay_hints()
         .read()
         .unwrap()
         .values()
@@ -229,7 +229,7 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .render
         .get(pid)
         .unwrap()
-        .inlay_hints
+        .inlay_hints()
         .read()
         .unwrap()
         .values()
@@ -273,7 +273,7 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
             .render
             .get(pid)
             .unwrap()
-            .inlay_hints
+            .inlay_hints()
             .read()
             .unwrap()
             .values()

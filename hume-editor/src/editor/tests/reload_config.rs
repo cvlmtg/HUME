@@ -25,7 +25,7 @@ use crate::editor::commands::open_pane;
 use crate::editor::keymap::{BindMode, Keymap, WalkResult};
 use crate::editor::lsp::LspState;
 use crate::editor::reload::ReloadSnapshot;
-use crate::ui::statusline::StatusElement;
+use crate::statusline::StatusElement;
 use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -266,7 +266,7 @@ fn reset_reverts_statusline_config_to_default() {
 
     ed.reset_config_state();
 
-    let default = crate::ui::statusline::StatusLineConfig::default();
+    let default = crate::statusline::StatusLineConfig::default();
     assert_eq!(ed.state.settings.statusline().left, default.left);
     assert_eq!(ed.state.settings.statusline().center, default.center);
     assert_eq!(ed.state.settings.statusline().right, default.right);
@@ -506,7 +506,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     )
     .unwrap();
     assert!(
-        ed.state.drawer_view.read().unwrap().is_some(),
+        ed.state.views.drawer().is_some(),
         "sanity: the view must be populated on open"
     );
 
@@ -522,7 +522,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     ed.prepare_frame(&mut ctx);
 
     assert!(
-        ed.state.drawer_view.read().unwrap().is_none(),
+        ed.state.views.drawer().is_none(),
         "the drawer view must self-heal on the very next frame after a \
          reset clears the model, not stay stale (and uncloseable — key \
          routing gates on state.config.drawer.is_some()) forever"
@@ -951,7 +951,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations =
-        crate::editor::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
+        hume_decorations::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -1051,7 +1051,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations =
-        crate::editor::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
+        hume_decorations::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

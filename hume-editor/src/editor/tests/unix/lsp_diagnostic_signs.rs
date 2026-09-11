@@ -79,7 +79,7 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
         .expect("one sign on the error line");
     assert_eq!(sign.scope, gutter_scope);
 
-    let highlights = ed.state.panes.render[pid].highlights.diagnostics.clone();
+    let highlights = ed.state.panes.render[pid].highlights().diagnostics.clone();
     let highlights = highlights.read().unwrap();
     assert!(
         highlights

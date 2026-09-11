@@ -3,14 +3,14 @@
 // from the attached LSP server. These tests cover the *data* flow — counts
 // and activity state landing correctly on the editor — not the rendered
 // glyphs/spacing, which are pinned as inline snapshots in
-// `ui::statusline::tests`.
+// `statusline::tests`.
 
 use std::path::Path;
 
 use super::*;
 use crate::editor::lsp::LspState;
 use crate::editor::lsp::introspect::LspActivity;
-use crate::ui::statusline::StatusElement;
+use crate::statusline::StatusElement;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::{ClientAction, LspClient, ServerState};
 use hume_lsp::inline::InlineLspBackend;
@@ -87,8 +87,8 @@ fn setup(content: &str, publishes: &[&[DiagFixture]]) -> DiagCtx {
 #[test]
 fn diagnostics_element_empty_with_no_diagnostics() {
     let c = setup("abcdefgh\n", &[]);
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) = crate::ui::statusline::render_element(
+    let colors = crate::statusline::colors::EditorColors::default();
+    let (text, _) = crate::statusline::render_element(
         &StatusElement::Diagnostics,
         &c.ed.statusline(),
         &colors,
@@ -117,8 +117,8 @@ fn diagnostics_element_displays_published_error_and_warning_counts() {
         "one severity-1 (error) and two severity-2 (warning) diagnostics were published"
     );
 
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) = crate::ui::statusline::render_element(
+    let colors = crate::statusline::colors::EditorColors::default();
+    let (text, _) = crate::statusline::render_element(
         &StatusElement::Diagnostics,
         &c.ed.statusline(),
         &colors,
@@ -205,8 +205,8 @@ fn starting_server_displays_a_loading_indicator() {
 
     assert!(matches!(ed.lsp_activity(bid), LspActivity::Starting));
 
-    let colors = crate::ui::theme::EditorColors::default();
-    let (text, _) = crate::ui::statusline::render_element(
+    let colors = crate::statusline::colors::EditorColors::default();
+    let (text, _) = crate::statusline::render_element(
         &StatusElement::Diagnostics,
         &ed.statusline(),
         &colors,

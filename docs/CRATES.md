@@ -7,10 +7,12 @@
 - hume-lsp
 - hume-ops
 - hume-editor
+- hume-ui
+- hume-decorations
 - hume-scripting
 - test-fixtures *(dev-only)*
 ## Description
-Rope-domain primitives for line counts, line ranges, grapheme boundaries, buffer char offsets, and rope-position math, shared by every crate that needs to answer "how many lines" or "which line is last." Distinguishes *ropey domain* (ropey's own line indexing, including the phantom trailing line the buffer invariant's structural `\n` creates) from *content domain* (that phantom line excluded) — its `line` module wraps the two in distinct types (`RopeyLine`/`ContentLine`/`RopeyLineCount`/`ContentLineCount`) so the compiler rejects mixing them, and its `lines` module's four line-count/range functions (built on those types) are the single source of truth for that math workspace-wide. Its `grapheme` module is the sole grapheme-cluster boundary walker (`next_grapheme_boundary`/`prev_grapheme_boundary`/`snap_to_cluster_start`) every motion and selection operation goes through, and its `cursor` module is the codepoint-level `CharCursor` scanner those boundary walkers (and ASCII-delimiter scans elsewhere) are built on. Its `position_encoding` module converts LSP wire positions (UTF-16 code units or bytes, by negotiated encoding) to and from `CharOffset`/line indices — the one place those wire units cross into rope-domain math. Its `offset` module wraps every buffer char position in `CharOffset` (private field, no arithmetic trait impls — a raw `+ 1`/`- 1` on a buffer position doesn't type-check) and names the two range conventions the codebase mixes as `ExclusiveRange<CharOffset>`/`InclusiveRange<CharOffset>`, the domain type behind the "Buffer char offsets" invariant in `CLAUDE.md`. Its `width` module (`tab_advance`, `grapheme_width`, `str_width`) is likewise the single source of truth for display-column math — depended on directly by every crate that measures it: `hume-ops` (editing-ops tab math), `hume-engine` (the renderer), `hume-grid` (`Canvas`'s frame-writing primitives), `hume-editor` (UI chrome), and `hume-scripting` (the `:plugin-status` table), so all five converge on one convention. Deliberately stays primitive `usize`/`u32` rather than domain-typed, since it's called with display-line-relative, buffer-line-relative, and terminal-cell-relative columns alike. Its `column` module is where those origins *are* domain-typed: `DisplayLineCol`/`BufferLineCol` (terminal cells, split by whether they're measured from a display line or a buffer line — the two coincide only without wrap), `CharCol`, `GraphemeCol`, and `ByteCol`, the domain types behind the "Line/buffer columns" invariant in `CLAUDE.md`.
+Rope-domain primitives: line counting and ranges, grapheme-cluster boundaries, buffer char offsets, display-column width, and LSP wire-position conversion. The single source of truth every other crate defers to for "how many lines" and "how wide is this text" — a pure math layer with no knowledge of buffers, selections, or rendering.
 
 # hume-grid
 ### Depends on
@@ -19,8 +21,9 @@ Rope-domain primitives for line counts, line ranges, grapheme boundaries, buffer
 - hume-platform
 - hume-engine
 - hume-editor
+- hume-ui
 ## Description
-The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Position` geometry that describes screen regions, the `ResolvedStyle`/`Rgb` style vocabulary the theme cascade composes, the double-buffer diff that turns two consecutive frames into the cells worth repainting, and `Canvas` — the frame's single text writer, the only thing built directly on `Grid`'s own cell-mutating primitives (`set_glyph`/`fill_span`, `pub(crate)` for exactly that reason). Pure data plus that one text-measuring dependency (`hume-rope`, for `Canvas`'s width model) — no terminal, no I/O, no other HUME crate — so every invariant it enforces is testable without a terminal; the half that talks to a terminal lives in `hume-platform`. A cell stores the display width its writer measured rather than re-deriving it, which is what keeps the diff and the emitter agreeing with `hume-rope`'s width model instead of carrying a second one — the same model `Canvas` measures with, since `hume-rope` is a real dependency of this crate.
+The frame's cell grid: `Grid`/`Cell` storage, screen-region geometry, the style vocabulary the theme cascade composes, and the double-buffer diff that finds what's worth repainting between two frames. Pure data — no terminal, no I/O — so every invariant it enforces is testable without one; the half that talks to a terminal lives in `hume-platform`.
 
 # hume-platform
 ### Depends on
@@ -30,7 +33,7 @@ The frame's cell grid: the `Cell`/`Grid` storage HUME draws into, the `Rect`/`Po
 - hume-scripting
 - hume-editor
 ## Description
-Platform abstraction layer — terminal control (raw-mode lifecycle, kitty keyboard protocol, synchronized output, via `termina`), frame presentation (the double-buffered `Screen`: front/back `hume-grid` grids, the gap policy the diff runs under, and the escape-sequence emitter that carries a composed frame to the terminal), process spawning with process-group/reap discipline, atomic file writes, and OS-specific config/data/runtime directory conventions. All `#[cfg(unix)]`/`#[cfg(windows)]` code is walled off inside this crate so every caller gets a uniform, platform-independent signature.
+Platform abstraction layer: terminal control, frame presentation, process spawning, atomic file writes, and OS-specific directory conventions. Walls off every platform-specific code path so callers get one uniform, platform-independent signature.
 
 # hume-editing
 ### Depends on
@@ -41,6 +44,7 @@ Platform abstraction layer — terminal control (raw-mode lifecycle, kitty keybo
 - hume-treesitter
 - test-fixtures
 - hume-editor
+- hume-decorations
 ## Description
 Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the cursor model (`Selection`/`SelectionSet`), edits as data (`ChangeSet`, invertible and composable), and the undo tree (`History`), plus grapheme-cluster boundary utilities. A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
 
@@ -52,8 +56,10 @@ Core text-editing model: the document (`BufferText`, a rope of Unicode scalar va
 - hume-scripting
 - hume-treesitter
 - hume-editor
+- hume-ui
+- hume-decorations
 ## Description
-Rendering pipeline and pane geometry — the layout tree (splits and panes), the frame-render pipeline that turns rope content plus provider data into `hume-grid` cells, decoration/statusline/tabline provider traits, and theming. Deliberately has no dependency on `hume-editing`: it renders from ropes and provider-supplied data and has no notion of selections, edits, or undo.
+Rendering pipeline and pane geometry: the split/pane layout tree, the frame-render pipeline, decoration/statusline/tabline provider traits, and theming. Deliberately has no dependency on `hume-editing`: it renders from ropes and provider-supplied data and has no notion of selections, edits, or undo. Also carries `lock::LockExt`, the shared `RwLock`-poisoning policy for the frame-local `Arc<RwLock<_>>` state `hume-ui` and `hume-decorations` each hand the render pipeline — a leaf-crate utility, not a rendering concern of its own, but both of that state's owners already depend on this crate.
 
 # hume-ops
 ### Depends on
@@ -73,7 +79,7 @@ Named commands — every edit and motion operation as a pure function of buffer 
 ### Used by
 - hume-editor
 ## Description
-LSP transport, JSON-RPC codec, and client lifecycle state. Speaks `BufferId`-free protocol types (`lsp_types`) plus opaque metadata the editor glue attaches; zero dependency on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`, following the `hume-treesitter` precedent so the crate stays acyclic and independently testable.
+LSP transport, JSON-RPC codec, and client lifecycle state. Speaks protocol types only, plus opaque metadata the editor glue attaches — zero dependency on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`, so it stays independently testable.
 
 # hume-scripting
 ### Depends on
@@ -83,7 +89,7 @@ LSP transport, JSON-RPC codec, and client lifecycle state. Speaks `BufferId`-fre
 ### Used by
 - hume-editor
 ## Description
-Steel (Scheme) scripting host — owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Runs entirely on the main event-loop thread, since Steel's `Engine` is `!Send`. Reaches editor state through `EditorHost` rather than depending on `hume-editor` directly; that inversion is what keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else.
+Steel (Scheme) scripting host: owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Reaches editor state only through `EditorHost`, never a direct dependency on `hume-editor` — the inversion that keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else.
 
 # hume-treesitter
 ### Depends on
@@ -94,7 +100,7 @@ Steel (Scheme) scripting host — owns the Steel `Engine`, the plugin loading/ac
 ### Used by
 - hume-editor
 ## Description
-Tree-sitter integration: language/grammar registry with dynamic loading, the background incremental-parse worker, syntax highlighting, embedded-language injection resolution, and structural text-object/navigation queries (function/class/argument/comment/unit-test/value spans). Editor-domain glue (hooks, lazy-plugin activation, the per-frame orchestration that ties this crate's parse backend to a live `Editor`) stays in `hume-editor`; this crate only knows about buffers, ropes, and grammars.
+Tree-sitter integration: language/grammar registry, incremental parsing, syntax highlighting, and structural text-object queries. Knows only about buffers, ropes, and grammars — editor-domain glue (hooks, lazy-plugin activation, per-frame orchestration) stays in `hume-editor`.
 
 # test-fixtures
 ### Depends on
@@ -105,7 +111,27 @@ Tree-sitter integration: language/grammar registry with dynamic loading, the bac
 - hume-treesitter *(dev-only)*
 - hume-editor *(dev-only)*
 ## Description
-Shared test infrastructure — the marker-annotated buffer/selection parsing DSL (`parse_state`/`serialize_state`/`assert_state!`) used by editing-command tests, plus grammar-fixture paths and require-fixtures gating shared by test suites that need real tree-sitter grammars. Dev-dependency only; never part of a production build.
+Shared test infrastructure: a marker-annotated buffer/selection parsing DSL for editing-command tests, plus grammar-fixture paths and gating for suites that need real tree-sitter grammars. Dev-dependency only; never part of a production build.
+
+# hume-ui
+### Depends on
+- hume-engine
+- hume-grid
+- hume-rope
+### Used by
+- hume-editor
+## Description
+The popup/menu/drawer/picker overlay widgets: geometry composition, shared box-drawing/scroll math, and `OverlayViews`, the single composition root for their shared view state. Every type here is a value object or a provider reading from a handle it was given — the raw overlay models live in `hume-editor` instead, decoration stores in the sibling `hume-decorations`.
+
+# hume-decorations
+### Depends on
+- hume-editing
+- hume-engine
+- hume-rope
+### Used by
+- hume-editor
+## Description
+Steel-writable decoration stores (the write half `set-signs!`/`set-inlay-hints!`/etc. populates) and the concrete `hume_engine::providers` implementations reading from them (gutter signs, inlay hints, virtual lines, line backgrounds, highlights) — the write and read halves of every decoration kind, kept together. Never depends on `hume-editor` or constructs an `Editor`; the per-frame sync from store to provider handle stays in `hume-editor`'s `decoration_providers.rs` instead, since that reads live editor state directly.
 
 # hume-editor
 ### Depends on
@@ -118,8 +144,14 @@ Shared test infrastructure — the marker-annotated buffer/selection parsing DSL
 - hume-ops
 - hume-treesitter
 - hume-lsp
+- hume-ui
+- hume-decorations
 - test-fixtures *(dev-only)*
 ### Used by
 - *(nothing — builds the `hume` binary)*
 ## Description
-Editor state, scripting glue, keymaps, UI widgets, and the `hume` binary itself — the crate that ties every other crate together into a running editor. Owns `EditorState`, the command dispatcher, keymap tries (Normal/Extend/Insert), minibuffer/completion/picker UI, and the `EditorHost` implementation that `hume-scripting`'s builtins call into.
+Editor state, scripting glue, keymaps, and the `hume` binary itself — the crate that ties every other crate together into a running editor. Owns `EditorState`, the command dispatcher, keymap tries (Normal/Extend/Insert), the statusline, and the `EditorHost` implementation that `hume-scripting`'s builtins call into. UI widgets live in `hume-ui`, the decoration stores they render from in `hume-decorations`; `pane_state::build_pane` is the one place that wires both into a pane's `ProviderSet`.
+
+# arch-lints
+## Description
+Architectural lints, enforced as `cargo test` integration tests that scan source files on disk for a pattern violating a rule — never by exercising the crate under scan's own code. Lives outside every product crate for exactly that reason: a lint that reads source as text has no business being *tests of* the crate it reads. One exception stays inside `hume-editor` instead (`editor/settings/manual_options_drift.rs`), since it calls that crate's own internals directly rather than scanning text.

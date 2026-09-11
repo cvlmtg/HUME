@@ -195,7 +195,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     ed.settle();
 
     let rows = {
-        let guard = ed.state.drawer_view.read().unwrap();
+        let guard = ed.state.views.drawer();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 2);

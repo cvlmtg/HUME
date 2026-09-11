@@ -5,6 +5,7 @@ pub mod display_lines;
 pub mod format;
 pub mod interval_sweep;
 pub mod layout;
+pub mod lock;
 pub mod pane;
 pub mod pipeline;
 pub mod providers;

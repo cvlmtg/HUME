@@ -524,7 +524,7 @@ impl Editor {
     /// `(errors, warnings)` for `bid` from the diagnostics store — the
     /// statusline's `Diagnostics` element reads this directly (never through
     /// Steel; `self.lsp` is private to `editor` and its descendants, so
-    /// callers outside it, like `ui::statusline`, go through this).
+    /// callers outside it, like `statusline`, go through this).
     #[cfg(test)]
     pub(in crate::editor) fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize) {
         introspect::diagnostic_counts(&self.lsp, bid)

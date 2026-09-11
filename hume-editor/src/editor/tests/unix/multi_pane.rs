@@ -279,7 +279,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     ed.prepare_frame(&mut ctx);
 
     let a_matches = ed.state.panes.render[pid_a]
-        .highlights
+        .highlights()
         .search
         .read()
         .unwrap()
@@ -290,7 +290,7 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     );
 
     let b_matches = ed.state.panes.render[pid_b]
-        .highlights
+        .highlights()
         .search
         .read()
         .unwrap()

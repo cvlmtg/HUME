@@ -12,7 +12,7 @@
 - [ ] Wrap indicator — configurable char prepended to continuation display lines in soft-wrap mode.
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
 - [ ] `:e <new-path>` touch-or-open — create empty buffer bound to path when file doesn't exist; first `:w` writes it.
-- [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ui::confirm`) already exists, built for the disk-change reload prompt.
+- [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ConfirmModel`, `hume-editor/src/editor/overlay_models.rs`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
 - [ ] File-size statusline element + cached size metadata.
 - [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.

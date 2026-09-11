@@ -258,6 +258,23 @@ pub enum EditorMode {
     Search,
 }
 
+/// Which end of an over-long picker row is dropped — `picker!`'s and
+/// `live-picker!`'s `#:truncate` symbol, decoded once at the builtin
+/// boundary (`hume-scripting`'s `builtins::ui`, which re-exports this type
+/// as `hume_scripting::host::TruncateEnd`) and carried as-is into the
+/// panel's paint-time clip (`hume-ui`'s `PickerViewState::truncate`). Lives
+/// here, not in `hume-scripting`, so `hume-ui` — which has no reason to
+/// depend on the scripting crate — can read it too. A path's distinguishing
+/// part (the basename) sits at the end, so cutting the head is the default;
+/// a row whose distinguishing part sits at the front (a grep match's file
+/// path, say, before the line preview) wants `'tail` instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TruncateEnd {
+    #[default]
+    Head,
+    Tail,
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------

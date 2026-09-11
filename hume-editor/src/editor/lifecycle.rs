@@ -1,6 +1,6 @@
 use hume_grid::{Position, Rect};
 use std::io;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
@@ -51,9 +51,9 @@ impl Editor {
         use super::clipboard;
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
+        use crate::editor::pane_state::build_pane;
         use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
         use crate::editor::settings::EditorSettings;
-        use crate::ui::build_pane;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::BufferText;
         use hume_engine::pipeline::LayoutTree;
@@ -80,40 +80,17 @@ impl Editor {
         }
 
         // ── Engine view setup ─────────────────────────────────────────────────
-        let theme = crate::ui::theme::build_default_theme();
+        let theme = crate::editor::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
 
-        // Shared completion-popup / hover-popup data, written once per frame
-        // and read by every pane's providers (see `build_pane`). Highlight
-        // data is per-pane (see `PaneHighlights`) — allocated fresh inside
-        // `build_pane`.
-        let minibuf_completion_view: Arc<
-            RwLock<Option<crate::ui::completion_overlay::MinibufCompletionView>>,
-        > = Arc::new(RwLock::new(None));
-        let popup_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
-            Arc::new(RwLock::new(None));
-        let menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
-            Arc::new(RwLock::new(None));
-        let completion_menu_view: Arc<RwLock<Option<crate::ui::popup::PopupState>>> =
-            Arc::new(RwLock::new(None));
-        let picker_view: Arc<RwLock<Option<crate::ui::picker_panel::PickerViewState>>> =
-            Arc::new(RwLock::new(None));
-        // The drawer and the docked popup are chrome (like the tab
-        // bar/statusline), not per-pane — one instance of each, registered
+        // Every overlay view shared between the per-frame write side and the
+        // engine's render side — see `hume_ui::OverlayViews`'s own doc. The
+        // drawer and the docked popup are chrome (like the tab bar/
+        // statusline), not per-pane — one instance of each, registered
         // directly on `engine_view.bottom_bands` rather than through
         // `build_pane`. Only one is ever non-empty at a time in practice.
-        let drawer_view: Arc<RwLock<Option<crate::ui::drawer::DrawerViewState>>> =
-            Arc::new(RwLock::new(None));
-        let popup_band_view: Arc<RwLock<Option<crate::ui::popup::PopupBandState>>> =
-            Arc::new(RwLock::new(None));
-        engine_view.bottom_bands = vec![
-            Box::new(crate::ui::drawer::DrawerWidget {
-                data: Arc::clone(&drawer_view),
-            }),
-            Box::new(crate::ui::popup::PopupBandWidget {
-                data: Arc::clone(&popup_band_view),
-            }),
-        ];
+        let views = hume_ui::OverlayViews::default();
+        engine_view.bottom_bands = views.bottom_bands();
 
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
@@ -122,15 +99,7 @@ impl Editor {
 
         // Build the initial pane. Every later split-created pane goes through
         // the same `build_pane` (see `commands::open_pane`).
-        let (pane, render_handles) = build_pane(
-            &mut engine_view.registry,
-            &minibuf_completion_view,
-            &popup_view,
-            &menu_view,
-            &completion_menu_view,
-            &picker_view,
-            buffer_id,
-        );
+        let (pane, render_handles) = build_pane(&mut engine_view.registry, &views, buffer_id);
         let pane_id = engine_view.panes.insert(pane);
         engine_view.layout = LayoutTree::Leaf(pane_id);
 
@@ -170,13 +139,7 @@ impl Editor {
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
                 cwd: startup_cwd,
-                completion_menu_view,
-                minibuf_completion_view,
-                popup_view,
-                popup_band_view,
-                menu_view,
-                drawer_view,
-                picker_view,
+                views,
                 wake: Arc::clone(&wake),
                 ..Default::default()
             },

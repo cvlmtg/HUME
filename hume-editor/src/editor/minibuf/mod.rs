@@ -1,6 +1,6 @@
 pub(in crate::editor) mod history;
 
-use crate::ui::width::text_width;
+use hume_ui::width::text_width;
 
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
 

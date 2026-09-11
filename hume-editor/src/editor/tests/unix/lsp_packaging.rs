@@ -107,12 +107,7 @@ fn setup_declared(
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state
-        .popup_view
-        .read()
-        .unwrap()
-        .as_ref()
-        .map(|s| (*s.lines).clone())
+    ed.state.views.popup().as_ref().map(|s| (*s.lines).clone())
 }
 
 /// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has
@@ -169,7 +164,7 @@ fn first_command_dispatch_activates_the_declared_plugin_and_runs_it() {
     ed.drain_lsp();
     ed.settle();
 
-    // `show-popup!` only populates `popup_view` once a frame resolves its
+    // `show-popup!` only populates the popup view once a frame resolves its
     // anchor (`lsp_popup.rs`'s `show_popup_populates_the_view_after_a_frame`).
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(80, 25);

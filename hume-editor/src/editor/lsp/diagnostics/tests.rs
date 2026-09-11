@@ -311,7 +311,7 @@ fn remap_deletion_covering_the_range_drops_it() {
 
 /// `DiagnosticsStore::remap_through` now goes through the same
 /// `SourceStore::remap_ranges` `ExtraHighlightEntry` uses
-/// (`decorations.rs`) — this pins that shared policy for the diagnostics
+/// (`hume-decorations`'s `decorations.rs`) — this pins that shared policy for the diagnostics
 /// instantiation: a diagnostic a covering deletion collapses to zero width
 /// is dropped, not kept as a zero-width entry.
 #[test]

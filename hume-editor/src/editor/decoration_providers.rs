@@ -3,13 +3,10 @@
 //! shared `Arc` buffers the engine's providers read during rendering. Driven
 //! by `prepare_frame`'s step 3/5.
 
-use std::sync::Arc;
-
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use crate::lock_ext::LockExt;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
@@ -89,13 +86,13 @@ impl Editor {
             .collect()
     }
 
-    /// Write per-frame highlight data to every pane's own `Arc<RwLock<...>>`
-    /// buffers, read by that pane's `ScopedHighlighter` providers.
+    /// Write per-frame highlight data to every pane's own decoration
+    /// handles, read by that pane's `ScopedHighlighter` providers.
     ///
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode. Each pane's search
     /// highlights are computed from **that pane's own buffer and viewport** —
-    /// panes never share highlight data (see [`crate::ui::highlight_providers::PaneHighlights`]),
+    /// panes never share highlight data (see [`hume_decorations::highlight_providers::PaneHighlights`]),
     /// so a pane viewing a different buffer, or the same buffer scrolled
     /// elsewhere, never inherits another pane's matches.
     pub(super) fn update_highlight_providers(&mut self, panes: &[DecoratedPane]) {
@@ -107,22 +104,17 @@ impl Editor {
         // ── Search match highlights — one pane at a time ─────────────────────
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            // Clone the Arc (not the data) so the write lock and the buffer
-            // refresh below don't hold a borrow of `self.state.panes`.
-            let Some(search_arc) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.highlights.search))
-            else {
+            // No render entry: this pane has no `ScopedHighlighter`/`SignSource`
+            // providers to feed — skip the computation, not just the write.
+            if !self.state.panes.render.contains_key(pid) {
                 continue;
-            };
-            let mut data = search_arc.write_or_panic();
-            data.clear();
+            }
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
             if in_insert {
+                if let Some(r) = self.state.panes.render.get(pid) {
+                    r.set_search(Vec::new());
+                }
                 continue;
             }
 
@@ -141,6 +133,7 @@ impl Editor {
             let top_char = text.line_to_char(visible.start);
             let matches = &buf.search_matches.matches;
             let first = matches.partition_point(|span| span.start < top_char);
+            let mut spans = Vec::new();
             for &span in &matches[first..] {
                 let (start, end_incl) = (span.start, span.end);
                 let start_line = text.char_to_line(start);
@@ -149,7 +142,10 @@ impl Editor {
                 }
                 // end_incl is inclusive char offset; shift(1) makes it exclusive.
                 let end_char = end_incl.shift(1).min(text.end());
-                push_match_highlight_lines(text, start, end_char, search_scope, &mut data);
+                push_match_highlight_lines(text, start, end_char, search_scope, &mut spans);
+            }
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_search(spans);
             }
         }
 
@@ -164,33 +160,31 @@ impl Editor {
         // pane last had focus, so moving focus away must blank the old one.
         for p in panes {
             if let Some(r) = self.state.panes.render.get(p.pid) {
-                r.highlights.bracket.write_or_panic().clear();
+                r.set_bracket(None);
             }
         }
-        if !in_insert {
-            let focused = self.state.focused_pane_id;
-            if let Some(bracket_arc) = self
+        if !in_insert
+            && self
                 .state
                 .panes
                 .render
-                .get(focused)
-                .map(|r| Arc::clone(&r.highlights.bracket))
-            {
-                let text = self.doc().text();
-                let primary = self.state.panes.state[focused][self.focused_buffer_id()]
-                    .selections
-                    .primary();
-                if let Some(match_pos) = matching_bracket(text, primary) {
-                    let (line, byte) = char_to_line_byte(text, match_pos);
-                    // Single-char match: byte_end = byte + utf8 length of the char.
-                    let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                    let byte_end = byte.advance(ch_len);
-                    // Trusted narrow: a bracket match is always a real
-                    // selection position, never the buffer's phantom line.
-                    let line = hume_rope::line::ContentLine::new(line.index());
-                    bracket_arc
-                        .write_or_panic()
-                        .push((line, byte, byte_end, bracket_scope));
+                .contains_key(self.state.focused_pane_id)
+        {
+            let focused = self.state.focused_pane_id;
+            let text = self.doc().text();
+            let primary = self.state.panes.state[focused][self.focused_buffer_id()]
+                .selections
+                .primary();
+            if let Some(match_pos) = matching_bracket(text, primary) {
+                let (line, byte) = char_to_line_byte(text, match_pos);
+                // Single-char match: byte_end = byte + utf8 length of the char.
+                let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
+                let byte_end = byte.advance(ch_len);
+                // Trusted narrow: a bracket match is always a real
+                // selection position, never the buffer's phantom line.
+                let line = hume_rope::line::ContentLine::new(line.index());
+                if let Some(r) = self.state.panes.render.get(focused) {
+                    r.set_bracket(Some((line, byte, byte_end, bracket_scope)));
                 }
             }
         }
@@ -217,21 +211,15 @@ impl Editor {
             .map(|name| self.view.registry.intern(name));
             for p in panes {
                 let (pid, bid) = (p.pid, p.bid);
-                let Some((diag_arc, extra_arc)) = self.state.panes.render.get(pid).map(|r| {
-                    (
-                        Arc::clone(&r.highlights.diagnostics),
-                        Arc::clone(&r.highlights.extra),
-                    )
-                }) else {
+                if !self.state.panes.render.contains_key(pid) {
                     continue;
-                };
-
+                }
                 let visible = p.chars;
 
                 let buf = self.state.buffers.get(bid);
                 let text = buf.text();
 
-                {
+                let diag_spans = {
                     let mut raw = Vec::new();
                     for d in self.lsp.diagnostics_for_range(bid, visible, floor) {
                         let start = d.start.max(visible.start);
@@ -247,12 +235,10 @@ impl Editor {
                             &mut raw,
                         );
                     }
-                    let mut data = diag_arc.write_or_panic();
-                    data.clear();
-                    flatten_priority_overlaps(&mut raw, &mut data);
-                }
+                    flatten_priority_overlaps(&mut raw)
+                };
 
-                {
+                let extra_spans = {
                     let mut raw = Vec::new();
                     for e in self
                         .state
@@ -274,9 +260,12 @@ impl Editor {
                         // source happened to call `set-extra-highlights!` first.
                         push_priority_highlight_lines(text, start, end, 0, e.scope, &mut raw);
                     }
-                    let mut data = extra_arc.write_or_panic();
-                    data.clear();
-                    flatten_priority_overlaps(&mut raw, &mut data);
+                    flatten_priority_overlaps(&mut raw)
+                };
+
+                if let Some(r) = self.state.panes.render.get(pid) {
+                    r.set_diagnostics(diag_spans);
+                    r.set_extra(extra_spans);
                 }
             }
         }
@@ -284,29 +273,21 @@ impl Editor {
 
     /// Write per-frame gutter sign data (`set-signs!`, all sources
     /// pre-merged at write time — diagnostics included, via `core:lsp`'s own
-    /// `"lsp-diagnostics"` source) to every pane's own
-    /// `Arc<RwLock<FxHashMap<line, Vec<Sign>>>>` buffer, read by that pane's
-    /// `SharedSignSource`. Stays visible in Insert mode — same reasoning as
-    /// [`Self::update_highlight_providers`]'s diagnostics section. Called
-    /// from `prepare_frame`'s step 3, against the pre-scroll snapshot (see
-    /// [`Self::decorated_panes`]) because the sign column's width feeds
-    /// `Pane::content_width`, which decides the wrap column the scroll
-    /// step's `DisplayLineMap` resolves against.
+    /// `"lsp-diagnostics"` source) to every pane's own decoration handle,
+    /// read by that pane's `SharedSignSource`. Stays visible in Insert mode —
+    /// same reasoning as [`Self::update_highlight_providers`]'s diagnostics
+    /// section. Called from `prepare_frame`'s step 3, against the pre-scroll
+    /// snapshot (see [`Self::decorated_panes`]) because the sign column's
+    /// width feeds `Pane::content_width`, which decides the wrap column the
+    /// scroll step's `DisplayLineMap` resolves against.
     pub(super) fn update_sign_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::builtins::sign_column::{Sign, SignColumn};
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            let Some(sign_map) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.signs))
-            else {
+            if !self.state.panes.render.contains_key(pid) {
                 continue;
-            };
-
+            }
             let visible = p.chars;
             let visible_lines = p.lines;
 
@@ -361,7 +342,7 @@ impl Editor {
                     entries.insert(
                         i,
                         Sign {
-                            text: Arc::clone(&e.text),
+                            text: std::sync::Arc::clone(&e.text),
                             scope: e.scope,
                             slot,
                         },
@@ -374,22 +355,23 @@ impl Editor {
             // `auto` collapses to zero when no signs are visible in the current
             // viewport (`by_line` above only holds visible-line entries — a
             // sign elsewhere in the buffer, scrolled out of view, does not
-            // keep the column open). Checked before the move below — `by_line`
-            // already has the answer, no need to re-lock `sign_map` to ask it.
+            // keep the column open).
             let has_signs = !by_line.is_empty();
-            *sign_map.write_or_panic() = by_line;
-
             let width = match signcolumn.mode {
                 crate::editor::settings::SignColumnMode::Auto if !has_signs => 0,
                 _ => SignColumn::width_for_slots(slots),
             };
+
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_signs(by_line);
+            }
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
     }
 
     /// Sync per-pane inlay-hint decorations from the
-    /// `decorations.inlay_hints` store to each pane's `InlineDecorationProvider`
-    /// Arc. Not gated on `lsp.inlay-hints` here: the store is per-source
+    /// `decorations.inlay_hints` store to each pane's inlay-hint decoration
+    /// handle. Not gated on `lsp.inlay-hints` here: the store is per-source
     /// (`set-inlay-hints!` takes a `source` arg precisely so unrelated
     /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
     /// plugin's own setting — it owns clearing *its* source on toggle-off,
@@ -403,15 +385,9 @@ impl Editor {
         let scope = self.view.registry.intern("ui.virtual.inlay-hint");
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            let Some(map) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.inlay_hints))
-            else {
+            if !self.state.panes.render.contains_key(pid) {
                 continue;
-            };
+            }
             let visible = p.chars;
             let text = self.state.buffers.get(bid).text();
 
@@ -448,37 +424,33 @@ impl Editor {
                 });
             }
 
-            *map.write_or_panic() = by_line;
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_inlay_hints(by_line);
+            }
         }
     }
 
     /// Sync per-pane EOL-text decorations from the `decorations.eol_text`
-    /// store to each pane's second `InlineDecorationProvider` Arc
-    /// (`PaneRenderHandles::eol_text`). Unconditional per-frame rebuild, same
-    /// as `update_inlay_hint_providers` — cheap enough that, unlike
-    /// `virtual_lines`, it doesn't need a dirty-tracking generation gate to
-    /// skip needless work; filtered to the viewport before any per-entry
-    /// clone or scope resolution runs, same as the sign/line-bg bridges
-    /// above, so the per-frame cost is one entry per *visible* EOL line, not
-    /// per EOL line in the whole buffer. Both write into a pane's
-    /// `inline_decorations` providers, which `DisplayLineMap::ensure_formatted` reads, so
-    /// this feeds wrap display-line counts and columns exactly like inlay hints do —
-    /// called from `prepare_frame`'s step 3, against the pre-scroll snapshot
-    /// (see [`Self::decorated_panes`]).
+    /// store to each pane's second inline-decoration handle
+    /// (`PaneDecorationHandles::set_eol_text`). Unconditional per-frame
+    /// rebuild, same as `update_inlay_hint_providers` — cheap enough that,
+    /// unlike `virtual_lines`, it doesn't need a dirty-tracking generation
+    /// gate to skip needless work; filtered to the viewport before any
+    /// per-entry clone or scope resolution runs, same as the sign/line-bg
+    /// bridges above, so the per-frame cost is one entry per *visible* EOL
+    /// line, not per EOL line in the whole buffer. Both write into a pane's
+    /// inline-decoration providers, which `DisplayLineMap::ensure_formatted`
+    /// reads, so this feeds wrap display-line counts and columns exactly
+    /// like inlay hints do — called from `prepare_frame`'s step 3, against
+    /// the pre-scroll snapshot (see [`Self::decorated_panes`]).
     pub(super) fn update_eol_text_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            let Some(map) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.eol_text))
-            else {
+            if !self.state.panes.render.contains_key(pid) {
                 continue;
-            };
+            }
 
             // Each entry's `pos` is its line's line-start char offset
             // (`EolTextEntry::pos`); resolved to its *current* line here.
@@ -516,26 +488,28 @@ impl Editor {
                     .map(|(line, insert)| (line, vec![insert]))
                     .collect();
 
-            *map.write_or_panic() = by_line;
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_eol_text(by_line);
+            }
         }
     }
 
     /// Sync per-pane virtual-line decorations from the
-    /// `decorations.virtual_lines` store to each pane's `PaneVirtualLines`
-    /// Arc — a `DisplayLineMap::block` provider, so this feeds row *counts* the same
-    /// way inlay hints/EOL text feed wrap columns. Unlike those two, this
-    /// only rebuilds when `decorations.generation(bid)` changed since the
-    /// pane's last sync, or the pane's buffer changed — a whole-buffer
-    /// rebuild (not viewport-filtered, since `DisplayLineMap::block` needs every
-    /// anchor regardless of scroll position) with a `text`/`segments` clone
-    /// per entry is costlier to redo unconditionally every frame than the
-    /// other bridges' viewport-filtered passes. The stamp is per-buffer (not
-    /// a single store-wide counter): an edit only bumps the buffer it
-    /// edited, so typing in one buffer no longer forces every pane on every
-    /// *other* buffer to resync too. Called from `prepare_frame`'s step 3 —
-    /// unlike the rest of that step, has no viewport dependency (so which
-    /// [`Self::decorated_panes`] snapshot it reads is immaterial) and takes
-    /// only `pid`/`bid` from it. Two sources
+    /// `decorations.virtual_lines` store to each pane's virtual-line
+    /// decoration handle — a `DisplayLineMap::block` provider, so this feeds
+    /// row *counts* the same way inlay hints/EOL text feed wrap columns.
+    /// Unlike those two, this only rebuilds when `decorations.generation(bid)`
+    /// changed since the pane's last sync, or the pane's buffer changed — a
+    /// whole-buffer rebuild (not viewport-filtered, since `DisplayLineMap::block`
+    /// needs every anchor regardless of scroll position) with a
+    /// `text`/`segments` clone per entry is costlier to redo unconditionally
+    /// every frame than the other bridges' viewport-filtered passes. The
+    /// stamp is per-buffer (not a single store-wide counter): an edit only
+    /// bumps the buffer it edited, so typing in one buffer no longer forces
+    /// every pane on every *other* buffer to resync too. Called from
+    /// `prepare_frame`'s step 3 — unlike the rest of that step, has no
+    /// viewport dependency (so which [`Self::decorated_panes`] snapshot it
+    /// reads is immaterial) and takes only `pid`/`bid` from it. Two sources
     /// anchored to the same line stack rather than collapse (unlike the
     /// four line-anchored kinds `last_writer_per_line` folds) —
     /// `virtual_lines_for_buffer` (`SourceStore::for_buffer`) yields sources
@@ -557,19 +531,16 @@ impl Editor {
 
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
+            // No render entry: nothing to sync into, and no stamp to write —
+            // a stamp here would claim data reached a handle that doesn't
+            // exist, suppressing the real sync once one is added later.
+            if !self.state.panes.render.contains_key(pid) {
+                continue;
+            }
             let current_gen = self.state.config.decorations.generation(bid);
             if self.virtual_lines_synced.get(&pid) == Some(&(bid, current_gen)) {
                 continue;
             }
-            let Some(map) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.virtual_lines))
-            else {
-                continue;
-            };
 
             let text = self.state.buffers.get(bid).text();
             let mut by_line: rustc_hash::FxHashMap<hume_rope::line::ContentLine, Vec<VirtualLine>> =
@@ -601,13 +572,15 @@ impl Editor {
                 });
             }
 
-            *map.write_or_panic() = by_line;
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_virtual_lines(by_line);
+            }
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
         }
     }
 
     /// Write per-frame line-background data to every pane's own
-    /// `Arc<RwLock<FxHashMap<ContentLine, ScopeId>>>` buffer, read by that pane's
+    /// line-background decoration handle, read by that pane's
     /// `PaneLineBackgrounds` provider. Rebuilds unconditionally each frame —
     /// unlike `virtual_lines`, the payload is filtered to the viewport
     /// before any per-entry clone or scope resolution runs (mirrors
@@ -617,15 +590,9 @@ impl Editor {
     pub(super) fn update_line_bg_providers(&mut self, panes: &[DecoratedPane]) {
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
-            let Some(map) = self
-                .state
-                .panes
-                .render
-                .get(pid)
-                .map(|r| Arc::clone(&r.line_backgrounds))
-            else {
+            if !self.state.panes.render.contains_key(pid) {
                 continue;
-            };
+            }
 
             // Like the sign path above (`update_sign_providers`): a tinted
             // line scrolled out of view costs nothing but the filter check.
@@ -648,7 +615,9 @@ impl Editor {
             .collect();
             let by_line = last_writer_per_line(per_line);
 
-            *map.write_or_panic() = by_line;
+            if let Some(r) = self.state.panes.render.get(pid) {
+                r.set_line_backgrounds(by_line);
+            }
         }
     }
 }
@@ -791,6 +760,11 @@ fn push_priority_highlight_lines(
 /// (`raw`'s push order comes from `SourceStore::for_buffer`'s ascending
 /// source-name order). `raw` need not be pre-sorted; drained (left empty)
 /// on return.
+///
+/// Returns the flattened spans rather than writing them through an out-param
+/// — the caller assigns the result straight into its target `Vec` (a brief
+/// write-lock for the assignment alone) instead of holding a write guard
+/// across the whole sweep.
 fn flatten_priority_overlaps(
     raw: &mut Vec<(
         hume_rope::line::ContentLine,
@@ -799,18 +773,18 @@ fn flatten_priority_overlaps(
         u8,
         hume_engine::types::ScopeId,
     )>,
-    out: &mut Vec<(
-        hume_rope::line::ContentLine,
-        ByteCol,
-        ByteCol,
-        hume_engine::types::ScopeId,
-    )>,
-) {
+) -> Vec<(
+    hume_rope::line::ContentLine,
+    ByteCol,
+    ByteCol,
+    hume_engine::types::ScopeId,
+)> {
     use hume_engine::interval_sweep::{TieBreak, flatten_overlapping_spans};
     use std::cmp::Reverse;
 
+    let mut out = Vec::new();
     if raw.is_empty() {
-        return;
+        return out;
     }
     raw.sort_by_key(|&(line, start, _, _, _)| (line, start));
 
@@ -843,6 +817,7 @@ fn flatten_priority_overlaps(
         i = j;
     }
     raw.clear();
+    out
 }
 
 #[cfg(test)]

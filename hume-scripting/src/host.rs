@@ -941,20 +941,11 @@ pub trait DiffHost {
     fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
 
-/// Which end of an over-long picker row is dropped — `picker!`'s and
-/// `live-picker!`'s `#:truncate` symbol, decoded once at the builtin
-/// boundary (`builtins::ui`) and carried as-is into the panel's paint-time
-/// clip (`hume-editor`'s `PickerViewState::truncate`). A path's
-/// distinguishing part (the basename) sits at the end, so cutting the head
-/// is the default; a row whose distinguishing part sits at the front (a
-/// grep match's file path, say, before the line preview) wants `'tail`
-/// instead.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TruncateEnd {
-    #[default]
-    Head,
-    Tail,
-}
+/// `hume-engine` owns this type — `hume-ui`'s picker panel needs it too,
+/// and has no other reason to depend on the scripting crate. Re-exported
+/// here so `builtins::ui`'s `#:truncate` decode and every `host.rs` caller
+/// keep spelling it `hume_scripting::host::TruncateEnd`.
+pub use hume_engine::types::TruncateEnd;
 
 /// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
 /// the Scheme call's positional arguments (`items`, `on_select`) directly;
