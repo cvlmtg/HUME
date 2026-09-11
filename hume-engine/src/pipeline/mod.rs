@@ -20,7 +20,7 @@ use layout::{
     ARM_E, ARM_N, ARM_S, ARM_W, collect_seam_arms, focused_pane_corners, focused_seam_segment,
     junction_glyph,
 };
-pub use layout::{Direction, LayoutTree, Seam};
+pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Seam};
 use pane_render::render_pane;
 
 new_key_type! {

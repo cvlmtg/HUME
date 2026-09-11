@@ -34,6 +34,29 @@ pub struct Seam {
     pub direction: Direction,
 }
 
+/// Proof that a `PaneId` has been detached from every `LayoutTree` that
+/// could reach it — minted only by [`LayoutTree::remove_leaf`] and
+/// [`LayoutTree::into_detached`], both in this module, and consumed by
+/// `hume-editor`'s `drop_pane_state` to free the pane's state. Not
+/// `Clone`/`Copy`: a duplicable token would let the same pane be freed
+/// twice.
+#[must_use = "a detached pane's per-pane state must be dropped"]
+#[derive(Debug)]
+pub struct DetachedPane(PaneId);
+
+impl DetachedPane {
+    pub fn pane_id(&self) -> PaneId {
+        self.0
+    }
+}
+
+/// What [`LayoutTree::remove_leaf`] yields: the detached pane, plus the
+/// leftmost leaf of the promoted sibling subtree to focus next.
+pub struct Pruned {
+    pub detached: DetachedPane,
+    pub survivor: PaneId,
+}
+
 /// Recursive layout tree. Leaves reference panes; splits partition space.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayoutTree {
@@ -212,11 +235,79 @@ impl LayoutTree {
         }
     }
 
+    /// Whether `target` is reachable as a leaf in this subtree.
+    pub fn contains_leaf(&self, target: PaneId) -> bool {
+        match self {
+            LayoutTree::Leaf(id) => *id == target,
+            LayoutTree::Split { children, .. } => {
+                children.0.contains_leaf(target) || children.1.contains_leaf(target)
+            }
+        }
+    }
+
+    /// Consume the whole tree, detaching every pane it reaches — one token
+    /// per leaf. Used by tab-close: discarding a tab's tree and freeing all
+    /// of its panes become the same operation, so there is no window where
+    /// the tree is gone but a pane it referenced still lives in the pool
+    /// (or vice versa).
+    pub fn into_detached(self) -> Vec<DetachedPane> {
+        let mut out = Vec::new();
+        self.collect_detached(&mut out);
+        out
+    }
+
+    fn collect_detached(self, out: &mut Vec<DetachedPane>) {
+        match self {
+            LayoutTree::Leaf(id) => out.push(DetachedPane(id)),
+            LayoutTree::Split { children, .. } => {
+                let (a, b) = *children;
+                a.collect_detached(out);
+                b.collect_detached(out);
+            }
+        }
+    }
+
+    /// Whether this subtree is a single, unsplit pane. The count callers need
+    /// when deciding whether a pane can be closed: `EngineView::panes` is a
+    /// global pool shared by every tab, so `panes.len() > 1` stopped meaning
+    /// "this window has another pane to fall back to" once tab pages landed —
+    /// this reads the one tree that's still scoped to the active tab.
+    pub fn is_single_pane(&self) -> bool {
+        matches!(self, LayoutTree::Leaf(_))
+    }
+
     /// Leftmost leaf, found by descending into the first child at each split.
     fn first_leaf(&self) -> PaneId {
         match self {
             LayoutTree::Leaf(id) => *id,
             LayoutTree::Split { children, .. } => children.0.first_leaf(),
+        }
+    }
+
+    /// Every pane id reachable in this subtree. No defined order beyond a
+    /// depth-first walk — callers that care about a specific pane (e.g. the
+    /// first one) should use [`Self::first_leaf`] instead of reading the
+    /// first element.
+    ///
+    /// Used by tab-close to find every pane owned by the tab being closed,
+    /// since panes are never shared across tabs (each tab's `LayoutTree`
+    /// references a disjoint set of leaves) but all live in one global pool
+    /// regardless of which tab is active. See
+    /// [`EngineView::active_pane_ids`](super::EngineView::active_pane_ids)
+    /// for the same walk over the *live* tab's tree.
+    pub fn leaves(&self) -> Vec<PaneId> {
+        let mut out = Vec::new();
+        self.collect_leaves(&mut out);
+        out
+    }
+
+    fn collect_leaves(&self, out: &mut Vec<PaneId>) {
+        match self {
+            LayoutTree::Leaf(id) => out.push(*id),
+            LayoutTree::Split { children, .. } => {
+                children.0.collect_leaves(out);
+                children.1.collect_leaves(out);
+            }
         }
     }
 
@@ -301,15 +392,18 @@ impl LayoutTree {
 
     /// Prune `Leaf(target)`, collapsing its parent `Split` onto the sibling,
     /// then re-derive every split ratio so the survivors stay equal-sized
-    /// (see `equalize`). Returns the leftmost leaf of the promoted
-    /// sibling (the new focus target), or `None` if `target` wasn't found or
-    /// `self` is the sole leaf.
-    pub fn remove_leaf(&mut self, target: PaneId) -> Option<PaneId> {
+    /// (see `equalize`). Returns the detached pane plus the leftmost leaf of
+    /// the promoted sibling (the new focus target), or `None` if `target`
+    /// wasn't found or `self` is the sole leaf.
+    pub fn remove_leaf(&mut self, target: PaneId) -> Option<Pruned> {
         let survivor = self.prune_leaf(target);
         if survivor.is_some() {
             self.equalize();
         }
-        survivor
+        survivor.map(|survivor| Pruned {
+            detached: DetachedPane(target),
+            survivor,
+        })
     }
 
     /// The recursive body of [`Self::remove_leaf`], without the equalize pass

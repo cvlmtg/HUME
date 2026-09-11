@@ -1,7 +1,7 @@
 //! Pane creation and splitting: the single source of truth for seeding and
 //! tearing down a pane's per-pane state maps.
 
-use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId};
+use hume_engine::pipeline::{BufferId, Direction, EngineView, PaneId, Pruned};
 use slotmap::SecondaryMap;
 
 use crate::editor::error::CommandError;
@@ -59,12 +59,12 @@ fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pid: PaneId) 
 /// before calling. `remove_leaf` returning `None` (sole leaf) is a bug here.
 pub(super) fn close_focused_pane(state: &mut EditorState, view: &mut EngineView) {
     let old = state.focused_pane_id;
-    let survivor = view
+    let Pruned { detached, survivor } = view
         .layout
         .remove_leaf(old)
         .expect("close_focused_pane requires more than one pane");
     state.focused_pane_id = survivor;
-    drop_pane_state(state, view, old);
+    drop_pane_state(state, view, detached.pane_id());
 }
 
 /// Status message reported when a split is rejected for being too small.

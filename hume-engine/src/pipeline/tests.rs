@@ -1319,7 +1319,9 @@ fn remove_leaf_collapses_parent() {
         ratio: 0.5,
         children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
     };
-    assert_eq!(tree.remove_leaf(a), Some(b));
+    let Pruned { detached, survivor } = tree.remove_leaf(a).unwrap();
+    assert_eq!(detached.pane_id(), a);
+    assert_eq!(survivor, b);
     assert_eq!(tree, LayoutTree::Leaf(b));
 }
 
@@ -1338,7 +1340,9 @@ fn remove_leaf_promotes_subtree_and_returns_its_leftmost_leaf() {
             },
         )),
     };
-    assert_eq!(tree.remove_leaf(a), Some(b));
+    let Pruned { detached, survivor } = tree.remove_leaf(a).unwrap();
+    assert_eq!(detached.pane_id(), a);
+    assert_eq!(survivor, b);
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1353,7 +1357,7 @@ fn remove_leaf_promotes_subtree_and_returns_its_leftmost_leaf() {
 fn remove_leaf_sole_leaf_returns_none() {
     let [a] = pane_ids();
     let mut tree = LayoutTree::Leaf(a);
-    assert_eq!(tree.remove_leaf(a), None);
+    assert!(tree.remove_leaf(a).is_none());
     assert_eq!(tree, LayoutTree::Leaf(a));
 }
 
@@ -1366,7 +1370,7 @@ fn remove_leaf_missing_target_is_noop() {
         children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
     };
     let before = tree.clone();
-    assert_eq!(tree.remove_leaf(missing), None);
+    assert!(tree.remove_leaf(missing).is_none());
     assert_eq!(tree, before);
 }
 
@@ -1377,7 +1381,9 @@ fn remove_leaf_equalizes_survivors() {
     assert!(tree.split_leaf(a, b, Direction::Horizontal));
     assert!(tree.split_leaf(a, c, Direction::Horizontal));
 
-    assert_eq!(tree.remove_leaf(c), Some(a));
+    let Pruned { detached, survivor } = tree.remove_leaf(c).unwrap();
+    assert_eq!(detached.pane_id(), c);
+    assert_eq!(survivor, a);
     assert_eq!(
         tree,
         LayoutTree::Split {
@@ -1386,6 +1392,89 @@ fn remove_leaf_equalizes_survivors() {
             children: Box::new((LayoutTree::Leaf(a), LayoutTree::Leaf(b))),
         }
     );
+}
+
+/// Fail oracle: change `contains_leaf` to `matches!(self, LayoutTree::Leaf(id)
+/// if *id == target)` (dropping the recursive `Split` arm) — the nested-tree
+/// assertion below must start failing.
+#[test]
+fn contains_leaf_finds_a_leaf_at_any_depth() {
+    let [a, b, c, missing] = pane_ids();
+    let tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+            },
+        )),
+    };
+    assert!(tree.contains_leaf(a));
+    assert!(tree.contains_leaf(c));
+    assert!(!tree.contains_leaf(missing));
+}
+
+/// Fail oracle: change `into_detached` to only push the root's own id
+/// (`out.push(DetachedPane(...))` without recursing into `Split`) — the
+/// length assertion below must start failing.
+#[test]
+fn into_detached_yields_one_token_per_leaf() {
+    let [a, b, c] = pane_ids();
+    let tree = LayoutTree::Split {
+        direction: Direction::Horizontal,
+        ratio: 0.5,
+        children: Box::new((
+            LayoutTree::Leaf(a),
+            LayoutTree::Split {
+                direction: Direction::Vertical,
+                ratio: 0.5,
+                children: Box::new((LayoutTree::Leaf(b), LayoutTree::Leaf(c))),
+            },
+        )),
+    };
+    let ids: Vec<PaneId> = tree
+        .into_detached()
+        .into_iter()
+        .map(|d| d.pane_id())
+        .collect();
+    assert_eq!(ids.len(), 3);
+    for expected in [a, b, c] {
+        assert!(ids.contains(&expected));
+    }
+}
+
+#[test]
+fn leaves_collects_every_pane_in_a_split_tree() {
+    let [a, b, c] = pane_ids();
+    let mut tree = LayoutTree::Leaf(a);
+    assert!(tree.split_leaf(a, b, Direction::Horizontal));
+    assert!(tree.split_leaf(a, c, Direction::Vertical));
+
+    // Order-independent: `leaves` promises a depth-first walk, not a
+    // specific one, and `PaneId` has no `Ord` to sort by.
+    let out: std::collections::HashSet<_> = tree.leaves().into_iter().collect();
+    assert_eq!(out, std::collections::HashSet::from([a, b, c]));
+}
+
+#[test]
+fn leaves_of_a_sole_leaf_is_just_itself() {
+    let [a] = pane_ids();
+    let tree = LayoutTree::Leaf(a);
+
+    assert_eq!(tree.leaves(), vec![a]);
+}
+
+#[test]
+fn is_single_pane_true_for_a_leaf_false_for_a_split() {
+    let [a, b] = pane_ids();
+    let mut tree = LayoutTree::Leaf(a);
+    assert!(tree.is_single_pane());
+
+    assert!(tree.split_leaf(a, b, Direction::Horizontal));
+    assert!(!tree.is_single_pane());
 }
 
 // ── Bottom band partition ──────────────────────────────────────────────
