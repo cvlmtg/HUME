@@ -42,7 +42,8 @@ fn highlight_bridge_skips_search_cache_refresh_for_handleless_pane() {
         "sanity: the edit bumped the revision"
     );
 
-    let panes = ed.decorated_panes();
+    let active = ed.view.active_pane_ids();
+    let panes = ed.decorated_panes(&active);
     ed.update_highlight_providers(&panes);
 
     assert_eq!(
@@ -78,7 +79,8 @@ fn virtual_line_bridge_skips_sync_stamp_for_handleless_pane() {
         }],
     );
 
-    let panes = ed.decorated_panes();
+    let active = ed.view.active_pane_ids();
+    let panes = ed.decorated_panes(&active);
     ed.update_virtual_line_providers(&panes);
 
     assert!(

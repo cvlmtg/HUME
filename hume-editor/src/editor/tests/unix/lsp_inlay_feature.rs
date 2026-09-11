@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::*;
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use crate::editor::lsp::LspState;
 use hume_engine::pipeline::RenderContext;
 use hume_lsp::backend::{LspBackend, ServerId};
@@ -596,7 +596,15 @@ fn diagnostics_changed_for_two_buffers_in_the_same_window_both_refresh() {
         .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
     // Both buffers must be *shown* — `lsp/refresh-hints` skips a hidden bid.
-    open_pane(&mut ed.state, &mut ed.view, bid_b);
+    let pid_a = ed.state.focused_pane_id;
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_b,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     for (sid, ev) in ed.lsp.backend_mut().drain() {
         let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);
@@ -696,7 +704,15 @@ fn refresh_hints_resolves_against_the_buffers_own_server_not_the_focused_buffers
         .find_by_path(&std::fs::canonicalize(&file_b).unwrap())
         .expect("file_b opened via open_extra_file");
     ed.state.buffers.get_mut(bid_b).lsp_server = Some(sid_b);
-    let pane_b = open_pane(&mut ed.state, &mut ed.view, bid_b);
+    let pid_a = ed.state.focused_pane_id;
+    let pane_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_b,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     for (sid, ev) in ed.lsp.backend_mut().drain() {
         let actions = ed.lsp.client_for_test(sid).unwrap().on_event(ev);

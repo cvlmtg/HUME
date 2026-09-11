@@ -151,6 +151,8 @@ mod tests {
             "ui.statusline",
             "ui.statusline.separator",
             "ui.statusline.normal",
+            "ui.tabline",
+            "ui.tabline.active",
             "ui.background",
             "ui.window",
             "ui.window.focused",

@@ -92,6 +92,13 @@ impl Editor {
         let views = hume_ui::OverlayViews::default();
         engine_view.bottom_bands = views.bottom_bands();
 
+        // The tab bar: chrome, not per-pane, same as the bands above — one
+        // instance, registered directly on `engine_view.tabbar`.
+        let tabline_view = hume_engine::lock::SharedSlot::default();
+        engine_view.tabbar = Some(Box::new(crate::tabline::TablineWidget {
+            data: tabline_view.clone(),
+        }));
+
         // Insert a buffer — just metadata; the rope is passed at render time.
         let buffer_id = engine_view.buffers.insert(());
 
@@ -138,8 +145,10 @@ impl Editor {
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
+                tabs: super::tab::TabStore::new(pane_id).0,
                 cwd: startup_cwd,
                 views,
+                tabline_view,
                 wake: Arc::clone(&wake),
                 ..Default::default()
             },
@@ -158,6 +167,7 @@ impl Editor {
             timer_payloads: rustc_hash::FxHashMap::default(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
             last_viewport_key: rustc_hash::FxHashMap::default(),
+            last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui: Tui::Off,

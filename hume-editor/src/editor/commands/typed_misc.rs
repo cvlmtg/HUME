@@ -192,6 +192,61 @@ fn open_path_arg(ed: &mut Editor, path_str: &str) -> Result<BufferId, CommandErr
     Ok(bid)
 }
 
+// ── :tabnew / :tabclose / :tabnext / :tabprev ─────────────────────────────────
+
+/// `:tabnew [path]` — open a new tab. With no `path`, the new tab's pane
+/// views the same buffer as the source tab's focused pane; with `path`, it
+/// views that file instead (same dedup-on-canonical-path rule as
+/// `:split`/`:vsplit` — see [`open_path_arg`]).
+pub(in crate::editor) fn typed_tabnew(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    let bid = match arg {
+        Some(path) => open_path_arg(ed, path)?,
+        None => ed.focused_buffer_id(),
+    };
+    super::open_tab(&mut ed.state, &mut ed.view, bid);
+    Ok(())
+}
+
+/// `:tabclose` — close the current tab and every pane it owns. Refused with
+/// a status message when it's the only tab open (fail fast, no silent
+/// no-op) — mirrors `:split`'s `fits_split` refusal shape.
+pub(in crate::editor) fn typed_tabclose(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    if ed.state.tabs.len() <= 1 {
+        ed.report(Severity::Info, "cannot close the last tab page".to_string());
+        return Ok(());
+    }
+    super::close_tab(&mut ed.state, &mut ed.view);
+    Ok(())
+}
+
+/// `:tabnext` / `:tabn` — switch to the next tab in display order.
+pub(in crate::editor) fn typed_tabnext(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    super::goto_tab_in_order(&mut ed.state, &mut ed.view, super::TabStep::Next);
+    Ok(())
+}
+
+/// `:tabprev` / `:tabp` — switch to the previous tab in display order.
+pub(in crate::editor) fn typed_tabprev(
+    ed: &mut Editor,
+    _arg: Option<&str>,
+    _force: bool,
+) -> Result<(), CommandError> {
+    super::goto_tab_in_order(&mut ed.state, &mut ed.view, super::TabStep::Prev);
+    Ok(())
+}
+
 /// The active theme's display name: the `theme` setting, or the label standing
 /// in for the compiled-in default when it is unset. Both `:theme` and
 /// `:theme-debug` open with this, and they must agree on what "no theme set"

@@ -99,6 +99,7 @@ For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `
 | `pane-dividers` | bool | `#t` | Draw a 1-cell divider between sibling panes |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections, each a comma-separated list of element names (empty sections allowed), e.g. `Mode,FileName\|\|Position` |
 | `statusline.mode-colors` | bool | `#t` | Tint the whole statusline with the current mode's color; off shows the theme's base `ui.statusline` color in every mode |
+| `tabline` | `always`/`never`/`dynamic` | `dynamic` | When to show the tab bar: always, never, or only once more than one tab is open |
 
 The `lsp.*` options below configure `core:lsp` — see [Language Servers](lsp.md) for setup, commands, and how they're used.
 
@@ -207,6 +208,8 @@ These have no Helix equivalent:
   to `ui.window`
 - `ui.drawer` — background of the bottom drawer (`show-drawer-list!`), a generic pick-list
   panel Helix doesn't have
+- `ui.tabline` / `ui.tabline.active` — the tab bar's row and its active tab. `.active` left
+  unset falls back to the base `ui.tabline` style, unlike the statusline separator below
 - `ui.statusline.search` / `.command` / `.sift` — one more mode-tinted statusline scope
   per HUME mode Helix doesn't have, alongside Helix's own
   `ui.statusline.normal`/`.insert`/`.select` (`.select` colors **Extend**, HUME's name for
@@ -238,7 +241,6 @@ matters if you're deciding whether to keep them in a theme you maintain.
 scopes are the natural way to theme it, so leaving them in a theme costs nothing:
 
 - No debugger (DAP) support: `ui.debug`, `ui.debug.breakpoint`, `ui.debug.active`
-- No tabline yet: `ui.bufferline`, `ui.bufferline.active`, `ui.bufferline.background`
 - No which-key-style prompts: `ui.popup.info`, `ui.help`, `ui.text.info`
 - No picker-preview highlighting: `ui.highlight`, `ui.highlight.frameline`
 - No cursor-column ruler: `ui.cursorcolumn`, `ui.cursorcolumn.primary`,
@@ -266,6 +268,9 @@ listed alternative is where to put the color instead:
 - `ui.cursorline.secondary` — only the primary selection's line is tinted, via
   `ui.cursorline.primary`
 - `ui.background.separator` — HUME's prompt line has no separator rule beneath it
+- `ui.bufferline`, `ui.bufferline.active`, `ui.bufferline.background` — HUME's tab bar is a
+  saved window layout per tab (Vim's tab pages), not a per-buffer strip; style it with
+  `ui.tabline` / `ui.tabline.active` instead
 
 #### Scopes HUME reads differently
 

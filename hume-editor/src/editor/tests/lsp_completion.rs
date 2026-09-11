@@ -376,13 +376,21 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
 
 #[test]
 fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_zero() {
-    use crate::editor::commands::open_pane;
+    use crate::editor::commands::open_pane_in_layout;
 
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     let bid_a = ed.focused_buffer_id();
+    let pid_a = ed.state.focused_pane_id;
     // A second pane showing the same buffer, still unfocused.
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid_a);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_a,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     run(
         &mut ed,
@@ -759,7 +767,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
 /// batched alongside it.
 #[test]
 fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op() {
-    use crate::editor::commands::open_pane;
+    use crate::editor::commands::open_pane_in_layout;
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::CompletionHost;
 
@@ -770,7 +778,14 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     let mut ed = editor_from("-[a]>bcdef\n");
     let pid_a = ed.state.focused_pane_id;
     let bid_a = ed.focused_buffer_id();
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid_a);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_a,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Open a second file only in pane B, then focus back to pane A — bid_b
     // is now only ever recorded in pane B's per-pane state.

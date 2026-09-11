@@ -8,6 +8,7 @@ pub(crate) mod editor;
 // links against this lib and names `hume_editor::statusline::StatusElement`
 // directly.
 pub mod statusline;
+pub(crate) mod tabline;
 
 // `extern crate self as hume` lets `hume::testing::MockHost` (reached both
 // from the lib's own `#[cfg(test)]` build and from `tests/scripting.rs`/

@@ -379,6 +379,7 @@ mod pipeline;
 mod scroll;
 mod search;
 mod structural;
+mod tab;
 mod typed_buffer;
 mod typed_file;
 mod typed_misc;
@@ -391,6 +392,7 @@ pub(super) use mode::*;
 pub(super) use paste::*;
 pub(super) use scroll::*;
 pub(super) use search::*;
+pub(super) use tab::*;
 pub(super) use typed_buffer::*;
 pub(super) use typed_file::*;
 pub(super) use typed_misc::*;
@@ -406,13 +408,21 @@ pub(super) use typed_misc::*;
 // breadth.
 pub(in crate::editor) use insert_session::end_insert_session;
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
-pub(in crate::editor) use pane::{fits_split, split_pane_onto};
-// `open_pane` has no non-test caller outside `pane.rs` itself (which reaches
-// it directly, not through this re-export) — only `editor::tests` seeds
-// panes through it, so the re-export is test-only to avoid an "unused
-// import" warning on every non-test build.
+pub(in crate::editor) use pane::{
+    end_insert_session_if_active, fits_split, focus_pane, split_pane_onto,
+};
+// `open_pane` itself (the raw, unspliced constructor) is private to
+// `pane.rs` — not re-exported here or anywhere. `open_pane_in_layout` and
+// `open_pane_as_new_tab` are the only two ways, anywhere in the crate, to
+// create a pane. `open_pane_as_new_tab` has exactly one caller
+// (`commands::tab::open_tab`, which imports it directly from `pane`, not
+// through this re-export) so it isn't re-exported here at all.
+// `open_pane_in_layout` has no non-test caller outside `pane.rs` itself
+// (which reaches it directly too) — only `editor::tests` calls it through
+// this path, so the re-export is test-only to avoid an "unused import"
+// warning on every non-test build.
 #[cfg(test)]
-pub(in crate::editor) use pane::open_pane;
+pub(in crate::editor) use pane::open_pane_in_layout;
 pub(in crate::editor) use pipeline::{
     NativeBody, run_dispatch_pipeline, run_native_body, step_paste_commit, step_stamp_repeatable,
 };

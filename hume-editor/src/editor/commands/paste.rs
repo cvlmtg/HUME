@@ -86,7 +86,7 @@ impl EditorState {
     /// mouse handlers never open or switch during a session, and buffer close
     /// clears `paste_group` explicitly. The debug assert below fails fast if that
     /// invariant is ever violated instead of silently leaving a stray session open.
-    pub(super) fn commit_paste_session(&mut self, view: &EngineView) {
+    pub(in crate::editor) fn commit_paste_session(&mut self, view: &EngineView) {
         let focused = self.focused_pane_id;
         let buf = focused_buffer_id(self, view);
 

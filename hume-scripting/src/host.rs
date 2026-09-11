@@ -454,7 +454,8 @@ pub trait SettingsHost {
 pub trait BufferHost {
     /// All open buffer ids in open-order.
     fn buffer_ids(&self) -> Vec<BufferId>;
-    /// All open pane ids.
+    /// Every open pane id, across every tab — including panes in inactive
+    /// tabs, not just the active tab's own.
     fn pane_ids(&self) -> Vec<PaneId>;
 
     // ── Buffer reads (None ⇒ unknown/stale id) ──────────────────────────────

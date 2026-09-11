@@ -28,6 +28,8 @@
 "ui.statusline.search" = { fg = "bg", bg = "muted", modifiers = [ "bold" ] }
 "ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
 "ui.statusline.sift" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
+"ui.tabline" = { fg = "muted", bg = "surface" }
+"ui.tabline.active" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
 "ui.virtual.indent-guide" = { fg = "muted" }

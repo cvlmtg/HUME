@@ -25,7 +25,7 @@ use hume_engine::theme::Theme;
 use hume_engine::types::Scope;
 use hume_engine::types::TruncateEnd;
 
-use super::width::{ELLIPSIS, ELLIPSIS_WIDTH, text_width, truncate_text, truncate_text_tail};
+use super::width::{text_width, truncate_marked, truncate_text, truncate_text_tail};
 
 /// Maximum panel width/height in terminal cells, before the pane-fraction
 /// clamp — mirrors `MAX_POPUP_WIDTH`'s role for the popup widget.
@@ -143,41 +143,6 @@ pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
         text: by("ui.text"),
         selected: by("ui.text.focus"),
         cursor: by("ui.cursor.primary"),
-    }
-}
-
-/// Clip `s` to `budget` display cells per `cut`, marking the dropped end
-/// with `…` — list rows (file paths, grep matches, …) whose distinguishing
-/// part can sit at either end depending on what a picker's source shows.
-/// Grapheme-cluster aware via [`truncate_text`]/[`truncate_text_tail`].
-/// Kept distinct from the query row's own tail-truncation
-/// (`draw_picker_panel`'s direct `truncate_text_tail` call) because the
-/// query row must never gain a marker — the query is the user's editable
-/// text, and its bare tail (no `…`) is intentional there.
-///
-/// Borrows `s` unchanged on the (common) no-truncation path instead of
-/// allocating a copy of every visible row every frame.
-///
-/// `width.rs`'s helpers are *keep*-oriented (`truncate_text_tail` keeps the
-/// tail) while [`TruncateEnd`] is *cut*-oriented, so the arms below read
-/// inverted: cutting the head keeps — and thus calls — `truncate_text_tail`.
-fn truncate_marked(s: &str, budget: usize, cut: TruncateEnd) -> std::borrow::Cow<'_, str> {
-    if text_width(s) <= budget {
-        return std::borrow::Cow::Borrowed(s);
-    }
-    if budget == 0 {
-        return std::borrow::Cow::Borrowed("");
-    }
-    let kept = budget.saturating_sub(ELLIPSIS_WIDTH);
-    match cut {
-        TruncateEnd::Head => {
-            let (tail, _) = truncate_text_tail(s, kept);
-            std::borrow::Cow::Owned(format!("{ELLIPSIS}{tail}"))
-        }
-        TruncateEnd::Tail => {
-            let (head, _) = truncate_text(s, kept);
-            std::borrow::Cow::Owned(format!("{head}{ELLIPSIS}"))
-        }
     }
 }
 

@@ -493,6 +493,16 @@ impl Editor {
         // Minimal engine view for test contexts. Uses 80×24 with tab_width=4.
         let theme = crate::editor::theme::build_default_theme();
         let mut engine_view = EngineView::new(theme);
+        // Unlike `bottom_bands` (which needs real Steel-callback wiring
+        // `for_testing` deliberately skips — see `tests/lsp_popup.rs`), the
+        // tab bar's view state is a plain struct with no such dependency,
+        // so it's cheap to register here too: a test rendering multiple
+        // tabs (`editor_from` + `execute_typed("tabnew", ...)`) needs
+        // `view.tabbar` to be `Some` for the tabline to paint at all.
+        let tabline_view = hume_engine::lock::SharedSlot::default();
+        engine_view.tabbar = Some(Box::new(crate::tabline::TablineWidget {
+            data: tabline_view.clone(),
+        }));
         let buffer_id = engine_view.buffers.insert(());
         let settings = EditorSettings::default();
         let jump_list_capacity = settings.jump_list_capacity;
@@ -532,6 +542,8 @@ impl Editor {
                 },
                 history: super::minibuf::history::HistoryStore::new(history_capacity),
                 focused_pane_id: pane_id,
+                tabs: super::tab::TabStore::new(pane_id).0,
+                tabline_view,
                 cwd: std::env::temp_dir(),
                 ..Default::default()
             },
@@ -546,6 +558,7 @@ impl Editor {
             timer_payloads: rustc_hash::FxHashMap::default(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
             last_viewport_key: rustc_hash::FxHashMap::default(),
+            last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_inline(),
             tui: super::tui::Tui::Off,
@@ -1141,6 +1154,7 @@ mod statusline_steel;
 mod structural;
 mod surround;
 mod sync_dispatch;
+mod tab;
 mod tabs;
 mod terminator;
 mod test_globals;

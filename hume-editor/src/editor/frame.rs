@@ -60,8 +60,14 @@ impl Editor {
     ///
     /// Split from gutter width ([`Self::pane_gutter_width`]) because every
     /// caller wants one or the other, never reliably both.
-    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> PaneRenderSettings {
-        let pane = &self.view.panes[pid];
+    ///
+    /// `None` when `pid` no longer names a live pane — `active_pane_ids()`
+    /// can transiently include `take_live`'s placeholder id if a panic
+    /// unwinds between `take_live` and `install_live`; `EngineView::render`
+    /// already skips such an id rather than drawing it, so this matches
+    /// that same tolerance instead of panicking one step earlier.
+    pub(super) fn resolve_pane_settings(&self, pid: PaneId) -> Option<PaneRenderSettings> {
+        let pane = self.view.panes.get(pid)?;
         let doc = self.state.buffers.get(pane.buffer_id);
         let show_indent_guides = doc.overrides.show_indent_guides(&self.state.settings);
         let is_focused = pid == self.state.focused_pane_id;
@@ -72,12 +78,12 @@ impl Editor {
         };
         let cursor_is_block =
             !is_focused || self.state.cursor_shape() == crate::editor::settings::CursorShape::Block;
-        PaneRenderSettings {
+        Some(PaneRenderSettings {
             mode,
             format: self.state.format_key(pane),
             show_indent_guides,
             cursor_is_block,
-        }
+        })
     }
 
     /// The gutter width a pane's own providers currently occupy — used to
@@ -94,16 +100,17 @@ impl Editor {
     /// Render one frame into `grid`. Single home for the rope and syntax
     /// lookups shared by the event loop and `render_to_buf`.
     pub(super) fn render_into(&mut self, area: Rect, grid: &mut Grid, ctx: &mut RenderContext) {
-        // Resolved for every live pane up front: `resolve_pane_settings` reads
-        // the pane it is asked about, and `render`'s pane loop borrows
+        // Resolved for every active pane up front: `resolve_pane_settings`
+        // reads the pane it is asked about, and `render`'s pane loop borrows
         // `self.view.panes` mutably, so it cannot run from inside that loop.
-        // Lazily, into the context's own map — nothing is collected on the
-        // way, so a steady-state frame allocates nothing here.
+        // `render` itself is layout-scoped (it walks `view.layout`, same as
+        // `active_pane_ids`), so this stays the exact set it needs, never
+        // more.
+        let active = self.view.active_pane_ids();
         ctx.set_pane_settings(
-            self.view
-                .panes
-                .keys()
-                .map(|pid| (pid, self.resolve_pane_settings(pid))),
+            active
+                .iter()
+                .filter_map(|&pid| Some((pid, self.resolve_pane_settings(pid)?))),
         );
         let focused_pane_id = self.state.focused_pane_id;
         let draw_dividers = self.state.settings.pane_dividers;
@@ -271,12 +278,152 @@ impl Editor {
         self.view.reserve_seam = reserve_seam;
     }
 
+    /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
+    /// whether the tab bar is shown at all, and — while it is — the tab
+    /// count/order, each tab's `(id, pane, buffer, dirty, path)`, and the
+    /// bar's own geometry (a resize must still trigger a rebuild even when
+    /// the tab list itself is unchanged, since `scroll` depends on width
+    /// too). `buf.path()` is hashed rather than `buf.display_name()` —
+    /// `display_name()` allocates a `String`, defeating the point of a
+    /// cheap signature, and the two agree on every rename/attach that
+    /// actually changes what's drawn (a buffer's dirty marker is covered
+    /// separately by `is_dirty()`). Deliberately excludes anything that
+    /// doesn't change what a rebuild would produce — buffer *content*, for
+    /// instance, since neither the label nor `scroll` reads it.
+    fn tabline_signature(&self, visible: bool) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = rustc_hash::FxHasher::default();
+        visible.hash(&mut hasher);
+        if visible {
+            let current = self.state.tabs.current();
+            current.hash(&mut hasher);
+            let bar = self.view.tabbar_area(self.view.last_terminal_area);
+            bar.x.hash(&mut hasher);
+            bar.width.hash(&mut hasher);
+            for &id in self.state.tabs.order() {
+                id.hash(&mut hasher);
+                let pid = if id == current {
+                    self.state.focused_pane_id
+                } else {
+                    self.state.tabs.stashed_focus(id)
+                };
+                pid.hash(&mut hasher);
+                let bid = self.view.panes[pid].buffer_id;
+                bid.hash(&mut hasher);
+                let buf = self.state.buffers.get(bid);
+                buf.is_dirty().hash(&mut hasher);
+                buf.path().hash(&mut hasher);
+            }
+        }
+        hasher.finish()
+    }
+
+    /// Re-sync the tab-bar view from `state.tabs` + each tab's focused
+    /// pane's buffer — self-healing every frame, same rationale as
+    /// `EditorState::sync_drawer_view`'s own doc: a direct mutation that
+    /// bypasses the normal `:tabnew`/`:tabclose` builtins would otherwise
+    /// leave a stale row painting for however long it takes the next frame.
+    /// Gated on [`Self::tabline_signature`]: an unchanged signature means
+    /// the previous frame's `TablineViewState` is already correct, so the
+    /// rebuild below — one allocating `display_name()` call per tab, plus
+    /// the scroll probe — is skipped on every steady-state frame, which is
+    /// almost all of them.
+    ///
+    /// Needs both `state` (tab order, settings, buffers) and `view` (which
+    /// buffer a stashed tab's pane was viewing), unlike `sync_drawer_view`
+    /// — that's why this lives on `Editor` rather than on `EditorState`.
+    fn sync_tabline_view(&mut self) {
+        let visible = match self.state.settings.tabline {
+            crate::editor::settings::TablineVisibility::Always => true,
+            crate::editor::settings::TablineVisibility::Never => false,
+            crate::editor::settings::TablineVisibility::Dynamic => self.state.tabs.len() > 1,
+        };
+
+        let signature = self.tabline_signature(visible);
+        if self.last_tabline_signature == Some(signature) {
+            return;
+        }
+        self.last_tabline_signature = Some(signature);
+
+        if !visible {
+            // The common case (the `dynamic` default with one tab open, i.e.
+            // a normal session): skip every per-tab step below entirely —
+            // `TabEntry::label` is an owned `String`, so building the full
+            // `Vec` just to immediately hide it would cost one allocation
+            // and a `display_name()` call per tab, every frame, for a row
+            // that's never drawn.
+            self.state
+                .tabline_view
+                .set(crate::tabline::TablineViewState::default());
+            return;
+        }
+
+        let order = self.state.tabs.order();
+        let current = self.state.tabs.current();
+        let active_index = self.state.tabs.current_pos();
+
+        let tabs: Vec<crate::tabline::TabEntry> = order
+            .iter()
+            .map(|&id| {
+                let pid = if id == current {
+                    self.state.focused_pane_id
+                } else {
+                    self.state.tabs.stashed_focus(id)
+                };
+                let bid = self.view.panes[pid].buffer_id;
+                let buf = self.state.buffers.get(bid);
+                let mut label = buf.display_name();
+                if buf.is_dirty() {
+                    label.push('+');
+                }
+                crate::tabline::TabEntry::new(id, label)
+            })
+            .collect();
+
+        // The smallest `scroll` that still keeps `active_index` inside the
+        // packed window — computed fresh every frame rather than clamped
+        // from last frame's value, which this loop's own result never
+        // actually depends on: packing from an earlier `scroll` can only
+        // reach the same window end or earlier (an earlier start must first
+        // fit the tab(s) before it), so "does `active_index` fit starting at
+        // `scroll`" is monotone in `scroll` and the smallest passing value
+        // is a pure function of `tabs`/`active_index`/`width`. Bounded by
+        // `scroll < active_index` even in the degenerate `width == 0` case
+        // (startup, before the first real terminal size arrives), where no
+        // tab ever fits and the window never grows.
+        // Reads geometry from `tabbar_area`, same as `render`/`tabline_click`
+        // — `tab_extents`' own doc explains why all three must agree. Probes
+        // via `tab_extents_into` rather than `tab_extents` — one reused
+        // `ranges` buffer across every candidate this loop tries, instead of
+        // a fresh allocation per candidate.
+        let bar = self.view.tabbar_area(self.view.last_terminal_area);
+        let mut probe_ranges = Vec::new();
+        let mut scroll = 0;
+        while scroll < active_index {
+            crate::tabline::tab_extents_into(&tabs, scroll, bar.x, bar.width, &mut probe_ranges);
+            if active_index < scroll + probe_ranges.len() {
+                break;
+            }
+            scroll += 1;
+        }
+
+        self.state
+            .tabline_view
+            .set(crate::tabline::TablineViewState {
+                tabs,
+                active_index,
+                scroll,
+                visible,
+            });
+    }
+
     /// Prepare the engine pane for rendering by syncing all editor-authoritative
     /// state in one place, once per frame.
     ///
     /// `sync_all_pane_mirrors` is the **single sync point** for `pane.selections`
-    /// and `pane.primary_idx` — it covers every pane in one pass.  No other code
-    /// path writes those fields.  It, and the scroll pass right after it, run
+    /// and `pane.primary_idx` — it covers every active pane (see
+    /// [`EngineView::active_pane_ids`](hume_engine::pipeline::EngineView::active_pane_ids)),
+    /// in one pass. No other code path writes those fields. It, and
     /// *after* `Editor::settle()` (called by every caller of this function,
     /// immediately before it — see `settle`'s doc) since a settled drain can
     /// switch a pane's `buffer_id` (picker accept, LSP goto-definition) or
@@ -347,19 +494,27 @@ impl Editor {
         //    established (headless callers relying on `Pane::new` defaults).
         self.sync_popup_band_view();
         self.state.sync_drawer_view();
+        self.sync_tabline_view();
         let area = self.view.last_terminal_area;
         if area.width > 0 && area.height > 0 {
             self.sync_viewport_dims(area.width, area.height);
         }
 
-        // 1. Sync line-number style provider for every pane (depends on that
-        //    pane's own buffer overrides). Must run after `settle()`: a
-        //    settled drain can switch a pane's `buffer_id` (picker accept,
+        // The active tab's pane set, fixed for the rest of this frame —
+        // nothing between here and `render_into` changes which panes
+        // `view.layout` reaches, only settled callbacks before this
+        // function was entered could, and `settle()` already ran (every
+        // caller runs it immediately before this — see this function's own
+        // doc). Steps 1/3/4/5 below all read from this instead of
+        // `view.panes` directly.
+        let active = self.view.active_pane_ids();
+
+        // 1. Sync line-number style provider for every active pane (depends
+        //    on that pane's own buffer overrides). Must run after `settle()`:
+        //    a settled drain can switch a pane's `buffer_id` (picker accept,
         //    LSP goto-definition), so syncing any earlier would apply the
         //    just-left buffer's style to the pane's new buffer for a frame.
-        //    Iterates a fresh pane-id snapshot (not a frame-start rect list)
-        //    since a drained callback may have closed a pane.
-        for pid in self.view.panes.keys().collect::<Vec<_>>() {
+        for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let ln_style = self
                 .state
@@ -372,12 +527,12 @@ impl Editor {
                 .sync_line_number_style(ln_style);
         }
 
-        // 2. Sync selection mirrors for every pane. Must run after
+        // 2. Sync selection mirrors for every active pane. Must run after
         //    `settle()`: a settled drain can switch a pane's `buffer_id`
         //    (picker accept, LSP goto-definition) or move its selections
         //    (timer/LSP callbacks), and render (right after this function
         //    returns) reads this mirror against the pane's *current* buffer.
-        self.sync_all_pane_mirrors();
+        self.sync_all_pane_mirrors(&active);
 
         // 3. Sync everything that decides display-line counts/columns for
         //    step 4's `DisplayLineMap`-driven scroll, in this order because none of them
@@ -400,24 +555,28 @@ impl Editor {
         //    `DisplayLineMap` see display-line counts/columns the providers
         //    haven't caught up to yet — the scroll/render/caret disagreement
         //    this ordering avoids.
-        let panes = self.decorated_panes();
+        let panes = self.decorated_panes(&active);
         self.update_sign_providers(&panes);
         self.update_inlay_hint_providers(&panes);
         self.update_virtual_line_providers(&panes);
         self.update_eol_text_providers(&panes);
 
-        // 4. Scroll every pane so its primary cursor stays visible. Must run
-        //    after `settle()`: a settled drain can switch a pane's `buffer_id`
-        //    mid-frame (picker accept, LSP goto-definition), and this reads
-        //    buffer_id/rope/cursor together from SSOT, so it always scrolls
-        //    the pane's *current* buffer instead of leaving a just-switched-to
-        //    buffer's cursor unvalidated against the viewport for a frame.
-        //    Iterates a fresh pane-id snapshot (not `sync_viewport_dims`'
-        //    frame-start rect list) since a drained callback may have closed
-        //    a pane.
+        // 4. Scroll every active pane so its primary cursor stays visible.
+        //    Must run after `settle()`: a settled drain can switch a pane's
+        //    `buffer_id` mid-frame (picker accept, LSP goto-definition), and
+        //    this reads buffer_id/rope/cursor together from SSOT, so it
+        //    always scrolls the pane's *current* buffer instead of leaving a
+        //    just-switched-to buffer's cursor unvalidated against the
+        //    viewport for a frame.
+        // A pane that left the active set (its tab went to the background)
+        // is never visited by the loop below, so its stale entry would
+        // otherwise survive untouched — and then match on return, even
+        // though nothing observed it while it was hidden. Drop it now so
+        // the pane's next visible frame always reads as a change.
+        self.last_viewport_key.retain(|pid, _| active.contains(pid));
+
         let scrolloff = self.state.settings.scrolloff;
-        let pane_ids: Vec<PaneId> = self.view.panes.keys().collect();
-        for pid in pane_ids {
+        for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let cursor_char = self.state.panes.state[pid][buf_id]
                 .selections
@@ -446,7 +605,7 @@ impl Editor {
             // picked up by *next* frame's drain — one frame later than when
             // this ran pre-drain, immaterial for any nonzero debounce interval.
             let viewport = &self.view.panes[pid].viewport;
-            let key = (viewport.top_line, viewport.height);
+            let key = (buf_id, viewport.top_line, viewport.height);
             if self.last_viewport_key.insert(pid, key) != Some(key) {
                 self.debounce_viewport_change(pid);
             }
@@ -459,7 +618,7 @@ impl Editor {
         //    either one, only the paint stage. A fresh `decorated_panes()`
         //    snapshot here (distinct from step 3's) is what gives these two
         //    the *current* viewport, post-scroll.
-        let panes = self.decorated_panes();
+        let panes = self.decorated_panes(&active);
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
@@ -486,7 +645,8 @@ impl Editor {
         self.view.theme.bake_if_stale(&self.view.registry);
     }
 
-    /// Sync every engine pane's selection mirror from the authoritative `pane_state`.
+    /// Sync every active-tab pane's selection mirror from the authoritative
+    /// `pane_state`.
     ///
     /// The engine requires `pane.selections` sorted by `head` (not by `start()` as
     /// `SelectionSet` stores internally); `primary_idx` is re-located by matching
@@ -494,11 +654,15 @@ impl Editor {
     /// no other code path writes `pane.selections` or `pane.primary_idx`.
     ///
     /// Called once per frame from `prepare_frame`, after the async/Steel
-    /// drains and before `render()`.
-    pub(in crate::editor) fn sync_all_pane_mirrors(&mut self) {
+    /// drains and before `render()`, passing the same `active_pane_ids()`
+    /// snapshot `prepare_frame` already computed for its other steps rather
+    /// than recomputing it here too. Tests that need the mirror without a
+    /// full frame call this directly, passing `ed.view.active_pane_ids()`.
+    pub(in crate::editor) fn sync_all_pane_mirrors(&mut self, active: &[PaneId]) {
         let state = &mut self.state;
         let view = &mut self.view;
-        for (pid, pane) in view.panes.iter_mut() {
+        for &pid in active {
+            let pane = &mut view.panes[pid];
             if let Some(pbs) = state.panes.buffer_state(pid, pane.buffer_id) {
                 write_pane_mirror(pane, &pbs.selections);
             }

@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 
 // ── BufferStore + buffer choke-points ─────────────────────────────────────────
 
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use crate::editor::doc_ops;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
@@ -267,7 +267,14 @@ fn p6_close_buffer_redirects_all_panes_to_mru() {
 
     let pid_1 = ed.state.focused_pane_id;
     // Second pane also views A.
-    let pid_2 = open_pane(&mut ed.state, &mut ed.view, bid_a);
+    let pid_2 = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_1,
+        bid_a,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     assert_eq!(
         ed.view.panes[pid_1].buffer_id, bid_a,

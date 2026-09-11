@@ -21,7 +21,7 @@ use super::*;
 use hume_engine::types::Scope;
 use hume_scripting::ScriptingHost;
 
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use crate::editor::keymap::{BindMode, Keymap, WalkResult};
 use crate::editor::lsp::LspState;
 use crate::editor::reload::ReloadSnapshot;
@@ -1115,7 +1115,15 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     assert!(is_new, "sanity: this must be a genuinely new buffer");
     ed.detect_pending_languages();
     ed.settle();
-    open_pane(&mut ed.state, &mut ed.view, second_bid);
+    let first_pid = ed.state.focused_pane_id;
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        first_pid,
+        second_bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -1166,7 +1174,15 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     .unwrap();
     ed.detect_pending_languages();
     ed.settle();
-    open_pane(&mut ed.state, &mut ed.view, second_bid);
+    let first_pid = ed.state.focused_pane_id;
+    open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        first_pid,
+        second_bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

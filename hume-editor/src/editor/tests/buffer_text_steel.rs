@@ -2,7 +2,7 @@
 // `selections-linewise?` / `selections-charwise?`.
 
 use super::*;
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use crate::editor::message_log::Severity;
 use hume_scripting::ScriptingHost;
 
@@ -558,7 +558,15 @@ fn selections_linewise_true_for_a_buffer_shown_in_a_non_focused_pane() {
         .buffers
         .find_by_path(&std::fs::canonicalize(&extra).unwrap())
         .expect("extra file must be open in the buffer list");
-    let other_pid = open_pane(&mut ed.state, &mut ed.view, other_bid);
+    let start_pid = ed.state.focused_pane_id;
+    let other_pid = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        start_pid,
+        other_bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
     ed.state.focused_pane_id = other_pid;
 
     let fired = run_probe(

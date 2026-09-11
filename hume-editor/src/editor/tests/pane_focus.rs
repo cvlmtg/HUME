@@ -2,7 +2,7 @@ use super::*;
 use crate::editor::EditorState;
 use crate::editor::commands::{
     cmd_pane_focus_down, cmd_pane_focus_left, cmd_pane_focus_next, cmd_pane_focus_right,
-    cmd_pane_focus_up, open_pane,
+    cmd_pane_focus_up, open_pane_in_layout,
 };
 use crate::editor::error::CommandError;
 use hume_engine::pipeline::{Direction, EngineView, LayoutTree, PaneId, RenderContext};
@@ -12,24 +12,31 @@ type Cmd = fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<()
 
 // Build a deterministic 2x2 pane grid in `editor_from`'s scratch buffer.
 //
-// `open_pane` seeds per-pane maps but does not touch `view.layout`; the test
-// splits the layout itself. `prepare_frame` partitions the 100x50 pane area
-// (height 50 = terminal_height 51 minus 1 statusline row) and the cache ends
-// up in DFS pre-order: pid_a (TL), pid_c (TR), pid_b (BL), pid_d (BR).
+// `prepare_frame` partitions the 100x50 pane area (height 50 =
+// terminal_height 51 minus 1 statusline row) and the cache ends up in DFS
+// pre-order: pid_a (TL), pid_c (TR), pid_b (BL), pid_d (BR).
 fn build_2x2() -> (Editor, [PaneId; 4]) {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id; // top-left
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view.layout.split_leaf(pid_a, pid_b, Direction::Vertical); // stack a over b
-    let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view
-        .layout
-        .split_leaf(pid_a, pid_c, Direction::Horizontal); // a | c (top row)
-    let pid_d = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.view
-        .layout
-        .split_leaf(pid_b, pid_d, Direction::Horizontal); // b | d (bottom row)
+    let pid_b =
+        open_pane_in_layout(&mut ed.state, &mut ed.view, pid_a, bid, Direction::Vertical).unwrap(); // stack a over b
+    let pid_c = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        Direction::Horizontal,
+    )
+    .unwrap(); // a | c (top row)
+    let pid_d = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_b,
+        bid,
+        Direction::Horizontal,
+    )
+    .unwrap(); // b | d (bottom row)
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(100, 51);
     ed.settle();
@@ -95,11 +102,29 @@ fn t4_tie_break_uses_center_distance_not_origin() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
-    let pid_c = open_pane(&mut ed.state, &mut ed.view, bid);
-    // Built directly (not via `split_leaf`, which now equalizes every
-    // same-axis split) so `b`/`c` keep the deliberate short/tall asymmetry
-    // this tie-break test needs.
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        Direction::Horizontal,
+    )
+    .unwrap();
+    let pid_c = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        Direction::Horizontal,
+    )
+    .unwrap();
+    // The tree `open_pane_in_layout` grafted `pid_b`/`pid_c` into above is
+    // overwritten wholesale here — only that both were created through it
+    // matters, not where its own `split_leaf` call placed them. Built
+    // directly (not via `split_leaf`, which now equalizes every same-axis
+    // split) so `b`/`c` keep the deliberate short/tall asymmetry this
+    // tie-break test needs. Rebuilds the tree over the same pane set created
+    // above; nothing detached or leaked.
     ed.view.layout = LayoutTree::Split {
         direction: Direction::Horizontal,
         ratio: 0.5,

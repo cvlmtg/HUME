@@ -24,6 +24,7 @@ fn editor_settings_default_matches_old_constants() {
     assert_eq!(s.word_chars, "");
     assert!(s.pane_dividers);
     assert!(s.statusline_mode_colors);
+    assert_eq!(s.tabline, TablineVisibility::Dynamic);
     assert_eq!(s.signcolumn, SignColumnConfig::default());
 }
 
@@ -335,6 +336,27 @@ fn set_global_statusline_mode_colors() {
             .unwrap()
             .statusline_mode_colors
     );
+}
+
+#[test]
+fn set_global_tabline() {
+    assert_eq!(
+        global("tabline", "always").unwrap().tabline,
+        TablineVisibility::Always
+    );
+    assert_eq!(
+        global("tabline", "never").unwrap().tabline,
+        TablineVisibility::Never
+    );
+    assert_eq!(
+        global("tabline", "dynamic").unwrap().tabline,
+        TablineVisibility::Dynamic
+    );
+}
+
+#[test]
+fn set_global_tabline_rejects_unknown_value() {
+    assert!(global("tabline", "sometimes").is_err());
 }
 
 #[test]

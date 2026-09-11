@@ -24,7 +24,7 @@ fn pane_selections_synced_after_change_command() {
     assert_eq!(ed.state.mode, Mode::Insert);
 
     // Simulate the per-frame sync that happens in the run loop.
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Cursor must be at char offset 0 (start of "o\n").
     assert_eq!(
@@ -42,7 +42,7 @@ fn pane_selections_synced_after_insert_typing() {
     ed.handle_key(key('c')); // delete "a", enter Insert — cursor at byte 0
     ed.handle_key(key('x')); // type 'x' — cursor advances past 'x' to byte 1
 
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Text is now "xb\n"; cursor sits after 'x', at byte offset 1.
     assert_eq!(
@@ -61,7 +61,7 @@ fn pane_selections_synced_after_exit_insert() {
     ed.handle_key(key('x')); // type 'x' before 'c' → "abxc\n", cursor at byte 3
     ed.handle_key(key_esc()); // exit Insert — select-inserted-text selects 'x'
 
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // 'x' was inserted at byte 2; Esc selects the typed run, so the (anchor
     // == head) selection's head sits back on 'x' itself, at byte 2.
@@ -97,7 +97,7 @@ fn pane_selections_primary_is_first_even_when_not_earliest() {
     ed.set_current_selections(two_sels);
 
     // Simulate the per-frame sync.
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Selections are passed in sorted document order; primary_idx identifies the primary.
     let pane = &ed.view.panes[ed.state.focused_pane_id];
@@ -152,7 +152,7 @@ fn pane_selections_sorted_by_head_not_start() {
     );
     ed.set_current_selections(two_sels);
 
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     let pane = &ed.view.panes[ed.state.focused_pane_id];
     // After sort-by-head: [A(head=3), B(head=8)]

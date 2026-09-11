@@ -229,15 +229,17 @@ Move the viewport without moving the cursor.
 | `page-up` | `PageUp` | Scroll up by one viewport height. |
 | `top-view-on-cursor` | `z k` | Scroll so the primary selection head sits at the top of the viewport. |
 
-## Panes and buffers
+## Panes, buffers, and tabs
 
-Split, focus, and close panes; switch buffers.
+Split, focus, and close panes; switch buffers; switch tabs.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `goto-alternate-buffer` | — | Switch to the most-recently-focused other buffer. |
 | `goto-next-buffer` | — | Switch to the next buffer in open-order. |
+| `goto-next-tab` | `Ctrl+p t` | Switch to the next tab in display order. |
 | `goto-prev-buffer` | — | Switch to the previous buffer in open-order. |
+| `goto-prev-tab` | `Ctrl+p T` | Switch to the previous tab in display order. |
 | `pane-close` | `Ctrl+p c` | Close the focused pane. |
 | `pane-focus-down` | `Ctrl+p j` | Focus the pane below. |
 | `pane-focus-left` | `Ctrl+p h` | Focus the pane to the left. |

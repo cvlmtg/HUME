@@ -305,6 +305,26 @@ settings_enum!(CursorShape, "cursor-shape-insert", [
     Underline => "underline",
 ]);
 
+// ── TablineVisibility ─────────────────────────────────────────────────────────
+
+/// When to show the tab bar (top row of the terminal area).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TablineVisibility {
+    /// Always shown, even with a single tab open.
+    Always,
+    /// Never shown, regardless of how many tabs are open.
+    Never,
+    /// Shown only once more than one tab is open — HUME's default.
+    #[default]
+    Dynamic,
+}
+
+settings_enum!(TablineVisibility, "tabline", [
+    Always => "always",
+    Never => "never",
+    Dynamic => "dynamic",
+]);
+
 // ── Scope ─────────────────────────────────────────────────────────────────────
 
 /// A `:set` scope token: `global`, `buffer`, or `pane`.
@@ -869,6 +889,12 @@ define_settings! {
         "statusline.mode-colors" => statusline_mode_colors: bool = true,
             scope: [Scope::Global],
             parser: bool;
+        // Resolved into `TablineViewState.visible` by `sync_tabline_view`
+        // every frame — the provider itself reads that snapshot, not this
+        // setting directly.
+        "tabline" => tabline: TablineVisibility = TablineVisibility::default(),
+            scope: [Scope::Global],
+            parser: from_str;
         // Loads and applies the named theme immediately, rolling back to the
         // previous value on failure — see
         // `editor::settings::ops::resync_derived_state`.

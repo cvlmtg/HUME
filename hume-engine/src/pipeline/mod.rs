@@ -240,16 +240,29 @@ impl EngineView {
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
 
-    /// Drop every pane's line-store entries, keeping the allocations behind
-    /// them.
+    /// Every pane `self.layout` — the active tab's — currently reaches. The
+    /// working set every per-frame sync step operates on, in place of the
+    /// full `panes` pool: an inactive tab's pane is deliberately excluded,
+    /// since nothing sizes, decorates, mirrors, or scrolls it while its tab
+    /// isn't active, so its state reflects whatever its own tab last left it
+    /// at rather than this frame's — decorating, mirroring, or scrolling it
+    /// against this frame's state would be wrong the moment the terminal has
+    /// since been resized. It re-enters this set, and catches up, the moment
+    /// its tab is switched back to.
+    pub fn active_pane_ids(&self) -> Vec<PaneId> {
+        self.layout.leaves()
+    }
+
+    /// Drop the line-store entries of every active pane (see
+    /// [`Self::active_pane_ids`]), keeping the allocations behind them.
     ///
     /// Once per frame, and a correctness requirement rather than hygiene: see
     /// `display_lines::line_store`'s module doc. A pane created since the last frame
     /// starts empty, which is what a rewind would produce anyway, so there is
     /// no ordering hazard against `:split`.
     pub fn begin_frame(&mut self) {
-        for pane in self.panes.values_mut() {
-            pane.line_store.rewind();
+        for pid in self.active_pane_ids() {
+            self.panes[pid].line_store.rewind();
         }
     }
 
@@ -265,14 +278,30 @@ impl EngineView {
         area_height / 2
     }
 
-    /// Partition `area` into the pane-content rect, reserving a tab-bar row at
-    /// the top (if `self.tabbar` is set), the bottom chrome bands directly
-    /// above the statusline (`self.bottom_bands`), and a statusline row at
-    /// the bottom (always). Single source of truth for chrome layout —
-    /// `render` and the editor's `prepare_frame` both partition through this
-    /// method so pane geometry is computed identically wherever it's needed.
+    /// Partition `area` into the tab bar's own rect — `self.tabbar`'s
+    /// `height()` rows at the top, `height: 0` when absent or hidden this
+    /// frame. Single source of truth for that one chrome row: `render`'s
+    /// paint and the editor's `tabline_click` hit test both partition
+    /// through this method (the latter via `pane_area`'s own degenerate
+    /// branch below, which does *not* offset `y` — reading `tabbar_height`
+    /// from here rather than re-deriving it keeps the two in agreement).
+    pub fn tabbar_area(&self, area: Rect) -> Rect {
+        let tabbar_height: u16 = self.tabbar.as_ref().map_or(0, |t| t.height());
+        Rect {
+            y: area.y,
+            height: tabbar_height,
+            ..area
+        }
+    }
+
+    /// Partition `area` into the pane-content rect, reserving the tab bar
+    /// (`tabbar_area`) at the top, the bottom chrome bands directly above
+    /// the statusline (`self.bottom_bands`), and a statusline row at the
+    /// bottom (always). Single source of truth for chrome layout — `render`
+    /// and the editor's `prepare_frame` both partition through this method
+    /// so pane geometry is computed identically wherever it's needed.
     pub fn pane_area(&self, area: Rect) -> Rect {
-        let tabbar_height: u16 = if self.tabbar.is_some() { 1 } else { 0 };
+        let tabbar_height = self.tabbar_area(area).height;
         let bands_height: u16 = self
             .bottom_bands
             .iter()
@@ -287,7 +316,12 @@ impl EngineView {
                 ..area
             }
         } else {
-            // Degenerate: terminal too small to fit chrome + content.
+            // Degenerate: terminal too small to fit chrome + content. Note
+            // `y` is left at `area.y`, not offset by `tabbar_height` — the
+            // tab bar still paints in this case (`render`'s own gate is
+            // just `area.height > 0`), so callers that need to know whether
+            // a row belongs to the tab bar must use `tabbar_area` directly
+            // rather than comparing against this rect's `y`.
             Rect { height: 0, ..area }
         }
     }
@@ -344,12 +378,10 @@ impl EngineView {
             let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
 
             // ── Render tab bar ────────────────────────────────────────────────
-            if let Some(ref tabbar) = self.tabbar {
-                let tabbar_area = Rect {
-                    y: area.y,
-                    height: 1,
-                    ..area
-                };
+            let tabbar_area = self.tabbar_area(area);
+            if let Some(ref tabbar) = self.tabbar
+                && tabbar_area.height > 0
+            {
                 tabbar.render(tabbar_area, &self.theme, &mut canvas);
             }
 

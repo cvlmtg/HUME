@@ -38,11 +38,22 @@ pub(in crate::editor) fn typed_quit(
     _arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    // Multiple panes open: `:q` closes the focused pane, not the editor. The
-    // buffer stays open in the buffer list (no edits lost), so no dirty check —
-    // that guard belongs to the single-pane path below, which actually quits.
-    if ed.view.panes.len() > 1 {
+    // The active tab has more than one pane: `:q` closes the focused pane, not
+    // the tab or the editor. The buffer stays open (no edits lost), so no dirty
+    // check — that guard belongs to the steps below, which actually close
+    // something the user can't get back without saving.
+    if !ed.view.layout.is_single_pane() {
         super::close_focused_pane(&mut ed.state, &mut ed.view);
+        return Ok(());
+    }
+
+    // The active tab is down to its last pane, but other tabs remain open:
+    // `:q` closes the tab (Vim's `:q` on a window closes it; the last window
+    // of a tab closes the tab, not the editor). Same no-dirty-check reasoning
+    // — the buffer stays open in whichever other tab(s) show it, or in the
+    // buffer list if none do.
+    if ed.state.tabs.len() > 1 {
+        super::close_tab(&mut ed.state, &mut ed.view);
         return Ok(());
     }
 

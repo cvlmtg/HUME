@@ -40,7 +40,8 @@ pub(crate) fn buffers(ctx: &mut SteelCtx) -> SteelResult {
     list.into_steelval().map_err(generic_err)
 }
 
-/// `(panes)` → list of all open PaneIds.
+/// `(panes)` → list of every open PaneId, across every tab — including
+/// panes in inactive tabs, not just the ones currently on screen.
 pub(crate) fn panes(ctx: &mut SteelCtx) -> SteelResult {
     let list: Vec<SteelVal> = ctx
         .host

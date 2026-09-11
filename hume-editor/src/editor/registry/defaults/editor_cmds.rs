@@ -439,6 +439,24 @@ impl CommandRegistry {
         .jump()
         .reg(self);
 
+        // ── Editor commands — tab pages ─────────────────────────────────────────
+        // No `.jump()`: switching tabs changes `focused_pane_id` itself (a
+        // different pane, possibly in a different tab), same as the
+        // pane-focus commands below — see `commands::tab`'s module doc for
+        // why that disqualifies the jump-list recording `.jump()` triggers.
+        ecmd(
+            "goto-next-tab",
+            "Switch to the next tab in display order.",
+            cmd_goto_next_tab,
+        )
+        .reg(self);
+        ecmd(
+            "goto-prev-tab",
+            "Switch to the previous tab in display order.",
+            cmd_goto_prev_tab,
+        )
+        .reg(self);
+
         // ── Editor commands — pane focus stubs ────────────────────────────────
         ecmd(
             "pane-focus-next",

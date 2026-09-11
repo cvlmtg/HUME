@@ -1492,10 +1492,15 @@ impl crate::providers::BottomBandProvider for FixedHeightDrawer {
     fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 
-/// A no-op tab bar — only its `is_some()` presence matters to `pane_area`.
+/// A no-op tab bar — a fixed one-row `height()` is all `pane_area` reads
+/// from it.
 struct NoopTabBar;
 
 impl crate::providers::TabBarProvider for NoopTabBar {
+    fn height(&self) -> u16 {
+        1
+    }
+
     fn render(&self, _area: Rect, _theme: &Theme, _canvas: &mut crate::render::Canvas) {}
 }
 

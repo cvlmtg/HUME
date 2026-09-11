@@ -33,7 +33,7 @@ use super::visual_move::{VerticalUnit, apply_visual_vertical};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 
-use super::{Editor, Mode};
+use super::Editor;
 
 impl Editor {
     /// Dispatch a [`MouseEvent`] to the appropriate handler.
@@ -62,48 +62,65 @@ impl Editor {
             MouseEventKind::ScrollDown => self.mouse_scroll(true),
             _ => {}
         }
-        // A click can exit Insert (`mouse_left_down`'s `end_insert_session`)
-        // — dismiss a completion session synchronously, same as `handle_key`.
+        // A click can exit Insert (`mouse_left_down`'s pane path and
+        // `tabline_click` both move focus through `focus_pane`, which ends
+        // one if active) — dismiss a completion session synchronously, same
+        // as `handle_key`.
         self.take_pending_lsp_completion_dismiss();
     }
 
     // ── Click ─────────────────────────────────────────────────────────────────
 
     fn mouse_left_down(&mut self, x: u16, y: u16) {
-        // Hit-test before anything else: a miss (statusline, tabline, a
-        // divider seam — anything outside a pane's own rect) is a no-op, and
-        // a hit's pane-relative coordinates are what every step below needs.
+        // A tabline click is handled separately (and unconditionally, even
+        // when it doesn't land on an actual tab) — it's outside every
+        // pane's rect, so `pane_at_screen_pos` below would just treat it as
+        // a miss anyway, but routing it first avoids relying on that.
+        if self.tabline_click(x, y) {
+            return;
+        }
+
+        // Hit-test before anything else: a miss (statusline, a divider seam
+        // — anything outside a pane's own rect) is a no-op, and a hit's
+        // pane-relative coordinates are what every step below needs.
         let Some((pid, pane_x, pane_y)) = self.pane_at_screen_pos(x, y) else {
             return;
         };
 
-        // Move to Normal mode on click, regardless of current mode — BEFORE
-        // resolving the click's char offset, and while the *previously*
-        // focused pane is still current. `end_insert_session` can shrink
-        // that pane's buffer (the blank-line indent trim), so computing
-        // `click_to_char` first would resolve against a buffer length the
-        // exit is about to invalidate: the offset could land past the new
-        // end, or simply on the wrong char once positions shift.
-        if self.state.mode() == Mode::Insert {
-            self.end_insert_session();
-        }
-
         // Click-to-focus: a click in another pane (a `:split`/`:vsplit`)
-        // moves focus there, the same plain assignment `cmd_pane_focus_*`
-        // uses — no jump-list push, matching those.
-        self.state.focused_pane_id = pid;
+        // moves focus there, the same `focus_pane` chokepoint
+        // `cmd_pane_focus_*` uses — no jump-list push, matching those.
+        // `focus_pane` exits Insert (if active) BEFORE resolving the click's
+        // char offset below, and while the *previously* focused pane is
+        // still current — `end_insert_session` can shrink that pane's
+        // buffer (the blank-line indent trim), so computing `click_to_char`
+        // first would resolve against a buffer length the exit is about to
+        // invalidate: the offset could land past the new end, or simply on
+        // the wrong char once positions shift.
+        super::commands::focus_pane(&mut self.state, &self.view, pid);
 
         if let Some(char_off) = self.click_to_char(pid, pane_x, pane_y) {
             // Collapse the primary selection to the clicked position.
             let sel = Selection::collapsed(char_off);
             self.set_current_selections(SelectionSet::single(sel));
+            self.clear_pending_input();
             // Record anchor for potential drag-select.
             self.state.mouse_drag_anchor = Some(char_off);
-            // Clear any pending key sequence so the click is a clean state reset.
-            self.state.pending_keys.clear();
-            self.state.count = None;
-            self.state.status_msg = None;
         }
+    }
+
+    /// Reset transient input state every click starts fresh from: any
+    /// half-typed key sequence (`pending_keys`/`count`) and the status line.
+    /// Shared by `mouse_left_down`'s pane path and `tabline_click` — both
+    /// are "the user just clicked somewhere new". Leaves `mouse_drag_anchor`
+    /// alone — `mouse_left_down` sets its own right after calling this, and
+    /// `tabline_click` clears it explicitly, since a tab switch is exactly
+    /// the case where a stale anchor would extend a drag against a buffer
+    /// that isn't even focused anymore.
+    fn clear_pending_input(&mut self) {
+        self.state.pending_keys.clear();
+        self.state.count = None;
+        self.state.status_msg = None;
     }
 
     // ── Drag ──────────────────────────────────────────────────────────────────
@@ -176,6 +193,51 @@ impl Editor {
     }
 
     // ── Coordinate conversion ─────────────────────────────────────────────────
+
+    /// Handle a click at terminal-absolute `(x, y)` landing in the tab
+    /// bar's row, if it does. Returns `true` when it was — whether or not
+    /// it landed on an actual tab, so a click on the row's blank tail is a
+    /// no-op but still doesn't fall through to `pane_at_screen_pos` (which
+    /// would just miss anyway, since the tabline sits outside every pane's
+    /// rect). Uses the same `tab_extents` layout `TablineWidget::render`
+    /// paints from, so a click always lands on the tab it visually appears
+    /// to.
+    ///
+    /// Hit-tests against `EngineView::tabbar_area` rather than
+    /// `last_pane_area.y`: `pane_area`'s degenerate branch (terminal too
+    /// small to fit chrome + content) leaves `last_pane_area.y` at the
+    /// terminal's own `y`, which would make every row look like the tab bar
+    /// — `tabbar_area` is the one rect that always reports where the bar
+    /// itself is, whether or not there's room left for panes.
+    fn tabline_click(&mut self, x: u16, y: u16) -> bool {
+        let bar = self.view.tabbar_area(self.view.last_terminal_area);
+        if !bar.contains(Position::new(x, y)) {
+            return false;
+        }
+        // No separate `guard.visible` check needed: `bar.height` (above) came
+        // from `TabBarProvider::height()`, which reads that same flag off
+        // this same shared slot — a nonzero height already means it was
+        // `true` moments ago, and nothing mutates the view between then and
+        // this read.
+        let guard = self.state.tabline_view.read();
+        let extents = crate::tabline::tab_extents(&guard.tabs, guard.scroll, bar.x, bar.width);
+        let target = extents
+            .ranges
+            .iter()
+            .position(|&(start, end)| x >= start && x < end)
+            .map(|i| guard.tabs[guard.scroll + i].id);
+        drop(guard);
+        if let Some(id) = target {
+            // `switch_to_tab` -> `install_live` -> `focus_pane` exits Insert
+            // (if active) against the outgoing tab's own pane, still focused
+            // at this point, before moving focus to the new tab's pane — see
+            // `focus_pane`'s own doc for why that order matters.
+            self.clear_pending_input();
+            self.state.mouse_drag_anchor = None;
+            crate::editor::tab::switch_to_tab(&mut self.state, &mut self.view, id);
+        }
+        true
+    }
 
     /// Which pane `(x, y)` (terminal-absolute) falls in, and its
     /// position translated into that pane's own rect-relative coordinates —

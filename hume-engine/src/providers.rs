@@ -326,8 +326,16 @@ pub trait StatuslineProvider {
 }
 
 /// Renders the tab bar (top row of the terminal area).
-/// The engine reserves one row at the top for the tab bar when present.
+///
+/// The engine reserves `height()` rows at the top for the tab bar when
+/// present — mirrors [`BottomBandProvider::height`]: a provider that wants
+/// to hide itself this frame (e.g. `tabline = dynamic` with only one tab
+/// open) returns `0` rather than the caller special-casing `Option::None`.
 pub trait TabBarProvider {
+    /// Rows to reserve this frame. `0` hides the tab bar entirely, folding
+    /// its row back to panes.
+    fn height(&self) -> u16;
+
     fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);
 }
 

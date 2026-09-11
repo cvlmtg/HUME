@@ -63,6 +63,7 @@ pub(super) mod scroll;
 pub(crate) mod search;
 pub(crate) mod settings;
 mod syntax;
+pub(crate) mod tab;
 mod theme;
 mod timer_bridge;
 mod timers;
@@ -324,8 +325,14 @@ pub(crate) struct EditorState {
     /// The character and kind from the last find/till motion.
     pub(super) last_find: Option<commands::FindChar>,
     pub(super) search: SearchState,
-    /// The single pane focused in the current editing session.
+    /// The single pane focused in the current editing session — the
+    /// *active tab's* focused pane. Every other open tab's own focused pane
+    /// is stashed on `tabs` instead (see its module doc).
     pub(in crate::editor) focused_pane_id: PaneId,
+    /// Every open tab's display order and stashed window layout — see
+    /// `tab::store`'s module doc for the model (the active tab's layout
+    /// lives in `EngineView::layout`, not here).
+    pub(in crate::editor) tabs: tab::TabStore,
     /// Per-pane maps: (pane,buffer) selections/groups, transient mode snapshots, jump history.
     pub(super) panes: PaneView,
     /// Bounded, in-memory history for `:`, `/`, and `?` prompts.
@@ -466,6 +473,13 @@ pub(crate) struct EditorState {
     /// wired through `build_pane`'s parameter list and `Editor::open`'s
     /// bootstrap by hand; see that type's own doc for why.
     pub(in crate::editor) views: hume_ui::OverlayViews,
+    /// Shared tab-bar view: written every frame by `Editor::prepare_frame`
+    /// (`sync_tabline_view`), read by `TablineWidget`. Not part of
+    /// `hume_ui::OverlayViews` above — `TablineViewState` holds a `TabId`,
+    /// an `editor`-crate type `hume-ui` cannot depend on (see
+    /// `crate::tabline`'s own module doc).
+    pub(in crate::editor) tabline_view:
+        hume_engine::lock::SharedSlot<crate::tabline::TablineViewState>,
     /// Cross-thread waker clone (see `Editor::open`'s `wake` param), reachable
     /// here so `EditorHostImpl` — which only ever holds a disjoint `&mut
     /// EditorState` borrow, never a whole `&mut Editor` — can hand it to a
@@ -514,6 +528,10 @@ impl Default for EditorState {
             last_find: None,
             search: SearchState::default(),
             focused_pane_id: PaneId::default(),
+            // Placeholder, like `focused_pane_id` above — every real caller
+            // (`Editor::open`, `for_testing`) overrides both together with a
+            // real seeded pane, never relies on this default.
+            tabs: tab::TabStore::new(PaneId::default()).0,
             panes: PaneView::default(),
             history: minibuf::history::HistoryStore::new(history_capacity),
             force_full_redraw: false,
@@ -540,6 +558,7 @@ impl Default for EditorState {
             cwd: PathBuf::new(),
             lsp_completion_dismiss_pending: false,
             views: hume_ui::OverlayViews::default(),
+            tabline_view: hume_engine::lock::SharedSlot::default(),
             wake: Arc::new(|| {}),
         }
     }
@@ -788,11 +807,33 @@ pub(crate) struct Editor {
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any — looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
-    /// `(top_line, height)` as of the last frame, per pane — `prepare_frame`'s
-    /// scroll step compares against this to detect a real viewport change
-    /// worth debouncing, rather than firing every frame regardless.
-    last_viewport_key:
-        rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (hume_rope::line::ContentLine, u16)>,
+    /// `(buffer_id, top_line, height)` as of the last frame this pane was
+    /// *visible*, per pane — `prepare_frame`'s scroll step compares against
+    /// this to detect a real viewport change worth debouncing, rather than
+    /// firing every frame regardless. The buffer id is part of the key for
+    /// the same reason `virtual_lines_synced` below carries one: a pane
+    /// switching buffers at unchanged `(top_line, height)` — `:b#`, a tab
+    /// switch back onto identical geometry — must still count as a change,
+    /// or the newly-shown buffer's viewport-driven consumers (LSP inlay
+    /// hints) never re-fire. Entries for panes outside the active set are
+    /// dropped each frame rather than left to go stale (see `prepare_frame`
+    /// step 4): a background tab's pane isn't observed at all while hidden,
+    /// so its return must itself be treated as a change, never a match
+    /// against a snapshot from before it left.
+    last_viewport_key: rustc_hash::FxHashMap<
+        hume_engine::pipeline::PaneId,
+        (BufferId, hume_rope::line::ContentLine, u16),
+    >,
+    /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
+    /// the last frame it actually ran the rebuild — `None` before the first
+    /// frame. An unchanged hash means the previous frame's
+    /// `TablineViewState` is still correct, so the per-tab label rebuild
+    /// (one allocating `display_name()` call per tab) and the scroll probe
+    /// can both be skipped entirely on every steady-state frame — the vast
+    /// majority, since nothing about the tab bar changes on a typical
+    /// keystroke. See `Editor::tabline_signature`'s own doc for what it
+    /// covers.
+    last_tabline_signature: Option<u64>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each
     /// pane's last mirror into its `PaneVirtualLines` Arc — `prepare_frame`
     /// compares against this to skip the rebuild on frames where neither
@@ -956,6 +997,7 @@ mod field_classification {
                 last_find: _,                       // preserved
                 search: _,                          // preserved
                 focused_pane_id: _,                 // preserved
+                tabs: _,                            // preserved
                 panes: _,                           // preserved
                 history: _,                         // preserved
                 force_full_redraw: _,               // preserved
@@ -985,6 +1027,7 @@ mod field_classification {
                 cwd: _,                            // preserved
                 lsp_completion_dismiss_pending: _, // preserved
                 views: _, // preserved: Arc views, self-healing per-frame regardless of config
+                tabline_view: _, // preserved: self-healing per-frame regardless of config
                 wake: _,  // preserved: cross-thread waker infra, not config
             } = e;
         }
@@ -1030,7 +1073,8 @@ mod field_classification {
                 // preserved: indexes the native ViewportDebounce timers
                 // that themselves survive the reset
                 viewport_debounce: _,
-                last_viewport_key: _, // preserved
+                last_viewport_key: _,      // preserved
+                last_tabline_signature: _, // preserved
                 // preserved: staleness after a reload is forced by
                 // DecorationStores::reset bumping the generation
                 // counter, not by resetting this map directly

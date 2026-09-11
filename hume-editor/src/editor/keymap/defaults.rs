@@ -252,6 +252,13 @@ fn build_pane_trie() -> KeyTrie {
     t.bind_leaf(key!('s'), cmd!("pane-split"));
     t.bind_leaf(key!('v'), cmd!("pane-vsplit"));
     t.bind_leaf(key!('c'), cmd!("pane-close"));
+    // A tab is a saved pane layout (see `commands::tab`'s module doc), so
+    // cycling tabs lives under the pane-workspace prefix rather than under
+    // `g` — every letter `t`/`T` could take there is already claimed by
+    // STRUCTURAL_OBJECTS' `class` navigation (`build_goto_trie`). Uppercase
+    // `T` = "previous" mirrors the `g`-trie's own lower/upper convention.
+    t.bind_leaf(key!('t'), cmd!("goto-next-tab"));
+    t.bind_leaf(key!('T'), cmd!("goto-prev-tab"));
     t
 }
 

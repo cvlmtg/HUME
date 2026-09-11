@@ -1,5 +1,5 @@
 use super::*;
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use hume_engine::providers::HighlightTier;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
@@ -20,7 +20,14 @@ fn d1_selections_are_pane_owned() {
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
 
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Pane A → position 2 ('l').
     ed.switch_focused_pane(pid_a);
@@ -56,7 +63,14 @@ fn d4a_search_pattern_is_per_buffer() {
     let mut ed = editor_from("-[f]>oo foo foo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Both panes see Buffer.search_pattern — it's a single field on `doc`.
     // Verify independence of search_cursor: write distinct values per pane.
@@ -169,7 +183,14 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     let mut ed = editor_from("-[a]>bc\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Pane A insert session: type 'X' at the start.
     ed.switch_focused_pane(pid_a);
@@ -233,7 +254,14 @@ fn d6_search_mode_snapshot_is_per_pane() {
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     let sels_a = SelectionSet::single(Selection::collapsed(co(1)));
     let sels_b = SelectionSet::single(Selection::collapsed(co(3)));
@@ -283,7 +311,14 @@ fn d2_edit_in_pane_a_translates_pane_b_selections() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Position pane B's cursor at char 9 ('j').
     ed.switch_focused_pane(pid_b);
@@ -312,7 +347,14 @@ fn d3_undo_restores_acting_pane_and_translates_others() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Position pane B at char 9.
     ed.switch_focused_pane(pid_b);
@@ -355,7 +397,14 @@ fn indent_sibling_pane_cursor_at_line_start_clamps_past_new_indent() {
     let mut ed = editor_from("  -[f]>oo\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Pane B's cursor sits at column 0 — an ordinary cursor that merely
     // happens to be at the line start, not a linewise selection.
@@ -385,7 +434,14 @@ fn propagate_cs_merges_collapsed_non_acting_pane_selections() {
     let mut ed = editor_from("-[a]>bcde\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Pane B: two cursors at positions 2 ('c') and 4 ('e').
     ed.switch_focused_pane(pid_b);
@@ -431,7 +487,14 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     let mut ed = editor_from("-[a]>bcdefghij\n");
     let bid = ed.focused_buffer_id();
     let pid_a = ed.state.focused_pane_id;
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     // Position pane B's cursor at char 5 ('f').
     ed.switch_focused_pane(pid_b);
@@ -451,7 +514,7 @@ fn pane_engine_mirror_synced_for_non_focused_pane_after_edit() {
     );
 
     // Simulate the per-frame sync — this is what write the engine mirror.
-    ed.sync_all_pane_mirrors();
+    ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());
 
     // Engine mirror for pane B must now reflect the translated position.
     let mirror_head = ed.view.panes[pid_b].selections[0].head;
@@ -1057,7 +1120,14 @@ fn split_pane_gets_gutter_column() {
     );
 
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
 
     assert_eq!(
         ed.view.panes[pid_b].providers.gutter_columns().count(),
@@ -1230,7 +1300,15 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     // no `panes.render` entry (see `Editor::for_testing`'s comment) — only
     // `open_pane` seeds one, so this test opens a second pane rather than
     // using the bootstrap one.
-    let pid = open_pane(&mut ed.state, &mut ed.view, bid_a);
+    let pid_a = ed.state.focused_pane_id;
+    let pid = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid_a,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
     ed.switch_focused_pane(pid);
 
     let scope = ed.view.registry.intern("ui.virtual");
@@ -1603,22 +1681,31 @@ fn fits_split_allows_before_first_frame() {
     ));
 }
 
-/// If `split_leaf` can't find the focused pane in the layout tree — an
+/// If the focused pane isn't reachable in the active layout tree — an
 /// invariant violation that should never happen — `split_pane_onto` must
-/// roll back the pane it speculatively created instead of leaving an
-/// orphaned pane with no layout leaf (which would later violate
-/// `close_focused_pane`'s precondition on `remove_leaf`).
+/// refuse before creating anything: `open_pane_in_layout` checks
+/// `contains_leaf` up front, so there is never a speculatively created pane
+/// to roll back, and no window where one exists with no layout leaf (which
+/// would later violate `close_focused_pane`'s precondition on
+/// `remove_leaf`).
 #[test]
-fn split_pane_onto_rolls_back_when_focused_pane_missing_from_layout() {
+fn split_pane_onto_refuses_when_focused_pane_missing_from_layout() {
     use hume_engine::pipeline::Direction;
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid = ed.focused_buffer_id();
 
-    // Fabricate the desync directly: focus a pane that was never attached to
-    // `view.layout` (only the original pane's `Leaf` exists there).
-    let ghost_pid = open_pane(&mut ed.state, &mut ed.view, bid);
-    ed.state.focused_pane_id = ghost_pid;
+    // Fabricate the desync directly, but through a genuinely real pane: open
+    // a second tab (a real, properly-attached pane — just attached to *that*
+    // tab's own layout, not the active one), then reuse its id as the active
+    // tab's `focused_pane_id`. That reproduces the same condition
+    // `contains_leaf` must defend against (a focused pane the active layout
+    // doesn't reach) without ever constructing a pane that was never
+    // attached to any tab at all.
+    ed.execute_typed("tabnew", None).unwrap();
+    let other_tab_pid = ed.state.focused_pane_id;
+    ed.execute_typed("tabprev", None).unwrap();
+    ed.state.focused_pane_id = other_tab_pid;
     let panes_before = ed.view.panes.len();
 
     let result = crate::editor::commands::split_pane_onto(
@@ -1630,12 +1717,12 @@ fn split_pane_onto_rolls_back_when_focused_pane_missing_from_layout() {
 
     assert!(
         result.is_err(),
-        "split_leaf failure must surface as an error"
+        "a missing split target must surface as an error"
     );
     assert_eq!(
         ed.view.panes.len(),
         panes_before,
-        "the speculatively created pane is rolled back, not leaked"
+        "no pane is created at all when the split target is unreachable"
     );
 }
 

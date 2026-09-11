@@ -165,6 +165,12 @@
 "ui.statusline.sift" = { fg = "bg1", bg = "aqua1", modifiers = ["bold"] }
 "ui.statusline.separator" = { fg = "bg3" }
 
+# Tab bar — a HUME-only surface, distinct from Helix's own `ui.bufferline*`
+# above (a per-buffer strip, not HUME's window-layout tab pages). Active
+# reuses `ui.bufferline.active`'s own bg0/yellow0 pairing for continuity.
+"ui.tabline" = { fg = "fg4", bg = "bg2" }
+"ui.tabline.active" = { fg = "bg0", bg = "yellow0", modifiers = ["bold"] }
+
 "ui.popup.scroll" = { fg = "yellow1", bg = "bg1" }
 "ui.menu.scroll" = { fg = "yellow1", bg = "bg2" }
 "ui.drawer" = { fg = "fg1", bg = "bg1" }

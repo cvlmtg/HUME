@@ -3,7 +3,7 @@ use hume_ops::MotionMode;
 
 use super::super::{EditorState, Severity};
 use super::{
-    alternate_buffer, current_jump_entry, focused_buffer_id, set_current_selections,
+    alternate_buffer, current_jump_entry, focus_pane, focused_buffer_id, set_current_selections,
     switch_to_buffer_without_jump,
 };
 use crate::editor::error::CommandError;
@@ -147,8 +147,9 @@ enum Dir {
 /// Move focus to the nearest pane in `dir`, reading geometry recomputed from
 /// the layout tree and the terminal area cached by `prepare_frame` (see
 /// `EngineView::pane_rects`). Silent no-op (`Ok`) when no pane lies in that
-/// direction. Focus switch is a single field write — `open_pane` already
-/// seeded per-pane maps for every existing pane.
+/// direction. Focus switch routes through `focus_pane`, which ends the
+/// outgoing pane's Insert session first — `open_pane` already seeded
+/// per-pane maps for every existing pane, so nothing else needs seeding here.
 fn focus_in_direction(
     state: &mut EditorState,
     view: &EngineView,
@@ -195,7 +196,7 @@ fn focus_in_direction(
         .min_by_key(|(score, _)| *score)
         .map(|(_, pid)| pid);
     if let Some(pid) = target {
-        state.focused_pane_id = pid;
+        focus_pane(state, view, pid);
     }
     Ok(())
 }
@@ -213,7 +214,7 @@ pub(in crate::editor) fn cmd_pane_focus_next(
     };
     let n = rects.len();
     if n > 1 {
-        state.focused_pane_id = rects[(idx + 1) % n].0;
+        focus_pane(state, view, rects[(idx + 1) % n].0);
     }
     Ok(())
 }
@@ -282,17 +283,18 @@ pub(in crate::editor) fn cmd_vsplit_pane(
 }
 
 /// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
-/// No-ops with a status message when only one pane remains (`:q` owns quitting).
+/// No-ops with a status message when it's the tab's only pane (`:q` owns
+/// closing the tab in that case — see `typed_quit`).
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    if view.panes.len() > 1 {
-        super::close_focused_pane(state, view);
-    } else {
+    if view.layout.is_single_pane() {
         state.report(Severity::Info, "cannot close last pane".to_string());
+    } else {
+        super::close_focused_pane(state, view);
     }
     Ok(())
 }

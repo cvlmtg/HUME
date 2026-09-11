@@ -117,6 +117,31 @@ impl CommandRegistry {
             typed_vsplit
         );
         typed_cmd!(
+            "tabnew",
+            "Open a new tab.",
+            &["tabe"],
+            typed_tabnew,
+            completer: Some(ArgCompleter::Path { dirs_only: false })
+        );
+        typed_cmd!(
+            "tabclose",
+            "Close the current tab and every pane it owns.",
+            &["tabc"],
+            typed_tabclose
+        );
+        typed_cmd!(
+            "tabnext",
+            "Switch to the next tab in display order.",
+            &["tabn"],
+            typed_tabnext
+        );
+        typed_cmd!(
+            "tabprev",
+            "Switch to the previous tab in display order.",
+            &["tabp"],
+            typed_tabprev
+        );
+        typed_cmd!(
             "theme",
             "Load a theme by name: :theme <name>. No arg shows current theme.",
             &[],

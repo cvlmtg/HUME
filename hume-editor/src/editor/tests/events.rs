@@ -1,5 +1,5 @@
 use super::*;
-use crate::editor::commands::open_pane;
+use crate::editor::commands::open_pane_in_layout;
 use hume_grid::Rect;
 
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
@@ -482,9 +482,17 @@ fn hook_call_is_dispatched() {
 fn propagate_cs_syncs_engine_pane_for_non_focused_pane() {
     let mut ed = editor_from("-[a]>b\n");
     let buf_id = ed.focused_buffer_id();
+    let first_pane = ed.state.focused_pane_id;
 
     // Create a second pane (not the focused one) viewing the same buffer.
-    let second_pane = open_pane(&mut ed.state, &mut ed.view, buf_id);
+    let second_pane = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        first_pane,
+        buf_id,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
     assert!(ed.view.panes.contains_key(second_pane));
 
     // Edit in the focused pane (insert 'x' → "xab\n").
@@ -978,7 +986,14 @@ fn pane_focus_write_and_buffer_write_in_one_pass_coalesce_into_one_event() {
 
     let pid_a = ed.state.focused_pane_id;
     let bid = ed.focused_buffer_id();
-    let pid_b = open_pane(&mut ed.state, &mut ed.view, bid);
+    let pid_b = open_pane_in_layout(
+        &mut ed.state,
+        &mut ed.view,
+        pid_a,
+        bid,
+        hume_engine::pipeline::Direction::Horizontal,
+    )
+    .unwrap();
     let buf2 = ed.open_buffer(Buffer::scratch());
 
     // Bare `focused_pane_id` write (no settle() in between)...

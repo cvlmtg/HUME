@@ -82,7 +82,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(current-buffer)` | BufferId of the focused buffer |
 | `(current-pane)` | PaneId of the focused pane |
 | `(buffers)` | List of every open BufferId, in open-order |
-| `(panes)` | List of every open PaneId |
+| `(panes)` | List of every open PaneId, including panes in other tabs |
 | `(buffer-path bid)` | Absolute path string, or `#f` for an unsaved buffer |
 | `(buffer-display-path bid)` | Display-ready path (absolutized, `~`-collapsed) — print it, never use it for filesystem I/O; `#f` for an unsaved buffer |
 | `(buffer-name bid)` | Display name — filename, or `"*scratch*"` |

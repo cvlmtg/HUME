@@ -227,3 +227,62 @@ fn from_theme_without_a_mode_reads_the_base_scope() {
         want_normal
     );
 }
+
+#[test]
+fn tabline_colors_reads_its_own_scopes() {
+    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+    styles.insert(
+        "ui.tabline",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.tabline.active",
+        ResolvedStyle {
+            fg: Some(Rgb(0, 0, 0)),
+            bg: Some(Rgb(0, 255, 255)),
+            ..Default::default()
+        },
+    );
+    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let colors = TablineColors::from_theme(&theme);
+
+    assert_eq!(
+        colors.inactive,
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
+            ..Default::default()
+        }
+    );
+    assert_eq!(
+        colors.active,
+        ResolvedStyle {
+            fg: Some(Rgb(0, 0, 0)),
+            bg: Some(Rgb(0, 255, 255)),
+            ..Default::default()
+        }
+    );
+}
+
+#[test]
+fn tabline_active_falls_back_to_the_base_tabline_scope_when_undefined() {
+    // No "ui.tabline.active" entry — an active tab with no themed override
+    // must look like every other tab, via the engine's own dot-fallback.
+    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+    styles.insert(
+        "ui.tabline",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 255)),
+            bg: Some(Rgb(64, 64, 64)),
+            ..Default::default()
+        },
+    );
+    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let colors = TablineColors::from_theme(&theme);
+
+    assert_eq!(colors.active, colors.inactive);
+}

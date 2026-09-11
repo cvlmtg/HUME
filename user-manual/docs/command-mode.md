@@ -69,7 +69,20 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`) — see the [Default Keys](default-keys.md).
+Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`) — see the [Default Keys](default-keys.md).
+
+## Tabs
+
+A tab is a saved window layout — its own set of panes and splits — not a per-buffer strip.
+
+| Command | Effect |
+|---------|--------|
+| `:tabnew [path]`, `:tabe [path]` | Open a new tab. With no `path`, the new tab's pane views the same buffer as the current one; with `path`, it opens that file instead |
+| `:tabclose`, `:tabc` | Close the current tab and every pane it owns. Refused with a message if it's the only tab |
+| `:tabnext`, `:tabn` | Switch to the next tab in display order |
+| `:tabprev`, `:tabp` | Switch to the previous tab in display order |
+
+Cycling is also bound to `Ctrl+p t`/`Ctrl+p T` — see the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this — see [Configuration](configuration.md)).
 
 ## Editing
 

@@ -90,5 +90,34 @@ impl EditorColors {
     }
 }
 
+/// Resolved tab-bar color slots, read from the active engine
+/// [`hume_engine::theme::Theme`]. Sibling to [`EditorColors`] (same
+/// `resolve_by_name` pattern), kept as its own struct rather than folded
+/// into it: the two are read by different providers (`crate::tabline`, not
+/// `crate::statusline`) at different points in the frame.
+pub(crate) struct TablineColors {
+    /// Style for a tab that isn't the active one.
+    pub inactive: ResolvedStyle,
+    /// Style for the active tab. Unlike the statusline separator's
+    /// deliberate fallback override above, `ui.tabline.active` left unset
+    /// falls back to `ui.tabline` through the engine's own dot-notation
+    /// chain — an active tab with no themed override should look like every
+    /// other tab, which is exactly what that fallback already produces, so
+    /// no `raw_contains` guard is needed here.
+    pub active: ResolvedStyle,
+}
+
+impl TablineColors {
+    pub(crate) fn from_theme(theme: &hume_engine::theme::Theme) -> Self {
+        use hume_engine::types::Scope;
+
+        let style_for = |s: &'static str| -> ResolvedStyle { theme.resolve_by_name(Scope(s)) };
+        Self {
+            inactive: style_for("ui.tabline"),
+            active: style_for("ui.tabline.active"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

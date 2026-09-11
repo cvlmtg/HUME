@@ -60,11 +60,16 @@ impl Editor {
     /// one-row slack, not in inclusive-vs-exclusive — they still don't share
     /// an implementation, since one clamps to `content_lines` and the other
     /// to the ropey-domain line count.
-    pub(super) fn decorated_panes(&self) -> Vec<DecoratedPane> {
-        self.view
-            .panes
+    ///
+    /// Scoped to `active` (the active tab's panes — see
+    /// `EngineView::active_pane_ids`) rather than the whole pool: a
+    /// background tab's pane isn't decorated, mirrored, or scrolled while
+    /// hidden, so it has no "current frame" viewport for this to snapshot.
+    pub(super) fn decorated_panes(&self, active: &[PaneId]) -> Vec<DecoratedPane> {
+        active
             .iter()
-            .map(|(pid, pane)| {
+            .map(|&pid| {
+                let pane = &self.view.panes[pid];
                 let bid = pane.buffer_id;
                 let vp = &pane.viewport;
                 let text = self.state.buffers.get(bid).text();
