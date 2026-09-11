@@ -79,7 +79,7 @@ Named commands — every edit and motion operation as a pure function of buffer 
 ### Used by
 - hume-editor
 ## Description
-LSP transport, JSON-RPC codec, and client lifecycle state. Speaks protocol types only, plus opaque metadata the editor glue attaches — zero dependency on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`, so it stays independently testable.
+LSP transport, JSON-RPC codec, client lifecycle state, and protocol-only wire decoding (locations, completion items). Speaks protocol types only, plus opaque metadata the editor glue attaches — zero dependency on `Editor`, `Buffer`, or anything in `hume-editor`/`hume-engine`, so it stays independently testable.
 
 # hume-scripting
 ### Depends on

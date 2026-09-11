@@ -5,8 +5,9 @@
 use hume_editing::changeset::Assoc;
 use hume_rope::offset::CharOffset;
 
+use hume_lsp::completion_item::{StoredCompletionItem, parse_additional_text_edits_lenient};
+
 use super::CompletionSession;
-use super::item::{StoredCompletionItem, parse_additional_text_edits_lenient};
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
@@ -109,7 +110,7 @@ impl CompletionSession {
             pbs.selections.primary().head()
         };
 
-        let (span, new_text) = match &item.text_edit {
+        let (span, new_text) = match item.text_edit() {
             Some(te) => {
                 let rope_at_begin = &self.rope_at_begin;
                 let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
@@ -191,7 +192,7 @@ impl CompletionSession {
                         typed,
                         forward,
                     },
-                    item.insert_text.clone(),
+                    item.insert_text().to_string(),
                 )
             }
         };
@@ -205,14 +206,14 @@ impl CompletionSession {
         // Decoded and mapped here (pure — no mutation yet) so an overlap
         // with the main edit's own range (checked just below) can be caught
         // before either lands.
-        let additional_char_edits = if item.additional_text_edits.is_empty() {
+        let additional_char_edits = if item.additional_text_edits().is_empty() {
             Vec::new()
         } else {
             edits::build_edits_from_earlier_document(
                 &self.rope_at_begin,
                 &self.cs_since_begin,
                 encoding,
-                &item.additional_text_edits,
+                item.additional_text_edits(),
             )?
         };
         // Scoped to the server-range case: only there does the main edit
@@ -407,10 +408,10 @@ impl CompletionSession {
         // parse (e.g. `command`); Rust now owns additionalTextEdits/resolve.
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: self.bid,
-            item: item.raw.clone(),
+            item: item.raw().clone(),
         });
 
-        if !item.has_additional_text_edits {
+        if !item.has_additional_text_edits() {
             self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
@@ -457,9 +458,12 @@ impl CompletionSession {
             deadline,
         };
         let gen_after = state.buffers.get(bid).text_gen;
-        let Some(id) =
-            lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
-        else {
+        let Some(id) = lsp.send_request(
+            server_id,
+            "completionItem/resolve",
+            item.raw().clone(),
+            meta,
+        ) else {
             return; // server gone between the capability check and now
         };
         let callback: LspCallback = Box::new(move |editor, outcome| match outcome {

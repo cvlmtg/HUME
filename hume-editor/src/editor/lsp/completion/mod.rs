@@ -4,7 +4,6 @@
 //! editor (not per buffer) — starting a new one replaces the old.
 
 mod accept;
-mod item;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -14,7 +13,7 @@ use super::LspState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use crate::editor::{Editor, EditorState};
 
-pub(in crate::editor) use item::StoredCompletionItem;
+pub(in crate::editor) use hume_lsp::completion_item::StoredCompletionItem;
 
 pub(in crate::editor) struct CompletionSession {
     bid: BufferId,
@@ -205,7 +204,7 @@ impl CompletionSession {
         self.rank_scratch.clear();
         let pattern = self.matcher.parse(&self.filter);
         for (i, item) in self.items.iter().enumerate() {
-            if let Some(score) = self.matcher.score(&pattern, &item.filter_text) {
+            if let Some(score) = self.matcher.score(&pattern, item.filter_text()) {
                 self.rank_scratch.push((score, i as u32));
             }
         }
@@ -220,8 +219,8 @@ impl CompletionSession {
             b.0.cmp(&a.0)
                 .then_with(|| {
                     items[a.1 as usize]
-                        .sort_text
-                        .cmp(&items[b.1 as usize].sort_text)
+                        .sort_text()
+                        .cmp(items[b.1 as usize].sort_text())
                 })
                 .then(a.1.cmp(&b.1))
         });
