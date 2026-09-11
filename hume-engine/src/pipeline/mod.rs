@@ -12,6 +12,7 @@ use crate::theme::{ScopeRegistry, Theme};
 use crate::types::{EditorMode, ResolvedStyle, ScopeId};
 
 mod layout;
+mod pane_pool;
 mod pane_render;
 #[cfg(test)]
 mod tests;
@@ -21,6 +22,7 @@ use layout::{
     junction_glyph,
 };
 pub use layout::{DetachedPane, Direction, LayoutTree, Pruned, Seam};
+pub use pane_pool::PanePool;
 use pane_render::render_pane;
 
 new_key_type! {
@@ -152,7 +154,7 @@ impl Default for RenderContext {
 /// The root of the editor's rendering state.
 pub struct EngineView {
     pub layout: LayoutTree,
-    pub panes: SlotMap<PaneId, Pane>,
+    pub panes: PanePool,
     /// Pure `BufferId` allocator: a buffer's content, syntax, and rope all
     /// live in the editor's `Document`/`Buffer` — this slotmap only mints and
     /// validates IDs so `PaneId -> BufferId` references stay checkable.
@@ -203,7 +205,7 @@ const PANE_DIM_FACTOR: f32 = 0.5;
 
 impl EngineView {
     pub fn new(theme: Theme) -> Self {
-        let panes = SlotMap::with_key();
+        let panes = PanePool::with_key();
         let buffers = SlotMap::with_key();
         let mut registry = ScopeRegistry::new();
         let default_gutter_scope = registry.intern(DEFAULT_GUTTER_SCOPE.0);

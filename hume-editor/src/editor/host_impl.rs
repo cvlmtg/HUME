@@ -339,7 +339,12 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         self.state.buffers.iter().map(|(id, _)| id).collect()
     }
     fn pane_ids(&self) -> Vec<PaneId> {
-        self.view.panes.iter().map(|(id, _)| id).collect()
+        // `(panes)`'s own contract — see its doc.
+        self.view
+            .panes
+            .every_pane_across_all_tabs()
+            .map(|(id, _)| id)
+            .collect()
     }
 
     // ── Buffer reads ─────────────────────────────────────────────────────────

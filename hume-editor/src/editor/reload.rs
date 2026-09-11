@@ -292,13 +292,11 @@ impl Editor {
         // `core:lsp`'s inlay.scm) are otherwise only repopulated the next
         // time the pane's viewport genuinely moves — which a reload alone
         // never causes — so a clean buffer would show no inlay hints until
-        // the user scrolls. Every pane, not just the focused one: each
-        // pane's viewport is independent state a real reopen would restore
-        // per-pane too.
+        // the user scrolls. Every pane, not just the active tab's — see above.
         let panes_on_surviving_buffers: Vec<hume_engine::pipeline::PaneId> = self
             .view
             .panes
-            .iter()
+            .every_pane_across_all_tabs()
             .filter(|(_, pane)| snapshot.survives(pane.buffer_id, &self.state.buffers))
             .map(|(pid, _)| pid)
             .collect();

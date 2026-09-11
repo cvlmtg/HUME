@@ -740,7 +740,12 @@ fn vsplit_twice_sizes_three_panes_equally() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let widths: Vec<u16> = ed.view.panes.values().map(|p| p.viewport.width).collect();
+    let widths: Vec<u16> = ed
+        .view
+        .panes
+        .every_pane_across_all_tabs()
+        .map(|(_, p)| p.viewport.width)
+        .collect();
     assert_eq!(widths.len(), 3);
     let min = *widths.iter().min().unwrap();
     let max = *widths.iter().max().unwrap();
@@ -768,7 +773,12 @@ fn split_twice_sizes_three_panes_equally() {
     ed.settle();
     ed.prepare_frame(&mut ctx); // 41 rows → 40 usable after statusline
 
-    let heights: Vec<u16> = ed.view.panes.values().map(|p| p.viewport.height).collect();
+    let heights: Vec<u16> = ed
+        .view
+        .panes
+        .every_pane_across_all_tabs()
+        .map(|(_, p)| p.viewport.height)
+        .collect();
     assert_eq!(heights.len(), 3);
     let min = *heights.iter().min().unwrap();
     let max = *heights.iter().max().unwrap();

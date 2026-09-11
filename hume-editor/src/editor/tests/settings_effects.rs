@@ -695,7 +695,8 @@ fn cursor_shape_insert_gates_head_painting_in_the_focused_pane_only() {
     let other = ed
         .view
         .panes
-        .keys()
+        .every_pane_across_all_tabs()
+        .map(|(pid, _)| pid)
         .find(|&p| p != focused)
         .expect("vsplit must leave a second pane");
 

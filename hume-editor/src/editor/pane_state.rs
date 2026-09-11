@@ -386,8 +386,9 @@ impl super::EditorState {
         if let Some(pid) = self.pane_showing_buffer(view, bid) {
             return Some(pid);
         }
+        // Cursor read only, not a viewport — see this fn's own doc.
         view.panes
-            .iter()
+            .every_pane_across_all_tabs()
             .find(|(_, p)| p.buffer_id == bid)
             .map(|(pid, _)| pid)
     }

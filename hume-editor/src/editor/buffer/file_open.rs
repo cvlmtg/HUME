@@ -206,10 +206,13 @@ impl Editor {
         use hume_editing::selection::{Selection, SelectionSet};
 
         // ── Phase 1: capture (line, char_col) per pane + focused pane's pre_sels ──
+        // Every pane showing `id`, active tab or not — a background pane's
+        // cursor needs remapping through this reload's `ChangeSet` too, or
+        // it desyncs the moment its tab is refocused.
         let pane_ids: Vec<PaneId> = self
             .view
             .panes
-            .iter()
+            .every_pane_across_all_tabs()
             .filter(|(_, p)| p.buffer_id == id)
             .map(|(pid, _)| pid)
             .collect();
@@ -358,7 +361,8 @@ impl Editor {
         // jump list was already remapped through `reload_cs` above (Phase 2b)
         // — same-buffer-id survival alone isn't enough, since the reload can
         // shift or delete the text an entry pointed at.
-        for pane in self.view.panes.values_mut() {
+        // Every pane, active tab or not — see the comment above.
+        for (_, pane) in self.view.panes.every_pane_across_all_tabs_mut() {
             pane.forget_buffer(id);
         }
     }

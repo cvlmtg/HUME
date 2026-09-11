@@ -156,8 +156,8 @@ impl Editor {
         let visible: Vec<BufferId> = self
             .view
             .panes
-            .values()
-            .map(|p| p.buffer_id)
+            .every_pane_across_all_tabs()
+            .map(|(_, p)| p.buffer_id)
             .filter(|bid| seen.insert(*bid))
             .collect();
 

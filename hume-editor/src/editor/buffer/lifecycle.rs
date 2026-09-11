@@ -185,9 +185,10 @@ pub(in crate::editor) fn close_buffer(
     match buffers.mru_excluding(id) {
         Some(next) => {
             // Collect before mutating (borrow checker); n≈1 in the single-pane case.
+            // Every pane showing `id` must redirect, active tab or not.
             let panes_to_redirect: Vec<PaneId> = ev
                 .panes
-                .iter()
+                .every_pane_across_all_tabs()
                 .filter(|(_, p)| p.buffer_id == id)
                 .map(|(pid, _)| pid)
                 .collect();
@@ -350,9 +351,10 @@ pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
         buf_state.remove(id);
     }
     // Collect before mutating (borrow checker); n≈1 in the single-pane case.
+    // Every pane that shows `id`, active tab or not.
     let pane_ids: Vec<PaneId> = ev
         .panes
-        .iter()
+        .every_pane_across_all_tabs()
         .filter(|(_, p)| p.buffer_id == id)
         .map(|(pid, _)| pid)
         .collect();
@@ -362,7 +364,8 @@ pub(in crate::editor::buffer) fn reseed_panes_after_content_reset(
         pane_state[pid].insert(id, pane_state::fresh_from_buf(buffers.get(id)));
     }
     pane_jumps.prune_buffer(id);
-    for pane in ev.panes.values_mut() {
+    // Every pane must forget `id`, active tab or not.
+    for (_, pane) in ev.panes.every_pane_across_all_tabs_mut() {
         pane.forget_buffer(id);
     }
 }
@@ -375,7 +378,8 @@ fn forget_buffer_in_all_panes(
     pane_jumps: &mut JumpLists,
     id: BufferId,
 ) {
-    for pane in ev.panes.values_mut() {
+    // Every pane must forget `id`, active tab or not.
+    for (_, pane) in ev.panes.every_pane_across_all_tabs_mut() {
         pane.forget_buffer(id);
     }
     for buf_state in pane_state.values_mut() {
