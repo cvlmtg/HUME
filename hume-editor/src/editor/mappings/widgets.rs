@@ -57,7 +57,7 @@ impl Editor {
         };
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                if menu.selected + 1 < menu.items.len() {
+                if menu.selected + 1 < menu.rows.len() {
                     menu.selected += 1;
                 }
                 true
@@ -191,7 +191,8 @@ impl Editor {
                 let Some(pair) = self
                     .state
                     .views
-                    .popup()
+                    .popup
+                    .read()
                     .as_ref()
                     .map(|s| (s.rect.height.saturating_sub(2) as usize, s.lines.len()))
                 else {
@@ -203,13 +204,16 @@ impl Editor {
                 let Some(total) = self
                     .state
                     .views
-                    .popup_band()
+                    .popup_band
+                    .read()
                     .as_ref()
                     .map(|s| s.lines.len())
                 else {
                     return false;
                 };
-                let max = self.view.last_terminal_area.height / 2;
+                let max = hume_engine::pipeline::EngineView::bottom_band_max(
+                    self.view.last_terminal_area.height,
+                );
                 (hume_ui::popup::band_visible_rows(total, max), total)
             }
         };
@@ -238,12 +242,15 @@ impl Editor {
     /// Number of drawer rows visible at once — computed via
     /// `hume_ui::drawer::visible_rows`, the same arithmetic
     /// `DrawerWidget::height` uses to size what it paints next frame. `max`
-    /// mirrors that provider's own ceiling (half the last-rendered
-    /// *terminal* height, not the already-chrome-reduced pane height).
-    /// Shared by `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d half-page
-    /// handlers so "half a page" always agrees with what's on screen.
+    /// is `EngineView::bottom_band_max` of the last-rendered *terminal*
+    /// height (not the already-chrome-reduced pane height) — the same call
+    /// the engine itself makes, so this can never drift from what it will
+    /// next paint. Shared by `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d
+    /// half-page handlers so "half a page" always agrees with what's on
+    /// screen.
     fn drawer_visible_rows(&self) -> usize {
-        let max = self.view.last_terminal_area.height / 2;
+        let max =
+            hume_engine::pipeline::EngineView::bottom_band_max(self.view.last_terminal_area.height);
         let Some(drawer) = self.state.config.drawer.as_ref() else {
             return 0;
         };

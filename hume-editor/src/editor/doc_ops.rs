@@ -15,7 +15,7 @@ use hume_engine::pipeline::{BufferId, PaneId};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
-use hume_decorations::decorations::DecorationStores;
+use hume_decorations::DecorationStores;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;

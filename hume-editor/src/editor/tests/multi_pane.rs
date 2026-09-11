@@ -1,5 +1,6 @@
 use super::*;
 use crate::editor::commands::open_pane;
+use hume_engine::providers::HighlightTier;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
@@ -1221,7 +1222,7 @@ fn closing_a_pane_reclaims_its_entries_from_the_frame_caches() {
 /// switching a buffer doesn't bump the generation.
 #[test]
 fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
-    use hume_decorations::decorations::VirtualLineEntry;
+    use hume_decorations::VirtualLineEntry;
 
     let mut ed = editor_from("-[h]>ello\n");
     let bid_a = ed.focused_buffer_id();
@@ -1249,18 +1250,9 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     ed.settle();
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
-    let virtual_lines_arc = ed
-        .state
-        .panes
-        .render
-        .get(pid)
-        .unwrap()
-        .virtual_lines()
-        .clone();
     assert!(
-        virtual_lines_arc
-            .read()
-            .unwrap()
+        ed.state.panes.render[pid]
+            .virtual_lines()
             .contains_key(&hume_rope::line::ContentLine::new(0)),
         "sanity: pane A mirrors buffer A's virtual line at line 0"
     );
@@ -1273,7 +1265,7 @@ fn switching_a_panes_buffer_rebuilds_its_virtual_lines() {
     ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
 
     assert!(
-        virtual_lines_arc.read().unwrap().is_empty(),
+        ed.state.panes.render[pid].virtual_lines().is_empty(),
         "after switching to buffer B, the pane must no longer mirror buffer \
          A's virtual lines — a generation-only sync gate would leave line 0 \
          populated with A's stale entry"
@@ -1783,7 +1775,7 @@ fn multiline_search_match_splits_into_per_line_highlight_spans() {
     // Every span shares the one search-match scope (`ScopedHighlighter`
     // carries it per-span now, not fixed on the provider) — dropped here
     // since this test is about span geometry, not scope resolution.
-    let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.search)
+    let matches: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, HighlightTier::SearchMatch)
         .into_iter()
         .map(|(line, start, end, _)| (line.index(), start.index(), end.index()))
         .collect();

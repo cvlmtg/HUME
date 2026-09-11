@@ -506,7 +506,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     )
     .unwrap();
     assert!(
-        ed.state.views.drawer().is_some(),
+        ed.state.views.drawer.read().is_some(),
         "sanity: the view must be populated on open"
     );
 
@@ -522,7 +522,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     ed.prepare_frame(&mut ctx);
 
     assert!(
-        ed.state.views.drawer().is_none(),
+        ed.state.views.drawer.read().is_none(),
         "the drawer view must self-heal on the very next frame after a \
          reset clears the model, not stay stale (and uncloseable — key \
          routing gates on state.config.drawer.is_some()) forever"
@@ -951,7 +951,7 @@ fn resync_refires_diagnostics_changed_from_the_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations =
-        hume_decorations::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
+        hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(
@@ -1051,7 +1051,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
     // The state a real `reset_config_state` would leave behind: rendered
     // decorations wiped, `LspState::diagnostics` untouched.
     ed.state.config.decorations =
-        hume_decorations::decorations::DecorationStores::reset(ed.state.config.decorations.clock());
+        hume_decorations::DecorationStores::reset(ed.state.config.decorations.clock());
 
     let mut host = ScriptingHost::new();
     eval_with_real_host(

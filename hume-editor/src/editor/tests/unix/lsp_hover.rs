@@ -87,7 +87,12 @@ fn setup(
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state.views.popup().as_ref().map(|s| (*s.lines).clone())
+    ed.state
+        .views
+        .popup
+        .read()
+        .as_ref()
+        .map(|s| (*s.lines).clone())
 }
 
 fn run_hover(ed: &mut Editor) {
@@ -230,7 +235,8 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     assert!(
         ed.state
             .views
-            .popup_band()
+            .popup_band
+            .read()
             .as_ref()
             .is_some_and(|s| !s.lines.is_empty()),
         "sanity: docked popup shown"
@@ -395,7 +401,8 @@ fn tall_content_docks_instead_of_using_the_drawer() {
     assert!(
         ed.state
             .views
-            .popup_band()
+            .popup_band
+            .read()
             .as_ref()
             .is_some_and(|s| !s.lines.is_empty()),
         "the docked band's view must resolve after a frame"

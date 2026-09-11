@@ -11,7 +11,6 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
-use hume_decorations::highlight_providers::{PaneHighlights, ScopedHighlightRanges};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_engine::pane::Pane;
@@ -309,7 +308,7 @@ fn pane_signs(
     hume_rope::line::ContentLine,
     Vec<hume_engine::builtins::sign_column::Sign>,
 > {
-    ed.state.panes.render[pid].signs().read().unwrap().clone()
+    ed.state.panes.render[pid].signs()
 }
 
 /// The highlight spans synced onto pane `pid`'s given tier (bracket, search,
@@ -318,17 +317,14 @@ fn pane_signs(
 fn pane_highlights(
     ed: &Editor,
     pid: PaneId,
-    tier: impl Fn(&PaneHighlights) -> &ScopedHighlightRanges,
+    tier: hume_engine::providers::HighlightTier,
 ) -> Vec<(
     hume_rope::line::ContentLine,
     hume_rope::column::ByteCol,
     hume_rope::column::ByteCol,
     ScopeId,
 )> {
-    tier(ed.state.panes.render[pid].highlights())
-        .read()
-        .unwrap()
-        .clone()
+    ed.state.panes.render[pid].highlights(tier)
 }
 
 /// The sign column's currently synced gutter width for pane `pid`.

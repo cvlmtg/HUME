@@ -134,6 +134,7 @@ fn load_theme_by_name_loads_despite_a_malformed_key_and_warns() {
         &mut ed.view,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
+        ed.state.config.popup.as_mut(),
         "flawed",
     );
     assert!(ok, "a theme with a malformed key still loads");

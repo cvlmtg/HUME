@@ -9,6 +9,7 @@
 // source itself and its interaction with an ordinary plugin sign.
 
 use super::*;
+use hume_engine::providers::HighlightTier;
 
 #[test]
 fn error_line_gets_a_sign_with_the_error_scope() {
@@ -79,8 +80,7 @@ fn sign_and_buffer_text_use_different_scopes_for_the_same_severity() {
         .expect("one sign on the error line");
     assert_eq!(sign.scope, gutter_scope);
 
-    let highlights = ed.state.panes.render[pid].highlights().diagnostics.clone();
-    let highlights = highlights.read().unwrap();
+    let highlights = ed.state.panes.render[pid].highlights(HighlightTier::Diagnostic);
     assert!(
         highlights
             .iter()

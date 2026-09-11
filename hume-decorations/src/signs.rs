@@ -1,6 +1,6 @@
 //! Engine-compatible sign source feeding the gutter's `SignColumn`.
 //!
-//! The one sign source wraps an `Arc<RwLock<FxHashMap<line_idx, Vec<Sign>>>>`
+//! The one sign source wraps a `SharedSlot<FxHashMap<line_idx, Vec<Sign>>>`
 //! that the editor writes once per frame, from `prepare_frame`'s step 3,
 //! *before* scrolling (`Editor::update_sign_providers`'s doc — the resolved
 //! width feeds `Pane::content_width`, which the scroll step's `DisplayLineMap`
@@ -8,10 +8,9 @@
 //! `SignSource`'s per-row-per-frame contract.
 
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::sign_column::{Sign, SignSource};
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 use hume_engine::providers::GutterCtx;
 use hume_rope::line::ContentLine;
 
@@ -21,7 +20,7 @@ use hume_rope::line::ContentLine;
 /// resolved `signcolumn` slot count). Every registered source (diagnostics
 /// included — `core:lsp` places them through `set-signs!` like any other
 /// plugin) is pre-merged into this one map at write time.
-pub type SignMap = Arc<RwLock<FxHashMap<ContentLine, Vec<Sign>>>>;
+pub(crate) type SignMap = SharedSlot<FxHashMap<ContentLine, Vec<Sign>>>;
 
 /// One `SignSource` reading a shared per-frame line->signs map.
 pub(crate) struct SharedSignSource {
@@ -36,10 +35,6 @@ impl SharedSignSource {
 
 impl SignSource for SharedSignSource {
     fn signs_for_line(&self, line_idx: ContentLine, _ctx: &GutterCtx) -> Vec<Sign> {
-        self.data
-            .read_or_panic()
-            .get(&line_idx)
-            .cloned()
-            .unwrap_or_default()
+        self.data.read().get(&line_idx).cloned().unwrap_or_default()
     }
 }

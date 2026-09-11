@@ -16,9 +16,8 @@
 //!
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;
-use std::sync::{Arc, RwLock};
 
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
@@ -282,17 +281,17 @@ pub(in crate::picker_panel) fn draw_picker_panel(
 /// Overlay provider painting the picker panel — registered per-pane (last,
 /// for top z-order, since the picker is full-modal and must sit above every
 /// other overlay). See [`super::register_overlays`].
-pub struct PickerOverlay {
-    pub data: Arc<RwLock<Option<PickerViewState>>>,
+pub(crate) struct PickerOverlay {
+    pub(crate) data: SharedSlot<Option<PickerViewState>>,
 }
 
 impl OverlayProvider for PickerOverlay {
     fn is_active(&self) -> bool {
-        self.data.read_or_panic().is_some()
+        self.data.read().is_some()
     }
 
     fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
-        let guard = self.data.read_or_panic();
+        let guard = self.data.read();
         let Some(state) = guard.as_ref() else {
             return;
         };

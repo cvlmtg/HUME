@@ -19,14 +19,14 @@
 //! the drawer stays open across `Enter` (Helix-style browse).
 //!
 //! Long-form text (e.g. hover overflow) is not a drawer use case — that's
-//! the docked popup (`show-popup! #:anchor 'bottom`, `ui::popup`), a
+//! the docked popup (`show-popup! #:anchor 'bottom`, [`super::popup`]), a
 //! separate bottom band that keeps popup scroll/dismiss semantics instead of
 //! pick-list selection.
 
 use hume_grid::Rect;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 
 use hume_engine::providers::BottomBandProvider;
 use hume_engine::render::Canvas;
@@ -44,48 +44,37 @@ pub struct DrawerViewState {
 
 /// Engine-facing drawer provider — one instance, owned by `EngineView`
 /// (chrome, not per-pane), constructed once at `Editor::open` time.
-pub struct DrawerWidget {
-    pub data: Arc<RwLock<Option<DrawerViewState>>>,
+pub(crate) struct DrawerWidget {
+    pub(crate) data: SharedSlot<Option<DrawerViewState>>,
 }
 
-/// Outer row count for a drawer showing `items` rows, capped at `max` — the
-/// single source of truth for this arithmetic, shared by
-/// [`DrawerWidget::height`] (what the engine paints against) and
-/// [`visible_rows`] (what `Editor::drawer_visible_rows` pages against),
-/// mirroring how `ui::popup`'s own `band_capacity` is shared by its band
-/// widget and [`super::popup::band_visible_rows`].
-///
-/// `+1` reserves row 0, the blank padding row (visual gap from the pane
-/// above) — always present regardless of item count. Adds in `usize` and
-/// clamps once, rather than `items as u16 + 1`: a `+ 1` on a `u16`-truncated
-/// item count can wrap (debug-panic, or silently paint an empty band in
-/// release) for a references drawer at or above 65535 rows.
-fn band_capacity(items: usize, max: u16) -> u16 {
-    items.saturating_add(1).min(max as usize) as u16
-}
+/// Row 0 is a blank padding row (visual gap from the pane above) — always
+/// present regardless of item count.
+const DRAWER_PAD_ROWS: u16 = 1;
 
 /// Rows a drawer shows at once, given `items` rows and the band's row
 /// ceiling `max` (half the last-rendered *terminal* height, mirroring
 /// [`DrawerWidget::height`]'s own `max`) — the number `Editor::
 /// drawer_visible_rows` pages against, agreeing with what the engine will
-/// next paint by construction (both derive from `band_capacity`).
+/// next paint by construction (both derive from
+/// [`super::menu_box::band_capacity`]).
 pub fn visible_rows(items: usize, max: u16) -> usize {
-    band_capacity(items, max).saturating_sub(1) as usize
+    super::menu_box::band_visible_rows(items, DRAWER_PAD_ROWS, max)
 }
 
 impl BottomBandProvider for DrawerWidget {
     fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read_or_panic();
-        guard
-            .as_ref()
-            .map_or(0, |s| band_capacity(s.rows.len(), max))
+        let guard = self.data.read();
+        guard.as_ref().map_or(0, |s| {
+            super::menu_box::band_capacity(s.rows.len(), DRAWER_PAD_ROWS, max)
+        })
     }
 
     fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
         }
-        let guard = self.data.read_or_panic();
+        let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
 
         let style = theme.resolve_by_name(Scope("ui.drawer"));
@@ -121,20 +110,18 @@ impl BottomBandProvider for DrawerWidget {
 
 #[cfg(test)]
 mod tests {
-    use super::band_capacity;
+    use super::visible_rows;
 
-    /// `items as u16 + 1` overflows at exactly `u16::MAX` (65535 rows,
-    /// e.g. a references drawer) and truncates silently above it — both
-    /// would previously wrap to a near-zero `u16` instead of clamping to
-    /// `max`.
+    /// The overflow-safety guard on the shared arithmetic itself lives in
+    /// `menu_box::tests` (`band_capacity_clamps_instead_of_overflowing_u16`)
+    /// — this pins the drawer's own 1-row pad against it instead of
+    /// re-testing the arithmetic.
     #[test]
-    fn band_capacity_clamps_instead_of_overflowing_u16() {
-        assert_eq!(band_capacity(65_535, 20), 20);
-        assert_eq!(band_capacity(usize::MAX, 20), 20);
-    }
-
-    #[test]
-    fn band_capacity_reserves_one_row_below_the_cap() {
-        assert_eq!(band_capacity(3, 20), 4);
+    fn visible_rows_reserves_the_pad_row_below_the_cap() {
+        assert_eq!(
+            visible_rows(3, 20),
+            3,
+            "well under the cap: all 3 items fit"
+        );
     }
 }

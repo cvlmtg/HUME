@@ -23,8 +23,6 @@ fn virtual_lines_at(ed: &Editor, line: usize) -> Vec<hume_engine::providers::Vir
         .get(pid)
         .unwrap()
         .virtual_lines()
-        .read()
-        .unwrap()
         .get(&hume_rope::line::ContentLine::new(line))
         .cloned()
         .unwrap_or_default()
@@ -418,7 +416,7 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
     ed.state.config.decorations.set_virtual_lines(
         "linter".to_string(),
         bid,
-        vec![hume_decorations::decorations::VirtualLineEntry {
+        vec![hume_decorations::VirtualLineEntry {
             pos: co(0),
             text: "hint".to_string(),
             before: false,
@@ -439,8 +437,6 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         .get(pid)
         .unwrap()
         .virtual_lines()
-        .read()
-        .unwrap()
         .values()
         .any(|v| !v.is_empty());
     assert!(
@@ -462,8 +458,6 @@ fn clearing_the_store_removes_the_virtual_line_next_frame() {
         .get(pid)
         .unwrap()
         .virtual_lines()
-        .read()
-        .unwrap()
         .values()
         .any(|v| !v.is_empty());
     assert!(
@@ -486,7 +480,7 @@ fn same_line_virtual_lines_from_two_sources_order_alphabetically_by_source() {
     type_text(&mut ed, "let x = 5");
     let bid = ed.focused_buffer_id();
     let scope = ed.view.registry.intern("ui.virtual");
-    let entry = |text: &str| hume_decorations::decorations::VirtualLineEntry {
+    let entry = |text: &str| hume_decorations::VirtualLineEntry {
         pos: co(0),
         text: text.to_string(),
         before: false,

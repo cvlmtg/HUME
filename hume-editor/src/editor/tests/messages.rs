@@ -7,6 +7,7 @@
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
+use hume_engine::providers::HighlightTier;
 use hume_grid::Rect;
 
 /// Regression test for the reported crash: `:messages` interns its severity
@@ -117,7 +118,7 @@ fn messages_spans_reach_the_pane_extra_highlight_arc() {
     // Line-relative byte offsets: line 0 is "[warning] bad key", line 1 is
     // "[error] crash".
     assert_eq!(
-        pane_highlights(&ed, pid, |h| &h.extra),
+        pane_highlights(&ed, pid, HighlightTier::Extra),
         vec![
             (
                 hume_rope::line::ContentLine::new(0),

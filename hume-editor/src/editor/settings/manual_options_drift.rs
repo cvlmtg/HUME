@@ -15,11 +15,11 @@
 //! architectural lints, `absent_decode`/`init_example`/etc.): those scan
 //! source text as strings and never link against the crates they check, but
 //! this lint calls `all_setting_keys`/`setting_scopes`/`Scope` directly —
-//! all `pub(in crate::editor)`, since `hume-editor` has no external
-//! consumers by design (see `docs/CRATES.md`). Widening them to `pub` so an
-//! external `arch-lints` could reach them would mean also making the whole
-//! `editor` module externally visible, opening the one boundary
-//! `hume-editor` deliberately keeps closed — not worth it for one lint.
+//! `arch-lints` has zero dependencies by design (see its own module doc),
+//! never constructing an `Editor` or linking against `hume-editor` at all;
+//! moving this lint there would mean adding that dependency, destroying the
+//! property the crate exists for. Not worth it for one lint that already
+//! has a natural home next to the settings it inspects.
 
 /// The text between the first occurrence of `heading` and the next
 /// top-level (`\n## `) heading — used to scope a key scan to just one

@@ -29,7 +29,7 @@ fn show_drawer_list_populates_model_and_view() {
     arm_three_items(&mut ed, tmp.path());
 
     assert!(ed.state.config.drawer.is_some());
-    let guard = ed.state.views.drawer();
+    let guard = ed.state.views.drawer.read();
     let view = guard.as_ref().expect("view must be populated on open");
     assert_eq!(*view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
     assert_eq!(view.selected, 0);
@@ -54,7 +54,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
 
     let model_items = std::sync::Arc::clone(&ed.state.config.drawer.as_ref().unwrap().items);
     let view_rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
     };
     assert!(
@@ -75,7 +75,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     );
     type_cmd(&mut ed, ":refresh");
     let view_rows_after = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
     };
     assert!(
@@ -103,7 +103,7 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
     host.close_drawer().unwrap();
 
     assert!(ed.state.config.drawer.is_none());
-    assert!(ed.state.views.drawer().is_none());
+    assert!(ed.state.views.drawer.read().is_none());
     assert!(
         ed.state.config.pending_work.is_empty(),
         "close_drawer must not queue the callback"
@@ -123,7 +123,7 @@ fn esc_calls_back_with_false_and_closes() {
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
     assert!(ed.state.config.drawer.is_none());
-    assert!(ed.state.views.drawer().is_none());
+    assert!(ed.state.views.drawer.read().is_none());
 }
 
 // ── Enter: fires the callback and stays open, repeatedly ─────────────────────

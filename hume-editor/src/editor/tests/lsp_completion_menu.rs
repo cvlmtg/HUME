@@ -71,7 +71,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
         .view
         .pane_rect(ed.state.focused_pane_id)
         .expect("focused pane has a rect after prepare_frame");
-    let view = ed.state.views.completion_menu();
+    let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
@@ -102,7 +102,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
         .view
         .pane_rect(ed.state.focused_pane_id)
         .expect("focused pane has a rect after prepare_frame");
-    let view = ed.state.views.completion_menu();
+    let view = ed.state.views.completion_menu.read();
     let state = view
         .as_ref()
         .expect("popup must still render, clamped to fit, not vanish");
@@ -172,7 +172,7 @@ fn enter_applies_the_selected_edit_and_closes_the_session() {
         ed.lsp.completion.is_none(),
         "session must close after accept"
     );
-    assert!(ed.state.views.completion_menu().is_none());
+    assert!(ed.state.views.completion_menu.read().is_none());
     let text = ed.doc().text().to_string();
     assert_eq!(text, "foo\n", "insert_text must be applied at the anchor");
 }
@@ -397,7 +397,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
 
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert!(ed.lsp.completion.is_none());
-    assert!(ed.state.views.completion_menu().is_none());
+    assert!(ed.state.views.completion_menu.read().is_none());
 }
 
 /// `set_mode` only has `&mut EditorState` — it can't reach `LspState`
@@ -428,7 +428,7 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
         ed.lsp.completion.is_none(),
         "prepare_frame must consume the deferred dismissal before rendering"
     );
-    assert!(ed.state.views.completion_menu().is_none());
+    assert!(ed.state.views.completion_menu.read().is_none());
 }
 
 // ── Regression: typing after accept must not desync the edit group ──────────
@@ -613,7 +613,7 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
     ed.prepare_frame(&mut ctx); // must not panic
 
     assert!(
-        ed.state.views.completion_menu().is_none(),
+        ed.state.views.completion_menu.read().is_none(),
         "popup must not render against a stale out-of-range anchor"
     );
     assert!(
@@ -648,7 +648,7 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
     ed.prepare_frame(&mut ctx); // must not panic
 
     assert!(
-        ed.state.views.completion_menu().is_none(),
+        ed.state.views.completion_menu.read().is_none(),
         "popup must not render a session anchored to a buffer that isn't focused"
     );
 }
@@ -690,7 +690,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     ed.prepare_frame(&mut ctx);
 
     let (x, y) = {
-        let view = ed.state.views.completion_menu();
+        let view = ed.state.views.completion_menu.read();
         let state = view.as_ref().expect("popup must be showing");
         (state.rect.x, state.rect.y)
     };

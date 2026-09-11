@@ -5,7 +5,7 @@
 //! plugin's `set-signs!`/`set-inlay-hints!`/etc. populates, plus the
 //! `ChangeSet` remapping that keeps entries positioned through edits;
 //! `signs`/`inline_decorations`/`virtual_lines`/`line_backgrounds`/
-//! `highlight_providers` are the read half, each an `Arc<RwLock<_>>` handle
+//! `highlight_providers` are the read half, each a [`SharedSlot`] handle
 //! `hume-editor`'s per-frame sync (`decoration_providers.rs`) writes into
 //! and a provider impl reads during render.
 //!
@@ -15,20 +15,29 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 pub mod decorations;
-pub mod highlight_providers;
-pub mod inline_decorations;
-pub mod line_backgrounds;
-pub mod signs;
-pub mod virtual_lines;
+mod highlight_providers;
+mod inline_decorations;
+mod line_backgrounds;
+mod signs;
+mod virtual_lines;
+
+// Flattens the crate's public API to one level: `build_providers`/
+// `PaneDecorationHandles` already live at the root, and `decorations`'s own
+// types are this crate's most-referenced surface (`DecorationStores` alone
+// has ~20 external call sites) — a caller shouldn't have to know the
+// `decorations` submodule exists to spell them. `decorations` itself stays
+// `pub` (not folded away) since `PointAnchored`/`SourceStore`'s `K`/`T`
+// bounds and a few internal helpers are easiest to browse in place.
+pub use decorations::{
+    DecorationStores, EolTextEntry, ExtraHighlightEntry, InlayHintEntry, LineBgEntry, Positioned,
+    RangeAnchored, SignEntry, SourceStore, VirtualLineEntry,
+};
 
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, RwLock};
 
 use hume_engine::builtins::sign_column::{Sign, SignColumn};
-use hume_engine::lock::LockExt;
-use hume_engine::providers::{
-    DecorationSource, GutterColumn, HighlightTier, InlineInsert, VirtualLine,
-};
+use hume_engine::lock::SharedSlot;
+use hume_engine::providers::{HighlightTier, InlineInsert, ProviderSet, VirtualLine};
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
@@ -47,7 +56,7 @@ use virtual_lines::{PaneVirtualLines, VirtualLineMap};
 /// per-pane provider, forgot to drop it in `drop_pane_state`" bug class.
 /// Fields are private — `hume-editor`'s per-frame sync writes through the
 /// `set_*` methods below, one per decoration kind, rather than reaching a
-/// raw `Arc<RwLock<_>>` guard directly.
+/// raw [`SharedSlot`] guard directly.
 pub struct PaneDecorationHandles {
     highlights: PaneHighlights,
     signs: SignMap,
@@ -55,8 +64,8 @@ pub struct PaneDecorationHandles {
     virtual_lines: VirtualLineMap,
     /// EOL text (the diagnostics plugin's per-line summary is its first
     /// client) — a second `InlineDecorationProvider` instance (same
-    /// INLINE-kind `DecorationSource` shape, distinct Arc/`ProviderId`) fed
-    /// by `decorations.eol_text` instead of `inlay_hints`, so the two
+    /// INLINE-kind `DecorationSource` shape, distinct handle/`ProviderId`)
+    /// fed by `decorations.eol_text` instead of `inlay_hints`, so the two
     /// coexist on the same line without one clobbering the other.
     eol_text: InlineDecorationMap,
     line_backgrounds: LineBgMap,
@@ -64,159 +73,167 @@ pub struct PaneDecorationHandles {
 
 impl PaneDecorationHandles {
     pub fn set_signs(&self, by_line: FxHashMap<ContentLine, Vec<Sign>>) {
-        *self.signs.write_or_panic() = by_line;
+        self.signs.set(by_line);
     }
 
     pub fn set_inlay_hints(&self, by_line: FxHashMap<ContentLine, Vec<InlineInsert>>) {
-        *self.inlay_hints.write_or_panic() = by_line;
+        self.inlay_hints.set(by_line);
     }
 
     pub fn set_eol_text(&self, by_line: FxHashMap<ContentLine, Vec<InlineInsert>>) {
-        *self.eol_text.write_or_panic() = by_line;
+        self.eol_text.set(by_line);
     }
 
     pub fn set_virtual_lines(&self, by_line: FxHashMap<ContentLine, Vec<VirtualLine>>) {
-        *self.virtual_lines.write_or_panic() = by_line;
+        self.virtual_lines.set(by_line);
     }
 
     pub fn set_line_backgrounds(&self, by_line: FxHashMap<ContentLine, ScopeId>) {
-        *self.line_backgrounds.write_or_panic() = by_line;
+        self.line_backgrounds.set(by_line);
     }
 
     pub fn set_search(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        *self.highlights.search.write_or_panic() = spans;
+        self.highlights.search.set(spans);
     }
 
     pub fn set_diagnostics(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        *self.highlights.diagnostics.write_or_panic() = spans;
+        self.highlights.diagnostics.set(spans);
     }
 
     pub fn set_extra(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        *self.highlights.extra.write_or_panic() = spans;
+        self.highlights.extra.set(spans);
     }
 
     /// At most one bracket match per pane: `None` blanks it (every
     /// unfocused pane, and the focused one in Insert mode).
     pub fn set_bracket(&self, span: Option<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        let mut data = self.highlights.bracket.write_or_panic();
-        data.clear();
-        data.extend(span);
+        self.highlights.bracket.set(span.into_iter().collect());
     }
 }
 
-/// Read-only field accessors for `hume-editor`'s own test code, which
-/// asserts on what a pane's decoration providers actually hold (Arc
-/// identity across a resync, the raw per-line map) rather than what a
-/// viewport shows. Mirrors the `test-util`-gated accessors on
-/// `DecorationStores` below.
+/// Read-only data accessors for `hume-editor`'s own test code, which
+/// asserts on what a pane's decoration providers actually hold (the raw
+/// per-line map) rather than what a viewport shows. Return cloned data, not
+/// the underlying [`SharedSlot`] handle — mirrors the `test-util`-gated
+/// accessors on `DecorationStores` below, and lets `signs`/`inline_
+/// decorations`/`virtual_lines`/`line_backgrounds` stay `pub(crate)` instead
+/// of `pub`: nothing outside this crate needs the handle type itself, only
+/// the data it holds at the moment of the read.
 #[cfg(any(test, feature = "test-util"))]
 impl PaneDecorationHandles {
-    pub fn highlights(&self) -> &PaneHighlights {
-        &self.highlights
+    /// `tier`'s spans — every [`HighlightTier`] variant `PaneHighlights`
+    /// actually stores. `HighlightTier::Syntax` has no corresponding field
+    /// here (syntax highlighting is a tree-sitter-backed provider, not one
+    /// of this store's four plugin/cursor-driven tiers) and panics if asked
+    /// for — no test needs it, so a silent empty result would hide a wrong
+    /// tier passed in rather than naming it.
+    pub fn highlights(&self, tier: HighlightTier) -> Vec<(ContentLine, ByteCol, ByteCol, ScopeId)> {
+        let data = match tier {
+            HighlightTier::BracketMatch => &self.highlights.bracket,
+            HighlightTier::SearchMatch => &self.highlights.search,
+            HighlightTier::Diagnostic => &self.highlights.diagnostics,
+            HighlightTier::Extra => &self.highlights.extra,
+            HighlightTier::Syntax => panic!(
+                "PaneHighlights has no Syntax tier — it's resolved by a separate tree-sitter-backed provider"
+            ),
+        };
+        data.read().clone()
     }
 
-    pub fn signs(&self) -> &SignMap {
-        &self.signs
+    pub fn signs(&self) -> FxHashMap<ContentLine, Vec<Sign>> {
+        self.signs.read().clone()
     }
 
-    pub fn inlay_hints(&self) -> &InlineDecorationMap {
-        &self.inlay_hints
+    pub fn inlay_hints(&self) -> FxHashMap<ContentLine, Vec<InlineInsert>> {
+        self.inlay_hints.read().clone()
     }
 
-    pub fn eol_text(&self) -> &InlineDecorationMap {
-        &self.eol_text
+    pub fn eol_text(&self) -> FxHashMap<ContentLine, Vec<InlineInsert>> {
+        self.eol_text.read().clone()
     }
 
-    pub fn virtual_lines(&self) -> &VirtualLineMap {
-        &self.virtual_lines
+    pub fn virtual_lines(&self) -> FxHashMap<ContentLine, Vec<VirtualLine>> {
+        self.virtual_lines.read().clone()
     }
 
-    pub fn line_backgrounds(&self) -> &LineBgMap {
-        &self.line_backgrounds
+    pub fn line_backgrounds(&self) -> FxHashMap<ContentLine, ScopeId> {
+        self.line_backgrounds.read().clone()
     }
 }
 
-/// Build every decoration-facing provider for a new pane: the sign-column
-/// gutter, bracket/search/diagnostic/extra highlight sources, inlay-hint and
-/// EOL-text decoration, virtual-line source, and line-background tint —
-/// plus the [`PaneDecorationHandles`] bundle `hume-editor`'s per-frame sync
-/// writes into. Decoration sources are returned in registration order,
-/// which the caller must preserve (`add_decoration_source` in a loop over
-/// the `Vec`): EOL text is ordered after inlay hints so a diagnostic's
-/// per-line summary sorts to the right of an inlay hint landing at the same
-/// byte offset.
+/// Build every decoration-facing provider for a new pane and register them
+/// into `providers`: the sign-column gutter, bracket/search/diagnostic/extra
+/// highlight sources, inlay-hint and EOL-text decoration, virtual-line
+/// source, and line-background tint — plus the [`PaneDecorationHandles`]
+/// bundle `hume-editor`'s per-frame sync writes into. Registers the sign
+/// column first: the caller must add its own (non-decoration) line-number
+/// gutter column right after, so the two columns render left-to-right in
+/// that order. Decoration sources register in a fixed order: EOL text after
+/// inlay hints, so a diagnostic's per-line summary sorts to the right of an
+/// inlay hint landing at the same byte offset.
 ///
 /// `linenr_scope` must be the same `ScopeId` the caller also hands its
-/// (non-decoration) line-number gutter column — this crate has no
-/// `ScopeRegistry` access of its own to intern
-/// `hume_engine::providers::DEFAULT_GUTTER_SCOPE` itself, and a blank sign
-/// slot rendering under a different `ScopeId` than the line-number column's
-/// row-fill fallback would silently disagree on styling.
+/// line-number gutter column — this crate has no `ScopeRegistry` access of
+/// its own to intern `hume_engine::providers::DEFAULT_GUTTER_SCOPE` itself,
+/// and a blank sign slot rendering under a different `ScopeId` than the
+/// line-number column's row-fill fallback would silently disagree on
+/// styling.
 ///
 /// Sibling of `hume_ui::register_overlays`: together the two calls populate
 /// one pane's `ProviderSet`. Single source of truth for the decoration half
 /// of pane construction, so every pane's decoration providers render
 /// identically regardless of which creation site built it.
 pub fn build_providers(
+    providers: &mut ProviderSet,
     linenr_scope: ScopeId,
-) -> (
-    Box<dyn GutterColumn>,
-    Vec<Box<dyn DecorationSource>>,
-    PaneDecorationHandles,
-) {
+) -> PaneDecorationHandles {
     let highlights = PaneHighlights::default();
-    let signs: SignMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let inlay_hint_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let eol_text_map: InlineDecorationMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let virtual_line_map: VirtualLineMap = Arc::new(RwLock::new(FxHashMap::default()));
-    let line_bg_map: LineBgMap = Arc::new(RwLock::new(FxHashMap::default()));
+    let signs: SignMap = SharedSlot::new(FxHashMap::default());
+    let inlay_hint_map: InlineDecorationMap = SharedSlot::new(FxHashMap::default());
+    let eol_text_map: InlineDecorationMap = SharedSlot::new(FxHashMap::default());
+    let virtual_line_map: VirtualLineMap = SharedSlot::new(FxHashMap::default());
+    let line_bg_map: LineBgMap = SharedSlot::new(FxHashMap::default());
 
-    let sign_column: Box<dyn GutterColumn> = Box::new(SignColumn::new(
-        Box::new(SharedSignSource::new(Arc::clone(&signs))),
+    providers.add_gutter_column(Box::new(SignColumn::new(
+        Box::new(SharedSignSource::new(signs.clone())),
         linenr_scope,
-    ));
+    )));
 
-    let sources: Vec<Box<dyn DecorationSource>> = vec![
-        Box::new(ScopedHighlighter {
-            tier: HighlightTier::BracketMatch,
-            data: Arc::clone(&highlights.bracket),
-        }),
-        Box::new(ScopedHighlighter {
-            tier: HighlightTier::SearchMatch,
-            data: Arc::clone(&highlights.search),
-        }),
-        Box::new(ScopedHighlighter {
-            tier: HighlightTier::Diagnostic,
-            data: Arc::clone(&highlights.diagnostics),
-        }),
-        Box::new(ScopedHighlighter {
-            tier: HighlightTier::Extra,
-            data: Arc::clone(&highlights.extra),
-        }),
-        Box::new(InlineDecorationProvider {
-            data: Arc::clone(&inlay_hint_map),
-        }),
-        Box::new(InlineDecorationProvider {
-            data: Arc::clone(&eol_text_map),
-        }),
-        Box::new(PaneVirtualLines {
-            data: Arc::clone(&virtual_line_map),
-        }),
-        Box::new(PaneLineBackgrounds {
-            data: Arc::clone(&line_bg_map),
-        }),
-    ];
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::BracketMatch,
+        data: highlights.bracket.clone(),
+    }));
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::SearchMatch,
+        data: highlights.search.clone(),
+    }));
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::Diagnostic,
+        data: highlights.diagnostics.clone(),
+    }));
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::Extra,
+        data: highlights.extra.clone(),
+    }));
+    providers.add_decoration_source(Box::new(InlineDecorationProvider {
+        data: inlay_hint_map.clone(),
+    }));
+    providers.add_decoration_source(Box::new(InlineDecorationProvider {
+        data: eol_text_map.clone(),
+    }));
+    providers.add_decoration_source(Box::new(PaneVirtualLines {
+        data: virtual_line_map.clone(),
+    }));
+    providers.add_decoration_source(Box::new(PaneLineBackgrounds {
+        data: line_bg_map.clone(),
+    }));
 
-    (
-        sign_column,
-        sources,
-        PaneDecorationHandles {
-            highlights,
-            signs,
-            inlay_hints: inlay_hint_map,
-            virtual_lines: virtual_line_map,
-            eol_text: eol_text_map,
-            line_backgrounds: line_bg_map,
-        },
-    )
+    PaneDecorationHandles {
+        highlights,
+        signs,
+        inlay_hints: inlay_hint_map,
+        virtual_lines: virtual_line_map,
+        eol_text: eol_text_map,
+        line_backgrounds: line_bg_map,
+    }
 }

@@ -94,7 +94,7 @@ fn absent_marker_is_decoded_only_in_args_rs() {
          Violations:\n{}\n",
         violations
             .iter()
-            .map(|v| format!("  {}:{} — {}", v.file, v.lineno, v.trimmed))
+            .map(|v| v.to_string())
             .collect::<Vec<_>>()
             .join("\n")
     );

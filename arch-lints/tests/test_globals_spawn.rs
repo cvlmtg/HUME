@@ -66,7 +66,7 @@
 //! line above, so `cargo fmt` doesn't hoist a trailing comment past it) —
 //! same convention and marker as `test_globals.rs`'s two lints.
 
-use arch_lints::{collect_all_rs, strip_line_comment, workspace_root};
+use arch_lints::{Violation, editor_test_tree_paths, strip_line_comment, workspace_root};
 
 /// A construct that, once seen in a `#[test] fn` body, is trusted to already
 /// hold (or have just claimed) `Global::Env` for the rest of that body — see
@@ -329,15 +329,6 @@ fn claiming_helper_names(helper_fns: &[(String, String)]) -> Vec<String> {
     propagate_transitively(helper_fns, seed)
 }
 
-/// One violation: a spawn (direct, or through a [`spawning_helper_names`]
-/// helper) found before a claim (direct, or through a
-/// [`claiming_helper_names`] helper) in its enclosing `#[test] fn`.
-struct Violation {
-    file: String,
-    lineno: usize,
-    what: String,
-}
-
 /// Final pass: scan every `#[test] fn` body (via brace-depth entry/exit, the
 /// same technique [`super::scan_forbidden`] uses for a `mod tests { … }`
 /// block) for a call to any name in `spawning_helpers`, or a direct
@@ -415,7 +406,7 @@ fn scan(
                 violations.push(Violation {
                     file: file.clone(),
                     lineno: lineno + 1,
-                    what: format!("Command::new({program:?})"),
+                    detail: format!("Command::new({program:?})"),
                 });
                 continue;
             }
@@ -423,7 +414,7 @@ fn scan(
                 violations.push(Violation {
                     file: file.clone(),
                     lineno: lineno + 1,
-                    what: format!("{helper}(...) — spawns unqualified internally"),
+                    detail: format!("{helper}(...) — spawns unqualified internally"),
                 });
             }
         }
@@ -441,19 +432,7 @@ fn scan(
 #[test]
 fn unguarded_unqualified_spawn() {
     let workspace_root = workspace_root();
-
-    let scan_root = workspace_root.join("hume-editor/src/editor/tests");
-    let mut paths = Vec::new();
-    collect_all_rs(&scan_root, &mut paths);
-    // `collect_all_rs` returns silently on a missing directory — a renamed
-    // `tests/` tree would otherwise scan zero files and pass this lint
-    // green forever. See `test_globals.rs`'s `test_tree_rs_files` for the
-    // sibling instance of this same guard.
-    assert!(
-        !paths.is_empty(),
-        "no .rs files found under {} — this lint would silently check nothing",
-        scan_root.display()
-    );
+    let paths = editor_test_tree_paths(&workspace_root);
 
     let helper_fns = collect_helper_fns(&paths);
     let spawning_helpers = spawning_helper_names(&helper_fns);
@@ -465,7 +444,7 @@ fn unguarded_unqualified_spawn() {
         &claiming_helpers,
     )
     .into_iter()
-    .map(|v| format!("  {}:{} — {}", v.file, v.lineno, v.what))
+    .map(|v| v.to_string())
     .collect();
 
     assert!(

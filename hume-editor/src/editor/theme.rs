@@ -4,6 +4,27 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::theme::loader::load_theme;
 
 use crate::editor::message_log::{MessageLog, Severity};
+use crate::editor::overlay_models::PopupModel;
+
+/// Replace `view.theme` and invalidate everything that caches against its
+/// baked colors — currently just an open popup's per-width/style cache
+/// (`PopupModel::content`), the one input to that cache besides `text`/
+/// `syntax` (which never change during a popup's lifetime) that can change
+/// out from under it. The single chokepoint for replacing a *live*
+/// `view.theme`, so a future third replacement site can't forget the
+/// invalidation the way a hand-placed `popup.content = None` next to each
+/// write site could. `Editor::open`'s initial construction bypasses this on
+/// purpose — there is no popup yet to invalidate.
+pub(in crate::editor) fn set_theme(
+    view: &mut EngineView,
+    popup: Option<&mut PopupModel>,
+    theme: hume_engine::theme::Theme,
+) {
+    view.theme = theme;
+    if let Some(popup) = popup {
+        popup.content = None;
+    }
+}
 
 /// Load a theme by name and apply it to the engine view.
 ///
@@ -22,22 +43,24 @@ use crate::editor::message_log::{MessageLog, Severity};
 /// Every warning is pushed to `message_log` individually; a non-empty
 /// `warnings` also gets a one-line count written to `status_msg`, so the
 /// theme applies but the user can see something didn't come through. A
-/// document-level failure writes its own message to `status_msg` instead.
+/// document-level failure writes its own message to `status_msg` instead and
+/// leaves `popup` untouched.
 ///
 /// Returns `true` unless the load failed outright.
 ///
-/// `engine_view`, `message_log`, and `status_msg` are disjoint `Editor` fields;
-/// passing them separately lets the caller hold `&editor.settings.theme` for
-/// the `name` argument without cloning.
+/// `engine_view`, `message_log`, `status_msg`, and `popup` are disjoint
+/// `Editor` fields; passing them separately lets the caller hold
+/// `&editor.settings.theme` for the `name` argument without cloning.
 pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
+    popup: Option<&mut PopupModel>,
     name: &str,
 ) -> bool {
     match load_theme(name, &super::theme_search_paths()) {
         Ok(loaded) => {
-            engine_view.theme = loaded.theme;
+            set_theme(engine_view, popup, loaded.theme);
             if !loaded.warnings.is_empty() {
                 let count = loaded.warnings.len();
                 for warning in &loaded.warnings {

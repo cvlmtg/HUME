@@ -107,7 +107,12 @@ fn setup_declared(
 }
 
 fn popup_lines(ed: &Editor) -> Option<Vec<String>> {
-    ed.state.views.popup().as_ref().map(|s| (*s.lines).clone())
+    ed.state
+        .views
+        .popup
+        .read()
+        .as_ref()
+        .map(|s| (*s.lines).clone())
 }
 
 /// Declaring `core:lsp` (not loading it) leaves it `Declared` — nothing has

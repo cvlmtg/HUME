@@ -32,9 +32,9 @@
 
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 
 use hume_engine::providers::{BottomBandProvider, OverlayProvider};
 use hume_engine::render::Canvas;
@@ -94,6 +94,11 @@ pub struct PopupContent {
 struct Wrapped {
     width: u16,
     lines: Arc<Vec<String>>,
+    /// Widest line's display width — measured once per wrap, not
+    /// re-measured every frame an unchanged wrap is reused. See
+    /// [`super::menu_box::menu_inner_width`], the same measurement
+    /// [`MenuRows`] caches for the same reason.
+    inner_width: u16,
     styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
@@ -132,9 +137,11 @@ impl PopupContent {
                 .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
                 .collect();
             let styled_rows = self.styled.then(|| Arc::new(rows));
+            let inner_width = super::menu_box::menu_inner_width(&lines);
             self.cache = Some(Wrapped {
                 width,
                 lines: Arc::new(lines),
+                inner_width,
                 styled_rows,
             });
         }
@@ -179,21 +186,21 @@ pub struct PopupState {
 /// Generic overlay that paints a `PopupState` snapshot. Used directly for
 /// hover-style popups (`show-popup!`) and, via a second registration with
 /// its own `Arc`, for the selection menu and completion menu.
-pub struct PopupOverlay {
-    pub data: Arc<RwLock<Option<PopupState>>>,
+pub(crate) struct PopupOverlay {
+    pub(crate) data: SharedSlot<Option<PopupState>>,
     /// Root scope for the background/text fill (`ui.popup` for hover popups,
     /// `ui.menu` for menus) — `MenuBoxStyles::resolve` derives the
     /// highlighted-row and scrollbar-thumb styles from it.
-    pub scope: &'static str,
+    pub(crate) scope: &'static str,
 }
 
 impl OverlayProvider for PopupOverlay {
     fn is_active(&self) -> bool {
-        self.data.read_or_panic().is_some()
+        self.data.read().is_some()
     }
 
     fn render(&self, pane_rect: Rect, theme: &Theme, canvas: &mut Canvas) {
-        let guard = self.data.read_or_panic();
+        let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
         if state.lines.is_empty() {
             return;
@@ -235,51 +242,41 @@ pub struct PopupBandState {
 }
 
 /// Engine-facing bottom-band provider for a docked popup — mirrors
-/// `ui::drawer::DrawerWidget`'s shape (chrome, not per-pane), but paints
+/// [`super::drawer::DrawerWidget`]'s shape (chrome, not per-pane), but paints
 /// through `draw_menu_box` so a docked hover keeps the popup's framed,
 /// `ui.popup`-scoped look rather than the drawer's plain list rows.
-pub struct PopupBandWidget {
-    pub data: Arc<RwLock<Option<PopupBandState>>>,
+pub(crate) struct PopupBandWidget {
+    pub(crate) data: SharedSlot<Option<PopupBandState>>,
 }
 
-/// Outer row count for a docked popup band holding `lines` content rows,
-/// capped at `max` — the single source of truth for this arithmetic, shared
-/// by [`PopupBandWidget::height`] (what the engine paints against),
-/// [`resolve_band`]'s own scroll clamp, and [`band_visible_rows`] (what
-/// `Editor::scroll_popup` pages against). Kept in one place so the painted
-/// band and the scroll clamp can never silently disagree.
-///
-/// `+2` reserves the frame's top/bottom cells — always reserved, even with
-/// `popup-border` off (a plain background margin still takes the row, see
-/// `draw_menu_box`'s doc on `border`). Adds in `usize` and clamps once,
-/// rather than `lines as u16 + 2` — see `ui::drawer`'s own `band_capacity`
-/// for the overflow this avoids.
-fn band_capacity(lines: usize, max: u16) -> u16 {
-    lines.saturating_add(2).min(max as usize) as u16
-}
+/// The frame's top/bottom cells — always reserved, even with `popup-border`
+/// off (a plain background margin still takes the row, see `draw_menu_box`'s
+/// doc on `border`).
+const POPUP_FRAME_ROWS: u16 = 2;
 
 /// Rows a docked popup shows at once, given `lines` wrapped lines and the
 /// band's row ceiling `max` (half the last-rendered *terminal* height,
 /// mirroring [`PopupBandWidget::height`]'s own `max`) — the number
 /// `Editor::scroll_popup` pages against, agreeing with what the engine will
-/// next paint by construction (both derive from `band_capacity`).
+/// next paint by construction (both derive from
+/// [`super::menu_box::band_capacity`]).
 pub fn band_visible_rows(lines: usize, max: u16) -> usize {
-    band_capacity(lines, max).saturating_sub(2) as usize
+    super::menu_box::band_visible_rows(lines, POPUP_FRAME_ROWS, max)
 }
 
 impl BottomBandProvider for PopupBandWidget {
     fn height(&self, max: u16) -> u16 {
-        let guard = self.data.read_or_panic();
-        guard
-            .as_ref()
-            .map_or(0, |s| band_capacity(s.lines.len(), max))
+        let guard = self.data.read();
+        guard.as_ref().map_or(0, |s| {
+            super::menu_box::band_capacity(s.lines.len(), POPUP_FRAME_ROWS, max)
+        })
     }
 
     fn render(&self, area: Rect, theme: &Theme, canvas: &mut Canvas) {
         if area.height == 0 {
             return;
         }
-        let guard = self.data.read_or_panic();
+        let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
         draw_menu_box(
             canvas,
@@ -329,7 +326,11 @@ pub fn resolve_popup(
         .max(1);
 
     let wrapped = content.wrapped(max_width);
-    let (outer_w, outer_h) = super::menu_box::outer_dims(&wrapped.lines, max_height);
+    let (outer_w, outer_h) = super::menu_box::outer_dims_from_width(
+        wrapped.inner_width,
+        wrapped.lines.len(),
+        max_height,
+    );
     let (x, y, outer_w, outer_h) =
         resolve_popup_geometry(outer_w, outer_h, placement.anchor, placement.pane_rect);
     let inner_h = outer_h.saturating_sub(2) as usize;
@@ -361,8 +362,7 @@ pub fn resolve_band(
 ) -> PopupBandState {
     let max_width = area_width.saturating_sub(2);
     let wrapped = content.wrapped(max_width);
-    let capacity = band_capacity(wrapped.lines.len(), max_rows);
-    let inner_h = capacity.saturating_sub(2) as usize;
+    let inner_h = band_visible_rows(wrapped.lines.len(), max_rows);
     let scroll = scroll.min(wrapped.lines.len().saturating_sub(inner_h));
     PopupBandState {
         lines: Arc::clone(&wrapped.lines),
@@ -390,6 +390,22 @@ impl MenuRows {
             labels,
             inner_width,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.labels.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.labels.is_empty()
+    }
+
+    pub fn labels(&self) -> &Arc<Vec<String>> {
+        &self.labels
+    }
+
+    pub fn inner_width(&self) -> u16 {
+        self.inner_width
     }
 }
 

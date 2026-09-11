@@ -50,6 +50,12 @@ pub(in crate::editor) struct MinibufCompletionState {
     /// Byte offset in the minibuffer input where the completed token starts.
     /// Constant across the session (the span start never shifts while cycling).
     pub span_start: usize,
+    /// `candidates`' display strings, pre-measured once here at construction
+    /// — candidates never change during a session's lifetime (only
+    /// `selected` does), so `Editor::sync_minibuf_completion_view` clones
+    /// this (an `Arc` bump) each frame instead of re-collecting and
+    /// re-measuring every candidate every frame the popup stays open.
+    pub rows: hume_ui::popup::MenuRows,
 }
 
 impl MinibufCompletionState {

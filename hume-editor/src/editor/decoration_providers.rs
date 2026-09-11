@@ -92,7 +92,7 @@ impl Editor {
     /// Called once per frame, after scroll is resolved and before `term.draw`.
     /// Bracket matching is suppressed in Insert mode. Each pane's search
     /// highlights are computed from **that pane's own buffer and viewport** —
-    /// panes never share highlight data (see [`hume_decorations::highlight_providers::PaneHighlights`]),
+    /// panes never share highlight data (see [`hume_decorations::PaneDecorationHandles`]),
     /// so a pane viewing a different buffer, or the same buffer scrolled
     /// elsewhere, never inherits another pane's matches.
     pub(super) fn update_highlight_providers(&mut self, panes: &[DecoratedPane]) {
@@ -112,9 +112,7 @@ impl Editor {
             // Hidden in Insert mode — matches aren't actionable while typing and
             // clutter the view. Same pattern as bracket match highlights below.
             if in_insert {
-                if let Some(r) = self.state.panes.render.get(pid) {
-                    r.set_search(Vec::new());
-                }
+                self.state.panes.render[pid].set_search(Vec::new());
                 continue;
             }
 
@@ -144,9 +142,7 @@ impl Editor {
                 let end_char = end_incl.shift(1).min(text.end());
                 push_match_highlight_lines(text, start, end_char, search_scope, &mut spans);
             }
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_search(spans);
-            }
+            self.state.panes.render[pid].set_search(spans);
         }
 
         // ── Bracket match highlight — cursor concept, focused pane only ──────
@@ -183,9 +179,12 @@ impl Editor {
                 // Trusted narrow: a bracket match is always a real
                 // selection position, never the buffer's phantom line.
                 let line = hume_rope::line::ContentLine::new(line.index());
-                if let Some(r) = self.state.panes.render.get(focused) {
-                    r.set_bracket(Some((line, byte, byte_end, bracket_scope)));
-                }
+                self.state.panes.render[focused].set_bracket(Some((
+                    line,
+                    byte,
+                    byte_end,
+                    bracket_scope,
+                )));
             }
         }
 
@@ -235,7 +234,7 @@ impl Editor {
                             &mut raw,
                         );
                     }
-                    flatten_priority_overlaps(&mut raw)
+                    flatten_priority_overlaps(raw)
                 };
 
                 let extra_spans = {
@@ -260,13 +259,11 @@ impl Editor {
                         // source happened to call `set-extra-highlights!` first.
                         push_priority_highlight_lines(text, start, end, 0, e.scope, &mut raw);
                     }
-                    flatten_priority_overlaps(&mut raw)
+                    flatten_priority_overlaps(raw)
                 };
 
-                if let Some(r) = self.state.panes.render.get(pid) {
-                    r.set_diagnostics(diag_spans);
-                    r.set_extra(extra_spans);
-                }
+                self.state.panes.render[pid].set_diagnostics(diag_spans);
+                self.state.panes.render[pid].set_extra(extra_spans);
             }
         }
     }
@@ -362,9 +359,7 @@ impl Editor {
                 _ => SignColumn::width_for_slots(slots),
             };
 
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_signs(by_line);
-            }
+            self.state.panes.render[pid].set_signs(by_line);
             self.view.panes[pid].providers.sync_sign_column_width(width);
         }
     }
@@ -424,9 +419,7 @@ impl Editor {
                 });
             }
 
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_inlay_hints(by_line);
-            }
+            self.state.panes.render[pid].set_inlay_hints(by_line);
         }
     }
 
@@ -488,9 +481,7 @@ impl Editor {
                     .map(|(line, insert)| (line, vec![insert]))
                     .collect();
 
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_eol_text(by_line);
-            }
+            self.state.panes.render[pid].set_eol_text(by_line);
         }
     }
 
@@ -572,9 +563,7 @@ impl Editor {
                 });
             }
 
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_virtual_lines(by_line);
-            }
+            self.state.panes.render[pid].set_virtual_lines(by_line);
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
         }
     }
@@ -615,9 +604,7 @@ impl Editor {
             .collect();
             let by_line = last_writer_per_line(per_line);
 
-            if let Some(r) = self.state.panes.render.get(pid) {
-                r.set_line_backgrounds(by_line);
-            }
+            self.state.panes.render[pid].set_line_backgrounds(by_line);
         }
     }
 }
@@ -758,15 +745,14 @@ fn push_priority_highlight_lines(
 /// same-priority ties keep whichever span was pushed to `raw` first, pinned
 /// by `overlapping_extra_highlights_from_two_sources_resolve_alphabetically`
 /// (`raw`'s push order comes from `SourceStore::for_buffer`'s ascending
-/// source-name order). `raw` need not be pre-sorted; drained (left empty)
-/// on return.
+/// source-name order). `raw` need not be pre-sorted.
 ///
-/// Returns the flattened spans rather than writing them through an out-param
-/// — the caller assigns the result straight into its target `Vec` (a brief
-/// write-lock for the assignment alone) instead of holding a write guard
-/// across the whole sweep.
+/// Takes `raw` by value and returns the flattened spans — the caller assigns
+/// the result straight into its target `Vec` (a brief write-lock for the
+/// assignment alone) instead of holding a write guard across the whole
+/// sweep.
 fn flatten_priority_overlaps(
-    raw: &mut Vec<(
+    mut raw: Vec<(
         hume_rope::line::ContentLine,
         ByteCol,
         ByteCol,
@@ -816,7 +802,6 @@ fn flatten_priority_overlaps(
         );
         i = j;
     }
-    raw.clear();
     out
 }
 

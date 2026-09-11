@@ -2,19 +2,18 @@
 //! diagnostic/extra highlights — all four share one `ScopedHighlighter`
 //! shape.
 //!
-//! Each provider wraps an `Arc<RwLock<Vec<(line_idx, byte_start, byte_end,
-//! scope)>>>` that the editor writes once per frame (after scroll is
+//! Each provider wraps a [`SharedSlot`]`<Vec<(line_idx, byte_start, byte_end,
+//! scope)>>` that the editor writes once per frame (after scroll is
 //! resolved, before `term.draw`). The provider reads the shared data in
 //! `decorations_for_line()` during the engine's per-line render loop.
 //!
-//! Using `Arc<RwLock<...>>` is correct: it satisfies `Send + Sync`, needed
-//! since providers are boxed into the pane's `ProviderSet` and must outlive
-//! the frame that writes them, and is uncontended in practice (~25ns per
-//! lock/unlock). Do not replace with `UnsafeCell`.
+//! `SharedSlot` (`Arc<RwLock<...>>` under the hood) is correct here: it
+//! satisfies `Send + Sync`, needed since providers are boxed into the pane's
+//! `ProviderSet` and must outlive the frame that writes them, and is
+//! uncontended in practice (~25ns per lock/unlock). Do not replace with
+//! `UnsafeCell`.
 
-use std::sync::{Arc, RwLock};
-
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, HighlightTier};
 use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
@@ -23,7 +22,7 @@ use hume_rope::line::ContentLine;
 /// Shared per-frame highlight data carrying a per-range scope:
 /// `(line_idx, byte_start, byte_end, scope)`, written once per frame and read
 /// during the engine's per-line render loop.
-pub type ScopedHighlightRanges = Arc<RwLock<Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>>>;
+pub(crate) type ScopedHighlightRanges = SharedSlot<Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>>;
 
 /// The four highlight buffers every pane owns.
 ///
@@ -32,11 +31,11 @@ pub type ScopedHighlightRanges = Arc<RwLock<Vec<(ContentLine, ByteCol, ByteCol, 
 /// matches from that pane's own buffer and viewport without bleeding into any
 /// other pane's rendering.
 #[derive(Default)]
-pub struct PaneHighlights {
-    pub bracket: ScopedHighlightRanges,
-    pub search: ScopedHighlightRanges,
-    pub diagnostics: ScopedHighlightRanges,
-    pub extra: ScopedHighlightRanges,
+pub(crate) struct PaneHighlights {
+    pub(crate) bracket: ScopedHighlightRanges,
+    pub(crate) search: ScopedHighlightRanges,
+    pub(crate) diagnostics: ScopedHighlightRanges,
+    pub(crate) extra: ScopedHighlightRanges,
 }
 
 /// Highlights a set of byte ranges at a fixed tier, each carrying its own
@@ -60,7 +59,7 @@ impl DecorationSource for ScopedHighlighter {
     }
 
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        let data = self.data.read_or_panic();
+        let data = self.data.read();
         let start = data.partition_point(|&(l, _, _, _)| l < line_idx);
         for &(l, byte_start, byte_end, scope) in &data[start..] {
             if l != line_idx {

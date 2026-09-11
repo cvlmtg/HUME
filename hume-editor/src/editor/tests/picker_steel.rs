@@ -21,7 +21,7 @@ use hume_grid::Rect;
 
 use super::*;
 use hume_engine::pipeline::RenderContext;
-use hume_scripting::host::TruncateEnd;
+use hume_engine::types::TruncateEnd;
 use steel::rvals::SteelVal;
 
 fn call(ed: &mut Editor, name: &str) {

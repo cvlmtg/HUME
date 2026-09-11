@@ -253,6 +253,18 @@ impl EngineView {
         }
     }
 
+    /// The row ceiling every [`BottomBandProvider`] is called against — half
+    /// the terminal's current height. Single source of truth for this policy:
+    /// [`Self::pane_area`] and [`Self::render`] both call this rather than
+    /// each dividing `area.height` by 2 inline, and `hume-editor`'s own
+    /// band-height *predictors* (`Editor::sync_popup_band_view`,
+    /// `drawer_visible_rows`/`scroll_popup`) call it too, so the number a
+    /// write side pages against can never drift from what this crate will
+    /// next paint.
+    pub fn bottom_band_max(area_height: u16) -> u16 {
+        area_height / 2
+    }
+
     /// Partition `area` into the pane-content rect, reserving a tab-bar row at
     /// the top (if `self.tabbar` is set), the bottom chrome bands directly
     /// above the statusline (`self.bottom_bands`), and a statusline row at
@@ -264,7 +276,7 @@ impl EngineView {
         let bands_height: u16 = self
             .bottom_bands
             .iter()
-            .map(|b| b.height(area.height / 2))
+            .map(|b| b.height(Self::bottom_band_max(area.height)))
             .sum();
         let chrome_height = tabbar_height + 1 + bands_height;
 
@@ -350,7 +362,7 @@ impl EngineView {
             // collapses `height` to 0 there).
             let mut bottom_edge = area.bottom().saturating_sub(1);
             for band in &self.bottom_bands {
-                let band_height = band.height(area.height / 2);
+                let band_height = band.height(Self::bottom_band_max(area.height));
                 if band_height == 0 {
                     continue;
                 }

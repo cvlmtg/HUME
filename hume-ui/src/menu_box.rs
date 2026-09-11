@@ -71,18 +71,12 @@ pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
     rows.iter().map(|r| text_width(r)).max().unwrap_or(0) as u16
 }
 
-/// Outer footprint (including the 1-cell frame) for a box showing `rows`,
-/// windowed to at most `row_cap` visible rows. Shared by every write side
-/// that positions a menu/popup box via `resolve_popup_geometry` and by
-/// `MinibufCompletionOverlay`, which computes it inline against its own bottom-
-/// anchored placement.
-pub(crate) fn outer_dims(rows: &[String], row_cap: u16) -> (u16, u16) {
-    outer_dims_from_width(menu_inner_width(rows), rows.len(), row_cap)
-}
-
-/// [`outer_dims`]'s formula for a caller that already has the inner width in
-/// hand (e.g. from a cached measurement) and would otherwise re-measure
-/// `rows` just to call `outer_dims` itself.
+/// Outer footprint (including the 1-cell frame) for a box showing `row_count`
+/// rows measuring `inner_width` wide, windowed to at most `row_cap` visible
+/// rows. Every caller (`resolve_popup`/`resolve_menu`'s own `Wrapped`/
+/// `MenuRows` cache, `MinibufCompletionOverlay`'s `MenuRows`) already has the
+/// width in hand from a cached measurement, so this takes it directly rather
+/// than re-measuring `rows` itself.
 pub(crate) fn outer_dims_from_width(
     inner_width: u16,
     row_count: usize,
@@ -91,6 +85,32 @@ pub(crate) fn outer_dims_from_width(
     let outer_w = inner_width + 2;
     let outer_h = (row_count as u16).min(row_cap) + 2;
     (outer_w, outer_h)
+}
+
+/// Outer row count for a bottom band showing `content_rows` rows plus
+/// `chrome_rows` of fixed frame (a drawer's 1-row padding gap, a docked
+/// popup's 2-row top/bottom border), capped at `max` — the single source of
+/// truth for this arithmetic, shared by `DrawerWidget`/`PopupBandWidget`'s
+/// own `height` (what the engine paints against) and `band_visible_rows`
+/// (what the write side pages against). Kept in one place so the painted
+/// band and the scroll clamp can never silently disagree.
+///
+/// Adds in `usize` and clamps once, rather than `content_rows as u16 +
+/// chrome_rows`: a `+ chrome_rows` on a `u16`-truncated row count can wrap
+/// (debug-panic, or silently paint an empty band in release) for a
+/// references drawer at or above 65535 rows.
+pub(crate) fn band_capacity(content_rows: usize, chrome_rows: u16, max: u16) -> u16 {
+    content_rows
+        .saturating_add(chrome_rows as usize)
+        .min(max as usize) as u16
+}
+
+/// Rows a bottom band shows at once, given `content_rows` rows, `chrome_rows`
+/// of fixed frame, and the band's row ceiling `max` — the number the write
+/// side pages against, agreeing with what the engine will next paint by
+/// construction (both derive from [`band_capacity`]).
+pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16) -> usize {
+    band_capacity(content_rows, chrome_rows, max).saturating_sub(chrome_rows) as usize
 }
 
 /// Return `(scroll_offset, visible_slice)` for a window of `max_height`

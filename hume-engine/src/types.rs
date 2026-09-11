@@ -260,8 +260,7 @@ pub enum EditorMode {
 
 /// Which end of an over-long picker row is dropped — `picker!`'s and
 /// `live-picker!`'s `#:truncate` symbol, decoded once at the builtin
-/// boundary (`hume-scripting`'s `builtins::ui`, which re-exports this type
-/// as `hume_scripting::host::TruncateEnd`) and carried as-is into the
+/// boundary (`hume-scripting`'s `builtins::ui`) and carried as-is into the
 /// panel's paint-time clip (`hume-ui`'s `PickerViewState::truncate`). Lives
 /// here, not in `hume-scripting`, so `hume-ui` — which has no reason to
 /// depend on the scripting crate — can read it too. A path's distinguishing

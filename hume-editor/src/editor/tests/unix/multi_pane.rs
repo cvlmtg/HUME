@@ -1,4 +1,5 @@
 use super::*;
+use hume_engine::providers::HighlightTier;
 
 /// `:vsplit <path>` opens the given file in the new pane instead of mirroring
 /// the focused pane's buffer.
@@ -278,23 +279,13 @@ fn cross_buffer_search_highlight_does_not_bleed_into_other_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let a_matches = ed.state.panes.render[pid_a]
-        .highlights()
-        .search
-        .read()
-        .unwrap()
-        .clone();
+    let a_matches = ed.state.panes.render[pid_a].highlights(HighlightTier::SearchMatch);
     assert!(
         !a_matches.is_empty(),
         "sanity: pane A's own search highlights must be populated"
     );
 
-    let b_matches = ed.state.panes.render[pid_b]
-        .highlights()
-        .search
-        .read()
-        .unwrap()
-        .clone();
+    let b_matches = ed.state.panes.render[pid_b].highlights(HighlightTier::SearchMatch);
     assert!(
         b_matches.is_empty(),
         "pane B (different buffer, no search of its own) must not show pane A's matches, got {b_matches:?}"

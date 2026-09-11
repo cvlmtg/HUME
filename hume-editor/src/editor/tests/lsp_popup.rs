@@ -19,7 +19,8 @@ fn oracle_width(s: &str) -> usize {
 fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
     ed.state
         .views
-        .popup()
+        .popup
+        .read()
         .as_ref()
         .map(|s| ((*s.lines).clone(), s.rect.x, s.rect.y))
 }
@@ -29,7 +30,8 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
 fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
     ed.state
         .views
-        .popup()
+        .popup
+        .read()
         .as_ref()
         .map(|s| Arc::clone(&s.lines))
 }
@@ -126,7 +128,8 @@ fn show_popup_rejects_an_unknown_anchor() {
 fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
     ed.state
         .views
-        .popup_band()
+        .popup_band
+        .read()
         .as_ref()
         .map(|s| (*s.lines).clone())
 }
@@ -639,7 +642,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     let max_scroll_before_key = {
-        let guard = ed.state.views.popup();
+        let guard = ed.state.views.popup.read();
         let view = guard.as_ref().expect("popup still open");
         let inner_h = view.rect.height.saturating_sub(2) as usize;
         view.lines.len().saturating_sub(inner_h)

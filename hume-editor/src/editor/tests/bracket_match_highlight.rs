@@ -3,6 +3,7 @@
 
 use super::*;
 use hume_editing::selection::Selection;
+use hume_engine::providers::HighlightTier;
 
 /// A `w`-motion-style selection ends on the whitespace following a bracket,
 /// head on the space rather than the bracket itself. The highlight must
@@ -21,7 +22,7 @@ fn bracket_match_highlight_resolves_nearest_bracket_in_selection() {
 
     render(&mut ed);
 
-    let spans: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, |h| &h.bracket)
+    let spans: Vec<(usize, usize, usize)> = pane_highlights(&ed, pid, HighlightTier::BracketMatch)
         .into_iter()
         .map(|(line, start, end, _)| (line.index(), start.index(), end.index()))
         .collect();

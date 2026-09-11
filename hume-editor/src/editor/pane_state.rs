@@ -290,20 +290,14 @@ pub(in crate::editor) fn build_pane(
     let linenr_scope = registry.intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
     let linenr_selected_scope = registry.intern("ui.linenr.selected");
 
-    let (sign_column, decoration_sources, decoration_handles) =
-        hume_decorations::build_providers(linenr_scope);
-
     let mut providers = hume_engine::providers::ProviderSet::new();
-    providers.add_gutter_column(sign_column);
+    let decoration_handles = hume_decorations::build_providers(&mut providers, linenr_scope);
     providers.add_gutter_column(Box::new(
         hume_engine::builtins::line_number::LineNumberColumn::new(
             linenr_scope,
             linenr_selected_scope,
         ),
     ));
-    for source in decoration_sources {
-        providers.add_decoration_source(source);
-    }
     hume_ui::register_overlays(&mut providers, views);
 
     let pane = hume_engine::pane::Pane {

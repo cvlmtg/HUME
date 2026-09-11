@@ -8,13 +8,12 @@
 //! allocation-heavy work).
 
 use rustc_hash::FxHashMap;
-use std::sync::{Arc, RwLock};
 
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{Decoration, DecorationKinds, DecorationSource, VirtualLine};
 use hume_rope::line::ContentLine;
 
-pub type VirtualLineMap = Arc<RwLock<FxHashMap<ContentLine, Vec<VirtualLine>>>>;
+pub(crate) type VirtualLineMap = SharedSlot<FxHashMap<ContentLine, Vec<VirtualLine>>>;
 
 pub(crate) struct PaneVirtualLines {
     pub(crate) data: VirtualLineMap,
@@ -26,7 +25,7 @@ impl DecorationSource for PaneVirtualLines {
     }
 
     fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if let Some(lines) = self.data.read_or_panic().get(&line_idx) {
+        if let Some(lines) = self.data.read().get(&line_idx) {
             out.extend(lines.iter().cloned().map(Decoration::VirtualLine));
         }
     }

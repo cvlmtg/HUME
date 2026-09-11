@@ -1,3 +1,4 @@
+use hume_engine::lock::SharedSlot;
 use hume_engine::types::ResolvedStyle;
 use hume_grid::{Grid, Rect, Rgb};
 use std::collections::HashMap;
@@ -108,7 +109,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
         rect: rect(0, 0, 12, 4), // inner_width = 10
         list_rows: 1,
     };
-    let s = state("", &["hume-editor/src/ui/picker_panel.rs"], None, &geo);
+    let s = state("", &["hume-ui/src/picker_panel.rs"], None, &geo);
     draw_picker_panel(&mut canvas, &s, styles());
 
     // Right border must still be an unbroken │ column, not overrun text.
@@ -173,7 +174,7 @@ fn truncate_marked_leaves_short_strings_unchanged() {
 
 #[test]
 fn truncate_marked_cut_head_prefixes_ellipsis_and_keeps_tail() {
-    let source = "hume-editor/src/ui/picker_panel.rs";
+    let source = "hume-ui/src/picker_panel.rs";
     let out = truncate_marked(source, 12, TruncateEnd::Head);
     assert_eq!(oracle_width(out.as_ref()), 12);
     let kept = out
@@ -500,7 +501,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
 #[test]
 fn overlay_is_inactive_when_data_is_none() {
     let overlay = PickerOverlay {
-        data: Arc::new(RwLock::new(None)),
+        data: SharedSlot::new(None),
     };
     assert!(!overlay.is_active());
 }
@@ -513,7 +514,7 @@ fn overlay_clips_state_outside_pane_rect() {
     };
     let s = state("q", &["item0"], Some(0), &geo);
     let overlay = PickerOverlay {
-        data: Arc::new(RwLock::new(Some(s))),
+        data: SharedSlot::new(Some(s)),
     };
     assert!(overlay.is_active());
 

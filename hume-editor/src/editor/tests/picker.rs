@@ -426,7 +426,10 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
 fn picker_intercepts_ahead_of_menu() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
-        items: std::sync::Arc::new(vec!["m0".into(), "m1".into()]),
+        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
+            "m0".into(),
+            "m1".into(),
+        ])),
         selected: 0,
         callback: marker("menu-cb"),
     });
@@ -473,14 +476,14 @@ fn close_clears_view_next_frame() {
     open_test_picker(&mut ed, &["one"]);
     frame(&mut ed, 60, 16);
     assert!(
-        ed.state.views.picker().is_some(),
+        ed.state.views.picker.read().is_some(),
         "sanity: view populated while open"
     );
 
     ed.feed_key(key_esc());
     frame(&mut ed, 60, 16);
     assert!(
-        ed.state.views.picker().is_none(),
+        ed.state.views.picker.read().is_none(),
         "view must clear the frame after close"
     );
 }
@@ -500,7 +503,7 @@ fn shrinking_terminal_self_heals_scroll() {
     // Shrinking between frames must not panic, and the next sync must keep
     // `selected_row` valid against the new, smaller window.
     frame(&mut ed, 30, 12);
-    let guard = ed.state.views.picker();
+    let guard = ed.state.views.picker.read();
     let state = guard.as_ref().expect("picker still open");
     let row = state
         .selected_row

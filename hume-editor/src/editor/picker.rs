@@ -16,8 +16,9 @@
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
-use hume_scripting::host::{LivePickerOpts, PickerOpts, TruncateEnd};
+use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
@@ -138,7 +139,7 @@ pub(in crate::editor) struct PickerSession {
     /// at all.
     prompt: String,
     /// Which end of an over-long row the panel clips — `#:truncate`, see
-    /// `hume_scripting::host::TruncateEnd`.
+    /// [`TruncateEnd`].
     truncate: TruncateEnd,
     /// Identifies this session to Steel and to [`session_for_token`], the
     /// shared guard every token-scoped picker mutation checks before

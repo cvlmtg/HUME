@@ -40,11 +40,10 @@ pub(in crate::editor) struct PopupModel {
     /// an unbaked `ScopeId`, and the theme isn't baked yet when `show_popup`
     /// runs — see `frame.rs`'s `prepare_frame` step ordering). Its own
     /// internal wrap cache is then keyed by width, so an unchanged width
-    /// across frames is O(1), not a re-wrap. Reset to `None` wherever
-    /// `view.theme` is replaced (`settings::ops`'s `ResyncKey::theme` arm
-    /// and `reset_globals`) — the baked styles are the one input here that
-    /// *can* change out from under an open popup, since `text`/`syntax`
-    /// don't.
+    /// across frames is O(1), not a re-wrap. Reset to `None` by
+    /// `theme::set_theme` — the one chokepoint every `view.theme` write goes
+    /// through — since the baked styles are the one input here that *can*
+    /// change out from under an open popup, unlike `text`/`syntax`.
     pub(in crate::editor) content: Option<hume_ui::popup::PopupContent>,
 }
 
@@ -77,8 +76,14 @@ impl PopupModel {
 /// positioned `hume_ui::popup::PopupState` with `selected` set. `callback`
 /// fires exactly once (one per selection or dismissal), then the whole
 /// model is dropped.
+///
+/// `rows` is pre-measured at construction, not re-measured per frame: labels
+/// never change during a menu's lifetime (only `selected` does), so building
+/// the `MenuRows` once here — instead of `sync_menu_view` calling
+/// `MenuRows::measure` every frame the menu stays open — costs nothing
+/// `Editor::sync_menu_view` isn't already paying at `show-menu!` time.
 pub(in crate::editor) struct MenuModel {
-    pub(in crate::editor) items: std::sync::Arc<Vec<String>>,
+    pub(in crate::editor) rows: hume_ui::popup::MenuRows,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: steel::rvals::SteelVal,
 }

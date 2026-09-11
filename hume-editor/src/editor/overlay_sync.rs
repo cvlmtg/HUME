@@ -19,7 +19,7 @@ impl Editor {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if self.state.minibuf_completion.is_none()
-            && self.state.views.minibuf_completion().is_none()
+            && self.state.views.minibuf_completion.read().is_none()
         {
             return;
         }
@@ -31,13 +31,13 @@ impl Editor {
                 .map(|mb| mb.cursor_x_at(state.span_start))
                 .unwrap_or(0);
             hume_ui::completion_overlay::MinibufCompletionView {
-                rows: state.candidates.iter().map(|c| c.display.clone()).collect(),
+                rows: state.rows.clone(),
                 selected: state.selected,
                 anchor_x,
                 border: self.state.settings.popup_border,
             }
         });
-        self.state.views.set_minibuf_completion(view);
+        self.state.views.minibuf_completion.set(view);
     }
 
     /// The focused pane's primary cursor position — the anchor char for
@@ -116,28 +116,31 @@ impl Editor {
             Some(hume_ui::popup::PopupLayout::Cursor)
         );
         if !is_cursor {
-            if self.state.views.popup().is_some() {
-                self.state.views.set_popup(None);
+            if self.state.views.popup.read().is_some() {
+                self.state.views.popup.set(None);
             }
             return;
         }
 
         let Some(placement) = self.popup_placement(ctx, self.focused_cursor_char()) else {
-            self.state.views.set_popup(None);
+            self.state.views.popup.set(None);
             return;
         };
         let border = self.state.settings.popup_border;
         let theme = &self.view.theme;
-        let Some(model) = self.state.config.popup.as_mut() else {
-            return;
-        };
+        let model = self
+            .state
+            .config
+            .popup
+            .as_mut()
+            .expect("popup present: is_cursor checked above");
         // Read before the `&mut` below — a second `self.state.config.popup`
         // borrow once `content` is live would conflict with it.
         let scroll = model.scroll;
         let content = model.content_mut(theme);
         let resolved = hume_ui::popup::resolve_popup(content, placement, scroll, border);
 
-        self.state.views.set_popup(Some(resolved));
+        self.state.views.popup.set(Some(resolved));
     }
 
     /// Write the current *docked* popup content into the shared
@@ -159,24 +162,27 @@ impl Editor {
             Some(hume_ui::popup::PopupLayout::Docked)
         );
         if !is_docked {
-            if self.state.views.popup_band().is_some() {
-                self.state.views.set_popup_band(None);
+            if self.state.views.popup_band.read().is_some() {
+                self.state.views.popup_band.set(None);
             }
             return;
         }
 
         let area = self.view.last_terminal_area;
-        let max_rows = area.height / 2;
+        let max_rows = hume_engine::pipeline::EngineView::bottom_band_max(area.height);
         let border = self.state.settings.popup_border;
         let theme = &self.view.theme;
-        let Some(model) = self.state.config.popup.as_mut() else {
-            return;
-        };
+        let model = self
+            .state
+            .config
+            .popup
+            .as_mut()
+            .expect("popup present: is_docked checked above");
         let scroll = model.scroll;
         let content = model.content_mut(theme);
         let resolved = hume_ui::popup::resolve_band(content, area.width, max_rows, scroll, border);
 
-        self.state.views.set_popup_band(Some(resolved));
+        self.state.views.popup_band.set(Some(resolved));
     }
 
     /// Write the current menu content into the shared `PopupState` Arc so
@@ -188,10 +194,10 @@ impl Editor {
         if self.state.config.menu.is_none() {
             // Skip the write-lock when both sides are already None — common
             // case while no menu is open.
-            if self.state.views.menu().is_none() {
+            if self.state.views.menu.read().is_none() {
                 return;
             }
-            self.state.views.set_menu(None);
+            self.state.views.menu.set(None);
             return;
         }
 
@@ -204,19 +210,20 @@ impl Editor {
 
         let resolved = placement.and_then(|placement| {
             let model = self.state.config.menu.as_ref()?;
-            // Arc-cloned, not deep-copied: `MenuModel::items` is already the
-            // exact `Vec` a menu shows (never re-filtered), so there's
-            // nothing for this snapshot to transform.
-            let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::clone(&model.items));
+            // `MenuRows::clone` is an `Arc` bump plus a `u16` copy, not a
+            // re-measure: `MenuModel::rows` is pre-measured once at
+            // `show-menu!` time (labels never change during a menu's
+            // lifetime, only `selected` does), so there's nothing left for
+            // this per-frame snapshot to recompute.
             Some(hume_ui::popup::resolve_menu(
-                rows,
+                model.rows.clone(),
                 model.selected,
                 placement,
                 border,
             ))
         });
 
-        self.state.views.set_menu(resolved);
+        self.state.views.menu.set(resolved);
     }
 
     /// Write the LSP completion menu into the shared `PopupState` Arc —
@@ -229,7 +236,7 @@ impl Editor {
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
-        if self.lsp.completion.is_none() && self.state.views.completion_menu().is_none() {
+        if self.lsp.completion.is_none() && self.state.views.completion_menu.read().is_none() {
             return;
         }
 
@@ -268,7 +275,7 @@ impl Editor {
             ))
         })();
 
-        self.state.views.set_completion_menu(resolved);
+        self.state.views.completion_menu.set(resolved);
     }
 
     /// Write the open picker session into the shared `PickerViewState` Arc
@@ -284,7 +291,7 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.config.picker.is_none() && self.state.views.picker().is_none() {
+        if self.state.config.picker.is_none() && self.state.views.picker.read().is_none() {
             return;
         }
 
@@ -312,6 +319,6 @@ impl Editor {
             _ => None,
         };
 
-        self.state.views.set_picker(resolved);
+        self.state.views.picker.set(resolved);
     }
 }

@@ -27,7 +27,8 @@ fn register_markdown(ed: &mut Editor) {
 fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
         .views
-        .popup()
+        .popup
+        .read()
         .as_ref()
         .and_then(|s| s.styled_rows.as_deref().cloned())
 }
@@ -37,7 +38,8 @@ fn styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
 fn band_styled_rows(ed: &Editor) -> Option<Vec<hume_ui::popup::StyledRow>> {
     ed.state
         .views
-        .popup_band()
+        .popup_band
+        .read()
         .as_ref()
         .and_then(|s| s.styled_rows.as_deref().cloned())
 }
@@ -244,7 +246,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
         styled_rows(&ed).is_none(),
         "grammar-absent fallback must not populate styled_rows"
     );
-    let lines = (*ed.state.views.popup().as_ref().unwrap().lines).clone();
+    let lines = (*ed.state.views.popup.read().as_ref().unwrap().lines).clone();
     assert_eq!(
         lines,
         vec!["# heading".to_string()],

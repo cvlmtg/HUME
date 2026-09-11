@@ -282,11 +282,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
          where line 8 is visible but line 0's default viewport never was"
     );
 
-    let by_line = ed.state.panes.render[pid]
-        .line_backgrounds()
-        .read()
-        .unwrap()
-        .clone();
+    let by_line = ed.state.panes.render[pid].line_backgrounds();
     assert!(
         by_line.contains_key(&hume_rope::line::ContentLine::new(8)),
         "line 8's tint must survive into the post-scroll viewport this bridge reads"

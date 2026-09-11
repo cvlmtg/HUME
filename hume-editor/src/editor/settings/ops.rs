@@ -94,12 +94,11 @@ pub(crate) fn write_global_for_test(
 /// of relying on that arm.
 pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut EngineView) {
     state.settings = crate::editor::settings::EditorSettings::default();
-    view.theme = crate::editor::theme::build_default_theme();
-    // Same reasoning as the `ResyncKey::theme` arm below: `view.theme` just
-    // changed, so a baked popup's styles must be rebuilt against it.
-    if let Some(popup) = state.config.popup.as_mut() {
-        popup.content = None;
-    }
+    theme::set_theme(
+        view,
+        state.config.popup.as_mut(),
+        crate::editor::theme::build_default_theme(),
+    );
     for &key in crate::editor::settings::all_setting_keys() {
         if let Some(rk) = resync_key(key) {
             resync_derived_state(state, view, rk);
@@ -144,22 +143,13 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
                 .set_capacity(state.settings.jump_list_capacity);
             true
         }
-        ResyncKey::theme if !state.settings.theme.is_empty() => {
-            let loaded = theme::load_theme_by_name(
-                view,
-                &mut state.message_log,
-                &mut state.status_msg,
-                &state.settings.theme,
-            );
-            // A successful load replaces `view.theme` above — an open
-            // popup's baked styles (`PopupModel::content_mut`) must be
-            // rebuilt against it, not left holding the outgoing theme's
-            // colors until an unrelated width change forces a re-wrap.
-            if loaded && let Some(popup) = state.config.popup.as_mut() {
-                popup.content = None;
-            }
-            loaded
-        }
+        ResyncKey::theme if !state.settings.theme.is_empty() => theme::load_theme_by_name(
+            view,
+            &mut state.message_log,
+            &mut state.status_msg,
+            state.config.popup.as_mut(),
+            &state.settings.theme,
+        ),
         // Empty theme (cleared, or never set): nothing to load.
         ResyncKey::theme => true,
     }

@@ -2,6 +2,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::types::TruncateEnd;
 
 use crate::attribution::PluginId;
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef, VirtualLineSpec};
@@ -940,12 +941,6 @@ pub trait DiffHost {
     /// highlighting, fall back to a whole-line scope).
     fn diff_words(&self, old: &str, new: &str) -> (Vec<WordDiffHunk>, bool);
 }
-
-/// `hume-engine` owns this type — `hume-ui`'s picker panel needs it too,
-/// and has no other reason to depend on the scripting crate. Re-exported
-/// here so `builtins::ui`'s `#:truncate` decode and every `host.rs` caller
-/// keep spelling it `hume_scripting::host::TruncateEnd`.
-pub use hume_engine::types::TruncateEnd;
 
 /// Grouped `picker!` open-time keyword options. [`UiHost::open_picker`] takes
 /// the Scheme call's positional arguments (`items`, `on_select`) directly;

@@ -15,6 +15,7 @@ use std::path::Path;
 use super::*;
 use crate::editor::lsp::LspState;
 use hume_engine::pipeline::{PaneId, RenderContext};
+use hume_engine::providers::HighlightTier;
 use hume_lsp::backend::LspBackend;
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
@@ -102,7 +103,7 @@ fn single_line_error_diagnostic_gets_the_error_scope() {
     let c = setup_with_diagnostics("abcdefgh\n", &[((0, 2), (0, 5), 1)]);
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
-        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
+        pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic),
         vec![(
             hume_rope::line::ContentLine::new(0),
             bc(2),
@@ -122,7 +123,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     let error_scope = scope(&c.ed, "diagnostic.error");
     let hint_scope = scope(&c.ed, "diagnostic.hint");
     assert_eq!(
-        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
+        pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic),
         vec![
             (
                 hume_rope::line::ContentLine::new(0),
@@ -152,7 +153,7 @@ fn severity_floor_hides_less_severe_diagnostics() {
     c.ed.prepare_frame(&mut ctx);
 
     assert_eq!(
-        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
+        pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic),
         vec![(
             hume_rope::line::ContentLine::new(0),
             bc(0),
@@ -173,7 +174,7 @@ fn multiline_diagnostic_splits_into_per_line_spans() {
     let c = setup_with_diagnostics("abc\ndef\n", &[((0, 2), (1, 3), 1)]);
     let error_scope = scope(&c.ed, "diagnostic.error");
     assert_eq!(
-        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics),
+        pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic),
         vec![
             (
                 hume_rope::line::ContentLine::new(0),
@@ -197,7 +198,7 @@ fn multiline_diagnostic_splits_into_per_line_spans() {
 fn zero_diagnostics_produce_empty_provider_output() {
     let c = setup_with_diagnostics("abcdefgh\n", &[]);
     assert!(
-        pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
+        pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
         "no diagnostics published — the diagnostics Arc must stay empty"
     );
 }
@@ -209,7 +210,7 @@ fn zero_diagnostics_produce_empty_provider_output() {
 fn diagnostics_stay_visible_in_insert_mode() {
     let mut c = setup_with_diagnostics("abcdefgh\n", &[((0, 0), (0, 1), 1)]);
     assert!(
-        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
+        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
         "sanity: visible in Normal mode"
     );
 
@@ -219,7 +220,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
     assert!(
-        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
+        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
         "diagnostics must stay visible in Insert mode"
     );
 
@@ -228,7 +229,7 @@ fn diagnostics_stay_visible_in_insert_mode() {
     c.ed.settle();
     c.ed.prepare_frame(&mut ctx);
     assert!(
-        !pane_highlights(&c.ed, c.pid, |h| &h.diagnostics).is_empty(),
+        !pane_highlights(&c.ed, c.pid, HighlightTier::Diagnostic).is_empty(),
         "still visible back in Normal mode"
     );
 }
@@ -259,7 +260,7 @@ fn extra_highlight_gets_its_runtime_interned_scope() {
 
     let unused_scope = scope(&ed, "unused");
     assert_eq!(
-        pane_highlights(&ed, pid, |h| &h.extra),
+        pane_highlights(&ed, pid, HighlightTier::Extra),
         vec![(
             hume_rope::line::ContentLine::new(0),
             bc(1),
@@ -295,7 +296,7 @@ fn extra_highlight_scope_is_cached_not_reinterned() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let spans = pane_highlights(&ed, pid, |h| &h.extra);
+    let spans = pane_highlights(&ed, pid, HighlightTier::Extra);
     assert_eq!(spans.len(), 2);
     assert_eq!(
         spans[0].3, spans[1].3,
@@ -337,7 +338,7 @@ fn overlapping_extra_highlights_from_two_sources_resolve_alphabetically() {
 
     let aaa_scope = scope(&ed, "aaa-scope");
     assert_eq!(
-        pane_highlights(&ed, pid, |h| &h.extra),
+        pane_highlights(&ed, pid, HighlightTier::Extra),
         vec![(
             hume_rope::line::ContentLine::new(0),
             bc(1),

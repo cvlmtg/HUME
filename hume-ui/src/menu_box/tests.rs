@@ -296,6 +296,33 @@ fn menu_inner_width_is_widest_row() {
     );
 }
 
+// ── band_capacity ──────────────────────────────────────────────────────
+
+/// `content_rows as u16 + chrome_rows` overflows at exactly `u16::MAX` rows
+/// and truncates silently above it — both would previously wrap to a
+/// near-zero `u16` instead of clamping to `max`. Shared by the drawer (1
+/// chrome row) and the docked popup band (2), so one guard covers both.
+#[test]
+fn band_capacity_clamps_instead_of_overflowing_u16() {
+    assert_eq!(band_capacity(65_535, 1, 20), 20);
+    assert_eq!(band_capacity(usize::MAX, 1, 20), 20);
+    assert_eq!(band_capacity(65_535, 2, 20), 20);
+    assert_eq!(band_capacity(usize::MAX, 2, 20), 20);
+}
+
+#[test]
+fn band_capacity_reserves_chrome_rows_below_the_cap() {
+    assert_eq!(band_capacity(3, 1, 20), 4);
+    assert_eq!(band_capacity(3, 2, 20), 5);
+}
+
+#[test]
+fn band_visible_rows_is_band_capacity_minus_chrome() {
+    assert_eq!(band_visible_rows(3, 1, 20), 3);
+    assert_eq!(band_visible_rows(3, 2, 20), 3);
+    assert_eq!(band_visible_rows(usize::MAX, 2, 20), 18);
+}
+
 #[test]
 fn draw_menu_box_too_small_outer_does_nothing() {
     let mut buf = Grid::new(20, 20);

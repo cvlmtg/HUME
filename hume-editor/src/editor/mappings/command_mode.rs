@@ -293,10 +293,14 @@ impl Editor {
             mb.input.replace_range(span_start..cursor, &replacement);
             mb.cursor = span_start + replacement.len();
         }
+        let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
+            candidates.iter().map(|c| c.display.clone()).collect(),
+        ));
         self.state.minibuf_completion = Some(MinibufCompletionState {
             candidates,
             selected: 0,
             span_start,
+            rows,
         });
     }
 

@@ -179,18 +179,17 @@ fn geometry_clamps_height_to_pane_when_content_is_taller() {
     );
 }
 
-// ── band_capacity ──────────────────────────────────────────────────────
+// ── band_visible_rows ─────────────────────────────────────────────────
 
-/// `lines as u16 + 2` overflows at exactly `u16::MAX` lines and truncates
-/// silently above it — both would previously wrap to a near-zero `u16`
-/// instead of clamping to `max`.
+/// The overflow-safety guard on the shared arithmetic itself lives in
+/// `menu_box::tests` (`band_capacity_clamps_instead_of_overflowing_u16`) —
+/// this pins the popup band's own 2-row frame against it instead of
+/// re-testing the arithmetic.
 #[test]
-fn band_capacity_clamps_instead_of_overflowing_u16() {
-    assert_eq!(band_capacity(65_535, 20), 20);
-    assert_eq!(band_capacity(usize::MAX, 20), 20);
-}
-
-#[test]
-fn band_capacity_reserves_the_frame_row_pair_below_the_cap() {
-    assert_eq!(band_capacity(3, 20), 5);
+fn band_visible_rows_reserves_the_frame_row_pair_below_the_cap() {
+    assert_eq!(
+        band_visible_rows(3, 20),
+        3,
+        "well under the cap: all 3 lines fit"
+    );
 }

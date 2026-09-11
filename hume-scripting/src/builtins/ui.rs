@@ -9,10 +9,10 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use hume_engine::types::TruncateEnd;
+
 use crate::SteelCtx;
-use crate::host::{
-    LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, TruncateEnd,
-};
+use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
 
 use super::SteelResult;
 use super::args::{

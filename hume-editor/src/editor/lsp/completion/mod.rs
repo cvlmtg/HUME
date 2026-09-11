@@ -286,7 +286,7 @@ pub(in crate::editor) fn clear_completion_menu(
     if let Some(lsp) = lsp {
         clear_completion_state(lsp);
     }
-    state.views.set_completion_menu(None);
+    state.views.completion_menu.set(None);
 }
 
 impl Editor {

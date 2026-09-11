@@ -108,7 +108,7 @@ fn menu_items(ed: &Editor) -> Vec<String> {
         .config
         .menu
         .as_ref()
-        .map(|m| m.items.as_ref().clone())
+        .map(|m| m.rows.labels().as_ref().clone())
         .unwrap_or_default()
 }
 

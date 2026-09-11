@@ -13,7 +13,7 @@ use ropey::Rope;
 
 use crate::editor::Editor;
 use crate::editor::message_log::Severity;
-use hume_decorations::decorations::{Positioned, RangeAnchored, SourceStore};
+use hume_decorations::{Positioned, RangeAnchored, SourceStore};
 
 /// Ordered least-to-most-lenient so `severity <= floor` means "at least as
 /// severe as floor" — e.g. `floor = Warning` keeps `Error` and `Warning`,

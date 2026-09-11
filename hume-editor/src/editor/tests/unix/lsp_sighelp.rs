@@ -129,7 +129,8 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
     ed.prepare_frame(&mut ctx);
     ed.state
         .views
-        .popup()
+        .popup
+        .read()
         .as_ref()
         .map(|s| (*s.lines).clone())
         .unwrap_or_default()

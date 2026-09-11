@@ -864,7 +864,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // matches `clear_completion_menu`'s scope even though `completion`
         // itself is already `None` here (via `take` above).
         crate::editor::lsp::completion::clear_completion_state(lsp);
-        self.state.views.set_completion_menu(None);
+        self.state.views.completion_menu.set(None);
         session.accept(self.state, lsp, idx)
     }
 
@@ -1143,7 +1143,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(pos, hint_text, before)| {
                 validate_offset(text, pos, before, "set-inlay-hints!")?;
-                Ok(hume_decorations::decorations::InlayHintEntry {
+                Ok(hume_decorations::InlayHintEntry {
                     pos: CharOffset::new(pos),
                     text: hint_text,
                     before,
@@ -1192,7 +1192,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = signs
             .into_iter()
             .map(|(line, sign_text, scope)| {
-                Ok(hume_decorations::decorations::SignEntry {
+                Ok(hume_decorations::SignEntry {
                     pos: line_start_offset(text, line, "set-signs!")?,
                     text: sign_text.into(),
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1231,7 +1231,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                         )
                     })
                     .collect();
-                Ok(hume_decorations::decorations::VirtualLineEntry {
+                Ok(hume_decorations::VirtualLineEntry {
                     pos,
                     text: spec.text,
                     before: spec.before,
@@ -1258,7 +1258,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
             .into_iter()
             .map(|(start, end, scope)| {
                 validate_range(text, start, end, "set-extra-highlights!")?;
-                Ok(hume_decorations::decorations::ExtraHighlightEntry {
+                Ok(hume_decorations::ExtraHighlightEntry {
                     start: CharOffset::new(start),
                     end: CharOffset::new(end),
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1282,7 +1282,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = lines
             .into_iter()
             .map(|(line, eol_text, scope)| {
-                Ok(hume_decorations::decorations::EolTextEntry {
+                Ok(hume_decorations::EolTextEntry {
                     pos: line_start_offset(text, line, "set-eol-text!")?,
                     text: eol_text,
                     scope: self.view.registry.intern_runtime(&scope),
@@ -1306,7 +1306,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = entries
             .into_iter()
             .map(|(line, scope)| {
-                Ok(hume_decorations::decorations::LineBgEntry {
+                Ok(hume_decorations::LineBgEntry {
                     pos: line_start_offset(text, line, "set-line-backgrounds!")?,
                     scope: self.view.registry.intern_runtime(&scope),
                 })
@@ -1729,7 +1729,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             return Err("show-menu!: not available in Insert mode".to_string());
         }
         self.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
-            items: std::sync::Arc::new(items),
+            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
             selected: 0,
             callback,
         });

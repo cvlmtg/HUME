@@ -115,7 +115,7 @@ fn diagnostics_drawer_shows_grapheme_column() {
     ed.settle();
 
     let rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 1);
@@ -266,7 +266,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
     run_references(&mut ed);
 
     let rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         guard.as_ref().expect("drawer must open").rows.clone()
     };
     assert_eq!(rows.len(), 9);
@@ -368,7 +368,7 @@ fn a_malformed_location_aborts_the_batch_instead_of_a_degraded_row() {
     run_references(&mut ed);
 
     assert!(
-        ed.state.views.drawer().is_none(),
+        ed.state.views.drawer.read().is_none(),
         "a malformed location must abort before the drawer ever opens, \
          not open it with the good rows and drop the bad one"
     );

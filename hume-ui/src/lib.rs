@@ -33,9 +33,7 @@ pub mod picker_panel;
 pub mod popup;
 pub mod width;
 
-use std::sync::{Arc, RwLock, RwLockReadGuard};
-
-use hume_engine::lock::LockExt;
+use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{BottomBandProvider, ProviderSet};
 
 use completion_overlay::MinibufCompletionOverlay;
@@ -43,76 +41,32 @@ use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
 
 /// Every overlay view shared between the editor's per-frame write side and
-/// the engine's render side. One owner, so a new overlay is one field plus
-/// one accessor pair here instead of a seventh hand-allocated `Arc` threaded
-/// through `Editor::open`, `EditorState`, and [`register_overlays`]'s
-/// parameter list — and nothing stops two different slots (same `Arc<RwLock<
-/// Option<PopupState>>>` type for `popup`/`menu`/`completion_menu`) from
-/// being wired to each other by mistake, the way loose same-typed `Arc`
-/// parameters could be.
+/// the engine's render side. One owner, so a new overlay is one field
+/// instead of a seventh hand-allocated `Arc` threaded through `Editor::
+/// open`, `EditorState`, and [`register_overlays`]'s parameter list.
+/// Bundling as one struct with distinctly-named fields (not loose
+/// same-typed `Arc` parameters) is what stops two different slots (same
+/// `SharedSlot<Option<PopupState>>` type for `popup`/`menu`/
+/// `completion_menu`) from being wired to each other by mistake — a
+/// `views.popup` at a construction site can't silently become `views.menu`
+/// the way two positional `Arc` arguments of the same type could swap.
+///
+/// Fields are `pub`, not behind a getter/setter pair: every field is a
+/// [`SharedSlot`], whose own `read()`/`set()` already carry the poison
+/// policy and the only mutation this type ever needs — a wrapping accessor
+/// pair here would have been a pass-through with nothing left to add.
 #[derive(Default)]
 pub struct OverlayViews {
-    minibuf_completion: Arc<RwLock<Option<completion_overlay::MinibufCompletionView>>>,
-    popup: Arc<RwLock<Option<popup::PopupState>>>,
-    popup_band: Arc<RwLock<Option<popup::PopupBandState>>>,
-    menu: Arc<RwLock<Option<popup::PopupState>>>,
-    completion_menu: Arc<RwLock<Option<popup::PopupState>>>,
-    drawer: Arc<RwLock<Option<drawer::DrawerViewState>>>,
-    picker: Arc<RwLock<Option<picker_panel::PickerViewState>>>,
+    pub minibuf_completion: SharedSlot<Option<completion_overlay::MinibufCompletionView>>,
+    pub popup: SharedSlot<Option<popup::PopupState>>,
+    pub popup_band: SharedSlot<Option<popup::PopupBandState>>,
+    pub menu: SharedSlot<Option<popup::PopupState>>,
+    pub completion_menu: SharedSlot<Option<popup::PopupState>>,
+    pub drawer: SharedSlot<Option<drawer::DrawerViewState>>,
+    pub picker: SharedSlot<Option<picker_panel::PickerViewState>>,
 }
 
 impl OverlayViews {
-    pub fn minibuf_completion(
-        &self,
-    ) -> RwLockReadGuard<'_, Option<completion_overlay::MinibufCompletionView>> {
-        self.minibuf_completion.read_or_panic()
-    }
-    pub fn set_minibuf_completion(&self, view: Option<completion_overlay::MinibufCompletionView>) {
-        *self.minibuf_completion.write_or_panic() = view;
-    }
-
-    pub fn popup(&self) -> RwLockReadGuard<'_, Option<popup::PopupState>> {
-        self.popup.read_or_panic()
-    }
-    pub fn set_popup(&self, view: Option<popup::PopupState>) {
-        *self.popup.write_or_panic() = view;
-    }
-
-    pub fn popup_band(&self) -> RwLockReadGuard<'_, Option<popup::PopupBandState>> {
-        self.popup_band.read_or_panic()
-    }
-    pub fn set_popup_band(&self, view: Option<popup::PopupBandState>) {
-        *self.popup_band.write_or_panic() = view;
-    }
-
-    pub fn menu(&self) -> RwLockReadGuard<'_, Option<popup::PopupState>> {
-        self.menu.read_or_panic()
-    }
-    pub fn set_menu(&self, view: Option<popup::PopupState>) {
-        *self.menu.write_or_panic() = view;
-    }
-
-    pub fn completion_menu(&self) -> RwLockReadGuard<'_, Option<popup::PopupState>> {
-        self.completion_menu.read_or_panic()
-    }
-    pub fn set_completion_menu(&self, view: Option<popup::PopupState>) {
-        *self.completion_menu.write_or_panic() = view;
-    }
-
-    pub fn drawer(&self) -> RwLockReadGuard<'_, Option<drawer::DrawerViewState>> {
-        self.drawer.read_or_panic()
-    }
-    pub fn set_drawer(&self, view: Option<drawer::DrawerViewState>) {
-        *self.drawer.write_or_panic() = view;
-    }
-
-    pub fn picker(&self) -> RwLockReadGuard<'_, Option<picker_panel::PickerViewState>> {
-        self.picker.read_or_panic()
-    }
-    pub fn set_picker(&self, view: Option<picker_panel::PickerViewState>) {
-        *self.picker.write_or_panic() = view;
-    }
-
     /// The two chrome bands (drawer, docked popup) reading this set's
     /// band-shaped slots — for `EngineView::bottom_bands`. **Call once**: a
     /// second call registers a duplicate band painting the same data twice.
@@ -121,10 +75,10 @@ impl OverlayViews {
     pub fn bottom_bands(&self) -> Vec<Box<dyn BottomBandProvider>> {
         vec![
             Box::new(drawer::DrawerWidget {
-                data: Arc::clone(&self.drawer),
+                data: self.drawer.clone(),
             }),
             Box::new(popup::PopupBandWidget {
-                data: Arc::clone(&self.popup_band),
+                data: self.popup_band.clone(),
             }),
         ]
     }
@@ -143,22 +97,22 @@ impl OverlayViews {
 /// must sit above every other overlay too.
 pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
     providers.add_overlay(Box::new(MinibufCompletionOverlay {
-        data: Arc::clone(&views.minibuf_completion),
+        data: views.minibuf_completion.clone(),
     }));
     providers.add_overlay(Box::new(PopupOverlay {
-        data: Arc::clone(&views.popup),
+        data: views.popup.clone(),
         scope: "ui.popup",
     }));
     providers.add_overlay(Box::new(PopupOverlay {
-        data: Arc::clone(&views.menu),
+        data: views.menu.clone(),
         scope: "ui.menu",
     }));
     providers.add_overlay(Box::new(PopupOverlay {
-        data: Arc::clone(&views.completion_menu),
+        data: views.completion_menu.clone(),
         scope: "ui.menu",
     }));
     providers.add_overlay(Box::new(PickerOverlay {
-        data: Arc::clone(&views.picker),
+        data: views.picker.clone(),
     }));
 }
 

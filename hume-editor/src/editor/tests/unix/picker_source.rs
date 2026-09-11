@@ -6,8 +6,9 @@
 use super::*;
 
 use crate::editor::picker::{self, PickerSession, item};
+use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::spawn_line_source;
-use hume_scripting::host::{LivePickerOpts, PickerOpts, TruncateEnd};
+use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use std::sync::Arc;
 use steel::rvals::SteelVal;
 

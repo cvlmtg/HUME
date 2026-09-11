@@ -330,7 +330,7 @@ fn close_buffer_prunes_stored_diagnostics_and_decorations() {
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,
-        vec![hume_decorations::decorations::InlayHintEntry {
+        vec![hume_decorations::InlayHintEntry {
             pos: co(0),
             text: "x".to_string(),
             before: true,
@@ -403,7 +403,7 @@ fn steel_close_buffer_prunes_diagnostics_decorations_and_fires_hook() {
     ed.state.config.decorations.set_inlay_hints(
         "test".to_string(),
         bid,
-        vec![hume_decorations::decorations::InlayHintEntry {
+        vec![hume_decorations::InlayHintEntry {
             pos: co(0),
             text: "x".to_string(),
             before: true,
@@ -542,7 +542,7 @@ fn lsp_stop_remaps_a_pending_edit_before_detaching_not_after() {
     ed.state.config.decorations.set_signs(
         "test".to_string(),
         bid,
-        vec![hume_decorations::decorations::SignEntry {
+        vec![hume_decorations::SignEntry {
             pos: co(6),
             text: "!".into(),
             scope,

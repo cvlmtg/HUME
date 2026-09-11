@@ -128,7 +128,7 @@ pub(crate) struct ConfigState {
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds) — the render
     /// providers read these.
-    pub(in crate::editor) decorations: hume_decorations::decorations::DecorationStores,
+    pub(in crate::editor) decorations: hume_decorations::DecorationStores,
     /// Text pushed by `(set-statusline-text! source bid text)`, wholesale
     /// per `(bid, source)`, same replace semantics as `decorations`. Nested
     /// rather than flat like `trigger_chars` above: the render side needs a
@@ -208,7 +208,7 @@ impl ConfigState {
     ///
     /// `prior_clock` is `0` at session start (nothing to carry forward) and
     /// the outgoing `ConfigState.decorations`'s own shared clock on
-    /// `:reload-config` — see [`hume_decorations::decorations::DecorationStores::reset`]'s
+    /// `:reload-config` — see [`hume_decorations::DecorationStores::reset`]'s
     /// doc for why this can't just be `Default::default()` like every other
     /// field here.
     pub(super) fn new(kitty_enabled: bool, prior_clock: u64) -> Self {
@@ -217,7 +217,7 @@ impl ConfigState {
             registry: CommandRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
-            decorations: hume_decorations::decorations::DecorationStores::reset(prior_clock),
+            decorations: hume_decorations::DecorationStores::reset(prior_clock),
             statusline_text: rustc_hash::FxHashMap::default(),
             pending_work: VecDeque::new(),
             pending_language_detection: Vec::new(),
@@ -669,7 +669,7 @@ impl EditorState {
                 selected: d.selected,
                 scroll: d.scroll,
             });
-        self.views.set_drawer(resolved);
+        self.views.drawer.set(resolved);
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire

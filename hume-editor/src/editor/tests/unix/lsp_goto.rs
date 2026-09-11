@@ -223,7 +223,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     run_goto(&mut ed, ":lsp-goto-definition");
 
     let rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         guard
             .as_ref()
             .expect("drawer must open for a multi-entry array")
@@ -271,7 +271,7 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
     run_goto(&mut ed, ":lsp-goto-definition");
 
     let rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         guard
             .as_ref()
             .expect("drawer must open for a multi-entry array")
@@ -311,7 +311,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     run_goto(&mut ed, ":lsp-goto-definition");
 
     let rows = {
-        let guard = ed.state.views.drawer();
+        let guard = ed.state.views.drawer.read();
         guard
             .as_ref()
             .expect("drawer must open for a multi-entry LocationLink array")

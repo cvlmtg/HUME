@@ -3,10 +3,7 @@
 // source: a pane built via bare `Pane::new` (not `build_pane`) has no
 // `ScopedHighlighter`/`SignSource`/etc. providers to feed, so the write
 // sides in `decoration_providers.rs` must skip a handle-less pane's
-// per-pane computation entirely, not just the final write. Commit
-// 187716d3 (`PaneDecorationHandles` typed setters, fields private) dropped
-// the guard that used to enforce this everywhere `Arc::clone(&r.field)`
-// used to fail fast.
+// per-pane computation entirely, not just the final write.
 
 use super::*;
 
@@ -72,7 +69,7 @@ fn virtual_line_bridge_skips_sync_stamp_for_handleless_pane() {
     ed.state.config.decorations.set_virtual_lines(
         "test-source".to_string(),
         bid,
-        vec![hume_decorations::decorations::VirtualLineEntry {
+        vec![hume_decorations::VirtualLineEntry {
             pos: hume_rope::offset::CharOffset::new(0),
             text: "hint".to_string(),
             before: false,

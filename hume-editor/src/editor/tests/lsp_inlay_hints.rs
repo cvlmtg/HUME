@@ -10,7 +10,7 @@
 // these tests are about the render path, not the Steel/wire boundary.
 
 use super::*;
-use hume_decorations::decorations::InlayHintEntry;
+use hume_decorations::InlayHintEntry;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 
@@ -210,8 +210,6 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .get(pid)
         .unwrap()
         .inlay_hints()
-        .read()
-        .unwrap()
         .values()
         .any(|v| !v.is_empty());
     assert!(has_hint_before, "sanity: hint present before clearing");
@@ -230,8 +228,6 @@ fn clearing_the_store_removes_the_hint_next_frame() {
         .get(pid)
         .unwrap()
         .inlay_hints()
-        .read()
-        .unwrap()
         .values()
         .any(|v| !v.is_empty());
     assert!(
@@ -274,8 +270,6 @@ fn setting_off_does_not_clear_an_unrelated_sources_hints() {
             .get(pid)
             .unwrap()
             .inlay_hints()
-            .read()
-            .unwrap()
             .values()
             .any(|v| !v.is_empty())
     };

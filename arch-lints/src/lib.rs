@@ -9,6 +9,8 @@
 //! them, so it doesn't belong to any one crate's test suite. It scans every
 //! workspace member equally, `hume-editor` included.
 
+#![deny(rustdoc::broken_intra_doc_links)]
+
 /// The workspace root every lint resolves its scan paths against.
 ///
 /// `arch-lints` sits one directory below the workspace root, the same depth
@@ -83,6 +85,25 @@ pub fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) 
             out.push(path);
         }
     }
+}
+
+/// Every `.rs` file under `hume-editor/src/editor/tests/` — the scan root
+/// shared by every lint in this crate that inspects the editor's own test
+/// suite (`test_globals.rs`'s tempdir-hygiene lint, `test_globals_spawn.rs`'s
+/// unqualified-spawn lint). Asserts the scan found at least one file: a
+/// renamed `tests/` tree (exactly what the hume-ui/hume-decorations split
+/// did to `hume-editor/src/ui/`) would otherwise scan zero files and pass
+/// every one of these lints green forever.
+pub fn editor_test_tree_paths(workspace_root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let scan_root = workspace_root.join("hume-editor/src/editor/tests");
+    let mut paths = Vec::new();
+    collect_all_rs(&scan_root, &mut paths);
+    assert!(
+        !paths.is_empty(),
+        "no .rs files found under {} — this lint would silently check nothing",
+        scan_root.display()
+    );
+    paths
 }
 
 /// Every source file every whole-workspace lint in this module scans:
@@ -172,15 +193,25 @@ pub fn strip_line_comment(line: &str) -> &str {
     line
 }
 
-/// One violation found by [`scan_lines`]/[`scan_forbidden`].
+/// One violation found by [`scan_lines`]/[`scan_forbidden`], or by a lint
+/// that builds its own `Violation` list directly (`test_globals_spawn.rs`'s
+/// `scan`, whose `detail` is a free-form description — "spawns unqualified
+/// internally" — rather than the offending line verbatim).
 pub struct Violation {
     /// `path` relative to the caller's `display_root` (or the absolute path,
     /// if `path` doesn't start with `display_root`).
     pub file: String,
     /// 1-based line number.
     pub lineno: usize,
-    /// The offending line, trimmed of leading/trailing whitespace.
-    pub trimmed: String,
+    /// What's wrong at `file:lineno` — usually the offending line trimmed of
+    /// leading/trailing whitespace, sometimes a free-form description.
+    pub detail: String,
+}
+
+impl std::fmt::Display for Violation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "  {}:{} — {}", self.file, self.lineno, self.detail)
+    }
 }
 
 /// Shared skeleton for every line-by-line lint in this module: walks
@@ -267,7 +298,7 @@ pub fn scan_lines(
                 violations.push(Violation {
                     file: file.clone(),
                     lineno: lineno + 1,
-                    trimmed: trimmed.to_string(),
+                    detail: trimmed.to_string(),
                 });
             }
         }
