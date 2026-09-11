@@ -6,6 +6,10 @@ Patterns that bit us; rules to prevent recurrence.
 
 Scan this at session start; read a lesson body only when its rule fires.
 
+Ordered by date, not by number: each `L<N>` is a stable ID assigned once, when
+the lesson was written, and never reassigned — external docs cite these
+numbers directly.
+
 - **L1** — A forked dispatch path needs a parity test on the whole bookkeeping
   cluster, plus a compiler-enforced single funnel. Two identical `match cmd`
   arms is an SSOT bug.
