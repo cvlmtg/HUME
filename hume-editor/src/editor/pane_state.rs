@@ -339,9 +339,21 @@ impl super::EditorState {
         )
     }
 
-    /// The pane currently showing `bid`: the focused pane if it shows `bid`,
-    /// else the first pane (by `SlotMap` iteration order) that does, else
-    /// `None` if `bid` isn't open in any pane (a background buffer).
+    /// The pane currently showing `bid`, restricted to the active tab: the
+    /// focused pane if it shows `bid`, else the first *active-tab* pane
+    /// (`view.active_pane_ids`' own leaf order) that does, else `None` —
+    /// including when `bid` is shown only in a *background* tab's pane, not
+    /// just when it's paneless entirely.
+    ///
+    /// The active-tab restriction is for callers that use the returned id as
+    /// "the pane to act on" rather than merely "some cursor to read" —
+    /// currently only `lsp/introspect.rs`'s `viewport_range`, since a
+    /// background-tab pane's viewport can be stale: active-tab panes are
+    /// the only ones `sync_viewport_dims` resizes per frame, so an inactive
+    /// tab's pane reflects whatever geometry was current whenever its tab
+    /// was last on screen, not the current terminal. A cursor reader wants
+    /// `pane_with_buffer` below instead — its selections stay live no matter
+    /// which tab is active.
     pub(in crate::editor) fn pane_showing_buffer(
         &self,
         view: &EngineView,
@@ -353,6 +365,26 @@ impl super::EditorState {
             .is_some_and(|p| p.buffer_id == bid)
         {
             return Some(self.focused_pane_id);
+        }
+        // `.get` rather than indexing: `active_pane_ids()` can transiently
+        // include `take_live`'s placeholder id if a panic unwinds between
+        // `take_live` and `install_live` — skip it like `EngineView::render`
+        // already does, rather than panicking one step earlier.
+        view.active_pane_ids()
+            .into_iter()
+            .find(|&pid| view.panes.get(pid).is_some_and(|p| p.buffer_id == bid))
+    }
+
+    /// The pane whose *cursor state* should answer for `bid`: same as
+    /// `pane_showing_buffer`, but falls further back to any pane in the pool
+    /// showing `bid` — including a background tab's — rather than giving up.
+    /// A pane's selections are live regardless of which tab is active; only
+    /// its viewport is tied to on-screen geometry (see `pane_showing_buffer`'s
+    /// doc), so this wider fallback is safe exactly for callers that never
+    /// read one. `shown_buffer_state` is the only caller.
+    fn pane_with_buffer(&self, view: &EngineView, bid: BufferId) -> Option<PaneId> {
+        if let Some(pid) = self.pane_showing_buffer(view, bid) {
+            return Some(pid);
         }
         view.panes
             .iter()
@@ -367,20 +399,22 @@ impl super::EditorState {
     /// restores your cursor when you switch back to a buffer — so scanning
     /// the *seeded* maps for "any pane that ever showed `bid`" can answer
     /// with the cursor of a pane that moved on long ago. Resolving against
-    /// `EngineView`'s live `pane.buffer_id` instead is what makes one `bid`
-    /// mean one cursor across every surface that asks: `symbol-under-cursor`,
-    /// `selections-linewise?`, and the `lsp-*-params` builders all read
-    /// through this rather than `focused_buffer_state`, since a caller-
-    /// supplied `bid` (a Steel `(current-buffer)` snapshot, or one carried
-    /// across a debounce or an async LSP round-trip) may no longer be the
-    /// buffer the focused pane shows, or may be shown in a different pane.
+    /// `EngineView`'s live `pane.buffer_id` instead (via `pane_with_buffer`)
+    /// is what makes one `bid` mean one cursor across every surface that
+    /// asks: `symbol-under-cursor`, `selections-linewise?`, and the
+    /// `lsp-*-params` builders all read through this rather than
+    /// `focused_buffer_state`, since a caller-supplied `bid` (a Steel
+    /// `(current-buffer)` snapshot, or one carried across a debounce or an
+    /// async LSP round-trip) may no longer be the buffer the focused pane
+    /// shows, or may be shown in a pane belonging to a different tab —
+    /// active or not, since none of these callers read a viewport.
     pub(in crate::editor) fn shown_buffer_state(
         &self,
         view: &EngineView,
         bid: BufferId,
     ) -> Option<&PaneBufferState> {
         self.panes
-            .buffer_state(self.pane_showing_buffer(view, bid)?, bid)
+            .buffer_state(self.pane_with_buffer(view, bid)?, bid)
     }
 }
 

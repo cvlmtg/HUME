@@ -118,6 +118,23 @@ fn ls_scratch_buffer_shows_scratch_name() {
     );
 }
 
+/// A buffer carrying both a label and a path must show the label — matching
+/// `Buffer::display_name()`, which every other surface (`:tabnew`'s tabline,
+/// the statusline) reads through. `:ls` used to hand-roll a path-first
+/// derivation that disagreed with all of them for exactly this buffer shape.
+#[test]
+fn ls_prefers_a_buffers_label_over_its_path_basename() {
+    let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    ed.doc_mut().label = Some("[custom]".to_string());
+
+    let out = ls_output(&mut ed);
+
+    assert!(
+        out.contains("[custom]"),
+        ":ls must show the buffer's label, got:\n{out}"
+    );
+}
+
 // ── Cursor placement ──────────────────────────────────────────────────────────
 
 // ── Read-only view buffer properties ─────────────────────────────────────────

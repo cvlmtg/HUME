@@ -147,7 +147,11 @@ impl Editor {
             return;
         }
 
-        // Deduplicated set of visible BufferIds.
+        // Deduplicated set of every buffer *any* pane is showing — not just
+        // the active tab's. Deliberately the full `view.panes` pool, not
+        // `Editor::active_pane_ids`: a buffer open in a background tab
+        // should keep its grammar attached and stay reparsed, so switching
+        // back to that tab doesn't land on stale highlighting.
         let mut seen = rustc_hash::FxHashSet::default();
         let visible: Vec<BufferId> = self
             .view

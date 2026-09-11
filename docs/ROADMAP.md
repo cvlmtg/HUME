@@ -4,7 +4,6 @@
 
 ### Editor — new features
 
-- [ ] Tabline UI — engine-rendered buffer/tab bar; `TabBarProvider` slot already exists.
 - [ ] Scope-aware local rename — tree-sitter locals, LSP fallback via `core:lsp`.
 - [ ] Code folding — tree-sitter-powered collapse/expand.
 - [ ] Docked panes — fixed-extent (along the split axis) `LayoutTree` variant alongside ratio-based splits, so a docked pane can be a column as well as a row. `equalize` (which currently rewrites every ratio in the tree on every split/close, see `LayoutTree::Split`'s doc comment) must be scoped to skip docked panes rather than resizing them. Clients: quickfix list, LSP references/diagnostics, embedded terminal/REPL, build/test runner, `:help` pager, DAP debugger views, undo-tree graph (`docs/UNDOTREE.md`). Deferred until the first concrete client is scoped.

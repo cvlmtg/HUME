@@ -354,9 +354,10 @@ impl JumpLists {
     }
 
     /// Test-only: production seeding always goes through [`Self::insert`]
-    /// unconditionally (`open_pane`, `Editor::new`), never guarded by a
-    /// presence check — only the `switch_focused_pane` test choke-point
-    /// lazily seeds a pane it didn't create through the normal path.
+    /// unconditionally (`commands::pane::open_pane`, `Editor::new`), never
+    /// guarded by a presence check — only the `switch_focused_pane` test
+    /// choke-point lazily seeds a pane it didn't create through the normal
+    /// path.
     #[cfg(test)]
     pub(in crate::editor) fn contains_key(&self, pid: PaneId) -> bool {
         self.0.contains_key(pid)

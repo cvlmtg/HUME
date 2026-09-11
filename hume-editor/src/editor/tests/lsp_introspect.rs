@@ -644,6 +644,36 @@ fn viewport_range_is_false_for_a_buffer_not_shown_in_any_pane() {
     );
 }
 
+/// A buffer shown only in a *background* tab's pane — not paneless, unlike
+/// the sibling test above — must also yield `None`/`#f`. Its pane's viewport
+/// can be stale (unresized since its tab was last active — see
+/// `editor::tests::tab::resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused`),
+/// so a stale-but-present pane is no more trustworthy a source of "what's
+/// currently visible" than no pane at all.
+#[test]
+fn viewport_range_is_false_for_a_buffer_shown_only_in_a_background_tab() {
+    let tmp = safe_tempdir();
+    let path = tmp.path().join("hidden.rs");
+    std::fs::write(&path, "fn hidden() {}\n").unwrap();
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
+        .unwrap();
+    let hidden_bid = ed.focused_buffer_id();
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_ne!(
+        ed.focused_buffer_id(),
+        hidden_bid,
+        "test setup: back on the original tab, hidden_bid's tab now in the background"
+    );
+
+    let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, hidden_bid);
+    assert_eq!(
+        got, None,
+        "a buffer shown only in a background tab's pane must yield None from viewport_range"
+    );
+}
+
 /// Pins `LspHost::lsp_position_params`'s own trait doc: `#f` once `id`
 /// "isn't currently shown in any pane" — even though `id` is attached to a
 /// running server and still has a seeded (now stale) pane state.
@@ -719,6 +749,43 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     assert!(
         fired,
         "lsp-position-params must still resolve a buffer shown in a non-focused pane"
+    );
+}
+
+/// Regression: `pane_showing_buffer`'s active-tab restriction (code review
+/// fix #3, commit range 48c11211..ebc3b2e0) used to be `shown_buffer_state`'s
+/// only resolver too — but none of `shown_buffer_state`'s callers
+/// (`lsp-position-params` among them) ever read a viewport, only a cursor,
+/// which stays live no matter which tab is active. A buffer shown only in a
+/// *background* tab's pane must still resolve, the same as one shown in a
+/// non-focused *pane* does above (that's the active-tab restriction working
+/// as intended, for the one caller — `viewport_range` — that actually needs
+/// it).
+#[test]
+fn lsp_position_params_resolves_a_buffer_shown_only_in_a_background_tab() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let tab_a = ed.state.tabs.current();
+
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    ed.execute_typed("tabnew", Some(extra.to_str().unwrap()))
+        .unwrap();
+    attach_running_server(&mut ed, serde_json::json!({"capabilities": {}}));
+
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (and (lsp-position-params hidden) #t))"#,
+    );
+    assert!(
+        fired,
+        "lsp-position-params must still resolve a buffer shown only in a background tab"
     );
 }
 

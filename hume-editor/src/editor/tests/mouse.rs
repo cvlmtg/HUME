@@ -13,6 +13,18 @@ fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
+/// `tab`'s start column in the synced tabline view — computed the same way
+/// `tabline_click` resolves one, without hardcoding a column.
+fn tab_start_x(ed: &Editor, tab: crate::editor::tab::TabId) -> u16 {
+    let guard = ed.state.tabline_view.read();
+    let idx = guard
+        .tabs
+        .iter()
+        .position(|e| e.id == tab)
+        .expect("tab must be in the synced view");
+    crate::tabline::tab_extents(&guard.tabs, guard.scroll, 0, 40).ranges[idx - guard.scroll].0
+}
+
 /// Regression: `end_insert_session` can mutate the buffer (the blank-line
 /// indent trim, code review fix #3) — a mouse click that exits Insert mode
 /// must recompute its char offset AFTER that mutation, not before, or a
@@ -291,4 +303,225 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
          raw row 15 in the buffer (which would be past EOF) or be rejected \
          outright (row 15 >= pane B's own viewport.height of 12)"
     );
+}
+
+// ── Tabline click ────────────────────────────────────────────────────────────
+
+/// A click on the tab bar switches to the tab it lands on, and — unlike a
+/// click that misses every pane's rect (the statusline case above) — never
+/// falls through to `pane_at_screen_pos`.
+#[test]
+fn click_on_a_tab_switches_to_it() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let tab_a = ed.state.tabs.current();
+    let pid_a = ed.state.focused_pane_id;
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    assert_ne!(tab_a, tab_b, "setup: tabnew must have opened a second tab");
+
+    frame(&mut ed, 40, 10);
+    assert_eq!(
+        ed.view.last_pane_area.y, 1,
+        "setup: the tabline must have reserved row 0"
+    );
+
+    // Row 0, column 0 — inside the padded label of the first tab (tab A,
+    // scroll starts at 0 with no overflow indicator at this width).
+    ed.handle_input(mouse_left_down(0, 0));
+
+    assert_eq!(ed.state.tabs.current(), tab_a, "click must switch to tab A");
+    assert_eq!(ed.state.focused_pane_id, pid_a);
+}
+
+/// A click past every tab's extent (the row's blank tail) is a no-op —
+/// it must not fall through to pane hit-testing either, since the tabline
+/// row sits outside every pane's rect regardless.
+#[test]
+fn click_on_the_tabline_s_blank_tail_is_a_noop() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    let pid_b = ed.state.focused_pane_id;
+
+    frame(&mut ed, 40, 10);
+
+    // Column 39 (last column, 40-wide row): well past both tabs' short
+    // labels (" *scratch* │ *scratch* " is nowhere near 39 columns).
+    ed.handle_input(mouse_left_down(39, 0));
+
+    assert_eq!(ed.state.tabs.current(), tab_b, "no tab switch");
+    assert_eq!(ed.state.focused_pane_id, pid_b, "no pane focus change");
+}
+
+/// A terminal too short to fit the tab bar plus the statusline pushes
+/// `pane_area` into its degenerate branch — but the tab bar still paints on
+/// row 0 (`render`'s own gate is just `area.height > 0`), so a click there
+/// must still hit it rather than falling through `last_pane_area.y`, which
+/// the degenerate branch leaves at 0 too.
+#[test]
+fn click_on_tabline_hits_even_when_terminal_too_short_for_chrome() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let tab_a = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+
+    // chrome_height = 1 (tab bar) + 1 (statusline) = 2, not less than a
+    // 1-row terminal — degenerate.
+    frame(&mut ed, 40, 1);
+    assert_eq!(
+        ed.view.last_pane_area.height, 0,
+        "setup: pane area is degenerate"
+    );
+
+    ed.handle_input(mouse_left_down(0, 0));
+
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_a,
+        "click on row 0 must still switch to tab A"
+    );
+}
+
+/// A click on another tab's label must leave the outgoing pane the same way
+/// a click on another *pane* does: exit Insert while it's still focused, so
+/// the blank-line indent trim and the edit-group commit land on the
+/// buffer actually being left, not on the tab just switched to.
+#[test]
+fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
+    let tmp = safe_tempdir();
+    let path = tmp.path().join("other.txt");
+    std::fs::write(&path, "zz\n").unwrap();
+
+    // "  x\ncd\n": cursor on line 0's own trailing '\n', same setup as
+    // `click_after_blank_line_trim_lands_on_correct_char`.
+    let mut ed = editor_from("  x-[\n]>cd\n");
+    let tab_a = ed.state.tabs.current();
+    let bid_a = ed.focused_buffer_id();
+
+    ed.execute_typed("tabnew", Some(path.to_str().unwrap()))
+        .unwrap();
+    let tab_b = ed.state.tabs.current();
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: distinct buffers");
+
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
+
+    frame(&mut ed, 40, 10);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key_enter());
+    // Enter copies "  " onto a new line and lands the cursor on that blank,
+    // auto-indented line — `autoindent_pending` is set, so exiting Insert
+    // now will trim it.
+    assert_eq!(
+        ed.state.buffers.get(bid_a).text().to_string(),
+        "  x\n  \ncd\n",
+        "setup: blank auto-indented line pending trim"
+    );
+    assert_eq!(ed.state.mode(), Mode::Insert, "setup: still typing in A");
+
+    // Click tab B's own label.
+    let start_b = tab_start_x(&ed, tab_b);
+    ed.handle_input(mouse_left_down(start_b, 0));
+
+    assert_eq!(ed.state.tabs.current(), tab_b, "click switched to tab B");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "leaving A via a tab click must exit Insert, same as a pane click"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid_a).text().to_string(),
+        "  x\n\ncd\n",
+        "A's blank auto-indented line's whitespace must have been trimmed on exit"
+    );
+    assert_eq!(
+        ed.state.buffers.get(bid_b).text().to_string(),
+        "zz\n",
+        "B's own buffer must be untouched by A's exit"
+    );
+}
+
+/// A click on another tab's label must commit an open paste session on the
+/// outgoing pane, same as every keyboard-dispatched focus switch does via
+/// `step_paste_commit` — `tabline_click` reaches `switch_to_tab` directly,
+/// bypassing dispatch entirely, so `focus_pane` is the only remaining place
+/// that can close the gap (code review fix #2, commit range
+/// 48c11211..ebc3b2e0). Left uncommitted, `commit_paste_session`'s own
+/// debug assert fires on the very next dispatched command.
+#[test]
+fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {
+    let mut ed = editor_from("-[hello]>world\n");
+    let tab_a = ed.state.tabs.current();
+    let pid_a = ed.state.focused_pane_id;
+    let bid_a = ed.focused_buffer_id();
+
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
+
+    frame(&mut ed, 40, 10);
+
+    ed.feed_key(key('d')); // delete "hello" → ring head = ["hello"]
+    ed.feed_key(key('p')); // paste it back — opens a paste session on A
+
+    assert!(
+        ed.state.panes.state[pid_a][bid_a].paste_group.is_some(),
+        "setup: paste session open on A"
+    );
+
+    let start_b = tab_start_x(&ed, tab_b);
+    ed.handle_input(mouse_left_down(start_b, 0));
+
+    assert_eq!(ed.state.tabs.current(), tab_b, "click switched to tab B");
+    assert!(
+        ed.state.panes.state[pid_a][bid_a].paste_group.is_none(),
+        "focus_pane must commit A's open paste session before leaving it"
+    );
+
+    // The commit having actually happened (not just the field having been
+    // cleared some other way) shows up as one committed undo step on A.
+    assert!(ed.state.buffers.get(bid_a).can_undo());
+
+    // No open session left anywhere means the next dispatched command can't
+    // trip `commit_paste_session`'s debug assert.
+    ed.feed_key(key('x'));
+}
+
+/// A drag right after a tab click must not extend a selection from the
+/// anchor the previous tab's click left behind — that anchor belongs to a
+/// buffer that isn't even focused anymore.
+#[test]
+fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let tab_a = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
+
+    frame(&mut ed, 40, 10);
+
+    // A pane click on A's own content first, to seed a drag anchor the way
+    // any ordinary click would — then a tab click to B, then a drag. The
+    // drag must not resolve against the first click's now-stale anchor.
+    // Column 0: A is `editor_from`'s original pane, which registers no
+    // gutter columns (see `vsplit_click_focuses_and_resolves_against_the_clicked_pane`'s
+    // own doc), so column 0 is content, not gutter.
+    ed.handle_input(mouse_left_down(0, 1));
+    assert!(ed.state.mouse_drag_anchor.is_some(), "setup: anchor seeded");
+
+    let start_b = tab_start_x(&ed, tab_b);
+    ed.handle_input(mouse_left_down(start_b, 0));
+    assert_eq!(ed.state.tabs.current(), tab_b);
+    assert!(
+        ed.state.mouse_drag_anchor.is_none(),
+        "a tab click must clear the previous click's drag anchor"
+    );
+
+    ed.handle_input(mouse_drag(1, 1));
+    // With no anchor, the drag is a no-op — the selection must stay
+    // whatever the tab switch left it at, not extend from A's old anchor.
+    assert!(ed.state.mouse_drag_anchor.is_none());
 }
