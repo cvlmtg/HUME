@@ -46,9 +46,11 @@ pub fn changesets_from_line_diff(old: &BufferText, new: &BufferText) -> (ChangeS
 }
 
 /// Like [`changesets_from_line_diff`] but with an explicit line-diff deadline.
-/// Exposed primarily for tests that need to force the Myers fallback
-/// (`Duration::ZERO`) to exercise the coarse single-Replace path.
-pub fn changesets_from_line_diff_with_deadline(
+/// Crate-private: its own tests (a child module) reach it directly to force
+/// the Myers fallback (`Duration::ZERO`) and exercise the coarse
+/// single-Replace path; [`changesets_from_line_diff`] is the only production
+/// caller.
+fn changesets_from_line_diff_with_deadline(
     old: &BufferText,
     new: &BufferText,
     deadline: Duration,

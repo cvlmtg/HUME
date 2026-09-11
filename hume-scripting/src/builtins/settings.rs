@@ -27,7 +27,7 @@ fn coerce_option_value(value: &SteelVal, ctx_name: &str) -> Result<String, Steel
 /// Sets the global setting `key` to `value`. The value may be a Steel string,
 /// boolean, or integer — it is converted to a string and forwarded to the
 /// editor's settings layer, which is the single validating chokepoint
-/// (`editor::settings_ops::apply_global`) regardless of caller — so this is
+/// (`editor::settings::ops::apply_global`) regardless of caller — so this is
 /// callable from any context: `init.scm`, plugin load, plugin activation, or
 /// a plain command/hook body. Use `:set buffer …` from the command line, or
 /// `(set-buffer-option! bid key value)` from a script, to override a setting

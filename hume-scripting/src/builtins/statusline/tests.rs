@@ -20,7 +20,7 @@ fn string_list(items: &[&str]) -> SteelVal {
 /// `configure-statusline!` is registered `open` (`builtins/mod.rs`) — no
 /// eval-mode gate at all, since it writes the same `EditorSettings.statusline`
 /// field as `set-option!` (also `open`) through the same
-/// `editor::settings_ops::apply_global` chokepoint regardless of caller.
+/// `editor::settings::ops::apply_global` chokepoint regardless of caller.
 /// Reaches the host from ordinary command-mode context.
 ///
 /// Fail oracle: change `configure-statusline!`'s table entry back to

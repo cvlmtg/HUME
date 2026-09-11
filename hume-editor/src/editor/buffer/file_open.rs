@@ -363,34 +363,6 @@ impl Editor {
         }
     }
 
-    /// Replace buffer `id` with `new_doc` in-place, reseeding all pane state.
-    ///
-    /// History-discarding whole-`Buffer` swap. Test-only entry point for the
-    /// `lifecycle::replace_buffer_in_place` reset path (scratch-swap on
-    /// last-buffer close, read-only-view refresh invariants). Production
-    /// callers go through `lifecycle::replace_buffer_in_place` directly
-    /// (`close_buffer`'s last-buffer branch); the `:e!` reload path uses
-    /// [`reload_buffer_in_place`](Self::reload_buffer_in_place) instead, which
-    /// preserves undo history.
-    ///
-    /// Caller contract: `new_doc.search_pattern` must be `None` (enforced by
-    /// debug_assert — `Buffer::from_file` satisfies this by construction).
-    #[cfg(test)]
-    pub(in crate::editor) fn replace_buffer_in_place(&mut self, id: BufferId, new_doc: Buffer) {
-        lifecycle::replace_buffer_in_place(
-            &mut self.view,
-            &mut self.state.buffers,
-            &mut self.state.panes.state,
-            &mut self.state.panes.jumps,
-            id,
-            new_doc,
-        );
-        // Re-detect language and rebuild syntax (mirrors open_buffer). For scratch
-        // (no path/language), detect returns None, set_buffer_language no-ops, and
-        // the replaced Buffer.syntax = None already dropped the old highlighter.
-        self.detect_and_set_language(id);
-    }
-
     /// Redirect the focused pane to `target` without recording a jump.
     pub(in crate::editor) fn switch_to_buffer_without_jump(&mut self, target: BufferId) {
         let pid = self.state.focused_pane_id;

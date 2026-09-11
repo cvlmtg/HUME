@@ -5,7 +5,7 @@ use super::super::Editor;
 use super::super::Severity;
 use crate::editor::error::CommandError;
 use crate::editor::settings::WRAP_MODE_KEY;
-use crate::editor::settings_ops;
+use crate::editor::settings::ops as settings_ops;
 
 /// Shared by every stale-write refusal — `write_buffer_by_id`'s no-arg `:w`
 /// path and `write_file`'s save-as-in-disguise path (see `targets_own_file`

@@ -57,7 +57,7 @@ impl ResolvedStyle {
     /// opinion (`self`) that may leave some fields unset, and `under` is
     /// what's already painted there. See
     /// `hume_engine::render::Canvas::over_painted`.
-    pub fn over(self, under: ResolvedStyle) -> ResolvedStyle {
+    pub(crate) fn over(self, under: ResolvedStyle) -> ResolvedStyle {
         ResolvedStyle {
             fg: self.fg.or(under.fg),
             bg: self.bg.or(under.bg),

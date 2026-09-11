@@ -34,11 +34,14 @@
 //! advances one grapheme's width at a time, and tab-stop math divides and
 //! multiplies by the tab width. The two display-column types keep a private
 //! field like every domain type in this crate, but expose named arithmetic
-//! (`advance`/`cells_since`/`cells_since_saturating`/`abs_diff`/`shift`) instead of forbidding
-//! it — the compile-time win here is keeping `DisplayLineCol` and
-//! `BufferLineCol` from being silently interchanged, not banning `+`/`-` on
-//! a column itself. [`CharCol`]/[`GraphemeCol`]/[`ByteCol`] see no such
-//! arithmetic in the codebase today and stay as strict as `CharOffset`.
+//! (`advance`/`cells_since`/`cells_since_saturating` shared by both;
+//! `abs_diff` on [`DisplayLineCol`] alone, `shift` on [`BufferLineCol`]
+//! alone — each has exactly one origin's worth of real callers today)
+//! instead of forbidding it — the compile-time win here is keeping
+//! `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
+//! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`]/
+//! [`ByteCol`] see no such arithmetic in the codebase today and stay as
+//! strict as `CharOffset`.
 //!
 //! # No `checked`/`clamped` mint for the display types
 //! A display column has no fixed upper bound of its own to validate against
@@ -124,42 +127,25 @@ macro_rules! display_col_methods {
                 self.0.saturating_sub(earlier.0)
             }
 
-            /// Unsigned distance between `self` and `other`, direction
-            /// discarded — the "which grapheme is visually closest" metric a
-            /// nearest-column resolve needs, where [`Self::cells_since`]'s
-            /// ordering requirement would be the wrong tool.
-            pub fn abs_diff(self, other: Self) -> u32 {
-                self.0.abs_diff(other.0)
-            }
-
-            /// `self` shifted by a signed cell delta, saturating at 0 rather
-            /// than panicking on a negative result — unlike
-            /// `CharOffset::shift`, a display column legitimately clamps to 0
-            /// when a multi-cursor edit's running delta outpaces the column
-            /// it's applied to (e.g. a wide deletion collapsing a later
-            /// cursor's indent target); that is the caller's intended
-            /// behavior, not a bug this type should catch.
-            ///
-            /// `delta as i32` narrows before `saturating_add_signed` (which
-            /// takes `i32`, not `isize`) — silently wrapping, not saturating,
-            /// for a `delta` outside `i32`'s range: a sufficiently large
-            /// positive delta could wrap negative and shift `self` *down*
-            /// instead of saturating upward. Not reachable today — both
-            /// callers (`hume-ops/src/edit/insert.rs`, and
-            /// `edit/align.rs`'s `align_selections`, tracking its own
-            /// per-line `line_shift`) accumulate a running delta within one
-            /// buffer line, far short of `i32::MAX` cells — but a future
-            /// caller summing deltas across a whole buffer should not assume
-            /// this saturates the way the rest of this method's doc does.
-            pub fn shift(self, delta: isize) -> Self {
-                Self(self.0.saturating_add_signed(delta as i32))
-            }
         }
     };
 }
 
 display_col_methods!(DisplayLineCol);
 display_col_methods!(BufferLineCol);
+
+impl DisplayLineCol {
+    /// Unsigned distance between `self` and `other`, direction
+    /// discarded — the "which grapheme is visually closest" metric a
+    /// nearest-column resolve needs, where [`Self::cells_since`]'s
+    /// ordering requirement would be the wrong tool. Its only caller
+    /// (`DisplayLineMap`'s nearest-column resolve) works in display-line-
+    /// relative columns, so this lives on `DisplayLineCol` alone rather than
+    /// in the shared macro.
+    pub fn abs_diff(self, other: Self) -> u32 {
+        self.0.abs_diff(other.0)
+    }
+}
 
 impl BufferLineCol {
     /// This column read as a display-line-relative one — sound only where
@@ -174,6 +160,33 @@ impl BufferLineCol {
     /// the first place — the same coincidence, from the other direction.
     pub fn as_display_line_unwrapped(self) -> DisplayLineCol {
         DisplayLineCol(self.0)
+    }
+
+    /// `self` shifted by a signed cell delta, saturating at 0 rather
+    /// than panicking on a negative result — unlike
+    /// `CharOffset::shift`, a display column legitimately clamps to 0
+    /// when a multi-cursor edit's running delta outpaces the column
+    /// it's applied to (e.g. a wide deletion collapsing a later
+    /// cursor's indent target); that is the caller's intended
+    /// behavior, not a bug this type should catch.
+    ///
+    /// `delta as i32` narrows before `saturating_add_signed` (which
+    /// takes `i32`, not `isize`) — silently wrapping, not saturating,
+    /// for a `delta` outside `i32`'s range: a sufficiently large
+    /// positive delta could wrap negative and shift `self` *down*
+    /// instead of saturating upward. Not reachable today — both
+    /// callers (`hume-ops/src/edit/insert.rs`, and
+    /// `edit/align.rs`'s `align_selections`, tracking its own
+    /// per-line `line_shift`) accumulate a running delta within one
+    /// buffer line, far short of `i32::MAX` cells — but a future
+    /// caller summing deltas across a whole buffer should not assume
+    /// this saturates the way the rest of this method's doc does.
+    ///
+    /// Buffer-line-relative only: its two callers both track a running
+    /// delta within one buffer line, so this lives on `BufferLineCol` alone
+    /// rather than in the shared macro.
+    pub fn shift(self, delta: isize) -> Self {
+        Self(self.0.saturating_add_signed(delta as i32))
     }
 }
 

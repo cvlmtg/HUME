@@ -367,15 +367,17 @@ fn language_has_grammar_false_for_identity_only_true_after_attach() {
 }
 
 // ---------------------------------------------------------------------------
-// Fix 1 — replace_buffer_in_place must clear stale engine syntax state
+// Fix 1 — closing the last buffer must clear stale engine syntax state
 // ---------------------------------------------------------------------------
 
-/// Regression: replace_buffer_in_place must clear the buffer's syntax
-/// attachment (and with it, the committed tree it owns).
+/// Regression: closing the last open buffer (which swaps it for a fresh
+/// scratch buffer in place — `buffer::lifecycle::close_buffer`'s `None`
+/// branch) must clear the syntax attachment (and with it, the committed
+/// tree it owns) rather than leaving the old grammar's stale tree behind.
 ///
-/// Flip: if `*buffers.get_mut(id) = new_doc` were skipped, the assert fails.
+/// Flip: if the whole-`Buffer` swap were skipped, the assert fails.
 #[test]
-fn replace_buffer_in_place_clears_engine_syntax_state() {
+fn closing_the_last_buffer_clears_engine_syntax_state() {
     require_grammars(&["json"]);
     let mut ed = editor_from("-[{]>\"x\": 1}\n");
     let bid = ed.focused_buffer_id();
@@ -390,17 +392,17 @@ fn replace_buffer_in_place_clears_engine_syntax_state() {
     ed.reparse_stale_buffers();
     assert!(
         ed.state.buffers.get(bid).syntax.is_some(),
-        "syntax (and its committed tree) must be set before replace"
+        "syntax (and its committed tree) must be set before close"
     );
 
-    // Replace with a scratch buffer (no path, language=None). detect_and_set_language
-    // returns None → set_buffer_language no-ops; the whole-Buffer swap in
-    // buffer::lifecycle::replace_buffer_in_place is the load-bearing cleanup here.
-    ed.replace_buffer_in_place(bid, Buffer::scratch());
+    // `bid` is the only open buffer, so this hits close_buffer's last-buffer
+    // branch: a fresh scratch buffer (no path, language=None) replaces it
+    // in place under the same id, rather than freeing the slot.
+    ed.close_buffer(bid);
 
     assert!(
         ed.state.buffers.get(bid).syntax.is_none(),
-        "stale syntax (and its committed tree) must be cleared on replace"
+        "stale syntax (and its committed tree) must be cleared when the last buffer is replaced"
     );
 }
 

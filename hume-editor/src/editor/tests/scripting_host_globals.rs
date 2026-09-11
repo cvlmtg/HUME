@@ -4,13 +4,6 @@
 //! single source of truth for which Steel identifiers HUME's own layers
 //! add on top of a pristine engine.
 
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 use super::*;
 use hume_scripting::ScriptingHost;
 
@@ -43,6 +36,12 @@ fn lsp_home_dir() -> std::path::PathBuf {
 /// (`hume-scripting/src/lib.rs`) rather than re-reading the env var on every
 /// later `(runtime-dir)` call, so the var only needs to be set for that one
 /// constructor call, not for the rest of this function.
+// `std::env::set_var`/`remove_var` here mutate the process-global
+// `HUME_RUNTIME` var — sound only under the `TEST_GLOBALS.claim(Global::Env)`
+// taken just below for the span both calls bracket, which is what makes this
+// the sanctioned caller `clippy.toml`'s `disallowed-methods` entry lists as
+// exempt.
+#[allow(clippy::disallowed_methods)]
 fn host_and_editor_after_runtime_layers() -> (ScriptingHost, Editor, rustc_hash::FxHashSet<String>)
 {
     let runtime_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

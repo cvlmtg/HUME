@@ -1,4 +1,4 @@
-//! Free functions for applying a setting change — the single production path.
+//! Applying a setting change — the single production path.
 //!
 //! Free functions (not `impl Editor` methods) so the same logic can be
 //! called by both the `Editor` methods (`:set`, `:theme`) and the Steel
@@ -7,17 +7,21 @@
 //!
 //! [`apply_global`]/[`apply_buffer`] are the only places production code
 //! should write a setting: they write the raw value via
-//! [`crate::editor::settings::write_global`]/[`crate::editor::settings::write_buffer`] and
-//! then resync whatever derived state depends on it (the undo-tree cap on
-//! every open buffer, the minibuffer prompt-history capacity, every open
-//! pane's jump-list capacity, the loaded theme). Calling `write_global`/
-//! `write_buffer` alone would silently skip those — write and resync must
-//! not be split apart.
+//! [`super::write_global`]/[`super::write_buffer`] and then resync whatever
+//! derived state depends on it (the undo-tree cap on every open buffer, the
+//! minibuffer prompt-history capacity, every open pane's jump-list capacity,
+//! the loaded theme). Calling `write_global`/`write_buffer` alone would
+//! silently skip those — write and resync must not be split apart.
+//!
+//! A child module of `settings`, not a sibling — see `settings`'s own doc
+//! for why: it lets `write_global`/`write_buffer` narrow to
+//! `pub(in crate::editor::settings)`, reachable from exactly this module and
+//! `settings::tests`, rather than from every file under `crate::editor`.
 
 use hume_engine::pipeline::{BufferId, EngineView};
 
+use super::{ResyncKey, THEME_KEY, resync_key};
 use crate::editor::EditorState;
-use crate::editor::settings::{ResyncKey, THEME_KEY, resync_key};
 use crate::editor::theme;
 
 /// Write a global setting and resync every piece of derived state that
@@ -32,7 +36,7 @@ pub(in crate::editor) fn apply_global(
     // the only one that needs a value to roll back to.
     let prev_theme = (key == THEME_KEY).then(|| state.settings.theme.clone());
 
-    crate::editor::settings::write_global(key, value, &mut state.settings)?;
+    super::write_global(key, value, &mut state.settings)?;
 
     let resynced = resync_key(key).is_none_or(|rk| resync_derived_state(state, view, rk));
     if !resynced && let Some(prev) = prev_theme {
@@ -48,7 +52,7 @@ pub(in crate::editor) fn apply_global(
     // this is the single write path all three funnel through (see the
     // module doc) — a plugin owning one setting's policy (e.g. the LSP
     // inlay-hints plugin) needs exactly one hook, not one per write path.
-    state.queue_event(super::event::EditorEvent::OnOptionChange {
+    state.queue_event(crate::editor::event::EditorEvent::OnOptionChange {
         key: key.to_string(),
         value: value.to_string(),
     });
@@ -56,24 +60,25 @@ pub(in crate::editor) fn apply_global(
     Ok(())
 }
 
-/// Write a global setting's raw value with no resync — [`crate::editor::settings::write_global`]
+/// Write a global setting's raw value with no resync — [`super::write_global`]
 /// itself, exposed at crate visibility for `testing::MockHost` only.
 ///
-/// `write_global` is `pub(in crate::editor)`: every production write goes
-/// through [`apply_global`] above, which has the `EditorState`/`EngineView`
-/// this function's resync needs. `MockHost` models neither — it has no
-/// history rings, buffers, or view to resync derived state against — so it
-/// needs the raw writer directly, the same way `apply_global` does before
-/// its own resync step, but from outside `crate::editor` where `MockHost`
-/// lives. This is that one forwarding call, not a second implementation of
-/// the write itself.
+/// `write_global` is `pub(in crate::editor::settings)`: every production
+/// write goes through [`apply_global`] above, which has the
+/// `EditorState`/`EngineView` this function's resync needs. `MockHost`
+/// models neither — it has no history rings, buffers, or view to resync
+/// derived state against — so it needs the raw writer directly, the same way
+/// `apply_global` does before its own resync step, but from outside
+/// `crate::editor::settings` where `MockHost` lives. This is that one
+/// `#[cfg]`-gated forwarding call — it does not exist in a production
+/// build — not a widening of `write_global`'s own visibility.
 #[cfg(any(test, feature = "test-util"))]
 pub(crate) fn write_global_for_test(
     key: &str,
     value: &str,
     settings: &mut crate::editor::settings::EditorSettings,
 ) -> Result<(), String> {
-    crate::editor::settings::write_global(key, value, settings)
+    super::write_global(key, value, settings)
 }
 
 /// Reset every global setting to its compiled-in default and rerun every
@@ -98,18 +103,18 @@ pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut Engin
 }
 
 /// Write a buffer-scoped setting override. No buffer-scoped key has a
-/// derived-state effect today (see [`crate::editor::settings::write_buffer`]'s doc),
-/// so unlike [`apply_global`] there is nothing to resync here.
+/// derived-state effect today (see [`super::write_buffer`]'s doc), so unlike
+/// [`apply_global`] there is nothing to resync here.
 pub(in crate::editor) fn apply_buffer(
     state: &mut EditorState,
     bid: BufferId,
     key: &str,
     value: &str,
 ) -> Result<(), String> {
-    crate::editor::settings::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
+    super::write_buffer(key, value, &mut state.buffers.get_mut(bid).overrides)
 }
 
-/// Resync derived state after a successful [`crate::editor::settings::write_global`]
+/// Resync derived state after a successful [`super::write_global`]
 /// for the key `rk` decodes. Returns `false` if an effect failed (theme load
 /// only) — the caller rolls the setting back so a bad value never persists.
 ///

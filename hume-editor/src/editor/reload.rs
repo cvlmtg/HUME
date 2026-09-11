@@ -196,7 +196,7 @@ impl Editor {
         self.state.buffers.clear_overrides_all();
         let prior_clock = self.state.config.decorations.clock();
         self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
-        super::settings_ops::reset_globals(&mut self.state, &mut self.view);
+        super::settings::ops::reset_globals(&mut self.state, &mut self.view);
 
         ReloadSnapshot {
             buffer_stamps,

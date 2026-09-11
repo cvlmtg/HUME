@@ -440,17 +440,17 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
 
 impl<'a> SettingsHost for EditorHostImpl<'a> {
     fn set_global_option(&mut self, key: &str, value: &str) -> Result<(), String> {
-        crate::editor::settings_ops::apply_global(self.state, self.view, key, value)
+        crate::editor::settings::ops::apply_global(self.state, self.view, key, value)
     }
 
     fn set_buffer_option(&mut self, key: &str, value: &str, bid: BufferId) -> Result<(), String> {
-        // `settings_ops::apply_buffer`'s `get_mut` panics on a stale id —
+        // `settings::ops::apply_buffer`'s `get_mut` panics on a stale id —
         // validate first so a bad `bid` from Steel becomes an `Err`, not a
         // panic.
         if self.state.buffers.try_get(bid).is_none() {
             return Err(format!("set-buffer-option!: invalid buffer id {bid:?}"));
         }
-        crate::editor::settings_ops::apply_buffer(self.state, bid, key, value)
+        crate::editor::settings::ops::apply_buffer(self.state, bid, key, value)
     }
 
     fn get_option(&self, key: &str, bid: BufferId) -> Result<OptionValue, String> {
@@ -468,7 +468,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         // Validate here (for a section-labeled error message), then hand the
         // re-serialized wire string to the chokepoint so the write itself goes
         // through `write_global` like every other setting — see
-        // `settings_ops::apply_global`'s doc for why a raw field write must
+        // `settings::ops::apply_global`'s doc for why a raw field write must
         // not bypass it.
         let cfg = StatusLineConfig {
             left: crate::ui::statusline::parse_statusline_section(left, "left")?,
@@ -477,7 +477,7 @@ impl<'a> SettingsHost for EditorHostImpl<'a> {
         };
         let wire = crate::editor::settings::format_statusline(&cfg);
 
-        crate::editor::settings_ops::apply_global(self.state, self.view, "statusline", &wire)
+        crate::editor::settings::ops::apply_global(self.state, self.view, "statusline", &wire)
     }
 
     fn steel_command_budget_ms(&self) -> u64 {

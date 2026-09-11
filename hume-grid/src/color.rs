@@ -21,7 +21,7 @@ impl Rgb {
     /// `1.0` returns `target`.
     ///
     /// Used for the dim applied to every cell of a non-focused pane.
-    pub fn lerp(self, target: Rgb, factor: f32) -> Rgb {
+    pub(crate) fn lerp(self, target: Rgb, factor: f32) -> Rgb {
         let mix = |c: u8, t: u8| (c as f32 + (t as f32 - c as f32) * factor).round() as u8;
         Rgb(
             mix(self.0, target.0),

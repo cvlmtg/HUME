@@ -1,10 +1,3 @@
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 use super::*;
 use hume_grid::{Rect, Rgb};
 
@@ -38,7 +31,7 @@ fn eval_set_option(ed: &mut Editor, source: &str) -> Result<(), String> {
 #[test]
 fn set_option_applies_history_capacity() {
     // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
-    // directly (bypassing settings_ops::apply_global's resync step).
+    // directly (bypassing settings::ops::apply_global's resync step).
     // settings.history_capacity still updates — write_global's own job — so
     // that assertion stays green; state.history's actual capacity never
     // resyncs, so it's the post-push assertion at the bottom (verified
@@ -80,7 +73,7 @@ fn set_option_applies_history_capacity() {
 #[test]
 fn set_option_applies_jump_list_capacity() {
     // Fail oracle: revert set_global_option to call crate::editor::settings::write_global
-    // directly (bypassing settings_ops::apply_global's resync step).
+    // directly (bypassing settings::ops::apply_global's resync step).
     // settings.jump_list_capacity still updates — write_global's own job —
     // so that assertion stays green; the live jump list's actual capacity
     // never resyncs, so it's the post-push assertion at the bottom (verified
@@ -293,7 +286,7 @@ fn set_option_theme_failure_does_not_persist() {
     // resync at all, so a bad theme name from `set-option!` (e.g. from a
     // lazily-activated plugin) would sit in settings.theme forever, later
     // reported as "current theme" even though it never loaded.
-    // Fail oracle: drop the rollback in settings_ops::apply and
+    // Fail oracle: drop the rollback in settings::ops::apply and
     // settings.theme ends up "no_such_theme_xyz" instead of empty.
     let mut ed = editor_from("-[h]>ello\n");
     let result = eval_set_option(&mut ed, r#"(set-option! "theme" "no_such_theme_xyz")"#);
@@ -346,11 +339,11 @@ fn typed_set_theme_failure_does_not_persist() {
 #[test]
 fn typed_theme_bad_name_leaves_setting() {
     // Regression guard: :theme's own load-then-store behavior must survive
-    // delegating to settings_ops::apply. Mirrors
+    // delegating to settings::ops::apply. Mirrors
     // editor::tests::commands::load_theme_by_name_fails_gracefully, but
     // through the typed_theme entry point instead of calling the loader
     // directly.
-    // Fail oracle: drop the rollback in settings_ops::apply (the same
+    // Fail oracle: drop the rollback in settings::ops::apply (the same
     // mutation settings_effects.rs's theme tests above are verified
     // against) — settings.theme ends up "no_such_theme_xyz" here too, since
     // :theme now shares that code path.
@@ -377,6 +370,11 @@ struct RealThemeRuntimeGuard {
 }
 
 impl RealThemeRuntimeGuard {
+    // `std::env::set_var` mutates the process-global `HUME_RUNTIME` var —
+    // sound only under the `TEST_GLOBALS.claim(Global::Env)` taken just
+    // above, which is what makes this the sanctioned caller `clippy.toml`'s
+    // `disallowed-methods` entry lists as exempt.
+    #[allow(clippy::disallowed_methods)]
     fn new() -> Self {
         let lock = TEST_GLOBALS.claim(Global::Env);
         let real_runtime = concat!(env!("CARGO_MANIFEST_DIR"), "/../runtime");
@@ -392,6 +390,9 @@ impl RealThemeRuntimeGuard {
 }
 
 impl Drop for RealThemeRuntimeGuard {
+    // Same sanctioned-caller reasoning as `new` above: `self._lock` (a live
+    // `TEST_GLOBALS` claim) is still held for the whole of `drop`.
+    #[allow(clippy::disallowed_methods)]
     fn drop(&mut self) {
         unsafe {
             std::env::remove_var("HUME_RUNTIME");
@@ -628,7 +629,7 @@ fn set_buffer_option_global_only_key_errors_from_hook() {
 }
 
 /// `EditorHostImpl::set_buffer_option` returns `Err` for a stale bid instead
-/// of panicking — `settings_ops::apply`'s `get_mut` panics on an unseeded
+/// of panicking — `settings::ops::apply`'s `get_mut` panics on an unseeded
 /// id, so the host method's own `try_get` guard must run first.
 ///
 /// Fail oracle: remove the `try_get` guard added alongside this method —

@@ -9,6 +9,7 @@ use crate::providers::{DecorationSource, VirtualLine};
 use crate::types::ScopeId;
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
+use hume_rope::lines::content_line_count;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 fn co(n: usize) -> CharOffset {
@@ -1748,7 +1749,7 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
     let providers = ProviderSet::new();
 
     for rope in &ropes {
-        for line in hume_rope::lines::content_lines(rope) {
+        for line in (0..content_line_count(rope).get()).map(ContentLine::new) {
             for target in [DisplayColTarget::Cell, DisplayColTarget::NearestContent] {
                 for col in 0..12u32 {
                     let mut s = PaneLineStore::new();

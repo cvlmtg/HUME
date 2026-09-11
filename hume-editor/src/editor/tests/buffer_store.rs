@@ -74,9 +74,12 @@ fn p6_close_last_buffer_becomes_scratch() {
     );
 }
 
-/// `replace_buffer_in_place` reseeds selections and clears scrolls.
+/// Closing the last buffer (the scratch-replacement branch of
+/// `buffer::lifecycle::close_buffer`) reseeds selections back to the start,
+/// not just the scratch content `p6_close_last_buffer_becomes_scratch`
+/// already pins.
 #[test]
-fn p6_replace_buffer_in_place_reseeds() {
+fn p6_close_last_buffer_reseeds_selections() {
     let mut ed = Editor::for_testing(Buffer::new(
         BufferText::from("old content\n"),
         SelectionSet::default(),
@@ -94,16 +97,15 @@ fn p6_replace_buffer_in_place_reseeds() {
             SelectionSet::single(hume_editing::selection::Selection::collapsed(head))
         },
     );
-    let replacement = Buffer::new(BufferText::from("new content\n"), SelectionSet::default());
-    ed.replace_buffer_in_place(bid, replacement);
+    ed.close_buffer(bid);
     // Selections should be reset to initial (cursor at 0).
     let sels = ed.current_selections();
     assert_eq!(
         sels.primary().head(),
         co(0),
-        "selections reset after replace_buffer_in_place"
+        "selections reset after closing the last buffer"
     );
-    assert_eq!(ed.doc().text().to_string(), "new content\n");
+    assert_eq!(ed.doc().text().to_string(), "\n");
 }
 
 /// `:bnext` / `:bprev` cycle through buffers in open-order.

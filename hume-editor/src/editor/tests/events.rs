@@ -1103,7 +1103,7 @@ fn on_focus_gained_fires_from_handle_input_and_settle_with_no_args() {
 
 /// `on-option-change` fires `(key value)` after `apply_global` — the single
 /// write path `:set global`, `set-option!`, and `:theme` all funnel through
-/// (`settings_ops.rs`) — succeeds. Exercised via `:set global` here;
+/// (`settings/ops.rs`) — succeeds. Exercised via `:set global` here;
 /// `tests/unix/lsp_inlay_feature.rs`'s
 /// `setting_off_via_set_command_clears_hints_through_the_plugin_hook` covers
 /// the same raise reached through the real shipped plugin's own handler.

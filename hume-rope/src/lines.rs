@@ -53,22 +53,6 @@ pub fn last_ropey_line(rope: &Rope) -> RopeyLine {
     RopeyLine::new(ropey_line_count(rope).get() - 1)
 }
 
-/// Every line index ropey considers valid, phantom line included. The
-/// compliant spelling for a whole-buffer walk in the ropey domain: writing
-/// `(0..ropey_line_count(rope).get()).map(RopeyLine::new)` out by hand at a
-/// call site is the `0..<count>` pattern CLAUDE.md's line-count invariant
-/// documents as unenforced (`RopeyLine::new` is `pub`) — this function is the
-/// one sanctioned instance of that shape, not a caller re-deriving it.
-///
-/// Deliberately kept with no production caller. Production never walks a
-/// whole buffer by line index — the render path walks a viewport window and
-/// motions scan outward from the cursor — so whole-document iteration is a
-/// test-harness shape, and the harnesses doing it have no other compliant
-/// spelling.
-pub fn ropey_lines(rope: &Rope) -> impl Iterator<Item = RopeyLine> {
-    (0..ropey_line_count(rope).get()).map(RopeyLine::new)
-}
-
 /// Number of content lines: `ropey_line_count()` minus the structural
 /// trailing-`\n` line ropey counts past the buffer's real content. The
 /// single source of truth for "how many lines does this buffer have" from
@@ -92,13 +76,6 @@ pub fn content_line_count(rope: &Rope) -> ContentLineCount {
 /// clamping a target line to stay within real content use this.
 pub fn last_content_line(rope: &Rope) -> ContentLine {
     ContentLine::new(content_line_count(rope).get().saturating_sub(1))
-}
-
-/// Every real content line index. The canonical "walk every content line"
-/// spelling — `range.contains(&line)`'s old bounds-check role is now
-/// [`ContentLine::checked`].
-pub fn content_lines(rope: &Rope) -> impl Iterator<Item = ContentLine> {
-    (0..content_line_count(rope).get()).map(ContentLine::new)
 }
 
 /// Line tokens from `line_idx` forward, each keeping its trailing line-break

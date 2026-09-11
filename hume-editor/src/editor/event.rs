@@ -158,7 +158,7 @@ pub(crate) enum EditorEvent {
         buffer: BufferId,
     },
     /// Fires after a successful `:set global`/`set-option!`/`:theme` write —
-    /// `settings_ops::apply_global` is the single production path every one
+    /// `settings::ops::apply_global` is the single production path every one
     /// of those funnels through, so this is the one place to raise it.
     /// Buffer-scoped overrides (`:set`/`set-buffer-option!` without
     /// `global`) don't raise this: the payload has no `BufferId` to name,

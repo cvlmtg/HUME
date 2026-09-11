@@ -75,24 +75,19 @@ fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 }
 
 /// Every source file every whole-workspace lint in this module scans:
-/// enumerate crates from the root `Cargo.toml` (skipping any named in
-/// `skip_crates` — a lint excluding its own implementation crate, e.g.
-/// `hume-rope`), assert each has a `src/` (a silently-empty scan would let
-/// a renamed crate escape unnoticed), collect via [`collect_source_rs`],
-/// then retain out this `lints/` directory's own pattern literals and any
-/// path in `extra_excludes` (a lint excluding one specific implementation
-/// file while still scanning the rest of that file's crate, e.g.
-/// `hume-rope/src/width.rs`) — the shared setup every whole-workspace lint
-/// needs.
+/// enumerate crates from the root `Cargo.toml`, assert each has a `src/` (a
+/// silently-empty scan would let a renamed crate escape unnoticed), collect
+/// via [`collect_source_rs`], then retain out this `lints/` directory's own
+/// pattern literals and any path in `extra_excludes` (a lint excluding one
+/// specific implementation file while still scanning the rest of that
+/// file's crate — `absent_decode`'s sole caller excludes its own
+/// `hume-scripting/src/builtins/args.rs`, the file that defines the pattern
+/// it scans for) — the shared setup every whole-workspace lint needs.
 fn workspace_source_paths(
     workspace_root: &std::path::Path,
-    skip_crates: &[&str],
     extra_excludes: &[std::path::PathBuf],
 ) -> Vec<std::path::PathBuf> {
-    let crates: Vec<String> = workspace_member_crates(workspace_root)
-        .into_iter()
-        .filter(|c| !skip_crates.contains(&c.as_str()))
-        .collect();
+    let crates: Vec<String> = workspace_member_crates(workspace_root);
     assert!(
         !crates.is_empty(),
         "workspace_member_crates found no members — Cargo.toml parsing broke"
@@ -118,13 +113,13 @@ fn workspace_source_paths(
 }
 
 /// The portion of `line` before any line comment (`//`), skipping `//`
-/// that appears inside a string literal — a naive `line.find("//")`
-/// would truncate a call like `write_global(key, "a//b", ...)`
-/// at the string's embedded `//`, hiding the rest of the line (and any
-/// forbidden pattern in it) from every lint that strips comments this
-/// way. Escaped quotes (`\"`) inside a string keep it open; char
-/// literals (`'x'`, `'\x'`) are skipped so their quote marks don't
-/// falsely open/close string tracking; a bare `'` that isn't a char
+/// that appears inside a string literal — a naive `line.find("//")` would
+/// truncate a call like `log_path("cache//tempfile::tempdir()")` at the
+/// string's embedded `//`, hiding the rest of the line (and any forbidden
+/// pattern in it, `tempfile::tempdir()` among them) from every lint that
+/// strips comments this way. Escaped quotes (`\"`) inside a string keep it
+/// open; char literals (`'x'`, `'\x'`) are skipped so their quote marks
+/// don't falsely open/close string tracking; a bare `'` that isn't a char
 /// literal (a lifetime) is left alone. Raw strings (`r"..."`) are not
 /// handled — none of the scanned patterns appear inside one today.
 fn strip_line_comment(line: &str) -> &str {

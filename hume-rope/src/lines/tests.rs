@@ -30,15 +30,6 @@ fn last_ropey_line_is_ropey_line_count_minus_one() {
 }
 
 #[test]
-fn ropey_lines_is_every_index_up_to_ropey_line_count() {
-    let indices = |r: &Rope| ropey_lines(r).map(RopeyLine::index).collect::<Vec<_>>();
-    let one_line = Rope::from_str("\n");
-    let three_lines = Rope::from_str("a\nb\nc\n");
-    assert_eq!(indices(&one_line), vec![0, 1]);
-    assert_eq!(indices(&three_lines), vec![0, 1, 2, 3]);
-}
-
-#[test]
 fn content_line_count_excludes_the_phantom_trailing_line() {
     assert_eq!(content_line_count(&Rope::from_str("\n")).get(), 1);
     assert_eq!(content_line_count(&Rope::from_str("a\nb\nc\n")).get(), 3);
@@ -51,15 +42,6 @@ fn last_content_line_is_content_line_count_minus_one() {
 }
 
 #[test]
-fn content_lines_is_every_index_up_to_content_line_count() {
-    let indices = |r: &Rope| content_lines(r).map(ContentLine::index).collect::<Vec<_>>();
-    let one_line = Rope::from_str("\n");
-    let three_lines = Rope::from_str("a\nb\nc\n");
-    assert_eq!(indices(&one_line), vec![0]);
-    assert_eq!(indices(&three_lines), vec![0, 1, 2]);
-}
-
-#[test]
 #[should_panic(expected = "trailing-newline invariant violated")]
 fn content_line_count_asserts_the_trailing_newline_invariant() {
     // No trailing '\n' — violates the invariant every hume_editing::BufferText
@@ -69,7 +51,6 @@ fn content_line_count_asserts_the_trailing_newline_invariant() {
 }
 
 #[test]
-#[allow(clippy::disallowed_methods)] // independent-oracle: pins ropey's own len_lines(), not our wrapper — see clippy.toml
 fn line_breaks_matches_the_workspace_ropey_feature_pin() {
     // Pins the workspace's ropey feature set (Cargo.toml: neither `cr_lines`
     // nor `unicode_lines`) to what it actually makes `Rope::lines()` split

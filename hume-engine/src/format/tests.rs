@@ -2,6 +2,7 @@ use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::line::RopeyLine;
+use hume_rope::lines::ropey_line_count;
 
 fn dc(n: u32) -> DisplayLineCol {
     DisplayLineCol::new(n)
@@ -17,7 +18,7 @@ fn do_format(text: &str, wrap_mode: WrapMode) -> (Vec<DisplayLine>, Vec<Grapheme
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines(&rope) {
+    for line_idx in (0..ropey_line_count(&rope).get()).map(RopeyLine::new) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -361,7 +362,7 @@ fn do_format_ws(text: &str, ws: WhitespaceConfig) -> (Vec<DisplayLine>, Vec<Grap
     let rope = Rope::from_str(text);
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines(&rope) {
+    for line_idx in (0..ropey_line_count(&rope).get()).map(RopeyLine::new) {
         format_buffer_line(
             &rope,
             line_idx,
@@ -764,7 +765,7 @@ fn do_format_windowed(
     let ws = WhitespaceConfig::default();
     let inserts = Vec::new();
     let mut scratch = LineFormat::new();
-    for line_idx in hume_rope::lines::ropey_lines(&rope) {
+    for line_idx in (0..ropey_line_count(&rope).get()).map(RopeyLine::new) {
         format_buffer_line(
             &rope,
             line_idx,

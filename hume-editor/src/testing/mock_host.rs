@@ -178,7 +178,7 @@ impl SettingsHost for MockHost {
         // MockHost models no editor state to resync derived state against
         // (no history rings, no buffers, no view) — write_global is the
         // effect-free raw writer, and it's the only one that fits here.
-        hume::editor::settings_ops::write_global_for_test(key, value, &mut self.settings)
+        hume::editor::settings::ops::write_global_for_test(key, value, &mut self.settings)
     }
     fn set_buffer_option(
         &mut self,
@@ -212,7 +212,7 @@ impl SettingsHost for MockHost {
             right: parse_statusline_section(right, "right")?,
         };
         let wire = hume::editor::settings::format_statusline(&cfg);
-        hume::editor::settings_ops::write_global_for_test("statusline", &wire, &mut self.settings)
+        hume::editor::settings::ops::write_global_for_test("statusline", &wire, &mut self.settings)
     }
     fn steel_command_budget_ms(&self) -> u64 {
         self.settings.steel_command_budget_ms as u64

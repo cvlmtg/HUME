@@ -49,20 +49,6 @@ macro_rules! display_col_tests {
             }
 
             #[test]
-            fn abs_diff_ignores_direction() {
-                assert_eq!($ty::new(2).abs_diff($ty::new(5)), 3);
-                assert_eq!($ty::new(5).abs_diff($ty::new(2)), 3);
-                assert_eq!($ty::new(5).abs_diff($ty::new(5)), 0);
-            }
-
-            #[test]
-            fn shift_moves_forward_and_backward_and_saturates_at_zero() {
-                assert_eq!($ty::new(5).shift(3), $ty::new(8));
-                assert_eq!($ty::new(5).shift(-3), $ty::new(2));
-                assert_eq!($ty::new(2).shift(-5), $ty::new(0));
-            }
-
-            #[test]
             fn ord_matches_the_underlying_column() {
                 assert!($ty::new(2) < $ty::new(5));
                 assert_eq!($ty::new(2).min($ty::new(5)), $ty::new(2));
@@ -81,6 +67,20 @@ fn as_display_line_unwrapped_carries_the_same_number() {
         BufferLineCol::new(9).as_display_line_unwrapped(),
         DisplayLineCol::new(9)
     );
+}
+
+#[test]
+fn display_line_col_abs_diff_ignores_direction() {
+    assert_eq!(DisplayLineCol::new(2).abs_diff(DisplayLineCol::new(5)), 3);
+    assert_eq!(DisplayLineCol::new(5).abs_diff(DisplayLineCol::new(2)), 3);
+    assert_eq!(DisplayLineCol::new(5).abs_diff(DisplayLineCol::new(5)), 0);
+}
+
+#[test]
+fn buffer_line_col_shift_moves_forward_and_backward_and_saturates_at_zero() {
+    assert_eq!(BufferLineCol::new(5).shift(3), BufferLineCol::new(8));
+    assert_eq!(BufferLineCol::new(5).shift(-3), BufferLineCol::new(2));
+    assert_eq!(BufferLineCol::new(2).shift(-5), BufferLineCol::new(0));
 }
 
 #[test]

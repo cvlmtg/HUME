@@ -1,10 +1,3 @@
-// `std::env::set_var`/`remove_var` here mutate process-global XDG_*/HUME_RUNTIME/HOME
-// vars — always under a `TEST_GLOBALS` claim (a guard struct, or this
-// module's own helper). `clippy.toml`'s `disallowed-methods` entry exists so a
-// *new* raw call elsewhere in the crate gets caught; these are the sanctioned
-// callers it lists as exempt.
-#![allow(clippy::disallowed_methods)]
-
 use super::*;
 
 /// `:set global theme=<name>` must surface installed themes — verifying the
@@ -15,7 +8,13 @@ use super::*;
 /// unguarded path-completion tests, whose `tempfile::tempdir()` respects
 /// `TMPDIR`. The shared `TEST_GLOBALS` claim still serializes against other
 /// `HUME_RUNTIME`-sensitive tests.
+// `std::env::set_var`/`remove_var` below mutate the process-global
+// `HUME_RUNTIME` var — sound only under the `TEST_GLOBALS.claim(Global::Env)`
+// taken just below, held for the rest of this test via `HumeRuntimeOnly`'s
+// `_lock` field, which is what makes this the sanctioned caller
+// `clippy.toml`'s `disallowed-methods` entry lists as exempt.
 #[test]
+#[allow(clippy::disallowed_methods)]
 fn tab_completes_set_global_theme_value() {
     struct HumeRuntimeOnly {
         _dir: tempfile::TempDir,

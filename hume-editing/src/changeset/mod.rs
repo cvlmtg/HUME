@@ -751,7 +751,7 @@ mod builder;
 pub use builder::ChangeSetBuilder;
 
 mod diff_cs;
-pub use diff_cs::{changesets_from_line_diff, changesets_from_line_diff_with_deadline};
+pub use diff_cs::changesets_from_line_diff;
 
 #[cfg(test)]
 mod tests;

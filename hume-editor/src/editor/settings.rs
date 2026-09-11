@@ -27,7 +27,7 @@
 //!
 //! A global entry that has a derived-state effect beyond the raw field write
 //! (resizing a live ring, reloading a resource) declares `resync: true` —
-//! see `editor::settings_ops::apply_global`'s doc for how that's wired to the
+//! see `editor::settings::ops::apply_global`'s doc for how that's wired to the
 //! actual effect and enforced against drift.
 //!
 //! `language` has no macro entry: no global default (would let `:set global
@@ -513,7 +513,7 @@ macro_rules! buffer_accessor {
 ///   `"key" => field: Type = default, scope: [...], parser: kind [, resync: true];`
 ///   `resync: true` is optional — declare it when writing this key has a
 ///   derived-state effect beyond the raw field write (see
-///   `editor::settings_ops::apply_global`'s doc).
+///   `editor::settings::ops::apply_global`'s doc).
 /// - `buffer { … }` — per-buffer-overridable settings with a `:set` key;
 ///   same format (no `resync:` clause — no buffer-scoped key currently
 ///   needs one)
@@ -639,19 +639,18 @@ macro_rules! define_settings {
         /// This is the raw field write only — some settings have derived
         /// state that must be resynced after a successful write (declared
         /// via `resync: true` above). Production code must go through
-        /// `crate::editor::settings_ops::apply_global`, which wraps this
-        /// and runs those effects; calling this directly would silently skip
-        /// them.
+        /// [`ops::apply_global`], which wraps this and runs those effects;
+        /// calling this directly would silently skip them.
         ///
-        /// `pub(in crate::editor)`: `crate::editor::settings_ops::apply_global`
-        /// is the one production caller, with editor state to resync
-        /// against. `testing::MockHost` needs the raw write too (it has no
-        /// `EditorState`/`EngineView` to resync effects against) but lives
-        /// outside `crate::editor`, so it goes through
-        /// `settings_ops::write_global_for_test` — a test-only pass-through
-        /// kept inside this visibility boundary — rather than this
-        /// function's visibility being widened back out to admit it.
-        pub(in crate::editor) fn write_global(
+        /// `pub(in crate::editor::settings)`: [`ops::apply_global`] is the
+        /// one production caller, with editor state to resync against, and
+        /// `settings::tests` is the only other reach. `testing::MockHost`
+        /// needs the raw write too (it has no `EditorState`/`EngineView` to
+        /// resync effects against) but lives outside this module, so it goes
+        /// through `ops::write_global_for_test` — a `#[cfg(test)]`-gated
+        /// `pub(crate)` pass-through that does not exist in a production
+        /// build, not a widening of this function's own visibility.
+        pub(in crate::editor::settings) fn write_global(
             key: &str,
             value: &str,
             settings: &mut EditorSettings,
@@ -675,11 +674,11 @@ macro_rules! define_settings {
         /// Returns `Err(message)` on unknown key, a global-only key, or an
         /// invalid value.
         ///
-        /// `pub(in crate::editor)`: `crate::editor::settings_ops::apply_buffer`
-        /// is the only caller — `testing::MockHost` models no buffers, so it
-        /// has no per-buffer override to write and needs no forwarding shim
-        /// here (contrast [`write_global`]'s `write_global_for_test`).
-        pub(in crate::editor) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
+        /// `pub(in crate::editor::settings)`: [`ops::apply_buffer`] is the
+        /// only caller — `testing::MockHost` models no buffers, so it has no
+        /// per-buffer override to write and needs no forwarding shim here
+        /// (contrast [`write_global`]'s `write_global_for_test`).
+        pub(in crate::editor::settings) fn write_buffer(key: &str, value: &str, overrides: &mut BufferOverrides) -> Result<(), String> {
             match key {
                 $( $bkey => { overrides.$bname = Some(parse_setting!(value, key, $bparser)?); } )*
                 $( $skey => { overrides.$sfield = Some(parse_setting!(value, key, $sparser)?); } )*
@@ -700,7 +699,7 @@ macro_rules! define_settings {
 
         /// Decode `key` into its [`ResyncKey`] variant, or `None` if it
         /// doesn't declare `resync: true` above. The sole source both
-        /// `editor::settings_ops::resync_derived_state` (which key to
+        /// `editor::settings::ops::resync_derived_state` (which key to
         /// resync) and `reset_globals` (which keys need resyncing at all)
         /// go through — see [`ResyncKey`]'s own doc for the compile-time
         /// property this buys.
@@ -823,7 +822,7 @@ define_settings! {
             parser: bool;
         // Resizes every open pane's live jump list cap — like undo-levels
         // below, takes effect on the next push, not retroactively. See
-        // `editor::settings_ops::resync_derived_state` and `JumpList::set_capacity`.
+        // `editor::settings::ops::resync_derived_state` and `JumpList::set_capacity`.
         "jump-list-capacity" => jump_list_capacity: usize = 100,
             scope: [Scope::Global],
             parser: usize_nonzero,
@@ -833,7 +832,7 @@ define_settings! {
             parser: usize;
         // Resizes the command/search prompt-history ring cap — like
         // undo-levels below, takes effect on the next push, not
-        // retroactively. See `editor::settings_ops::resync_derived_state`
+        // retroactively. See `editor::settings::ops::resync_derived_state`
         // and `History::set_capacity`.
         "history-capacity" => history_capacity: usize = 100,
             scope: [Scope::Global],
@@ -843,7 +842,7 @@ define_settings! {
         // history-capacity above — hence plain `usize`, not `usize_nonzero`.
         // Resizes the undo-tree cap on every open buffer — takes effect on
         // the next edit, not retroactively (Vim's `undolevels` semantics).
-        // See `editor::settings_ops::resync_derived_state`.
+        // See `editor::settings::ops::resync_derived_state`.
         "undo-levels" => undo_levels: usize = 0,
             scope: [Scope::Global],
             parser: usize,
@@ -866,7 +865,7 @@ define_settings! {
             parser: bool;
         // Loads and applies the named theme immediately, rolling back to the
         // previous value on failure — see
-        // `editor::settings_ops::resync_derived_state`.
+        // `editor::settings::ops::resync_derived_state`.
         "theme" => theme: String = String::new(),
             scope: [Scope::Global],
             parser: string,
@@ -1160,6 +1159,18 @@ fn parse_word_chars(value: &str) -> Result<String, String> {
     hume_editing::word::WordChars::validate(value)?;
     Ok(value.to_owned())
 }
+
+/// Applying a setting change — the single production path
+/// ([`ops::apply_global`]/[`ops::apply_buffer`]). A child of this module,
+/// not a sibling, so [`write_global`]/[`write_buffer`] above narrow to
+/// `pub(in crate::editor::settings)`: the chokepoint this crate's write path
+/// funnels through is reachable from exactly `settings::ops` and
+/// `settings::tests`, not from every one of the ~110 other files under
+/// `crate::editor`. The module path itself is `pub(crate)` — wider than that
+/// — only so `testing::mock_host` (outside `crate::editor` entirely) can
+/// name `ops::write_global_for_test`; every other item in `ops` keeps its
+/// own narrower per-item visibility regardless of the path being nameable.
+pub(crate) mod ops;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

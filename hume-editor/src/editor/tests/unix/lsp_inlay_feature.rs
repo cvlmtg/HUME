@@ -274,7 +274,7 @@ fn setting_off_via_set_command_clears_hints_through_the_plugin_hook() {
 /// other accepted spellings — `on`/`yes`/`1` — took the *else* branch and
 /// **cleared** hints instead of requesting them).
 ///
-/// Writes through `settings_ops::apply_global` directly (the exact
+/// Writes through `settings::ops::apply_global` directly (the exact
 /// production path `:set global`/`set-option!`/`:theme` all funnel
 /// through — see its module doc) rather than `type_cmd(":set global …")`:
 /// typing and executing a command line opens and closes the minibuffer,
@@ -307,7 +307,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
     // (unlike the toggles below) purely to establish the viewport
     // `lsp/refresh-hints` needs — that event's own hint request is
     // legitimate here, since the setting is already correctly on.
-    crate::editor::settings_ops::apply_global(
+    crate::editor::settings::ops::apply_global(
         &mut ed.state,
         &mut ed.view,
         "lsp.inlay-hints",
@@ -337,7 +337,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
         "sanity: the hint lands once the setting is on"
     );
 
-    crate::editor::settings_ops::apply_global(
+    crate::editor::settings::ops::apply_global(
         &mut ed.state,
         &mut ed.view,
         "lsp.inlay-hints",
@@ -355,7 +355,7 @@ fn setting_on_via_a_non_true_spelling_still_requests_hints() {
         "sanity: \"off\" clears, same as \"false\""
     );
 
-    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, "lsp.inlay-hints", "on")
+    crate::editor::settings::ops::apply_global(&mut ed.state, &mut ed.view, "lsp.inlay-hints", "on")
         .unwrap();
     settle_after_debounce(&mut ed);
     assert_eq!(

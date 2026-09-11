@@ -220,7 +220,7 @@ pub(in crate::editor) fn typed_theme(
         ed.report(Severity::Info, format!("Current theme: {current}"));
         return Ok(());
     };
-    crate::editor::settings_ops::apply_global(&mut ed.state, &mut ed.view, THEME_KEY, name)
+    crate::editor::settings::ops::apply_global(&mut ed.state, &mut ed.view, THEME_KEY, name)
         .map_err(CommandError::new)
 }
 

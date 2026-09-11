@@ -12,7 +12,7 @@ fn default_bid() -> BidArg {
 /// `set-option!` is registered `open` (`builtins/mod.rs`) — no eval-mode
 /// gate at all, since `set_option` (this file) has no gate check of its own
 /// and the write it forwards to already goes through the validating
-/// chokepoint (`editor::settings_ops::apply_global`) regardless of caller.
+/// chokepoint (`editor::settings::ops::apply_global`) regardless of caller.
 /// Reaches the host from ordinary command-mode context, same as
 /// `set-buffer-option!`/`get-option`.
 ///

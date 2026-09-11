@@ -25,9 +25,9 @@ mod async_job;
 mod async_source;
 mod decoration_providers;
 mod diff_bridge;
-pub(crate) mod error;
+mod error;
 mod frame;
-pub(crate) mod host_impl;
+mod host_impl;
 mod inline_output;
 mod lifecycle;
 mod overlay_sync;
@@ -38,15 +38,15 @@ mod tui;
 pub(crate) mod buffer;
 mod clipboard;
 mod commands;
-pub(crate) mod completion;
-pub(crate) mod cursor;
-pub(crate) mod decorations;
+mod completion;
+mod cursor;
+mod decorations;
 mod dispatch;
-pub(crate) mod doc_ops;
+mod doc_ops;
 pub(crate) mod event;
-pub(crate) mod fuzzy;
-pub(crate) mod jump_list;
-pub(crate) mod keymap;
+mod fuzzy;
+mod jump_list;
+mod keymap;
 #[cfg(test)]
 mod lints;
 pub(crate) mod lsp;
@@ -54,17 +54,16 @@ mod mappings;
 mod message_log;
 mod minibuf;
 mod mouse;
-pub(crate) mod pane_state;
-pub(crate) mod picker;
+mod pane_state;
+mod picker;
 mod picker_source;
-pub(crate) mod register_ops;
+mod register_ops;
 mod registry;
 mod replay;
 pub(super) mod scroll;
 pub(crate) mod search;
 pub(crate) mod settings;
-pub(crate) mod settings_ops;
-pub(crate) mod syntax;
+mod syntax;
 mod theme;
 mod timer_bridge;
 mod timers;
@@ -933,7 +932,7 @@ impl Editor {
 // on `Editor` itself, which `reset_config_state` also reaches directly for
 // `lsp`/`timer_wheel`/`timer_payloads` — needs a human decision: does
 // `:reload-config` reset it too (like `settings`, via
-// `settings_ops::reset_globals`), or does it survive untouched (buffers,
+// `settings::ops::reset_globals`), or does it survive untouched (buffers,
 // panes, undo history, registers, …)?
 //
 // The two functions below are never called — each declares a local fn taking
@@ -980,7 +979,7 @@ mod field_classification {
                 // the reset to decide whether to report success —
                 // resetting it would defeat that
                 message_log: _,
-                // config: settings_ops::reset_globals rebuilds
+                // config: settings::ops::reset_globals rebuilds
                 // EditorSettings wholesale
                 settings: _,
                 last_find: _,                       // preserved
@@ -1032,7 +1031,7 @@ mod field_classification {
     /// EditorState` is governed by `editor_state_fields_are_classified`
     /// above, and `view: EngineView` is a whole rendering-state struct from
     /// another crate whose own config-relevant piece (`view.theme`) is
-    /// already covered by `settings_ops::reset_globals`'s doc.
+    /// already covered by `settings::ops::reset_globals`'s doc.
     #[test]
     fn editor_fields_are_classified() {
         #[allow(dead_code, unused_variables)]

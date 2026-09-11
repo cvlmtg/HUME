@@ -79,7 +79,7 @@ fn absent_marker_is_decoded_only_in_args_rs() {
     let workspace_root = root.parent().expect("workspace root");
 
     let args_rs = workspace_root.join("hume-scripting/src/builtins/args.rs");
-    let paths = workspace_source_paths(workspace_root, &[], &[args_rs]);
+    let paths = workspace_source_paths(workspace_root, &[args_rs]);
 
     let violations = scan_lines(&paths, workspace_root, OPT_OUT_MARKER, |code| {
         usize::from(reads_absent_marker(code))
