@@ -7,7 +7,7 @@ use crate::pane::Pane;
 use super::{DetachedPane, PaneId};
 
 /// Proof that a pane was just inserted into the pool and isn't yet reachable
-/// from any `LayoutTree` — minted only by [`PanePool::insert`], in this
+/// from any `LayoutTree` — minted only by `PanePool::insert`, in this
 /// module, and consumed by [`super::LayoutTree::split_leaf`]/
 /// [`super::LayoutTree::leaf`] to splice it in. Not `Clone`/`Copy`: a
 /// duplicable token would defeat the "exactly one tree ends up naming this

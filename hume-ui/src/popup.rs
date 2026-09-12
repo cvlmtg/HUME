@@ -53,11 +53,11 @@ const MAX_POPUP_WIDTH: u16 = 60;
 /// `PopupModel::layout`).
 pub enum PopupLayout {
     /// Floating, anchored near the focused pane's cursor (`#:anchor
-    /// 'cursor`, the default) — painted by [`PopupOverlay`].
+    /// 'cursor`, the default) — painted by `PopupOverlay`.
     Cursor,
     /// Docked as a full-width chrome band directly above the statusline,
     /// reserving pane space like the drawer (`#:anchor 'bottom`) — painted
-    /// by [`PopupBandWidget`]. Used for hover content too tall for the
+    /// by `PopupBandWidget`. Used for hover content too tall for the
     /// cursor layout; keeps popup semantics (plain scroll, no selection,
     /// close-on-any-other-key) rather than becoming a pick-list.
     Docked,
@@ -226,7 +226,7 @@ impl OverlayProvider for PopupOverlay {
 }
 
 /// Fully-resolved content for a **docked** popup (`PopupLayout::Docked`) —
-/// the [`PopupBandWidget`] counterpart of [`PopupState`]. No position/size
+/// the `PopupBandWidget` counterpart of [`PopupState`]. No position/size
 /// is stored here: unlike the floating popup, a bottom band's geometry is
 /// resolved by the engine at render time from `height(max)` and the chrome
 /// area (the same contract the drawer already follows), not pre-computed by
@@ -256,10 +256,10 @@ const POPUP_FRAME_ROWS: u16 = 2;
 
 /// Rows a docked popup shows at once, given `lines` wrapped lines and the
 /// band's row ceiling `max` (half the last-rendered *terminal* height,
-/// mirroring [`PopupBandWidget::height`]'s own `max`) — the number
+/// mirroring `PopupBandWidget::height`'s own `max`) — the number
 /// `Editor::scroll_popup` pages against, agreeing with what the engine will
 /// next paint by construction (both derive from
-/// [`super::menu_box::band_capacity`]).
+/// `super::menu_box::band_capacity`).
 pub fn band_visible_rows(lines: usize, max: u16) -> usize {
     super::menu_box::band_visible_rows(lines, POPUP_FRAME_ROWS, max)
 }

@@ -188,7 +188,7 @@ impl LineEntry {
 
 /// The lines one [`DisplayLineMap`](super::DisplayLineMap) is working with.
 ///
-/// `entries` is a free list: [`PaneLineStore::rewind`] drops what is live but
+/// `entries` is a free list: `PaneLineStore::rewind` drops what is live but
 /// keeps each entry's allocation — bar one grown past
 /// [`crate::format::LineFormat::reset_and_shrink`]'s ceiling, so a store
 /// settles into reusing what it already has without one pathologically wide

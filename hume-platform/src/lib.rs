@@ -132,7 +132,7 @@ fn force_exit(term: &terminal::SharedTerm, code: i32) -> ! {
 /// with a different rationale is not the same constant.
 const HANGUP_EXIT_CODE: i32 = 130;
 
-/// `Some(`[`HANGUP_EXIT_CODE`]`)` when `err` means the controlling terminal
+/// `Some(HANGUP_EXIT_CODE)` when `err` means the controlling terminal
 /// itself went away rather than a genuine, reportable failure — `None` for
 /// every other error, which the caller should propagate and print as-is.
 ///

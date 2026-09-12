@@ -11,7 +11,7 @@
 //!   in scope entries just once, from the final merged document
 //! - The sixteen ANSI terminal color names (`red`, `light-gray`, …) as a
 //!   fallback for any color value not found in the palette — see
-//!   [`ANSI_COLORS`]
+//!   `ANSI_COLORS`
 //! - Flat dotted keys: `"keyword.function" = { fg = "red", modifiers = ["bold"] }`
 //! - Real TOML section headers: `[keyword.function]` / `fg = "red"` is
 //!   equivalent to the flat form above — promoted to the same dotted scope
@@ -26,7 +26,7 @@
 //! the wrong shape (Helix's `rainbow` bracket array, for instance) — doesn't
 //! fail the load. Helix collects these as warnings and gives the offending
 //! key a default style rather than discarding the whole theme, and this
-//! loader does the same (see [`resolve_theme_table`]'s doc for exactly what
+//! loader does the same (see `resolve_theme_table`'s doc for exactly what
 //! stays fatal instead).
 
 use std::path::{Path, PathBuf};
@@ -61,7 +61,7 @@ fn is_reserved(key: &str) -> bool {
 /// that was malformed on its own. A non-empty `warnings` doesn't mean the
 /// load failed — [`Theme`] is always fully usable — it means some key in
 /// the document didn't come through and now carries an empty style instead.
-/// See [`resolve_theme_table`]'s doc for exactly which problems fail the
+/// See `resolve_theme_table`'s doc for exactly which problems fail the
 /// load rather than landing here.
 pub struct LoadedTheme {
     /// Fully usable regardless of `warnings` — a malformed entry lands with

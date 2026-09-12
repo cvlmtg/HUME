@@ -309,7 +309,7 @@ impl LayoutTree {
 
     /// Every pane id reachable in this subtree. No defined order beyond a
     /// depth-first walk — callers that care about a specific pane (e.g. the
-    /// first one) should use [`Self::first_leaf`] instead of reading the
+    /// first one) should use `Self::first_leaf` instead of reading the
     /// first element.
     ///
     /// Used by tab-close to find every pane owned by the tab being closed,

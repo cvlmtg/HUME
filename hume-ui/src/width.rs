@@ -51,7 +51,7 @@ pub(crate) fn truncate_text_tail(s: &str, max_display_width: usize) -> (&str, us
 /// Clip `s` to `budget` display cells per `cut`, marking the dropped end
 /// with `…` — list rows (file paths, grep matches, tab labels, …) whose
 /// distinguishing part can sit at either end depending on what the caller
-/// shows. Grapheme-cluster aware via [`truncate_text`]/[`truncate_text_tail`].
+/// shows. Grapheme-cluster aware via [`truncate_text`]/`truncate_text_tail`.
 /// Kept distinct from a query row's own tail-truncation (a direct
 /// `truncate_text_tail` call) because that text must never gain a marker —
 /// user-editable text, whose bare tail (no `…`) is intentional there.

@@ -11,8 +11,8 @@
 //!
 //! Write side (`Editor::sync_picker_view`) resolves geometry once per
 //! frame against the current panes region and writes a [`PickerViewState`]
-//! snapshot; [`PickerOverlay`] only paints it — same split as
-//! [`super::popup::PopupOverlay`].
+//! snapshot; `PickerOverlay` only paints it — same split as
+//! `super::popup::PopupOverlay`.
 //!
 use hume_engine::types::ResolvedStyle;
 use hume_grid::Rect;
@@ -96,14 +96,14 @@ pub struct PickerViewState {
 /// and the next paint always agree on how many rows are visible.
 pub struct PanelGeometry {
     pub rect: Rect,
-    /// Inner list capacity: outer height minus [`CHROME_ROWS`].
+    /// Inner list capacity: outer height minus `CHROME_ROWS`.
     pub list_rows: usize,
 }
 
 /// Size the panel as a fraction of `pane_area` — width `min(80%, 100 cols)`,
 /// height `min(60%, 30 rows)` — then center it. Returns `None` when the
-/// region can't host a viable panel (narrower than [`MIN_PANEL_WIDTH`] or
-/// shorter than [`MIN_PANEL_HEIGHT`], i.e. not even one list row) — callers
+/// region can't host a viable panel (narrower than `MIN_PANEL_WIDTH` or
+/// shorter than `MIN_PANEL_HEIGHT`, i.e. not even one list row) — callers
 /// then paint nothing rather than a degenerate box.
 pub fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     let width = ((pane_area.width as u32 * 80 / 100) as u16)

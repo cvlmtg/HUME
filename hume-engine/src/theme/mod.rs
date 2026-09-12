@@ -109,7 +109,7 @@ impl ScopeRegistry {
 /// The dot-notation fallback chain for `scope`, most specific first:
 /// `"keyword.function"` yields `"keyword.function"`, then `"keyword"`.
 ///
-/// Shared so the walk exists once: [`Theme::resolve_raw`] takes the first name
+/// Shared so the walk exists once: `Theme::resolve_raw` takes the first name
 /// with an entry, while `:theme-debug` reports every name that has one.
 pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
@@ -118,7 +118,7 @@ pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
 /// The three cursor modes a theme's `ui.cursor*` scopes distinguish, as
 /// `(display label, mode scope, primary mode scope)` — the mode-identity half
 /// [`cursor_ladder_ids`] itself leaves to its caller. Single source for both
-/// [`Theme::compute_ui`] and `:theme-debug`, so renaming a mode's scope (or
+/// `Theme::compute_ui` and `:theme-debug`, so renaming a mode's scope (or
 /// adding a fourth mode) can't leave one of them naming the old pair — the
 /// exact drift the shared rung-list function below was introduced to
 /// prevent, one level up.
@@ -130,7 +130,7 @@ pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
     ("extend", "ui.cursor.select", "ui.cursor.primary.select"),
 ];
 
-/// The (secondary, primary) rung lists [`Theme::cursor_ladder`] resolves, for
+/// The (secondary, primary) rung lists `Theme::cursor_ladder` resolves, for
 /// one mode's own scope names — see that method's doc for the ladder shape.
 ///
 /// Exposed as a shared function rather than left private so `:theme-debug`

@@ -66,7 +66,7 @@ pub(crate) fn collect_source_rs(dir: &std::path::Path, out: &mut Vec<std::path::
 }
 
 /// Collect all `.rs` files under `dir`, recursively, with no exclusions —
-/// [`collect_source_rs`]'s sibling for a lint whose whole job is scanning
+/// `collect_source_rs`'s sibling for a lint whose whole job is scanning
 /// what that one deliberately skips (a `tests/` tree). Results are sorted
 /// for deterministic test output, same as `collect_source_rs`.
 pub fn collect_all_rs(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
@@ -109,7 +109,7 @@ pub fn editor_test_tree_paths(workspace_root: &std::path::Path) -> Vec<std::path
 /// Every source file every whole-workspace lint in this module scans:
 /// enumerate crates from the root `Cargo.toml`, assert each has a `src/` (a
 /// silently-empty scan would let a renamed crate escape unnoticed), collect
-/// via [`collect_source_rs`], then retain out this `lints/` directory's own
+/// via `collect_source_rs`, then retain out this `lints/` directory's own
 /// pattern literals and any path in `extra_excludes` (a lint excluding one
 /// specific implementation file while still scanning the rest of that
 /// file's crate — `absent_decode`'s sole caller excludes its own
