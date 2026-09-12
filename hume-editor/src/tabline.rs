@@ -10,7 +10,7 @@
 //! that module's own doc): `TabEntry`/`TablineViewState` hold a `TabId`,
 //! an `editor`-crate type `hume-ui` cannot depend on.
 
-use hume_grid::{Rect, box_glyphs};
+use hume_grid::Rect;
 
 use crate::editor::tab::TabId;
 use crate::statusline::colors::TablineColors;
@@ -106,21 +106,6 @@ impl TabBarProvider for TablineWidget {
             // clamp an extent to as little as 1 cell, narrower than
             // `fit_label`'s own 2-cell padding minimum.
             canvas.write_text_run(start_x, area.y, &label, style, end_x);
-            if i + 1 < extents.ranges.len() {
-                // A separator between this tab and the next *rendered* one —
-                // `idx + 1 < guard.tabs.len()` would also be true whenever a
-                // tab beyond the visible window got clipped, drawing a
-                // separator with nothing after it (liable to land on the
-                // overflow arrow); `ranges` only ever holds tabs this frame
-                // actually painted.
-                canvas.write_text_run(
-                    end_x,
-                    area.y,
-                    box_glyphs::VERTICAL,
-                    colors.inactive,
-                    area.right(),
-                );
-            }
         }
         if extents.clipped_tail {
             canvas.write_text_run(
