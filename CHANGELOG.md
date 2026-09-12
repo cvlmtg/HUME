@@ -8,6 +8,9 @@
 ### CLI
 - New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
 
+### Panes & interface
+- New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl+p t`/`Ctrl+p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
+
 ## [0.12.0] - 2026-09-08
 
 ### Breaking changes
