@@ -1,8 +1,7 @@
 ---
 source: hume-editor/src/editor/tests/tab.rs
-assertion_line: 525
 expression: without_statusline
 ---
-<fg=#a89984,bg=#504945> *scratch* │</><fg=#282828,bg=#d79921,bold> lib.rs</>
+<fg=#a89984,bg=#504945> *scratch*  </><fg=#282828,bg=#d79921,bold> lib.rs</>
 <fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#bdae93>f</><fg=#ebdbb2,bg=#3c3836>n lib() {}</>
 <fg=#928374,bg=#282828>~</>
