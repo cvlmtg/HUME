@@ -160,6 +160,10 @@ pub(in crate::editor) type EditorCmdFn = fn(
     MotionMode,
 ) -> Result<(), CommandError>;
 
+/// Function pointer for an [`Edit`](MappableCommand::Edit) handler.
+pub(in crate::editor) type EditFn =
+    fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet);
+
 // ── MappableCommand ───────────────────────────────────────────────────────────
 
 /// Body shape for `Motion`/`Selection`'s `fun` field.
@@ -281,7 +285,7 @@ pub(in crate::editor) enum MappableCommand {
         // Pending command-palette / :help integration.
         #[allow(dead_code)]
         doc: Cow<'static, str>,
-        fun: NativeBody<fn(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet)>,
+        fun: NativeBody<EditFn>,
         /// Whether `.` should replay this command. Set to `true` for edits that
         /// are meaningful to repeat (e.g. user-facing deletions). Set to `false`
         /// for internal primitives like `delete-char-backward`.
