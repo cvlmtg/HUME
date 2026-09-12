@@ -408,11 +408,23 @@ fn wire_offset_to_char_counts_bytes_in_utf8_and_code_units_in_utf16() {
     let text = RopeSlice::from(LABEL);
     // 😀 starts at byte 3 and at UTF-16 unit 2 — one char index, two
     // different offsets naming it.
-    assert_eq!(wire_offset_to_char(text, 3, PositionEncoding::Utf8), 2);
-    assert_eq!(wire_offset_to_char(text, 2, PositionEncoding::Utf16), 2);
+    assert_eq!(
+        wire_offset_to_char(text, 3, PositionEncoding::Utf8),
+        CharCol::new(2)
+    );
+    assert_eq!(
+        wire_offset_to_char(text, 2, PositionEncoding::Utf16),
+        CharCol::new(2)
+    );
     // 'b' follows it by 4 bytes, but by only 2 UTF-16 units.
-    assert_eq!(wire_offset_to_char(text, 7, PositionEncoding::Utf8), 3);
-    assert_eq!(wire_offset_to_char(text, 4, PositionEncoding::Utf16), 3);
+    assert_eq!(
+        wire_offset_to_char(text, 7, PositionEncoding::Utf8),
+        CharCol::new(3)
+    );
+    assert_eq!(
+        wire_offset_to_char(text, 4, PositionEncoding::Utf16),
+        CharCol::new(3)
+    );
 }
 
 #[test]
@@ -420,15 +432,21 @@ fn wire_offset_to_char_rounds_a_split_char_down_to_its_start() {
     let text = RopeSlice::from(LABEL);
     // Byte 2 is é's continuation byte; UTF-16 unit 3 is 😀's low surrogate.
     // Both name a position inside a char, and both round back to its start.
-    assert_eq!(wire_offset_to_char(text, 2, PositionEncoding::Utf8), 1);
-    assert_eq!(wire_offset_to_char(text, 3, PositionEncoding::Utf16), 2);
+    assert_eq!(
+        wire_offset_to_char(text, 2, PositionEncoding::Utf8),
+        CharCol::new(1)
+    );
+    assert_eq!(
+        wire_offset_to_char(text, 3, PositionEncoding::Utf16),
+        CharCol::new(2)
+    );
 }
 
 #[test]
 fn wire_offset_to_char_clamps_past_the_end_of_the_text() {
     let text = RopeSlice::from(LABEL);
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
-        assert_eq!(wire_offset_to_char(text, 9_999, enc), 4);
+        assert_eq!(wire_offset_to_char(text, 9_999, enc), CharCol::new(4));
     }
 }
 

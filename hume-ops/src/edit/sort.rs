@@ -13,6 +13,7 @@ use hume_editing::lines::{char_col_in_line, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 
 /// Flags accepted by `:sort`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -85,7 +86,7 @@ pub fn sort_lines(
             let line = entries[group[local]].line;
             let start = text.line_to_char(line.into());
             let end = next_line_start(&text, line.into());
-            b.insert(&text.slice(start.index()..end.index()).to_string());
+            b.insert(&text.slice(ExclusiveRange::new(start, end)).to_string());
         }
     }
 
@@ -134,7 +135,7 @@ fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
                     .end_inclusive(text)
                     .min(prev_grapheme_boundary(text, nl));
                 if seg_start <= seg_end_incl {
-                    text.slice(seg_start.index()..seg_end_incl.shift(1).index())
+                    text.slice(ExclusiveRange::new(seg_start, seg_end_incl.shift(1)))
                         .to_string()
                 } else {
                     String::new()

@@ -565,19 +565,22 @@ impl ChangeSet {
         );
 
         let mut inv_ops: Vec<Operation> = Vec::new();
-        let mut old_pos = 0usize;
+        let mut old_pos = CharOffset::new(0);
 
         for op in &self.ops {
             match op {
                 Operation::Retain(n) => {
                     push_merge(&mut inv_ops, Operation::Retain(*n));
-                    old_pos += n;
+                    old_pos = old_pos.shift(*n as isize);
                 }
                 Operation::Delete(n) => {
                     // To undo a deletion, re-insert the deleted text.
-                    let removed = text.slice(old_pos..old_pos + n).to_string();
+                    let new_pos = old_pos.shift(*n as isize);
+                    let removed = text
+                        .slice(ExclusiveRange::new(old_pos, new_pos))
+                        .to_string();
                     push_merge(&mut inv_ops, Operation::Insert(removed));
-                    old_pos += n;
+                    old_pos = new_pos;
                 }
                 Operation::Insert(s) => {
                     // To undo an insertion, delete the same number of chars.

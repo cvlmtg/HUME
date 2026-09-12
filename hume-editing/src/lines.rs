@@ -2,7 +2,7 @@
 //! helpers, plus [`is_line_start`] (needs a [`Selection`], so it stays here).
 //! See `hume_rope::lines` for the implementations and detailed doc comments.
 
-use hume_rope::column::{ByteCol, CharCol, GraphemeCol};
+use hume_rope::column::{BufferLineCol, ByteCol, CharCol, GraphemeCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::offset::CharOffset;
 
@@ -36,7 +36,11 @@ pub fn leading_whitespace_end(text: &BufferText, line: ContentLine) -> CharOffse
 }
 
 /// See [`hume_rope::lines::leading_indent`].
-pub fn leading_indent(text: &BufferText, line: ContentLine, tab_width: u8) -> (CharOffset, usize) {
+pub fn leading_indent(
+    text: &BufferText,
+    line: ContentLine,
+    tab_width: u8,
+) -> (CharOffset, BufferLineCol) {
     hume_rope::lines::leading_indent(text.rope(), line, tab_width)
 }
 

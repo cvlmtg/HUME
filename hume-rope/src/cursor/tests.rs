@@ -1,11 +1,12 @@
 use super::*;
+use crate::offset::CharOffset;
 use crate::test_support::rope;
 
 #[test]
 fn char_cursor_forward_from_start() {
     // "hello\n": h0 e1 l2 l3 o4 \n5.
     let buf = rope("hello");
-    let got: Vec<(usize, char)> = chars_at(&buf, 0).collect();
+    let got: Vec<(usize, char)> = chars_at(&buf, CharOffset::new(0)).collect();
     assert_eq!(
         got,
         vec![(0, 'h'), (1, 'e'), (2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]
@@ -15,14 +16,14 @@ fn char_cursor_forward_from_start() {
 #[test]
 fn char_cursor_forward_from_middle() {
     let buf = rope("hello");
-    let got: Vec<(usize, char)> = chars_at(&buf, 2).collect();
+    let got: Vec<(usize, char)> = chars_at(&buf, CharOffset::new(2)).collect();
     assert_eq!(got, vec![(2, 'l'), (3, 'l'), (4, 'o'), (5, '\n')]);
 }
 
 #[test]
 fn char_cursor_prev_walks_back_to_start_then_none() {
     let buf = rope("hello");
-    let mut c = chars_at(&buf, 4); // positioned before 'o'
+    let mut c = chars_at(&buf, CharOffset::new(4)); // positioned before 'o'
     assert_eq!(c.prev(), Some((3, 'l')));
     assert_eq!(c.prev(), Some((2, 'l')));
     assert_eq!(c.prev(), Some((1, 'e')));
@@ -33,7 +34,7 @@ fn char_cursor_prev_walks_back_to_start_then_none() {
 #[test]
 fn char_cursor_interleaved_next_prev_round_trips() {
     let buf = rope("hello");
-    let mut c = chars_at(&buf, 2);
+    let mut c = chars_at(&buf, CharOffset::new(2));
     assert_eq!(c.next(), Some((2, 'l'))); // cursor now at 3
     assert_eq!(c.prev(), Some((2, 'l'))); // back to 2 — same value
     assert_eq!(c.next(), Some((2, 'l'))); // forward again — still consistent
@@ -43,7 +44,7 @@ fn char_cursor_interleaved_next_prev_round_trips() {
 fn char_cursor_at_eof() {
     let buf = rope("hello");
     let len = buf.len_chars();
-    let mut at_eof = chars_at(&buf, len);
+    let mut at_eof = chars_at(&buf, CharOffset::new(len));
     assert_eq!(at_eof.next(), None);
     assert_eq!(at_eof.prev(), Some((len - 1, '\n')));
 }
@@ -54,6 +55,6 @@ fn char_cursor_yields_codepoints_not_grapheme_clusters() {
     // c0 a1 f2 e3 U+0301(4) \n(5). The combining mark must come back as
     // its own char, not merged with 'e' — CharCursor is char-level.
     let buf = rope("caf\u{0065}\u{0301}");
-    let got: Vec<(usize, char)> = chars_at(&buf, 3).collect();
+    let got: Vec<(usize, char)> = chars_at(&buf, CharOffset::new(3)).collect();
     assert_eq!(got, vec![(3, 'e'), (4, '\u{0301}'), (5, '\n')]);
 }

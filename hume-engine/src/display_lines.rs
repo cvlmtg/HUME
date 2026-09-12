@@ -695,7 +695,7 @@ impl<'a> DisplayLineMap<'a> {
         // Only up to the target column: no cell further right can be the one
         // this column resolves to, under either policy.
         let idx = self.ensure_formatted(pos.line, FormatBound::ToDisplayCol(target_display_col));
-        CharOffset::new(self.resolve_in_display_line(idx, sub, target_display_col, target))
+        self.resolve_in_display_line(idx, sub, target_display_col, target)
     }
 
     /// Shared core of [`DisplayLineMap::char_at`] and [`DisplayLineMap::char_at_buffer_line_col`]:
@@ -703,15 +703,21 @@ impl<'a> DisplayLineMap<'a> {
     /// resolves to `target_display_col`, under `target`'s policy. `idx`
     /// must come from an [`DisplayLineMap::ensure_formatted`] bounded at
     /// least up to `target_display_col`.
+    ///
+    /// Returns [`CharOffset`] so both callers hand the result over directly
+    /// instead of re-wrapping a bare index. The `CharOffset::new` crossings
+    /// inside are the typed world's own re-entry: `Grapheme::char_offset`
+    /// stays bare `usize` for its `usize::MAX` no-position sentinel (see
+    /// `types.rs`), already filtered out before each mint below.
     fn resolve_in_display_line(
         &self,
         idx: usize,
         sub: usize,
         target_display_col: DisplayLineCol,
         target: DisplayColTarget,
-    ) -> usize {
+    ) -> CharOffset {
         let entry = self.store.entry(idx);
-        let line_start = hume_rope::lines::line_start_char(self.rope, entry.line.into()).index();
+        let line_start = hume_rope::lines::line_start_char(self.rope, entry.line.into());
         let format = &entry.format;
         let Some(dline) = format.display_lines.get(sub) else {
             return line_start;
@@ -723,11 +729,12 @@ impl<'a> DisplayLineMap<'a> {
 
         match target {
             DisplayColTarget::Cell => {
-                graphemes
+                let offset = graphemes
                     .iter()
                     .find(|g| target_display_col < g.display_col.advance(g.width as u32))
                     .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
-                    .char_offset
+                    .char_offset;
+                CharOffset::new(offset)
             }
             DisplayColTarget::NearestContent => {
                 // Eligibility by content type: `Grapheme` is real content,
@@ -782,7 +789,7 @@ impl<'a> DisplayLineMap<'a> {
                             | CellContent::Placeholder { .. } => !g.byte_range.is_empty(),
                         })
                         .min_by_key(|g| target_display_col.abs_diff(g.display_col))
-                        .map(|g| g.char_offset)
+                        .map(|g| CharOffset::new(g.char_offset))
                 };
                 nearest(false)
                     .or_else(|| nearest(true))
@@ -889,12 +896,7 @@ impl<'a> DisplayLineMap<'a> {
             }
             remaining -= span;
         }
-        CharOffset::new(self.resolve_in_display_line(
-            idx,
-            sub,
-            dline_indent.advance(remaining),
-            target,
-        ))
+        self.resolve_in_display_line(idx, sub, dline_indent.advance(remaining), target)
     }
 
     /// The char range one content display line covers. `None` when `pos` is

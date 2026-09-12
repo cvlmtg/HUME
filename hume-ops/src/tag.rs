@@ -41,8 +41,7 @@ fn same_name(
     // `PartialEq` only short-circuits on `len_bytes` *after* building both)
     // for the common case of hunting one tag name through many others.
     a.end.chars_since(a.start) == b.end.chars_since(b.start)
-        && text.slice(a.start.index()..a.end_exclusive().index())
-            == text.slice(b.start.index()..b.end_exclusive().index())
+        && text.slice(a.to_exclusive()) == text.slice(b.to_exclusive())
 }
 
 /// True if `<!--` starts at `lt_pos`.

@@ -772,8 +772,7 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         ) else {
             return String::new();
         };
-        text.slice(range.start.index()..range.end_exclusive().index())
-            .to_string()
+        text.slice(range.to_exclusive()).to_string()
     }
 
     fn selections_linewise(&self, bid: BufferId) -> bool {

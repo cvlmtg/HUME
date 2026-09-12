@@ -124,9 +124,10 @@ pub(super) fn find_word_end_from(
 ) -> CharOffset {
     let end = text.end();
     if start >= end {
-        // Trusted mint: `start` came from a position already known to be at
-        // or past the buffer end, so one back from it is still in range.
-        return CharOffset::new(start.index().saturating_sub(1));
+        // One back from a position at or past the buffer end (`end` is at
+        // least 1 — every buffer holds the structural `\n`), so `shift`
+        // can't go negative here.
+        return start.shift(-1);
     }
 
     let cat = chars.classify(text.char_at(start).expect("start < len"));

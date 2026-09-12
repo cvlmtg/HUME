@@ -1,5 +1,7 @@
 use ropey::Rope;
 
+use crate::offset::CharOffset;
+
 /// A char-level cursor for scanning a contiguous range of a [`Rope`] without
 /// re-paying ropey's O(log n) tree descent on every step. Each `next()` /
 /// `prev()` call is amortized O(1) after the initial O(log n) seek in
@@ -19,12 +21,16 @@ pub struct CharCursor<'a> {
 
 /// A cursor over `rope`'s chars starting at `pos`. See [`CharCursor`].
 ///
+/// Takes [`CharOffset`] so a caller holding a buffer position hands it over
+/// directly instead of unwrapping to a bare index at the call site.
+///
 /// # Panics
 /// Panics if `pos > rope.len_chars()`.
-pub fn chars_at(rope: &Rope, pos: usize) -> CharCursor<'_> {
+pub fn chars_at(rope: &Rope, pos: CharOffset) -> CharCursor<'_> {
+    let idx = pos.index();
     CharCursor {
-        iter: rope.chars_at(pos),
-        pos,
+        iter: rope.chars_at(idx),
+        pos: idx,
     }
 }
 

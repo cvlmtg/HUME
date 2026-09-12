@@ -5,6 +5,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
+use hume_rope::offset::ExclusiveRange;
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::apply_edit;
@@ -41,7 +42,9 @@ fn transform_case(
         b.retain(sel_start.chars_since(b.old_pos()));
         let new_sel_start = b.new_pos();
 
-        let selected = text.slice(sel_start.index()..sel_end.index()).to_string();
+        let selected = text
+            .slice(ExclusiveRange::new(sel_start, sel_end))
+            .to_string();
         let mapped = match kind {
             CaseTransform::Lower => selected.to_lowercase(),
             CaseTransform::Upper => selected.to_uppercase(),

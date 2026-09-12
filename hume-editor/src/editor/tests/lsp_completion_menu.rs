@@ -17,6 +17,7 @@ use hume_editing::text::BufferText;
 use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
+use hume_rope::offset::ExclusiveRange;
 
 fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
     let items_json: Vec<serde_json::Value> = items
@@ -952,7 +953,10 @@ fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() 
     assert_eq!(
         ed.doc()
             .text()
-            .slice(session.anchor().index()..ed.current_selections().primary().head().index())
+            .slice(ExclusiveRange::new(
+                session.anchor(),
+                ed.current_selections().primary().head(),
+            ))
             .to_string(),
         "st",
         "filter span (anchor..primary head) must be exactly what was typed \

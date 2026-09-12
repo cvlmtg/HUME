@@ -10,6 +10,7 @@ use super::*;
 
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::Selection;
+use hume_rope::offset::ExclusiveRange;
 use hume_treesitter::registry::QueryPaths;
 use test_fixtures::{
     grammar_query_path, helix_textobjects_path, helix_textobjects_path_unchecked,
@@ -66,7 +67,8 @@ pub(super) fn rust_editor(source: &str) -> Editor {
 /// The text a selection covers (inclusive of the grapheme at `end()`).
 fn text_of(text: &BufferText, sel: Selection) -> String {
     let end = next_grapheme_boundary(text, sel.end_inclusive(text));
-    text.slice(sel.start().index()..end.index()).to_string()
+    text.slice(ExclusiveRange::new(sel.start(), end))
+        .to_string()
 }
 
 /// The text covered by the focused buffer's primary selection. A slice

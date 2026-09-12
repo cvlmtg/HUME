@@ -2,6 +2,7 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_rope::offset::ExclusiveRange;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::event::EditorEvent;
@@ -403,7 +404,7 @@ impl Editor {
         let text = self
             .doc()
             .text()
-            .slice(anchor.index()..head.index())
+            .slice(ExclusiveRange::new(anchor, head))
             .to_string();
 
         // Phase 2 — disjoint-field destructure (the `client_and_backend`/

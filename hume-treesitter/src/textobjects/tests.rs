@@ -205,8 +205,7 @@ fn markdown_bundle_with_helix_injections() -> Arc<GrammarBundle> {
 /// The buffer text at `span`, inclusive end — for asserting on the actual
 /// text a hull collected rather than hand-counted char offsets.
 fn span_text(text: &BufferText, span: InclusiveRange<CharOffset>) -> String {
-    text.slice(span.start.index()..span.end.index() + 1)
-        .to_string()
+    text.slice(span.to_exclusive()).to_string()
 }
 
 /// Parse `source` as rust with the real Helix `textobjects.scm` attached.

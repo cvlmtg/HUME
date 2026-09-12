@@ -337,9 +337,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     let (start, end_incl) = (range.start, range.end);
     // Computed here (before set_primary_selection) so the immutable `text`/
     // `chars` borrows end before we mutably borrow state.
-    let word = text
-        .slice(start.index()..range.end_exclusive().index())
-        .to_string();
+    let word = text.slice(range.to_exclusive()).to_string();
     let pattern = word_search_pattern(&word, chars);
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
@@ -361,9 +359,7 @@ pub(in crate::editor) fn cmd_search_selection(
 ) -> Result<(), CommandError> {
     let text = doc(state, view).text();
     let primary = current_selections(state, view).primary();
-    let selected = text
-        .slice(primary.start().index()..primary.end_exclusive(text).index())
-        .to_string();
+    let selected = primary.slice(text).to_string();
 
     // No-op on a bare structural newline (a collapsed cursor sitting on one) —
     // a raw `\n` pattern would match every line end, the same "useless

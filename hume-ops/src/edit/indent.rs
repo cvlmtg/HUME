@@ -116,7 +116,7 @@ fn shift_indent(
         if text.char_at(ws_end) == Some('\n') {
             continue;
         }
-        let new_width = old_width.saturating_add_signed(delta_display_col);
+        let new_width = old_width.shift(delta_display_col);
         if new_width == old_width {
             // Reachable at `delta_display_col == 0` (a `levels == 0` call — never
             // issued by the editor's own count dispatch, but this crate's ops
@@ -124,7 +124,7 @@ fn shift_indent(
             // an already-flush line past width 0. Nothing to rewrite or remap.
             continue;
         }
-        let new_indent = render_indent(new_width, style, tab_width);
+        let new_indent = render_indent(new_width.get() as usize, style, tab_width);
         let old_len = ws_end.chars_since(line_start);
 
         b.retain(line_start.chars_since(b.old_pos()));

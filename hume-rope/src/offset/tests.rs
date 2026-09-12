@@ -71,7 +71,10 @@ fn inclusive_range_covers_its_own_end() {
 }
 
 #[test]
-fn inclusive_range_end_exclusive_is_one_past_end() {
+fn inclusive_range_to_exclusive_keeps_span() {
     let r = InclusiveRange::new(CharOffset::new(2), CharOffset::new(5));
-    assert_eq!(r.end_exclusive(), CharOffset::new(6));
+    assert_eq!(
+        r.to_exclusive(),
+        ExclusiveRange::new(CharOffset::new(2), CharOffset::new(6))
+    );
 }

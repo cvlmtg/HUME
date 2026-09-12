@@ -370,16 +370,10 @@ fn entry_is_whitespace(entry: &[String]) -> bool {
 /// ```
 ///
 /// Selections are always inclusive, so the text spans `start()..=end()` —
-/// internally `text.slice(start..end+1)`.
+/// internally `text.slice()` over the selection's exclusive span.
 pub fn yank_selections(text: &BufferText, sels: &SelectionSet) -> Vec<String> {
     sels.iter_sorted()
-        .map(|sel| {
-            // end_exclusive() gives the exclusive upper bound one past the last
-            // codepoint of the final grapheme — handles multi-codepoint
-            // clusters like e + \u{0301} without an ad hoc +1.
-            text.slice(sel.start().index()..sel.end_exclusive(text).index())
-                .to_string()
-        })
+        .map(|sel| sel.slice(text).to_string())
         .collect()
 }
 

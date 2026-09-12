@@ -165,13 +165,13 @@ impl<T: Copy + PartialOrd> InclusiveRange<T> {
 }
 
 impl InclusiveRange<CharOffset> {
-    /// The exclusive-end equivalent of this range's `end` — `self.end`
-    /// shifted one char forward, via [`CharOffset::shift`] rather than a raw
-    /// `.index() + 1`, for the common case of handing an inclusive result
-    /// (`Selection`, a text-object/bracket/quote finder) to `text.slice()`,
-    /// which wants a half-open bound.
-    pub fn end_exclusive(&self) -> CharOffset {
-        self.end.shift(1)
+    /// This range as a half-open one — same span, exclusive end one char
+    /// past `self.end` (via [`CharOffset::shift`], not a raw `.index() + 1`),
+    /// for handing an inclusive result (`Selection`, a
+    /// text-object/bracket/quote finder) to `text.slice()`, which wants an
+    /// [`ExclusiveRange`].
+    pub fn to_exclusive(self) -> ExclusiveRange<CharOffset> {
+        ExclusiveRange::new(self.start, self.end.shift(1))
     }
 }
 

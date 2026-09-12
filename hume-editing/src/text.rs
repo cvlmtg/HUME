@@ -1,8 +1,7 @@
 use hume_rope::cursor::CharCursor;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::{Rope, RopeSlice};
 use std::borrow::Cow;
-use std::ops::Range;
 
 /// Whether the original file used LF or CRLF line endings.
 ///
@@ -310,9 +309,12 @@ impl BufferText {
             char_idx.index(),
             self.len_chars()
         );
-        hume_rope::line::ContentLine::new(
-            hume_rope::lines::char_to_ropey_line(&self.rope, char_idx).index(),
-        )
+        hume_rope::lines::char_to_ropey_line(&self.rope, char_idx)
+            .to_content(&self.rope)
+            .expect(
+                "char_to_line: resolved the phantom trailing line — \
+                 char_to_ropey_line of a position below len_chars() is content",
+            )
     }
 
     /// Returns the 0-based ropey line that contains char offset `char_idx`,
@@ -333,10 +335,14 @@ impl BufferText {
     /// [`ropey::RopeSlice`] is a lightweight view — no allocation. It is the
     /// input type for grapheme-cluster iteration in `grapheme.rs`.
     ///
+    /// Takes [`ExclusiveRange`] so an inclusive result (`Selection`, a
+    /// finder) must cross via `to_exclusive()` at the call site instead of
+    /// hand-adding `+ 1`.
+    ///
     /// # Panics
     /// Panics if `range.start > range.end` or either bound is out of range.
-    pub fn slice(&self, range: Range<usize>) -> ropey::RopeSlice<'_> {
-        self.rope.slice(range)
+    pub fn slice(&self, range: ExclusiveRange<CharOffset>) -> ropey::RopeSlice<'_> {
+        self.rope.slice(range.start.index()..range.end.index())
     }
 
     /// A slice spanning the entire buffer.
@@ -359,7 +365,7 @@ impl BufferText {
     /// # Panics
     /// Panics if `pos > self.len_chars()`.
     pub fn chars_at(&self, pos: CharOffset) -> CharCursor<'_> {
-        hume_rope::cursor::chars_at(&self.rope, pos.index())
+        hume_rope::cursor::chars_at(&self.rope, pos)
     }
 
     /// Convert a byte offset to a char (Unicode scalar value) offset.
@@ -409,13 +415,14 @@ impl BufferText {
     /// back by `range.len()`. Selection offsets must be updated by the caller.
     ///
     /// Using `Range<usize>` (rather than two separate `from`/`to` parameters)
-    /// matches ropey's own convention and makes call sites read naturally:
-    /// `text.remove(5..11)` mirrors `text.slice(5..11)`.
+    /// matches ropey's own convention: `text.remove(5..11)` mirrors
+    /// `rope.remove(5..11)`. (Production slicing goes through the typed
+    /// [`Self::slice`], not this test-only helper.)
     ///
     /// # Panics
     /// Panics if `range.start > range.end` or `range.end > self.len_chars()`.
     #[cfg(test)]
-    fn remove(&self, range: Range<usize>) -> Self {
+    fn remove(&self, range: std::ops::Range<usize>) -> Self {
         let mut rope = self.rope.clone();
         rope.remove(range);
         Self {

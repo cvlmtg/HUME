@@ -23,7 +23,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::RopeSlice;
 
 use crate::diff::{LineHunk, LineHunkKind, diff_lines_with_deadline};
@@ -101,8 +101,11 @@ fn build_changesets(
         offsets[range.end].chars_since(offsets[range.start])
     };
     let slice = |text: &BufferText, offsets: &[CharOffset], range: &Range<usize>| {
-        text.slice(offsets[range.start].index()..offsets[range.end].index())
-            .to_string()
+        text.slice(ExclusiveRange::new(
+            offsets[range.start],
+            offsets[range.end],
+        ))
+        .to_string()
     };
 
     for hunk in hunks {

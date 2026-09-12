@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use super::super::render_snapshot::render_to_styled_string;
 use hume_grid::Rect;
+use hume_rope::offset::ExclusiveRange;
 use hume_scripting::ScriptingHost;
 
 const SOURCE: &str = "git-diff";
@@ -223,7 +224,7 @@ fn highlights(
                 e.start,
                 e.end,
                 scope_name(ed, e.scope).to_string(),
-                text.slice(e.start.index()..e.end.index()).to_string(),
+                text.slice(ExclusiveRange::new(e.start, e.end)).to_string(),
             )
         })
         .collect()

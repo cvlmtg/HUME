@@ -1,6 +1,6 @@
 use super::*;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -262,7 +262,9 @@ fn insert_then_remove_is_identity() {
 #[test]
 fn slice() {
     let text = BufferText::from("hello world");
-    let s: String = text.slice(6..11).to_string();
+    let s: String = text
+        .slice(ExclusiveRange::new(CharOffset::new(6), CharOffset::new(11)))
+        .to_string();
     assert_eq!(s, "world");
 }
 

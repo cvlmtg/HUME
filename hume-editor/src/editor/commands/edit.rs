@@ -67,9 +67,7 @@ pub(in crate::editor) fn cmd_change(
         sels.iter_sorted()
             .map(|sel| {
                 let span = change_span(doc.text(), sel);
-                doc.text()
-                    .slice(span.start.index()..span.end.index())
-                    .to_string()
+                doc.text().slice(span).to_string()
             })
             .collect::<Vec<_>>()
     };

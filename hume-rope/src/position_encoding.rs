@@ -70,7 +70,7 @@ pub fn char_range_to_wire_range(
     )
 }
 
-/// A flat wire code-unit offset into `text` → the char index it names.
+/// A flat wire code-unit offset into `text` → the char column it names.
 ///
 /// The shared step of every wire→char conversion here: [`wire_to_char`]
 /// applies it to one line's content, [`wire_offsets_to_byte_range`] to a
@@ -80,11 +80,15 @@ pub fn char_range_to_wire_range(
 /// start rather than landing mid-char (ropey's `byte_to_char` /
 /// `utf16_cu_to_char` guarantee that for any in-bounds code-unit index,
 /// on-boundary or not).
-pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEncoding) -> usize {
-    match enc {
+///
+/// Returns [`CharCol`]: the result is always a line-relative char column —
+/// `wire_to_line_char_col`'s second element directly, never a bare index to
+/// re-wrap at the call site.
+pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEncoding) -> CharCol {
+    CharCol::new(match enc {
         PositionEncoding::Utf8 => text.byte_to_char(offset.min(text.len_bytes())),
         PositionEncoding::Utf16 => text.utf16_cu_to_char(offset.min(text.len_utf16_cu())),
-    }
+    })
 }
 
 /// `(line, character)` → `(clamped line, line-relative char column)`.
@@ -105,10 +109,7 @@ pub fn wire_to_line_char_col(
     let line = RopeyLine::clamped(text, pos.line);
     let line_start = crate::lines::line_start_char(text, line).index();
     let content = text.slice(line_start..line_terminator_start(text, line).index());
-    (
-        line,
-        CharCol::new(wire_offset_to_char(content, pos.character, enc)),
-    )
+    (line, wire_offset_to_char(content, pos.character, enc))
 }
 
 /// `(line, character)` → char offset.
@@ -120,9 +121,9 @@ pub fn wire_to_line_char_col(
 /// wants that function directly, not this one.
 pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOffset {
     let (line, char_col) = wire_to_line_char_col(text, pos, enc);
-    // `line_start + char_col`: a line-start offset plus a validated in-line
-    // column — not a raw stepping hazard.
-    CharOffset::new(crate::lines::line_start_char(text, line).index() + char_col.index())
+    // `line_start` advanced by a validated in-line column — not a raw
+    // stepping hazard.
+    crate::lines::line_start_char(text, line).shift(char_col.index() as isize)
 }
 
 /// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
@@ -160,8 +161,8 @@ pub fn wire_offsets_to_byte_range(
     enc: PositionEncoding,
 ) -> Range<usize> {
     let slice = RopeSlice::from(text);
-    let start_byte = slice.char_to_byte(wire_offset_to_char(slice, start, enc));
-    let end_byte = slice.char_to_byte(wire_offset_to_char(slice, end, enc));
+    let start_byte = slice.char_to_byte(wire_offset_to_char(slice, start, enc).index());
+    let end_byte = slice.char_to_byte(wire_offset_to_char(slice, end, enc).index());
     start_byte..end_byte.max(start_byte)
 }
 

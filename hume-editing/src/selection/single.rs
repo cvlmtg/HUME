@@ -1,5 +1,5 @@
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 use crate::grapheme::{cluster_last_char, next_grapheme_boundary};
 use crate::lines::is_line_start;
@@ -213,13 +213,20 @@ impl Selection {
     }
 
     /// The char offset one past this selection's last char — the exclusive
-    /// counterpart to [`Self::end_inclusive`], for `text.slice(start..end_exclusive)`
+    /// counterpart to [`Self::end_inclusive`], for `text.slice(ExclusiveRange::new(start, end_exclusive))`
     /// and delete-range math. Always `next_grapheme_boundary(text, self.end())`:
     /// `end_inclusive` is defined as that boundary minus one
     /// (`cluster_last_char`'s doc), so this recovers the true exclusive bound
     /// without a raw `+ 1` at the call site.
     pub fn end_exclusive(&self, text: &BufferText) -> CharOffset {
         next_grapheme_boundary(text, self.end())
+    }
+
+    /// This selection's text as a rope slice — `text.slice(start..end_exclusive)`
+    /// via [`ExclusiveRange`]. The one place that expression is spelled out;
+    /// every other caller wanting a selection's exact contents goes through here.
+    pub fn slice<'a>(&self, text: &'a BufferText) -> ropey::RopeSlice<'a> {
+        text.slice(ExclusiveRange::new(self.start(), self.end_exclusive(text)))
     }
 
     /// Returns `true` if the far end of the selection sits on a `\n`.
@@ -241,8 +248,8 @@ impl Selection {
 
     /// The exclusive counterpart to [`Self::content_end`] — `end_exclusive(text)`
     /// clamped to `text.last_char()`, so a caller building a
-    /// `text.slice(start..content_end_exclusive)` for a delete never reaches
-    /// past the structural trailing `\n`.
+    /// `text.slice(ExclusiveRange::new(start, content_end_exclusive))` for a
+    /// delete never reaches past the structural trailing `\n`.
     pub fn content_end_exclusive(&self, text: &BufferText) -> CharOffset {
         self.end_exclusive(text).min(text.last_char())
     }

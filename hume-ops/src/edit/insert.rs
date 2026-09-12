@@ -181,7 +181,7 @@ pub fn insert_newline_indent(
                 b.delete(sel.content_end_exclusive(text).chars_since(start));
             }
         }
-        let indent = text.slice(line.start.index()..line.end.index()).to_string();
+        let indent = text.slice(line).to_string();
         b.insert_char('\n');
         if !indent.is_empty() {
             b.insert(&indent);
