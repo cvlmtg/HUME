@@ -34,8 +34,6 @@
 //! `Editor` + `EditorHostImpl` instead (see
 //! `hume-editor/src/editor/tests/plugins.rs`).
 
-use std::ops::Range;
-
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_scripting::host::{
     BufferHost, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost, OptionValue,
@@ -162,10 +160,14 @@ impl BufferHost for MockHost {
     fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {
         None
     }
-    fn buffer_lines(&self, _id: BufferId, _range: Range<usize>) -> Option<Vec<String>> {
+    fn buffer_lines(
+        &self,
+        _id: BufferId,
+        _range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+    ) -> Option<Vec<String>> {
         None
     }
-    fn line_to_offset(&self, _id: BufferId, _line: usize) -> Option<usize> {
+    fn line_to_offset(&self, _id: BufferId, _line: hume_rope::line::ContentLine) -> Option<usize> {
         None
     }
     fn viewport_range(

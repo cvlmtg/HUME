@@ -161,10 +161,18 @@ pub(crate) fn buffer_lines(
             "buffer-lines: range {start}..{end} out of bounds for a {line_count}-line buffer"
         )));
     }
+    // Trusted mint: the check above is what licenses ContentLine::new here —
+    // `end` may legitimately equal `line_count` (the one-past-last-line
+    // exclusive bound `ContentLineCount::end_exclusive()` also names), which
+    // `ContentLine::checked` would reject.
+    let range = hume_rope::offset::ExclusiveRange::new(
+        hume_rope::line::ContentLine::new(start),
+        hume_rope::line::ContentLine::new(end),
+    );
     let lines = ctx
         .host
         .buffers()
-        .buffer_lines(id, start..end)
+        .buffer_lines(id, range)
         .ok_or_else(invalid_id)?;
     lines.into_steelval().map_err(generic_err)
 }
@@ -328,6 +336,8 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, bid: BidArg, line: SteelVal) ->
             "line->offset: line {line} is out of range (buffer has {line_count} content lines)"
         )));
     }
+    // Trusted mint: the check above is what licenses ContentLine::new here.
+    let line = hume_rope::line::ContentLine::new(line);
     let offset = ctx
         .host
         .buffers()

@@ -10,7 +10,6 @@
 //! - **Init dispatch** (`scripting_setup.rs`): called with the same fields
 //!   during `init_scripting`; init-only builtins set settings.
 
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
@@ -418,23 +417,23 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text().content_line_count().get())
     }
 
-    fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>> {
+    fn buffer_lines(
+        &self,
+        id: BufferId,
+        range: ExclusiveRange<hume_rope::line::ContentLine>,
+    ) -> Option<Vec<String>> {
         let text = self.buffer(id)?.text();
+        let count = range.end.lines_since(range.start);
         Some(
-            text.line_tokens_at(hume_rope::line::RopeyLine::new(range.start))
-                .take(range.len())
+            text.line_tokens_at(hume_rope::line::RopeyLine::from(range.start))
+                .take(count)
                 .map(line_token_content)
                 .collect(),
         )
     }
 
-    fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize> {
-        Some(
-            self.buffer(id)?
-                .text()
-                .line_to_char(hume_rope::line::RopeyLine::new(line))
-                .index(),
-        )
+    fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize> {
+        Some(self.buffer(id)?.text().line_to_char(line.into()).index())
     }
 
     fn viewport_range(&self, id: BufferId) -> Option<ExclusiveRange<hume_rope::line::ContentLine>> {

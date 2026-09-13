@@ -1,4 +1,3 @@
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -498,28 +497,34 @@ pub trait BufferHost {
     /// if `id` is unknown.
     fn buffer_line_count(&self, id: BufferId) -> Option<usize>;
 
-    /// Content lines `range` (0-based, end-exclusive) of `id`'s live text,
-    /// each with its trailing line break stripped. `range` is caller-
-    /// validated against [`buffer_line_count`](Self::buffer_line_count) —
-    /// this call itself does not clamp or bounds-check, and an out-of-range
-    /// `range` is a caller bug: implementations may panic rather than
-    /// return `None` (the editor implementation does, via the underlying
-    /// rope's line lookup). `None` if `id` is unknown.
-    fn buffer_lines(&self, id: BufferId, range: Range<usize>) -> Option<Vec<String>>;
+    /// Content lines `range` of `id`'s live text, each with its trailing line
+    /// break stripped. `range` is caller-validated against
+    /// [`buffer_line_count`](Self::buffer_line_count) before this is called —
+    /// the `ContentLine` bound itself carries that validation, so this call
+    /// does not re-clamp or re-check it, and a `range` built any other way
+    /// (not checked against this buffer's own line count) is a caller bug:
+    /// implementations may panic rather than return `None` (the editor
+    /// implementation does, via the underlying rope's line lookup). `None` if
+    /// `id` is unknown.
+    fn buffer_lines(
+        &self,
+        id: BufferId,
+        range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+    ) -> Option<Vec<String>>;
 
-    /// The 0-based char offset where content `line` (0-based) starts in
-    /// `id`'s live text. `line` is caller-validated against
-    /// [`buffer_line_count`](Self::buffer_line_count) — same contract as
-    /// [`buffer_lines`](Self::buffer_lines): this call itself does not
-    /// bounds-check, and an out-of-range `line` is a caller bug (the editor
-    /// implementation panics, via the underlying rope's line lookup). `None`
-    /// if `id` is unknown.
+    /// The char offset where content `line` starts in `id`'s live text.
+    /// `line` is caller-validated against
+    /// [`buffer_line_count`](Self::buffer_line_count) before this is called —
+    /// same contract as [`buffer_lines`](Self::buffer_lines): this call does
+    /// not re-check it, and a `line` built any other way is a caller bug (the
+    /// editor implementation panics, via the underlying rope's line lookup).
+    /// `None` if `id` is unknown.
     ///
     /// Backs the Steel `(line->offset bid line)` builtin — the inverse
     /// direction of `char-index->line`, but not a drop-in inverse of it:
     /// `char-index->line` is 1-indexed and reads the focused buffer, this is
     /// 0-indexed and takes an explicit `id`.
-    fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize>;
+    fn line_to_offset(&self, id: BufferId, line: hume_rope::line::ContentLine) -> Option<usize>;
 
     /// The content-domain line range currently visible for `id` (the focused
     /// pane's if shown there, else the first active-tab pane showing it), or

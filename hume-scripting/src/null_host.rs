@@ -13,7 +13,6 @@
 //! each embed a real `NullHost` and delegate every capability accessor to it,
 //! overriding only the one or two accessors/methods that make them distinct.
 
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use hume_engine::pipeline::{BufferId, PaneId};
@@ -106,10 +105,14 @@ impl BufferHost for NullHost {
     fn buffer_line_count(&self, _id: BufferId) -> Option<usize> {
         None
     }
-    fn buffer_lines(&self, _id: BufferId, _range: Range<usize>) -> Option<Vec<String>> {
+    fn buffer_lines(
+        &self,
+        _id: BufferId,
+        _range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+    ) -> Option<Vec<String>> {
         None
     }
-    fn line_to_offset(&self, _id: BufferId, _line: usize) -> Option<usize> {
+    fn line_to_offset(&self, _id: BufferId, _line: hume_rope::line::ContentLine) -> Option<usize> {
         None
     }
     fn viewport_range(
