@@ -356,6 +356,28 @@ fn render(ed: &mut Editor) {
     frame(ed, 80, 25);
 }
 
+/// A `frame` that leaves no viewport-debounce timer pending afterward — for
+/// a test that seeds baseline state, then registers a real
+/// `on-viewport-change` hook and does something slow (`eval_with_real_host`
+/// builds a whole Steel VM from disk) before observing the *next* viewport
+/// change. Plain `frame` leaves a real timer armed (`lsp_viewport_debounce_ms`,
+/// default 150ms); if enough wall-clock time passes before the next drain, it
+/// fires for real, reading the pane's *current* — by then transitioned —
+/// state per `timer_bridge.rs`'s documented fire-site contract, and
+/// double-counts whatever the test goes on to observe. Zeroing the debounce
+/// and fully settling (not just draining: an unprocessed-but-queued event
+/// resurfaces the same problem one layer up, in `pending_work`) retires this
+/// frame's timer while nothing is registered to observe it, regardless of
+/// how slow the caller's next step is.
+///
+/// The zeroed debounce is a permanent pin, not a save/restore — every caller
+/// wants immediate-fire semantics for the rest of its body too.
+fn seed_frame(ed: &mut Editor, width: u16, height: u16) {
+    ed.state.settings.lsp_viewport_debounce_ms = 0;
+    frame(ed, width, height);
+    ed.settle();
+}
+
 /// The text drawn at one grid cell. A wide glyph's continuation cell holds
 /// no text of its own, so this reads it as the blank it visually is.
 fn cell(buf: &hume_grid::Grid, x: u16, y: u16) -> String {

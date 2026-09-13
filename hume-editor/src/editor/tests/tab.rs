@@ -606,11 +606,11 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     ed.execute_typed("tabnew", None).unwrap();
     let tab_b = ed.state.tabs.current();
     let bid_b = ed.focused_buffer_id();
-    frame(&mut ed, 40, 10); // B observed once while its own tab is active
+    seed_frame(&mut ed, 40, 10); // B observed once while its own tab is active
 
     ed.execute_typed("tabprev", None).unwrap();
     assert_eq!(ed.state.tabs.current(), tab_a, "setup: back on A");
-    frame(&mut ed, 40, 10); // same 40x10 geometry throughout — only which
+    seed_frame(&mut ed, 40, 10); // same 40x10 geometry throughout — only which
     // tab is active changes from here on
 
     let mut host = ScriptingHost::new();
@@ -622,7 +622,6 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
         tmp.path(),
     );
     ed.scripting = Some(host);
-    ed.state.settings.lsp_viewport_debounce_ms = 0;
 
     ed.execute_typed("tabnext", None).unwrap();
     assert_eq!(ed.state.tabs.current(), tab_b, "setup: back on B");
@@ -649,7 +648,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bc\n");
-    frame(&mut ed, 40, 10); // seeds last_viewport_key[pid] keyed on A's buffer
+    seed_frame(&mut ed, 40, 10); // seeds last_viewport_key[pid] keyed on A's buffer
 
     let file_tmp = safe_tempdir();
     let file = file_tmp.path().join("second.txt");
@@ -664,7 +663,6 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
         tmp.path(),
     );
     ed.scripting = Some(host);
-    ed.state.settings.lsp_viewport_debounce_ms = 0;
 
     ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
     let bid_b = ed.focused_buffer_id();
