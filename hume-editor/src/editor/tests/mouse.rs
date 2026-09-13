@@ -356,16 +356,20 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
     assert_eq!(ed.state.focus.id(), pid_b, "no pane focus change");
 }
 
-/// A terminal too short to fit the tab bar plus the statusline pushes
-/// `pane_area` into its degenerate branch — but the tab bar still paints on
-/// row 0 (`render`'s own gate is just `area.height > 0`), so a click there
-/// must still hit it rather than falling through `last_pane_area.y`, which
-/// the degenerate branch leaves at 0 too.
+/// A terminal too short to fit the tab bar plus the statusline (a single
+/// row) pushes both `pane_area` and `tabbar_area` into their degenerate
+/// branches — the statusline unconditionally owns that one row (`render`'s
+/// own `sl_y = area.bottom() - 1`), so the tab bar must yield it rather than
+/// have both chrome rows paint on top of each other, and a click there must
+/// hit the statusline, not switch tabs (code review fix #6, commit range
+/// 82ce1d7c..10a81a18).
 #[test]
-fn click_on_tabline_hits_even_when_terminal_too_short_for_chrome() {
+fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switch_tabs() {
+    use super::render_snapshot::render_to_styled_string;
+
     let mut ed = editor_from("-[a]>bc\n");
-    let tab_a = ed.state.tabs.current();
     ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
 
     // chrome_height = 1 (tab bar) + 1 (statusline) = 2, not less than a
     // 1-row terminal — degenerate.
@@ -374,14 +378,21 @@ fn click_on_tabline_hits_even_when_terminal_too_short_for_chrome() {
         ed.view.last_pane_area.height, 0,
         "setup: pane area is degenerate"
     );
+    assert_eq!(
+        ed.view.tabbar_area(ed.view.last_terminal_area).height,
+        0,
+        "the tab bar must yield its row to the statusline, not paint over it"
+    );
 
     ed.handle_input(mouse_left_down(0, 0));
 
     assert_eq!(
         ed.state.tabs.current(),
-        tab_a,
-        "click on row 0 must still switch to tab A"
+        tab_b,
+        "a click on row 0 must not switch tabs once the tab bar has no room there"
     );
+
+    insta::assert_snapshot!(render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 1)));
 }
 
 /// A click on another tab's label must leave the outgoing pane the same way

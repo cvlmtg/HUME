@@ -177,15 +177,19 @@ impl TabStore {
         id
     }
 
-    /// The tab that should gain focus once `current` closes — its left
-    /// neighbour, or its right one when `current` is already the leftmost
+    /// The tab that should gain focus once `current` closes — its right
+    /// neighbour, or its left one when `current` is already the rightmost
     /// tab (Vim's own `:tabclose` placement: adjacent, never a wrap to the
     /// far end). Only meaningful with more than one tab open; panics
     /// otherwise, same precondition [`Self::close_current`] asserts.
     pub(in crate::editor) fn adjacent(&self) -> TabId {
         assert!(self.order.len() > 1, "adjacent requires more than one tab");
         let pos = self.current_pos();
-        let neighbor = if pos == 0 { pos + 1 } else { pos - 1 };
+        let neighbor = if pos + 1 < self.order.len() {
+            pos + 1
+        } else {
+            pos - 1
+        };
         self.order[neighbor]
     }
 

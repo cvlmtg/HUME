@@ -250,6 +250,36 @@ impl EngineView {
             .find_rect(pid, self.last_pane_area, self.reserve_seam)
     }
 
+    /// Re-partition `last_pane_area` against the *current* `layout` and
+    /// write each active pane's `viewport.width`/`height` —
+    /// [`pane_rects`](Self::pane_rects)'s own partition, applied rather than
+    /// merely read back.
+    ///
+    /// `last_pane_area`/`reserve_seam` need no recomputation here: neither
+    /// depends on which tab is active (same terminal size, same tab-bar
+    /// policy), only on the terminal and settings a resize or config change
+    /// already refreshed them from — so this is a pure re-partition of
+    /// already-correct geometry onto whatever `layout` names right now.
+    ///
+    /// The one caller is `hume-editor`'s `tab::install_live`, immediately
+    /// after [`Self::replace_layout`]: without this, the incoming tab's panes keep
+    /// the outgoing tab's viewport dims until the next frame's
+    /// `sync_viewport_dims`, which a between-frame reader (a scroll command,
+    /// a motion) chained onto the same tab switch would read as stale. A
+    /// no-op before the first `prepare_frame` (`last_pane_area` still its
+    /// zero default) — nothing to re-partition onto yet, and the first real
+    /// frame will size every pane from scratch regardless.
+    pub fn resync_viewport_dims(&mut self) {
+        if self.last_pane_area.width == 0 && self.last_pane_area.height == 0 {
+            return;
+        }
+        for (pid, rect) in self.pane_rects() {
+            let vp = &mut self.panes[pid].viewport;
+            vp.width = rect.width;
+            vp.height = rect.height;
+        }
+    }
+
     /// The active tab's tree.
     pub fn layout(&self) -> &LayoutTree {
         &self.layout
@@ -341,11 +371,18 @@ impl EngineView {
     /// through this method (the latter via `pane_area`'s own degenerate
     /// branch below, which does *not* offset `y` — reading `tabbar_height`
     /// from here rather than re-deriving it keeps the two in agreement).
+    ///
+    /// Clamped to `area.height.saturating_sub(1)`: the statusline
+    /// unconditionally claims the bottom row (`render`'s own `sl_y =
+    /// area.bottom() - 1`), so on a terminal too short to fit both, the tab
+    /// bar must yield that row rather than have `render` paint the
+    /// statusline over it while this rect — and `tabline_click`'s hit test,
+    /// which partitions through this same method — still claim it.
     pub fn tabbar_area(&self, area: Rect) -> Rect {
         let tabbar_height: u16 = self.tabbar.as_ref().map_or(0, |t| t.height());
         Rect {
             y: area.y,
-            height: tabbar_height,
+            height: tabbar_height.min(area.height.saturating_sub(1)),
             ..area
         }
     }
@@ -374,10 +411,13 @@ impl EngineView {
         } else {
             // Degenerate: terminal too small to fit chrome + content. Note
             // `y` is left at `area.y`, not offset by `tabbar_height` — the
-            // tab bar still paints in this case (`render`'s own gate is
-            // just `area.height > 0`), so callers that need to know whether
-            // a row belongs to the tab bar must use `tabbar_area` directly
-            // rather than comparing against this rect's `y`.
+            // tab bar still paints here whenever `tabbar_area`'s own clamp
+            // leaves it a nonzero height (`render`'s gate is just
+            // `tabbar_area.height > 0`; on a terminal too short even for
+            // that clamp, e.g. a single row, the tab bar yields to the
+            // statusline and paints nothing). Callers that need to know
+            // whether a row belongs to the tab bar must use `tabbar_area`
+            // directly rather than comparing against this rect's `y`.
             Rect { height: 0, ..area }
         }
     }

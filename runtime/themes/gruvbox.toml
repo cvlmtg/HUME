@@ -7,7 +7,7 @@
 # byte-for-byte, except at two places, each marked with its own comment
 # where it appears: `ui.window` gained an `fg` (HUME paints the seam divider
 # glyph in it, not just its background); and the four `diagnostic.<severity>`
-# scopes gained an `fg`. Helix scopes HUME doesn't read yet (`ui.bufferline*`,
+# scopes gained an `fg`. Helix scopes HUME doesn't read yet (`ui.bufferline.background`,
 # `ui.virtual.ruler`/`.wrap`/`.jump-label`, `ui.picker.header.column*`,
 # `ui.help`, `ui.text.directory`, `definition`, `annotation`) are kept as-is
 # so a future re-sync stays a clean diff — see

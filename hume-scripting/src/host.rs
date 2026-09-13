@@ -522,9 +522,10 @@ pub trait BufferHost {
     fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize>;
 
     /// The line range (0-based, end-exclusive) currently visible for `id`
-    /// (the focused pane's if shown there, else the first pane showing it),
-    /// or `None` if `id` isn't open in any pane. Backs the Steel
-    /// `(viewport-range bid)` builtin. Pane geometry, not LSP state —
+    /// (the focused pane's if shown there, else the first active-tab pane
+    /// showing it), or `None` if `id` isn't shown in a pane on the active
+    /// tab — including a buffer visible only in a background tab. Backs the
+    /// Steel `(viewport-range bid)` builtin. Pane geometry, not LSP state —
     /// doesn't need an attached server.
     fn viewport_range(&self, id: BufferId) -> Option<Range<usize>>;
 }

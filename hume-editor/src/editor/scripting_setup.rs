@@ -211,8 +211,19 @@ impl Editor {
     /// Fire `OnViewportChange (bid first-line end-line)` for `pane_id` —
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
-    /// when the timer was armed. A no-op if the pane closed in the meantime.
+    /// when the timer was armed. A no-op if the pane closed in the meantime,
+    /// or if its tab went to the background before the (debounced) timer
+    /// fired: `prepare_frame` stops maintaining a backgrounded pane's
+    /// viewport (see `pane_showing_buffer`'s doc), so firing with its frozen
+    /// bounds would hand a handler geometry the code itself no longer
+    /// trusts. `prepare_frame` drops that pane's `last_viewport_key` when its
+    /// tab backgrounds, so the pane's first frame back on screen reads as a
+    /// fresh change and re-arms this on its own — this guard only skips the
+    /// fire for the frames spent hidden, not the one on return.
     pub(super) fn queue_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
+        if !self.view.active_pane_ids().contains(&pane_id) {
+            return;
+        }
         let Some(pane) = self.view.panes.get(pane_id) else {
             return;
         };

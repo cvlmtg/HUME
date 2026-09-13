@@ -410,7 +410,7 @@ Returns a buffer's full live content as a string — including any unsaved edits
 (buffer-lines bid #:start start #:end end)
 ```
 
-Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`. Guard against `#f`, which `viewport-range` returns for a buffer not currently shown in any pane:
+Returns the buffer's content as a list of lines, each with its line ending stripped. With no range, every line is returned; `#:start`/`#:end` select a 0-based, end-exclusive slice (`(buffer-lines bid #:start 10 #:end 40)` returns lines 10 through 39). An out-of-range `#:end`, or a `#:start` past `#:end`, raises an error rather than silently clamping. Compose with `(viewport-range bid)` to read only what's currently on screen — it returns the same 0-based, end-exclusive range shape, so its pair passes straight through as `#:start`/`#:end`. Guard against `#f`, which `viewport-range` returns for a buffer not currently shown in a pane on the active tab — including one open only in a background tab, since `(panes)` spans every tab but `viewport-range` doesn't:
 
 ```scheme
 (let ((vr (viewport-range bid)))

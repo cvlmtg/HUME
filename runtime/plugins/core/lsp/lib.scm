@@ -76,7 +76,8 @@
 
 ;; ── Viewport ────────────────────────────────────────────────────────────────
 
-;;; #f if `bid` isn't shown in any pane.
+;;; #f if `bid` isn't shown in a pane on the active tab (including a buffer
+;;; visible only in a background tab).
 (define (lsp/visible-lines bid)
   (let ((range (viewport-range bid)))
     (if range (- (cdr range) (car range)) #f)))

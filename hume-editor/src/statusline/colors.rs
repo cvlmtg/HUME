@@ -98,24 +98,43 @@ impl EditorColors {
 pub(crate) struct TablineColors {
     /// Style for a tab that isn't the active one.
     pub inactive: ResolvedStyle,
-    /// Style for the active tab. Unlike the statusline separator's
-    /// deliberate fallback override above, `ui.tabline.active` left unset
-    /// falls back to `ui.tabline` through the engine's own dot-notation
-    /// chain — an active tab with no themed override should look like every
-    /// other tab, which is exactly what that fallback already produces, so
-    /// no `raw_contains` guard is needed here.
+    /// Style for the active tab — see [`from_theme`](Self::from_theme) for
+    /// its fallback chain. An active tab with no themed override of its own
+    /// (in either `ui.tabline.active` or `ui.bufferline.active`) looks like
+    /// every other tab, falling back to `inactive`'s own resolved value.
     pub active: ResolvedStyle,
 }
 
 impl TablineColors {
+    /// `ui.tabline`/`ui.tabline.active` win when themed; otherwise fall
+    /// back to Helix's own `ui.bufferline`/`ui.bufferline.active` via
+    /// `raw_contains` — the same guard the statusline separator above uses,
+    /// needed here for the same reason: `ui.bufferline` isn't `ui.tabline`'s
+    /// parent scope, so the engine's own dot-fallback chain never reaches
+    /// it. Every Helix theme defines `ui.bufferline` and none defines
+    /// `ui.tabline` (HUME's own addition, no Helix equivalent), so without
+    /// this fallback both slots collapse to the bare `ui`/`default` scope on
+    /// any such theme — no ground, no way to tell the active tab apart from
+    /// the rest.
     pub(crate) fn from_theme(theme: &hume_engine::theme::Theme) -> Self {
         use hume_engine::types::Scope;
 
         let style_for = |s: &'static str| -> ResolvedStyle { theme.resolve_by_name(Scope(s)) };
-        Self {
-            inactive: style_for("ui.tabline"),
-            active: style_for("ui.tabline.active"),
-        }
+        // `Some` only for a scope the theme actually sets — `resolve_by_name`
+        // itself can't distinguish "themed" from "fell back", which is
+        // exactly the distinction `active`'s own fallback needs below (it
+        // falls back to `inactive`'s resolved value, not to re-deriving
+        // through `ui.tabline`'s own chain, which would skip `ui.bufferline`
+        // entirely when that's where `inactive` actually came from).
+        let explicit = |s: &'static str| theme.raw_contains(s).then(|| style_for(s));
+
+        let inactive = explicit("ui.tabline")
+            .or_else(|| explicit("ui.bufferline"))
+            .unwrap_or_else(|| style_for("ui.tabline"));
+        let active = explicit("ui.tabline.active")
+            .or_else(|| explicit("ui.bufferline.active"))
+            .unwrap_or(inactive);
+        Self { inactive, active }
     }
 }
 

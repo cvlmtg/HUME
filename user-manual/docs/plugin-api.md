@@ -93,7 +93,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(current-selections)` | List of `(anchor head primary?)` triples for the focused buffer |
 | `(char-index->line idx)` | 1-indexed line number containing 0-indexed char offset `idx` |
 | `(line->offset bid line)` | 0-based char offset where 0-based content line `line` starts |
-| `(viewport-range bid)` | `(first-line . end-line)` currently visible, 0-based end-exclusive, or `#f` if `bid` isn't shown in any pane |
+| `(viewport-range bid)` | `(first-line . end-line)` currently visible, 0-based end-exclusive, or `#f` if `bid` isn't shown in a pane on the active tab (including a buffer visible only in a background tab) |
 | `(open-buffer! path)` | Open `path`, returning its BufferId |
 | `(close-buffer! bid)` | Close a buffer |
 | `(switch-to-buffer! bid)` | Focus a buffer |

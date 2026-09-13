@@ -58,6 +58,16 @@ pub(in crate::editor) fn take_live(
 /// earlier and the caller has already threaded onward (into `TabStore`'s
 /// stash, or dropped via `into_detached` for a closing tab) — nothing left
 /// to leak.
+///
+/// `resync_viewport_dims`/`begin_frame` run here, not just at the next
+/// frame's own `sync_viewport_dims`/`prepare_frame`: a command dispatch that
+/// switches tabs and then reads pane geometry in the same call (a scroll
+/// bound after a tab-switch key, a Steel body chaining `(call! "goto-next-tab")`
+/// onto a motion) would otherwise see the outgoing tab's stale viewport and
+/// an un-rewound line store for the incoming one. This does not touch the
+/// *hidden* tab's staleness model — a backgrounded pane is still untouched
+/// until its own tab is next focused; this only closes the window for the
+/// tab landing here, right now.
 pub(in crate::editor) fn install_live(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -65,6 +75,8 @@ pub(in crate::editor) fn install_live(
     focus: PaneId,
 ) {
     let _ = view.replace_layout(layout);
+    view.resync_viewport_dims();
+    view.begin_frame();
     super::focus::focus_pane(state, view, focus);
 }
 

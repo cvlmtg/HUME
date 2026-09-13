@@ -661,11 +661,12 @@ pub(in crate::editor) fn pane_visible_range(
 }
 
 /// `(viewport-range bid)` — the visible line range (end-exclusive) currently
-/// visible for `id`, or `None` if `id` isn't shown in any pane (a background
-/// or hidden buffer). With the same buffer open in two panes, the focused
-/// pane's range wins — no less arbitrary than any other tie-break, since a
-/// per-buffer decoration store (inlay hints) can only hold one range per
-/// buffer regardless of how many panes show it.
+/// visible for `id`, or `None` if `id` isn't shown in a pane on the active
+/// tab (a background-tab or fully hidden buffer — see `pane_showing_buffer`'s
+/// doc for why the active-tab restriction). With the same buffer open in two
+/// panes, the focused pane's range wins — no less arbitrary than any other
+/// tie-break, since a per-buffer decoration store (inlay hints) can only
+/// hold one range per buffer regardless of how many panes show it.
 pub(in crate::editor) fn viewport_range(
     state: &EditorState,
     view: &EngineView,

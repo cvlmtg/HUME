@@ -70,25 +70,28 @@ pub fn char_range_to_wire_range(
     )
 }
 
-/// A flat wire code-unit offset into `text` → the char column it names.
+/// A flat wire code-unit offset into `text` → the char index it names within
+/// `text` itself.
 ///
-/// The shared step of every wire→char conversion here: [`wire_to_char`]
-/// applies it to one line's content, [`wire_offsets_to_byte_range`] to a
-/// whole `&str`. Clamping lives here so both inherit one contract — an
-/// offset past `text` lands at its end, and one that would split a
-/// multi-byte char or a UTF-16 surrogate pair rounds *down* to that char's
-/// start rather than landing mid-char (ropey's `byte_to_char` /
-/// `utf16_cu_to_char` guarantee that for any in-bounds code-unit index,
-/// on-boundary or not).
+/// The shared step of every wire→char conversion here: [`wire_to_line_char_col`]
+/// applies it to one line's content (where the result *is* a line-relative
+/// char column — it wraps this in [`CharCol`] itself, the one place that's
+/// true), [`wire_offsets_to_byte_range`] to a whole server-authored `&str`
+/// (where it isn't). Domain-free like `hume_rope::width`'s primitives, for
+/// the same reason: this function has no way to know which domain `text`
+/// is in, so it returns a bare index and leaves wrapping to whichever caller
+/// actually knows.
 ///
-/// Returns [`CharCol`]: the result is always a line-relative char column —
-/// `wire_to_line_char_col`'s second element directly, never a bare index to
-/// re-wrap at the call site.
-pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEncoding) -> CharCol {
-    CharCol::new(match enc {
+/// Clamping lives here so both callers inherit one contract — an offset past
+/// `text` lands at its end, and one that would split a multi-byte char or a
+/// UTF-16 surrogate pair rounds *down* to that char's start rather than
+/// landing mid-char (ropey's `byte_to_char` / `utf16_cu_to_char` guarantee
+/// that for any in-bounds code-unit index, on-boundary or not).
+fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEncoding) -> usize {
+    match enc {
         PositionEncoding::Utf8 => text.byte_to_char(offset.min(text.len_bytes())),
         PositionEncoding::Utf16 => text.utf16_cu_to_char(offset.min(text.len_utf16_cu())),
-    })
+    }
 }
 
 /// `(line, character)` → `(clamped line, line-relative char column)`.
@@ -100,7 +103,7 @@ pub fn wire_offset_to_char(text: RopeSlice<'_>, offset: usize, enc: PositionEnco
 /// treating the raw code-unit offset as a final cursor position. `line`
 /// past EOF clamps to the last line here; `character` clamps to the line's
 /// wire-domain content end because that is the extent of the slice handed
-/// to [`wire_offset_to_char`], which owns the rest of the clamp contract.
+/// to `wire_offset_to_char_index`, which owns the rest of the clamp contract.
 pub fn wire_to_line_char_col(
     text: &Rope,
     pos: WirePos,
@@ -109,7 +112,10 @@ pub fn wire_to_line_char_col(
     let line = RopeyLine::clamped(text, pos.line);
     let line_start = crate::lines::line_start_char(text, line).index();
     let content = text.slice(line_start..line_terminator_start(text, line).index());
-    (line, wire_offset_to_char(content, pos.character, enc))
+    (
+        line,
+        CharCol::new(wire_offset_to_char_index(content, pos.character, enc)),
+    )
 }
 
 /// `(line, character)` → char offset.
@@ -161,8 +167,8 @@ pub fn wire_offsets_to_byte_range(
     enc: PositionEncoding,
 ) -> Range<usize> {
     let slice = RopeSlice::from(text);
-    let start_byte = slice.char_to_byte(wire_offset_to_char(slice, start, enc).index());
-    let end_byte = slice.char_to_byte(wire_offset_to_char(slice, end, enc).index());
+    let start_byte = slice.char_to_byte(wire_offset_to_char_index(slice, start, enc));
+    let end_byte = slice.char_to_byte(wire_offset_to_char_index(slice, end, enc));
     start_byte..end_byte.max(start_byte)
 }
 

@@ -184,6 +184,38 @@ fn resizing_while_a_tab_is_hidden_leaves_it_stale_until_refocused() {
     );
 }
 
+/// The switch itself must resync the incoming tab's viewport dims — not
+/// just the next frame's `prepare_frame`. A command dispatch that switches
+/// tabs and then reads pane geometry in the same call (a scroll bound to a
+/// tab-switch key, a Steel body chaining a motion onto `goto-next-tab`)
+/// would otherwise see the outgoing tab's stale width/height.
+#[test]
+fn switching_to_a_tab_resyncs_its_viewport_before_the_next_frame() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.execute_typed("tabnew", None).unwrap();
+    let pid_b = ed.state.focus.id();
+    frame(&mut ed, 80, 25);
+    let width_before = ed.view.panes[pid_b].viewport.width;
+    assert!(
+        width_before > 40,
+        "setup: B sized to the wide terminal while active"
+    );
+
+    ed.execute_typed("tabprev", None).unwrap();
+    frame(&mut ed, 40, 10);
+    assert_eq!(
+        ed.view.panes[pid_b].viewport.width, width_before,
+        "setup: B stale while hidden, per the test above"
+    );
+
+    // No `frame`/`prepare_frame` call after this — the switch alone must resync.
+    ed.execute_typed("tabnext", None).unwrap();
+    assert_ne!(
+        ed.view.panes[pid_b].viewport.width, width_before,
+        "B's viewport must resync the moment its tab goes live, before any frame runs"
+    );
+}
+
 /// `:q` on a tab's own last pane closes the tab (Vim's placement), not the
 /// editor — `view.panes.len()` is a global pool shared by every tab, so it
 /// stays `> 1` here even though the active tab has just this one pane.
@@ -251,6 +283,61 @@ fn tabclose_on_the_leftmost_tab_focuses_its_right_neighbour() {
         ed.state.tabs.current(),
         tab_b,
         "closing the leftmost tab focuses its right neighbour, not a wrap to the last tab"
+    );
+}
+
+/// The common case: closing a middle tab focuses its *right* neighbour —
+/// Vim's own `:tabclose` default. Left-preference only kicks in for the
+/// rightmost tab (see the test below), which this codebase implements as
+/// its own default rather than opting into Vim 9.1's `'tabclose'=left`.
+#[test]
+fn tabclose_in_the_middle_focuses_its_right_neighbour() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let tab_a = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_c = ed.state.tabs.current();
+    assert_eq!(ed.state.tabs.order(), &[tab_a, tab_b, tab_c]);
+
+    ed.execute_typed("tabprev", None).unwrap();
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_b,
+        "sanity: focused on B, middle"
+    );
+
+    ed.execute_typed("tabclose", None).unwrap();
+
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_c,
+        "closing a middle tab focuses its right neighbour, not the left one \
+         `open_after_current`'s own insert-after-current placement came from"
+    );
+}
+
+/// Left-preference is the fallback, reachable only from the rightmost tab
+/// (there is no right neighbour to prefer).
+#[test]
+fn tabclose_on_the_rightmost_tab_focuses_its_left_neighbour() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let tab_a = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    assert_eq!(ed.state.tabs.order(), &[tab_a, tab_b]);
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_b,
+        "sanity: focused on B, rightmost"
+    );
+
+    ed.execute_typed("tabclose", None).unwrap();
+
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_a,
+        "closing the rightmost tab falls back to its left neighbour"
     );
 }
 
@@ -677,6 +764,80 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
         Some(EditorSettings::default().tab_width + 1),
         "switching buffer in place at unchanged (top_line, height) must still \
          re-fire on-viewport-change"
+    );
+}
+
+/// A pane's debounced `on-viewport-change` timer must not fire with its
+/// frozen bounds if the pane's tab went to the background before the timer
+/// came due. `prepare_frame`'s own housekeeping (dropping
+/// `last_viewport_key`, retiring `viewport_debounce` on close) only runs
+/// for a pane no longer in the pool at all — a background-tab pane still is
+/// — and the timer can come due from `settle()`'s drain, which runs
+/// *before* that housekeeping even sees the pane leave the active set. The
+/// guard belongs in `queue_viewport_change` itself, the one chokepoint
+/// every fire (this debounce timer, a config reload's resync) goes through.
+#[test]
+fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_background_first() {
+    let tmp = safe_tempdir();
+    // A second, distinct file for the new tab — `tabnew` with no argument
+    // would instead duplicate A's own pane onto its same buffer, which
+    // would still legitimately re-arm and fire for bid_a from the new
+    // pane, defeating the point of backgrounding it.
+    let other = tmp.path().join("other.txt");
+    std::fs::write(&other, "hi\n").unwrap();
+
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
+    ed.state.settings.lsp_viewport_debounce_ms = 0;
+    let bid_a = ed.focused_buffer_id();
+    seed_frame(&mut ed, 40, 3); // baseline last_viewport_key[pid_a] at top_line 0
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-viewport-change (lambda (bid first end)
+             (set-buffer-option! bid "tab-width" (+ 1 (get-option bid "tab-width")))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    // Scroll A, arming its debounce timer (ms=0, so due on the very next drain).
+    seek_to_line(&mut ed, 4);
+    frame(&mut ed, 40, 3);
+
+    // Switch away before that timer is drained — the dispatch alone, no
+    // frame in between, mirrors a tab-switch keypress landing right after
+    // the scroll that armed the timer.
+    ed.execute_typed("tabnew", Some(other.to_str().unwrap()))
+        .unwrap();
+
+    // The new tab's own next frame drains the still-pending timer, inside
+    // its `settle()` — which runs before this same frame's own housekeeping
+    // drops pid_a's `last_viewport_key`. Must not fire on-viewport-change for A.
+    // (It legitimately arms and fires for the new tab's own buffer — that's
+    // not under test here.)
+    frame(&mut ed, 40, 3);
+    ed.drain_async_sources();
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid_a).overrides.tab_width,
+        None,
+        "a pane's tab going to the background before its debounce timer fires \
+         must suppress that fire, not deliver it with frozen bounds"
+    );
+
+    // Returning to A must still re-fire, at whatever its (unchanged) geometry
+    // now is — the suppression above must not have also skipped this.
+    ed.execute_typed("tabprev", None).unwrap();
+    frame(&mut ed, 40, 3);
+    ed.drain_async_sources();
+    ed.settle();
+
+    assert_eq!(
+        ed.state.buffers.get(bid_a).overrides.tab_width,
+        Some(EditorSettings::default().tab_width + 1),
+        "returning to A's tab must still re-fire on-viewport-change exactly once"
     );
 }
 

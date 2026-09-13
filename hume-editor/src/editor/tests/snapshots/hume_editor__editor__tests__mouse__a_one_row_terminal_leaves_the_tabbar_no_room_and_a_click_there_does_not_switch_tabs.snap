@@ -1,0 +1,5 @@
+---
+source: hume-editor/src/editor/tests/mouse.rs
+expression: "render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 1))"
+---
+<fg=#140e0a,bg=#d4a373,bold>     1:1 *scratch*                </><fg=#2d211a,bg=#d4a373,bold>│</><fg=#140e0a,bg=#d4a373,bold> NOR</>

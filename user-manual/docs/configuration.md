@@ -268,9 +268,8 @@ listed alternative is where to put the color instead:
 - `ui.cursorline.secondary` — only the primary selection's line is tinted, via
   `ui.cursorline.primary`
 - `ui.background.separator` — HUME's prompt line has no separator rule beneath it
-- `ui.bufferline`, `ui.bufferline.active`, `ui.bufferline.background` — HUME's tab bar is a
-  saved window layout per tab (Vim's tab pages), not a per-buffer strip; style it with
-  `ui.tabline` / `ui.tabline.active` instead
+- `ui.bufferline.background` — the tab bar's ground comes from `ui.tabline` (or
+  `ui.bufferline`, see below), not a separate background layer
 
 #### Scopes HUME reads differently
 
@@ -284,6 +283,13 @@ statusline row by mode, so leaving this scope undefined takes the row's own curr
 rather than the untinted `ui.statusline` — otherwise the separator would show through a
 mode-tinted row as a stripe of the wrong color. Set it explicitly and that wins, in every
 mode.
+
+HUME's tab bar is a saved window layout per tab (Vim's tab pages), not a per-buffer strip,
+so it's styled with its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's
+`ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter — every Helix
+theme, since `ui.tabline` is HUME's own addition — still renders correctly: `ui.tabline`
+falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`,
+so the bar picks up a ported theme's colors without it needing to name HUME's scopes at all.
 
 ## Key bindings
 

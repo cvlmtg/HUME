@@ -337,10 +337,12 @@ pub(crate) fn line_to_offset(ctx: &mut SteelCtx, bid: BidArg, line: SteelVal) ->
 }
 
 /// `(viewport-range bid)` → `(first-line . end-line)` currently visible
-/// for `bid` (the focused pane's if shown there, else the first pane showing
-/// it) — 0-based, end-exclusive, matching `buffer-lines`' range convention —
-/// or `#f` if `bid` isn't open in any pane. Reads live view state, which
-/// only exists at command dispatch, hook fire, or a queued-call drain.
+/// for `bid` (the focused pane's if shown there, else the first *active-tab*
+/// pane showing it) — 0-based, end-exclusive, matching `buffer-lines`' range
+/// convention — or `#f` if `bid` isn't shown in a pane on the active tab,
+/// including a buffer visible only in a background tab. Reads live view
+/// state, which only exists at command dispatch, hook fire, or a queued-call
+/// drain.
 pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     match ctx.host.buffers().viewport_range(id) {

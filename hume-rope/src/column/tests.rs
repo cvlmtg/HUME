@@ -84,6 +84,17 @@ fn buffer_line_col_shift_moves_forward_and_backward_and_saturates_at_zero() {
 }
 
 #[test]
+fn buffer_line_col_shift_saturates_at_u32_max_instead_of_wrapping_negative() {
+    // A delta outside i32's range must saturate, not narrow-and-wrap: a
+    // naive `delta as i32` turns +5_000_000_000 negative and would shift
+    // `self` down instead of saturating at u32::MAX.
+    assert_eq!(
+        BufferLineCol::new(0).shift(5_000_000_000),
+        BufferLineCol::new(u32::MAX)
+    );
+}
+
+#[test]
 fn char_col_round_trips_through_index() {
     assert_eq!(CharCol::new(4).index(), 4);
 }

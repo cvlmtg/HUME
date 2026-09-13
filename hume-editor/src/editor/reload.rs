@@ -292,13 +292,18 @@ impl Editor {
         // `core:lsp`'s inlay.scm) are otherwise only repopulated the next
         // time the pane's viewport genuinely moves — which a reload alone
         // never causes — so a clean buffer would show no inlay hints until
-        // the user scrolls. Every pane, not just the active tab's — see above.
+        // the user scrolls. Active-tab panes only: a background-tab pane's
+        // `viewport-range` reads `#f` (`pane_showing_buffer`'s active-tab
+        // restriction), so the same handlers this is meant to repopulate
+        // would just skip. A hidden pane's own repopulation happens when its
+        // tab is next focused — `queue_viewport_change`'s active-tab guard
+        // dropped its `last_viewport_key`, so that pane's first visible
+        // frame reads as a change.
         let panes_on_surviving_buffers: Vec<hume_engine::pipeline::PaneId> = self
             .view
-            .panes
-            .every_pane_across_all_tabs()
-            .filter(|(_, pane)| snapshot.survives(pane.buffer_id, &self.state.buffers))
-            .map(|(pid, _)| pid)
+            .active_pane_ids()
+            .into_iter()
+            .filter(|&pid| snapshot.survives(self.view.panes[pid].buffer_id, &self.state.buffers))
             .collect();
         for pane_id in panes_on_surviving_buffers {
             self.queue_viewport_change(pane_id);

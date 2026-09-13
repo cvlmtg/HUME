@@ -286,3 +286,90 @@ fn tabline_active_falls_back_to_the_base_tabline_scope_when_undefined() {
 
     assert_eq!(colors.active, colors.inactive);
 }
+
+#[test]
+fn tabline_colors_falls_back_to_helix_s_bufferline_scopes_when_untabbed() {
+    // A Helix theme (or one ported from Helix) defines `ui.bufferline*` and
+    // never `ui.tabline` — without a fallback, both slots would collapse to
+    // the bare default scope and the bar would have no ground at all.
+    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+    styles.insert(
+        "ui.bufferline",
+        ResolvedStyle {
+            fg: Some(Rgb(200, 200, 200)),
+            bg: Some(Rgb(30, 30, 30)),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.bufferline.active",
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            bg: Some(Rgb(60, 60, 60)),
+            ..Default::default()
+        },
+    );
+    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let colors = TablineColors::from_theme(&theme);
+
+    assert_eq!(
+        colors.inactive,
+        ResolvedStyle {
+            fg: Some(Rgb(200, 200, 200)),
+            bg: Some(Rgb(30, 30, 30)),
+            ..Default::default()
+        },
+        "inactive must read ui.bufferline when ui.tabline is unthemed"
+    );
+    assert_eq!(
+        colors.active,
+        ResolvedStyle {
+            fg: Some(Rgb(255, 255, 0)),
+            bg: Some(Rgb(60, 60, 60)),
+            ..Default::default()
+        },
+        "active must read ui.bufferline.active when ui.tabline.active is unthemed"
+    );
+}
+
+#[test]
+fn tabline_colors_prefers_its_own_scopes_over_bufferline_when_both_are_themed() {
+    let mut styles: HashMap<&'static str, ResolvedStyle> = HashMap::new();
+    styles.insert(
+        "ui.tabline",
+        ResolvedStyle {
+            fg: Some(Rgb(1, 1, 1)),
+            bg: Some(Rgb(2, 2, 2)),
+            ..Default::default()
+        },
+    );
+    styles.insert(
+        "ui.bufferline",
+        ResolvedStyle {
+            fg: Some(Rgb(9, 9, 9)),
+            bg: Some(Rgb(9, 9, 9)),
+            ..Default::default()
+        },
+    );
+    let theme = hume_engine::theme::Theme::new(styles, ResolvedStyle::default());
+    let colors = TablineColors::from_theme(&theme);
+
+    assert_eq!(
+        colors.inactive,
+        ResolvedStyle {
+            fg: Some(Rgb(1, 1, 1)),
+            bg: Some(Rgb(2, 2, 2)),
+            ..Default::default()
+        },
+        "ui.tabline must win over ui.bufferline when both are themed"
+    );
+}
+
+#[test]
+fn tabline_colors_falls_back_to_default_when_neither_tabline_nor_bufferline_is_themed() {
+    let theme = hume_engine::theme::Theme::new(HashMap::new(), ResolvedStyle::default());
+    let colors = TablineColors::from_theme(&theme);
+
+    assert_eq!(colors.inactive, ResolvedStyle::default());
+    assert_eq!(colors.active, ResolvedStyle::default());
+}

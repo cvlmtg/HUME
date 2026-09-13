@@ -165,31 +165,27 @@ impl BufferLineCol {
         DisplayLineCol(self.0)
     }
 
-    /// `self` shifted by a signed cell delta, saturating at 0 rather
-    /// than panicking on a negative result — unlike
-    /// `CharOffset::shift`, a display column legitimately clamps to 0
-    /// when a multi-cursor edit's running delta outpaces the column
-    /// it's applied to (e.g. a wide deletion collapsing a later
-    /// cursor's indent target); that is the caller's intended
-    /// behavior, not a bug this type should catch.
+    /// `self` shifted by a signed cell delta, saturating at both ends
+    /// rather than panicking — unlike `CharOffset::shift`, a display column
+    /// legitimately clamps to 0 when a multi-cursor edit's running delta
+    /// outpaces the column it's applied to (e.g. a wide deletion collapsing
+    /// a later cursor's indent target); that is the caller's intended
+    /// behavior, not a bug this type should catch. Widens through `i64`
+    /// before clamping back to `u32` rather than calling
+    /// `saturating_add_signed` (which takes `i32`, not `isize`) directly —
+    /// narrowing `delta` first would wrap a delta outside `i32`'s range
+    /// (e.g. `indent_lines`'s `delta_display_col`, `u32`-bounded but built
+    /// as `isize`) into a small or negative number instead of saturating.
     ///
-    /// `delta as i32` narrows before `saturating_add_signed` (which
-    /// takes `i32`, not `isize`) — silently wrapping, not saturating,
-    /// for a `delta` outside `i32`'s range: a sufficiently large
-    /// positive delta could wrap negative and shift `self` *down*
-    /// instead of saturating upward. Not reachable today — both
-    /// callers (`hume-ops/src/edit/insert.rs`, and
-    /// `edit/align.rs`'s `align_selections`, tracking its own
-    /// per-line `line_shift`) accumulate a running delta within one
-    /// buffer line, far short of `i32::MAX` cells — but a future
-    /// caller summing deltas across a whole buffer should not assume
-    /// this saturates the way the rest of this method's doc does.
-    ///
-    /// Buffer-line-relative only: its two callers both track a running
-    /// delta within one buffer line, so this lives on `BufferLineCol` alone
+    /// Buffer-line-relative only: its callers each track a running delta
+    /// within one buffer line, so this lives on `BufferLineCol` alone
     /// rather than in the shared macro.
     pub fn shift(self, delta: isize) -> Self {
-        Self(self.0.saturating_add_signed(delta as i32))
+        Self(
+            (self.0 as i64)
+                .saturating_add(delta as i64)
+                .clamp(0, u32::MAX as i64) as u32,
+        )
     }
 }
 
