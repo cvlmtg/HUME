@@ -6,7 +6,7 @@ use hume_scripting::host::{BufferHost, LanguageHost};
 use crate::editor::Editor;
 use crate::editor::tests::{co, init_host};
 
-use super::{line_start_offset, validate_offset, virtual_line_segments_to_bytes};
+use super::decorations::{line_start_offset, validate_offset, virtual_line_segments_to_bytes};
 
 #[test]
 fn close_buffer_errs_when_id_unknown() {
