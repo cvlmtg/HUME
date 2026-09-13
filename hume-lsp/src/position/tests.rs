@@ -35,3 +35,23 @@ fn to_lsp_range_rejects_a_character_past_u32() {
     let range = ExclusiveRange::new(wp(0, 0), wp(0, u64::from(u32::MAX) as usize + 1));
     assert_eq!(to_lsp_range(range), None);
 }
+
+#[test]
+fn to_json_position_matches_protocol_shape() {
+    assert_eq!(
+        to_json_position(wp(3, 7)),
+        serde_json::json!({"line": 3, "character": 7})
+    );
+}
+
+#[test]
+fn to_json_range_matches_protocol_shape() {
+    let range = ExclusiveRange::new(wp(3, 7), wp(4, 0));
+    assert_eq!(
+        to_json_range(range),
+        serde_json::json!({
+            "start": {"line": 3, "character": 7},
+            "end": {"line": 4, "character": 0},
+        })
+    );
+}

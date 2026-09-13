@@ -194,7 +194,7 @@ pub(in crate::editor) fn position_params(
         hume_rope::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
-        "position": {"line": pos.line, "character": pos.character},
+        "position": hume_lsp::position::to_json_position(pos),
     }))
 }
 
@@ -547,10 +547,7 @@ fn char_range_to_wire(
         hume_rope::offset::ExclusiveRange::new(range.start, end_exclusive),
         encoding,
     );
-    serde_json::json!({
-        "start": {"line": wire_range.start.line, "character": wire_range.start.character},
-        "end": {"line": wire_range.end.line, "character": wire_range.end.character},
-    })
+    hume_lsp::position::to_json_range(wire_range)
 }
 
 /// Ready-made range params from `id`'s primary selection alone — the shape

@@ -1,4 +1,5 @@
-//! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range` conversion.
+//! `hume_rope::position_encoding::WirePos` ↔ the protocol's own wire
+//! representations: `lsp_types::Range` and the raw JSON object shape.
 //!
 //! `hume-rope` deliberately has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
@@ -39,6 +40,21 @@ pub fn from_lsp_range(range: &lsp_types::Range) -> ExclusiveRange<WirePos> {
         }
     }
     ExclusiveRange::new(from_position(range.start), from_position(range.end))
+}
+
+/// A wire position as the protocol's own JSON object. No `u32` narrowing and
+/// so no `Option`, unlike `to_lsp_range`: JSON numbers carry a `usize`
+/// directly.
+pub fn to_json_position(pos: WirePos) -> serde_json::Value {
+    serde_json::json!({"line": pos.line, "character": pos.character})
+}
+
+/// A wire range as the protocol's `{"start", "end"}` object.
+pub fn to_json_range(range: ExclusiveRange<WirePos>) -> serde_json::Value {
+    serde_json::json!({
+        "start": to_json_position(range.start),
+        "end": to_json_position(range.end),
+    })
 }
 
 #[cfg(test)]
