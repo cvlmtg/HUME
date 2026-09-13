@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::column::{ByteCol, CharCol};
 use hume_rope::lines::line_token_content;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::commands::effective_word_chars;
 use crate::editor::diff_bridge;
@@ -1146,9 +1146,9 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = hints
             .into_iter()
             .map(|(pos, hint_text, before)| {
-                validate_offset(text, pos, before, "set-inlay-hints!")?;
+                let pos = validate_offset(text, pos, before, "set-inlay-hints!")?;
                 Ok(hume_decorations::InlayHintEntry {
-                    pos: CharOffset::new(pos),
+                    pos,
                     text: hint_text,
                     before,
                 })
@@ -1261,10 +1261,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         let entries = spans
             .into_iter()
             .map(|(start, end, scope)| {
-                validate_range(text, start, end, "set-extra-highlights!")?;
+                let range = validate_range(text, start, end, "set-extra-highlights!")?;
                 Ok(hume_decorations::ExtraHighlightEntry {
-                    start: CharOffset::new(start),
-                    end: CharOffset::new(end),
+                    start: range.start,
+                    end: range.end,
                     scope: self.view.registry.intern_runtime(&scope),
                 })
             })
@@ -1519,7 +1519,7 @@ fn validate_offset(
     pos: usize,
     before: bool,
     builtin: &str,
-) -> Result<(), String> {
+) -> Result<CharOffset, String> {
     if pos >= text.len_chars() {
         return Err(format!(
             "{builtin}: offset {pos} is out of range (buffer has {} chars)",
@@ -1539,7 +1539,9 @@ fn validate_offset(
             ));
         }
     }
-    Ok(())
+    // Trusted mint: both checks above already proved `pos` a valid char
+    // position in `text`.
+    Ok(CharOffset::new(pos))
 }
 
 /// `(start, end)` must be a valid, non-empty char range into `text` — `Err`
@@ -1549,7 +1551,7 @@ fn validate_range(
     start: usize,
     end: usize,
     builtin: &str,
-) -> Result<(), String> {
+) -> Result<ExclusiveRange<CharOffset>, String> {
     if start >= end {
         return Err(format!(
             "{builtin}: range ({start}, {end}) must have start < end"
@@ -1561,7 +1563,12 @@ fn validate_range(
             text.len_chars()
         ));
     }
-    Ok(())
+    // Trusted mint: both checks above already proved `start`/`end` a valid,
+    // non-empty char range in `text`.
+    Ok(ExclusiveRange::new(
+        CharOffset::new(start),
+        CharOffset::new(end),
+    ))
 }
 
 impl<'a> EditHost for EditorHostImpl<'a> {

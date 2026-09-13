@@ -274,8 +274,11 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
     character: usize,
 ) -> Option<usize> {
     let offset = wire_to_char_for_buffer(state, lsp, id, line, character)?;
-    let len_chars = state.buffers.try_get(id)?.text().rope().len_chars();
-    (offset < len_chars).then_some(offset)
+    let text = state.buffers.try_get(id)?.text();
+    // Typed comparison, not a raw `offset < len_chars`: `offset` is already a
+    // valid char position (`wire_to_char_for_buffer` proved it), so this is a
+    // trusted re-mint, not a fresh validation.
+    (hume_rope::offset::CharOffset::new(offset) < text.end()).then_some(offset)
 }
 
 /// `label` sliced by a `ParameterInformation.label` `[start, end)` wire
