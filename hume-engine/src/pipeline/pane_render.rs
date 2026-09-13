@@ -1,5 +1,5 @@
 use hume_grid::Grid;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::display_lines::{DisplayLineMap, DisplayLinePos};
 use crate::render::{self, ComposeCtx};
@@ -193,8 +193,7 @@ pub(crate) fn render_pane(
                 crate::style::style_display_line(
                     rendered.display_line,
                     rendered.graphemes,
-                    line.start_char,
-                    line.end_char,
+                    line.chars,
                     line.is_head_line,
                     line.tint,
                     pane_ctx.settings.mode,
@@ -248,8 +247,7 @@ pub(crate) fn render_pane(
 /// Built once when the walk crosses into a line; building it also rebuilds the
 /// highlight interval buffers, which is the expensive part.
 struct LineStyle {
-    start_char: CharOffset,
-    end_char: CharOffset,
+    chars: ExclusiveRange<CharOffset>,
     is_head_line: bool,
     /// A provider-requested full-row background tint for this line, if any
     /// (`Decoration::LineBg`) — resolved once here and read at both paint
@@ -282,14 +280,14 @@ impl LineStyle {
         );
         let start_char = hume_rope::lines::line_start_char(pane_ctx.rope, line_idx.into());
         let end_char = hume_rope::lines::next_line_start(pane_ctx.rope, line_idx.into());
+        let chars = ExclusiveRange::new(start_char, end_char);
         // Cursorline highlights only the primary cursor's line.
         let is_head_line = style
             .primary_idx_in_sorted
             .and_then(|i| style.sorted_sels.get(i))
-            .is_some_and(|s| s.head >= start_char && s.head < end_char);
+            .is_some_and(|s| chars.contains(s.head));
         Self {
-            start_char,
-            end_char,
+            chars,
             is_head_line,
             tint,
         }

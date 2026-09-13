@@ -138,14 +138,17 @@ impl Editor {
             let first = matches.partition_point(|span| span.start < top_char);
             let mut spans = Vec::new();
             for &span in &matches[first..] {
-                let (start, end_incl) = (span.start, span.end);
-                let start_line = text.char_to_line(start);
+                let start_line = text.char_to_line(span.start);
                 if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
                     break;
                 }
-                // end_incl is inclusive char offset; shift(1) makes it exclusive.
-                let end_char = end_incl.shift(1).min(text.end());
-                push_match_highlight_lines(text, start, end_char, search_scope, &mut spans);
+                let end_char_excl = span.to_exclusive().end.min(text.end());
+                push_match_highlight_lines(
+                    text,
+                    ExclusiveRange::new(span.start, end_char_excl),
+                    search_scope,
+                    &mut spans,
+                );
             }
             self.state.panes.render[pid].set_search(spans);
         }
@@ -226,8 +229,7 @@ impl Editor {
                         // Warning(1) beats Info(2) beats Hint(3) in overlaps.
                         push_priority_highlight_lines(
                             text,
-                            start,
-                            end,
+                            ExclusiveRange::new(start, end),
                             d.severity as u8,
                             diag_scopes[d.severity as usize],
                             &mut raw,
@@ -256,7 +258,13 @@ impl Editor {
                         // source name — the alphabetically-first source wins,
                         // deterministic across sessions rather than whichever
                         // source happened to call `set-extra-highlights!` first.
-                        push_priority_highlight_lines(text, start, end, 0, e.scope, &mut raw);
+                        push_priority_highlight_lines(
+                            text,
+                            ExclusiveRange::new(start, end),
+                            0,
+                            e.scope,
+                            &mut raw,
+                        );
                     }
                     flatten_priority_overlaps(raw)
                 };
@@ -678,14 +686,12 @@ fn visible_line_anchored<'a, K, E: 'a>(
     })
 }
 
-/// Push one `(line, byte_start, byte_end, scope)` quadruple per line the
-/// `[start, end_char_excl)` char range touches, all sharing `scope` — search
-/// matches are the one caller, always one fixed scope per call. See
-/// [`line_segments`].
+/// Push one `(line, byte_start, byte_end, scope)` quadruple per line `range`
+/// touches, all sharing `scope` — search matches are the one caller, always
+/// one fixed scope per call. See [`line_segments`].
 fn push_match_highlight_lines(
     text: &hume_editing::text::BufferText,
-    start: CharOffset,
-    end_char_excl: CharOffset,
+    range: ExclusiveRange<CharOffset>,
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(
         hume_rope::line::ContentLine,
@@ -694,21 +700,19 @@ fn push_match_highlight_lines(
         hume_engine::types::ScopeId,
     )>,
 ) {
-    if start >= end_char_excl {
+    if range.start >= range.end {
         return;
     }
-    data.extend(line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, scope)));
+    data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, scope)));
 }
 
 /// Push one `(line, byte_start, byte_end, priority, scope)` quintuple per
-/// line the `[start, end_char_excl)` char range touches. See
-/// [`line_segments`]; `priority` and `scope` are carried through unchanged
-/// for [`flatten_priority_overlaps`] to resolve same-line overlaps from
-/// (lower `priority` wins — see that function).
+/// line `range` touches. See [`line_segments`]; `priority` and `scope` are
+/// carried through unchanged for [`flatten_priority_overlaps`] to resolve
+/// same-line overlaps from (lower `priority` wins — see that function).
 fn push_priority_highlight_lines(
     text: &hume_editing::text::BufferText,
-    start: CharOffset,
-    end_char_excl: CharOffset,
+    range: ExclusiveRange<CharOffset>,
     priority: u8,
     scope: hume_engine::types::ScopeId,
     data: &mut Vec<(
@@ -719,12 +723,10 @@ fn push_priority_highlight_lines(
         hume_engine::types::ScopeId,
     )>,
 ) {
-    if start >= end_char_excl {
+    if range.start >= range.end {
         return;
     }
-    data.extend(
-        line_segments(text, start, end_char_excl).map(|(l, s, e)| (l, s, e, priority, scope)),
-    );
+    data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, priority, scope)));
 }
 
 /// Flattens overlapping same-line `(start, end, priority, scope)` spans

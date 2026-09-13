@@ -6,7 +6,7 @@ use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme, Resolved
 use hume_grid::Rgb;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
@@ -53,15 +53,15 @@ fn apply_styles(
         }
         let line_start_char = co(hume_rope::lines::line_start_char(rope, line_idx).index());
         let line_end_char = hume_rope::lines::next_line_start(rope, line_idx);
+        let line_chars = ExclusiveRange::new(line_start_char, line_end_char);
         let is_head_line = scratch
             .primary_idx_in_sorted
             .and_then(|i| scratch.sorted_sels.get(i))
-            .is_some_and(|s| s.head >= line_start_char && s.head < line_end_char);
+            .is_some_and(|s| line_chars.contains(s.head));
         style_display_line(
             dline,
             graphemes,
-            line_start_char,
-            line_end_char,
+            line_chars,
             is_head_line,
             tint,
             mode,
@@ -156,8 +156,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
     style_display_line(
         &lines[0],
         &graphemes,
-        co(0),
-        co(3),
+        ExclusiveRange::new(co(0), co(3)),
         false, // not the cursor line — isolates the tint's own contribution
         Some(tint_scope),
         EditorMode::Normal,

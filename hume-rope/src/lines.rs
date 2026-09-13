@@ -9,7 +9,7 @@ use ropey::{Rope, RopeSlice};
 
 use crate::column::{BufferLineCol, ByteCol, CharCol, GraphemeCol};
 use crate::line::{ContentLine, ContentLineCount, RopeyLine, RopeyLineCount};
-use crate::offset::CharOffset;
+use crate::offset::{CharOffset, ExclusiveRange};
 
 /// True if `rope` satisfies the trailing-newline invariant every HUME
 /// buffer upholds by construction: empty, or ending in `'\n'`. The single
@@ -496,16 +496,18 @@ pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usi
 }
 
 /// Yield `(line, byte_start, byte_end)` for each line the *non-empty*
-/// `[start, end_char_excl)` char range covers at least one char of content
-/// on, clipped to that line's own content (up to but excluding its trailing
-/// `\n`). Caller must check `start < end_char_excl` first.
+/// `range` char range covers at least one char of content on, clipped to
+/// that line's own content (up to but excluding its trailing `\n`). Caller
+/// must check `range.start < range.end` first — no `is_empty` exists on
+/// `ExclusiveRange` to check it with.
 ///
 /// A single-line range yields one triple, byte-identical to converting
-/// `start`/`end_char_excl` directly with [`char_to_line_byte`]. A multi-line
-/// range yields one triple per line it covers content on. The clip point is
-/// deliberately the `\n` char's own position, not [`next_line_start`] —
-/// the latter is the *next* line's start, which `char_to_line_byte` would
-/// resolve to the wrong line (byte 0 of the line after).
+/// `range.start`/`range.end` directly with [`char_to_line_byte`]. A
+/// multi-line range yields one triple per line it covers content on. The
+/// clip point is deliberately the `\n` char's own position, not
+/// [`next_line_start`] — the latter is the *next* line's start, which
+/// `char_to_line_byte` would resolve to the wrong line (byte 0 of the line
+/// after).
 ///
 /// A range whose `start` lands exactly on a line's own `\n` (its author
 /// meant "right after this line's last char", e.g. an LSP diagnostic
@@ -517,23 +519,24 @@ pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usi
 /// the same position, which that flattening rejects by contract.
 pub fn line_segments(
     rope: &Rope,
-    start: CharOffset,
-    end_char_excl: CharOffset,
+    range: ExclusiveRange<CharOffset>,
 ) -> impl Iterator<Item = (ContentLine, ByteCol, ByteCol)> + '_ {
     // Converts the exclusive bound to the range's own last char, only to
     // find which *line* that char is on (`char_to_line` below) — never used
     // as a cursor or slice position, so landing mid-cluster (a combining
     // mark can't cross the line it's on) is harmless here. Never underflows:
-    // the caller-checked `start < end_char_excl` precondition puts
-    // `end_char_excl` at `>= 1`.
-    let last_char = end_char_excl.shift(-1);
-    let start_line = rope.char_to_line(start.index());
+    // the caller-checked `range.start < range.end` precondition puts
+    // `range.end` at `>= 1`.
+    let last_char = range.end.shift(-1);
+    let start_line = rope.char_to_line(range.start.index());
     let end_line = rope.char_to_line(last_char.index());
     (start_line..=end_line).filter_map(move |line_idx| {
         let line = ContentLine::new(line_idx);
         let line_newline = line_break_char(rope, line);
-        let seg_start = start.max(CharOffset::new(rope.line_to_char(line_idx)));
-        let seg_end = end_char_excl.min(line_newline);
+        let seg_start = range
+            .start
+            .max(CharOffset::new(rope.line_to_char(line_idx)));
+        let seg_end = range.end.min(line_newline);
         if seg_start >= seg_end {
             return None;
         }

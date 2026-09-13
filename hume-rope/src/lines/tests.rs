@@ -710,7 +710,7 @@ fn line_segments_yields_one_triple_per_line_covered() {
     let buf = rope("abc\ndef\nghi\n");
     let start = line_start_char(&buf, RopeyLine::new(0));
     let end = co(line_start_char(&buf, RopeyLine::new(2)).index() + 2); // through "gh" on line 2
-    let segs: Vec<_> = line_segments(&buf, start, end)
+    let segs: Vec<_> = line_segments(&buf, ExclusiveRange::new(start, end))
         .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
     assert_eq!(segs, vec![(0, 0, 3), (1, 0, 3), (2, 0, 2)]);
@@ -727,7 +727,7 @@ fn line_segments_skips_a_line_the_range_only_touches_at_its_own_newline() {
     let buf = rope("abc\ndef\n");
     let start = co(line_start_char(&buf, RopeyLine::new(0)).index() + 3); // line 0's own '\n'
     let end = co(line_start_char(&buf, RopeyLine::new(1)).index() + 2); // through "de" on line 1
-    let segs: Vec<_> = line_segments(&buf, start, end)
+    let segs: Vec<_> = line_segments(&buf, ExclusiveRange::new(start, end))
         .map(|(l, s, e)| (l.index(), s.index(), e.index()))
         .collect();
     assert_eq!(segs, vec![(1, 0, 2)]);

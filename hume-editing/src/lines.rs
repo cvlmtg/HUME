@@ -4,7 +4,7 @@
 
 use hume_rope::column::{BufferLineCol, ByteCol, CharCol, GraphemeCol};
 use hume_rope::line::{ContentLine, RopeyLine};
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::selection::Selection;
 use crate::text::BufferText;
@@ -86,10 +86,9 @@ pub fn char_to_line_byte(text: &BufferText, char_pos: CharOffset) -> (RopeyLine,
 /// See [`hume_rope::lines::line_segments`].
 pub fn line_segments(
     text: &BufferText,
-    start: CharOffset,
-    end_char_excl: CharOffset,
+    range: ExclusiveRange<CharOffset>,
 ) -> impl Iterator<Item = (ContentLine, ByteCol, ByteCol)> + '_ {
-    hume_rope::lines::line_segments(text.rope(), start, end_char_excl)
+    hume_rope::lines::line_segments(text.rope(), range)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

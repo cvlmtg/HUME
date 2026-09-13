@@ -4,7 +4,7 @@ pub use highlight::TierBufs;
 pub(crate) use highlight::rebuild_line_decorations;
 
 use hume_rope::column::{ByteCol, DisplayLineCol};
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::providers::Decoration;
 use crate::theme::Theme;
@@ -118,8 +118,7 @@ impl Default for StyleScratch {
 pub(crate) fn style_display_line(
     display_line: &DisplayLine,
     graphemes: &[Grapheme],
-    line_start_char: CharOffset,
-    line_end_char: CharOffset,
+    line_chars: ExclusiveRange<CharOffset>,
     is_head_line: bool,
     line_tint: Option<ScopeId>,
     mode: EditorMode,
@@ -136,8 +135,7 @@ pub(crate) fn style_display_line(
         .map(|idx| scratch.sorted_sels[idx].head < scratch.sorted_sels[idx].anchor)
         .unwrap_or(false);
     collect_selection_spans(
-        line_start_char,
-        line_end_char,
+        line_chars,
         &scratch.sorted_sels,
         primary_idx,
         graphemes,
@@ -146,8 +144,7 @@ pub(crate) fn style_display_line(
         &mut scratch.primary_sel_span,
     );
     collect_head_display_cols(
-        line_start_char,
-        line_end_char,
+        line_chars,
         &scratch.sorted_sels,
         primary_idx,
         graphemes,
@@ -312,9 +309,9 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 
 /// Collect (start_display_col, end_display_col_exclusive) spans for the given line within `grapheme_range`.
 ///
-/// `line_start_char` / `line_end_char` are the half-open absolute-char range of
-/// the buffer line being rendered (from `rope.line_to_char`). Selections use
-/// absolute char offsets.
+/// `line_chars` is the half-open absolute-char range of the buffer line
+/// being rendered (from `rope.line_to_char`). Selections use absolute char
+/// offsets.
 ///
 /// Also sets `primary_sel_span` when the primary selection (at `primary_idx` in
 /// `sorted_sels`) has a visible span on this display line.
@@ -329,10 +326,8 @@ fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> Resol
 /// head-sorted-vs-start-sorted subtlety around `pane.selections`, which has
 /// bitten this project before. Not worth it for microseconds; do not
 /// "optimize" this into the windowed form without re-deriving that trade-off.
-#[allow(clippy::too_many_arguments)]
 fn collect_selection_spans(
-    line_start_char: CharOffset,
-    line_end_char: CharOffset,
+    line_chars: ExclusiveRange<CharOffset>,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -369,7 +364,7 @@ fn collect_selection_spans(
         let (start, end) = (span.start, span.end);
 
         // Skip if the selection doesn't overlap this line at all.
-        if start >= line_end_char || end < line_start_char {
+        if start >= line_chars.end || end < line_chars.start {
             continue;
         }
 
@@ -377,11 +372,11 @@ fn collect_selection_spans(
         // function works in `Grapheme.char_offset`'s bare-`usize` space (see
         // above) since `sel_char_end` must be able to hold that field's
         // `usize::MAX` sentinel, which `CharOffset` has no representation for.
-        let sel_char_start = start.max(line_start_char).index();
+        let sel_char_start = start.max(line_chars.start).index();
         // `usize::MAX` signals "extends past the end of this display line" — the
         // display_col fallback below will then use the last grapheme's
         // trailing column.
-        let sel_char_end = if end < line_end_char {
+        let sel_char_end = if end < line_chars.end {
             end.index()
         } else {
             usize::MAX
@@ -425,15 +420,13 @@ fn collect_selection_spans(
 
 /// Collect the display column of each selection head on this line within `grapheme_range`.
 ///
-/// `line_start_char` / `line_end_char` are the half-open absolute-char range of
-/// the buffer line. Heads outside this range are skipped.
+/// `line_chars` is the half-open absolute-char range of the buffer line.
+/// Heads outside this range are skipped.
 ///
 /// Also sets `primary_head_display_col` when the primary selection (identified
 /// by `primary_idx`) has its head on this display line.
-#[allow(clippy::too_many_arguments)]
 fn collect_head_display_cols(
-    line_start_char: CharOffset,
-    line_end_char: CharOffset,
+    line_chars: ExclusiveRange<CharOffset>,
     sorted_sels: &[Selection],
     primary_idx: Option<usize>,
     graphemes: &[Grapheme],
@@ -444,7 +437,7 @@ fn collect_head_display_cols(
     out.clear();
     *primary_head_display_col = None;
     for (idx, sel) in sorted_sels.iter().enumerate() {
-        if sel.head < line_start_char || sel.head >= line_end_char {
+        if !line_chars.contains(sel.head) {
             continue;
         }
         if let Some(display_col) =
