@@ -2,7 +2,6 @@ use super::MotionMode;
 use hume_editing::lines::{is_line_start, line_break_char, next_line_start};
 use hume_editing::selection::{Selection, SelectionSet, is_selection_linewise};
 use hume_editing::text::BufferText;
-use hume_rope::line::ContentLine;
 
 // ── Line selection motions ────────────────────────────────────────────────────
 
@@ -52,23 +51,17 @@ fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selectio
 
     let anchor_line = text.char_to_line(sel.anchor());
     let head_line = text.char_to_line(sel.head());
-    if delta > 0 {
+    let new_head_line = if delta > 0 {
         if next_line_start(text, head_line.into()) >= text.end() {
             return sel; // head already on the last line — clamp
         }
-    } else if head_line.index() == 0 {
-        return sel; // head already on the first line — clamp
-    }
-    // `checked_add_signed` fails loudly on overflow/underflow in both debug
-    // and release builds — unlike the `(x as isize + delta) as usize` cast
-    // pair, which silently wraps in release. The clamps above guarantee this
-    // can't actually underflow/overflow for delta = ±1.
-    let new_head_line = ContentLine::new(
-        head_line
-            .index()
-            .checked_add_signed(delta)
-            .expect("head_line clamped above: delta=±1 cannot underflow/overflow here"),
-    );
+        head_line.down(1)
+    } else {
+        if head_line.index() == 0 {
+            return sel; // head already on the first line — clamp
+        }
+        head_line.up(1)
+    };
 
     let lo = anchor_line.min(new_head_line);
     let hi = anchor_line.max(new_head_line);

@@ -294,10 +294,7 @@ pub(in crate::editor::commands::pipeline) fn step_record_jump(
     };
     let (post_primary, post_line, post_bid) = jump_position(state, view);
     let moved = post_bid != pre_bid || post_primary != pre_primary;
-    if moved
-        && (is_jump
-            || pre_line.index().abs_diff(post_line.index()) > state.settings.jump_line_threshold)
-    {
+    if moved && (is_jump || pre_line.abs_diff(post_line) > state.settings.jump_line_threshold) {
         state.panes.jumps[state.focus.id()].push(JumpEntry::from_pre_motion(
             pre_primary,
             pre_line,
