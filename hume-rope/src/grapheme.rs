@@ -339,12 +339,15 @@ pub fn display_col_in_line(
 ///
 /// For `target_display_col == 0` this is the line start. When
 /// `target_display_col` is a tab stop and the line's leading content is
-/// whitespace — dedent-on-Backspace's case, this function's only caller —
-/// the position is exact: tabs jump to multiples of `tab_width` and spaces
-/// step by one, so every tab stop along the way is hit. Otherwise the result
-/// is the closest position not exceeding `target_display_col`: a grapheme
-/// that would overshoot (a tab when not aligned, a double-width cluster
-/// straddling the target) leaves the walk at the position before it.
+/// whitespace — dedent-on-Backspace's case — the position is exact: tabs
+/// jump to multiples of `tab_width` and spaces step by one, so every tab
+/// stop along the way is hit. Otherwise the result is the closest position
+/// not exceeding `target_display_col`: a grapheme that would overshoot (a
+/// tab when not aligned, a double-width cluster straddling the target)
+/// leaves the walk at the position before it — `hume-ops`'s
+/// `align_selections` relies on exactly this non-tab-stop case to resolve
+/// its removable-run cell target back to a char position, padding any
+/// resulting overshoot with spaces.
 ///
 /// The walk never leaves the line: a `target_display_col` beyond the line's
 /// width stops on the line's `\n`. A caller that wants a cursor position

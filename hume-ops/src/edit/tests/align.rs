@@ -149,24 +149,19 @@ fn align_primary_unchanged() {
 
 #[test]
 fn align_remove_tab_before_selection() {
-    // The avail count's reverse scan must treat a tab as whitespace, not a
-    // chain-breaker — checking `== Some(' ')` alone would stop the scan at
-    // the tab and yield avail=0, silently skipping all removal.
+    // The reverse scan must treat a tab as whitespace, not a chain-breaker —
+    // checking `== Some(' ')` alone would stop the scan at the tab and yield
+    // rem=0, silently skipping all removal.
     //
     // Buffer " =\n  \t=\n", tab_width 4:
     //   Line 0: ' '+'=' — primary '=' at display col 1.
     //   Line 1: ' ',' ','\t','=' — secondary '=' at display col 4 (the tab
     //     at position 2 advances only to column 4, `tab_advance(2, 4)`).
     //
-    // fit_0 = max(line 0: 1-0, line 1: 4-2) = 2, so target[0] = 2 — wider
-    // than either line's own baseline, which moves the *primary* too
-    // (inserts 1 space: " =" → "  ="). Secondary's removal is char-counted,
-    // not display-counted (`align_selections`'s own doc): removing the 2
-    // chars closest to '=' (a space and the tab) frees 1+2=3 display
-    // columns, one more than the 2 needed, so '=' lands at display col 1,
-    // not the target's col 2 — the documented residual imprecision of a tab
-    // inside the compressible run itself, distinct from (and narrower than)
-    // the cross-line baseline bug this fix closes.
+    // Compression is measured in display cells, not chars: line 1's
+    // removable run (' ', '\t') is worth col(4) − col(1) = 3 cells, so
+    // fit_0 = max(line 0: 1, line 1: 4 − 3 = 1) = 1 — matching the primary's
+    // own baseline exactly. target[0] stays 1, so the primary never moves.
     use crate::edit::align_selections;
     use hume_editing::selection::SelectionSet;
     let text = hume_editing::text::BufferText::from(" =\n  \t=\n");
@@ -180,9 +175,41 @@ fn align_remove_tab_before_selection() {
     let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
     assert_eq!(
         new_text.to_string(),
-        "  =\n =\n",
-        "tab counts toward removal (2 chars removed, not skipped at the tab), \
-         though the freed width overshoots by the tab's extra column"
+        " =\n =\n",
+        "cell-accurate compression reaches the primary's own baseline exactly, \
+         so the primary itself never has to move"
+    );
+}
+
+#[test]
+fn align_tab_in_removable_run_pads_to_exact_target() {
+    // Primary "aa =" — '=' at display col 3. Secondary "a \t=" — '=' at
+    // display col 4 (tab_width 4: 'a' col 0→1, ' ' col 1→2, '\t' col 2→4),
+    // with a 2-char removable run (' ', '\t') worth col(4) − col(2) = 2
+    // cells, rem = 1 (keep 1 char, so only the rightmost — the tab — is
+    // eligible).
+    //
+    // target[0] = baseline[0] = 3 (primary's own floor; secondary's own
+    // fit_0 = 4 − 2 = 2 is lower). Secondary needs to lose 1 cell, but its
+    // only removable unit is the whole tab, which frees 2 (col 2→4) — one
+    // more than needed. Deleting the tab and padding 1 space back lands '='
+    // exactly on col 3, not one column left of it.
+    use crate::edit::align_selections;
+    use hume_editing::selection::SelectionSet;
+    let text = hume_editing::text::BufferText::from("aa =\na \t=\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            hume_editing::selection::Selection::collapsed(CharOffset::new(3)), // primary: '=' col 3
+            hume_editing::selection::Selection::collapsed(CharOffset::new(8)), // secondary: '=' col 4
+        ],
+        0,
+    );
+    let (new_text, _new_sels, _cs) = align_selections(text, sels, 4);
+    assert_eq!(
+        new_text.to_string(),
+        "aa =\na  =\n",
+        "the tab's whole-unit granularity overshoots the exact target by 1 cell; \
+         that cell is padded back with a space so '=' lands precisely on col 3"
     );
 }
 

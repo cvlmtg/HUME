@@ -2,7 +2,7 @@
 //! selection's anchor display column.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
-use hume_editing::grapheme::display_col_in_line;
+use hume_editing::grapheme::{char_pos_at_display_col, display_col_in_line};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_rope::column::BufferLineCol;
@@ -38,22 +38,18 @@ use super::apply_edit;
 /// **Primary may move** — when another line forces a slot to widen past the
 /// baseline, spaces are inserted before the primary line's selections too.
 ///
-/// **Compression is char-counted, not display-counted** — the removable
-/// whitespace run before a selection (`rem`) still measures in characters:
-/// each space or tab in the run is one removable unit, regardless of the
-/// tab's actual display width at its position. Deleting `rem` characters
-/// frees at least `rem` display columns (a tab is never narrower than a
-/// space), so compression never removes too little — but it can occasionally
-/// remove one column *more* than strictly needed when the freed run contains
-/// a tab. Insertion has no such gap: an inserted run is always spaces, each
-/// exactly one display column, so `amount > 0` lands exactly on `target`.
-///
-/// Because of that mixing, every display column below drops to `.get()`'s
-/// bare `u32` the moment it's combined with a char count (`rem`) or a
-/// cross-line shift — `BufferLineCol`'s arithmetic methods assume both
-/// operands are display cells, which `rem` and `line_shift` are not.
-/// `baseline`/`targets`/`fit_0`/`fit_k`/`amount` are therefore plain
-/// `isize`/`usize`, not `BufferLineCol`, for the length of this function.
+/// **Compression is measured in display cells** — the removable run before a
+/// selection is tracked as two numbers: `rem` (chars — how many the run has
+/// to spare, keeping ≥1) caps how much can be *deleted*, and `rem_cells`
+/// (that run's tab-aware display width) is what every target/fit computation
+/// actually operates on. Removing the whole `rem`-char run frees exactly
+/// `rem_cells` display columns, so `fit_need` is exact, not a lower bound. A
+/// tab's whole-unit granularity can still force removing more than the exact
+/// cell need in one step (deleting a tab that straddles the target frees more
+/// than requested) — the surplus is padded back with spaces so every
+/// selection still lands precisely on `target`. Insertion has no granularity
+/// gap of its own: an inserted run is always spaces, each exactly one display
+/// column, so `amount > 0` lands exactly on `target` without padding.
 pub fn align_selections(
     text: BufferText,
     sels: SelectionSet,
@@ -67,6 +63,7 @@ pub fn align_selections(
         is_multiline: bool,
         anchor_display_col: BufferLineCol, // display col of sel.anchor() (left for forward, right for backward)
         rem: usize,          // chars removable before sel.start() while keeping ≥1 space
+        rem_cells: u32,      // display-cell width of the `rem`-char run (tab-aware)
         slot: Option<usize>, // None = multiline or extra (slot >= N)
     }
 
@@ -84,6 +81,7 @@ pub fn align_selections(
                     is_multiline: true,
                     anchor_display_col: BufferLineCol::new(0),
                     rem: 0,
+                    rem_cells: 0,
                     slot: None,
                 };
             }
@@ -96,6 +94,15 @@ pub fn align_selections(
                 .take_while(|&p| matches!(text.char_at(CharOffset::new(p)), Some(' ') | Some('\t')))
                 .count()
                 .saturating_sub(1);
+            // The `rem`-char run's display width, tab-aware. Measured from
+            // `sel_start`, not `anchor_display_col`: the run always ends at
+            // the selection's left edge, which for a backward multi-char
+            // selection is the head, not the (right-edge) anchor — using
+            // the anchor's column here would fold the selection's own
+            // content width into the run's width.
+            let run_start = sel_start.shift(-(rem as isize));
+            let rem_cells = display_col_in_line(&text, start_line, sel_start, tab_width)
+                .cells_since(display_col_in_line(&text, start_line, run_start, tab_width));
             let counter = slots_on_line.entry(start_line).or_insert(0);
             let slot = *counter;
             *counter += 1;
@@ -104,6 +111,7 @@ pub fn align_selections(
                 is_multiline: false,
                 anchor_display_col,
                 rem,
+                rem_cells,
                 slot: Some(slot),
             }
         })
@@ -151,29 +159,29 @@ pub fn align_selections(
 
     let mut targets = vec![BufferLineCol::new(0); n_slots];
 
-    // k == 0: the only thing slot-0 can compress is its own preceding whitespace
-    // (down to 1 display column). So the minimum reachable anchor is
-    // anchor_display_col₀ − rem₀. `cells_since_saturating` (not `cells_since`)
-    // for the (unlikely) backward-selection case where anchor_display_col <
-    // rem, which it clamps to 0 rather than debug-panicking on.
+    // k == 0: the only thing slot-0 can compress is its own preceding
+    // whitespace run, down to its display-cell width `rem_cells₀`. So the
+    // minimum reachable anchor is anchor_display_col₀ − rem_cells₀. `shift`
+    // (not a bare subtraction) for the (unlikely) backward-selection case
+    // where anchor_display_col < rem_cells, which it clamps to 0 rather than
+    // wrapping on.
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| {
-            m.anchor_display_col
-                .cells_since_saturating(BufferLineCol::new(m.rem as u32))
-        })
+        .map(|m| m.anchor_display_col.shift(-(m.rem_cells as isize)))
         .max()
-        .unwrap_or(0);
-    targets[0] = baseline[0].max(BufferLineCol::new(fit_0));
+        .unwrap_or(BufferLineCol::new(0));
+    targets[0] = baseline[0].max(fit_0);
 
     // k >= 1: placing target[k-1] shifts every anchor on that line by
     // (target[k-1] − anchor_display_col_{k-1}). Slot k then shifts by the
     // same amount, so its new anchor is
     // anchor_display_col_k + (target[k-1] − anchor_display_col_{k-1}). The
-    // minimum feasible target[k] (leaving at least 1 space before slot k) is:
-    //   target[k-1] + (anchor_display_col_k − anchor_display_col_{k-1}) − rem_k
-    // where rem_k is the whitespace slot k may compress (avail − 1).
+    // minimum feasible target[k] (leaving at least the one kept separator
+    // char before slot k) is:
+    //   target[k-1] + (anchor_display_col_k − anchor_display_col_{k-1}) − rem_cells_k
+    // where rem_cells_k is the display width slot k may compress (`rem_k`
+    // chars' worth, one char short of the whole run).
     for k in 1..n_slots {
         let fit_k = by_line
             .values()
@@ -182,7 +190,7 @@ pub fn align_selections(
                 let cur = ms.iter().find(|m| m.slot == Some(k))?;
                 let delta = cur.anchor_display_col.get() as isize
                     - prev.anchor_display_col.get() as isize
-                    - cur.rem as isize;
+                    - cur.rem_cells as isize;
                 Some(targets[k - 1].shift(delta))
             })
             .max()
@@ -192,13 +200,15 @@ pub fn align_selections(
 
     // ── Pass 3: apply ──────────────────────────────────────────────────────────
 
-    // `line_shift` tracks the net chars inserted/removed on the current line so
+    // `line_shift` tracks the net display-cell delta on the current line so
     // far, approximating the shift from original-buffer anchor display
-    // columns to post-edit ones. An inserted run is always spaces, so an
-    // insertion's char delta equals its display-column delta exactly; a
-    // deletion's char delta is only a lower bound on its display-column
-    // delta when the removed run contains a tab (see `align_selections`'s
-    // own doc). `amount`'s sign selects which case applies on this line.
+    // columns to post-edit ones. Both branches now measure cells exactly
+    // (insertion is always spaces; removal resolves its char count from the
+    // exact cell need, padding any tab-overshoot). The one residual
+    // imprecision: `line_shift` sums *original-buffer* cell deltas applied to
+    // *original-buffer* columns, so a tab sitting between two slots on the
+    // same line is still weighed at its pre-edit stop rather than its
+    // post-edit one — zero for a line's first slot, and unchanged by this fix.
     let mut current_line: Option<ContentLine> = None;
     let mut line_shift = 0isize;
 
@@ -241,17 +251,41 @@ pub fn align_selections(
                     b.insert(&" ".repeat(amount as usize));
                     line_shift += amount;
                 } else if amount < 0 {
-                    // Remove whitespace immediately before sel_start. `rem` (= avail−1)
-                    // was computed in Pass 1, so we reuse it here. Also never step past
-                    // b.old_pos() (the already-consumed boundary on this line).
-                    let remove = ((-amount) as usize)
-                        .min(meta[i].rem)
-                        .min(sel_start.chars_since(b.old_pos()));
+                    // Remove whitespace immediately before sel_start, resolving
+                    // the needed cell count back to a char count. Measured in
+                    // original-buffer columns throughout (`start_display_col`,
+                    // `threshold`, `freed`) — the same origin `need` (derived
+                    // from `amount`, itself anchor-based) already assumes;
+                    // mixing origins across this subtraction would be worse
+                    // than the approximation `line_shift` already makes below.
+                    let need = (-amount) as u32;
+                    let start_display_col =
+                        display_col_in_line(text, start_line, sel_start, tab_width);
+                    let max_remove = meta[i].rem.min(sel_start.chars_since(b.old_pos()));
+                    // Largest position whose column is still `need` cells left
+                    // of sel_start: char_pos_at_display_col stops *before* a
+                    // grapheme that would overshoot, so a tab straddling the
+                    // threshold is deleted whole and the surplus padded back.
+                    let threshold =
+                        BufferLineCol::new(start_display_col.get().saturating_sub(need));
+                    let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
+                    let remove = sel_start.chars_since(cut).min(max_remove);
+                    let freed = start_display_col.cells_since(display_col_in_line(
+                        text,
+                        start_line,
+                        sel_start.shift(-(remove as isize)),
+                        tab_width,
+                    ));
+                    // 0 unless a tab's granularity overshot the exact target.
+                    let pad = freed.saturating_sub(need);
                     b.retain(sel_start.shift(-(remove as isize)).chars_since(b.old_pos()));
                     if remove > 0 {
                         b.delete(remove);
-                        line_shift -= remove as isize;
                     }
+                    if pad > 0 {
+                        b.insert(&" ".repeat(pad as usize));
+                    }
+                    line_shift += pad as isize - freed as isize;
                 } else {
                     b.retain(sel_start.chars_since(b.old_pos()));
                 }

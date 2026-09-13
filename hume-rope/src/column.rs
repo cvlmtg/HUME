@@ -36,9 +36,9 @@
 //! field like every domain type in this crate, but expose named arithmetic
 //! (`advance`/`cells_since`/`cells_since_saturating` shared by both;
 //! `abs_diff` on [`DisplayLineCol`] alone, `shift` on [`BufferLineCol`]
-//! alone — each has exactly one origin's worth of real callers today)
-//! instead of forbidding it — the compile-time win here is keeping
-//! `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
+//! alone — each of those two lives on the one origin type its callers
+//! actually need) instead of forbidding it — the compile-time win here is
+//! keeping `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
 //! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`] see
 //! no such arithmetic in the codebase today and stay as strict as
 //! `CharOffset`. [`ByteCol`] has one named exception, `advance` — a byte
@@ -114,19 +114,17 @@ macro_rules! display_col_methods {
 
             /// [`Self::cells_since`] without the ordering precondition — 0
             /// when `earlier` is actually later, rather than debug-panicking.
-            /// Two callers can't prove `earlier <= self`: `hume-editor`'s
-            /// `cursor::place` positions a completion popup at an LSP
-            /// completion session's token-start anchor, which is fixed while
-            /// the live cursor (and the viewport's horizontal scroll it
-            /// drives) keeps moving right — so the anchor can sit left of
-            /// `viewport.horizontal_offset` in a way the live cursor, kept
-            /// on-screen by `ensure_cursor_visible_horizontal`, never does.
-            /// `hume-ops`'s `align_selections` (its `fit_0` computation)
-            /// reaches for the same clamp-not-panic behavior for a genuinely
-            /// unlikely case — a backward selection whose anchor display
-            /// column sits left of its own removable-whitespace count. Every
-            /// other caller of `cells_since` has the ordering guarantee and
-            /// keeps the assert.
+            /// Its one caller that can't prove `earlier <= self`:
+            /// `hume-editor`'s `cursor::place` positions a completion popup
+            /// at an LSP completion session's token-start anchor, which is
+            /// fixed while the live cursor (and the viewport's horizontal
+            /// scroll it drives) keeps moving right — so the anchor can sit
+            /// left of `viewport.horizontal_offset` in a way the live
+            /// cursor, kept on-screen by `ensure_cursor_visible_horizontal`,
+            /// never does. Every other caller of `cells_since` has the
+            /// ordering guarantee and keeps the assert. `BufferLineCol`'s
+            /// copy of this method has no caller today — it exists purely
+            /// because the macro generates it for both types.
             pub fn cells_since_saturating(self, earlier: Self) -> u32 {
                 self.0.saturating_sub(earlier.0)
             }
@@ -177,9 +175,13 @@ impl BufferLineCol {
     /// (e.g. `indent_lines`'s `delta_display_col`, `u32`-bounded but built
     /// as `isize`) into a small or negative number instead of saturating.
     ///
-    /// Buffer-line-relative only: its callers each track a running delta
-    /// within one buffer line, so this lives on `BufferLineCol` alone
-    /// rather than in the shared macro.
+    /// Buffer-line-relative only, so this lives on `BufferLineCol` alone
+    /// rather than in the shared macro. Two shapes among its callers:
+    /// `hume-ops`'s `indent_lines` and `align_selections`'s pass-3 anchor
+    /// tracking each fold a running delta accumulated within one buffer
+    /// line; `align_selections`'s pass-2 `fit_0`/`fit_k` instead apply a
+    /// one-shot cross-slot delta to compute a floor. Both shapes need the
+    /// same saturate-don't-panic contract.
     pub fn shift(self, delta: isize) -> Self {
         Self(
             (self.0 as i64)
