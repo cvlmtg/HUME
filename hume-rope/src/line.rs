@@ -140,6 +140,25 @@ impl ContentLine {
     pub fn up(self, n: usize) -> Self {
         Self(self.0.saturating_sub(n))
     }
+
+    /// Unsigned distance between `self` and `other`, direction discarded —
+    /// the "how far apart are these two lines" metric a jump-distance
+    /// threshold needs (`hume-editor`'s `step_record_jump`), where
+    /// [`Self::lines_since`]'s ordering requirement would be the wrong tool.
+    pub fn abs_diff(self, other: Self) -> usize {
+        self.0.abs_diff(other.0)
+    }
+
+    /// Lines between `earlier` and `self` (`earlier <= self`) — the named
+    /// forward-only form, mirroring `CharOffset::chars_since`. Debug-panics
+    /// on inversion, where a raw subtraction would silently wrap.
+    pub fn lines_since(self, earlier: Self) -> usize {
+        debug_assert!(
+            earlier <= self,
+            "lines_since: {earlier:?} is after {self:?} — lines_since measures forward only"
+        );
+        self.0.saturating_sub(earlier.0)
+    }
 }
 
 impl RopeyLineCount {
@@ -161,6 +180,15 @@ impl ContentLineCount {
     /// The bare line count, phantom trailing line excluded.
     pub fn get(self) -> usize {
         self.0
+    }
+
+    /// One past the last content line — the exclusive upper bound a
+    /// half-open content-domain range (`viewport-range`, `buffer-lines`)
+    /// ends at. The sanctioned way to name this index: unlike
+    /// [`ContentLine::new`], which requires the value already be a real
+    /// line, this index is one past every real line by construction.
+    pub fn end_exclusive(self) -> ContentLine {
+        ContentLine(self.0)
     }
 }
 

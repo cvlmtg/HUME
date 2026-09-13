@@ -1,4 +1,5 @@
 use super::*;
+use crate::lines::content_line_count;
 use crate::test_support::rope;
 
 #[test]
@@ -68,4 +69,32 @@ fn content_line_from_ropey_line_widening_is_an_identity_on_the_index() {
     let line = ContentLine::new(3);
     let widened: RopeyLine = line.into();
     assert_eq!(widened.index(), line.index());
+}
+
+#[test]
+fn content_line_count_end_exclusive_is_one_past_the_last_content_line() {
+    let r = rope("a\nb\n"); // 2 content lines: 0, 1
+    assert_eq!(content_line_count(&r).end_exclusive(), ContentLine::new(2));
+}
+
+#[test]
+fn content_line_abs_diff_ignores_direction() {
+    assert_eq!(
+        ContentLine::new(5).abs_diff(ContentLine::new(2)),
+        ContentLine::new(2).abs_diff(ContentLine::new(5))
+    );
+    assert_eq!(ContentLine::new(5).abs_diff(ContentLine::new(2)), 3);
+    assert_eq!(ContentLine::new(5).abs_diff(ContentLine::new(5)), 0);
+}
+
+#[test]
+fn content_line_lines_since_measures_forward_distance() {
+    assert_eq!(ContentLine::new(5).lines_since(ContentLine::new(2)), 3);
+    assert_eq!(ContentLine::new(5).lines_since(ContentLine::new(5)), 0);
+}
+
+#[test]
+#[should_panic(expected = "lines_since measures forward only")]
+fn content_line_lines_since_panics_on_inversion() {
+    let _ = ContentLine::new(2).lines_since(ContentLine::new(5));
 }
