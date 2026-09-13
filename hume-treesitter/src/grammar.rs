@@ -46,7 +46,7 @@ impl LoadedGrammar {
     /// or [`GrammarLoadError::MissingSymbol`] if the named symbol is absent.
     ///
     /// This is genuine FFI — the same character as terminal probing in
-    /// `editor/src/os/`. We dlopen a tree-sitter grammar built to the
+    /// `hume-platform/src/terminal.rs`. We dlopen a tree-sitter grammar built to the
     /// well-known extern "C" ABI (`tree_sitter_<lang>() -> *const TSLanguage`).
     /// The library is leaked (`mem::forget`) rather than owned, so it stays
     /// mapped for the process lifetime and the derived `Language` pointer

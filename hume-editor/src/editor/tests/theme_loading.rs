@@ -146,7 +146,7 @@ fn bundled_theme_diff_line_tints_are_pairwise_distinct() {
 }
 
 /// A mode scope that differs from the base row style must differ in its
-/// `bg` — the whole-row tint (`EditorColors::from_theme`, `ui/theme.rs`) reads
+/// `bg` — the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`) reads
 /// a single style per mode and paints it across the entire statusline, so a
 /// scope that overrides only `fg` renders as illegible accent-on-base-bg text
 /// rather than a tinted row. `ui.statusline.normal` is exempt: it equals the

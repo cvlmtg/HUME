@@ -127,7 +127,7 @@ pub(in crate::editor) fn gutter_width<'a>(
 /// The coordinate space is pane-relative, not terminal-absolute: `(0, 0)` is
 /// the top-left cell of the pane. `MouseEvent.column`/`.row` are
 /// terminal-absolute — callers translate through `Editor::pane_at_screen_pos`
-/// (`editor/src/editor/mouse.rs`) first, which also decides which pane a
+/// (`hume-editor/src/editor/mouse.rs`) first, which also decides which pane a
 /// click landed in when more than one is on screen (a `:split`/`:vsplit`).
 pub(in crate::editor) fn screen_to_char_offset(
     content_x: u16,

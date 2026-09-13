@@ -410,7 +410,7 @@ pub(crate) fn compose_display_line(
             CellContent::Empty => {
                 canvas.write_cell(screen_x, y, " ", 1, cell_style, right_edge);
             }
-            // Filtered by the `continue` above (line 536) before reaching this match.
+            // Filtered by the `WidthContinuation` skip above before reaching this match.
             CellContent::WidthContinuation => unreachable!(),
         }
     }

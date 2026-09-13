@@ -9,7 +9,7 @@
 //! pane on screen at once, so a click is first hit-tested against
 //! `EngineView::pane_rects()` ([`Editor::pane_at_screen_pos`]) to find which
 //! pane it landed in and to translate the coordinate into that pane's frame
-//! before `screen_to_char_offset` (`editor/src/editor/cursor.rs`) resolves it
+//! before `screen_to_char_offset` (`hume-editor/src/editor/cursor.rs`) resolves it
 //! to a buffer char offset.
 //!
 //! Scroll wheel events move both the viewport and all cursors by the configured

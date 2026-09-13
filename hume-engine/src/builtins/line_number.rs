@@ -113,8 +113,8 @@ impl GutterColumn for LineNumberColumn {
         // right-padding. `last_line_idx` is the phantom-inclusive
         // `hume_rope::lines::last_ropey_line` (see `layout.rs`/`Pane::content_width`
         // callers), so this sizes for `content_line_count() + 1` digits — one
-        // wider than content strictly needs. The statusline's own row-digit
-        // field (`ui/statusline/elements/position.rs`) instead sizes for
+        // wider than content strictly needs. The statusline's own line-digit
+        // field (`hume-editor/src/statusline/elements/position.rs`) instead sizes for
         // `content_line_count()` — an accidental, shipped divergence, not a
         // bug to fix here.
         digit_count(last_line_idx.index() + 1).saturating_add(1)
