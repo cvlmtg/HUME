@@ -175,7 +175,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let lane = SignColumn::with_width(2, Box::new(source), blank_scope); // usable = 1 cell
 
     let graphemes = vec![crate::types::Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: DisplayLineCol::new(0),
         width: 1,
@@ -267,7 +267,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let content_lane = SignColumn::with_width(2, Box::new(content_source), blank_scope);
 
     let graphemes = vec![crate::types::Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: DisplayLineCol::new(0),
         width: 1,
@@ -498,7 +498,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let lane = SignColumn::with_width(3, Box::new(source), blank_scope); // 2 sign slots
 
     let graphemes = vec![crate::types::Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: DisplayLineCol::new(0),
         width: 1,

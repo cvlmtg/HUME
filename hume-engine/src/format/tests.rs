@@ -582,7 +582,7 @@ fn tab_indicator_trailing_mode_interior() {
     let content_at_offset = |byte_offset: usize| {
         graphemes
             .iter()
-            .find(|g| g.byte_range.start == byte_offset)
+            .find(|g| g.byte_range.start == ByteCol::new(byte_offset))
             .unwrap()
             .content
     };

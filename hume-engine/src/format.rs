@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::offset::ExclusiveRange;
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -263,7 +264,7 @@ pub enum FormatBound {
     /// matters (any wrapping mode) or the caller reads the line's tail.
     Full,
     /// Stop after the grapheme containing this line-relative byte offset.
-    ToByte(usize),
+    ToByte(ByteCol),
     /// Stop after the first grapheme whose own start display column is past
     /// this one.
     ToDisplayCol(DisplayLineCol),
@@ -294,10 +295,10 @@ impl FormatBound {
     /// straddle the target, and stopping on the running column would drop
     /// the cell to its right — which may be strictly nearer the target than
     /// the straddling one, changing what `NearestContent` answers.
-    fn reached(self, bytes: &Range<usize>, start_display_col: DisplayLineCol) -> bool {
+    fn reached(self, bytes: &ExclusiveRange<ByteCol>, start_display_col: DisplayLineCol) -> bool {
         match self {
             Self::Full => false,
-            Self::ToByte(b) => bytes.contains(&b),
+            Self::ToByte(b) => bytes.contains(b),
             Self::ToDisplayCol(t) => start_display_col > t,
         }
     }
@@ -565,13 +566,14 @@ pub fn format_buffer_line(
         // this grapheme to a continuation display line. Shared by the pushed cell and
         // the `bound` check below so the two cannot disagree.
         let start_display_col = wrap.current_display_col;
-        let byte_range = byte_offset..byte_offset + grapheme_str.len();
+        let byte_start = ByteCol::new(byte_offset);
+        let byte_range = ExclusiveRange::new(byte_start, byte_start.advance(grapheme_str.len()));
         let visible = h_window
             .as_ref()
             .is_none_or(|w| start_display_col.advance(width as u32) > w.start);
         if visible {
             graphemes_out.push(Grapheme {
-                byte_range: byte_range.clone(),
+                byte_range,
                 char_offset: char_pos,
                 display_col: start_display_col,
                 width,
@@ -589,7 +591,7 @@ pub fn format_buffer_line(
             // Both cells of a double-wide char always stay on the same display line.
             // Backing up the primary to avoid overflow is not yet implemented.
             graphemes_out.push(Grapheme {
-                byte_range: byte_range.clone(),
+                byte_range,
                 // Same char as the primary cell — this is not a distinct buffer position.
                 char_offset: char_pos - char_count,
                 display_col: wrap.current_display_col,
@@ -658,7 +660,10 @@ pub fn format_buffer_line(
                 graphemes_out,
             );
             graphemes_out.push(Grapheme {
-                byte_range: line_str.len()..line_str.len(),
+                byte_range: ExclusiveRange::new(
+                    ByteCol::new(line_str.len()),
+                    ByteCol::new(line_str.len()),
+                ),
                 char_offset: char_pos, // char offset of the `\n`
                 display_col: wrap.current_display_col,
                 width: 1,
@@ -692,7 +697,10 @@ pub fn format_buffer_line(
         if had_newline && whitespace.newline {
             let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
             graphemes_out.push(Grapheme {
-                byte_range: line_str.len()..line_str.len(),
+                byte_range: ExclusiveRange::new(
+                    ByteCol::new(line_str.len()),
+                    ByteCol::new(line_str.len()),
+                ),
                 // Same offset as the EOL sentinel (the `\n` position). Style-stage
                 // lookups resolve to the *first* grapheme at a given offset, which
                 // is the EOL sentinel pushed earlier in this function — the
@@ -975,6 +983,10 @@ pub(crate) fn push_virtual_cells(
     mut scope_at: impl FnMut(ByteCol) -> Option<ScopeId>,
 ) {
     let (text_start, _) = push_arena_text(arena, run.text);
+    // A virtual cell occupies no buffer bytes — see `VirtualRun::byte_offset`'s
+    // doc — so every cell this run produces reuses the same always-empty range.
+    let byte_range =
+        ExclusiveRange::new(ByteCol::new(run.byte_offset), ByteCol::new(run.byte_offset));
     for (byte_offset, cluster) in run.text.grapheme_indices(true) {
         // One grapheme cluster's width is always <= tab_width (u8's own max
         // 255), unlike a whole run's — no `.min(255)` cap needed before
@@ -1009,7 +1021,7 @@ pub(crate) fn push_virtual_cells(
         };
 
         graphemes_out.push(Grapheme {
-            byte_range: run.byte_offset..run.byte_offset,
+            byte_range,
             char_offset: run.char_offset,
             display_col: *display_col,
             width,
@@ -1025,7 +1037,7 @@ pub(crate) fn push_virtual_cells(
         // of a double-wide glyph always stay on the same display line.
         if width == 2 {
             graphemes_out.push(Grapheme {
-                byte_range: run.byte_offset..run.byte_offset,
+                byte_range,
                 char_offset: run.char_offset,
                 display_col: *display_col,
                 width: 0, // zero — does not consume columns

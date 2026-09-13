@@ -225,7 +225,9 @@ fn display_line_text(r: &RenderDisplayLine<'_>) -> String {
             // No arena entry — blank across its whole reserved width, same
             // as `render::compose_display_line`'s `TabFill` arm draws it on screen.
             CellContent::TabFill => Some(" ".repeat(g.width as usize)),
-            CellContent::Grapheme => Some(r.line_text[g.byte_range.clone()].to_string()),
+            CellContent::Grapheme => {
+                Some(r.line_text[g.byte_range.start.index()..g.byte_range.end.index()].to_string())
+            }
             CellContent::WidthContinuation | CellContent::Empty => None,
         })
         .collect()

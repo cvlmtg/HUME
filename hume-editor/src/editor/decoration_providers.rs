@@ -700,7 +700,7 @@ fn push_match_highlight_lines(
         hume_engine::types::ScopeId,
     )>,
 ) {
-    if range.start >= range.end {
+    if range.is_empty() {
         return;
     }
     data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, scope)));
@@ -723,7 +723,7 @@ fn push_priority_highlight_lines(
         hume_engine::types::ScopeId,
     )>,
 ) {
-    if range.start >= range.end {
+    if range.is_empty() {
         return;
     }
     data.extend(line_segments(text, range).map(|(l, s, e)| (l, s, e, priority, scope)));

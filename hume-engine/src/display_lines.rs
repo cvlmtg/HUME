@@ -31,7 +31,7 @@ use ropey::Rope;
 use crate::format::{FormatBound, LineFormat, format_buffer_line};
 use crate::providers::{Decoration, DecorationKinds, InlineInsert, ProviderSet, VirtualLineAnchor};
 use crate::types::{CellContent, DisplayLine, Grapheme, ScopeId};
-use hume_rope::column::{BufferLineCol, DisplayLineCol};
+use hume_rope::column::{BufferLineCol, ByteCol, DisplayLineCol};
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -567,11 +567,6 @@ impl<'a> DisplayLineMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
-        // Unwrapped here, not threaded further: `locate_in_line`/`FormatBound::ToByte`
-        // compare directly against `Grapheme.byte_range` (`Range<usize>`,
-        // deliberately not `ByteCol` — see CLAUDE.md's per-cell hot-loop note),
-        // so this is the correct crossing into that still-untyped subsystem.
-        let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let before = self.block(line).before;
         // Only up to the target: everything past it is irrelevant to where
@@ -588,7 +583,7 @@ impl<'a> DisplayLineMap<'a> {
     fn locate_in_line(
         &self,
         idx: usize,
-        target_byte: usize,
+        target_byte: ByteCol,
         char_offset: usize,
     ) -> (usize, DisplayLineCol) {
         let entry = self.store.entry(idx);
@@ -845,11 +840,6 @@ impl<'a> DisplayLineMap<'a> {
             self.rope.len_chars()
         );
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
-        // Unwrapped here, not threaded further: `locate_in_line`/`FormatBound::ToByte`
-        // compare directly against `Grapheme.byte_range` (`Range<usize>`,
-        // deliberately not `ByteCol` — see CLAUDE.md's per-cell hot-loop note),
-        // so this is the correct crossing into that still-untyped subsystem.
-        let target_byte = target_byte.index();
         let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
         let (sub, dline_display_col) = self.locate_in_line(idx, target_byte, char_offset.index());

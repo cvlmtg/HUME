@@ -75,7 +75,7 @@ fn apply_styles(
 fn make_graphemes(count: usize) -> Vec<Grapheme> {
     (0..count)
         .map(|i| Grapheme {
-            byte_range: i..i + 1,
+            byte_range: crate::test_support::byte_range(i, i + 1),
             char_offset: i,
             display_col: dc(i as u32),
             width: 1,
@@ -217,7 +217,7 @@ fn selection_head_overrides_default() {
 fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
     let mut gs = (0..5usize)
         .map(|i| Grapheme {
-            byte_range: i..i + 1,
+            byte_range: crate::test_support::byte_range(i, i + 1),
             char_offset: i,
             display_col: dc(i as u32),
             width: 1,
@@ -228,7 +228,7 @@ fn make_graphemes_with_sentinel() -> Vec<Grapheme> {
         .collect::<Vec<_>>();
     // eol sentinel at char_offset=5, display_col=5 (the `\n` position).
     gs.push(Grapheme {
-        byte_range: 5..5,
+        byte_range: crate::test_support::byte_range(5, 5),
         char_offset: 5,
         display_col: dc(5),
         width: 1,
@@ -424,7 +424,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
     // "ab\ncd": a=char0, b=char1, \n=char2, c=char3, d=char4
     let rope = ropey::Rope::from_str("ab\ncd");
     let g0 = Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: dc(0),
         width: 1,
@@ -433,7 +433,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
         scope: None,
     };
     let g1 = Grapheme {
-        byte_range: 1..2,
+        byte_range: crate::test_support::byte_range(1, 2),
         char_offset: 1,
         display_col: dc(1),
         width: 1,
@@ -442,7 +442,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
         scope: None,
     };
     let g2 = Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 3,
         display_col: dc(0),
         width: 1,
@@ -451,7 +451,7 @@ fn cursorline_background_applied_to_cursor_line_only() {
         scope: None,
     };
     let g3 = Grapheme {
-        byte_range: 1..2,
+        byte_range: crate::test_support::byte_range(1, 2),
         char_offset: 4,
         display_col: dc(1),
         width: 1,
@@ -611,7 +611,7 @@ fn cursorline_applies_only_to_primary_head_line() {
     let rope = ropey::Rope::from_str("a\nb\nc");
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 0,
             display_col: dc(0),
             width: 1,
@@ -620,7 +620,7 @@ fn cursorline_applies_only_to_primary_head_line() {
             scope: None,
         },
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 2,
             display_col: dc(0),
             width: 1,
@@ -629,7 +629,7 @@ fn cursorline_applies_only_to_primary_head_line() {
             scope: None,
         },
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 4,
             display_col: dc(0),
             width: 1,
@@ -702,7 +702,7 @@ fn virtual_display_lines_keep_default_style() {
     let rope = ropey::Rope::from_str("ab");
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 0,
             display_col: dc(0),
             width: 1,
@@ -711,7 +711,7 @@ fn virtual_display_lines_keep_default_style() {
             scope: None,
         },
         Grapheme {
-            byte_range: 0..0,
+            byte_range: crate::test_support::byte_range(0, 0),
             char_offset: usize::MAX,
             display_col: dc(0),
             width: 1,
@@ -1164,7 +1164,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 0,
             display_col: dc(0),
             width: 1,
@@ -1173,7 +1173,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             scope: None,
         },
         Grapheme {
-            byte_range: 1..2,
+            byte_range: crate::test_support::byte_range(1, 2),
             char_offset: 1,
             display_col: dc(1),
             width: 1,
@@ -1182,7 +1182,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             scope: None,
         },
         Grapheme {
-            byte_range: 2..3,
+            byte_range: crate::test_support::byte_range(2, 3),
             char_offset: 2,
             display_col: dc(2),
             width: 1,
@@ -1191,7 +1191,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             scope: None,
         },
         Grapheme {
-            byte_range: 3..4,
+            byte_range: crate::test_support::byte_range(3, 4),
             char_offset: 3,
             display_col: dc(0),
             width: 1,
@@ -1200,7 +1200,7 @@ fn head_on_wrapped_line_only_on_correct_segment() {
             scope: None,
         }, // wrap segment
         Grapheme {
-            byte_range: 4..5,
+            byte_range: crate::test_support::byte_range(4, 5),
             char_offset: 4,
             display_col: dc(1),
             width: 1,
@@ -1268,7 +1268,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
     let rope = ropey::Rope::from_str("abcde");
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..1,
+            byte_range: crate::test_support::byte_range(0, 1),
             char_offset: 0,
             display_col: dc(0),
             width: 1,
@@ -1277,7 +1277,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             scope: None,
         },
         Grapheme {
-            byte_range: 1..2,
+            byte_range: crate::test_support::byte_range(1, 2),
             char_offset: 1,
             display_col: dc(1),
             width: 1,
@@ -1286,7 +1286,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             scope: None,
         },
         Grapheme {
-            byte_range: 2..3,
+            byte_range: crate::test_support::byte_range(2, 3),
             char_offset: 2,
             display_col: dc(2),
             width: 1,
@@ -1295,7 +1295,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             scope: None,
         },
         Grapheme {
-            byte_range: 3..4,
+            byte_range: crate::test_support::byte_range(3, 4),
             char_offset: 3,
             display_col: dc(0),
             width: 1,
@@ -1304,7 +1304,7 @@ fn selection_on_wrapped_line_does_not_highlight_other_segments() {
             scope: None,
         },
         Grapheme {
-            byte_range: 4..5,
+            byte_range: crate::test_support::byte_range(4, 5),
             char_offset: 4,
             display_col: dc(1),
             width: 1,

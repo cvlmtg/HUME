@@ -498,8 +498,7 @@ pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usi
 /// Yield `(line, byte_start, byte_end)` for each line the *non-empty*
 /// `range` char range covers at least one char of content on, clipped to
 /// that line's own content (up to but excluding its trailing `\n`). Caller
-/// must check `range.start < range.end` first — no `is_empty` exists on
-/// `ExclusiveRange` to check it with.
+/// must check `!range.is_empty()` first.
 ///
 /// A single-line range yields one triple, byte-identical to converting
 /// `range.start`/`range.end` directly with [`char_to_line_byte`]. A
@@ -525,8 +524,8 @@ pub fn line_segments(
     // find which *line* that char is on (`char_to_line` below) — never used
     // as a cursor or slice position, so landing mid-cluster (a combining
     // mark can't cross the line it's on) is harmless here. Never underflows:
-    // the caller-checked `range.start < range.end` precondition puts
-    // `range.end` at `>= 1`.
+    // the caller-checked `!range.is_empty()` precondition puts `range.end`
+    // at `>= 1`.
     let last_char = range.end.shift(-1);
     let start_line = rope.char_to_line(range.start.index());
     let end_line = rope.char_to_line(last_char.index());

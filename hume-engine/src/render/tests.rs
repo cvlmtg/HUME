@@ -44,7 +44,7 @@ fn simple_display_line(graphemes: std::ops::Range<usize>) -> DisplayLine {
 
 fn simple_grapheme(display_col: u32, byte_start: usize, ch_len: usize) -> Grapheme {
     Grapheme {
-        byte_range: byte_start..byte_start + ch_len,
+        byte_range: crate::test_support::byte_range(byte_start, byte_start + ch_len),
         // char_offset is not needed for render tests (selections handled in style stage).
         char_offset: byte_start,
         display_col: dc(display_col),
@@ -219,7 +219,7 @@ fn do_compose_display_line(
 fn horizontal_scroll_clips_left_columns() {
     let graphemes: Vec<Grapheme> = (0..5u32)
         .map(|i| Grapheme {
-            byte_range: (i as usize)..(i as usize + 1),
+            byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
             char_offset: i as usize,
             display_col: dc(i),
             width: 1,
@@ -259,7 +259,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
     // shift 'X' to look like it sits at screen_x 0 rather than screen_x 1.
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..3,
+            byte_range: crate::test_support::byte_range(0, 3),
             char_offset: 0,
             display_col: dc(0),
             width: 2,
@@ -268,7 +268,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
             scope: None,
         },
         Grapheme {
-            byte_range: 0..3,
+            byte_range: crate::test_support::byte_range(0, 3),
             char_offset: 0,
             display_col: dc(2),
             width: 0,
@@ -277,7 +277,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
             scope: None,
         },
         Grapheme {
-            byte_range: 3..4,
+            byte_range: crate::test_support::byte_range(3, 4),
             char_offset: 1,
             display_col: dc(2),
             width: 1,
@@ -319,7 +319,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
     // drawn at all; the column renders blank instead, mirroring the h-scroll
     // straddle case above.
     let graphemes = vec![Grapheme {
-        byte_range: 0..3,
+        byte_range: crate::test_support::byte_range(0, 3),
         char_offset: 0,
         display_col: dc(4),
         width: 2,
@@ -362,7 +362,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
     };
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..0,
+            byte_range: crate::test_support::byte_range(0, 0),
             char_offset: usize::MAX,
             display_col: dc(0),
             width: 2,
@@ -371,7 +371,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
             scope: None,
         },
         Grapheme {
-            byte_range: 0..0,
+            byte_range: crate::test_support::byte_range(0, 0),
             char_offset: usize::MAX,
             display_col: dc(2),
             width: 0,
@@ -405,7 +405,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
     // (guides at k*tab_width for k in 1..depth, so k=1 => display_col 4)
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
-            byte_range: (i as usize)..(i as usize + 1),
+            byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
             char_offset: i as usize,
             display_col: dc(i),
             width: 1,
@@ -459,7 +459,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
     // inside the insert's own text and would overwrite it).
     let mut graphemes: Vec<Grapheme> = (0..6u32)
         .map(|i| Grapheme {
-            byte_range: 0..0, // virtual: no buffer bytes
+            byte_range: crate::test_support::byte_range(0, 0), // virtual: no buffer bytes
             char_offset: usize::MAX,
             display_col: dc(i),
             width: 1,
@@ -469,7 +469,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         })
         .collect();
     graphemes.extend((0..3u32).map(|i| Grapheme {
-        byte_range: (i as usize)..(i as usize + 1),
+        byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
         char_offset: i as usize,
         display_col: dc(6 + i),
         width: 1,
@@ -520,7 +520,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     // not just that the glyph can appear under default settings.
     let graphemes: Vec<Grapheme> = (0..11u32)
         .map(|i| Grapheme {
-            byte_range: (i as usize)..(i as usize + 1),
+            byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
             char_offset: i as usize,
             display_col: dc(i),
             width: 1,
@@ -601,7 +601,7 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
     // "    text").
     let graphemes: Vec<Grapheme> = (0..8u32)
         .map(|i| Grapheme {
-            byte_range: (i as usize)..(i as usize + 1),
+            byte_range: crate::test_support::byte_range(i as usize, i as usize + 1),
             char_offset: i as usize,
             display_col: dc(i),
             width: 1,
@@ -636,7 +636,7 @@ fn indicator_content_fills_tab_width() {
     // A tab indicator with width=4 should write the indicator char at display_col 0
     // and spaces at cols 1-3.
     let graphemes = vec![Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: dc(0),
         width: 4,
@@ -669,7 +669,7 @@ fn tab_fill_blanks_its_whole_width() {
     // trailing fill does above — this is that same fill with no glyph in
     // front of it.
     let graphemes = vec![Grapheme {
-        byte_range: 0..1,
+        byte_range: crate::test_support::byte_range(0, 1),
         char_offset: 0,
         display_col: dc(0),
         width: 4,
@@ -705,7 +705,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
     let arena = "AB";
     let graphemes = vec![
         Grapheme {
-            byte_range: 0..0,
+            byte_range: crate::test_support::byte_range(0, 0),
             char_offset: usize::MAX,
             display_col: dc(0),
             width: 2,

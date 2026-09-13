@@ -332,7 +332,9 @@ pub(crate) fn compose_display_line(
 
         match &g.content {
             CellContent::Grapheme => {
-                if g.byte_range.start <= g.byte_range.end && g.byte_range.end <= line_str.len() {
+                if g.byte_range.start <= g.byte_range.end
+                    && g.byte_range.end.index() <= line_str.len()
+                {
                     if screen_x + g.width as u16 > right_edge {
                         // A wide grapheme whose right half would cross
                         // `right_edge` cannot be drawn — there is no such
@@ -348,7 +350,7 @@ pub(crate) fn compose_display_line(
                         canvas.write_cell(
                             screen_x,
                             y,
-                            &line_str[g.byte_range.clone()],
+                            &line_str[g.byte_range.start.index()..g.byte_range.end.index()],
                             g.width,
                             cell_style,
                             right_edge,

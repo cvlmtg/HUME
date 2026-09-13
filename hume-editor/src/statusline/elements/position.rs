@@ -9,24 +9,38 @@ use crate::statusline::colors::EditorColors;
 
 pub(in crate::statusline) struct PositionElement;
 
+/// The cursor's position, plus what the field needs to size itself.
+pub(in crate::statusline) struct Position {
+    /// 1-based line number of the cursor.
+    line: usize,
+    /// 1-based grapheme column (CLAUDE.md's "Displayed value" invariant).
+    grapheme_col: usize,
+    /// Highest 1-based line number the cursor can reach in the buffer —
+    /// sizes the padding field.
+    max_line: usize,
+}
+
 impl StatuslineElement for PositionElement {
-    /// 1-based (line, grapheme_col, max_line). `max_line` is the highest
-    /// line number the cursor can reach in the buffer, used to size the
-    /// padding field.
-    type Data = (usize, usize, usize);
+    type Data = Position;
 
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         let text = editor.doc().text();
         let head = editor.current_selections().primary().head();
         let head_line = text.char_to_line(head);
         let grapheme_col = grapheme_col_in_line(text, head_line, head);
-        // Largest 1-based line number this buffer can display.
-        let max_line = text.content_line_count().get();
-        (head_line.number(), grapheme_col.number(), max_line)
+        Position {
+            line: head_line.number(),
+            grapheme_col: grapheme_col.number(),
+            max_line: text.content_line_count().get(),
+        }
     }
 
     fn format(
-        (line, grapheme_col, max_line): Self::Data,
+        Position {
+            line,
+            grapheme_col,
+            max_line,
+        }: Self::Data,
         colors: &EditorColors,
     ) -> (Cow<'static, str>, ResolvedStyle) {
         // Right-align into a field sized for the largest line number this

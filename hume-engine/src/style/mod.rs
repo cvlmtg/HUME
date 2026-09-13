@@ -201,7 +201,7 @@ pub(crate) fn style_display_line(
 
         // Tier 2a–2d: highlights layered in ascending priority.
         // Each theme.resolve(id) is an O(1) Vec index.
-        style = hl.layer_at(ByteCol::new(g.byte_range.start), style, theme);
+        style = hl.layer_at(g.byte_range.start, style, theme);
 
         // Tier 2d½: an unrenderable cluster's stand-in, or an opted-in
         // whitespace glyph. Layered over the syntax highlight so `<202e>`
@@ -339,9 +339,13 @@ fn collect_selection_spans(
     *primary_sel_span = None;
 
     let gs = &graphemes[grapheme_range.clone()];
-    // Use byte_range to detect the empty-line sentinel (byte_range 0..0 = no real content).
-    let first_byte = gs.first().map_or(usize::MAX, |g| g.byte_range.start);
-    let last_byte = gs.last().map_or(0, |g| g.byte_range.end);
+    // This display line has real content only when it has graphemes at all,
+    // and its first and last don't collapse to the same empty point — an
+    // empty line's sole grapheme (the EOL sentinel) has an empty `byte_range`.
+    let has_content = match (gs.first(), gs.last()) {
+        (Some(first), Some(last)) => first.byte_range.start < last.byte_range.end,
+        _ => false,
+    };
     // Char-based wrap-segment boundaries for the intersection check below.
     // `Grapheme.char_offset` is a bare `usize` with its own `usize::MAX`
     // sentinel (see its doc) — the comparisons below stay in that space
@@ -386,7 +390,7 @@ fn collect_selection_spans(
         // intersect this wrap segment. Without this check a selection on
         // wrap segment N would incorrectly highlight all other wrap segments
         // of the same line.
-        if first_byte < last_byte {
+        if has_content {
             let ends_before = sel_char_end != usize::MAX && sel_char_end <= first_char;
             let starts_after = sel_char_start >= last_char_excl;
             if ends_before || starts_after {

@@ -144,10 +144,17 @@ impl<T> ExclusiveRange<T> {
 
 impl<T: Copy + PartialOrd> ExclusiveRange<T> {
     /// `hume-editor`'s `DecoratedPane.lines` (an `ExclusiveRange<RopeyLine>`)
-    /// is the one production caller — a per-line decoration filter checking
-    /// a resolved line against the pane's visible range.
+    /// and `hume_engine::format::FormatBound::reached`'s `ToByte` arm (an
+    /// `ExclusiveRange<ByteCol>`) are the two production callers.
     pub fn contains(&self, pos: T) -> bool {
         pos >= self.start && pos < self.end
+    }
+}
+
+impl<T: PartialEq> ExclusiveRange<T> {
+    /// Whether the range covers nothing (`start == end`).
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
     }
 }
 

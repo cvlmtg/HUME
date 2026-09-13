@@ -1,7 +1,7 @@
 use std::ops::Range;
 
-use hume_rope::column::DisplayLineCol;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::column::{ByteCol, DisplayLineCol};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 // ---------------------------------------------------------------------------
 // Theme & Style
@@ -46,13 +46,13 @@ pub use hume_grid::{Modifiers, ResolvedStyle, UnderlineStyle};
 
 /// One grapheme cluster laid out by the Format stage.
 /// This is the unit that flows through Style into Render.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct Grapheme {
     /// Byte range within the materialized line buffer (empty for virtual content).
     ///
     /// Used by the highlight system (tree-sitter intervals are byte-native) and
     /// by the wrap-segment intersection check in the style stage.
-    pub byte_range: Range<usize>,
+    pub byte_range: ExclusiveRange<ByteCol>,
     /// Absolute char offset from the start of the buffer.
     ///
     /// Populated by the format stage so the style stage can resolve selection
