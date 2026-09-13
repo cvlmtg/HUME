@@ -261,7 +261,7 @@ pub(in crate::editor) fn typed_set(
 }
 
 /// Extract content and line count from a buffer by ID.
-fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
+fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, hume_rope::line::ContentLineCount) {
     let buf = ed.state.buffers.get(bid);
     let text = buf.text();
     let content = if text.line_ending() == hume_editing::text::LineEnding::CrLf {
@@ -269,7 +269,7 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
     } else {
         text.to_string()
     };
-    let line_count = text.content_line_count().get();
+    let line_count = text.content_line_count();
     (content, line_count)
 }
 
@@ -278,7 +278,12 @@ fn serialize_buffer(ed: &Editor, bid: BufferId) -> (String, usize) {
 /// Shared by the no-arg `:w` path and the save-as path (when the source
 /// buffer is a normal writable buffer, i.e. save-as, not export — see
 /// `write_file`'s save-as branch).
-fn mark_written_and_synced(ed: &mut Editor, bid: BufferId, line_count: usize, retried: bool) {
+fn mark_written_and_synced(
+    ed: &mut Editor,
+    bid: BufferId,
+    line_count: hume_rope::line::ContentLineCount,
+    retried: bool,
+) {
     ed.state.buffers.get_mut(bid).mark_saved();
     ed.report(write_severity(retried), write_msg(line_count, retried));
     ed.queue_buffer_save(bid);
@@ -304,7 +309,7 @@ fn write_buffer_by_id(
     ed: &mut Editor,
     bid: BufferId,
     content: String,
-    line_count: usize,
+    line_count: hume_rope::line::ContentLineCount,
     force: bool,
 ) -> Result<(), CommandError> {
     let buf = ed.state.buffers.get_mut(bid);
@@ -535,7 +540,8 @@ fn write_severity(forced: bool) -> Severity {
     }
 }
 
-fn write_msg(line_count: usize, forced: bool) -> String {
+fn write_msg(line_count: hume_rope::line::ContentLineCount, forced: bool) -> String {
+    let line_count = line_count.get();
     if forced {
         format!("Written {line_count} lines (forced)")
     } else {
