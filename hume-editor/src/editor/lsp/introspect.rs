@@ -544,24 +544,23 @@ pub(in crate::editor) fn location_display_parts(
 }
 
 /// Char range → wire `{"start" "end"}`. HUME selections are inclusive
-/// (`end_c` names the last included char); LSP ranges are half-open, so
-/// `end` is one grapheme cluster past — `next_grapheme_boundary`, not a raw
-/// `+ 1`, since `end_c` may be the first char of a multi-char cluster (`é` =
-/// e + U+0301, a ZWJ emoji sequence): stepping by one raw char would land
-/// the wire range mid-cluster.
+/// (`range.end` names the last included char); LSP ranges are half-open, so
+/// `end` is one grapheme cluster past — `next_grapheme_boundary`, not
+/// `to_exclusive`/a raw `+ 1`, since `range.end` may be the first char of a
+/// multi-char cluster (`é` = e + U+0301, a ZWJ emoji sequence): stepping by
+/// one raw char would land the wire range mid-cluster.
 fn char_range_to_wire(
     text: &hume_editing::text::BufferText,
     encoding: hume_rope::position_encoding::PositionEncoding,
-    start_c: hume_rope::offset::CharOffset,
-    end_c: hume_rope::offset::CharOffset,
+    range: hume_rope::offset::InclusiveRange<hume_rope::offset::CharOffset>,
 ) -> serde_json::Value {
-    let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, end_c);
-    let range = hume_rope::position_encoding::char_range_to_wire_range(
+    let end_exclusive = hume_editing::grapheme::next_grapheme_boundary(text, range.end);
+    let wire_range = hume_rope::position_encoding::char_range_to_wire_range(
         text.rope(),
-        hume_rope::offset::ExclusiveRange::new(start_c, end_exclusive),
+        hume_rope::offset::ExclusiveRange::new(range.start, end_exclusive),
         encoding,
     );
-    let ((start_line, start_char), (end_line, end_char)) = range;
+    let ((start_line, start_char), (end_line, end_char)) = wire_range;
     serde_json::json!({
         "start": {"line": start_line, "character": start_char},
         "end": {"line": end_line, "character": end_char},
@@ -582,7 +581,11 @@ pub(in crate::editor) fn primary_range_params(
     let text = state.buffers.get(id).text();
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
-        "range": char_range_to_wire(text, encoding, sel.start(), sel.end()),
+        "range": char_range_to_wire(
+            text,
+            encoding,
+            hume_rope::offset::InclusiveRange::new(sel.start(), sel.end()),
+        ),
     }))
 }
 
@@ -617,7 +620,13 @@ pub(in crate::editor) fn linewise_ranges_params(
         .collect();
     let ranges: Vec<_> = linewise
         .chunk_by(|a, b| b.start() == a.end_exclusive(text))
-        .map(|run| char_range_to_wire(text, encoding, run[0].start(), run[run.len() - 1].end()))
+        .map(|run| {
+            char_range_to_wire(
+                text,
+                encoding,
+                hume_rope::offset::InclusiveRange::new(run[0].start(), run[run.len() - 1].end()),
+            )
+        })
         .collect();
 
     Some(serde_json::json!({
