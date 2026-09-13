@@ -1642,7 +1642,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         };
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path_or_uri,
-            line,
+            line: hume_rope::line::RopeyLine::new(line),
             char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
@@ -1659,7 +1659,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         };
         let target = crate::editor::lsp::edits::GotoTarget::Buffer {
             bid,
-            line,
+            line: hume_rope::line::RopeyLine::new(line),
             char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)

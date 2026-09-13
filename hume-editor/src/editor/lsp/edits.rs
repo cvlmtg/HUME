@@ -402,31 +402,33 @@ pub(in crate::editor) enum GotoTarget {
     },
     Path {
         path_or_uri: String,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: hume_rope::column::CharCol,
     },
     Buffer {
         bid: BufferId,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: hume_rope::column::CharCol,
     },
 }
 
 /// Clamps a char-indexed `(line, char_col)` pair to a valid char offset in
 /// `bid`. `line` clamps to the ropey-domain last line here (a scripted
-/// target can address the buffer's own trailing phantom line); the
+/// target can address the buffer's own trailing phantom line — `line` is
+/// minted trusted but unvalidated at the same two `host_impl.rs` sites that
+/// mint `char_col`, so it needs the same clamp `char_col` gets below); the
 /// char_col clamp and grapheme snap are `place_char_column`'s, which lands a
 /// past-the-end column on the line's last content character rather than on
 /// its `\n`.
 fn char_indexed_to_char_pos(
     state: &EditorState,
     bid: BufferId,
-    line: usize,
+    line: hume_rope::line::RopeyLine,
     char_col: hume_rope::column::CharCol,
 ) -> CharOffset {
     let buf = state.buffers.get(bid);
     let text = buf.text();
-    let line = hume_rope::line::RopeyLine::clamped(text.rope(), line);
+    let line = hume_rope::line::RopeyLine::clamped(text.rope(), line.index());
     hume_editing::lines::place_char_column(text, line, char_col)
 }
 
