@@ -293,7 +293,11 @@ fn colon_q_view_buffer_with_real_buffer_switches_not_quits() {
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
     // Open a read-only view buffer (simulates :messages).
-    ed.open_read_only_view("[test-view]", "log line\n", 0);
+    ed.open_read_only_view(
+        "[test-view]",
+        "log line\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
     let view_buf = ed.focused_buffer_id();
     assert_ne!(file_buf, view_buf, "must have switched to view buffer");
 
@@ -392,7 +396,11 @@ fn colon_q_real_buffer_with_only_view_buffer_remaining_quits() {
     // file buffer should exit hume even when a view buffer is still open.
     let (mut ed, _tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let file_buf = ed.focused_buffer_id();
-    ed.open_read_only_view("[test-view]", "log line\n", 0);
+    ed.open_read_only_view(
+        "[test-view]",
+        "log line\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
     // Switch focus back to the file buffer.
     ed.switch_to_buffer_without_jump(file_buf);
 

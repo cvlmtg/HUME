@@ -1556,7 +1556,11 @@ fn read_only_view_refresh_fires_on_text_changed() {
             .count()
     };
 
-    ed.open_read_only_view("[test-view]", "one\n", 0);
+    ed.open_read_only_view(
+        "[test-view]",
+        "one\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
     ed.settle();
     assert_eq!(
         fire_count(&ed),
@@ -1564,7 +1568,11 @@ fn read_only_view_refresh_fires_on_text_changed() {
         "the first open of a read-only view must not fire on-text-changed"
     );
 
-    ed.open_read_only_view("[test-view]", "two\n", 0);
+    ed.open_read_only_view(
+        "[test-view]",
+        "two\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
     ed.settle();
     assert_eq!(
         fire_count(&ed),

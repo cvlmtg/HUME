@@ -427,7 +427,9 @@ impl Editor {
     /// If a buffer with this label already exists, replaces its content in-place
     /// so repeated calls don't accumulate duplicates in `:ls`. Otherwise opens a
     /// fresh read-only buffer. Then switches the focused pane to it and positions
-    /// the cursor at `cursor_line` (0-indexed, clamped to last content line).
+    /// the cursor at `cursor_line` (clamped to last content line), or the last
+    /// content line itself when `cursor_line` is `None` — `:messages` wants the
+    /// bottom (most recent entry) without needing a sentinel value to name it.
     /// Returns the view buffer's id, e.g. for callers attaching decorations
     /// (`:messages`'s severity highlights) that must target this specific
     /// buffer rather than whatever ends up focused.
@@ -435,7 +437,7 @@ impl Editor {
         &mut self,
         label: &'static str,
         content: &str,
-        cursor_line: usize,
+        cursor_line: Option<hume_rope::line::ContentLine>,
     ) -> BufferId {
         use hume_editing::text::BufferText;
 
@@ -465,14 +467,17 @@ impl Editor {
             self.switch_to_buffer_without_jump(bid);
         }
 
-        // Position cursor at the requested line (clamped to last content line).
+        // Position cursor at the requested line (clamped to last content
+        // line), or the bottom when the caller didn't ask for a specific one.
+        let cursor_line =
+            cursor_line.unwrap_or_else(|| self.state.buffers.get(bid).text().last_content_line());
         let pid = self.state.focus.id();
         crate::editor::pane_state::park_cursor_at(
             &mut self.state.panes.state,
             &self.state.buffers,
             pid,
             bid,
-            hume_rope::line::ContentLine::new(cursor_line),
+            cursor_line,
             hume_rope::column::GraphemeCol::new(0),
         );
 

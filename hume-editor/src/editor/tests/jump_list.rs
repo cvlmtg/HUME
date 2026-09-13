@@ -779,7 +779,11 @@ fn reload_remaps_jump_entries_through_line_diff() {
 #[test]
 fn view_buffer_refresh_drops_its_jump_entries() {
     let mut ed = editor_from("-[a]>b\n");
-    let bid = ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+    let bid = ed.open_read_only_view(
+        "[jump-list-test]",
+        "one\ntwo\nthree\nfour\nfive\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     // `ge` (goto-last-line) records an entry tagged with this view buffer.
     ed.handle_key(key('g'));
@@ -792,7 +796,11 @@ fn view_buffer_refresh_drops_its_jump_entries() {
     );
 
     // Re-open the same label — refreshes content in place via `set_view_content`.
-    ed.open_read_only_view("[jump-list-test]", "brand new content\n", 0);
+    ed.open_read_only_view(
+        "[jump-list-test]",
+        "brand new content\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     assert!(
         !ed.state.panes.jumps[pid].entries_for_buffer(bid),
@@ -808,7 +816,11 @@ fn view_buffer_refresh_drops_its_jump_entries() {
 fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     let mut ed = editor_from("-[a]>b\n");
     let pid_a = ed.state.focus.id();
-    ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+    ed.open_read_only_view(
+        "[jump-list-test]",
+        "one\ntwo\nthree\nfour\nfive\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     // Split so a second pane also views the view buffer; focus moves to it.
     ed.execute_typed("vsplit", None).unwrap();
@@ -829,7 +841,11 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     // Refresh from pane A (still focused there), with content too short for
     // pane B's stale offset to remain valid.
     ed.switch_focused_pane(pid_a);
-    ed.open_read_only_view("[jump-list-test]", "x\n", 0);
+    ed.open_read_only_view(
+        "[jump-list-test]",
+        "x\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     assert_eq!(
         ed.state.panes.state[pid_b][bid].selections,
@@ -848,7 +864,11 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     let mut ed = editor_from("-[a]>b\n");
     let bid_scratch = ed.focused_buffer_id();
     let pid_a = ed.state.focus.id();
-    let bid = ed.open_read_only_view("[jump-list-test]", "one\ntwo\nthree\nfour\nfive\n", 0);
+    let bid = ed.open_read_only_view(
+        "[jump-list-test]",
+        "one\ntwo\nthree\nfour\nfive\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     // Split so pane B also views the view buffer; focus moves to it.
     ed.execute_typed("vsplit", None).unwrap();
@@ -872,7 +892,11 @@ fn view_buffer_refresh_reseeds_a_pane_that_switched_away_before_the_refresh() {
     // Refresh from pane B, with content too short for pane A's stale cached
     // selection to remain valid.
     ed.switch_focused_pane(pid_b);
-    ed.open_read_only_view("[jump-list-test]", "x\n", 0);
+    ed.open_read_only_view(
+        "[jump-list-test]",
+        "x\n",
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
 
     // Pane A switches back to the view buffer — its cached selection for
     // `bid` must have been reseeded by the refresh, not left stale.

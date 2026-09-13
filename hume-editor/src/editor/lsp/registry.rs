@@ -102,7 +102,11 @@ impl Editor {
             }
             hume_scripting::PendingLspServerOp::ShowStatus => {
                 let content = self.lsp_status_text();
-                self.open_read_only_view("[lsp-status]", &content, 0);
+                self.open_read_only_view(
+                    "[lsp-status]",
+                    &content,
+                    Some(hume_rope::line::ContentLine::new(0)),
+                );
             }
         }
     }

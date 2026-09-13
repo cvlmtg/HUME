@@ -28,9 +28,8 @@ pub(in crate::editor) fn typed_messages(
         return Ok(());
     }
     ed.state.message_log.mark_all_seen();
-    // open_read_only_view clamps cursor_line to the last content line — pass
-    // usize::MAX so it always positions at the bottom (most recent entry).
-    let bid = ed.open_read_only_view("[messages]", &content, usize::MAX);
+    // None parks at the bottom (most recent entry).
+    let bid = ed.open_read_only_view("[messages]", &content, None);
     let spans = spans
         .into_iter()
         .map(|(start, end, scope)| (start, end, scope.to_string()))
@@ -67,17 +66,18 @@ pub(in crate::editor) fn typed_list_buffers(
     // appear in its own listing. All other buffers — including [messages] and
     // [plugin-status] — are listed normally.
     let buffers_view_id = ed.state.buffers.find_by_label("[buffers]");
-    // `line` counts emitted lines (1-based, offset by the header at rope line 0).
-    // Tracked independently from the slotmap iteration index because [buffers]
-    // may be skipped without a line being emitted.
-    let mut line: usize = 0;
-    let mut current_rope_line: usize = 1;
+    // `line` counts emitted lines, offset by the header at content line 0 —
+    // the header occupies line 0, so the Nth emitted row lands on content
+    // line N. Tracked independently from the slotmap iteration index because
+    // [buffers] may be skipped without a line being emitted.
+    let mut line = hume_rope::line::ContentLine::new(0);
+    let mut current_content_line = hume_rope::line::ContentLine::new(1);
 
     for (id, buf) in ed.state.buffers.iter() {
         if buffers_view_id == Some(id) {
             continue;
         }
-        line += 1;
+        line = line.down(1);
 
         let cur_marker = if id == current {
             '%'
@@ -93,15 +93,19 @@ pub(in crate::editor) fn typed_list_buffers(
 
         out.push_str(&format!(
             "{:>4}  {}{}  {:<32}  {}\n",
-            line, cur_marker, dirty_marker, name, path
+            line.index(),
+            cur_marker,
+            dirty_marker,
+            name,
+            path
         ));
 
         if id == current {
-            current_rope_line = line; // rope line = header(0) + emitted lines(1-based)
+            current_content_line = line;
         }
     }
 
-    ed.open_read_only_view("[buffers]", &out, current_rope_line);
+    ed.open_read_only_view("[buffers]", &out, Some(current_content_line));
     Ok(())
 }
 
@@ -122,7 +126,11 @@ pub(in crate::editor) fn typed_plugin_status(
         ed.report(Severity::Info, "No plugins declared".to_string());
         return Ok(());
     }
-    ed.open_read_only_view("[plugin-status]", &out, 0);
+    ed.open_read_only_view(
+        "[plugin-status]",
+        &out,
+        Some(hume_rope::line::ContentLine::new(0)),
+    );
     Ok(())
 }
 
