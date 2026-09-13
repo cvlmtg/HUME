@@ -347,8 +347,8 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
     let id = bid.0;
     match ctx.host.buffers().viewport_range(id) {
         Some(range) => cons_pair(
-            SteelVal::IntV(range.start as isize),
-            SteelVal::IntV(range.end as isize),
+            SteelVal::IntV(range.start.index() as isize),
+            SteelVal::IntV(range.end.index() as isize),
         ),
         None => Ok(SteelVal::BoolV(false)),
     }

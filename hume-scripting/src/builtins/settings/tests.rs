@@ -329,7 +329,10 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn line_to_offset(&self, id: BufferId, line: usize) -> Option<usize> {
         self.inner.line_to_offset(id, line)
     }
-    fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
+    fn viewport_range(
+        &self,
+        id: BufferId,
+    ) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
         self.inner.viewport_range(id)
     }
 }

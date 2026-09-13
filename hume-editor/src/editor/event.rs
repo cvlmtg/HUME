@@ -99,8 +99,8 @@ pub(in crate::editor) enum EditorEvent {
     /// instead), so this is a payload shape, not a behavior guarantee.
     OnViewportChange {
         buffer: BufferId,
-        first_line: usize,
-        end_line: usize,
+        first_line: hume_rope::line::ContentLine,
+        end_line: hume_rope::line::ContentLine,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `register-trigger-chars!`) has been inserted into the buffer — once
@@ -276,8 +276,8 @@ impl EditorEvent {
             } => {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
-                    SteelVal::IntV(*first_line as isize),
-                    SteelVal::IntV(*end_line as isize),
+                    SteelVal::IntV(first_line.index() as isize),
+                    SteelVal::IntV(end_line.index() as isize),
                 ]
             }
             EditorEvent::OnTriggerChar { buffer, ch, source } => {

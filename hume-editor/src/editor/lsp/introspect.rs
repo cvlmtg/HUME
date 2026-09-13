@@ -4,8 +4,6 @@
 //! because they mutate the transport). These run through `EditorHostImpl`
 //! directly since a Steel caller needs the value back inline.
 
-use std::ops::Range;
-
 use hume_engine::pane::Pane;
 use hume_engine::pipeline::{BufferId, EngineView};
 use hume_lsp::backend::ServerId;
@@ -655,7 +653,7 @@ pub(in crate::editor) fn linewise_ranges_params(
 pub(in crate::editor) fn pane_visible_range(
     pane: &Pane,
     content_lines: hume_rope::line::ContentLineCount,
-) -> Range<usize> {
+) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
     let first_line = pane.viewport.top_line;
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
@@ -665,8 +663,8 @@ pub(in crate::editor) fn pane_visible_range(
     let height_rows = pane.viewport.height.max(1) as usize;
     let end_line = first_line
         .down(height_rows)
-        .min(hume_rope::line::ContentLine::new(content_lines.get()));
-    first_line.index()..end_line.index()
+        .min(content_lines.end_exclusive());
+    hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }
 
 /// `(viewport-range bid)` — the visible line range (end-exclusive) currently
@@ -680,7 +678,7 @@ pub(in crate::editor) fn viewport_range(
     state: &EditorState,
     view: &EngineView,
     id: BufferId,
-) -> Option<Range<usize>> {
+) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
     let pane_id = state.pane_showing_buffer(view, id)?;
     let pane = view.panes.get(pane_id)?;
     let content_lines = state.buffers.try_get(id)?.text().content_line_count();

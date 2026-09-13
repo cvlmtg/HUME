@@ -437,7 +437,7 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         )
     }
 
-    fn viewport_range(&self, id: BufferId) -> Option<Range<usize>> {
+    fn viewport_range(&self, id: BufferId) -> Option<ExclusiveRange<hume_rope::line::ContentLine>> {
         crate::editor::lsp::introspect::viewport_range(self.state, self.view, id)
     }
 }

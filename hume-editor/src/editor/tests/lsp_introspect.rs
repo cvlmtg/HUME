@@ -603,7 +603,13 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
     let bid = ed.focused_buffer_id();
 
     let got = crate::editor::lsp::introspect::viewport_range(&ed.state, &ed.view, bid);
-    assert_eq!(got, Some(0..3));
+    assert_eq!(
+        got,
+        Some(hume_rope::offset::ExclusiveRange::new(
+            hume_rope::line::ContentLine::new(0),
+            hume_rope::line::ContentLine::new(3),
+        ))
+    );
 }
 
 #[test]

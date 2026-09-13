@@ -34,8 +34,8 @@ fn all_variants() -> Vec<EditorEvent> {
         EditorEvent::OnDiagnosticsChanged { buffer },
         EditorEvent::OnViewportChange {
             buffer,
-            first_line: 3,
-            end_line: 42,
+            first_line: hume_rope::line::ContentLine::new(3),
+            end_line: hume_rope::line::ContentLine::new(42),
         },
         EditorEvent::OnTriggerChar {
             buffer,
@@ -205,8 +205,8 @@ fn on_viewport_change_carries_buffer_and_both_line_bounds() {
     let buffer = BufferId::default();
     let event = EditorEvent::OnViewportChange {
         buffer,
-        first_line: 3,
-        end_line: 42,
+        first_line: hume_rope::line::ContentLine::new(3),
+        end_line: hume_rope::line::ContentLine::new(42),
     };
     let args = event.steel_args();
     assert_eq!(args.len(), 3);
