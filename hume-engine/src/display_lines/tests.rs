@@ -6,7 +6,7 @@ use ropey::Rope;
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{DecorationSource, VirtualLine};
-use crate::types::ScopeId;
+use crate::types::{CellContent, ScopeId};
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::content_line_count;
