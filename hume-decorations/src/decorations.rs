@@ -226,16 +226,16 @@ impl PointAnchored for LineBgEntry {
 /// start; this supplies the end.
 pub trait RangeAnchored: Positioned {
     fn end(&self) -> CharOffset;
-    fn set_range(&mut self, start: CharOffset, end: CharOffset);
+    fn set_range(&mut self, range: ExclusiveRange<CharOffset>);
 }
 
 impl RangeAnchored for ExtraHighlightEntry {
     fn end(&self) -> CharOffset {
         self.end
     }
-    fn set_range(&mut self, start: CharOffset, end: CharOffset) {
-        self.start = start;
-        self.end = end;
+    fn set_range(&mut self, range: ExclusiveRange<CharOffset>) {
+        self.start = range.start;
+        self.end = range.end;
     }
 }
 
@@ -468,7 +468,7 @@ impl<K, T: RangeAnchored> SourceStore<K, T> {
                 if range.end <= range.start {
                     false // collapsed by a covering deletion — drop
                 } else {
-                    s.set_range(range.start, range.end);
+                    s.set_range(range);
                     true
                 }
             });

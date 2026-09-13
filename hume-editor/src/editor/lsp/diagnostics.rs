@@ -91,9 +91,9 @@ impl RangeAnchored for StoredDiag {
     fn end(&self) -> CharOffset {
         self.end
     }
-    fn set_range(&mut self, start: CharOffset, end: CharOffset) {
-        self.start = start;
-        self.end = end;
+    fn set_range(&mut self, range: ExclusiveRange<CharOffset>) {
+        self.start = range.start;
+        self.end = range.end;
     }
 }
 
