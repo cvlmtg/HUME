@@ -169,7 +169,7 @@ impl Editor {
                 } else {
                     None
                 };
-                self.set_primary_selection(search_sel(span.start, span.end, anchor, direction));
+                self.set_primary_selection(search_sel(span, anchor, direction));
             }
             None => {
                 // No match — restore position to pre-search.

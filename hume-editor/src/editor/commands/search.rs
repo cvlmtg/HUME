@@ -77,8 +77,7 @@ pub(in crate::editor) fn cmd_search_backward(
 /// the match edge that faces the search direction.
 /// `anchor = None` — move mode: cover the matched text exactly.
 pub(in crate::editor) fn search_sel(
-    start: CharOffset,
-    end_incl: CharOffset,
+    span: InclusiveRange<CharOffset>,
     anchor: Option<CharOffset>,
     direction: SearchDirection,
 ) -> Selection {
@@ -86,11 +85,11 @@ pub(in crate::editor) fn search_sel(
         Some(a) => Selection::new(
             a,
             match direction {
-                SearchDirection::Forward => end_incl,
-                SearchDirection::Backward => start,
+                SearchDirection::Forward => span.end,
+                SearchDirection::Backward => span.start,
             },
         ),
-        None => Selection::new(start, end_incl),
+        None => Selection::new(span.start, span.end),
     }
 }
 
@@ -213,7 +212,7 @@ fn search_jump(
         Some(span) => {
             let pid = state.focus.id();
             state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
-            let new_sel = search_sel(span.start, span.end, anchor, direction);
+            let new_sel = search_sel(span, anchor, direction);
             set_primary_selection(state, view, new_sel);
             Ok(())
         }
