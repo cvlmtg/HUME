@@ -105,6 +105,16 @@ impl CharOffset {
                 .expect("CharOffset::shift: result would be negative"),
         )
     }
+
+    /// `self` shifted by `delta` chars, clamping to 0 instead of panicking —
+    /// for a caller subtracting a count that may legitimately exceed `self`
+    /// (a cramped cursor near the buffer start, an undo/redo delta larger
+    /// than the position it lands on). Reach for [`Self::shift`] when the
+    /// result is known non-negative and a violation should panic loudly
+    /// instead of silently clamping.
+    pub fn shift_saturating(self, delta: isize) -> CharOffset {
+        Self(self.0.saturating_add_signed(delta))
+    }
 }
 
 /// A half-open range `[start, end)` — `end` is one past the last position

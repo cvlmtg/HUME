@@ -81,9 +81,7 @@ pub fn join_lines_select_spaces(
         // Saturating, not `shift(-1)` like `space_positions` above: the loop
         // can run zero times (single-line selection), leaving `new_pos()` at
         // 0 for a leading selection.
-        new_sels.push(Selection::collapsed(CharOffset::new(
-            b.new_pos().index().saturating_sub(1),
-        )));
+        new_sels.push(Selection::collapsed(b.new_pos().shift_saturating(-1)));
     });
 
     // Result is the inserted spaces — the command's contract is "select the

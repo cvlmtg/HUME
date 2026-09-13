@@ -377,10 +377,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // line rather than the phantom trailing one — the gutter-sign
             // plugin expands `[line, end-line]` inclusive to mark every line
             // a multi-line diagnostic touches.
-            let end_line = text.char_to_line(
-                hume_rope::offset::CharOffset::new(d.end.index().saturating_sub(1))
-                    .min(last_content_char),
-            );
+            let end_line = text.char_to_line(d.end.shift_saturating(-1).min(last_content_char));
             serde_json::json!({
                 "start": d.start.index(),
                 "end": d.end.index(),

@@ -217,7 +217,7 @@ fn delete_sel_region(
             b.retain(del_start.chars_since(b.old_pos()));
             // Saturating, not `shift`: earlier lines' edits can shorten the
             // content above, landing `new_pos()` below `char_col`.
-            let cursor_new = CharOffset::new(b.new_pos().index().saturating_sub(char_col.index()));
+            let cursor_new = b.new_pos().shift_saturating(-(char_col.index() as isize));
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'. `last_char()` is exactly
             // `last_content_char() + 1` — the buffer's own exclusive content

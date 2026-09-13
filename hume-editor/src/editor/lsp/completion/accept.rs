@@ -370,7 +370,7 @@ impl CompletionSession {
                                 } else {
                                     word_start_before(
                                         text,
-                                        CharOffset::new(head.index().saturating_sub(typed)),
+                                        head.shift_saturating(-(typed as isize)),
                                         chars,
                                     )
                                 }

@@ -213,6 +213,11 @@ impl<'a> PosMapCursor<'a> {
     /// `ChangeSet::map_pos` is a one-shot convenience built on top of this:
     /// it opens a fresh cursor and delegates a single query to it.
     pub fn map_anchor(&mut self, pos: CharOffset, assoc: Assoc) -> MappedPos {
+        // Bare usize from here down: `old`/`new` are running cursors advanced
+        // by op *lengths* (`self.old += n`, `self.new + len`), arithmetic
+        // `CharOffset` deliberately has no `Add`/`Sub` for — this is that
+        // type's own no-arithmetic design forcing an escape, not a
+        // performance carve-out (`CharOffset` is a zero-cost `Copy` newtype).
         let pos = pos.index();
         while self.idx < self.ops.len() {
             match &self.ops[self.idx] {

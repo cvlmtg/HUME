@@ -120,7 +120,7 @@ pub fn replace_around_cursors(
         // Saturating, not `shift`: a cramped cursor's `head` can sit fewer
         // than `back` chars into the buffer — the `.max(b.old_pos())` clamp
         // below does the real repair, so this must not panic first.
-        |_buf, head| CharOffset::new(head.index().saturating_sub(back)),
+        |_buf, head| head.shift_saturating(-(back as isize)),
         forward,
         replacement,
     )
