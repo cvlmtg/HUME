@@ -332,30 +332,40 @@ pub(crate) fn compose_display_line(
 
         match &g.content {
             CellContent::Grapheme => {
-                if g.byte_range.start <= g.byte_range.end
-                    && g.byte_range.end.index() <= line_str.len()
-                {
-                    if screen_x + g.width as u16 > right_edge {
-                        // A wide grapheme whose right half would cross
-                        // `right_edge` cannot be drawn — there is no such
-                        // thing as half a glyph, and the cell past the edge
-                        // belongs to whatever the terminal renders next (a
-                        // neighbouring pane, the divider seam). Render spaces
-                        // for the columns that are ours, mirroring the
-                        // h-scroll straddle policy below.
-                        for sx in screen_x..right_edge {
-                            canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
-                        }
-                    } else {
-                        canvas.write_cell(
-                            screen_x,
-                            y,
-                            &line_str[g.byte_range.start.index()..g.byte_range.end.index()],
-                            g.width,
-                            cell_style,
-                            right_edge,
-                        );
+                // `format.rs` cuts every `byte_range` out of this same line with
+                // `grapheme_indices`, so a range that won't slice means the formatted
+                // line and `line_str` have desynced — a `PaneLineStore` entry walked
+                // against another line's text. `.get()` rather than `&line_str[..]`
+                // because the bounds pair alone says nothing about char boundaries: a
+                // desynced range can still land mid-cluster and panic.
+                let Some(text) = line_str.get(g.byte_range.start.index()..g.byte_range.end.index())
+                else {
+                    debug_assert!(
+                        false,
+                        "grapheme byte range {}..{} does not slice the {}-byte line — \
+                         formatted line and line text have desynced",
+                        g.byte_range.start.index(),
+                        g.byte_range.end.index(),
+                        line_str.len()
+                    );
+                    // Release: leave the cell as `fill_row_bg` painted it. One blank
+                    // cell beats taking the editor down over a frame that is already
+                    // wrong.
+                    continue;
+                };
+                if screen_x + g.width as u16 > right_edge {
+                    // A wide grapheme whose right half would cross
+                    // `right_edge` cannot be drawn — there is no such
+                    // thing as half a glyph, and the cell past the edge
+                    // belongs to whatever the terminal renders next (a
+                    // neighbouring pane, the divider seam). Render spaces
+                    // for the columns that are ours, mirroring the
+                    // h-scroll straddle policy below.
+                    for sx in screen_x..right_edge {
+                        canvas.write_cell(sx, y, " ", 1, cell_style, right_edge);
                     }
+                } else {
+                    canvas.write_cell(screen_x, y, text, g.width, cell_style, right_edge);
                 }
             }
             CellContent::Whitespace { start, len } | CellContent::Placeholder { start, len } => {

@@ -111,6 +111,71 @@ fn renders_simple_text() {
 }
 
 #[test]
+#[should_panic(expected = "desynced")]
+fn grapheme_byte_range_past_line_str_asserts() {
+    // `byte_range` claims bytes 0..5, but `line_str` below is only 2 bytes —
+    // the desync `compose_display_line`'s fail-fast guard exists to catch,
+    // built directly through `test_support::byte_range` since the real
+    // `format.rs` constructors can't produce an inverted/out-of-range one.
+    let graphemes = vec![Grapheme {
+        byte_range: crate::test_support::byte_range(0, 5),
+        char_offset: 0,
+        display_col: dc(0),
+        width: 1,
+        content: CellContent::Grapheme,
+        indent_depth: 0,
+        scope: None,
+    }];
+    let dls = [simple_display_line(0..1)];
+    let styles = vec![ResolvedStyle::default(); 1];
+    let visible = PaneGeometry {
+        content_height: 5,
+        content_width: 20,
+        gutter_width: 0,
+        last_line_idx: RopeyLine::new(0),
+    };
+    let viewport = ViewportState::new(20, 5);
+    let pane_rect = Rect {
+        x: 0,
+        y: 0,
+        width: 20,
+        height: 5,
+    };
+    let mut buf = make_test_buf(20, 5);
+    let theme = Theme::default();
+    let lane_widths: Vec<u16> = Vec::new();
+    let rope = ropey::Rope::new();
+    let ctx = ComposeCtx {
+        gutter_columns: &[],
+        visible: &visible,
+        viewport: &viewport,
+        mode: EditorMode::Normal,
+        primary_head_line: ContentLine::new(0),
+        tab_width: 4,
+        tilde_style: ResolvedStyle::default(),
+        indent_guide_style: ResolvedStyle::default(),
+        show_indent_guides: true,
+        pane_rect,
+        theme: &theme,
+        rope: &rope,
+        default_gutter_scope: ScopeId(0),
+    };
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    compose_display_line(
+        &dls[0],
+        &graphemes,
+        &styles,
+        "hi",
+        "",
+        0,
+        &lane_widths,
+        &ctx,
+        &mut canvas,
+        None,
+    );
+}
+
+#[test]
 fn filler_rows_have_tilde() {
     // Only render_tilde_fillers (not compose_display_line) draws tildes — verify
     // it fills every requested row from the given start row onward.
