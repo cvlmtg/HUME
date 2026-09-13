@@ -168,7 +168,7 @@ test('a scope def with a modifiers array round-trips through export and re-parse
 // `style` is a style field only inside `underline = { color, style }`, which
 // walkScopes keeps verbatim as part of the def. A bare `style` at the top of a
 // scope table is not a style field, so it flattens like any other child —
-// matching STYLE_KEYS in hume-engine/src/theme/loader.rs.
+// matching STYLE_KEYS in hume-engine/src/theme/loader/flatten.rs.
 test('a bare `style` key in a scope table is a child, not a style field', () => {
   const parsed = parseTOML('"a" = { style = { bold = true } }');
   const original = extractScopes(parsed);
@@ -186,7 +186,7 @@ test('`underline = { color, style }` keeps its nested style field', () => {
 });
 
 // The catalog of style fields has to stay identical to STYLE_KEYS in
-// hume-engine/src/theme/loader.rs: a key this list treats as a style field but
+// hume-engine/src/theme/loader/flatten.rs: a key this list treats as a style field but
 // HUME treats as a child scope (or vice versa) makes the same theme flatten
 // two different ways in the editor and the editor it previews.
 test('the style-field set matches the loader\'s STYLE_KEYS', () => {
@@ -308,7 +308,7 @@ test('a shipped theme with a dotted inline key imports with its scope intact', (
 
 // ── Scalar siblings of a style field ──────────────────────────────────────
 
-// Matches `walk_scope` in hume-engine/src/theme/loader.rs: once a table is
+// Matches `walk_scope` in hume-engine/src/theme/loader/flatten.rs: once a table is
 // known to be a style, a scalar sibling is indistinguishable from a misspelled
 // attribute, so HUME warns and drops it rather than inventing a child scope
 // nothing resolves.

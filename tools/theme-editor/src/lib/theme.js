@@ -1,5 +1,5 @@
 // The sixteen terminal colour names HUME's loader resolves to a fixed RGB
-// value (see `ANSI_COLORS` in hume-engine/src/theme/loader.rs, the source of
+// value (see `ANSI_COLORS` in hume-engine/src/theme/loader/values.rs, the source of
 // truth for these — the two tables are hand-kept in sync). A theme's own
 // `[palette]` entry of the same name still wins, matching the loader's order.
 const ANSI_COLORS = {
@@ -9,7 +9,7 @@ const ANSI_COLORS = {
   "light-blue": "#5c5cff", "light-magenta": "#ff00ff", "light-cyan": "#00ffff", white: "#ffffff",
 };
 
-// Mirrors STYLE_KEYS in hume-engine/src/theme/loader.rs — a key here is part
+// Mirrors STYLE_KEYS in hume-engine/src/theme/loader/flatten.rs — a key here is part
 // of a scope's style, anything else is a child scope. The single copy other
 // modules import, rather than each hand-typing their own (as toml.js's
 // `SCOPE_KEYS` and ScopeRow.jsx's own `STYLE_KEYS` used to). `underline`'s
@@ -149,7 +149,7 @@ export function cursorColors(chain, primary, sc, pal) {
 }
 
 // The underline styles the loader accepts (`parse_underline` in
-// hume-engine/src/theme/loader.rs), each mapped to its CSS equivalent. One
+// hume-engine/src/theme/loader/values.rs), each mapped to its CSS equivalent. One
 // keyed table rather than a name list in the editor and a switch here: a
 // style added to the loader needs one line, and the editor can't offer a name
 // HUME would reject on load. `tests/theme.test.js` reads the loader's own

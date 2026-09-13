@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolveColor, cursorColors, cursorLadderIds, diagnosticStyle, fullStyle, tokenStyle, MODIFIERS, UNDERLINE_STYLES } from '../src/lib/theme.js';
 
-const LOADER_RS = new URL('../../../hume-engine/src/theme/loader.rs', import.meta.url);
+const LOADER_VALUES_RS = new URL('../../../hume-engine/src/theme/loader/values.rs', import.meta.url);
 
 // The string literals matched by one `fn <name>`'s `match` arms — the shape
 // `parse_modifier`/`parse_underline` both use to define their vocabulary.
 function matchArmNames(src, fnName) {
   const start = src.indexOf(`fn ${fnName}(`);
-  assert.notEqual(start, -1, `${fnName} must still exist in hume-engine/src/theme/loader.rs`);
+  assert.notEqual(start, -1, `${fnName} must still exist in hume-engine/src/theme/loader/values.rs`);
   const body = src.slice(src.indexOf('{', start), src.indexOf('\n}', start));
   return [...body.matchAll(/"([a-z_]+)"\s*=>/g)].map(m => m[1]);
 }
@@ -114,7 +114,7 @@ test('diagnosticStyle returns null for a severity the theme leaves unset', () =>
 // fails to load; missing one it accepts hides a style the user can't reach.
 // Both lists used to be hand-copied into ScopeRow with nothing checking them.
 test('the modifier pills match the loader\'s parse_modifier vocabulary', () => {
-  const src = readFileSync(LOADER_RS, 'utf8');
+  const src = readFileSync(LOADER_VALUES_RS, 'utf8');
   // "underlined" is offered by the editor but handled in `parse_style_table`'s
   // modifiers loop, which routes it to the underline field instead of the
   // bitset — so it is deliberately absent from `parse_modifier` itself.
@@ -126,7 +126,7 @@ test('the modifier pills match the loader\'s parse_modifier vocabulary', () => {
 });
 
 test('the underline styles match the loader\'s parse_underline vocabulary', () => {
-  const src = readFileSync(LOADER_RS, 'utf8');
+  const src = readFileSync(LOADER_VALUES_RS, 'utf8');
   assert.deepEqual(
     Object.keys(UNDERLINE_STYLES).sort(),
     matchArmNames(src, 'parse_underline').sort(),
