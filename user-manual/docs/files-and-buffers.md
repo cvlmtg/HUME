@@ -75,6 +75,30 @@ Splitting is refused with a message when the pane is already too small to divide
 
 A divider is drawn between panes (controlled by the `pane-dividers` option, on by default), and the pane without focus is dimmed. Wrap normally follows the buffer/global setting, but it can be pinned per pane: `:wrap` toggles it on/off for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly, so two panes on the same buffer can wrap independently once pinned — see [Text wrap](configuration.md#text-wrap).
 
+## Tabs
+
+A **tab** is a saved window layout — its own splits and focused pane — not a per-buffer strip. Each tab remembers its layout, so switching away and back restores its splits and focus where you left them.
+
+| Command | Aliases | Effect |
+|---------|---------|--------|
+| `:tabnew [path]` | `:tabe` | Open a new tab and switch to it |
+| `:tabclose` | `:tabc` | Close the current tab and every pane it owns |
+| `:tabnext` | `:tabn` | Switch to the next tab (wraps around) |
+| `:tabprev` | `:tabp` | Switch to the previous tab (wraps around) |
+
+`[path]` is optional. Without it, the new tab views the same buffer as the focused pane. With it, the new tab opens that file instead.
+
+| Key | Effect |
+|-----|--------|
+| `Ctrl+p t` | Switch to the next tab |
+| `Ctrl+p T` | Switch to the previous tab |
+
+`:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key.
+
+Click a tab in the tab bar to switch to it; the bar scrolls when tabs overflow the screen width. By default it only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this).
+
+`:q` on a tab's last pane closes the tab rather than the editor, and `:tabclose` is refused with a message when it's the only tab. Either way the buffers stay open in the buffer list.
+
 ## Saving
 
 | Command | Effect |
