@@ -15,11 +15,6 @@ macro_rules! display_col_tests {
             }
 
             #[test]
-            fn default_is_column_zero() {
-                assert_eq!($ty::default(), $ty::new(0));
-            }
-
-            #[test]
             fn advance_adds_and_saturates() {
                 assert_eq!($ty::new(3).advance(4), $ty::new(7));
                 assert_eq!($ty::new(u32::MAX).advance(1), $ty::new(u32::MAX));
@@ -60,6 +55,14 @@ macro_rules! display_col_tests {
 
 display_col_tests!(DisplayLineCol, display_line_col);
 display_col_tests!(BufferLineCol, buffer_line_col);
+
+// Not shared with `BufferLineCol`'s macro-generated tests above: only
+// `DisplayLineCol` derives `Default` — it's load-bearing (`DisplayLinePos`,
+// `ScrollPosition`), `BufferLineCol`'s never was.
+#[test]
+fn display_line_col_default_is_column_zero() {
+    assert_eq!(DisplayLineCol::default(), DisplayLineCol::new(0));
+}
 
 #[test]
 fn as_display_line_unwrapped_carries_the_same_number() {

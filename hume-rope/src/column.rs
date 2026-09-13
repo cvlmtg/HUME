@@ -68,7 +68,7 @@ pub struct DisplayLineCol(u32);
 /// same buffer-line column on its landing line regardless of which display
 /// line it lands on. See the module doc's "Display columns have an origin"
 /// section.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct BufferLineCol(u32);
 
 /// The arithmetic shared by [`DisplayLineCol`] and [`BufferLineCol`] — a
@@ -192,7 +192,7 @@ impl BufferLineCol {
 /// 0-based char index within a line — never a grapheme count or a display
 /// column. [`crate::lines::char_col_in_line`]'s result and
 /// [`crate::lines::place_char_column`]'s input.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct CharCol(usize);
 
 impl CharCol {
@@ -212,7 +212,7 @@ impl CharCol {
 /// user pressed → to reach a position from the line's start.
 /// [`crate::grapheme::grapheme_col_in_line`]'s result and
 /// [`crate::lines::place_grapheme_column`]'s input.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct GraphemeCol(usize);
 
 impl GraphemeCol {

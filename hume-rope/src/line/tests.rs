@@ -31,7 +31,6 @@ fn content_line_down_and_up() {
 
 #[test]
 fn default_is_line_zero() {
-    assert_eq!(RopeyLine::default(), RopeyLine::new(0));
     assert_eq!(ContentLine::default(), ContentLine::new(0));
 }
 

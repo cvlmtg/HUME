@@ -30,10 +30,7 @@ use crate::lines::{content_line_count, last_content_line, last_ropey_line};
 
 /// A line index in the ropey domain — ropey's own line indexing, phantom
 /// trailing line included. See the module doc for the domain distinction.
-///
-/// `Default` is line 0 — always valid, ropey or content domain, on any rope
-/// including the empty buffer.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct RopeyLine(usize);
 
 /// A line index in the content domain — a real line of buffer content, never
