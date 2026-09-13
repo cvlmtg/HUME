@@ -41,7 +41,6 @@ fn find_comma_segments(
         .chars_at(content_start)
         .take(content_end.chars_since(content_start) + 1)
     {
-        let i = CharOffset::new(i);
         match bracket_role(ch) {
             Some((_, true)) => depth += 1,
             Some((_, false)) => depth = depth.saturating_sub(1),

@@ -22,11 +22,6 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 const BRACKET_PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 
 /// Scan left from `pos` (exclusive) to find an unmatched `open` bracket.
-///
-/// Works in char-cursor space internally (this ASCII-only scan never touches
-/// a grapheme boundary) — see [`find_tightest_bracket_pair`]'s doc for why
-/// the whole bracket-matching engine shares this convention. Typed only at
-/// this function's own boundary.
 pub(crate) fn scan_left_for_open(
     text: &BufferText,
     pos: CharOffset,
@@ -40,7 +35,7 @@ pub(crate) fn scan_left_for_open(
             depth += 1;
         } else if ch == open {
             if depth == 0 {
-                return Some(CharOffset::new(i));
+                return Some(i);
             }
             depth -= 1;
         }
@@ -61,7 +56,7 @@ pub(crate) fn scan_right_for_close(
             depth += 1;
         } else if ch == close {
             if depth == 0 {
-                return Some(CharOffset::new(i));
+                return Some(i);
             }
             depth -= 1;
         }
@@ -147,10 +142,10 @@ pub(crate) fn bracket_role(ch: char) -> Option<(usize, bool)> {
 /// differ only in which side they're seeking and which array they fill, so
 /// one function serves both, called with `depths`/`slots` swapped.
 fn step_bracket(
-    (i, c): (usize, char),
+    (i, c): (CharOffset, char),
     seek_open: bool,
     depths: &mut [usize; BRACKET_PAIRS.len()],
-    slots: &mut [Option<usize>; BRACKET_PAIRS.len()],
+    slots: &mut [Option<CharOffset>; BRACKET_PAIRS.len()],
 ) -> Option<usize> {
     let (k, is_open) = bracket_role(c)?;
     if slots[k].is_some() {
@@ -214,21 +209,15 @@ fn step_bracket(
 /// Ties (crossed nesting can produce genuine equal spans, e.g. `({a)}`)
 /// break in `BRACKET_PAIRS` order — `min_by_key` keeps the first of equal
 /// minima.
-///
-/// Works in char-cursor space internally: `CharCursor` (what `chars_at`
-/// yields) is codepoint-level by design, and this scan is ASCII-only
-/// bracket matching with no grapheme-boundary concern of its own — typed
-/// only at the function's own signature, like every function in this file.
 pub(crate) fn find_tightest_bracket_pair(
     text: &BufferText,
     pos: CharOffset,
 ) -> Option<InclusiveRange<CharOffset>> {
-    let pos = pos.index();
-    let ch = text.char_at(CharOffset::new(pos))?;
+    let ch = text.char_at(pos)?;
     let role = bracket_role(ch);
 
-    let mut opens: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
-    let mut closes: [Option<usize>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
+    let mut opens: [Option<CharOffset>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
+    let mut closes: [Option<CharOffset>; BRACKET_PAIRS.len()] = [None; BRACKET_PAIRS.len()];
     let mut depths_left = [0usize; BRACKET_PAIRS.len()];
     let mut depths_right = [0usize; BRACKET_PAIRS.len()];
 
@@ -250,10 +239,10 @@ pub(crate) fn find_tightest_bracket_pair(
     let mut best_span: Option<usize> = None;
     let within_bound = |best: Option<usize>, d: usize| best.is_none_or(|s| d < s);
 
-    let mut left_cursor = text.chars_at(CharOffset::new(pos));
-    // `pos + 1` cannot panic: `text.char_at(pos)` above already proved
+    let mut left_cursor = text.chars_at(pos);
+    // `pos.shift(1)` cannot panic: `text.char_at(pos)` above already proved
     // `pos < text.len_chars()`.
-    let mut right_cursor = text.chars_at(CharOffset::new(pos + 1));
+    let mut right_cursor = text.chars_at(pos.shift(1));
     let (mut dl, mut dr) = (0usize, 0usize);
     let (mut left_exhausted, mut right_exhausted) = (false, false);
 
@@ -275,15 +264,13 @@ pub(crate) fn find_tightest_bracket_pair(
                             // On-close shortcut: `pos` itself is this
                             // type's close.
                             closes[k] = Some(pos);
-                            best_span =
-                                Some(best_span.map_or(pos - open_pos, |s| s.min(pos - open_pos)));
+                            let span = pos.chars_since(open_pos);
+                            best_span = Some(best_span.map_or(span, |s| s.min(span)));
                         } else if let Some(close_pos) = closes[k] {
                             // Rightward scan already found this type's
                             // close before its open resolved here.
-                            best_span = Some(
-                                best_span
-                                    .map_or(close_pos - open_pos, |s| s.min(close_pos - open_pos)),
-                            );
+                            let span = close_pos.chars_since(open_pos);
+                            best_span = Some(best_span.map_or(span, |s| s.min(span)));
                         } else {
                             right_pending += 1;
                         }
@@ -302,9 +289,8 @@ pub(crate) fn find_tightest_bracket_pair(
                     {
                         right_pending -= 1;
                         let close_pos = hit.0;
-                        best_span = Some(
-                            best_span.map_or(close_pos - open_pos, |s| s.min(close_pos - open_pos)),
-                        );
+                        let span = close_pos.chars_since(open_pos);
+                        best_span = Some(best_span.map_or(span, |s| s.min(span)));
                     }
                 }
                 None => right_exhausted = true,
@@ -316,10 +302,8 @@ pub(crate) fn find_tightest_bracket_pair(
         .iter()
         .zip(&closes)
         .filter_map(|(&open_pos, &close_pos)| open_pos.zip(close_pos))
-        .min_by_key(|&(open_pos, close_pos)| close_pos - open_pos)
-        .map(|(open_pos, close_pos)| {
-            InclusiveRange::new(CharOffset::new(open_pos), CharOffset::new(close_pos))
-        })
+        .min_by_key(|&(open_pos, close_pos)| close_pos.chars_since(open_pos))
+        .map(|(open_pos, close_pos)| InclusiveRange::new(open_pos, close_pos))
 }
 
 /// Find the bracket nearest `sel`'s head, scanning the selection span.
@@ -342,10 +326,10 @@ pub(crate) fn find_tightest_bracket_pair(
 /// whitespace bookend stops at a newline, so a `w`/`W`/`maw` selection never
 /// crosses one.
 fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, char, char)> {
-    let classify = |(i, ch): (usize, char)| {
+    let classify = |(i, ch): (CharOffset, char)| {
         let (k, _) = bracket_role(ch)?;
         let (o, c) = BRACKET_PAIRS[k];
-        Some((CharOffset::new(i), o, c))
+        Some((i, o, c))
     };
     let head = sel.head();
     let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end()) {
@@ -360,7 +344,7 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
     } else {
         let mut cursor = text.chars_at(CharOffset::new(span.end));
         while let Some(hit) = cursor.prev() {
-            if hit.0 < span.start {
+            if hit.0.index() < span.start {
                 return None;
             }
             if let Some(found) = classify(hit) {
@@ -422,11 +406,10 @@ pub(crate) fn find_quote_pair(
     let line = text.char_to_line(pos);
     let line_start = text.line_to_char(line.into());
     let line_end = next_line_start(text, line.into());
-    let pos = pos.index();
 
     // Single pass: track the opening quote position; on every second hit we
     // have a complete pair and can test whether `pos` falls inside it.
-    let mut open: Option<usize> = None;
+    let mut open: Option<CharOffset> = None;
     for (i, ch) in text
         .chars_at(line_start)
         .take(line_end.chars_since(line_start))
@@ -437,10 +420,7 @@ pub(crate) fn find_quote_pair(
                 Some(open_pos) => {
                     // even occurrence → closing quote
                     if open_pos <= pos && pos <= i {
-                        return Some(InclusiveRange::new(
-                            CharOffset::new(open_pos),
-                            CharOffset::new(i),
-                        ));
+                        return Some(InclusiveRange::new(open_pos, i));
                     }
                     open = None; // reset for next pair
                 }

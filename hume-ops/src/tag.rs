@@ -86,7 +86,11 @@ fn skip_comment_body(cursor: &mut CharCursor<'_>) {
 /// early at the arrow's `>`. An unquoted, unbraced `<` — a stray comparison
 /// operator or the start of the *next* tag — ends the parse with `None`
 /// rather than being consumed as part of this one.
-fn parse_tag(cursor: &mut CharCursor<'_>, lt_pos: CharOffset, first: (usize, char)) -> Option<Tag> {
+fn parse_tag(
+    cursor: &mut CharCursor<'_>,
+    lt_pos: CharOffset,
+    first: (CharOffset, char),
+) -> Option<Tag> {
     let (mut i, mut ch) = first;
     let closing = ch == '/';
     if closing {
@@ -133,12 +137,9 @@ fn parse_tag(cursor: &mut CharCursor<'_>, lt_pos: CharOffset, first: (usize, cha
                 return Some(Tag {
                     closing,
                     self_closing: !closing && last_significant == Some('/'),
-                    name: InclusiveRange::new(
-                        CharOffset::new(name_start),
-                        CharOffset::new(name_end),
-                    ),
+                    name: InclusiveRange::new(name_start, name_end),
                     lt_pos,
-                    gt_pos: CharOffset::new(i),
+                    gt_pos: i,
                 });
             }
             c if !c.is_ascii_whitespace() => last_significant = Some(c),
@@ -178,13 +179,13 @@ fn next_tag<'a>(text: &'a BufferText, cursor: &mut CharCursor<'a>) -> Option<Tag
             // Not a comment either (`<!DOCTYPE`, stray `<!` junk) — `parse_tag`
             // would reject '!' anyway, so fall through to the reseek below
             // instead of calling it.
-        } else if let Some(tag) = parse_tag(cursor, CharOffset::new(lt_pos), first) {
+        } else if let Some(tag) = parse_tag(cursor, lt_pos, first) {
             return Some(tag);
         }
         // Failed to parse a tag at `lt_pos` — resume right after it,
         // discarding whatever the comment check or `parse_tag` looked ahead
         // at, which could itself be the next tag's own `<` (as in `a<b\n<div>`).
-        *cursor = text.chars_at(CharOffset::new(lt_pos + 1));
+        *cursor = text.chars_at(lt_pos.shift(1));
     }
 }
 
@@ -211,7 +212,7 @@ fn tag_at(text: &BufferText, pos: CharOffset) -> Option<Tag> {
         if ch != '<' {
             continue;
         }
-        let lt_pos = CharOffset::new(i);
+        let lt_pos = i;
         if is_comment_start(text, lt_pos) {
             return None;
         }
@@ -280,7 +281,7 @@ fn close_after(text: &BufferText, open: &Tag) -> Option<CharOffset> {
 fn prev_tag(text: &BufferText, before: CharOffset) -> Option<Tag> {
     let mut cursor = text.chars_at(before);
     while let Some((i, ch)) = cursor.prev() {
-        let lt_pos = CharOffset::new(i);
+        let lt_pos = i;
         if ch == '<'
             && !is_comment_start(text, lt_pos)
             && let Some(tag) = parse_tag_at(text, lt_pos)

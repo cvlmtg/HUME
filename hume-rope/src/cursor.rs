@@ -14,9 +14,9 @@ use crate::offset::CharOffset;
 /// (e.g. `e` + U+0301) is yielded here as two separate chars.
 pub struct CharCursor<'a> {
     iter: ropey::iter::Chars<'a>,
-    /// Char index of the position the cursor currently sits at — the index
-    /// `next()` would yield and `prev()` would land on.
-    pos: usize,
+    /// Char offset of the position the cursor currently sits at — the
+    /// position `next()` would yield and `prev()` would land on.
+    pos: CharOffset,
 }
 
 /// A cursor over `rope`'s chars starting at `pos`. See [`CharCursor`].
@@ -27,21 +27,20 @@ pub struct CharCursor<'a> {
 /// # Panics
 /// Panics if `pos > rope.len_chars()`.
 pub fn chars_at(rope: &Rope, pos: CharOffset) -> CharCursor<'_> {
-    let idx = pos.index();
     CharCursor {
-        iter: rope.chars_at(idx),
-        pos: idx,
+        iter: rope.chars_at(pos.index()),
+        pos,
     }
 }
 
 impl Iterator for CharCursor<'_> {
-    type Item = (usize, char);
+    type Item = (CharOffset, char);
 
     /// Yield the char at the cursor position, then advance forward.
-    fn next(&mut self) -> Option<(usize, char)> {
+    fn next(&mut self) -> Option<(CharOffset, char)> {
         let ch = self.iter.next()?;
         let pos = self.pos;
-        self.pos += 1;
+        self.pos = self.pos.shift(1);
         Some((pos, ch))
     }
 }
@@ -53,9 +52,9 @@ impl CharCursor<'_> {
     /// that trait means "consume from the far end of the same forward
     /// sequence," not "walk backward from here," which is what callers
     /// (bracket-pair scans) actually need.
-    pub fn prev(&mut self) -> Option<(usize, char)> {
+    pub fn prev(&mut self) -> Option<(CharOffset, char)> {
         let ch = self.iter.prev()?;
-        self.pos -= 1;
+        self.pos = self.pos.shift(-1);
         Some((self.pos, ch))
     }
 }
