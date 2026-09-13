@@ -880,10 +880,18 @@ pub trait AsyncProcessHost {
 /// `DiffHost` methods drop them before returning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffHunk {
-    /// Line index in the old text where this hunk starts.
-    pub old_start: usize,
-    /// Line index in the new text where this hunk starts.
-    pub new_start: usize,
+    /// Content line in the old text where this hunk starts. A pure insertion
+    /// (`old_lines` empty) names an *insertion position*, not a changed
+    /// line — it may legitimately equal the old text's content line count
+    /// (one past the last line), the same one-past-last-line value
+    /// `ContentLineCount::end_exclusive()` names, which is why this is
+    /// minted trusted (`ContentLine::new`) rather than through `::checked`,
+    /// which would reject exactly that value.
+    pub old_start: hume_rope::line::ContentLine,
+    /// Line index in the new text where this hunk starts — see `old_start`'s
+    /// doc; the same insertion-position case applies here for a pure
+    /// deletion (`new_lines` empty).
+    pub new_start: hume_rope::line::ContentLine,
     /// The covered old-side lines, trailing newlines stripped.
     pub old_lines: Vec<String>,
     /// The covered new-side lines, trailing newlines stripped.

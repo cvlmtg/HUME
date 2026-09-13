@@ -57,9 +57,9 @@ fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
     let old_count = hunk.old_lines.len();
     let new_count = hunk.new_lines.len();
     list_of([
-        SteelVal::IntV(hunk.old_start as isize),
+        SteelVal::IntV(hunk.old_start.index() as isize),
         SteelVal::IntV(old_count as isize),
-        SteelVal::IntV(hunk.new_start as isize),
+        SteelVal::IntV(hunk.new_start.index() as isize),
         SteelVal::IntV(new_count as isize),
         string_list(hunk.old_lines),
         string_list(hunk.new_lines),

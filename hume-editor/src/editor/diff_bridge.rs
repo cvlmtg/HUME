@@ -41,6 +41,17 @@ pub(in crate::editor) fn line_hunks_against_buffer(
 /// `Equal` runs are dropped; each [`DiffHunk`]'s line lists are re-sliced
 /// from the tokenized input — `LineHunkKind` carries no payload to split
 /// (`hume-editing/src/diff.rs`).
+///
+/// `old.start`/`new.start` mint trusted `ContentLine`s from `LineHunk`'s bare
+/// `usize`s (ropey-domain token indices — `line_tokens()` includes the
+/// phantom trailing line, per the module doc's normalization). Sound: the
+/// phantom line is an empty token on both sides by construction (the module
+/// doc's normalization guarantee), so it can only ever match as an `Equal`
+/// run — already filtered out above — never surface as a hunk's own start.
+/// A hunk's start is therefore always a real content line, *or* the
+/// legitimate one-past-last-line insertion/deletion position `DiffHunk`'s
+/// own doc describes (`ContentLineCount::end_exclusive()`'s value) — never
+/// the phantom index itself.
 fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
     let old_tokens: Vec<RopeSlice<'_>> = old.line_tokens().collect();
     let new_tokens: Vec<RopeSlice<'_>> = new.line_tokens().collect();
@@ -52,8 +63,8 @@ fn hunks(old: &BufferText, new: &BufferText) -> Vec<DiffHunk> {
         .map(|hunk| {
             let LineHunk { old, new, .. } = hunk;
             DiffHunk {
-                old_start: old.start,
-                new_start: new.start,
+                old_start: hume_rope::line::ContentLine::new(old.start),
+                new_start: hume_rope::line::ContentLine::new(new.start),
                 old_lines: strip_newlines(&old_tokens, old),
                 new_lines: strip_newlines(&new_tokens, new),
             }

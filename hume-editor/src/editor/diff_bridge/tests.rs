@@ -17,8 +17,8 @@ fn pure_insert_is_zero_based_with_no_old_side() {
     assert_eq!(
         line_hunks("a\nb\n", "a\nx\nb\n"),
         vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
+            old_start: hume_rope::line::ContentLine::new(1),
+            new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec![],
             new_lines: vec!["x".to_string()],
         }]
@@ -32,8 +32,8 @@ fn pure_delete_is_zero_based_with_no_new_side() {
     assert_eq!(
         line_hunks("a\nx\nb\n", "a\nb\n"),
         vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
+            old_start: hume_rope::line::ContentLine::new(1),
+            new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["x".to_string()],
             new_lines: vec![],
         }]
@@ -48,8 +48,8 @@ fn replace_carries_both_sides() {
     assert_eq!(
         line_hunks("a\nb\nc\n", "a\nB\nc\n"),
         vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
+            old_start: hume_rope::line::ContentLine::new(1),
+            new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["b".to_string()],
             new_lines: vec!["B".to_string()],
         }]
@@ -65,8 +65,8 @@ fn multi_line_delete_rebuilds_lines_by_slicing_the_tokenized_input() {
     assert_eq!(
         line_hunks("a\nx\ny\nb\n", "a\nb\n"),
         vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
+            old_start: hume_rope::line::ContentLine::new(1),
+            new_start: hume_rope::line::ContentLine::new(1),
             old_lines: vec!["x".to_string(), "y".to_string()],
             new_lines: vec![],
         }]
@@ -102,8 +102,8 @@ fn line_hunks_treats_non_lf_unicode_breaks_as_content() {
     assert_eq!(
         line_hunks("a\u{0C}b\n", "x\u{0C}b\n"),
         vec![DiffHunk {
-            old_start: 0,
-            new_start: 0,
+            old_start: hume_rope::line::ContentLine::new(0),
+            new_start: hume_rope::line::ContentLine::new(0),
             old_lines: vec!["a\u{0C}b".to_string()],
             new_lines: vec!["x\u{0C}b".to_string()],
         }]
@@ -119,8 +119,8 @@ fn line_hunks_normalizes_bare_cr_to_a_line_break() {
     assert_eq!(
         line_hunks("a\rb\n", "x\rb\n"),
         vec![DiffHunk {
-            old_start: 0,
-            new_start: 0,
+            old_start: hume_rope::line::ContentLine::new(0),
+            new_start: hume_rope::line::ContentLine::new(0),
             old_lines: vec!["a".to_string()],
             new_lines: vec!["x".to_string()],
         }]
