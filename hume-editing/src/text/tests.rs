@@ -212,6 +212,27 @@ fn char_to_line() {
 }
 
 #[test]
+fn char_to_line_clamps_positions_past_the_buffer_end() {
+    // "hello\nworld\nfoo\n": len_chars = 16, last content line = 2.
+    let text = BufferText::from("hello\nworld\nfoo");
+    assert_eq!(text.char_to_line(co(text.len_chars())), ContentLine::new(2));
+    assert_eq!(
+        text.char_to_line(co(text.len_chars() + 5)),
+        ContentLine::new(2)
+    );
+}
+
+#[test]
+fn char_to_line_on_empty_buffer_is_always_line_zero() {
+    let text = BufferText::from("");
+    assert_eq!(text.char_to_line(co(0)), ContentLine::new(0));
+    assert_eq!(
+        text.char_to_line(co(text.len_chars() + 5)),
+        ContentLine::new(0)
+    );
+}
+
+#[test]
 fn insert_at_start() {
     let text = BufferText::from("world");
     let new = text.insert(0, "hello ");

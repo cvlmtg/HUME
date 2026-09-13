@@ -293,28 +293,18 @@ impl BufferText {
     /// Returns the 0-based line number that contains char offset `char_idx`,
     /// in the content domain.
     ///
-    /// # Panics
-    /// Panics if `char_idx >= self.len_chars()` (debug-asserted) — every
-    /// cursor position in this buffer satisfies that bound by construction.
-    /// A caller that must resolve a position that may sit on the buffer's
-    /// own trailing phantom line (`char_idx == len_chars()`, reachable when
-    /// probing one past a char offset) wants [`BufferText::ropey_char_to_line`]
-    /// instead.
+    /// Clamps `char_idx` to `len_chars()`: a stale position past the buffer
+    /// end (a saved offset reused after the buffer shrank) resolves to the
+    /// last content line instead of panicking — fail-fast is fine, losing
+    /// unsaved work to it is not. A clamped `len_chars()` lands on the
+    /// phantom trailing line (ropey counts a `\n` as ending its own line, so
+    /// only the one-past-every-char position is phantom), which maps back to
+    /// the last content line; on an empty buffer that is line 0.
     pub fn char_to_line(&self, char_idx: CharOffset) -> hume_rope::line::ContentLine {
-        debug_assert!(
-            char_idx.index() < self.len_chars(),
-            "char_to_line: char_idx {} is not a legal cursor position \
-             (buffer has {} chars) — use ropey_char_to_line for a position that \
-             may land on the phantom trailing line",
-            char_idx.index(),
-            self.len_chars()
-        );
-        hume_rope::lines::char_to_ropey_line(&self.rope, char_idx)
+        let clamped = CharOffset::new(char_idx.index().min(self.len_chars()));
+        hume_rope::lines::char_to_ropey_line(&self.rope, clamped)
             .to_content(&self.rope)
-            .expect(
-                "char_to_line: resolved the phantom trailing line — \
-                 char_to_ropey_line of a position below len_chars() is content",
-            )
+            .unwrap_or_else(|| hume_rope::lines::last_content_line(&self.rope))
     }
 
     /// Returns the 0-based ropey line that contains char offset `char_idx`,

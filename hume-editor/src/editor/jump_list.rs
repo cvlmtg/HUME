@@ -45,18 +45,12 @@ impl JumpEntry {
         selections: &SelectionSet,
         text: &BufferText,
     ) -> hume_rope::line::ContentLine {
-        // `char_to_line` won't do here: `translate_in_place` remaps a saved
-        // selection through an edit's `ChangeSet` (e.g. an undo that shrinks
-        // the buffer), which can clamp a stale head to exactly the new
-        // `len_chars()` — a legal remap result, not a bug, but one
-        // `char_to_line` debug-asserts against. Narrow through the ropey
-        // domain instead, falling back to the last real line on the phantom
-        // one: dedup only needs *a* line number, and "the last line" is the
-        // line this head is about to be re-clamped onto anyway.
-        let head = selections.primary().head();
-        text.ropey_char_to_line(head)
-            .to_content(text.rope())
-            .unwrap_or_else(|| text.last_content_line())
+        // `char_to_line` clamps a stale head (e.g. an undo that shrank the
+        // buffer leaving the saved head at exactly the new `len_chars()`)
+        // back onto the last real line: dedup only needs *a* line number,
+        // and "the last line" is the line this head is about to be
+        // re-clamped onto anyway.
+        text.char_to_line(selections.primary().head())
     }
 
     /// Build a jump entry from the current selection state, deriving
