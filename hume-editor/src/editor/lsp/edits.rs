@@ -397,8 +397,7 @@ pub(in crate::editor) fn apply_workspace_edit(
 pub(in crate::editor) enum GotoTarget {
     Wire {
         uri: lsp_types::Uri,
-        line: usize,
-        character: usize,
+        pos: WirePos,
     },
     Path {
         path_or_uri: String,
@@ -462,11 +461,7 @@ fn resolve_goto_target(
     target: GotoTarget,
 ) -> Result<(BufferId, CharOffset), String> {
     match target {
-        GotoTarget::Wire {
-            uri,
-            line,
-            character,
-        } => {
+        GotoTarget::Wire { uri, pos } => {
             let path = hume_lsp::uri::uri_to_path(&uri)
                 .map_err(|e| format!("cannot open {}: {e}", uri.as_str()))?;
             let bid = resolve_or_open(state, view, &path)?;
@@ -479,8 +474,7 @@ fn resolve_goto_target(
             // snaps through (`char_indexed_to_char_pos`), so the wire target
             // gets the same grapheme-boundary guarantee instead of landing
             // wherever the raw code-unit offset happens to fall.
-            let (line, char_col) =
-                wire_to_line_char_col(buf.text().rope(), WirePos { line, character }, encoding);
+            let (line, char_col) = wire_to_line_char_col(buf.text().rope(), pos, encoding);
             Ok((
                 bid,
                 hume_editing::lines::place_char_column(buf.text(), line, char_col),

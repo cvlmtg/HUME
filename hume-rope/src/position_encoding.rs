@@ -38,12 +38,12 @@ pub struct WirePos {
     pub character: usize,
 }
 
-/// char offset → `(line, character)` in `enc` code units.
+/// char offset → a [`WirePos`] in `enc` code units.
 ///
 /// Total: a `char_idx` past `text.len_chars()` clamps to the document end
 /// rather than panicking (ropey's own indexing functions panic past
 /// `len_chars()`) — mirrors [`wire_to_char`]'s clamp-don't-error convention.
-pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> (usize, usize) {
+pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) -> WirePos {
     let char_idx = char_idx.index().min(text.len_chars());
     let line = crate::lines::char_to_ropey_line(text, CharOffset::new(char_idx)).index();
     let character = match enc {
@@ -53,18 +53,17 @@ pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) ->
             text.char_to_utf16_cu(char_idx) - text.char_to_utf16_cu(line_start)
         }
     };
-    (line, character)
+    WirePos { line, character }
 }
 
-/// `[start_char, end_char)` → a wire `((line, character), (line, character))`
-/// pair, via [`char_to_wire`] on each end. The inverse of
-/// [`wire_range_to_char_range`].
+/// `[start_char, end_char)` → a wire `[start, end)` [`WirePos`] range, via
+/// [`char_to_wire`] on each end. The inverse of [`wire_range_to_char_range`].
 pub fn char_range_to_wire_range(
     text: &Rope,
     range: ExclusiveRange<CharOffset>,
     enc: PositionEncoding,
-) -> ((usize, usize), (usize, usize)) {
-    (
+) -> ExclusiveRange<WirePos> {
+    ExclusiveRange::new(
         char_to_wire(text, range.start, enc),
         char_to_wire(text, range.end, enc),
     )
@@ -132,19 +131,21 @@ pub fn wire_to_char(text: &Rope, pos: WirePos, enc: PositionEncoding) -> CharOff
     crate::lines::line_start_char(text, line).shift(char_col.index() as isize)
 }
 
-/// A wire `(line, character)` range's two ends → `(start_char, end_char)`,
-/// via [`wire_to_char`] on each end independently. Each end clamps on its
-/// own (`wire_to_char`'s clamp-don't-error contract) — a reversed range
-/// (`end` before `start`) is passed through unreordered; callers that must
-/// reject one check `end < start` themselves. The inverse of
+/// A wire `[start, end)` range's two ends → `[start_char, end_char)`, via
+/// [`wire_to_char`] on each end independently. Each end clamps on its own
+/// (`wire_to_char`'s clamp-don't-error contract) — a reversed range (`end`
+/// before `start`) is passed through unreordered; callers that must reject
+/// one check `end < start` themselves. The inverse of
 /// [`char_range_to_wire_range`].
 pub fn wire_range_to_char_range(
     text: &Rope,
-    start: WirePos,
-    end: WirePos,
+    range: ExclusiveRange<WirePos>,
     enc: PositionEncoding,
 ) -> ExclusiveRange<CharOffset> {
-    ExclusiveRange::new(wire_to_char(text, start, enc), wire_to_char(text, end, enc))
+    ExclusiveRange::new(
+        wire_to_char(text, range.start, enc),
+        wire_to_char(text, range.end, enc),
+    )
 }
 
 /// The byte range of `text` named by a `[start, end)` pair of flat wire

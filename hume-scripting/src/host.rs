@@ -738,13 +738,18 @@ pub trait LspHost {
     /// server, or the buffer isn't shown in any pane.
     fn lsp_linewise_ranges_params(&self, id: BufferId) -> Option<serde_json::Value>;
 
-    /// Wire `(line, character)` → char offset in `id`'s attached server's
-    /// negotiated encoding — backs `lsp-range->offsets`. `None` if `id` is
-    /// unknown or has no attached server (no negotiated encoding to convert
-    /// with). Clamps rather than refuses an out-of-range `line`/`character`
-    /// (a range's `end` can legitimately land at the buffer's char length);
-    /// point-anchored callers want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
-    fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
+    /// A [`WirePos`](hume_rope::position_encoding::WirePos) → char offset in
+    /// `id`'s attached server's negotiated encoding — backs
+    /// `lsp-range->offsets`. `None` if `id` is unknown or has no attached
+    /// server (no negotiated encoding to convert with). Clamps rather than
+    /// refuses an out-of-range `line`/`character` (a range's `end` can
+    /// legitimately land at the buffer's char length); point-anchored
+    /// callers want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
+    fn lsp_wire_to_char(
+        &self,
+        id: BufferId,
+        pos: hume_rope::position_encoding::WirePos,
+    ) -> Option<usize>;
 
     /// Same conversion as [`lsp_wire_to_char`](Self::lsp_wire_to_char), but
     /// backs `lsp-position->offset` specifically: refuses (`None`) rather
@@ -752,7 +757,11 @@ pub trait LspHost {
     /// trailing phantom line, since every point-anchored decoration setter
     /// (`set-inlay-hints!`) rejects that offset outright — see
     /// `wire_point_to_char_for_buffer`'s doc for why the two must differ.
-    fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize>;
+    fn lsp_wire_point_to_char(
+        &self,
+        id: BufferId,
+        pos: hume_rope::position_encoding::WirePos,
+    ) -> Option<usize>;
 
     /// Backs `(lsp-label-offsets->text bid label offsets)` — the
     /// `[start, end)` slice of `label` named by a
@@ -1238,16 +1247,23 @@ pub trait UiHost {
     fn picker_close(&mut self, token: Option<u64>);
 }
 
+/// One `apply-text-edits!` entry: a wire range plus its replacement text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WireTextEdit {
+    pub range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
+    pub new_text: String,
+}
+
 /// LSP-driven text edits, workspace edits, and go-to-location — accessed
 /// through [`EditorHost::edits`].
 pub trait EditHost {
     /// `(apply-text-edits! bid edits #:expect-generation gen)` — `edits` is
-    /// `(start_line, start_character, end_line, end_character, new_text)`
-    /// tuples in wire coordinates. Applied as one undo step.
+    /// a list of wire-coordinate ranges plus replacement text. Applied as
+    /// one undo step.
     fn apply_text_edits(
         &mut self,
         bid: BufferId,
-        edits: Vec<(usize, usize, usize, usize, String)>,
+        edits: Vec<WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String>;
 

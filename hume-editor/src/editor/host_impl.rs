@@ -1085,23 +1085,29 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         )
     }
 
-    fn lsp_wire_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize> {
+    fn lsp_wire_to_char(
+        &self,
+        id: BufferId,
+        pos: hume_rope::position_encoding::WirePos,
+    ) -> Option<usize> {
         crate::editor::lsp::introspect::wire_to_char_for_buffer(
             self.state,
             self.lsp.as_deref()?,
             id,
-            line,
-            character,
+            pos,
         )
     }
 
-    fn lsp_wire_point_to_char(&self, id: BufferId, line: usize, character: usize) -> Option<usize> {
+    fn lsp_wire_point_to_char(
+        &self,
+        id: BufferId,
+        pos: hume_rope::position_encoding::WirePos,
+    ) -> Option<usize> {
         crate::editor::lsp::introspect::wire_point_to_char_for_buffer(
             self.state,
             self.lsp.as_deref()?,
             id,
-            line,
-            character,
+            pos,
         )
     }
 
@@ -1575,33 +1581,22 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn apply_text_edits(
         &mut self,
         bid: BufferId,
-        edits: Vec<(usize, usize, usize, usize, String)>,
+        edits: Vec<hume_scripting::host::WireTextEdit>,
         expect_gen: Option<u64>,
     ) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Err("apply-text-edits!: no LSP state available".to_string());
         };
-        // Untrusted plugin input, not an internal invariant — a position
-        // that doesn't fit `u32` is a malformed edit, reported as an error,
-        // never a panic.
-        let to_u32 = |v: usize| {
-            u32::try_from(v)
-                .map_err(|_| "apply-text-edits!: position exceeds u32 (malformed edit)".to_string())
-        };
         let mut typed_edits = Vec::with_capacity(edits.len());
-        for (start_line, start_character, end_line, end_character, new_text) in edits {
+        for edit in edits {
             typed_edits.push(lsp_types::TextEdit {
-                range: lsp_types::Range {
-                    start: lsp_types::Position {
-                        line: to_u32(start_line)?,
-                        character: to_u32(start_character)?,
-                    },
-                    end: lsp_types::Position {
-                        line: to_u32(end_line)?,
-                        character: to_u32(end_character)?,
-                    },
-                },
-                new_text,
+                // Untrusted plugin input, not an internal invariant — a
+                // position that doesn't fit `u32` is a malformed edit,
+                // reported as an error, never a panic.
+                range: hume_lsp::position::to_lsp_range(edit.range).ok_or_else(|| {
+                    "apply-text-edits!: position exceeds u32 (malformed edit)".to_string()
+                })?,
+                new_text: edit.new_text,
             });
         }
         crate::editor::lsp::edits::apply_text_edits(self.state, lsp, bid, typed_edits, expect_gen)
@@ -1625,8 +1620,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let wl = hume_lsp::location::decode_location(&loc, "goto-location!")?;
         let target = crate::editor::lsp::edits::GotoTarget::Wire {
             uri: wl.uri,
-            line: wl.line,
-            character: wl.character,
+            pos: wl.pos,
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
     }

@@ -22,8 +22,8 @@ fn location_link(uri: &str, line: u64, character: u64) -> serde_json::Value {
 fn decodes_a_plain_location() {
     let wl = decode_location(&location("file:///tmp/a.rs", 3, 7), "test").expect("decode");
     assert_eq!(wl.uri.as_str(), "file:///tmp/a.rs");
-    assert_eq!(wl.line, 3);
-    assert_eq!(wl.character, 7);
+    assert_eq!(wl.pos.line, 3);
+    assert_eq!(wl.pos.character, 7);
 }
 
 /// `targetSelectionRange` wins over `targetRange` when both are present —
@@ -34,8 +34,8 @@ fn decodes_a_location_link_preferring_target_selection_range() {
     let mut link = location_link("file:///tmp/b.rs", 5, 2);
     link["targetSelectionRange"] = serde_json::json!({"start": {"line": 9, "character": 1}, "end": {"line": 9, "character": 2}});
     let wl = decode_location(&link, "test").expect("decode");
-    assert_eq!(wl.line, 9);
-    assert_eq!(wl.character, 1);
+    assert_eq!(wl.pos.line, 9);
+    assert_eq!(wl.pos.character, 1);
 }
 
 /// A `LocationLink` with no `targetSelectionRange` at all — only some
@@ -45,8 +45,8 @@ fn decodes_a_location_link_with_only_target_range() {
     let mut link = location_link("file:///tmp/c.rs", 4, 0);
     link.as_object_mut().unwrap().remove("targetSelectionRange");
     let wl = decode_location(&link, "test").expect("decode");
-    assert_eq!(wl.line, 4);
-    assert_eq!(wl.character, 0);
+    assert_eq!(wl.pos.line, 4);
+    assert_eq!(wl.pos.character, 0);
 }
 
 #[test]

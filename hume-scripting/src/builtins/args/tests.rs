@@ -237,36 +237,36 @@ fn not_live_err_matches_require_live_wording() {
     assert!(err.to_string().contains("diff-buffer-lines"), "got: {err}");
 }
 
-// ── PosArg ────────────────────────────────────────────────────────────────
+// ── wire_pos_arg ─────────────────────────────────────────────────────────
 
 fn pos_pair(line: isize, character: isize) -> SteelVal {
     cons_pair(SteelVal::IntV(line), SteelVal::IntV(character)).unwrap()
 }
 
 #[test]
-fn pos_arg_decodes_line_character_pair() {
-    let pos = PosArg::from_steelval(&pos_pair(3, 7)).unwrap();
+fn wire_pos_arg_decodes_line_character_pair() {
+    let pos = wire_pos_arg(pos_pair(3, 7)).unwrap();
     assert_eq!((pos.line, pos.character), (3, 7));
 }
 
 #[test]
-fn pos_arg_rejects_proper_list() {
+fn wire_pos_arg_rejects_proper_list() {
     let val: SteelVal = vec![SteelVal::IntV(3), SteelVal::IntV(7)]
         .into_steelval()
         .unwrap();
-    let err = PosArg::from_steelval(&val).unwrap_err();
+    let err = wire_pos_arg(val).unwrap_err();
     assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }
 
 #[test]
-fn pos_arg_rejects_non_pair_scalar() {
-    assert!(PosArg::from_steelval(&SteelVal::IntV(3)).is_err());
+fn wire_pos_arg_rejects_non_pair_scalar() {
+    assert!(wire_pos_arg(SteelVal::IntV(3)).is_err());
 }
 
-// ── TextEditArg ───────────────────────────────────────────────────────────
+// ── wire_text_edit_arg ───────────────────────────────────────────────────
 
 #[test]
-fn text_edit_arg_decodes_start_end_text() {
+fn wire_text_edit_arg_decodes_start_end_text() {
     let val: SteelVal = vec![
         pos_pair(0, 0),
         pos_pair(0, 3),
@@ -274,20 +274,20 @@ fn text_edit_arg_decodes_start_end_text() {
     ]
     .into_steelval()
     .unwrap();
-    let edit = TextEditArg::from_steelval(&val).unwrap();
-    assert_eq!((edit.start.line, edit.start.character), (0, 0));
-    assert_eq!((edit.end.line, edit.end.character), (0, 3));
-    assert_eq!(edit.text, "abc");
+    let edit = wire_text_edit_arg(val).unwrap();
+    assert_eq!((edit.range.start.line, edit.range.start.character), (0, 0));
+    assert_eq!((edit.range.end.line, edit.range.end.character), (0, 3));
+    assert_eq!(edit.new_text, "abc");
 }
 
 #[test]
-fn text_edit_arg_rejects_malformed_position() {
+fn wire_text_edit_arg_rejects_malformed_position() {
     let bad_start: SteelVal = vec![SteelVal::IntV(0), SteelVal::IntV(0)] // proper list, not a pair
         .into_steelval()
         .unwrap();
     let val: SteelVal = vec![bad_start, pos_pair(0, 3), SteelVal::StringV("abc".into())]
         .into_steelval()
         .unwrap();
-    let err = TextEditArg::from_steelval(&val).unwrap_err();
+    let err = wire_text_edit_arg(val).unwrap_err();
     assert!(err.to_string().contains("(line . character)"), "got: {err}");
 }

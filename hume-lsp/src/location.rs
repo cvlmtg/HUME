@@ -4,12 +4,13 @@
 
 use std::str::FromStr;
 
+use hume_rope::position_encoding::WirePos;
+
 /// The one position a `Location`/`LocationLink` wire object denotes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WireLocation {
     pub uri: lsp_types::Uri,
-    pub line: usize,
-    pub character: usize,
+    pub pos: WirePos,
 }
 
 /// Decodes a raw `Location` (`{uri, range}`) or `LocationLink`
@@ -63,8 +64,7 @@ pub fn decode_location(loc: &serde_json::Value, caller: &str) -> Result<WireLoca
     let uri = lsp_types::Uri::from_str(uri).map_err(|_| format!("{caller}: bad uri {uri:?}"))?;
     Ok(WireLocation {
         uri,
-        line,
-        character,
+        pos: WirePos { line, character },
     })
 }
 

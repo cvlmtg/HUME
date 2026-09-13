@@ -5,7 +5,7 @@
 use hume_editing::changeset::{ChangeSet, Operation};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::position_encoding::PositionEncoding;
-use lsp_types::{Position, Range, TextDocumentContentChangeEvent};
+use lsp_types::{Range, TextDocumentContentChangeEvent};
 use ropey::Rope;
 
 /// `before` is the pre-edit text. Events are emitted in document order and,
@@ -58,22 +58,13 @@ pub fn changeset_to_content_changes(
 }
 
 /// `range` in `rope`'s current state, converted to a wire `Range` via
-/// [`hume_rope::position_encoding::char_range_to_wire_range`] — the one
-/// lsp_types↔tuple adaptation point in this module, so `hume-rope` stays
-/// free of an `lsp_types` dependency.
+/// [`hume_rope::position_encoding::char_range_to_wire_range`] and
+/// [`crate::position::to_lsp_range`] — see that module for why the
+/// `lsp_types` crossing is a free function rather than a `From` impl.
 fn wire_range(rope: &Rope, range: ExclusiveRange<CharOffset>, enc: PositionEncoding) -> Range {
-    let ((start_line, start_character), (end_line, end_character)) =
-        hume_rope::position_encoding::char_range_to_wire_range(rope, range, enc);
-    Range {
-        start: Position {
-            line: start_line as u32,
-            character: start_character as u32,
-        },
-        end: Position {
-            line: end_line as u32,
-            character: end_character as u32,
-        },
-    }
+    let wire = hume_rope::position_encoding::char_range_to_wire_range(rope, range, enc);
+    crate::position::to_lsp_range(wire)
+        .expect("rope-derived wire position fits u32 — a real document's line/character count")
 }
 
 /// Independent oracle: applies emitted events to a plain `String` using its
@@ -113,7 +104,7 @@ pub fn wire_version(text_gen: u64) -> i32 {
 /// crate doc: no other character terminates a line, in a rope or in this
 /// oracle's own string mirror.
 #[cfg(any(test, feature = "test-util"))]
-fn wire_pos_to_byte(text: &str, pos: Position, enc: PositionEncoding) -> usize {
+fn wire_pos_to_byte(text: &str, pos: lsp_types::Position, enc: PositionEncoding) -> usize {
     let mut line_start = 0usize;
     for _ in 0..pos.line {
         match text[line_start..].find('\n') {

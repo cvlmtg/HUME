@@ -3,14 +3,15 @@
 //! transport themselves.
 
 use steel::rerrs::SteelErr;
-use steel::rvals::{FromSteelVal, SteelVal};
+use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
 use crate::json::steel_to_json;
 
 use super::SteelResult;
 use super::args::{
-    BidArg, TextEditArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
+    BidArg, checked_fields, list_items, optional_usize_arg, string_arg, usize_arg,
+    wire_text_edit_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -18,11 +19,11 @@ use super::errors::{generic_err, require_cap};
 /// line . start-character) (end-line . end-character) text)`, wire positions
 /// as dotted pairs.
 ///
-/// `edits` decodes manually via `TextEditArg::from_steelval` per entry
-/// rather than a typed `Vec<TextEditArg>` param — steel-core's blanket
+/// `edits` decodes manually via `wire_text_edit_arg` per entry rather than a
+/// typed `Vec<WireTextEdit>` param — steel-core's blanket
 /// `FromSteelVal for Vec<T>` impl discards the inner per-element error on
 /// failure, replacing it with a generic message; decoding manually keeps
-/// `TextEditArg`'s specific shape-error text.
+/// `wire_text_edit_arg`'s specific shape-error text.
 pub(crate) fn apply_text_edits(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -33,17 +34,8 @@ pub(crate) fn apply_text_edits(
     let expect_gen =
         optional_usize_arg(expect_gen, "apply-text-edits! expect-gen")?.map(|n| n as u64);
     let parsed = list_items(edits, "apply-text-edits! edits")?
-        .iter()
-        .map(|entry| {
-            let edit = TextEditArg::from_steelval(entry)?;
-            Ok((
-                edit.start.line,
-                edit.start.character,
-                edit.end.line,
-                edit.end.character,
-                edit.text,
-            ))
-        })
+        .into_iter()
+        .map(wire_text_edit_arg)
         .collect::<Result<Vec<_>, SteelErr>>()?;
     require_cap(ctx.host.edits(), "apply-text-edits!")?
         .apply_text_edits(id, parsed, expect_gen)

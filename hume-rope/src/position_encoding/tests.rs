@@ -4,6 +4,10 @@ fn co(n: usize) -> CharOffset {
     CharOffset::new(n)
 }
 
+fn wp(line: usize, character: usize) -> WirePos {
+    WirePos { line, character }
+}
+
 /// Char layout (9 chars, 4 lines):
 /// ```text
 /// idx:  0  1  2   3  4   5   6    7  8
@@ -21,10 +25,16 @@ fn fixture() -> Rope {
 #[test]
 fn char_to_wire_pure_ascii() {
     let text = fixture();
-    assert_eq!(char_to_wire(&text, co(0), PositionEncoding::Utf8), (0, 0));
-    assert_eq!(char_to_wire(&text, co(1), PositionEncoding::Utf8), (0, 1));
-    assert_eq!(char_to_wire(&text, co(0), PositionEncoding::Utf16), (0, 0));
-    assert_eq!(char_to_wire(&text, co(1), PositionEncoding::Utf16), (0, 1));
+    assert_eq!(char_to_wire(&text, co(0), PositionEncoding::Utf8), wp(0, 0));
+    assert_eq!(char_to_wire(&text, co(1), PositionEncoding::Utf8), wp(0, 1));
+    assert_eq!(
+        char_to_wire(&text, co(0), PositionEncoding::Utf16),
+        wp(0, 0)
+    );
+    assert_eq!(
+        char_to_wire(&text, co(1), PositionEncoding::Utf16),
+        wp(0, 1)
+    );
 }
 
 #[test]
@@ -32,8 +42,11 @@ fn char_to_wire_two_byte_char_diverges_utf8_vs_utf16() {
     let text = fixture();
     // char_idx=5 is the '\n' right after 'é' — UTF-8 counts é as 2 bytes,
     // UTF-16 counts it as 1 unit, so the two encodings diverge here.
-    assert_eq!(char_to_wire(&text, co(5), PositionEncoding::Utf8), (1, 3));
-    assert_eq!(char_to_wire(&text, co(5), PositionEncoding::Utf16), (1, 2));
+    assert_eq!(char_to_wire(&text, co(5), PositionEncoding::Utf8), wp(1, 3));
+    assert_eq!(
+        char_to_wire(&text, co(5), PositionEncoding::Utf16),
+        wp(1, 2)
+    );
 }
 
 #[test]
@@ -41,30 +54,39 @@ fn char_to_wire_astral_char_diverges_utf8_vs_utf16() {
     let text = fixture();
     // char_idx=6 is 😀 itself — both encodings agree at its start (0 code
     // units consumed yet).
-    assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf8), (2, 0));
-    assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf16), (2, 0));
+    assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf8), wp(2, 0));
+    assert_eq!(
+        char_to_wire(&text, co(6), PositionEncoding::Utf16),
+        wp(2, 0)
+    );
     // char_idx=7 is 'd', right after 😀 — 4 bytes vs. a 2-unit surrogate
     // pair.
-    assert_eq!(char_to_wire(&text, co(7), PositionEncoding::Utf8), (2, 4));
-    assert_eq!(char_to_wire(&text, co(7), PositionEncoding::Utf16), (2, 2));
+    assert_eq!(char_to_wire(&text, co(7), PositionEncoding::Utf8), wp(2, 4));
+    assert_eq!(
+        char_to_wire(&text, co(7), PositionEncoding::Utf16),
+        wp(2, 2)
+    );
 }
 
 #[test]
 fn char_to_wire_line_start_and_on_the_newline() {
     let text = fixture();
     // Line starts.
-    assert_eq!(char_to_wire(&text, co(3), PositionEncoding::Utf8), (1, 0));
-    assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf8), (2, 0));
+    assert_eq!(char_to_wire(&text, co(3), PositionEncoding::Utf8), wp(1, 0));
+    assert_eq!(char_to_wire(&text, co(6), PositionEncoding::Utf8), wp(2, 0));
     // Sitting exactly on a '\n' reports that line's content length.
-    assert_eq!(char_to_wire(&text, co(2), PositionEncoding::Utf8), (0, 2));
+    assert_eq!(char_to_wire(&text, co(2), PositionEncoding::Utf8), wp(0, 2));
 }
 
 #[test]
 fn char_to_wire_eof_is_the_trailing_empty_line() {
     let text = fixture();
     assert_eq!(text.len_chars(), 9);
-    assert_eq!(char_to_wire(&text, co(9), PositionEncoding::Utf8), (3, 0));
-    assert_eq!(char_to_wire(&text, co(9), PositionEncoding::Utf16), (3, 0));
+    assert_eq!(char_to_wire(&text, co(9), PositionEncoding::Utf8), wp(3, 0));
+    assert_eq!(
+        char_to_wire(&text, co(9), PositionEncoding::Utf16),
+        wp(3, 0)
+    );
 }
 
 #[test]
@@ -81,8 +103,8 @@ fn char_to_wire_minimum_buffer_is_a_bare_newline() {
     // The buffer invariant: every buffer ends with '\n'; "\n" alone is
     // the minimum possible buffer.
     let text = Rope::from_str("\n");
-    assert_eq!(char_to_wire(&text, co(0), PositionEncoding::Utf8), (0, 0));
-    assert_eq!(char_to_wire(&text, co(1), PositionEncoding::Utf8), (1, 0));
+    assert_eq!(char_to_wire(&text, co(0), PositionEncoding::Utf8), wp(0, 0));
+    assert_eq!(char_to_wire(&text, co(1), PositionEncoding::Utf8), wp(1, 0));
 }
 
 // ── char_range_to_wire_range ─────────────────────────────────────────────
@@ -96,7 +118,7 @@ fn char_range_to_wire_range_is_char_to_wire_on_each_end() {
             ExclusiveRange::new(co(4), co(7)),
             PositionEncoding::Utf16
         ),
-        (
+        ExclusiveRange::new(
             char_to_wire(&text, co(4), PositionEncoding::Utf16),
             char_to_wire(&text, co(7), PositionEncoding::Utf16),
         )
@@ -114,7 +136,7 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
             ExclusiveRange::new(co(6), co(7)),
             PositionEncoding::Utf8
         ),
-        ((2, 0), (2, 4))
+        ExclusiveRange::new(wp(2, 0), wp(2, 4))
     );
     assert_eq!(
         char_range_to_wire_range(
@@ -122,7 +144,7 @@ fn char_range_to_wire_range_astral_char_diverges_utf8_vs_utf16() {
             ExclusiveRange::new(co(6), co(7)),
             PositionEncoding::Utf16
         ),
-        ((2, 0), (2, 2))
+        ExclusiveRange::new(wp(2, 0), wp(2, 2))
     );
 }
 
@@ -144,14 +166,7 @@ fn wire_to_char_counts_a_cr_as_line_content() {
     let text = Rope::from_str("ab\r\ncd\n");
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
         assert_eq!(
-            wire_to_char(
-                &text,
-                WirePos {
-                    line: 0,
-                    character: 9_999
-                },
-                enc
-            ),
+            wire_to_char(&text, wp(0, 9_999), enc),
             co(3),
             "character past line end must clamp to the \\n, counting the \\r as content, for {enc:?}"
         );
@@ -163,9 +178,9 @@ fn wire_to_char_matches_char_to_wire_for_exact_positions() {
     let text = fixture();
     for &idx in &[0usize, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
         for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
-            let (line, character) = char_to_wire(&text, co(idx), enc);
+            let pos = char_to_wire(&text, co(idx), enc);
             assert_eq!(
-                wire_to_char(&text, WirePos { line, character }, enc),
+                wire_to_char(&text, pos, enc),
                 co(idx),
                 "round trip failed for idx={idx} enc={enc:?}"
             );
@@ -177,14 +192,7 @@ fn wire_to_char_matches_char_to_wire_for_exact_positions() {
 fn wire_to_char_clamps_line_past_eof_to_last_line() {
     let text = fixture();
     assert_eq!(
-        wire_to_char(
-            &text,
-            WirePos {
-                line: 999,
-                character: 0
-            },
-            PositionEncoding::Utf8
-        ),
+        wire_to_char(&text, wp(999, 0), PositionEncoding::Utf8),
         co(text.len_chars())
     );
 }
@@ -195,14 +203,7 @@ fn wire_to_char_clamps_character_past_line_end_to_line_content_end() {
     // Line 1 ("cé") — character way past its length clamps to the same
     // char position as an exact request for the line's content end.
     assert_eq!(
-        wire_to_char(
-            &text,
-            WirePos {
-                line: 1,
-                character: 9_999
-            },
-            PositionEncoding::Utf8
-        ),
+        wire_to_char(&text, wp(1, 9_999), PositionEncoding::Utf8),
         co(5) // the '\n' position — see the fixture layout above
     );
 }
@@ -215,14 +216,7 @@ fn wire_to_char_clamps_surrogate_pair_split_down_not_mid_char() {
     // must clamp down to the astral char's own start (char_idx 6), never
     // to a position "inside" it.
     assert_eq!(
-        wire_to_char(
-            &text,
-            WirePos {
-                line: 2,
-                character: 1
-            },
-            PositionEncoding::Utf16
-        ),
+        wire_to_char(&text, wp(2, 1), PositionEncoding::Utf16),
         co(6)
     );
 }
@@ -232,12 +226,11 @@ fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
     let text = fixture();
     for &(line, character) in &[(0usize, 1usize), (1, 3), (2, 2)] {
         for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
-            let (clamped_line, char_col) =
-                wire_to_line_char_col(&text, WirePos { line, character }, enc);
+            let (clamped_line, char_col) = wire_to_line_char_col(&text, wp(line, character), enc);
             assert_eq!(clamped_line.index(), line);
             assert_eq!(
                 co(crate::lines::line_start_char(&text, clamped_line).index() + char_col.index()),
-                wire_to_char(&text, WirePos { line, character }, enc)
+                wire_to_char(&text, wp(line, character), enc)
             );
         }
     }
@@ -249,14 +242,7 @@ fn wire_to_line_char_col_is_line_relative_not_absolute() {
     // 'é') must come back as column 1, not the absolute char index 4.
     let text = fixture();
     assert_eq!(
-        wire_to_line_char_col(
-            &text,
-            WirePos {
-                line: 1,
-                character: 1
-            },
-            PositionEncoding::Utf8
-        ),
+        wire_to_line_char_col(&text, wp(1, 1), PositionEncoding::Utf8),
         (RopeyLine::new(1), CharCol::new(1))
     );
 }
@@ -264,29 +250,9 @@ fn wire_to_line_char_col_is_line_relative_not_absolute() {
 #[test]
 fn wire_to_char_minimum_buffer_is_a_bare_newline() {
     let text = Rope::from_str("\n");
-    assert_eq!(
-        wire_to_char(
-            &text,
-            WirePos {
-                line: 0,
-                character: 0
-            },
-            PositionEncoding::Utf8
-        ),
-        co(0)
-    );
+    assert_eq!(wire_to_char(&text, wp(0, 0), PositionEncoding::Utf8), co(0));
     // Past-end line/character both clamp to the sole valid EOF position.
-    assert_eq!(
-        wire_to_char(
-            &text,
-            WirePos {
-                line: 5,
-                character: 5
-            },
-            PositionEncoding::Utf8
-        ),
-        co(1)
-    );
+    assert_eq!(wire_to_char(&text, wp(5, 5), PositionEncoding::Utf8), co(1));
 }
 
 // ── wire_range_to_char_range ─────────────────────────────────────────────
@@ -297,33 +263,12 @@ fn wire_range_to_char_range_is_wire_to_char_on_each_end() {
     assert_eq!(
         wire_range_to_char_range(
             &text,
-            WirePos {
-                line: 0,
-                character: 0
-            },
-            WirePos {
-                line: 1,
-                character: 1
-            },
+            ExclusiveRange::new(wp(0, 0), wp(1, 1)),
             PositionEncoding::Utf8
         ),
         ExclusiveRange::new(
-            wire_to_char(
-                &text,
-                WirePos {
-                    line: 0,
-                    character: 0
-                },
-                PositionEncoding::Utf8
-            ),
-            wire_to_char(
-                &text,
-                WirePos {
-                    line: 1,
-                    character: 1
-                },
-                PositionEncoding::Utf8
-            ),
+            wire_to_char(&text, wp(0, 0), PositionEncoding::Utf8),
+            wire_to_char(&text, wp(1, 1), PositionEncoding::Utf8),
         )
     );
 }
@@ -336,14 +281,7 @@ fn wire_range_to_char_range_each_end_clamps_independently() {
     assert_eq!(
         wire_range_to_char_range(
             &text,
-            WirePos {
-                line: 1,
-                character: 0
-            },
-            WirePos {
-                line: 1,
-                character: 9_999
-            },
+            ExclusiveRange::new(wp(1, 0), wp(1, 9_999)),
             PositionEncoding::Utf8
         ),
         ExclusiveRange::new(co(3), co(5))
@@ -357,14 +295,7 @@ fn wire_range_to_char_range_reversed_input_is_not_reordered() {
     // swapped into order. Callers that must reject this check it themselves.
     let range = wire_range_to_char_range(
         &text,
-        WirePos {
-            line: 1,
-            character: 1,
-        },
-        WirePos {
-            line: 0,
-            character: 0,
-        },
+        ExclusiveRange::new(wp(1, 1), wp(0, 0)),
         PositionEncoding::Utf8,
     );
     assert_eq!(range, ExclusiveRange::new(co(4), co(0)));
@@ -375,17 +306,9 @@ fn wire_range_to_char_range_reversed_input_is_not_reordered() {
 fn wire_range_to_char_range_round_trips_through_char_range_to_wire_range() {
     let text = fixture();
     for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
-        let (start, end) = char_range_to_wire_range(&text, ExclusiveRange::new(co(1), co(8)), enc);
-        let start = WirePos {
-            line: start.0,
-            character: start.1,
-        };
-        let end = WirePos {
-            line: end.0,
-            character: end.1,
-        };
+        let wire_range = char_range_to_wire_range(&text, ExclusiveRange::new(co(1), co(8)), enc);
         assert_eq!(
-            wire_range_to_char_range(&text, start, end, enc),
+            wire_range_to_char_range(&text, wire_range, enc),
             ExclusiveRange::new(co(1), co(8))
         );
     }

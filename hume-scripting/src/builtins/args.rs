@@ -1,6 +1,10 @@
-//! One marshalling vocabulary for builtins: plain `SteelVal` decoders,
-//! `FromSteelVal` newtypes for buffer-id / position / text-edit params, and
-//! the shared list/tuple decoders every multi-field setter builds on.
+//! One marshalling vocabulary for builtins: plain `SteelVal` decoders, a
+//! `FromSteelVal` newtype for buffer-id params, free-fn decoders for wire
+//! position / text-edit params (`WirePos` is a `hume-rope` type, so the
+//! orphan rule rules out `FromSteelVal for WirePos` here — a plain function
+//! is used for its sibling `WireTextEdit` decoder too, for one calling
+//! convention across both), and the shared list/tuple decoders every
+//! multi-field setter builds on.
 //!
 //! `#f`-means-absent is decoded only by this module's `optional_*` family —
 //! enforced by `cargo test absent_marker_is_decoded_only_in_args_rs`
@@ -378,47 +382,35 @@ pub(crate) fn optional_bid_arg(
     }
 }
 
-/// A decoded `(line . character)` wire position — a dotted pair.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct PosArg {
-    pub(crate) line: usize,
-    pub(crate) character: usize,
+/// Decodes a `(line . character)` dotted pair into a
+/// [`WirePos`](hume_rope::position_encoding::WirePos).
+pub(crate) fn wire_pos_arg(
+    val: SteelVal,
+) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
+    let (line, character) = pair_fields(val, "position", "(line . character)")?;
+    Ok(hume_rope::position_encoding::WirePos {
+        line: usize_arg(line, "position")?,
+        character: usize_arg(character, "position")?,
+    })
 }
 
-impl FromSteelVal for PosArg {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        let (line, character) = pair_fields(val.clone(), "position", "(line . character)")?;
-        Ok(PosArg {
-            line: usize_arg(line, "position")?,
-            character: usize_arg(character, "position")?,
-        })
-    }
-}
-
-/// A decoded `((start-line . start-character) (end-line . end-character) text)`
+/// Decodes a
+/// `((start-line . start-character) (end-line . end-character) text)`
 /// LSP text edit entry — outer 3-tuple is a list, inner positions are dotted
-/// pairs.
-#[derive(Debug)]
-pub(crate) struct TextEditArg {
-    pub(crate) start: PosArg,
-    pub(crate) end: PosArg,
-    pub(crate) text: String,
-}
-
-impl FromSteelVal for TextEditArg {
-    fn from_steelval(val: &SteelVal) -> Result<Self, SteelErr> {
-        let fields = checked_fields(
-            val.clone(),
-            "text edit",
-            3..=3,
-            "((start-line . start-character) (end-line . end-character) text)",
-        )?;
-        Ok(TextEditArg {
-            start: PosArg::from_steelval(&fields[0])?,
-            end: PosArg::from_steelval(&fields[1])?,
-            text: string_arg(fields[2].clone(), "text edit")?,
-        })
-    }
+/// pairs — into a [`WireTextEdit`](crate::host::WireTextEdit).
+pub(crate) fn wire_text_edit_arg(val: SteelVal) -> Result<crate::host::WireTextEdit, SteelErr> {
+    let fields = checked_fields(
+        val,
+        "text edit",
+        3..=3,
+        "((start-line . start-character) (end-line . end-character) text)",
+    )?;
+    let start = wire_pos_arg(fields[0].clone())?;
+    let end = wire_pos_arg(fields[1].clone())?;
+    Ok(crate::host::WireTextEdit {
+        range: hume_rope::offset::ExclusiveRange::new(start, end),
+        new_text: string_arg(fields[2].clone(), "text edit")?,
+    })
 }
 
 #[cfg(test)]

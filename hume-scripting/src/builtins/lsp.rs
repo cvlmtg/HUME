@@ -337,12 +337,18 @@ pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, bid: BidArg) -> Ste
 /// is total and clamps rather than errors, so this boundary check is the
 /// only place a malformed shape gets caught instead of silently producing a
 /// plausible-looking offset.
-fn wire_position(v: &serde_json::Value, what: &str) -> Result<(usize, usize), SteelErr> {
+fn wire_position(
+    v: &serde_json::Value,
+    what: &str,
+) -> Result<hume_rope::position_encoding::WirePos, SteelErr> {
     match (
         v.get("line").and_then(serde_json::Value::as_u64),
         v.get("character").and_then(serde_json::Value::as_u64),
     ) {
-        (Some(line), Some(character)) => Ok((line as usize, character as usize)),
+        (Some(line), Some(character)) => Ok(hume_rope::position_encoding::WirePos {
+            line: line as usize,
+            character: character as usize,
+        }),
         _ => Err(generic_err(format!(
             "{what}: position must be a hashmap with numeric 'line' and 'character' keys, got {v}"
         ))),
@@ -366,12 +372,12 @@ pub(crate) fn lsp_position_to_offset(
     let id = bid.0;
     let position_json =
         steel_to_json(&position).map_err(|e| generic_err(format!("lsp-position->offset: {e}")))?;
-    let (line, character) = wire_position(&position_json, "lsp-position->offset")?;
+    let pos = wire_position(&position_json, "lsp-position->offset")?;
     Ok(
         match ctx
             .host
             .lsp()
-            .and_then(|lsp| lsp.lsp_wire_point_to_char(id, line, character))
+            .and_then(|lsp| lsp.lsp_wire_point_to_char(id, pos))
         {
             Some(offset) => SteelVal::IntV(offset as isize),
             None => SteelVal::BoolV(false),
@@ -397,14 +403,14 @@ pub(crate) fn lsp_range_to_offsets(
     let end_json = range_json
         .get("end")
         .ok_or_else(|| generic_err("lsp-range->offsets: range missing 'end'"))?;
-    let (start_line, start_character) = wire_position(start_json, "lsp-range->offsets")?;
-    let (end_line, end_character) = wire_position(end_json, "lsp-range->offsets")?;
+    let start_pos = wire_position(start_json, "lsp-range->offsets")?;
+    let end_pos = wire_position(end_json, "lsp-range->offsets")?;
     let Some(lsp) = ctx.host.lsp() else {
         return Ok(SteelVal::BoolV(false));
     };
     let (Some(start), Some(end)) = (
-        lsp.lsp_wire_to_char(id, start_line, start_character),
-        lsp.lsp_wire_to_char(id, end_line, end_character),
+        lsp.lsp_wire_to_char(id, start_pos),
+        lsp.lsp_wire_to_char(id, end_pos),
     ) else {
         return Ok(SteelVal::BoolV(false));
     };

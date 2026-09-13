@@ -190,11 +190,11 @@ pub(in crate::editor) fn position_params(
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = state.shown_buffer_state(view, id)?;
     let rope = state.buffers.get(id).text().rope();
-    let (line, character) =
+    let pos =
         hume_rope::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
-        "position": {"line": line, "character": character},
+        "position": {"line": pos.line, "character": pos.character},
     }))
 }
 
@@ -239,19 +239,11 @@ pub(in crate::editor) fn wire_to_char_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
-    line: usize,
-    character: usize,
+    pos: hume_rope::position_encoding::WirePos,
 ) -> Option<usize> {
     let rope = state.buffers.try_get(id)?.text().rope();
     let encoding = negotiated_encoding(state, lsp, id)?;
-    Some(
-        hume_rope::position_encoding::wire_to_char(
-            rope,
-            hume_rope::position_encoding::WirePos { line, character },
-            encoding,
-        )
-        .index(),
-    )
+    Some(hume_rope::position_encoding::wire_to_char(rope, pos, encoding).index())
 }
 
 /// Wire `(line, character)` → char offset, for `lsp-position->offset`.
@@ -268,10 +260,9 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,
-    line: usize,
-    character: usize,
+    pos: hume_rope::position_encoding::WirePos,
 ) -> Option<usize> {
-    let offset = wire_to_char_for_buffer(state, lsp, id, line, character)?;
+    let offset = wire_to_char_for_buffer(state, lsp, id, pos)?;
     let text = state.buffers.try_get(id)?.text();
     // Typed comparison, not a raw `offset < len_chars`: `offset` is already a
     // valid char position (`wire_to_char_for_buffer` proved it), so this is a
@@ -426,21 +417,16 @@ pub(crate) fn spinner_frame(lsp: &LspState) -> usize {
 /// characters — a drawer row pointing one line past the file's end.
 fn wire_pos_to_grapheme_col(
     text: &hume_editing::text::BufferText,
-    line: usize,
-    character: usize,
+    pos: hume_rope::position_encoding::WirePos,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) -> Option<hume_rope::column::GraphemeCol> {
-    if line > text.last_content_line().index() {
+    if pos.line > text.last_content_line().index() {
         return None;
     }
-    let char_pos = hume_rope::position_encoding::wire_to_char(
-        text.rope(),
-        hume_rope::position_encoding::WirePos { line, character },
-        encoding,
-    );
+    let char_pos = hume_rope::position_encoding::wire_to_char(text.rope(), pos, encoding);
     // Trusted narrow: the bound check above already confirmed `line` names a
     // real content line.
-    let line = hume_rope::line::ContentLine::new(line);
+    let line = hume_rope::line::ContentLine::new(pos.line);
     Some(hume_editing::grapheme::grapheme_col_in_line(
         text, line, char_pos,
     ))
@@ -528,16 +514,16 @@ pub(in crate::editor) fn location_display_parts(
             let grapheme_col_or_wire = match open_bid {
                 Some(bid) => {
                     let text = state.buffers.get(bid).text();
-                    wire_pos_to_grapheme_col(text, wl.line, wl.character, encoding)
+                    wire_pos_to_grapheme_col(text, wl.pos, encoding)
                         .map(hume_rope::column::GraphemeCol::index)
                 }
                 // No open buffer to measure against — see this function's
                 // doc for why that means the wire unit itself, not a read.
-                None => Some(wl.character),
+                None => Some(wl.pos.character),
             };
             Ok(hume_scripting::host::LocationDisplay {
                 path: display_path,
-                line: wl.line,
+                line: wl.pos.line,
                 grapheme_col_or_wire,
             })
         })
@@ -561,10 +547,9 @@ fn char_range_to_wire(
         hume_rope::offset::ExclusiveRange::new(range.start, end_exclusive),
         encoding,
     );
-    let ((start_line, start_char), (end_line, end_char)) = wire_range;
     serde_json::json!({
-        "start": {"line": start_line, "character": start_char},
-        "end": {"line": end_line, "character": end_char},
+        "start": {"line": wire_range.start.line, "character": wire_range.start.character},
+        "end": {"line": wire_range.end.line, "character": wire_range.end.character},
     })
 }
 

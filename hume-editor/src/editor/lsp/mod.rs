@@ -35,9 +35,10 @@ use progress::{ProgressTask, SpinnerClock};
 use registry::{LanguageName, LspServerConfig};
 
 /// `lsp_types::Range` → char-offset span via
-/// [`hume_rope::position_encoding::wire_range_to_char_range`] — the one
-/// lsp_types↔tuple adaptation point in the editor's LSP glue, so
-/// `hume-rope` stays free of an `lsp_types` dependency.
+/// [`hume_lsp::position::from_lsp_range`] and
+/// [`hume_rope::position_encoding::wire_range_to_char_range`] — see
+/// `hume_lsp::position` for why the `lsp_types` crossing is a free function
+/// rather than a `From` impl.
 pub(in crate::editor::lsp) fn wire_range_to_chars(
     rope: &ropey::Rope,
     range: &lsp_types::Range,
@@ -45,14 +46,7 @@ pub(in crate::editor::lsp) fn wire_range_to_chars(
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset> {
     hume_rope::position_encoding::wire_range_to_char_range(
         rope,
-        hume_rope::position_encoding::WirePos {
-            line: range.start.line as usize,
-            character: range.start.character as usize,
-        },
-        hume_rope::position_encoding::WirePos {
-            line: range.end.line as usize,
-            character: range.end.character as usize,
-        },
+        hume_lsp::position::from_lsp_range(range),
         encoding,
     )
 }

@@ -10,6 +10,9 @@
 //! ## Modules
 //! - `uri`: path ↔ `file://` URI conversion.
 //! - `location`: `Location`/`LocationLink` wire-object decoding.
+//! - `position`: `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`
+//!   conversion — the one place `hume-rope`'s wire-position vocabulary
+//!   crosses into `lsp_types`.
 //! - `completion_item`: snippet stripping + lenient `TextEdit` decoding for
 //!   `textDocument/completion` items.
 //! - `codec`: JSON-RPC framing, message enum, id allocation.
@@ -29,6 +32,7 @@ pub mod completion_item;
 #[cfg(any(test, feature = "test-util"))]
 pub mod inline;
 pub mod location;
+pub mod position;
 pub mod sync;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_util;
