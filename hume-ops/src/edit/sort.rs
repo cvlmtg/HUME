@@ -121,6 +121,10 @@ fn collect_entries(text: &BufferText, sels: &SelectionSet) -> Vec<SortEntry> {
     for sel in sels.iter_sorted() {
         let start_line = text.char_to_line(sel.start());
         let end_line = text.char_to_line(sel.end_inclusive(text));
+        // Bare-`usize` range, `ContentLine` re-minted each iteration —
+        // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
+        // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
+        // are already-valid `ContentLine`s.
         for line_idx in start_line.index()..=end_line.index() {
             let line = ContentLine::new(line_idx);
             let line_start = text.line_to_char(line.into());

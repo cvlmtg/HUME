@@ -104,6 +104,11 @@ fn shift_indent(
     let mut b = ChangeSetBuilder::new(text.end());
     let mut touched_any = false;
 
+    // `lines` stays bare `usize` rather than `Vec<ContentLine>` — CLAUDE.md's
+    // "Line counts and ranges" sanctions this exact shape (a bare-usize loop
+    // bounded by typed endpoints, re-minted immediately below): every value
+    // here came from `.index()` on an already-valid `ContentLine` one line
+    // up, so the mint can't fail.
     for line_idx in lines {
         let line = hume_rope::line::ContentLine::new(line_idx);
         let line_start = text.line_to_char(line.into());

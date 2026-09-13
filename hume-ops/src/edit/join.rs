@@ -50,6 +50,10 @@ pub fn join_lines_select_spaces(
             end_line = end_line.down(1).min(text.last_content_line());
         }
 
+        // Bare-`usize` range, `ContentLine` re-minted each iteration —
+        // `ContentLine` has no `Step`/`Range` impl to loop over directly (see
+        // CLAUDE.md's "Line counts and ranges"). Sound here: both endpoints
+        // are already-valid `ContentLine`s.
         for line_idx in start_line.index()..end_line.index() {
             let line = ContentLine::new(line_idx);
             let nl_pos = line_break_char(text, line);
