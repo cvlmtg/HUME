@@ -109,25 +109,27 @@ pub fn find_next_match(
 /// Used by `SearchMatchHighlighter` to convert matches to line-relative byte
 /// ranges for the engine's highlight provider system.
 pub fn find_all_matches(text: &BufferText, regex: &Regex) -> Vec<InclusiveRange<CharOffset>> {
-    find_matches_in_range(text, regex, CharOffset::new(0), text.last_char())
+    find_matches_in_range(
+        text,
+        regex,
+        InclusiveRange::new(CharOffset::new(0), text.last_char()),
+    )
 }
 
 // ── find_matches_in_range ─────────────────────────────────────────────────────
 
 /// Return all non-overlapping regex matches within a char range of `text`.
 ///
-/// Only matches that fall entirely within `[start_char, end_char]` (inclusive)
-/// are returned, as inclusive char ranges in document order. Zero-width
-/// matches are skipped.
+/// Only matches that fall entirely within `range` are returned, as inclusive
+/// char ranges in document order. Zero-width matches are skipped.
 pub fn find_matches_in_range(
     text: &BufferText,
     regex: &Regex,
-    start_char: CharOffset,
-    end_char: CharOffset, // inclusive
+    range: InclusiveRange<CharOffset>,
 ) -> Vec<InclusiveRange<CharOffset>> {
-    let start_byte = text.char_to_byte(start_char);
-    // end_char is inclusive — we need the byte *after* the last char in range.
-    let end_byte = text.char_to_byte(end_char.shift(1));
+    let start_byte = text.char_to_byte(range.start);
+    // range.end is inclusive — we need the byte after the last char in range.
+    let end_byte = text.char_to_byte(range.to_exclusive().end);
 
     let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);

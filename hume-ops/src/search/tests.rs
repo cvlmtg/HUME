@@ -327,7 +327,7 @@ fn range_matches_bounded() {
     // "ab" at (1,2), (3,4), (5,6) in "aababab\n". Range 3..6 should
     // return the two matches that fall entirely within it.
     let b = buf("aababab\n");
-    let matches = find_matches_in_range(&b, &re("ab"), co(3), co(6));
+    let matches = find_matches_in_range(&b, &re("ab"), ir(3, 6));
     assert_eq!(matches, vec![ir(3, 4), ir(5, 6)]);
 }
 
@@ -335,7 +335,7 @@ fn range_matches_bounded() {
 fn range_matches_at_boundaries() {
     // Range exactly covering one match.
     let b = buf("aababab\n");
-    let matches = find_matches_in_range(&b, &re("ab"), co(1), co(2));
+    let matches = find_matches_in_range(&b, &re("ab"), ir(1, 2));
     assert_eq!(matches, vec![ir(1, 2)]);
 }
 
@@ -344,14 +344,14 @@ fn range_matches_excludes_partial() {
     // Range 0..1 doesn't fully contain "ab" at (1,2) — only the 'a' at 1.
     // The regex engine with set_range won't match across the boundary.
     let b = buf("aababab\n");
-    let matches = find_matches_in_range(&b, &re("ab"), co(0), co(0));
+    let matches = find_matches_in_range(&b, &re("ab"), ir(0, 0));
     assert_eq!(matches, vec![]);
 }
 
 #[test]
 fn range_matches_no_hits() {
     let b = buf("hello world\n");
-    let matches = find_matches_in_range(&b, &re("xyz"), co(0), co(10));
+    let matches = find_matches_in_range(&b, &re("xyz"), ir(0, 10));
     assert_eq!(matches, vec![]);
 }
 
@@ -359,7 +359,7 @@ fn range_matches_no_hits() {
 fn range_matches_full_buffer() {
     // Full buffer range returns all matches.
     let b = buf("aababab\n");
-    let ranged = find_matches_in_range(&b, &re("ab"), co(0), co(7));
+    let ranged = find_matches_in_range(&b, &re("ab"), ir(0, 7));
     assert_eq!(ranged, vec![ir(1, 2), ir(3, 4), ir(5, 6)]);
 }
 
@@ -368,7 +368,7 @@ fn range_matches_with_combining_graphemes() {
     // "café\n" — 'é' is e + U+0301 (2 codepoints, chars 3 and 4).
     // Searching for "é" within the full range should find it.
     let b = buf("caf\u{0065}\u{0301}\n");
-    let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), co(0), co(5));
+    let matches = find_matches_in_range(&b, &re("\u{0065}\u{0301}"), ir(0, 5));
     assert_eq!(matches, vec![ir(3, 4)]);
 }
 

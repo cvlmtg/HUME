@@ -7,6 +7,7 @@ use hume_editing::lines::line_content_end;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::blank_class;
+use hume_rope::offset::InclusiveRange;
 
 // ── Split on newlines ─────────────────────────────────────────────────────────
 
@@ -101,7 +102,11 @@ pub fn sift_matches_within(
 
     for (i, sel) in sels.iter_sorted().enumerate() {
         let piece_start = new_sels.len();
-        let matches = find_matches_in_range(text, regex, sel.start(), sel.end_inclusive(text));
+        let matches = find_matches_in_range(
+            text,
+            regex,
+            InclusiveRange::new(sel.start(), sel.end_inclusive(text)),
+        );
 
         for span in matches {
             new_sels.push(Selection::new(span.start, span.end));
