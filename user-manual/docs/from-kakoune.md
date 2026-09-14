@@ -158,11 +158,13 @@ Kakoune is built to hand text to other programs: `|` pipes selections through a 
 
 The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds a language. Anything you would reach for `%sh{}` to do is written in Scheme instead, running inside the editor with direct access to buffers, selections and commands. That buys tighter integration and costs you the entire shell ecosystem.
 
-### Splits and windows
+### Splits, windows, and tabs
 
 Kakoune has no window management by design — you run multiple clients against one session and let tmux or your window manager arrange them.
 
 HUME has panes built in: `Ctrl+p` is the prefix, `Ctrl+p s` and `Ctrl+p v` split, `Ctrl+p h/j/k/l` move focus, `Ctrl+p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
+
+On top of that, a **tab** saves a whole pane layout — its own splits and focused pane. `:tabnew` opens a second arrangement, `:tabclose` drops it, and `Ctrl+p t` / `Ctrl+p T` cycle between them. Buffers are shared across every tab; only the layout differs. The nearest Kakoune analogue is a second tmux window with another client attached to the same session — see [Tabs](files-and-buffers.md#tabs).
 
 ### Configuration
 
@@ -207,7 +209,7 @@ Language server support is a bundled plugin rather than a separate process you c
 
 - A built-in system clipboard, a kill ring, and a paste that picks the right source
 - Extend mode, plus one-shot extends that need no mode switch
-- Built-in panes and splits
+- Built-in panes, splits, and tab pages
 - A built-in plugin manager, Scheme scripting, and a hook system
 - Bundled language-server and tree-sitter support
 - Dot-repeat covering arbitrary edits, not just insert-mode changes

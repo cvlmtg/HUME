@@ -135,6 +135,14 @@ Helix's statusline is configurable via TOML (`[editor.statusline]`); HUME's is c
 
 You can also add your own custom elements from Scheme — see [Statusline](configuration.md#custom-elements).
 
+### Bufferline vs tab bar
+
+Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open **buffers** — pick one and it swaps into the focused split. HUME's bar lists **tab pages** instead: a tab is a saved window layout — its own splits and focused pane — so switching tabs swaps the whole pane arrangement, not a single buffer. Buffers stay global across tabs and are reached with `:ls` / `:b` / `:bn` / `:bp`, not from the bar — see [Tabs](files-and-buffers.md#tabs).
+
+`:set global tabline=never/always/dynamic` controls visibility; `dynamic` (the default) is the analogue of Helix's `multiple`, showing the bar only once a second tab is open. Click a tab to switch to it; the bar scrolls when tabs overflow the width.
+
+A Helix theme needs no changes to look right: HUME's `ui.tabline` falls back to Helix's `ui.bufferline` when unset — see [Theme scopes](configuration.md#theme-scopes).
+
 ### Surround
 
 Helix uses `ms`, `md`, `mr` for surround. HUME supports both defaults and a Helix-compatible mode:
@@ -178,3 +186,4 @@ A theme editor is also available online — a single-file HTML tool you download
 - Scripting and plugins (Scheme)
 - Smart paste with kill ring
 - Hook system (on-buffer-open, on-buffer-save, etc.)
+- Tab pages: each tab a saved window layout, not a buffer strip

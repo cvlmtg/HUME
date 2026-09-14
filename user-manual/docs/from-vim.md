@@ -52,13 +52,14 @@ These keys exist in both editors and do different things. They are the ones most
 | `;` | Repeat last `f`/`t` | Collapse the selection | `=` |
 | `,` | Repeat last `f`/`t` backward | Keep only the primary selection | `-` |
 | `m` | Set a mark | Text-object prefix | — HUME has no marks; `Ctrl+o` / `Ctrl+i` walk the jump list |
-| `[` / `]` | Bracket-motion prefix | Cycle the kill ring after a paste | — |
+| `[`&nbsp;/&nbsp;`]` | Bracket-motion prefix | Cycle the kill ring after a paste | — |
 | `S` | Change whole line | Split selections on newlines | `x` then `c` |
 | `C` | Change to end of line | Copy the selection to the line below | `ctrl-g l c`, or `C` with `core:vim-keybind` |
 | `D` | Delete to end of line | *(unbound)* | `ctrl-g l d`, or `D` with `core:vim-keybind` |
 | `U` | Undo the whole line | Redo | — `Ctrl+r` also redoes |
 | `G` | Go to last line | Case/rename prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`) | `g e` — unaffected, and `core:vim-keybind` does not restore `G` |
 | `K` | Look up keyword (external `keywordprg`, e.g. `man`) | Show hover docs for the symbol under the cursor (with `core:lsp`) | — closest HUME gets; no external program |
+| `gt`&nbsp;/&nbsp;`gT` | Next / previous tab | Next / previous class or type | `Ctrl+p t` / `Ctrl+p T` |
 
 `f`, `F`, `t`, `T` behave as they do in Vim, and `{` / `}` are still paragraph motions. Only the *repeat* keys moved: use `=` and `-`, because `;` and `,` are taken.
 
@@ -164,6 +165,14 @@ HUME's idiom for line motions is the `g` prefix: `g h` (start), `g l` (end), `g 
 | `C` / `D` | `ctrl-g l c` / `ctrl-g l d` (kitty terminals only) | `C` (change to end of line on a bare cursor with no count; with a selection, or any count prefix, falls back to the default `copy-selection-on-next-line`) / `D` |
 | `o` (visual mode) | `Ctrl+e` (flips anchor and head, any mode) | `o` (in Extend mode) |
 
+### Tabs
+
+Tab pages carry over as-is: `:tabnew`, `:tabclose`, `:tabnext`, `:tabprev` (and Vim's own abbreviations `:tabe`, `:tabc`, `:tabn`, `:tabp`) spell and behave the same, including Vim's placement rules — `:tabnew` opens right after the current tab, `:tabclose` lands on the neighbor to the right (or the left, if there is none). The tab bar appears once a second tab is open; `tabline` is HUME's `showtabline`, with `dynamic` / `always` / `never` standing in for `1` / `2` / `0`.
+
+The keys moved, though: `gt` / `gT` are not bound — `g` is HUME's goto prefix, and `g t` / `g T` already jump between classes/types (see the muscle-memory table above). Cycle tabs with `Ctrl+p t` / `Ctrl+p T` instead, under the same `Ctrl+p` prefix that stands in for Vim's `Ctrl+w`. The bindable spellings are `goto-next-tab` / `goto-prev-tab`.
+
+Not present at the moment: `:tabonly`, `:tabmove`, `:tabfirst` / `:tablast`, `:tabs`, `{count}gt` to jump straight to tab *N*, and the `:tab` command modifier (`:tab split`).
+
 ## Commands you already know
 
 Most `:` commands work as expected:
@@ -181,6 +190,8 @@ Most `:` commands work as expected:
 | `:pwd` | `:pwd` |
 | `:42` | `:42` |
 | `:sp` / `:vsp` | `:sp` / `:vsp` |
+| `:tabnew` / `:tabclose` | `:tabnew` / `:tabclose` (`:tabe` / `:tabc`) |
+| `:tabnext` / `:tabprevious` | `:tabnext` / `:tabprev` (`:tabn` / `:tabp`) |
 | `Ctrl+w` window prefix | `Ctrl+p` pane prefix |
 | `Ctrl+^` | `:b #`, or `Ctrl+6` with `core:vim-keybind` loaded (kitty only) |
 | `Ctrl+o` / `Ctrl+i` | `Ctrl+o` / `Ctrl+i` |
