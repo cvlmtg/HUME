@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseTOML, extractScopes, exportTOML, diffFromBaseline, unescapeBasic, parseInlineTable } from '../src/lib/toml.js';
-import { bgc, lookupRaw } from '../src/lib/theme.js';
+import { bgc, lookupRaw, STYLE_KEYS } from '../src/lib/theme.js';
 
 test('unescapeBasic handles \\", \\\\, \\n, \\t, \\r', () => {
   assert.equal(unescapeBasic('a\\"b'), 'a"b');
@@ -185,16 +185,18 @@ test('`underline = { color, style }` keeps its nested style field', () => {
   });
 });
 
-// The catalog of style fields has to stay identical to STYLE_KEYS in
-// hume-engine/src/theme/loader/flatten.rs: a key this list treats as a style field but
-// HUME treats as a child scope (or vice versa) makes the same theme flatten
-// two different ways in the editor and the editor it previews.
+// The catalog of style fields has to stay identical to the loader's own
+// STYLE_KEYS (theme.js's `STYLE_KEYS`, generated from
+// hume-engine/src/theme/loader/flatten.rs): a key this list treats as a
+// style field but HUME treats as a child scope (or vice versa) makes the
+// same theme flatten two different ways in the editor and the editor it
+// previews.
 test('the style-field set matches the loader\'s STYLE_KEYS', () => {
   const parsed = parseTOML(
     '"a" = { fg = "#111111", bg = "#222222", underline = "curl", modifiers = ["bold"] }'
   );
   const def = extractScopes(parsed).a;
-  assert.deepEqual(Object.keys(def).sort(), ['bg', 'fg', 'modifiers', 'underline']);
+  assert.deepEqual(Object.keys(def).sort(), [...STYLE_KEYS].sort());
 });
 
 // A scalar that is neither a string nor a table used to vanish here, so an

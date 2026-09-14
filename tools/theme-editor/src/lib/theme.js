@@ -1,21 +1,23 @@
-// The sixteen terminal colour names HUME's loader resolves to a fixed RGB
-// value (see `ANSI_COLORS` in hume-engine/src/theme/loader/values.rs, the source of
-// truth for these — the two tables are hand-kept in sync). A theme's own
-// `[palette]` entry of the same name still wins, matching the loader's order.
-const ANSI_COLORS = {
-  black: "#000000", red: "#cd0000", green: "#00cd00", yellow: "#cdcd00",
-  blue: "#0000ee", magenta: "#cd00cd", cyan: "#00cdcd", "light-gray": "#e5e5e5",
-  gray: "#7f7f7f", "light-red": "#ff0000", "light-green": "#00ff00", "light-yellow": "#ffff00",
-  "light-blue": "#5c5cff", "light-magenta": "#ff00ff", "light-cyan": "#00ffff", white: "#ffffff",
-};
+// The loader's vocabulary (modifier/underline/ANSI-colour/style-key names,
+// cursor-ladder rungs), generated from hume-engine/src/theme/loader/ — see
+// that file's own banner for the regeneration command. Importing it here
+// rather than hand-copying keeps this module's tables from drifting the way
+// they used to.
+import {
+  ANSI_COLORS,
+  MODIFIER_NAMES,
+  UNDERLINE_MODIFIER,
+  UNDERLINE_NAMES,
+  STYLE_KEYS as GENERATED_STYLE_KEYS,
+  CURSOR_LADDERS,
+} from "./vocabulary.generated.js";
 
-// Mirrors STYLE_KEYS in hume-engine/src/theme/loader/flatten.rs — a key here is part
-// of a scope's style, anything else is a child scope. The single copy other
-// modules import, rather than each hand-typing their own (as toml.js's
-// `SCOPE_KEYS` and ScopeRow.jsx's own `STYLE_KEYS` used to). `underline`'s
-// nested `style` key belongs to that sub-table, not this list, so it stays
-// out even though it's an underline-related word.
-export const STYLE_KEYS = ["fg", "bg", "underline", "modifiers"];
+// A key here is part of a scope's style, anything else is a child scope. The
+// single copy other modules import, rather than each hand-typing their own
+// (as toml.js's `SCOPE_KEYS` and ScopeRow.jsx's own `STYLE_KEYS` used to).
+// `underline`'s nested `style` key belongs to that sub-table, not this list,
+// so it stays out even though it's an underline-related word.
+export const STYLE_KEYS = GENERATED_STYLE_KEYS;
 
 export function resolveColor(c, pal) {
   if (!c || typeof c !== "string") return null;
@@ -133,14 +135,14 @@ export function fullStyleChain(ids, sc, pal) {
 // `ui.selection`, matching how the real ladder falls back to an all-`None`
 // `ResolvedStyle` rather than "no style at all".
 // The (secondary, primary) rung list for one mode's chain. Split out from
-// `cursorColors` so it is comparable data rather than an inline literal:
-// `tests/theme.test.js` parses `cursor_ladder_ids`' own literals out of
-// hume-engine/src/theme/mod.rs and asserts these match, so the copy the Rust
-// side went to the trouble of exposing as a shared function can't drift here.
+// `cursorColors` so it is comparable data rather than an inline literal.
+// `CURSOR_LADDERS` (generated) carries one concrete ladder pair per real
+// mode, keyed by its scope suffix — the same three chains this function has
+// always accepted.
 export function cursorLadderIds(chain, primary) {
-  return primary
-    ? [`ui.cursor.primary.${chain}`, "ui.cursor.primary", "ui.cursor", "ui", "ui.selection"]
-    : [`ui.cursor.${chain}`, "ui.cursor", "ui.selection"];
+  const ladder = CURSOR_LADDERS[chain];
+  if (!ladder) throw new Error(`unknown cursor chain "${chain}"`);
+  return primary ? ladder.primary : ladder.secondary;
 }
 
 export function cursorColors(chain, primary, sc, pal) {
@@ -148,27 +150,27 @@ export function cursorColors(chain, primary, sc, pal) {
   return fullStyleChain(ids, sc, pal) ?? { fg: null, bg: null, mods: [], underline: null };
 }
 
-// The underline styles the loader accepts (`parse_underline` in
-// hume-engine/src/theme/loader/values.rs), each mapped to its CSS equivalent. One
-// keyed table rather than a name list in the editor and a switch here: a
-// style added to the loader needs one line, and the editor can't offer a name
-// HUME would reject on load. `tests/theme.test.js` reads the loader's own
-// match arms and pins these keys against them.
-export const UNDERLINE_STYLES = {
+// `UNDERLINE_NAMES` (generated) is the underline styles the loader accepts;
+// keyed table rather than a name list plus a switch, so a style added to the
+// loader needs one line and the editor can't offer a name HUME would reject
+// on load. The loader has no opinion on CSS spelling, so the values stay
+// hand-written here — `tests/theme.test.js` checks every generated name has
+// one.
+const UNDERLINE_STYLE_CSS = {
   line: "solid",
   curl: "wavy",
   dotted: "dotted",
   dashed: "dashed",
   double_line: "double",
 };
+export const UNDERLINE_STYLES = Object.fromEntries(
+  UNDERLINE_NAMES.map((name) => [name, UNDERLINE_STYLE_CSS[name]]),
+);
 
-// The loader's modifier vocabulary (`parse_modifier`, same file) plus
-// "underlined", which the loader routes to the dedicated underline field
-// rather than the modifier bitset. Also pinned against the loader by test.
-export const MODIFIERS = [
-  "bold", "italic", "dim", "reversed", "hidden",
-  "crossed_out", "slow_blink", "rapid_blink", "underlined",
-];
+// The loader's modifier vocabulary (`MODIFIER_NAMES`, generated) plus
+// `UNDERLINE_MODIFIER` ("underlined"), which the loader routes to the
+// dedicated underline field rather than the modifier bitset.
+export const MODIFIERS = [...MODIFIER_NAMES, UNDERLINE_MODIFIER];
 
 export function cssUnderlineStyle(s) {
   return UNDERLINE_STYLES[s] ?? "solid";

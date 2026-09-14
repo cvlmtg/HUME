@@ -4,6 +4,12 @@ React app for building Helix-format theme TOML files, previewed live against a m
 
 `index.html` at the top of this directory is **generated output** — edit files under `src/` instead, then rebuild. It's committed as a single self-contained file because the user manual links to it directly as a standalone download.
 
+`src/lib/vocabulary.generated.js` is also **generated output** — HUME's theme loader's own modifier/underline/ANSI-colour/style-key/cursor-ladder vocabulary, rendered from `hume-engine/src/theme/loader/` by a Rust test. Regenerate it after any change to that vocabulary with:
+
+```sh
+HUME_WRITE_THEME_VOCABULARY=1 cargo test -p hume-engine theme_vocabulary_js_matches_loader
+```
+
 ```sh
 npm install
 npm run dev     # local dev server with HMR

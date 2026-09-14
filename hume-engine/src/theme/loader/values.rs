@@ -63,7 +63,7 @@ pub(super) fn resolve_color(
 /// on every index across both its crossterm and termina impls. Note the
 /// index order: `gray` is 8 (bright black) and `light-gray` is 7 (the
 /// non-bright palette's *white* slot) — Helix's mapping, not a typo here.
-const ANSI_COLORS: [(&str, Rgb); 16] = [
+pub(super) const ANSI_COLORS: [(&str, Rgb); 16] = [
     ("black", Rgb(0x00, 0x00, 0x00)),
     ("red", Rgb(0xcd, 0x00, 0x00)),
     ("green", Rgb(0x00, 0xcd, 0x00)),
@@ -109,34 +109,60 @@ pub(super) fn parse_hex_color(s: &str) -> Result<Rgb, ()> {
     }
 }
 
+/// `parse_modifier`'s vocabulary as a table rather than a `match`, so
+/// `hume-engine/src/theme/loader/vocabulary.rs` can enumerate it for
+/// `tools/theme-editor/src/lib/vocabulary.generated.js` — a `match`'s arms
+/// aren't a value anything can iterate. `crossed_out` maps to
+/// `Modifiers::STRIKETHROUGH`: the TOML word is Helix's own spelling, the
+/// flag is HUME's.
+pub(super) const MODIFIER_NAMES: [(&str, Modifiers); 8] = [
+    ("bold", Modifiers::BOLD),
+    ("italic", Modifiers::ITALIC),
+    ("crossed_out", Modifiers::STRIKETHROUGH),
+    ("dim", Modifiers::DIM),
+    ("reversed", Modifiers::REVERSED),
+    ("hidden", Modifiers::HIDDEN),
+    ("slow_blink", Modifiers::SLOW_BLINK),
+    ("rapid_blink", Modifiers::RAPID_BLINK),
+];
+
+/// The one `modifiers = [...]` literal the loader accepts outside
+/// [`MODIFIER_NAMES`] — intercepted in `parse_style_table` (`loader.rs`)
+/// before `parse_modifier` ever sees it, and routed to the dedicated
+/// underline field instead of the modifier bitset. Named so it can join
+/// [`MODIFIER_NAMES`] in the generated vocabulary rather than being a bare
+/// literal only `loader.rs`'s match arm and the JS side each know about.
+pub(super) const UNDERLINE_MODIFIER: &str = "underlined";
+
 pub(super) fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError> {
-    match s {
-        "bold" => Ok(Modifiers::BOLD),
-        "italic" => Ok(Modifiers::ITALIC),
-        "crossed_out" => Ok(Modifiers::STRIKETHROUGH),
-        "dim" => Ok(Modifiers::DIM),
-        "reversed" => Ok(Modifiers::REVERSED),
-        "hidden" => Ok(Modifiers::HIDDEN),
-        "slow_blink" => Ok(Modifiers::SLOW_BLINK),
-        "rapid_blink" => Ok(Modifiers::RAPID_BLINK),
+    MODIFIER_NAMES
+        .iter()
+        .find(|(name, _)| *name == s)
+        .map(|&(_, m)| m)
         // Treat unrecognized modifiers as errors so themes don't silently lose styling.
-        _ => Err(ThemeError::BadModifier {
+        .ok_or_else(|| ThemeError::BadModifier {
             key: key.to_owned(),
             value: s.to_owned(),
-        }),
-    }
+        })
 }
 
+/// `parse_underline`'s vocabulary as a table — same reason as
+/// [`MODIFIER_NAMES`].
+pub(super) const UNDERLINE_NAMES: [(&str, UnderlineStyle); 5] = [
+    ("line", UnderlineStyle::Solid),
+    ("curl", UnderlineStyle::Wavy),
+    ("dotted", UnderlineStyle::Dotted),
+    ("dashed", UnderlineStyle::Dashed),
+    ("double_line", UnderlineStyle::Double),
+];
+
 pub(super) fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
-    match s {
-        "line" => Ok(UnderlineStyle::Solid),
-        "curl" => Ok(UnderlineStyle::Wavy),
-        "dotted" => Ok(UnderlineStyle::Dotted),
-        "dashed" => Ok(UnderlineStyle::Dashed),
-        "double_line" => Ok(UnderlineStyle::Double),
-        _ => Err(ThemeError::BadUnderline {
+    UNDERLINE_NAMES
+        .iter()
+        .find(|(name, _)| *name == s)
+        .map(|&(_, u)| u)
+        .ok_or_else(|| ThemeError::BadUnderline {
             key: key.to_owned(),
             value: s.to_owned(),
-        }),
-    }
+        })
 }

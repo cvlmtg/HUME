@@ -43,10 +43,12 @@ use crate::types::{ResolvedStyle, UnderlineStyle};
 mod discovery;
 mod flatten;
 mod values;
+#[cfg(test)]
+mod vocabulary;
 
 use discovery::find_theme_file;
 use flatten::flatten_scopes;
-use values::{parse_hex_color, parse_modifier, parse_underline, resolve_color};
+use values::{UNDERLINE_MODIFIER, parse_hex_color, parse_modifier, parse_underline, resolve_color};
 
 const MAX_DEPTH: usize = 8;
 
@@ -605,7 +607,7 @@ fn parse_style_table(
                             // dedicated underline field so underline has a single
                             // source of truth. A more specific `underline = "..."`
                             // key (parsed above) wins.
-                            "underlined" => {
+                            UNDERLINE_MODIFIER => {
                                 if style.underline == UnderlineStyle::None {
                                     style.underline = UnderlineStyle::Solid;
                                 }

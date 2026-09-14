@@ -6,7 +6,7 @@ use super::{bad_style_field, is_reserved};
 
 /// Style-table fields — a table keyed by any of these is a scope's style,
 /// never a container to recurse into.
-const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
+pub(super) const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
 
 /// `expected` text for a key found in a style table that isn't a style field.
 /// Spells out [`STYLE_KEYS`] for the error message — `expected` is a

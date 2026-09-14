@@ -1,18 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolveColor, cursorColors, cursorLadderIds, diagnosticStyle, fullStyle, tokenStyle, MODIFIERS, UNDERLINE_STYLES } from '../src/lib/theme.js';
-
-const LOADER_VALUES_RS = new URL('../../../hume-engine/src/theme/loader/values.rs', import.meta.url);
-
-// The string literals matched by one `fn <name>`'s `match` arms — the shape
-// `parse_modifier`/`parse_underline` both use to define their vocabulary.
-function matchArmNames(src, fnName) {
-  const start = src.indexOf(`fn ${fnName}(`);
-  assert.notEqual(start, -1, `${fnName} must still exist in hume-engine/src/theme/loader/values.rs`);
-  const body = src.slice(src.indexOf('{', start), src.indexOf('\n}', start));
-  return [...body.matchAll(/"([a-z_]+)"\s*=>/g)].map(m => m[1]);
-}
+import { resolveColor, cursorColors, diagnosticStyle, fullStyle, tokenStyle, MODIFIERS, UNDERLINE_STYLES } from '../src/lib/theme.js';
+import { MODIFIER_NAMES } from '../src/lib/vocabulary.generated.js';
 
 test('resolveColor resolves a bare ANSI name to its fixed hex value', () => {
   assert.equal(resolveColor('red', {}), '#cd0000');
@@ -59,33 +49,6 @@ test('cursorColors primary chain reaches the bare "ui" rung the secondary chain 
   assert.equal(cursorColors('insert', false, sc, {}).fg, null);
 });
 
-// The rung lists are a cross-language copy of `cursor_ladder_ids`, which
-// hume-engine exposes as a shared function precisely so the order and the
-// primary-only bare `ui` rung exist once. Nothing else pins the JS copy, so
-// this reads the Rust literals directly: a reordered or extended ladder there
-// fails here instead of silently leaving the live preview wrong.
-test('the cursor ladders match cursor_ladder_ids in hume-engine', () => {
-  const src = readFileSync(
-    new URL('../../../hume-engine/src/theme/mod.rs', import.meta.url), 'utf8');
-  const start = src.indexOf('pub fn cursor_ladder_ids');
-  assert.notEqual(start, -1, 'cursor_ladder_ids must still exist in hume-engine/src/theme/mod.rs');
-  const bodyStart = src.indexOf('{', start);
-  const body = src.slice(bodyStart, src.indexOf('\n}', bodyStart));
-  const rungs = [...body.matchAll(/\[([^\]]*)\]/g)].map(m =>
-    m[1].split(',').map(t => t.trim()).filter(Boolean).map(t => t.replace(/^"|"$/g, '')));
-  assert.equal(rungs.length, 2, `expected the secondary and primary rung arrays, got ${rungs.length}`);
-
-  // The two array literals name their mode rung by parameter; every other
-  // rung is a literal shared by all three chains.
-  const chain = 'insert';
-  const expand = t =>
-    t === 'mode_scope' ? `ui.cursor.${chain}`
-      : t === 'primary_mode_scope' ? `ui.cursor.primary.${chain}`
-        : t;
-  assert.deepEqual(cursorLadderIds(chain, false), rungs[0].map(expand));
-  assert.deepEqual(cursorLadderIds(chain, true), rungs[1].map(expand));
-});
-
 test('cursorColors always returns a normalized style, never null', () => {
   assert.deepEqual(cursorColors('insert', true, {}, {}), { fg: null, bg: null, mods: [], underline: null });
   assert.deepEqual(cursorColors('select', false, {}, {}), { fg: null, bg: null, mods: [], underline: null });
@@ -108,29 +71,30 @@ test('diagnosticStyle returns null for a severity the theme leaves unset', () =>
   assert.equal(diagnosticStyle('hint', {}, {}), null);
 });
 
-// ── vocabulary — pinned against the loader's own match arms ───────────────
+// ── vocabulary — generated from the loader, checked here for gaps the
+// generated data itself can't rule out ─────────────────────────────────────
 
-// Offering a name the loader rejects lets the editor author a theme that
-// fails to load; missing one it accepts hides a style the user can't reach.
-// Both lists used to be hand-copied into ScopeRow with nothing checking them.
-test('the modifier pills match the loader\'s parse_modifier vocabulary', () => {
-  const src = readFileSync(LOADER_VALUES_RS, 'utf8');
-  // "underlined" is offered by the editor but handled in `parse_style_table`'s
-  // modifiers loop, which routes it to the underline field instead of the
-  // bitset — so it is deliberately absent from `parse_modifier` itself.
-  assert.ok(MODIFIERS.includes('underlined'));
-  assert.deepEqual(
-    MODIFIERS.filter(m => m !== 'underlined').sort(),
-    matchArmNames(src, 'parse_modifier').sort(),
-  );
+// `UNDERLINE_STYLES`' keys come from the generated `UNDERLINE_NAMES`, but its
+// CSS values are hand-written (theme.js's `UNDERLINE_STYLE_CSS`) — a loader
+// style added with no matching entry there would silently fall back to
+// "solid" via `cssUnderlineStyle` instead of failing anywhere.
+test('every generated underline style has a CSS mapping', () => {
+  const missing = Object.entries(UNDERLINE_STYLES)
+    .filter(([, css]) => css === undefined)
+    .map(([name]) => name);
+  assert.deepEqual(missing, [], `no CSS mapping in theme.js's UNDERLINE_STYLE_CSS: ${missing.join(', ')}`);
 });
 
-test('the underline styles match the loader\'s parse_underline vocabulary', () => {
-  const src = readFileSync(LOADER_VALUES_RS, 'utf8');
-  assert.deepEqual(
-    Object.keys(UNDERLINE_STYLES).sort(),
-    matchArmNames(src, 'parse_underline').sort(),
-  );
+// `tokenStyle` (theme.js) handles each modifier as its own
+// `mods.includes("...")` branch — a fourth hand-copy of the loader's
+// modifier vocabulary, nothing else checks. Reads theme.js's own source as
+// text (same idiom as coverage.test.js's `PREVIEW_SOURCE`), since the
+// vocabulary is data but the branches are code with no shared list to pin
+// against directly.
+test('every generated modifier name is handled somewhere in theme.js', () => {
+  const src = readFileSync(new URL('../src/lib/theme.js', import.meta.url), 'utf8');
+  const missing = MODIFIER_NAMES.filter(name => !src.includes(`"${name}"`));
+  assert.deepEqual(missing, [], `not referenced in theme.js: ${missing.join(', ')}`);
 });
 
 // ── underline resolution — mirrors parse_style_table + ResolvedStyle ───────
