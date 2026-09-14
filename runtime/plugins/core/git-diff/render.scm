@@ -97,13 +97,20 @@
 ;;; docs/rendering.md for the paired/unpaired split.
 ;;;
 ;;; `all` skips the `append` when `paired` is empty (a pure deletion, the
-;;; common case) rather than always going through `(append paired
-;;; unpaired)`: steel-core 0.8.2 silently drops every `unpaired` entry past
-;;; the 4th specifically when the *first* argument to `append` is the
-;;; literal empty list — confirmed by hand (a 5th+ deleted line vanishing
-;;; only when nothing precedes it; the identical `map`/`append` shape over a
-;;; non-empty `paired`, of any size, is unaffected). A VM bug, not fixable
-;;; here.
+;;; common case) rather than always going through the 2-argument `(append
+;;; paired unpaired)`: steel-core 0.8.2 silently drops every `unpaired`
+;;; entry past the 4th specifically when the *first* argument to a direct
+;;; 2-argument `append` call is the literal empty list — confirmed by
+;;; reverting this guard and re-running
+;;; `inline_pure_deletion_over_four_lines_renders_every_ghost_line`
+;;; (hume-editor/src/editor/tests/unix/git_diff_plugin.rs), which fails
+;;; without it. The identical `map`/`append` shape over a non-empty `paired`,
+;;; of any size, is unaffected, and so — checked the same way, by forcing an
+;;; analogous empty-first-element shape through it and confirming the
+;;; result stays correct — is every `apply append` join elsewhere in this
+;;; file (`render-inline!`'s two, `render-line-bgs!`'s one, and the `all`
+;;; join right below): none of them needs an equivalent guard, since only
+;;; the direct 2-argument form carries this bug. A VM bug, not fixable here.
 (define (git-diff/hunk-old-lines->virtual+spans bid old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
                        (git-diff/paired-line-offsets bid new-start new-lines paired-count)
