@@ -59,7 +59,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn goto_location_path(
         &mut self,
         path_or_uri: String,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
@@ -67,7 +67,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         };
         let target = crate::editor::lsp::edits::GotoTarget::Path {
             path_or_uri,
-            line: hume_rope::line::RopeyLine::new(line),
+            line,
             char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)
@@ -76,7 +76,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
     fn goto_location_buffer(
         &mut self,
         bid: BufferId,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String> {
         let Some(lsp) = self.lsp.as_deref() else {
@@ -84,7 +84,7 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         };
         let target = crate::editor::lsp::edits::GotoTarget::Buffer {
             bid,
-            line: hume_rope::line::RopeyLine::new(line),
+            line,
             char_col: CharCol::new(char_col),
         };
         crate::editor::lsp::edits::goto_location(self.state, self.view, lsp, target)

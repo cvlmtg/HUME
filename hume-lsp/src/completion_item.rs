@@ -55,18 +55,10 @@ pub fn strip_snippet(text: &str) -> String {
 pub fn text_edit_from_json_lenient(v: &serde_json::Value) -> Option<lsp_types::TextEdit> {
     let range = v.get("range").or_else(|| v.get("insert"))?;
     let new_text = v.get("newText")?.as_str()?.to_string();
-    let start = range.get("start")?;
-    let end = range.get("end")?;
     Some(lsp_types::TextEdit {
         range: lsp_types::Range {
-            start: lsp_types::Position {
-                line: start.get("line")?.as_u64()? as u32,
-                character: start.get("character")?.as_u64()? as u32,
-            },
-            end: lsp_types::Position {
-                line: end.get("line")?.as_u64()? as u32,
-                character: end.get("character")?.as_u64()? as u32,
-            },
+            start: crate::position::position_from_json(range.get("start")?)?,
+            end: crate::position::position_from_json(range.get("end")?)?,
         },
         new_text,
     })

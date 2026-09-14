@@ -32,20 +32,26 @@ pub trait EditHost {
     fn goto_location_value(&mut self, loc: serde_json::Value) -> Result<(), String>;
 
     /// `(goto-location! target)`, `(list target line char-col)` shape with a
-    /// path or `file://` URI string target — already char-indexed.
+    /// path or `file://` URI string target — already char-indexed. `line` is
+    /// minted trusted, unvalidated, by the one builtin (`goto-location!`)
+    /// that calls this — there is no rope to validate against for a path
+    /// target that names no open buffer; `char_col` stays the sanctioned
+    /// bare-`usize` addressing-unit exception, same as everywhere else on
+    /// this trait.
     fn goto_location_path(
         &mut self,
         path_or_uri: String,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String>;
 
     /// `(goto-location! target)`, `(list target line char-col)` shape with a
-    /// `bid` target — already char-indexed.
+    /// `bid` target — already char-indexed. See [`Self::goto_location_path`]
+    /// for `line`'s trusted-mint rationale.
     fn goto_location_buffer(
         &mut self,
         bid: BufferId,
-        line: usize,
+        line: hume_rope::line::RopeyLine,
         char_col: usize,
     ) -> Result<(), String>;
 }

@@ -55,3 +55,33 @@ fn to_json_range_matches_protocol_shape() {
         })
     );
 }
+
+#[test]
+fn position_from_json_reads_the_protocol_shape() {
+    let v = serde_json::json!({"line": 3, "character": 7});
+    assert_eq!(
+        position_from_json(&v),
+        Some(lsp_types::Position {
+            line: 3,
+            character: 7
+        })
+    );
+}
+
+#[test]
+fn position_from_json_none_when_line_is_missing() {
+    let v = serde_json::json!({"character": 7});
+    assert_eq!(position_from_json(&v), None);
+}
+
+#[test]
+fn position_from_json_none_when_character_is_missing() {
+    let v = serde_json::json!({"line": 3});
+    assert_eq!(position_from_json(&v), None);
+}
+
+#[test]
+fn position_from_json_none_when_a_field_is_not_a_number() {
+    let v = serde_json::json!({"line": "3", "character": 7});
+    assert_eq!(position_from_json(&v), None);
+}

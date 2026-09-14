@@ -78,7 +78,10 @@ pub(crate) fn goto_location(ctx: &mut SteelCtx, loc: SteelVal) -> SteelResult {
                 "(target line char-col)",
             )?;
             let target = fields[0].clone();
-            let line = usize_arg(fields[1].clone(), "goto-location! line")?;
+            let line = hume_rope::line::RopeyLine::new(usize_arg(
+                fields[1].clone(),
+                "goto-location! line",
+            )?);
             let char_col = usize_arg(fields[2].clone(), "goto-location! char-col")?;
             if let Some(bid) = super::ids::downcast_buffer_id(&target) {
                 require_cap(ctx.host.edits(), "goto-location!")?

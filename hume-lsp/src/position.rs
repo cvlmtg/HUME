@@ -1,6 +1,12 @@
 //! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
 //! `WirePos` → the protocol's raw JSON object shape (outbound only — nothing
-//! in this crate decodes JSON back into a `WirePos`).
+//! in this crate decodes JSON back into a `WirePos`). [`position_from_json`]
+//! is the one inbound decoder here, and decodes into `lsp_types::Position`
+//! rather than `WirePos`: it serves a *lenient* caller
+//! (`completion_item::text_edit_from_json_lenient`) that wants `None` on a
+//! malformed field, not the per-field error text `location::decode_location`
+//! needs — that decoder reads the same JSON shape by hand instead of
+//! sharing this one.
 //!
 //! `hume-rope` deliberately has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free
@@ -55,6 +61,17 @@ pub fn to_json_range(range: ExclusiveRange<WirePos>) -> serde_json::Value {
     serde_json::json!({
         "start": to_json_position(range.start),
         "end": to_json_position(range.end),
+    })
+}
+
+/// The protocol's `{"line": N, "character": M}` object → `lsp_types::Position`.
+/// `None` on a missing or non-numeric field — a lenient caller's own fallback
+/// applies from there. See this module's doc for why `location::decode_location`
+/// doesn't share this decoder.
+pub fn position_from_json(v: &serde_json::Value) -> Option<lsp_types::Position> {
+    Some(lsp_types::Position {
+        line: v.get("line")?.as_u64()? as u32,
+        character: v.get("character")?.as_u64()? as u32,
     })
 }
 
