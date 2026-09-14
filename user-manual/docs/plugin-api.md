@@ -203,8 +203,8 @@ These are editor-builtin commands any plugin can drive — a plugin opens a pick
 
 | Call | Effect |
 |------|--------|
-| `(picker! items on-select #:prompt #:pending #:query #:truncate)` | Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs |
-| `(live-picker! on-select #:command #:prompt #:query #:debounce-ms #:cwd #:nul #:ok-exit-codes #:truncate)` | Open a picker whose query re-spawns `#:command`'s subprocess on every keystroke, debounced |
+| `(picker! items on-select #:prompt #:pending #:query #:truncate #:actions)` | Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs |
+| `(live-picker! on-select #:command #:prompt #:query #:debounce-ms #:cwd #:nul #:ok-exit-codes #:truncate #:actions)` | Open a picker whose query re-spawns `#:command`'s subprocess on every keystroke, debounced |
 | `(picker-push! token items)` | Append a batch of `(display . payload)` items to an open picker |
 | `(picker-replace! token items)` | Replace an open picker's items wholesale |
 | `(picker-source-spawn! token cmd args #:cwd #:nul #:ok-exit-codes)` | Stream a subprocess's stdout lines into an open picker as items |

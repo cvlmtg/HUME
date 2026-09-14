@@ -514,6 +514,28 @@ drops the back and keeps the head instead — right for a row whose distinguishi
 sits at the *front*, like a grep match's `path:line:col:` prefix ahead of the line
 preview, where a head-cut would swallow the path and show only preview text.
 
+`Enter` accepts the selected row in the picker's own pane; `#:actions` adds more ways to
+accept it:
+
+```scheme
+(picker! items on-select #:prompt "files: "
+  #:actions (call! "stdlib/buffer-actions" on-select))
+```
+
+`stdlib/buffer-actions` (from `core:stdlib`) is a ready-made `#:actions` list that binds
+`Ctrl-O` to `on-select` itself (a synonym for `Enter`), and `Ctrl-T`/`Ctrl-V`/`Ctrl-S` to
+opening the selection in a new tab, a side-by-side split, or a stacked split respectively —
+see `core:pickers`' own file, buffer, and modified-files pickers for the pattern in use, and
+`core:stdlib`'s reference for `with-tab`/`with-vsplit`/`with-split`, the three combinators it
+composes.
+
+Writing `#:actions` by hand instead: it's a list of `(key-spec . proc)` pairs, each `proc`
+taking the same one payload argument `on-select` does. `key-spec` is a single key written
+the same way `bind-key!` writes one — `"ctrl-v"`, `"f"`, `"esc"` — never a multi-key sequence
+like `"z f"`. An `#:actions` entry can never override a key the picker already uses for
+itself — typing to filter, `Backspace`, the movement keys, `Enter`, `Esc` — so there's
+nothing to avoid clashing with beyond those.
+
 A nonzero exit from a spawned source is normally reported as an error — but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
 exits `1` for "no matches"), pass `#:ok-exit-codes`. The list is complete, not
@@ -550,7 +572,9 @@ keystroke — a live grep, say — uses `live-picker!` instead of `picker!`:
 `grep/parse` above is left to the reader. `#:truncate 'tail` here (see `#:truncate` under
 [Custom pickers](#custom-pickers) above, which `live-picker!` accepts the same way) keeps
 the path and clips the line preview instead — `rg --vimgrep`'s rows are
-`path:line:col:preview`, so the default head-cut would clip the path itself.
+`path:line:col:preview`, so the default head-cut would clip the path itself. `#:actions`
+(also under Custom pickers above) is accepted the same way too, for opening a match in a
+new tab or split instead of just the current pane.
 
 [grep.hume](https://github.com/cvlmtg/grep.hume) is this same idea, finished — `grep/parse`
 included.

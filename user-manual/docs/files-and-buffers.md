@@ -93,7 +93,7 @@ A **tab** is a saved window layout — its own splits and focused pane — not a
 | `Ctrl+p t` | Switch to the next tab |
 | `Ctrl+p T` | Switch to the previous tab |
 
-`:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key.
+`:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key — as does bare `:tabnew` (no `[path]`), spelled `tab-new`.
 
 Click a tab in the tab bar to switch to it; the bar scrolls when tabs overflow the screen width. By default it only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this).
 

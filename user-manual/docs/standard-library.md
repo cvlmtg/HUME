@@ -72,4 +72,15 @@ Use this for a `:` command that takes an optional language name — `arg` is wha
 | `(call! "stdlib/config-integer" plugin cfg key default minimum)` | Same, erroring if the resolved value isn't an integer, or is below `minimum` (`#f` for no minimum) |
 | `(call! "stdlib/config-list" plugin cfg key default)` | Same, erroring if the resolved value isn't a list of strings |
 
+## Picker buffer-placement
+
+| Call | Effect |
+|------|--------|
+| `(call! "stdlib/buffer-actions" handler)` | A `picker!`/`live-picker!` `#:actions` list binding `Ctrl-O`/`Ctrl-T`/`Ctrl-V`/`Ctrl-S` to `handler` placed in the current pane, a new tab, a vertical split, and a horizontal split respectively |
+| `(call! "stdlib/with-tab" handler)` | Wraps `handler`: opens a new tab, then calls `handler` with the picker's payload |
+| `(call! "stdlib/with-vsplit" handler)` | Wraps `handler`: splits the focused pane side by side, then calls `handler` with the picker's payload |
+| `(call! "stdlib/with-split" handler)` | Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |
+
+`handler` is the same one-argument procedure a picker already passes as `on-select` — see [Custom pickers](plugins.md#custom-pickers)'s `#:actions`. `buffer-actions` is the one plugin authors reach for; `with-tab`/`with-vsplit`/`with-split` are its building blocks, for composing a custom `#:actions` list with different keys or a subset of the four.
+
 `cfg` is whatever `(plugin-config)` returns. Every error names the calling plugin (`plugin`) and the offending key, so a bad `#:config` value fails at load time pointing at exactly what to fix. See [Configuring a plugin](plugins.md#configuring-a-plugin) for the full picture of reading `#:config`.

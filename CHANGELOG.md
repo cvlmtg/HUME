@@ -10,6 +10,16 @@
 
 ### Panes & interface
 - New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl+p t`/`Ctrl+p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
+- New mappable `tab-new` command — the bindable equivalent of bare `:tabnew`.
+- `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` now scroll the view itself, not just the cursor — matching mouse-wheel scrolling and most other editors.
+- The file, buffer, and modified-files pickers (`z f`/`z b`/`z m`) now accept `Ctrl+o`/`Ctrl+t`/`Ctrl+v`/`Ctrl+s` to open a selection in the current pane, a new tab, a side-by-side split, or a stacked split, alongside `Enter`.
+
+### Plugins & scripting
+- `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
+
+### Fixes
+- Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.
+- Scrolling all the way to the end of a file with `Ctrl+D`/`PageDown`/the mouse wheel, then moving the cursor, no longer jumps the view — the last line now settles `scrolloff` rows above the bottom from the scroll itself, instead of only once an unrelated cursor movement corrected it.
 
 ## [0.12.0] - 2026-09-08
 

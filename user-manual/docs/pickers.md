@@ -75,5 +75,8 @@ Once a picker is open:
 | `Up` / `Ctrl+p`               | Move selection up |
 | `PageDown` / `PageUp`        | Page the list |
 | `Ctrl+d` / `Ctrl+u`           | Move selection by half a page |
-| `Enter`                     | Open the selected item |
+| `Enter` / `Ctrl+o`           | Open the selected item in the current pane |
+| `Ctrl+t`                    | Open the selected item in a new tab |
+| `Ctrl+v`                    | Open the selected item in a side-by-side split |
+| `Ctrl+s`                    | Open the selected item in a stacked split |
 | `Esc`                       | Dismiss without opening anything |

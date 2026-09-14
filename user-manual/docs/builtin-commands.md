@@ -248,3 +248,4 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | `pane-focus-up` | `Ctrl+p k` | Focus the pane above. |
 | `pane-split` | `Ctrl+p s` | Split the focused pane, stacking the new pane below it. |
 | `pane-vsplit` | `Ctrl+p v` | Split the focused pane side by side. |
+| `tab-new` | — | Open a fresh pane viewing the focused buffer in a new tab. |
