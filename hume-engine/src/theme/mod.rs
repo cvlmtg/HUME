@@ -1,3 +1,4 @@
+pub mod diagnostic_scopes;
 pub mod error;
 pub mod loader;
 pub mod ui_scopes;
@@ -153,6 +154,14 @@ pub fn cursor_ladder_ids(
         ],
     )
 }
+
+/// The bracket/search-match highlight under the cursor — not a ladder rung
+/// (`cursor_ladder_ids` doesn't cover it, it's resolved directly wherever a
+/// bracket/search match is found), but still a "Cursor"-category scope name,
+/// so it lives beside `CURSOR_MODES` rather than in `ui_scopes`, whose own
+/// doc deliberately excludes Cursor names.
+pub const CURSOR_MATCH: &str = "ui.cursor.match";
+pub const CURSOR_MATCH_SEARCH: &str = "ui.cursor.match.search";
 
 // ---------------------------------------------------------------------------
 // UiScopes
@@ -390,11 +399,11 @@ impl Theme {
             cursor_insert,
             selection: self.resolve_raw(ui_scopes::SELECTION),
             cursorline: self.resolve_raw(ui_scopes::CURSORLINE_PRIMARY),
-            virtual_text: self.resolve_raw("ui.virtual"),
+            virtual_text: self.resolve_raw(ui_scopes::VIRTUAL_TEXT),
             // dot-fallback to ui.virtual for themes that don't define the guide explicitly
-            indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
-            invisible: self.resolve_raw("ui.virtual.invisible"),
-            whitespace: self.resolve_raw("ui.virtual.whitespace"),
+            indent_guide: self.resolve_raw(ui_scopes::VIRTUAL_INDENT_GUIDE),
+            invisible: self.resolve_raw(ui_scopes::VIRTUAL_INVISIBLE),
+            whitespace: self.resolve_raw(ui_scopes::VIRTUAL_WHITESPACE),
             cursor_primary,
             cursor_insert_primary,
             cursor_select,

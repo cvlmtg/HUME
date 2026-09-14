@@ -1,24 +1,22 @@
-// The scope catalog tracks what HUME resolves by fixed name. The "UI"
-// category is generated from hume-engine's own `ui_scopes::ALL`
-// (`hume-engine/src/theme/ui_scopes.rs`, via `./lib/vocabulary.generated.js`)
-// — a scope renamed there fails `cargo test -p hume-engine
-// theme_vocabulary_js_matches_loader`, not silently here. "Cursor"'s 8
-// fallback-ladder rungs are generated too (from `CURSOR_LADDERS`, below);
-// its 2 match-highlight scopes and every other category (Virtual,
-// Diagnostic, syntax/markup, diff) are still kept in sync by hand: nothing
-// checks them against the Rust sources. Syntax/markup are tree-sitter
-// capture names HUME has no fixed enum for — runtime/themes/sand.toml is
-// the de-facto catalog for those.
-import { CURSOR_LADDERS, UI_SCOPES } from "./lib/vocabulary.generated.js";
+// The scope catalog tracks what HUME resolves by fixed name. UI, Cursor,
+// Virtual, and Diagnostic are all generated from hume-engine
+// (hume-engine/src/theme/{ui_scopes.rs,mod.rs,diagnostic_scopes.rs}, via
+// ./lib/vocabulary.generated.js) — a scope renamed there fails `cargo test
+// -p hume-engine theme_vocabulary_js_matches_loader`, not silently here.
+// Only syntax/markup and Diff remain hand-maintained: syntax/markup are
+// tree-sitter capture names HUME has no fixed enum for (runtime/themes/
+// sand.toml is the de-facto catalog for those), and Diff comes from Steel
+// (runtime/plugins/core/git-diff/render.scm), not Rust.
+import {
+  CURSOR_LADDERS, CURSOR_MATCH_SCOPES, DIAGNOSTIC_SCOPES, UI_SCOPES, VIRTUAL_SCOPES,
+} from "./lib/vocabulary.generated.js";
 
 // The 8 fallback-ladder scopes come from CURSOR_LADDERS (generated from
 // cursor_ladder_ids/CURSOR_MODES in hume-engine/src/theme/mod.rs) rather
 // than a second hand-typed list: index 1 of any mode's secondary/primary
 // array is that ladder's own common root ("ui.cursor"/"ui.cursor.primary"),
 // index 0 is the mode-specific rung — cursor_ladder_ids' own stable return
-// shape. ui.cursor.match/ui.cursor.match.search aren't ladder rungs (a
-// separate bracket/search-match highlight, resolved directly in
-// hume-editor/src/editor/decoration_providers.rs) and stay hand-typed.
+// shape.
 const CURSOR_CHAINS = ["normal", "insert", "select"];
 
 export const SCOPES = [
@@ -32,7 +30,7 @@ export const SCOPES = [
     ...CURSOR_CHAINS.map(c => CURSOR_LADDERS[c].secondary[0]),
     CURSOR_LADDERS.normal.primary[1],
     ...CURSOR_CHAINS.map(c => CURSOR_LADDERS[c].primary[0]),
-    "ui.cursor.match", "ui.cursor.match.search",
+    ...CURSOR_MATCH_SCOPES,
   ]],
   ["Keywords", [
     "keyword", "keyword.control", "keyword.control.conditional",
@@ -76,24 +74,10 @@ export const SCOPES = [
   // ui.virtual.inlay-hint.parameter/.type are Helix scopes HUME doesn't
   // read yet, so they're deliberately left out here — see the Themes
   // section of the user manual's Configuration page.
-  ["Virtual", ["ui.virtual", "ui.virtual.indent-guide", "ui.virtual.whitespace",
-               "ui.virtual.inlay-hint", "ui.virtual.invisible"]],
-  ["Diagnostic", [
-    "diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint",
-    "diagnostic.error.message", "diagnostic.warning.message",
-    "diagnostic.info.message", "diagnostic.hint.message",
-    "diagnostic.error.message-text", "diagnostic.warning.message-text",
-    "diagnostic.info.message-text", "diagnostic.hint.message-text",
-    // End-of-line summary, one scope per severity — same reason as the
-    // gutter names below: virtual text past the end of the line must not
-    // inherit the text-span squiggle's underline.
-    "error.diagnostic.inline", "warning.diagnostic.inline",
-    "info.diagnostic.inline", "hint.diagnostic.inline",
-    // Gutter counterparts of the four "diagnostic.*" scopes above — the
-    // sign column reads these bare names so a gutter glyph never inherits
-    // the text-span squiggle's underline.
-    "error", "warning", "info", "hint",
-  ]],
+  ["Virtual", VIRTUAL_SCOPES],
+  // Shape and rationale (EOL summary, gutter bare names) documented on
+  // hume-engine/src/theme/diagnostic_scopes.rs's own ALL constant.
+  ["Diagnostic", DIAGNOSTIC_SCOPES],
 ];
 
 export const ALL_SCOPES = SCOPES.flatMap(([, items]) => items);

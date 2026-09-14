@@ -4,6 +4,7 @@
 //! by `prepare_frame`'s step 3/5.
 
 use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
 
 use super::Editor;
@@ -103,8 +104,8 @@ impl Editor {
     pub(super) fn update_highlight_providers(&mut self, panes: &[DecoratedPane]) {
         let in_insert = self.state.mode() == EditorMode::Insert;
 
-        let search_scope = self.view.registry.intern("ui.cursor.match.search");
-        let bracket_scope = self.view.registry.intern("ui.cursor.match");
+        let search_scope = self.view.registry.intern(CURSOR_MATCH_SEARCH);
+        let bracket_scope = self.view.registry.intern(CURSOR_MATCH);
 
         // ── Search match highlights — one pane at a time ─────────────────────
         for p in panes {
@@ -200,10 +201,10 @@ impl Editor {
             // `host_impl.rs`, the same as any other plugin sign source's
             // scope.
             let diag_scopes = [
-                "diagnostic.error",
-                "diagnostic.warning",
-                "diagnostic.info",
-                "diagnostic.hint",
+                diagnostic_scopes::ERROR,
+                diagnostic_scopes::WARNING,
+                diagnostic_scopes::INFO,
+                diagnostic_scopes::HINT,
             ]
             .map(|name| self.view.registry.intern(name));
             for p in panes {
@@ -380,7 +381,7 @@ impl Editor {
 
         // Every inlay hint shares this one scope (locked decision: no
         // per-hint styling in v1).
-        let scope = self.view.registry.intern("ui.virtual.inlay-hint");
+        let scope = self.view.registry.intern(ui_scopes::VIRTUAL_INLAY_HINT);
         for p in panes {
             let (pid, bid) = (p.pid, p.bid);
             if !self.state.panes.render.contains_key(pid) {

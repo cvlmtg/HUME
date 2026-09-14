@@ -12,8 +12,11 @@
 //! `FALLBACK_ONLY_CHROME` documents on the JS side), so it isn't a name any
 //! Rust call site resolves.
 //!
-//! Cursor, Virtual, and Diagnostic scope names are out of scope for this
-//! table — they are not yet consolidated the same way.
+//! Virtual-text scope names ([`VIRTUAL`]) live here too — still `"ui.*"`,
+//! still resolved by `compute_ui`/`decoration_providers.rs`. Cursor and
+//! Diagnostic scope names are out of scope for this table: Cursor's own
+//! names live next to `CURSOR_MODES`/`cursor_ladder_ids` in the parent
+//! module, and Diagnostic's in `super::diagnostic_scopes`.
 
 pub const BACKGROUND: &str = "ui.background";
 pub const TEXT: &str = "ui.text";
@@ -53,7 +56,7 @@ pub const BUFFERLINE_ACTIVE: &str = "ui.bufferline.active";
 pub const DRAWER: &str = "ui.drawer";
 pub const CURSORLINE_PRIMARY: &str = "ui.cursorline.primary";
 
-/// Every name above, in the theme editor catalog's display order. The
+/// Every name above, in the theme editor catalog's "UI" display order. The
 /// vocabulary generator's own source of truth for what to emit.
 pub const ALL: &[&str] = &[
     BACKGROUND,
@@ -84,4 +87,26 @@ pub const ALL: &[&str] = &[
     BUFFERLINE_ACTIVE,
     DRAWER,
     CURSORLINE_PRIMARY,
+];
+
+/// `ui_scopes::VIRTUAL_TEXT` matches [`UiScopes`](super::UiScopes)'s own
+/// `virtual_text` field name — the scope resolves as the fallback every
+/// other `ui.virtual.*` scope dot-trims to.
+pub const VIRTUAL_TEXT: &str = "ui.virtual";
+pub const VIRTUAL_INDENT_GUIDE: &str = "ui.virtual.indent-guide";
+pub const VIRTUAL_WHITESPACE: &str = "ui.virtual.whitespace";
+/// Resolved in `hume-editor/src/editor/decoration_providers.rs`, not
+/// `compute_ui` — inlay hints are a per-frame LSP overlay, not one of
+/// `UiScopes`'s eagerly pre-resolved styles.
+pub const VIRTUAL_INLAY_HINT: &str = "ui.virtual.inlay-hint";
+pub const VIRTUAL_INVISIBLE: &str = "ui.virtual.invisible";
+
+/// Every virtual-text name above, in the theme editor catalog's "Virtual"
+/// display order (not `compute_ui`'s own field order).
+pub const VIRTUAL: &[&str] = &[
+    VIRTUAL_TEXT,
+    VIRTUAL_INDENT_GUIDE,
+    VIRTUAL_WHITESPACE,
+    VIRTUAL_INLAY_HINT,
+    VIRTUAL_INVISIBLE,
 ];

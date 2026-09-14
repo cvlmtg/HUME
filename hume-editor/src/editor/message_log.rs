@@ -6,6 +6,8 @@
 
 use std::collections::VecDeque;
 
+use hume_engine::theme::diagnostic_scopes;
+
 use super::EditorState;
 
 // ── Severity ─────────────────────────────────────────────────────────────────
@@ -52,10 +54,10 @@ impl Severity {
     /// plain `diagnostic.<severity>` styling.
     fn badge_scope(self) -> &'static str {
         match self {
-            Severity::Info => "diagnostic.info.message",
-            Severity::Warning => "diagnostic.warning.message",
-            Severity::Error => "diagnostic.error.message",
-            Severity::Trace => "diagnostic.hint.message",
+            Severity::Info => diagnostic_scopes::INFO_MESSAGE,
+            Severity::Warning => diagnostic_scopes::WARNING_MESSAGE,
+            Severity::Error => diagnostic_scopes::ERROR_MESSAGE,
+            Severity::Trace => diagnostic_scopes::HINT_MESSAGE,
         }
     }
 
@@ -64,10 +66,10 @@ impl Severity {
     /// inherit the badge's background via dot-notation fallback.
     fn text_scope(self) -> &'static str {
         match self {
-            Severity::Info => "diagnostic.info.message-text",
-            Severity::Warning => "diagnostic.warning.message-text",
-            Severity::Error => "diagnostic.error.message-text",
-            Severity::Trace => "diagnostic.hint.message-text",
+            Severity::Info => diagnostic_scopes::INFO_MESSAGE_TEXT,
+            Severity::Warning => diagnostic_scopes::WARNING_MESSAGE_TEXT,
+            Severity::Error => diagnostic_scopes::ERROR_MESSAGE_TEXT,
+            Severity::Trace => diagnostic_scopes::HINT_MESSAGE_TEXT,
         }
     }
 }

@@ -1,11 +1,11 @@
 // tools/theme-editor/src/lib/vocabulary.generated.js — GENERATED, do not hand-edit.
 //
-// The theme loader's own vocabulary (hume-engine/src/theme/loader/) and UI
-// chrome scope names (hume-engine/src/theme/ui_scopes.rs), emitted so the
+// The theme loader's own vocabulary (hume-engine/src/theme/loader/), UI
+// chrome and virtual-text scope names (hume-engine/src/theme/ui_scopes.rs),
+// cursor-match scope names (hume-engine/src/theme/mod.rs), and diagnostic
+// scope names (hume-engine/src/theme/diagnostic_scopes.rs), emitted so the
 // theme editor can offer only names HUME actually accepts, and reject
-// nothing HUME would. Regenerate after any change to the loader's modifier,
-// underline, ANSI-colour, style-key, or cursor-ladder vocabulary, or to
-// ui_scopes::ALL:
+// nothing HUME would. Regenerate after any change to any of those:
 //
 //   HUME_WRITE_THEME_VOCABULARY=1 cargo test -p hume-engine theme_vocabulary_js_matches_loader
 //
@@ -55,3 +55,9 @@ export const CURSOR_LADDERS = {
 };
 
 export const UI_SCOPES = ["ui.background", "ui.text", "ui.text.focus", "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected", "ui.statusline", "ui.statusline.normal", "ui.statusline.insert", "ui.statusline.select", "ui.statusline.search", "ui.statusline.command", "ui.statusline.sift", "ui.statusline.separator", "ui.popup", "ui.popup.scroll", "ui.menu", "ui.menu.selected", "ui.menu.scroll", "ui.window", "ui.window.focused", "ui.tabline", "ui.tabline.active", "ui.bufferline", "ui.bufferline.active", "ui.drawer", "ui.cursorline.primary"];
+
+export const VIRTUAL_SCOPES = ["ui.virtual", "ui.virtual.indent-guide", "ui.virtual.whitespace", "ui.virtual.inlay-hint", "ui.virtual.invisible"];
+
+export const DIAGNOSTIC_SCOPES = ["diagnostic.error", "diagnostic.warning", "diagnostic.info", "diagnostic.hint", "diagnostic.error.message", "diagnostic.warning.message", "diagnostic.info.message", "diagnostic.hint.message", "diagnostic.error.message-text", "diagnostic.warning.message-text", "diagnostic.info.message-text", "diagnostic.hint.message-text", "error.diagnostic.inline", "warning.diagnostic.inline", "info.diagnostic.inline", "hint.diagnostic.inline", "error", "warning", "info", "hint"];
+
+export const CURSOR_MATCH_SCOPES = ["ui.cursor.match", "ui.cursor.match.search"];

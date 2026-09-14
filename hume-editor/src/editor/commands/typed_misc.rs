@@ -374,8 +374,8 @@ pub(in crate::editor) fn typed_theme_debug(
 
     // Ordinary dot-notation scopes: the chain is the whole story.
     for scope in [
-        "ui.cursor.match",
-        "ui.cursor.match.search",
+        hume_engine::theme::CURSOR_MATCH,
+        hume_engine::theme::CURSOR_MATCH_SEARCH,
         hume_engine::theme::ui_scopes::SELECTION,
         hume_engine::theme::ui_scopes::SELECTION_PRIMARY,
         hume_engine::theme::ui_scopes::CURSORLINE_PRIMARY,
