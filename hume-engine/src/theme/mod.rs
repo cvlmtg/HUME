@@ -1,5 +1,6 @@
 pub mod error;
 pub mod loader;
+pub mod ui_scopes;
 
 use std::collections::HashMap;
 
@@ -387,8 +388,8 @@ impl Theme {
         UiScopes {
             cursor,
             cursor_insert,
-            selection: self.resolve_raw("ui.selection"),
-            cursorline: self.resolve_raw("ui.cursorline.primary"),
+            selection: self.resolve_raw(ui_scopes::SELECTION),
+            cursorline: self.resolve_raw(ui_scopes::CURSORLINE_PRIMARY),
             virtual_text: self.resolve_raw("ui.virtual"),
             // dot-fallback to ui.virtual for themes that don't define the guide explicitly
             indent_guide: self.resolve_raw("ui.virtual.indent-guide"),
@@ -399,10 +400,10 @@ impl Theme {
             cursor_select,
             cursor_select_primary,
             // Primary selection: dot-notation fallback ui.selection.primary → ui.selection is correct.
-            selection_primary: self.resolve_raw("ui.selection.primary"),
-            background: self.resolve_raw("ui.background"),
-            window: self.resolve_raw("ui.window"),
-            window_focused: self.resolve_raw("ui.window.focused"),
+            selection_primary: self.resolve_raw(ui_scopes::SELECTION_PRIMARY),
+            background: self.resolve_raw(ui_scopes::BACKGROUND),
+            window: self.resolve_raw(ui_scopes::WINDOW),
+            window_focused: self.resolve_raw(ui_scopes::WINDOW_FOCUSED),
         }
     }
 

@@ -12,6 +12,7 @@
 
 use hume_engine::pipeline::BufferId;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
 
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
@@ -60,7 +61,7 @@ impl PopupModel {
         if self.content.is_none() {
             self.content = Some(match self.syntax.as_ref() {
                 Some(syntax) => {
-                    let base_style = theme.resolve_by_name(Scope("ui.popup"));
+                    let base_style = theme.resolve_by_name(Scope(ui_scopes::POPUP));
                     let runs = syntax.styled_runs(&self.text, theme, base_style);
                     hume_ui::popup::PopupContent::styled(runs)
                 }

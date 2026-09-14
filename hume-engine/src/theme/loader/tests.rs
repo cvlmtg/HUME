@@ -100,7 +100,7 @@ fn assert_bad_style_field(
             field: f,
             expected: e,
         } => {
-            assert_eq!((k.as_str(), f.as_str(), *e), (key, field, expected));
+            assert_eq!((k.as_str(), f.as_str(), e.as_str()), (key, field, expected));
         }
         other => panic!("expected BadStyleField, got: {other}"),
     }
@@ -1397,7 +1397,7 @@ crimson = 16711680
             expected,
         } => {
             assert_eq!(
-                (key.as_str(), field.as_str(), *expected),
+                (key.as_str(), field.as_str(), expected.as_str()),
                 ("palette", "crimson", "a string")
             );
         }

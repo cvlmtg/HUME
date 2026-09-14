@@ -41,7 +41,7 @@ pub enum ThemeError {
     BadStyleField {
         key: String,
         field: String,
-        expected: &'static str,
+        expected: String,
     },
     /// I/O error while reading `path`, the candidate file being tried for
     /// theme `name` when the read failed.

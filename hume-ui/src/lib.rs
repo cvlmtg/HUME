@@ -35,6 +35,7 @@ pub mod width;
 
 use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{BottomBandProvider, ProviderSet};
+use hume_engine::theme::ui_scopes;
 
 use completion_overlay::MinibufCompletionOverlay;
 use picker_panel::PickerOverlay;
@@ -101,15 +102,15 @@ pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
     }));
     providers.add_overlay(Box::new(PopupOverlay {
         data: views.popup.clone(),
-        scope: "ui.popup",
+        scope: ui_scopes::POPUP,
     }));
     providers.add_overlay(Box::new(PopupOverlay {
         data: views.menu.clone(),
-        scope: "ui.menu",
+        scope: ui_scopes::MENU,
     }));
     providers.add_overlay(Box::new(PopupOverlay {
         data: views.completion_menu.clone(),
-        scope: "ui.menu",
+        scope: ui_scopes::MENU,
     }));
     providers.add_overlay(Box::new(PickerOverlay {
         data: views.picker.clone(),

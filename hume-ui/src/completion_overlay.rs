@@ -14,6 +14,7 @@ use hume_engine::lock::SharedSlot;
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 
 use super::menu_box::{MAX_MENU_ROWS, MenuBoxStyles, draw_menu_box};
 use super::popup::{MenuRows, clamp_size_to_pane, clamp_x_to_pane};
@@ -78,7 +79,7 @@ impl OverlayProvider for MinibufCompletionOverlay {
             Some(selected),
             0,
             view.border,
-            MenuBoxStyles::resolve(theme, "ui.menu"),
+            MenuBoxStyles::resolve(theme, ui_scopes::MENU),
             None,
         );
     }

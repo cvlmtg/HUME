@@ -288,7 +288,7 @@ pub(in crate::editor) fn build_pane(
     // `ScopeId` than the row-fill fallback would silently disagree on
     // styling.
     let linenr_scope = registry.intern(hume_engine::providers::DEFAULT_GUTTER_SCOPE.0);
-    let linenr_selected_scope = registry.intern("ui.linenr.selected");
+    let linenr_selected_scope = registry.intern(hume_engine::theme::ui_scopes::LINENR_SELECTED);
 
     let mut providers = hume_engine::providers::ProviderSet::new();
     let decoration_handles = hume_decorations::build_providers(&mut providers, linenr_scope);

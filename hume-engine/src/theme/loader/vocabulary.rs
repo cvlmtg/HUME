@@ -1,9 +1,11 @@
 //! Drift test for the generated theme-editor vocabulary file
 //! (`tools/theme-editor/src/lib/vocabulary.generated.js`): keeps it in sync
-//! with the loader's own accepted-name tables, so a name added, removed, or
-//! renamed on the Rust side fails here instead of only in the JS test suite
-//! that used to regex-scrape this crate's source to find it.
+//! with the loader's own accepted-name tables and `super::super::ui_scopes`'
+//! UI chrome scope names, so a name added, removed, or renamed on the Rust
+//! side fails here instead of only in the JS test suite that used to
+//! regex-scrape this crate's source to find it.
 
+use crate::theme::ui_scopes;
 use crate::theme::{CURSOR_MODES, cursor_ladder_ids};
 
 use super::flatten::STYLE_KEYS;
@@ -49,6 +51,13 @@ fn render_vocabulary_js() -> String {
              unescaped — update render_vocabulary_js to escape it"
         );
     }
+    for name in ui_scopes::ALL {
+        assert!(
+            !name.contains(['"', '\\']),
+            "UI scope name {name:?} cannot be embedded in a JS string literal \
+             unescaped — update render_vocabulary_js to escape it"
+        );
+    }
 
     let modifier_names: Vec<&str> = MODIFIER_NAMES.iter().map(|&(n, _)| n).collect();
     let underline_names: Vec<&str> = UNDERLINE_NAMES.iter().map(|&(n, _)| n).collect();
@@ -62,6 +71,7 @@ fn render_vocabulary_js() -> String {
     let underline_modifier = UNDERLINE_MODIFIER;
     let underlines = js_string_array(&underline_names);
     let style_keys = js_string_array(&STYLE_KEYS);
+    let ui_scopes_list = js_string_array(ui_scopes::ALL);
 
     // One concrete ladder pair per real mode in `CURSOR_MODES`, rather than a
     // templated fabricated scope — `cursor_ladder_ids` never receives
@@ -97,10 +107,12 @@ fn render_vocabulary_js() -> String {
         "\
 // tools/theme-editor/src/lib/vocabulary.generated.js — GENERATED, do not hand-edit.
 //
-// The theme loader's own vocabulary (hume-engine/src/theme/loader/), emitted
-// so the theme editor can offer only names HUME actually accepts, and reject
+// The theme loader's own vocabulary (hume-engine/src/theme/loader/) and UI
+// chrome scope names (hume-engine/src/theme/ui_scopes.rs), emitted so the
+// theme editor can offer only names HUME actually accepts, and reject
 // nothing HUME would. Regenerate after any change to the loader's modifier,
-// underline, ANSI-colour, style-key, or cursor-ladder vocabulary:
+// underline, ANSI-colour, style-key, or cursor-ladder vocabulary, or to
+// ui_scopes::ALL:
 //
 //   HUME_WRITE_THEME_VOCABULARY=1 cargo test -p hume-engine theme_vocabulary_js_matches_loader
 //
@@ -122,6 +134,8 @@ export const STYLE_KEYS = {style_keys};
 export const CURSOR_LADDERS = {{
 {cursor_ladders}
 }};
+
+export const UI_SCOPES = {ui_scopes_list};
 "
     )
 }

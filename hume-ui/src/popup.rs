@@ -39,6 +39,7 @@ use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{BottomBandProvider, OverlayProvider};
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 
 use super::menu_box::{MenuBoxStyles, draw_menu_box};
 use super::width::cell_width;
@@ -285,7 +286,7 @@ impl BottomBandProvider for PopupBandWidget {
             None,
             state.scroll,
             state.border,
-            MenuBoxStyles::resolve(theme, "ui.popup"),
+            MenuBoxStyles::resolve(theme, ui_scopes::POPUP),
             state.styled_rows.as_ref().map(|rows| rows.as_slice()),
         );
     }

@@ -1,9 +1,11 @@
 // tools/theme-editor/src/lib/vocabulary.generated.js — GENERATED, do not hand-edit.
 //
-// The theme loader's own vocabulary (hume-engine/src/theme/loader/), emitted
-// so the theme editor can offer only names HUME actually accepts, and reject
+// The theme loader's own vocabulary (hume-engine/src/theme/loader/) and UI
+// chrome scope names (hume-engine/src/theme/ui_scopes.rs), emitted so the
+// theme editor can offer only names HUME actually accepts, and reject
 // nothing HUME would. Regenerate after any change to the loader's modifier,
-// underline, ANSI-colour, style-key, or cursor-ladder vocabulary:
+// underline, ANSI-colour, style-key, or cursor-ladder vocabulary, or to
+// ui_scopes::ALL:
 //
 //   HUME_WRITE_THEME_VOCABULARY=1 cargo test -p hume-engine theme_vocabulary_js_matches_loader
 //
@@ -51,3 +53,5 @@ export const CURSOR_LADDERS = {
     primary: ["ui.cursor.primary.select", "ui.cursor.primary", "ui.cursor", "ui", "ui.selection"],
   },
 };
+
+export const UI_SCOPES = ["ui.background", "ui.text", "ui.text.focus", "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected", "ui.statusline", "ui.statusline.normal", "ui.statusline.insert", "ui.statusline.select", "ui.statusline.search", "ui.statusline.command", "ui.statusline.sift", "ui.statusline.separator", "ui.popup", "ui.popup.scroll", "ui.menu", "ui.menu.selected", "ui.menu.scroll", "ui.window", "ui.window.focused", "ui.tabline", "ui.tabline.active", "ui.bufferline", "ui.bufferline.active", "ui.drawer", "ui.cursorline.primary"];

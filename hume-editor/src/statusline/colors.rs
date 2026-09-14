@@ -1,3 +1,4 @@
+use hume_engine::theme::ui_scopes;
 use hume_engine::types::ResolvedStyle;
 
 /// Resolved statusline color slots, read from the active engine [`hume_engine::theme::Theme`].
@@ -35,18 +36,18 @@ fn mode_scope(mode: Option<hume_engine::types::EditorMode>) -> &'static str {
     use hume_engine::types::EditorMode;
 
     match mode {
-        None => "ui.statusline",
-        Some(EditorMode::Normal) => "ui.statusline.normal",
-        Some(EditorMode::Insert) => "ui.statusline.insert",
+        None => ui_scopes::STATUSLINE,
+        Some(EditorMode::Normal) => ui_scopes::STATUSLINE_NORMAL,
+        Some(EditorMode::Insert) => ui_scopes::STATUSLINE_INSERT,
         // Extend is HUME's name for the mode Helix calls Select, so it reads
         // Helix's real `ui.statusline.select` scope.
-        Some(EditorMode::Extend) => "ui.statusline.select",
-        Some(EditorMode::Search) => "ui.statusline.search",
-        Some(EditorMode::Command) => "ui.statusline.command",
+        Some(EditorMode::Extend) => ui_scopes::STATUSLINE_SELECT,
+        Some(EditorMode::Search) => ui_scopes::STATUSLINE_SEARCH,
+        Some(EditorMode::Command) => ui_scopes::STATUSLINE_COMMAND,
         // HUME's own Sift mode (the `s` regex prompt) has no Helix
         // equivalent, so it gets its own scope rather than squatting on
         // Helix's `ui.statusline.select`, which belongs to Extend above.
-        Some(EditorMode::Sift) => "ui.statusline.sift",
+        Some(EditorMode::Sift) => ui_scopes::STATUSLINE_SIFT,
     }
 }
 
@@ -77,8 +78,8 @@ impl EditorColors {
         // "ui.statusline" scope — the wrong target, since the row itself is
         // mode-tinted. Check for an explicit entry first and fall back to
         // the row's own (already-resolved) style instead.
-        let statusline_separator = if theme.raw_contains("ui.statusline.separator") {
-            style_for("ui.statusline.separator")
+        let statusline_separator = if theme.raw_contains(ui_scopes::STATUSLINE_SEPARATOR) {
+            style_for(ui_scopes::STATUSLINE_SEPARATOR)
         } else {
             statusline
         };
@@ -128,11 +129,11 @@ impl TablineColors {
         // entirely when that's where `inactive` actually came from).
         let explicit = |s: &'static str| theme.raw_contains(s).then(|| style_for(s));
 
-        let inactive = explicit("ui.tabline")
-            .or_else(|| explicit("ui.bufferline"))
-            .unwrap_or_else(|| style_for("ui.tabline"));
-        let active = explicit("ui.tabline.active")
-            .or_else(|| explicit("ui.bufferline.active"))
+        let inactive = explicit(ui_scopes::TABLINE)
+            .or_else(|| explicit(ui_scopes::BUFFERLINE))
+            .unwrap_or_else(|| style_for(ui_scopes::TABLINE));
+        let active = explicit(ui_scopes::TABLINE_ACTIVE)
+            .or_else(|| explicit(ui_scopes::BUFFERLINE_ACTIVE))
             .unwrap_or(inactive);
         Self { inactive, active }
     }

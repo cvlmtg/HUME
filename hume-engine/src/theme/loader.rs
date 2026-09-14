@@ -38,6 +38,7 @@ use hume_grid::Rgb;
 
 use crate::theme::Theme;
 use crate::theme::error::ThemeError;
+use crate::theme::ui_scopes;
 use crate::types::{ResolvedStyle, UnderlineStyle};
 
 mod discovery;
@@ -442,7 +443,7 @@ fn resolve_theme_table(raw: RawTheme) -> LoadedTheme {
     // plain/unhighlighted text has `fg: None` → renders as the terminal's own
     // default colour, which the pane dim has no numeric value to blend and so
     // leaves at full strength in an unfocused pane.
-    let default = scopes.get("ui.text").copied().unwrap_or_default();
+    let default = scopes.get(ui_scopes::TEXT).copied().unwrap_or_default();
 
     LoadedTheme {
         theme: Theme::from_owned(scopes, default),
@@ -490,11 +491,11 @@ fn parse_scope_value(
     }
 }
 
-fn bad_style_field(key: &str, field: &str, expected: &'static str) -> ThemeError {
+fn bad_style_field(key: &str, field: &str, expected: impl Into<String>) -> ThemeError {
     ThemeError::BadStyleField {
         key: key.to_owned(),
         field: field.to_owned(),
-        expected,
+        expected: expected.into(),
     }
 }
 

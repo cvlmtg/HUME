@@ -31,6 +31,7 @@ use hume_engine::lock::SharedSlot;
 use hume_engine::providers::BottomBandProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
 
 /// Read-side snapshot for `DrawerWidget` — the same shape as
@@ -77,8 +78,8 @@ impl BottomBandProvider for DrawerWidget {
         let guard = self.data.read();
         let Some(state) = guard.as_ref() else { return };
 
-        let style = theme.resolve_by_name(Scope("ui.drawer"));
-        let selected_style = theme.resolve_by_name(Scope("ui.menu.selected"));
+        let style = theme.resolve_by_name(Scope(ui_scopes::DRAWER));
+        let selected_style = theme.resolve_by_name(Scope(ui_scopes::MENU_SELECTED));
         canvas.fill_rect_bg(area, style);
 
         // Row 0 is a blank padding row (visual gap from the pane above);

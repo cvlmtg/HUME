@@ -1,21 +1,20 @@
-// The scope catalog tracks what HUME resolves by fixed name (see
-// hume-engine/src/theme/mod.rs's `compute_ui`, the decoration/statusline/
-// message-log call sites, and runtime/themes/sand.toml, the reference theme
-// these categories are drawn from). Kept in sync by hand: nothing here is
-// checked against the Rust sources, so a scope renamed there has to be
-// renamed here too. Syntax/markup are tree-sitter capture names HUME has no
-// fixed enum for — sand.toml is the de-facto catalog.
+// The scope catalog tracks what HUME resolves by fixed name. The "UI"
+// category is generated from hume-engine's own `ui_scopes::ALL`
+// (`hume-engine/src/theme/ui_scopes.rs`, via `./lib/vocabulary.generated.js`)
+// — a scope renamed there fails `cargo test -p hume-engine
+// theme_vocabulary_js_matches_loader`, not silently here. Every other
+// category (Cursor, Virtual, Diagnostic, syntax/markup, diff) is still kept
+// in sync by hand: nothing checks them against the Rust sources.
+// Syntax/markup are tree-sitter capture names HUME has no fixed enum for —
+// runtime/themes/sand.toml is the de-facto catalog for those.
+import { UI_SCOPES } from "./lib/vocabulary.generated.js";
+
 export const SCOPES = [
-  ["UI", [
-    "ui.background", "ui.text", "ui.text.focus",
-    "ui.selection", "ui.selection.primary", "ui.linenr", "ui.linenr.selected",
-    "ui.statusline", "ui.statusline.normal", "ui.statusline.insert",
-    "ui.statusline.select", "ui.statusline.search", "ui.statusline.command",
-    "ui.statusline.sift", "ui.statusline.separator",
-    "ui.popup", "ui.popup.scroll", "ui.menu", "ui.menu.selected", "ui.menu.scroll",
-    "ui.window", "ui.window.focused", "ui.drawer",
-    "ui.cursorline", "ui.cursorline.primary",
-  ]],
+  // `ui.cursorline` is threaded back in immediately before
+  // `ui.cursorline.primary`, its documented position — it is resolved only
+  // as a dot-fallback parent, never by its own name, so `ui_scopes.rs`
+  // deliberately leaves it out of `UI_SCOPES` (see that module's own doc).
+  ["UI", UI_SCOPES.flatMap(id => id === "ui.cursorline.primary" ? ["ui.cursorline", id] : [id])],
   ["Cursor", [
     "ui.cursor", "ui.cursor.normal", "ui.cursor.insert", "ui.cursor.select",
     "ui.cursor.primary", "ui.cursor.primary.normal", "ui.cursor.primary.insert",
@@ -124,6 +123,8 @@ export const DEFAULT_SC = {
   "ui.menu.scroll": { fg: "yellow", bg: "dark-gray" },
   "ui.drawer": { fg: "white", bg: "dark-gray" },
   "ui.window": "gray", "ui.window.focused": "orange",
+  "ui.tabline": "gray", "ui.tabline.active": { fg: "black", bg: "orange" },
+  "ui.bufferline": "gray", "ui.bufferline.active": { fg: "black", bg: "orange" },
   "ui.cursorline": { bg: "dark-gray" }, "ui.cursorline.primary": { bg: "dark-gray" },
   "ui.virtual": "gray", "ui.virtual.indent-guide": "gray",
   "ui.virtual.whitespace": "gray", "ui.virtual.inlay-hint": "gray",

@@ -113,7 +113,7 @@ pub struct GutterCell {
 /// resulting `ScopeId` — same intern-at-construction contract as
 /// `DecorationSource`, so the per-cell hot path in `compose_gutter` never
 /// falls back to a by-name lookup.
-pub const DEFAULT_GUTTER_SCOPE: Scope = Scope("ui.linenr");
+pub const DEFAULT_GUTTER_SCOPE: Scope = Scope(crate::theme::ui_scopes::LINENR);
 
 /// What a gutter cell displays.
 ///

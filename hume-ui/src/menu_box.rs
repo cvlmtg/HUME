@@ -6,6 +6,7 @@
 
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 use hume_engine::types::ResolvedStyle;
 use hume_engine::types::Scope;
 use hume_grid::Rect;
@@ -44,8 +45,8 @@ impl MenuBoxStyles {
     /// own dot-notation chain.
     pub(crate) fn resolve(theme: &Theme, scope: &'static str) -> Self {
         let (selected_scope, scroll_scope): (Option<&'static str>, &'static str) = match scope {
-            "ui.menu" => (Some("ui.menu.selected"), "ui.menu.scroll"),
-            "ui.popup" => (None, "ui.popup.scroll"),
+            ui_scopes::MENU => (Some(ui_scopes::MENU_SELECTED), ui_scopes::MENU_SCROLL),
+            ui_scopes::POPUP => (None, ui_scopes::POPUP_SCROLL),
             _ => (None, scope),
         };
         let base = theme.resolve_by_name(Scope(scope));

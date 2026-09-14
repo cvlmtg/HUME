@@ -118,6 +118,7 @@ pub(in crate::editor) fn build_default_theme() -> hume_engine::theme::Theme {
 mod tests {
     use super::build_default_theme;
     use hume_engine::theme::ScopeRegistry;
+    use hume_engine::theme::ui_scopes;
     use hume_engine::types::Scope;
 
     /// The embedded default theme (`sand.toml`, inlined via `include_str!` at
@@ -145,17 +146,17 @@ mod tests {
         for scope in [
             "ui.cursor.primary",
             "ui.cursor",
-            "ui.selection",
-            "ui.menu",
-            "ui.text.focus",
-            "ui.statusline",
-            "ui.statusline.separator",
-            "ui.statusline.normal",
-            "ui.tabline",
-            "ui.tabline.active",
-            "ui.background",
-            "ui.window",
-            "ui.window.focused",
+            ui_scopes::SELECTION,
+            ui_scopes::MENU,
+            ui_scopes::TEXT_FOCUS,
+            ui_scopes::STATUSLINE,
+            ui_scopes::STATUSLINE_SEPARATOR,
+            ui_scopes::STATUSLINE_NORMAL,
+            ui_scopes::TABLINE,
+            ui_scopes::TABLINE_ACTIVE,
+            ui_scopes::BACKGROUND,
+            ui_scopes::WINDOW,
+            ui_scopes::WINDOW_FOCUSED,
         ] {
             assert_eq!(
                 embedded.resolve_by_name(Scope(scope)),

@@ -22,6 +22,7 @@ use hume_engine::lock::SharedSlot;
 use hume_engine::providers::OverlayProvider;
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
+use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
 use hume_engine::types::TruncateEnd;
 
@@ -139,9 +140,9 @@ pub(in crate::picker_panel) struct PickerStyles {
 pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
     let by = |name| theme.resolve_by_name(Scope(name));
     PickerStyles {
-        background: by("ui.background"),
-        text: by("ui.text"),
-        selected: by("ui.text.focus"),
+        background: by(ui_scopes::BACKGROUND),
+        text: by(ui_scopes::TEXT),
+        selected: by(ui_scopes::TEXT_FOCUS),
         cursor: by("ui.cursor.primary"),
     }
 }

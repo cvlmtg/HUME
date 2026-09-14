@@ -8,12 +8,6 @@ use super::{bad_style_field, is_reserved};
 /// never a container to recurse into.
 pub(super) const STYLE_KEYS: [&str; 4] = ["fg", "bg", "underline", "modifiers"];
 
-/// `expected` text for a key found in a style table that isn't a style field.
-/// Spells out [`STYLE_KEYS`] for the error message — `expected` is a
-/// `&'static str`, so the list can't be joined at runtime; keep the two in
-/// step.
-const STYLE_KEY_LIST: &str = "one of fg, bg, underline, modifiers";
-
 /// Promote real TOML section headers (`[ui]` / `text = "..."`, `[ui.cursor]`
 /// / `fg = ...`) into HUME's flat dotted-key scope names, matching the theme
 /// editor's own `walkScopes` (`tools/theme-editor/src/lib/toml.js`) so a
@@ -93,7 +87,11 @@ fn walk_scope(
             if v.is_table() {
                 true
             } else {
-                warnings.push(bad_style_field(&path, k, STYLE_KEY_LIST));
+                warnings.push(bad_style_field(
+                    &path,
+                    k,
+                    format!("one of {}", STYLE_KEYS.join(", ")),
+                ));
                 false
             }
         });

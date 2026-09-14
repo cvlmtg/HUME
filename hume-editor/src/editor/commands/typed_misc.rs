@@ -376,10 +376,10 @@ pub(in crate::editor) fn typed_theme_debug(
     for scope in [
         "ui.cursor.match",
         "ui.cursor.match.search",
-        "ui.selection",
-        "ui.selection.primary",
-        "ui.cursorline.primary",
-        "ui.statusline",
+        hume_engine::theme::ui_scopes::SELECTION,
+        hume_engine::theme::ui_scopes::SELECTION_PRIMARY,
+        hume_engine::theme::ui_scopes::CURSORLINE_PRIMARY,
+        hume_engine::theme::ui_scopes::STATUSLINE,
     ] {
         let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
         lines.push(style_line(
