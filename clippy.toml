@@ -23,7 +23,7 @@ disallowed-methods = [
     # HUME_RUNTIME/TMPDIR/XDG_*/HOME/PATH are process-global env vars a
     # parallel test run shares — mutating one outside a `TEST_GLOBALS`-holding
     # guard races every other test reading or writing the same var
-    # concurrently. The nine files under `hume-editor/src/editor/tests/` that
+    # concurrently. The ten files under `hume-editor/src/editor/tests/` that
     # own a guard struct (or a loader helper documented to require a
     # caller-held `TEST_GLOBALS` claim) are the sanctioned exception.
     "std::env::set_var",
