@@ -121,7 +121,7 @@ fn shift_indent(
         if text.char_at(ws_end) == Some('\n') {
             continue;
         }
-        let new_width = old_width.shift(delta_display_col);
+        let new_width = old_width.shift_saturating(delta_display_col);
         if new_width == old_width {
             // Reachable at `delta_display_col == 0` (a `levels == 0` call — never
             // issued by the editor's own count dispatch, but this crate's ops

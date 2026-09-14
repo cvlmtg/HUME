@@ -319,7 +319,7 @@ pub fn display_col_in_line(
             display_col.get() as usize,
             tab_width,
         );
-        display_col = display_col.advance(w as u32);
+        display_col = display_col.advance_saturating(w as u32);
         pos = next;
     }
     display_col
@@ -371,7 +371,7 @@ pub fn char_pos_at_display_col(
             display_col.get() as usize,
             tab_width,
         );
-        let advanced = display_col.advance(w as u32);
+        let advanced = display_col.advance_saturating(w as u32);
         if advanced > target_display_col {
             break; // this grapheme would overshoot — stop here
         }

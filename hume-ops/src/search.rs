@@ -140,7 +140,7 @@ pub fn find_matches_in_range(
         .filter(|m| m.start() < m.end()) // skip zero-width matches
         .map(|m| {
             let s = text.byte_to_char(m.start());
-            let e = text.byte_to_char(m.end()).shift(-1);
+            let e = text.byte_to_char(m.end()).retreat(1);
             InclusiveRange::new(s, e)
         })
         .collect()
@@ -326,7 +326,7 @@ fn search_match_in(
         regex.find(input).filter(|m| m.start() < m.end())?
     };
     let start = text.byte_to_char(m.start());
-    let end_incl = text.byte_to_char(m.end()).shift(-1);
+    let end_incl = text.byte_to_char(m.end()).retreat(1);
     Some(InclusiveRange::new(start, end_incl))
 }
 

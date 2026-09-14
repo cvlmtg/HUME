@@ -145,10 +145,10 @@ pub(in crate::editor) fn screen_to_char_offset(
     // reconstructed back into a document display column.
     let display_col = viewport
         .horizontal_offset
-        .advance((content_x - gutter_w) as u32);
+        .advance_saturating((content_x - gutter_w) as u32);
 
     let top = dlm.clamp(top_pos(viewport));
-    let clicked = dlm.advance(top, content_y as isize);
+    let clicked = dlm.advance_saturating(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
     // the display line's last cell rather than its last *content* cell —
     // landing on the line's `\n`, a real cursor position in HUME's inclusive model.

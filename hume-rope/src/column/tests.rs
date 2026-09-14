@@ -15,9 +15,9 @@ macro_rules! display_col_tests {
             }
 
             #[test]
-            fn advance_adds_and_saturates() {
-                assert_eq!($ty::new(3).advance(4), $ty::new(7));
-                assert_eq!($ty::new(u32::MAX).advance(1), $ty::new(u32::MAX));
+            fn advance_saturating_adds_and_saturates() {
+                assert_eq!($ty::new(3).advance_saturating(4), $ty::new(7));
+                assert_eq!($ty::new(u32::MAX).advance_saturating(1), $ty::new(u32::MAX));
             }
 
             #[test]
@@ -89,20 +89,41 @@ fn display_line_col_cells_since_saturating_clamps_to_zero_on_inversion() {
 }
 
 #[test]
-fn buffer_line_col_shift_moves_forward_and_backward_and_saturates_at_zero() {
-    assert_eq!(BufferLineCol::new(5).shift(3), BufferLineCol::new(8));
-    assert_eq!(BufferLineCol::new(5).shift(-3), BufferLineCol::new(2));
-    assert_eq!(BufferLineCol::new(2).shift(-5), BufferLineCol::new(0));
+fn buffer_line_col_shift_saturating_moves_forward_and_backward_and_saturates_at_zero() {
+    assert_eq!(
+        BufferLineCol::new(5).shift_saturating(3),
+        BufferLineCol::new(8)
+    );
+    assert_eq!(
+        BufferLineCol::new(5).shift_saturating(-3),
+        BufferLineCol::new(2)
+    );
+    assert_eq!(
+        BufferLineCol::new(2).shift_saturating(-5),
+        BufferLineCol::new(0)
+    );
 }
 
 #[test]
-fn buffer_line_col_shift_saturates_at_u32_max_instead_of_wrapping_negative() {
+fn buffer_line_col_shift_saturating_saturates_at_u32_max_instead_of_wrapping_negative() {
     // A delta outside i32's range must saturate, not narrow-and-wrap: a
     // naive `delta as i32` turns +5_000_000_000 negative and would shift
     // `self` down instead of saturating at u32::MAX.
     assert_eq!(
-        BufferLineCol::new(0).shift(5_000_000_000),
+        BufferLineCol::new(0).shift_saturating(5_000_000_000),
         BufferLineCol::new(u32::MAX)
+    );
+}
+
+#[test]
+fn buffer_line_col_retreat_saturating_moves_back_and_saturates_at_zero() {
+    assert_eq!(
+        BufferLineCol::new(5).retreat_saturating(3),
+        BufferLineCol::new(2)
+    );
+    assert_eq!(
+        BufferLineCol::new(2).retreat_saturating(5),
+        BufferLineCol::new(0)
     );
 }
 
@@ -127,4 +148,13 @@ fn grapheme_col_from_number_rejects_zero() {
 #[test]
 fn byte_col_round_trips_through_index() {
     assert_eq!(ByteCol::new(12).index(), 12);
+}
+
+#[test]
+fn byte_col_advance_saturating_adds_and_saturates() {
+    assert_eq!(ByteCol::new(3).advance_saturating(4), ByteCol::new(7));
+    assert_eq!(
+        ByteCol::new(usize::MAX).advance_saturating(1),
+        ByteCol::new(usize::MAX)
+    );
 }

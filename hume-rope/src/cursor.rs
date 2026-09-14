@@ -54,7 +54,7 @@ impl CharCursor<'_> {
     /// (bracket-pair scans) actually need.
     pub fn prev(&mut self) -> Option<(CharOffset, char)> {
         let ch = self.iter.prev()?;
-        self.pos = self.pos.shift(-1);
+        self.pos = self.pos.retreat(1);
         Some((self.pos, ch))
     }
 }

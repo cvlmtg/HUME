@@ -173,14 +173,14 @@ pub fn align_selections(
 
     // k == 0: the only thing slot-0 can compress is its own preceding
     // whitespace run, down to its display-cell width `rem_cells₀`. So the
-    // minimum reachable anchor is anchor_display_col₀ − rem_cells₀. `retreat`
-    // (not a bare subtraction) for the (unlikely) backward-selection case
-    // where anchor_display_col < rem_cells, which it clamps to 0 rather than
-    // wrapping on.
+    // minimum reachable anchor is anchor_display_col₀ − rem_cells₀.
+    // `retreat_saturating` (not a bare subtraction) for the (unlikely)
+    // backward-selection case where anchor_display_col < rem_cells, which it
+    // clamps to 0 rather than wrapping on.
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| m.anchor_display_col.retreat(m.rem_cells))
+        .map(|m| m.anchor_display_col.retreat_saturating(m.rem_cells))
         .max()
         .unwrap_or(BufferLineCol::new(0));
     targets[0] = baseline[0].max(fit_0);
@@ -203,7 +203,7 @@ pub fn align_selections(
                 let delta = cur.anchor_display_col.get() as isize
                     - prev.anchor_display_col.get() as isize
                     - cur.rem_cells as isize;
-                Some(targets[k - 1].shift(delta))
+                Some(targets[k - 1].shift_saturating(delta))
             })
             .max()
             .unwrap_or(BufferLineCol::new(0));
@@ -255,7 +255,8 @@ pub fn align_selections(
                 // Measured in pass 1 from the same (still unedited) text —
                 // a `Some(slot)` meta is exactly one that took pass 1's
                 // single-line branch, which is what populates this field.
-                let anchor_display_col_now = meta[i].anchor_display_col.shift(line_shift);
+                let anchor_display_col_now =
+                    meta[i].anchor_display_col.shift_saturating(line_shift);
                 let amount = target.get() as isize - anchor_display_col_now.get() as isize;
 
                 if amount > 0 {
@@ -280,7 +281,7 @@ pub fn align_selections(
                     // of sel_start: char_pos_at_display_col stops *before* a
                     // grapheme that would overshoot, so a tab straddling the
                     // threshold is deleted whole and the surplus padded back.
-                    let threshold = start_display_col.retreat(need);
+                    let threshold = start_display_col.retreat_saturating(need);
                     let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
                     let remove = sel_start.chars_since(cut).min(max_remove);
                     let cut_pos = sel_start.retreat(remove);

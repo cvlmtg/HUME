@@ -280,7 +280,7 @@ pub(crate) fn compose_display_line(
         }
 
         // Horizontal scroll: skip cells left of the viewport.
-        if g.display_col.advance(g.width as u32) <= h_offset {
+        if g.display_col.advance_saturating(g.width as u32) <= h_offset {
             continue;
         }
         // Clip cells that start before the viewport edge. `g.display_col` is
@@ -431,12 +431,11 @@ pub(crate) fn compose_display_line(
         // Draw a guide at each inner tab-stop. These positions are
         // guaranteed to lie within the leading whitespace.
         for k in 1..depth {
-            let guide_display_col = indent_origin.advance(hume_rope::width::indent_stop(
-                k as u32,
-                compose_ctx.tab_width,
-            ));
+            let guide_display_col = indent_origin.advance_saturating(
+                hume_rope::width::indent_stop(k as u32, compose_ctx.tab_width),
+            );
             // Account for horizontal scroll.
-            if guide_display_col.advance(tw) > h_offset {
+            if guide_display_col.advance_saturating(tw) > h_offset {
                 // See the content loop's own `.get()` comment above — a guide
                 // left of `h_offset` clamps to 0 rather than panicking.
                 let content_x = guide_display_col.get().saturating_sub(h_offset.get());

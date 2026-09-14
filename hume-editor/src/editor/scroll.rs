@@ -175,7 +175,8 @@ fn scroll_back_from(
     cursor_pos: DisplayLinePos,
     display_lines_above: usize,
 ) -> usize {
-    let (top, stepped) = dlm.advance_counted(cursor_pos, -(display_lines_above as isize));
+    let (top, stepped) =
+        dlm.advance_counted_saturating(cursor_pos, -(display_lines_above as isize));
     set_top(viewport, top);
     stepped
 }

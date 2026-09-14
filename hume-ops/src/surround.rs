@@ -74,9 +74,9 @@ pub fn wrap_each_selection(
         b.insert_char(open);
         b.retain(sel.content_end_exclusive(text).chars_since(start)); // copy selected text through — no String alloc
         b.insert_char(close);
-        // Cursor on the close char. new_pos - 1 is safe: close is always preceded by
-        // at least open + one retained char (HUME selections are ≥ 1 char).
-        new_sels.push(Selection::collapsed(b.new_pos().shift(-1)));
+        // Cursor on the close char. new_pos.retreat(1) is safe: close is always
+        // preceded by at least open + one retained char (HUME selections are ≥ 1 char).
+        new_sels.push(Selection::collapsed(b.new_pos().retreat(1)));
     })
 }
 

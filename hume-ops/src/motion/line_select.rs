@@ -56,12 +56,12 @@ fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selecti
         if next_line_start(text, head_line.into()) >= text.end() {
             return sel; // head already on the last line — clamp
         }
-        head_line.down(1)
+        head_line.advance(1)
     } else {
         if head_line.index() == 0 {
             return sel; // head already on the first line — clamp
         }
-        head_line.up(1)
+        head_line.retreat_saturating(1)
     };
 
     let lo = anchor_line.min(new_head_line);
@@ -84,7 +84,7 @@ fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
     let end_excl = next_line_start(text, bottom_line.into());
     // If selection already ends on the trailing `\n`, jump to the next line.
     let target_line = if sel.ends_on_newline(text) && end_excl < text.end() {
-        bottom_line.down(1)
+        bottom_line.advance(1)
     } else {
         text.char_to_line(sel.start())
     };
@@ -125,7 +125,7 @@ fn move_select_line_backward(text: &BufferText, sel: Selection) -> Selection {
     let top_line = text.char_to_line(sel.start());
     // If selection already starts at line start, jump to previous line.
     let target_line = if is_line_start(text, &sel) && top_line.index() > 0 {
-        top_line.up(1)
+        top_line.retreat_saturating(1)
     } else {
         top_line
     };

@@ -77,7 +77,7 @@ pub(in crate::editor) fn typed_list_buffers(
         if buffers_view_id == Some(id) {
             continue;
         }
-        line = line.down(1);
+        line = line.advance(1);
 
         let cur_marker = if id == current {
             '%'

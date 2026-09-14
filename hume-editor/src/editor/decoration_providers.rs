@@ -77,12 +77,12 @@ impl Editor {
                 let top_line =
                     hume_rope::line::RopeyLine::from(vp.top_line).min(text.last_ropey_line());
                 let bottom_line =
-                    hume_rope::line::RopeyLine::from(vp.top_line).down(vp.height as usize);
+                    hume_rope::line::RopeyLine::from(vp.top_line).advance(vp.height as usize);
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
                 DecoratedPane {
                     pid,
                     bid,
-                    lines: ExclusiveRange::new(top_line, bottom_line.down(1).min(past_end)),
+                    lines: ExclusiveRange::new(top_line, bottom_line.advance(1).min(past_end)),
                     chars: ExclusiveRange::new(
                         text.line_to_char(top_line),
                         hume_editing::lines::next_line_start(text, bottom_line),
@@ -174,7 +174,7 @@ impl Editor {
                 let (line, byte) = char_to_line_byte(text, match_pos);
                 // Single-char match: byte_end = byte + utf8 length of the char.
                 let ch_len = text.char_at(match_pos).map(|c| c.len_utf8()).unwrap_or(1);
-                let byte_end = byte.advance(ch_len);
+                let byte_end = byte.advance_saturating(ch_len);
                 // Trusted narrow: a bracket match is always a real
                 // selection position, never the buffer's phantom line.
                 let line = hume_rope::line::ContentLine::new(line.index());

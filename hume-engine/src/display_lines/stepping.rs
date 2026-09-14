@@ -1,4 +1,4 @@
-//! Display-line stepping (`next`/`prev`/`advance`/`distance`/`fits_in`).
+//! Display-line stepping (`next`/`prev`/`advance_saturating`/`distance`/`fits_in`).
 //! Reaches the map only through its public `block`/`last_line`/`clamp`
 //! accessors.
 
@@ -13,7 +13,7 @@ impl<'a> DisplayLineMap<'a> {
         if pos.slot + 1 < total {
             return Some(DisplayLinePos::new(pos.line, pos.slot + 1));
         }
-        (pos.line < self.last_line()).then(|| DisplayLinePos::new(pos.line.down(1), 0))
+        (pos.line < self.last_line()).then(|| DisplayLinePos::new(pos.line.advance(1), 0))
     }
 
     /// The previous display line. `None` only at the document's first display line.
@@ -24,20 +24,24 @@ impl<'a> DisplayLineMap<'a> {
         if pos.line.index() == 0 {
             return None;
         }
-        let prev_line = pos.line.up(1);
+        let prev_line = pos.line.retreat_saturating(1);
         let total = self.block(prev_line).total();
         Some(DisplayLinePos::new(prev_line, total.saturating_sub(1)))
     }
 
-    /// Step `delta` display lines from `pos`, saturating at either end of the document.
-    /// The starting address is clamped first, so a stale viewport self-heals.
-    pub fn advance(&mut self, pos: DisplayLinePos, delta: isize) -> DisplayLinePos {
-        self.advance_counted(pos, delta).0
+    /// Step `delta` display lines from `pos`, saturating at either end of the
+    /// document. The starting address is clamped first, so a stale viewport
+    /// self-heals. Named `advance_saturating`, not bare `advance`, matching
+    /// the same `_saturating`-means-clamps convention `hume-rope`'s
+    /// offset/column/line domain types use — this walker's contract is no
+    /// different just because it lives outside that crate.
+    pub fn advance_saturating(&mut self, pos: DisplayLinePos, delta: isize) -> DisplayLinePos {
+        self.advance_counted_saturating(pos, delta).0
     }
 
-    /// [`DisplayLineMap::advance`], plus how many display lines it actually
-    /// stepped — fewer than `delta.unsigned_abs()` only when the document's
-    /// edge stopped the walk.
+    /// [`DisplayLineMap::advance_saturating`], plus how many display lines it
+    /// actually stepped — fewer than `delta.unsigned_abs()` only when the
+    /// document's edge stopped the walk.
     ///
     /// Since [`DisplayLineMap::next`] and [`DisplayLineMap::prev`] are exact
     /// inverses, the count is also the distance back: after stepping `n`
@@ -45,7 +49,7 @@ impl<'a> DisplayLineMap<'a> {
     /// That lets a caller that scrolled backward from the cursor learn the
     /// cursor's resulting screen row without walking the same display lines
     /// forward again.
-    pub fn advance_counted(
+    pub fn advance_counted_saturating(
         &mut self,
         pos: DisplayLinePos,
         delta: isize,

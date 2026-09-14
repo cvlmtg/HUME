@@ -155,7 +155,7 @@ pub fn line_token_content(token: RopeSlice<'_>) -> String {
 /// `line` itself is the char just before this offset, not `- 1` of it — that
 /// subtraction is [`line_break_char`]'s job, not this function's.
 pub fn next_line_start(rope: &Rope, line: RopeyLine) -> CharOffset {
-    let next = line.down(1);
+    let next = line.advance(1);
     if next.index() < ropey_line_count(rope).get() {
         CharOffset::new(rope.line_to_char(next.index()))
     } else {
@@ -185,7 +185,7 @@ pub fn line_break_char(rope: &Rope, line: ContentLine) -> CharOffset {
 /// byte-domain wire helpers in [`crate::position_encoding`] use, expressed
 /// in bytes instead of chars.
 pub fn next_line_start_byte(rope: &Rope, line: RopeyLine) -> usize {
-    let next = line.down(1);
+    let next = line.advance(1);
     if next.index() < ropey_line_count(rope).get() {
         rope.line_to_byte(next.index())
     } else {
@@ -231,11 +231,11 @@ pub fn leading_indent(
     for chunk in slice.chunks() {
         for b in chunk.bytes() {
             match b {
-                b' ' => display_width = display_width.advance(1),
+                b' ' => display_width = display_width.advance_saturating(1),
                 // `width` is origin-agnostic (see its own doc), so this is
                 // the sanctioned `.get()` crossing into it.
                 b'\t' => {
-                    display_width = display_width.advance(crate::width::tab_advance(
+                    display_width = display_width.advance_saturating(crate::width::tab_advance(
                         display_width.get() as usize,
                         tab_width,
                     ) as u32);
@@ -288,14 +288,14 @@ pub(crate) fn snap_to_grapheme_boundary(
 /// this offset, not in how they find it.
 pub(crate) fn line_terminator_start(rope: &Rope, line: RopeyLine) -> CharOffset {
     let end_excl = next_line_start(rope, line);
-    if line.down(1).index() < ropey_line_count(rope).get() {
+    if line.advance(1).index() < ropey_line_count(rope).get() {
         // `end_excl` is the start of the *next* ropey line (checked above to
         // actually exist), so the char right before it is that next line's
         // own terminator, always `'\n'` — a single codepoint, always its own
         // complete grapheme cluster, never a combining-mark hazard, so
         // stepping back one char (rather than a grapheme boundary walk) is
         // sound here.
-        end_excl.shift(-1)
+        end_excl.retreat(1)
     } else {
         end_excl
     }
@@ -491,7 +491,7 @@ pub fn char_to_line_byte(rope: &Rope, char_pos: CharOffset) -> (RopeyLine, ByteC
 /// rather than either line-domain type.
 pub fn advance_byte_point(row: usize, byte_col: ByteCol, inserted: &str) -> (usize, ByteCol) {
     match inserted.rfind('\n') {
-        None => (row, byte_col.advance(inserted.len())),
+        None => (row, byte_col.advance_saturating(inserted.len())),
         Some(last_nl) => {
             let newline_count = inserted.bytes().filter(|&b| b == b'\n').count();
             (
@@ -533,7 +533,7 @@ pub fn line_segments(
     // mark can't cross the line it's on) is harmless here. Never underflows:
     // the caller-checked `!range.is_empty()` precondition puts `range.end`
     // at `>= 1`.
-    let last_char = range.end.shift(-1);
+    let last_char = range.end.retreat(1);
     let start_line = rope.char_to_line(range.start.index());
     let end_line = rope.char_to_line(last_char.index());
     (start_line..=end_line).filter_map(move |line_idx| {

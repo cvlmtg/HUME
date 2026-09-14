@@ -125,9 +125,9 @@ pub(super) fn find_word_end_from(
     let end = text.end();
     if start >= end {
         // One back from a position at or past the buffer end (`end` is at
-        // least 1 — every buffer holds the structural `\n`), so `shift`
-        // can't go negative here.
-        return start.shift(-1);
+        // least 1 — every buffer holds the structural `\n`), so `retreat`
+        // can't underflow here.
+        return start.retreat(1);
     }
 
     let cat = chars.classify(text.char_at(start).expect("start < len"));

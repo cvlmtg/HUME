@@ -98,9 +98,9 @@ fn move_buffer_line(
     let target_line = if down {
         // On the last content line, line + count would be the phantom
         // trailing line (the structural \n) — clamp there is nothing past it.
-        line.down(count).min(text.last_content_line())
+        line.advance(count).min(text.last_content_line())
     } else {
-        line.up(count)
+        line.retreat_saturating(count)
     };
     if target_line == line {
         return head; // already at the document's first/last content line

@@ -368,7 +368,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // line rather than the phantom trailing one — the gutter-sign
             // plugin expands `[line, end-line]` inclusive to mark every line
             // a multi-line diagnostic touches.
-            let end_line = text.char_to_line(d.end.shift_saturating(-1).min(last_content_char));
+            let end_line = text.char_to_line(d.end.retreat_saturating(1).min(last_content_char));
             serde_json::json!({
                 "start": d.start.index(),
                 "end": d.end.index(),
@@ -643,7 +643,7 @@ pub(in crate::editor) fn pane_visible_range(
     // line that *could* be visible, not name the true last one exactly.
     let height_rows = pane.viewport.height.max(1) as usize;
     let end_line = first_line
-        .down(height_rows)
+        .advance(height_rows)
         .min(content_lines.end_exclusive());
     hume_rope::offset::ExclusiveRange::new(first_line, end_line)
 }

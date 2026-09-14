@@ -57,7 +57,7 @@ pub fn cmd_split_selection_on_newlines(
             // impl to loop over directly (see CLAUDE.md's "Line counts and
             // ranges"). Sound here: both endpoints are already-valid
             // `ContentLine`s.
-            for line_idx in start_line.down(1).index()..end_line.index() {
+            for line_idx in start_line.advance(1).index()..end_line.index() {
                 let line = hume_rope::line::ContentLine::new(line_idx);
                 let ls = text.line_to_char(line.into());
                 let le = line_content_end(text, line);

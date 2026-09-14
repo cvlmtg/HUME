@@ -18,15 +18,21 @@ fn ropey_line_to_content_is_none_on_the_phantom_line() {
 }
 
 #[test]
-fn ropey_line_down() {
-    assert_eq!(RopeyLine::new(2).down(3), RopeyLine::new(5));
+fn ropey_line_advance() {
+    assert_eq!(RopeyLine::new(2).advance(3), RopeyLine::new(5));
 }
 
 #[test]
-fn content_line_down_and_up() {
-    assert_eq!(ContentLine::new(2).down(3), ContentLine::new(5));
-    assert_eq!(ContentLine::new(2).up(3), ContentLine::new(0)); // saturates
-    assert_eq!(ContentLine::new(5).up(3), ContentLine::new(2));
+fn content_line_advance_and_retreat_saturating() {
+    assert_eq!(ContentLine::new(2).advance(3), ContentLine::new(5));
+    assert_eq!(
+        ContentLine::new(2).retreat_saturating(3),
+        ContentLine::new(0)
+    );
+    assert_eq!(
+        ContentLine::new(5).retreat_saturating(3),
+        ContentLine::new(2)
+    );
 }
 
 #[test]

@@ -92,7 +92,7 @@ fn next_and_prev_stop_exactly_at_the_documents_edges() {
 }
 
 #[test]
-fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
+fn advance_saturating_matches_repeated_stepping_and_saturates_at_both_ends() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -101,9 +101,9 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
         for (j, &to) in expected.iter().enumerate() {
             let delta = j as isize - i as isize;
             assert_eq!(
-                dlm.advance(from, delta),
+                dlm.advance_saturating(from, delta),
                 to,
-                "advance({from:?}, {delta}) should reach {to:?}"
+                "advance_saturating({from:?}, {delta}) should reach {to:?}"
             );
         }
     }
@@ -111,19 +111,19 @@ fn advance_matches_repeated_stepping_and_saturates_at_both_ends() {
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
     assert_eq!(
-        dlm.advance(first, -10),
+        dlm.advance_saturating(first, -10),
         first,
         "saturates at the first display line"
     );
     assert_eq!(
-        dlm.advance(last, 10),
+        dlm.advance_saturating(last, 10),
         last,
         "saturates at the last display line"
     );
 }
 
 #[test]
-fn advance_counted_reports_how_far_it_actually_stepped() {
+fn advance_counted_saturating_reports_how_far_it_actually_stepped() {
     let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -132,12 +132,15 @@ fn advance_counted_reports_how_far_it_actually_stepped() {
     for (i, &from) in expected.iter().enumerate() {
         for (j, &to) in expected.iter().enumerate() {
             let delta = j as isize - i as isize;
-            let (pos, taken) = dlm.advance_counted(from, delta);
-            assert_eq!(pos, to, "advance_counted({from:?}, {delta}) position");
+            let (pos, taken) = dlm.advance_counted_saturating(from, delta);
+            assert_eq!(
+                pos, to,
+                "advance_counted_saturating({from:?}, {delta}) position"
+            );
             assert_eq!(
                 taken,
                 delta.unsigned_abs(),
-                "advance_counted({from:?}, {delta}) count"
+                "advance_counted_saturating({from:?}, {delta}) count"
             );
         }
     }
@@ -147,12 +150,12 @@ fn advance_counted_reports_how_far_it_actually_stepped() {
     let first = expected[0];
     let last = *expected.last().expect("non-empty");
     assert_eq!(
-        dlm.advance_counted(first, -10),
+        dlm.advance_counted_saturating(first, -10),
         (first, 0),
         "no display lines exist before the first display line"
     );
     assert_eq!(
-        dlm.advance_counted(last, 10),
+        dlm.advance_counted_saturating(last, 10),
         (last, 0),
         "no display lines exist past the last display line"
     );
@@ -162,7 +165,7 @@ fn advance_counted_reports_how_far_it_actually_stepped() {
     // from `pos`, `distance` from the landing spot back to `pos` is that
     // same `n`.
     let pos = expected[4];
-    let (landed, taken) = dlm.advance_counted(pos, -3);
+    let (landed, taken) = dlm.advance_counted_saturating(pos, -3);
     assert_eq!(dlm.distance(landed, pos, expected.len()), Some(taken));
 }
 

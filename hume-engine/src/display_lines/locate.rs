@@ -73,7 +73,7 @@ impl<'a> DisplayLineMap<'a> {
                 )
                 .map_or_else(
                     // Past every grapheme on the display line (end of line).
-                    || last.display_col.advance(last.width as u32),
+                    || last.display_col.advance_saturating(last.width as u32),
                     |(display_col, _)| display_col,
                 );
                 return (i, display_col);
@@ -100,7 +100,7 @@ impl<'a> DisplayLineMap<'a> {
             .filter(|r| !r.graphemes.is_empty())
             .map_or(DisplayLineCol::new(0), |r| {
                 let lg = &graphemes[r.graphemes.end - 1];
-                lg.display_col.advance(lg.width as u32)
+                lg.display_col.advance_saturating(lg.width as u32)
             });
         (last_dline, display_col)
     }
@@ -186,7 +186,7 @@ impl<'a> DisplayLineMap<'a> {
             DisplayColTarget::Cell => {
                 let offset = graphemes
                     .iter()
-                    .find(|g| target_display_col < g.display_col.advance(g.width as u32))
+                    .find(|g| target_display_col < g.display_col.advance_saturating(g.width as u32))
                     .unwrap_or_else(|| graphemes.last().expect("non-empty checked above"))
                     .char_offset;
                 CharOffset::new(offset)
@@ -275,7 +275,7 @@ impl<'a> DisplayLineMap<'a> {
         let indent = first.display_col;
         let span = last
             .display_col
-            .advance(last.width as u32)
+            .advance_saturating(last.width as u32)
             .cells_since(indent);
         (indent, span)
     }
@@ -346,7 +346,7 @@ impl<'a> DisplayLineMap<'a> {
             }
             remaining -= span;
         }
-        self.resolve_in_display_line(idx, sub, dline_indent.advance(remaining), target)
+        self.resolve_in_display_line(idx, sub, dline_indent.advance_saturating(remaining), target)
     }
 
     /// The char range one content display line covers. `None` when `pos` is

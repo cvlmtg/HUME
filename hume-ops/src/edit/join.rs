@@ -47,7 +47,7 @@ pub fn join_lines_select_spaces(
             // Clamp to the last content line: a cursor there must not join
             // with the trailing structural-newline line — it would delete
             // the structural '\n' and panic in the changeset validator.
-            end_line = end_line.down(1).min(text.last_content_line());
+            end_line = end_line.advance(1).min(text.last_content_line());
         }
 
         // Bare-`usize` range, `ContentLine` re-minted each iteration —
@@ -58,7 +58,7 @@ pub fn join_lines_select_spaces(
             let line = ContentLine::new(line_idx);
             let nl_pos = line_break_char(text, line);
             let next_start = next_line_start(text, line.into());
-            let next_end_excl = next_line_start(text, line.down(1).into());
+            let next_end_excl = next_line_start(text, line.advance(1).into());
 
             let content_start = {
                 let mut p = next_start;
@@ -71,21 +71,21 @@ pub fn join_lines_select_spaces(
                 p
             };
 
-            let is_blank = content_start >= next_end_excl.shift(-1);
+            let is_blank = content_start >= next_end_excl.retreat(1);
 
             b.retain(nl_pos.max(b.old_pos()).chars_since(b.old_pos()));
             b.delete(content_start.chars_since(nl_pos));
 
             if !is_blank {
                 b.insert(" ");
-                space_positions.push(b.new_pos().shift(-1));
+                space_positions.push(b.new_pos().retreat(1));
             }
         }
 
-        // Saturating, not `shift(-1)` like `space_positions` above: the loop
+        // Saturating, not `retreat(1)` like `space_positions` above: the loop
         // can run zero times (single-line selection), leaving `new_pos()` at
         // 0 for a leading selection.
-        new_sels.push(Selection::collapsed(b.new_pos().shift_saturating(-1)));
+        new_sels.push(Selection::collapsed(b.new_pos().retreat_saturating(1)));
     });
 
     // Result is the inserted spaces — the command's contract is "select the

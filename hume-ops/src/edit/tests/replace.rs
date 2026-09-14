@@ -181,7 +181,7 @@ fn replace_span_around_cursors_skips_typed_chars_before_scanning_each_cursors_pr
             sels,
             move |text, head| word_start_before(
                 text,
-                head.shift_saturating(-(typed as isize)),
+                head.retreat_saturating(typed),
                 WordChars::default()
             ),
             0,

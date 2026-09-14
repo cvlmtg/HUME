@@ -106,16 +106,6 @@ impl CharOffset {
         )
     }
 
-    /// `self` shifted by `delta` chars, clamping to 0 instead of panicking —
-    /// for a caller subtracting a count that may legitimately exceed `self`
-    /// (a cramped cursor near the buffer start, an undo/redo delta larger
-    /// than the position it lands on). Reach for [`Self::shift`] when the
-    /// result is known non-negative and a violation should panic loudly
-    /// instead of silently clamping.
-    pub fn shift_saturating(self, delta: isize) -> CharOffset {
-        Self(self.0.saturating_add_signed(delta))
-    }
-
     /// `self` moved back by `n` chars — the unsigned-length counterpart to
     /// [`Self::shift`], for the common case of retreating by a `usize`
     /// count (a removed run's length, a typed-char count) rather than a
@@ -129,8 +119,12 @@ impl CharOffset {
         )
     }
 
-    /// [`Self::retreat`] clamped to 0 instead of panicking — the
-    /// unsigned-length counterpart to [`Self::shift_saturating`].
+    /// [`Self::retreat`] clamped to 0 instead of panicking — for a caller
+    /// retreating by a count that may legitimately exceed `self` (a
+    /// cramped cursor near the buffer start, an edit delta larger than the
+    /// position it lands on). Reach for `retreat` when the result is known
+    /// non-negative and a violation should panic loudly instead of
+    /// silently clamping.
     pub fn retreat_saturating(self, n: usize) -> CharOffset {
         Self(self.0.saturating_sub(n))
     }

@@ -271,12 +271,12 @@ pub fn insert_tab(
             prev_line = Some(line_idx);
         }
         // Compute the effective display column of the cursor after all prior
-        // same-line edits. `shift` is signed (a selection deletion can
-        // decrease it) and saturates at 0 rather than underflowing.
+        // same-line edits. `shift_saturating` is signed (a selection deletion
+        // can decrease it) and saturates at 0 rather than underflowing.
         // Walks the line prefix grapheme by grapheme, so it's measured once
         // and reused by the deletion-width computation below.
         let start_display_col = display_col_in_line(text, line_idx, start, tab_width);
-        let display_col = start_display_col.shift(display_col_shift);
+        let display_col = start_display_col.shift_saturating(display_col_shift);
         if !sel.is_collapsed() {
             let del_end = sel.content_end_exclusive(text);
             // Clamp del_end to the line boundary before computing the display-column

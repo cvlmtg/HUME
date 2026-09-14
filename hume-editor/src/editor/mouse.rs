@@ -316,7 +316,7 @@ pub(super) fn content_pos_to_screen(
 /// document.
 fn scroll_viewport_up(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'_>, count: usize) {
     let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, dlm.advance(top, -(count as isize)));
+    scroll::set_top(viewport, dlm.advance_saturating(top, -(count as isize)));
 }
 
 /// Scroll the viewport down by `count` display lines.
@@ -331,7 +331,7 @@ fn scroll_viewport_down(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'
         return;
     }
     let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, dlm.advance(top, count as isize));
+    scroll::set_top(viewport, dlm.advance_saturating(top, count as isize));
 }
 
 // ---------------------------------------------------------------------------

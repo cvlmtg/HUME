@@ -198,7 +198,9 @@ pub fn format_buffer_line(
                         graphemes_out,
                     );
                     let visible = h_window.as_ref().is_none_or(|w| {
-                        wrap.current_display_col.advance(ins_width as u32) > w.start
+                        wrap.current_display_col
+                            .advance_saturating(ins_width as u32)
+                            > w.start
                     });
                     if visible {
                         push_virtual_cells(
@@ -215,8 +217,9 @@ pub fn format_buffer_line(
                             |_| Some(ins.scope),
                         );
                     } else {
-                        wrap.current_display_col =
-                            wrap.current_display_col.advance(ins_width as u32);
+                        wrap.current_display_col = wrap
+                            .current_display_col
+                            .advance_saturating(ins_width as u32);
                     }
                 }
             }
@@ -285,10 +288,13 @@ pub fn format_buffer_line(
         // the `bound` check below so the two cannot disagree.
         let start_display_col = wrap.current_display_col;
         let byte_start = ByteCol::new(byte_offset);
-        let byte_range = ExclusiveRange::new(byte_start, byte_start.advance(grapheme_str.len()));
+        let byte_range = ExclusiveRange::new(
+            byte_start,
+            byte_start.advance_saturating(grapheme_str.len()),
+        );
         let visible = h_window
             .as_ref()
-            .is_none_or(|w| start_display_col.advance(width as u32) > w.start);
+            .is_none_or(|w| start_display_col.advance_saturating(width as u32) > w.start);
         if visible {
             graphemes_out.push(Grapheme {
                 byte_range,
@@ -301,7 +307,7 @@ pub fn format_buffer_line(
             });
         }
         char_pos += char_count;
-        wrap.current_display_col = wrap.current_display_col.advance(width as u32);
+        wrap.current_display_col = wrap.current_display_col.advance_saturating(width as u32);
 
         // For CJK (width == 2): emit a WidthContinuation placeholder so the
         // render stage knows not to write anything to the second cell.
@@ -482,7 +488,12 @@ impl WrapState {
         let Some(wrap_width) = wrap_width else {
             return;
         };
-        if self.current_display_col.advance(width as u32).get() <= wrap_width {
+        if self
+            .current_display_col
+            .advance_saturating(width as u32)
+            .get()
+            <= wrap_width
+        {
             return;
         }
         if self.current_display_col == DisplayLineCol::new(0) {
@@ -512,7 +523,7 @@ impl WrapState {
         for g in &mut graphemes_out[split_at..] {
             g.display_col = new_display_col;
             g.indent_depth = indent_depth;
-            new_display_col = new_display_col.advance(g.width as u32);
+            new_display_col = new_display_col.advance_saturating(g.width as u32);
         }
         self.current_display_col = new_display_col;
         self.last_ws_g_idx = split_at;

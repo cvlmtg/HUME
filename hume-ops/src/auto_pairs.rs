@@ -76,8 +76,8 @@ pub fn insert_pair_close(
         // Simple auto-close: insert open + close.
         b.insert_char(open);
         b.insert_char(close);
-        // Cursor on `close`. shift(-1) is safe: we just inserted 2 chars.
-        new_sels.push(Selection::collapsed(b.new_pos().shift(-1)));
+        // Cursor on `close`. retreat(1) is safe: we just inserted 2 chars.
+        new_sels.push(Selection::collapsed(b.new_pos().retreat(1)));
     })
 }
 

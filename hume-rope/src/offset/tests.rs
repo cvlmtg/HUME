@@ -35,6 +35,24 @@ fn shift_panics_on_negative_result() {
 }
 
 #[test]
+fn retreat_moves_back() {
+    assert_eq!(CharOffset::new(5).retreat(3), CharOffset::new(2));
+    assert_eq!(CharOffset::new(5).retreat(0), CharOffset::new(5));
+}
+
+#[test]
+#[should_panic(expected = "CharOffset::retreat: result would be negative")]
+fn retreat_panics_on_underflow() {
+    let _ = CharOffset::new(2).retreat(3);
+}
+
+#[test]
+fn retreat_saturating_clamps_to_zero() {
+    assert_eq!(CharOffset::new(5).retreat_saturating(3), CharOffset::new(2));
+    assert_eq!(CharOffset::new(2).retreat_saturating(5), CharOffset::new(0));
+}
+
+#[test]
 fn default_is_offset_zero() {
     assert_eq!(CharOffset::default(), CharOffset::new(0));
 }

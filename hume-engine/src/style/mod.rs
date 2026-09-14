@@ -399,7 +399,7 @@ fn collect_selection_spans(
             .and_then(|end| char_offset_to_end_display_col(end, graphemes, grapheme_range))
             .unwrap_or_else(|| {
                 gs.last().map_or(DisplayLineCol::new(0), |g| {
-                    g.display_col.advance(g.width as u32)
+                    g.display_col.advance_saturating(g.width as u32)
                 })
             });
         if display_col_end > display_col_start {
@@ -507,7 +507,7 @@ fn char_offset_to_end_display_col(
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
     resolve_grapheme_display_col(char_offset, graphemes, grapheme_range)
-        .map(|(display_col, width)| display_col.advance(width))
+        .map(|(display_col, width)| display_col.advance_saturating(width))
 }
 
 // ---------------------------------------------------------------------------

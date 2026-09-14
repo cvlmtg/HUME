@@ -34,18 +34,19 @@
 //! advances one grapheme's width at a time, and tab-stop math divides and
 //! multiplies by the tab width. The two display-column types keep a private
 //! field like every domain type in this crate, but expose named arithmetic
-//! (`advance`/`cells_since` shared by both; `abs_diff`/`cells_since_saturating`
-//! on [`DisplayLineCol`] alone, `shift` on [`BufferLineCol`] alone — each of
-//! those three lives on the one origin type its callers actually need)
+//! (`advance_saturating`/`cells_since` shared by both; `abs_diff`/`cells_since_saturating`
+//! on [`DisplayLineCol`] alone, `shift_saturating`/`retreat_saturating` on
+//! [`BufferLineCol`] alone — each of those three lives on the one origin type
+//! its callers actually need)
 //! instead of forbidding it — the compile-time win here is
 //! keeping `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
 //! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`] see
 //! no such arithmetic in the codebase today and stay as strict as
-//! `CharOffset`. [`ByteCol`] has one named exception, `advance` — a byte
-//! length folded onto a byte column, the same shape as the display-column
-//! `advance` above — for its two real callers (a tree-sitter edit's end
-//! position, a bracket match's end byte); every other operation on it stays
-//! as strict as `CharOffset`.
+//! `CharOffset`. [`ByteCol`] has one named exception, `advance_saturating` —
+//! a byte length folded onto a byte column, the same shape as the
+//! display-column `advance_saturating` above — for its two real callers (a
+//! tree-sitter edit's end position, a bracket match's end byte); every other
+//! operation on it stays as strict as `CharOffset`.
 //!
 //! # No `checked`/`clamped` mint for the display types
 //! A display column has no fixed upper bound of its own to validate against
@@ -95,8 +96,11 @@ macro_rules! display_col_methods {
 
             /// `self` advanced by `cells` — a grapheme's width folded into a
             /// running format cursor. Saturates: a column has no upper bound
-            /// of its own to overflow into (see the module doc).
-            pub fn advance(self, cells: u32) -> Self {
+            /// of its own to overflow into (see the module doc). Named
+            /// `advance_saturating`, not bare `advance`, to match the
+            /// `_saturating` suffix's meaning everywhere else in the
+            /// workspace: a bare direction word never silently clamps.
+            pub fn advance_saturating(self, cells: u32) -> Self {
                 Self(self.0.saturating_add(cells))
             }
 
@@ -165,8 +169,11 @@ impl BufferLineCol {
     /// legitimately clamps to 0 when a multi-cursor edit's running delta
     /// outpaces the column it's applied to (e.g. a wide deletion collapsing
     /// a later cursor's indent target); that is the caller's intended
-    /// behavior, not a bug this type should catch. Widens through `i64`
-    /// before clamping back to `u32` rather than calling
+    /// behavior, not a bug this type should catch. Named `shift_saturating`,
+    /// not `shift`, so the suffix carries the same meaning everywhere in the
+    /// workspace: a bare `shift`/`retreat` panics on an out-of-range result
+    /// (`CharOffset`'s contract), `_saturating` clamps instead. Widens
+    /// through `i64` before clamping back to `u32` rather than calling
     /// `saturating_add_signed` (which takes `i32`, not `isize`) directly —
     /// narrowing `delta` first would wrap a delta outside `i32`'s range
     /// (e.g. `indent_lines`'s `delta_display_col`, `u32`-bounded but built
@@ -179,7 +186,7 @@ impl BufferLineCol {
     /// line; `align_selections`'s pass-2 `fit_0`/`fit_k` instead apply a
     /// one-shot cross-slot delta to compute a floor. Both shapes need the
     /// same saturate-don't-panic contract.
-    pub fn shift(self, delta: isize) -> Self {
+    pub fn shift_saturating(self, delta: isize) -> Self {
         Self(
             (self.0 as i64)
                 .saturating_add(delta as i64)
@@ -188,11 +195,11 @@ impl BufferLineCol {
     }
 
     /// `self` moved back by `cells` — the unsigned-length counterpart to
-    /// [`Self::shift`], for the common case of retreating by a `u32` cell
-    /// count rather than a signed delta a caller would otherwise negate by
-    /// hand. Same saturate-at-0 contract as `shift`.
-    pub fn retreat(self, cells: u32) -> Self {
-        self.shift(-(cells as isize))
+    /// [`Self::shift_saturating`], for the common case of retreating by a
+    /// `u32` cell count rather than a signed delta a caller would otherwise
+    /// negate by hand. Same saturate-at-0 contract as `shift_saturating`.
+    pub fn retreat_saturating(self, cells: u32) -> Self {
+        self.shift_saturating(-(cells as isize))
     }
 }
 
@@ -266,12 +273,15 @@ impl ByteCol {
 
     /// `self` advanced by `bytes` — a matched token's own byte length folded
     /// onto its start column (e.g. a bracket match's end byte from its
-    /// start byte plus the matched char's UTF-8 length). The two real callers
-    /// this type has for advancing at all (a tree-sitter edit's end position,
-    /// a bracket match's end byte), so it stays this narrow rather than
-    /// gaining `cells_since`/`shift`'s full arithmetic surface.
-    pub fn advance(self, bytes: usize) -> Self {
-        Self(self.0 + bytes)
+    /// start byte plus the matched char's UTF-8 length). Saturates rather
+    /// than overflowing, matching every other `advance_saturating` in this
+    /// module (`DisplayLineCol`/`BufferLineCol`'s shared one) — the two real
+    /// callers this type has for advancing at all (a tree-sitter edit's end
+    /// position, a bracket match's end byte) never come close to
+    /// `usize::MAX`, so this stays this narrow rather than gaining
+    /// `cells_since`/`shift_saturating`'s full arithmetic surface.
+    pub fn advance_saturating(self, bytes: usize) -> Self {
+        Self(self.0.saturating_add(bytes))
     }
 }
 

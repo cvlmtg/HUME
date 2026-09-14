@@ -72,8 +72,13 @@ impl RopeyLine {
 
     /// `self`, `n` lines toward the end of the buffer. Unclamped — advancing
     /// past the last ropey line is a caller bug, not a value this type
-    /// silently repairs.
-    pub fn down(self, n: usize) -> Self {
+    /// silently repairs. Bare `advance`, not `advance_saturating`: unlike
+    /// `retreat_saturating`'s floor of 0, there is no ropey-domain ceiling
+    /// this type can saturate against without a `&Rope` in hand, so this
+    /// is the plain, unchecked op — matching `CharOffset::shift`/`retreat`'s
+    /// own bare names for "no saturation," with `_saturating` reserved
+    /// everywhere in the workspace for the clamped variant.
+    pub fn advance(self, n: usize) -> Self {
         Self(self.0 + n)
     }
 
@@ -128,13 +133,19 @@ impl ContentLine {
 
     /// `self`, `n` lines toward the end of the buffer. Unclamped — a caller
     /// landing on or past the buffer's real content wants
-    /// [`ContentLine::clamped`] to pull the result back in bounds.
-    pub fn down(self, n: usize) -> Self {
+    /// [`ContentLine::clamped`] to pull the result back in bounds. See
+    /// [`RopeyLine::advance`] for why this is bare `advance`, not
+    /// `advance_saturating`.
+    pub fn advance(self, n: usize) -> Self {
         Self(self.0 + n)
     }
 
     /// `self`, `n` lines toward the start of the buffer, saturating at 0.
-    pub fn up(self, n: usize) -> Self {
+    /// Named `retreat_saturating`, not `up`, to match the same saturate-at-0
+    /// contract's name on `CharOffset`/`BufferLineCol` — this codebase has
+    /// no domain where a bare direction word and a `_saturating` suffix name
+    /// the same behavior, so the two must not coexist for it here either.
+    pub fn retreat_saturating(self, n: usize) -> Self {
         Self(self.0.saturating_sub(n))
     }
 

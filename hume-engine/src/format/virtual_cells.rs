@@ -134,7 +134,7 @@ pub(crate) fn push_virtual_cells(
             indent_depth: run.indent_depth,
             scope: scope_at(ByteCol::new(byte_offset)),
         });
-        *display_col = display_col.advance(width as u32);
+        *display_col = display_col.advance_saturating(width as u32);
 
         // For a double-width cluster: a placeholder so the second cell is
         // addressable and styled with the first, matching what

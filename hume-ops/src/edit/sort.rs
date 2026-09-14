@@ -166,7 +166,7 @@ fn group_adjacent(entries: &[SortEntry]) -> Vec<Vec<usize>> {
     let mut prev_line: Option<ContentLine> = None;
     for (idx, entry) in entries.iter().enumerate() {
         match (groups.last_mut(), prev_line) {
-            (Some(g), Some(prev)) if prev.down(1) == entry.line => g.push(idx),
+            (Some(g), Some(prev)) if prev.advance(1) == entry.line => g.push(idx),
             _ => groups.push(vec![idx]),
         }
         prev_line = Some(entry.line);
