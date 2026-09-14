@@ -531,10 +531,10 @@ composes.
 
 Writing `#:actions` by hand instead: it's a list of `(key-spec . proc)` pairs, each `proc`
 taking the same one payload argument `on-select` does. `key-spec` is a single key written
-the same way `bind-key!` writes one — `"ctrl-v"`, `"f"`, `"esc"` — never a multi-key sequence
-like `"z f"`. An `#:actions` entry can never override a key the picker already uses for
-itself — typing to filter, `Backspace`, the movement keys, `Enter`, `Esc` — so there's
-nothing to avoid clashing with beyond those.
+the same way `bind-key!` writes one — `"ctrl-v"`, `"alt-o"`, `"f5"` — never a multi-key
+sequence like `"z f"`. An `#:actions` entry can never override a key the picker already uses
+for itself — typing to filter, `Backspace`, the movement keys, `Enter`, `Esc` — so pick a key
+outside that set (a `Ctrl`/`Alt` combination other than the movement ones, or a function key).
 
 A nonzero exit from a spawned source is normally reported as an error — but for a
 command where some exit codes are a normal outcome rather than a failure (`rg`
