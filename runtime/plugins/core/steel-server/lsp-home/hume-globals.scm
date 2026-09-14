@@ -314,6 +314,7 @@
 (#%register-global "surround-single-quote")
 (#%register-global "switch-to-buffer!")
 (#%register-global "symbol-under-cursor")
+(#%register-global "tab-new")
 (#%register-global "till-backward")
 (#%register-global "till-forward")
 (#%register-global "toggle-extend")
