@@ -139,6 +139,131 @@ fn live_picker_bang_truncate_tail_reaches_the_session() {
     assert_eq!(session.truncate(), TruncateEnd::Tail);
 }
 
+// ── #:actions ────────────────────────────────────────────────────────────
+
+#[test]
+fn picker_bang_actions_binds_a_key_to_its_own_proc_not_on_select() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1"))
+               (lambda (x) (log! 'info (string-append "select:" (to-string x))))
+               #:actions (list (cons "ctrl-t"
+                 (lambda (x) (log! 'info (string-append "action:" (to-string x)))))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key_ctrl('t'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a bound key must close the picker"
+    );
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "action:p1",
+        "the action's own proc must fire, not on-select"
+    );
+}
+
+#[test]
+fn picker_bang_actions_accepts_the_short_modifier_form() {
+    // "c-v" (short) must parse to the same KeyEvent as "ctrl-v" (the form
+    // every combinator and doc in this codebase writes) — pinned here since
+    // nothing in-tree exercises the short form otherwise.
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1"))
+               (lambda (x) (void))
+               #:actions (list (cons "c-v" (lambda (x) (log! 'info (to-string x))))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key_ctrl('v'));
+    ed.settle();
+
+    assert!(ed.state.config.picker.is_none());
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "p1");
+}
+
+#[test]
+fn picker_bang_actions_rejects_a_non_callable_proc() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void))
+               #:actions (list (cons "ctrl-t" "not-a-proc")))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a non-callable #:actions entry must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("#:actions"),
+        "error should name the #:actions argument, got {msg:?}"
+    );
+}
+
+#[test]
+fn picker_bang_actions_rejects_a_multi_key_spec() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void))
+               #:actions (list (cons "z f" (lambda (x) (void)))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a multi-key #:actions spec must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("exactly one key"),
+        "error should explain the one-chord requirement, got {msg:?}"
+    );
+}
+
+#[test]
+fn picker_bang_actions_rejects_an_unparseable_key_spec() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void))
+               #:actions (list (cons "not-a-real-key" (lambda (x) (void)))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "an unparseable #:actions key spec must not open a picker"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.contains("invalid key spec"),
+        "error should name the bad key spec, got {msg:?}"
+    );
+}
+
+#[test]
+fn picker_bang_with_no_actions_leaves_an_unbound_key_consumed_and_ignored() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (x) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+
+    ed.feed_key(key_ctrl('t'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_some(),
+        "with no #:actions, Ctrl+T must be an inert no-op, same as today"
+    );
+    assert!(ed.state.status_msg.is_none());
+}
+
 // ── End-to-end: open, type a query, accept, keep interacting (LESSONS L4) ──
 
 #[test]
