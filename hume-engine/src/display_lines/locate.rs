@@ -32,7 +32,7 @@ impl<'a> DisplayLineMap<'a> {
         // Only up to the target: everything past it is irrelevant to where
         // this one offset sits.
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
+        let (sub, display_col) = self.locate_in_line(idx, target_byte, char_offset);
         (DisplayLinePos::new(line, before + sub), display_col)
     }
 
@@ -44,7 +44,7 @@ impl<'a> DisplayLineMap<'a> {
         &self,
         idx: usize,
         target_byte: ByteCol,
-        char_offset: usize,
+        char_offset: CharOffset,
     ) -> (usize, DisplayLineCol) {
         let entry = self.store.entry(idx);
         let format = &entry.format;
@@ -89,7 +89,7 @@ impl<'a> DisplayLineMap<'a> {
         // which indicate a formatting bug rather than a normal input.
         debug_assert!(
             !lines.is_empty(),
-            "locate_in_line: line {}, char_offset {char_offset} matched \
+            "locate_in_line: line {}, char_offset {char_offset:?} matched \
              no display line — every content display line should claim \
              some byte range of the line",
             entry.line.index()
@@ -302,7 +302,7 @@ impl<'a> DisplayLineMap<'a> {
         let (ropey_line, target_byte) = hume_rope::lines::char_to_line_byte(self.rope, char_offset);
         let line = self.content_line_of(ropey_line);
         let idx = self.ensure_formatted(line, FormatBound::ToByte(target_byte));
-        let (sub, dline_display_col) = self.locate_in_line(idx, target_byte, char_offset.index());
+        let (sub, dline_display_col) = self.locate_in_line(idx, target_byte, char_offset);
         let (dline_indent, _) = self.display_line_shape(idx, sub);
         let preceding: u32 = (0..sub).map(|j| self.display_line_shape(idx, j).1).sum();
         BufferLineCol::new(preceding + dline_display_col.cells_since(dline_indent))

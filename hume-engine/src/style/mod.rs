@@ -342,19 +342,16 @@ fn collect_selection_spans(
     // This display line has real content only when it has graphemes at all,
     // and its first and last don't collapse to the same empty point — an
     // empty line's sole grapheme (the EOL sentinel) has an empty `byte_range`.
-    let has_content = match (gs.first(), gs.last()) {
-        (Some(first), Some(last)) => first.byte_range.start < last.byte_range.end,
-        _ => false,
+    // The style stage never runs on a virtual display line (whose cells carry
+    // `Grapheme::char_offset`'s no-buffer-position sentinel — see its doc),
+    // so `first`/`last`'s own char offsets are always genuine positions here.
+    let content_chars = match (gs.first(), gs.last()) {
+        (Some(first), Some(last)) if first.byte_range.start < last.byte_range.end => Some((
+            CharOffset::new(first.char_offset),
+            CharOffset::new(last.char_offset),
+        )),
+        _ => None,
     };
-    // Char-based wrap-segment boundaries for the intersection check below.
-    // `Grapheme.char_offset` is a bare `usize` with its own `usize::MAX`
-    // sentinel (see its doc) — the comparisons below stay in that space
-    // rather than `CharOffset`, which has no sentinel to represent it.
-    let first_char = gs.first().map_or(usize::MAX, |g| g.char_offset);
-    // last_char_excl: char immediately after the last grapheme on this display line.
-    // Adding 1 is exact because cursor positions always land on grapheme-cluster
-    // boundaries — a selection can never start inside a multi-char cluster.
-    let last_char_excl = gs.last().map_or(0, |g| g.char_offset.saturating_add(1));
 
     for (idx, sel) in sorted_sels.iter().enumerate() {
         // A collapsed selection (anchor == head) has no extent to paint — the
@@ -372,27 +369,20 @@ fn collect_selection_spans(
             continue;
         }
 
-        // Clamp the selection to this line's char range. From here down this
-        // function works in `Grapheme.char_offset`'s bare-`usize` space (see
-        // above) since `sel_char_end` must be able to hold that field's
-        // `usize::MAX` sentinel, which `CharOffset` has no representation for.
-        let sel_char_start = start.max(line_chars.start).index();
-        // `usize::MAX` signals "extends past the end of this display line" — the
-        // display_col fallback below will then use the last grapheme's
+        // Clamp the selection to this line's char range.
+        let sel_char_start = start.max(line_chars.start);
+        // `None` signals "extends past the end of this display line" — the
+        // `display_col` fallback below will then use the last grapheme's
         // trailing column.
-        let sel_char_end = if end < line_chars.end {
-            end.index()
-        } else {
-            usize::MAX
-        };
+        let sel_char_end = (end < line_chars.end).then_some(end);
 
         // For display lines with real content, skip if the selection doesn't
         // intersect this wrap segment. Without this check a selection on
         // wrap segment N would incorrectly highlight all other wrap segments
         // of the same line.
-        if has_content {
-            let ends_before = sel_char_end != usize::MAX && sel_char_end <= first_char;
-            let starts_after = sel_char_start >= last_char_excl;
+        if let Some((first_char, last_char)) = content_chars {
+            let ends_before = sel_char_end.is_some_and(|end| end <= first_char);
+            let starts_after = sel_char_start > last_char;
             if ends_before || starts_after {
                 continue;
             }
@@ -405,14 +395,13 @@ fn collect_selection_spans(
         // the right edge of the end grapheme (display_col + width), not its
         // left edge (display_col). Using the left edge caused backward
         // selections to silently drop their anchor cell from the highlighted span.
-        let display_col_end =
-            char_offset_to_end_display_col(sel_char_end, graphemes, grapheme_range).unwrap_or_else(
-                || {
-                    gs.last().map_or(DisplayLineCol::new(0), |g| {
-                        g.display_col.advance(g.width as u32)
-                    })
-                },
-            );
+        let display_col_end = sel_char_end
+            .and_then(|end| char_offset_to_end_display_col(end, graphemes, grapheme_range))
+            .unwrap_or_else(|| {
+                gs.last().map_or(DisplayLineCol::new(0), |g| {
+                    g.display_col.advance(g.width as u32)
+                })
+            });
         if display_col_end > display_col_start {
             out.push((display_col_start, display_col_end));
             if Some(idx) == primary_idx {
@@ -444,9 +433,7 @@ fn collect_head_display_cols(
         if !line_chars.contains(sel.head) {
             continue;
         }
-        if let Some(display_col) =
-            char_offset_to_display_col(sel.head.index(), graphemes, grapheme_range)
-        {
+        if let Some(display_col) = char_offset_to_display_col(sel.head, graphemes, grapheme_range) {
             out.push(display_col);
             if Some(idx) == primary_idx {
                 *primary_head_display_col = Some(display_col);
@@ -458,10 +445,9 @@ fn collect_head_display_cols(
 /// Binary-search for the grapheme in `grapheme_range` whose `char_offset` equals or
 /// immediately follows `char_offset`, returning `(display_col, width)`.
 ///
-/// Returns `None` when `char_offset` is the sentinel `usize::MAX` (meaning
-/// "extend to end of display line"), or when it falls before this display
-/// line's first grapheme (it belongs to an earlier wrap segment and must
-/// not be claimed for this display line).
+/// Returns `None` when `char_offset` falls before this display line's first
+/// grapheme (it belongs to an earlier wrap segment and must not be claimed
+/// for this display line).
 ///
 /// A display line's graphemes are non-decreasing in `char_offset` (inline-insert `Virtual` cells
 /// carry the offset of the real grapheme they precede, pushed just before it),
@@ -472,14 +458,11 @@ fn collect_head_display_cols(
 /// two column-lookup paths (selection styling, cursor placement) can't drift
 /// on how they treat a `Virtual` tie.
 pub(crate) fn resolve_grapheme_display_col(
-    char_offset: usize,
+    char_offset: CharOffset,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<(DisplayLineCol, u32)> {
-    if char_offset == usize::MAX {
-        // Sentinel: "extend to end of display line" — let the caller use the fallback.
-        return None;
-    }
+    let char_offset = char_offset.index();
     let gs = &graphemes[grapheme_range.clone()];
     let idx = gs.partition_point(|g| g.char_offset < char_offset);
     // If char_offset falls before this display line's first grapheme, the
@@ -502,10 +485,10 @@ pub(crate) fn resolve_grapheme_display_col(
 
 /// Left edge (`g.display_col`) of the grapheme at `char_offset` in this display line.
 ///
-/// Returns `None` for the usize::MAX sentinel or for positions on an earlier
-/// wrap segment. Callers use a fallback when `None`.
+/// Returns `None` for a position on an earlier wrap segment. Callers use a
+/// fallback when `None`.
 fn char_offset_to_display_col(
-    char_offset: usize,
+    char_offset: CharOffset,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
@@ -519,7 +502,7 @@ fn char_offset_to_display_col(
 /// `[display_col_start, display_col_end)` must cover the end grapheme
 /// itself, which requires `display_col_end = display_col + width`.
 fn char_offset_to_end_display_col(
-    char_offset: usize,
+    char_offset: CharOffset,
     graphemes: &[Grapheme],
     grapheme_range: &std::ops::Range<usize>,
 ) -> Option<DisplayLineCol> {
