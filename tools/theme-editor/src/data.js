@@ -2,12 +2,24 @@
 // category is generated from hume-engine's own `ui_scopes::ALL`
 // (`hume-engine/src/theme/ui_scopes.rs`, via `./lib/vocabulary.generated.js`)
 // — a scope renamed there fails `cargo test -p hume-engine
-// theme_vocabulary_js_matches_loader`, not silently here. Every other
-// category (Cursor, Virtual, Diagnostic, syntax/markup, diff) is still kept
-// in sync by hand: nothing checks them against the Rust sources.
-// Syntax/markup are tree-sitter capture names HUME has no fixed enum for —
-// runtime/themes/sand.toml is the de-facto catalog for those.
-import { UI_SCOPES } from "./lib/vocabulary.generated.js";
+// theme_vocabulary_js_matches_loader`, not silently here. "Cursor"'s 8
+// fallback-ladder rungs are generated too (from `CURSOR_LADDERS`, below);
+// its 2 match-highlight scopes and every other category (Virtual,
+// Diagnostic, syntax/markup, diff) are still kept in sync by hand: nothing
+// checks them against the Rust sources. Syntax/markup are tree-sitter
+// capture names HUME has no fixed enum for — runtime/themes/sand.toml is
+// the de-facto catalog for those.
+import { CURSOR_LADDERS, UI_SCOPES } from "./lib/vocabulary.generated.js";
+
+// The 8 fallback-ladder scopes come from CURSOR_LADDERS (generated from
+// cursor_ladder_ids/CURSOR_MODES in hume-engine/src/theme/mod.rs) rather
+// than a second hand-typed list: index 1 of any mode's secondary/primary
+// array is that ladder's own common root ("ui.cursor"/"ui.cursor.primary"),
+// index 0 is the mode-specific rung — cursor_ladder_ids' own stable return
+// shape. ui.cursor.match/ui.cursor.match.search aren't ladder rungs (a
+// separate bracket/search-match highlight, resolved directly in
+// hume-editor/src/editor/decoration_providers.rs) and stay hand-typed.
+const CURSOR_CHAINS = ["normal", "insert", "select"];
 
 export const SCOPES = [
   // `ui.cursorline` is threaded back in immediately before
@@ -16,9 +28,11 @@ export const SCOPES = [
   // deliberately leaves it out of `UI_SCOPES` (see that module's own doc).
   ["UI", UI_SCOPES.flatMap(id => id === "ui.cursorline.primary" ? ["ui.cursorline", id] : [id])],
   ["Cursor", [
-    "ui.cursor", "ui.cursor.normal", "ui.cursor.insert", "ui.cursor.select",
-    "ui.cursor.primary", "ui.cursor.primary.normal", "ui.cursor.primary.insert",
-    "ui.cursor.primary.select", "ui.cursor.match", "ui.cursor.match.search",
+    CURSOR_LADDERS.normal.secondary[1],
+    ...CURSOR_CHAINS.map(c => CURSOR_LADDERS[c].secondary[0]),
+    CURSOR_LADDERS.normal.primary[1],
+    ...CURSOR_CHAINS.map(c => CURSOR_LADDERS[c].primary[0]),
+    "ui.cursor.match", "ui.cursor.match.search",
   ]],
   ["Keywords", [
     "keyword", "keyword.control", "keyword.control.conditional",
