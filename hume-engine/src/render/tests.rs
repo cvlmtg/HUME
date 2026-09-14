@@ -94,11 +94,8 @@ fn renders_simple_text() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
-        "hi",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -162,11 +159,8 @@ fn grapheme_byte_range_past_line_str_asserts() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
-        "hi",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -266,11 +260,8 @@ fn do_compose_display_line(
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        display_line,
-        graphemes,
+        &crate::test_support::render_display_line(display_line, graphemes, line_str, virtual_texts),
         styles,
-        line_str,
-        virtual_texts,
         0,
         &lane_widths,
         &ctx,
@@ -635,11 +626,8 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "        foo", ""),
         &styles,
-        "        foo",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -875,11 +863,8 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
-        "X",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -952,11 +937,8 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
-        "X",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -1085,11 +1067,8 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
-        "X",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -1193,11 +1172,8 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
-        "X",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -1308,11 +1284,8 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         };
         let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
         compose_display_line(
-            &dls[0],
-            &graphemes,
+            &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
             &styles,
-            "X",
-            "",
             0,
             &lane_widths,
             &ctx,
@@ -1424,11 +1397,8 @@ fn gutter_column_reads_rope_via_ctx() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
-        "X",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -1540,11 +1510,8 @@ fn compose_display_line_dims_cells_inline() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
-        "x",
-        "",
         0,
         &lane_widths,
         &ctx,
@@ -1599,11 +1566,8 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
-        "x",
-        "",
         0,
         &lane_widths,
         &ctx,

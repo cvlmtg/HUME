@@ -171,11 +171,8 @@ pub(crate) fn render_pane(
                     .base_scope
                     .and_then(|scope| compose_ctx.theme.resolve(scope).bg);
                 render::compose_display_line(
-                    rendered.display_line,
-                    rendered.graphemes,
+                    &rendered,
                     &style.styles,
-                    "",
-                    rendered.virtual_texts,
                     screen_row,
                     lane_widths,
                     &compose_ctx,
@@ -209,11 +206,8 @@ pub(crate) fn render_pane(
                     .flatten()
                     .or_else(|| line.tint.and_then(|scope| pane_ctx.theme.resolve(scope).bg));
                 render::compose_display_line(
-                    rendered.display_line,
-                    rendered.graphemes,
+                    &rendered,
                     &style.styles,
-                    rendered.line_text,
-                    rendered.virtual_texts,
                     screen_row,
                     lane_widths,
                     &compose_ctx,

@@ -8,13 +8,12 @@ use hume_grid::{Rect, Rgb};
 // keeps working unchanged.
 pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
+use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
 use crate::pane::ViewportState;
 use crate::providers::{GutterColumn, GutterCtx, ProviderId};
 use crate::theme::Theme;
-use crate::types::{
-    CellContent, DisplayLine, DisplayLineKind, EditorMode, Grapheme, ResolvedStyle, ScopeId,
-};
+use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
 
 // ---------------------------------------------------------------------------
 // Stage 4: compose
@@ -212,28 +211,17 @@ fn compose_gutter(
 
 /// Render a single display line at `screen_row` into the frame grid.
 ///
-/// `line_str` is the pre-materialised text of the buffer line that owns
-/// this display line (used to resolve `CellContent::Grapheme` byte
-/// ranges). Pass `""` for virtual/filler display lines that have no
-/// backing buffer line.
-///
-/// `virtual_texts` is the per-frame arena backing this display line's
-/// `CellContent::Whitespace`/`Placeholder`/`Virtual` ranges
-/// (`LineFormat::virtual_texts` for a content display line, `virtual_line.texts`
-/// for a provider's virtual display line) — same lifetime/borrow rationale as
-/// `line_str`.
+/// `rendered` bundles the display line and its graphemes with the text they
+/// index into — `line_text`/`virtual_texts`, see [`RenderDisplayLine`]'s own
+/// field docs for what each covers and why they're kept apart.
 ///
 /// `lane_widths` must already be populated by the caller (one entry per gutter
 /// column). Passed separately from `compose_ctx` because in the fused pipeline it lives
 /// in `FrameScratch`, which cannot be bundled into `ComposeCtx` without
 /// creating a conflicting borrow.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn compose_display_line(
-    display_line: &DisplayLine,
-    graphemes: &[Grapheme],
+    rendered: &RenderDisplayLine<'_>,
     styles: &[ResolvedStyle],
-    line_str: &str,
-    virtual_texts: &str,
     screen_row: u16,
     lane_widths: &[u16],
     compose_ctx: &ComposeCtx,
@@ -244,6 +232,13 @@ pub(crate) fn compose_display_line(
     // `None` → clear to terminal default (normal rows).
     row_bg: Option<Rgb>,
 ) {
+    let RenderDisplayLine {
+        display_line,
+        graphemes,
+        line_text,
+        virtual_texts,
+        ..
+    } = *rendered;
     let y = compose_ctx.pane_rect.y + screen_row;
     let right_edge = compose_ctx.pane_rect.right();
 
@@ -334,18 +329,18 @@ pub(crate) fn compose_display_line(
             CellContent::Grapheme => {
                 // `format.rs` cuts every `byte_range` out of this same line with
                 // `grapheme_indices`, so a range that won't slice means the formatted
-                // line and `line_str` have desynced — a `PaneLineStore` entry walked
-                // against another line's text. `.get()` rather than `&line_str[..]`
+                // line and `line_text` have desynced — a `PaneLineStore` entry walked
+                // against another line's text. `.get()` rather than `&line_text[..]`
                 // because the bounds pair alone says nothing about char boundaries: a
                 // desynced range can still land mid-cluster and panic.
-                let Some(text) = line_str.get(g.byte_range.as_byte_range()) else {
+                let Some(text) = line_text.get(g.byte_range.as_byte_range()) else {
                     debug_assert!(
                         false,
                         "grapheme byte range {}..{} does not slice the {}-byte line — \
                          formatted line and line text have desynced",
                         g.byte_range.start.index(),
                         g.byte_range.end.index(),
-                        line_str.len()
+                        line_text.len()
                     );
                     // Release: leave the cell as `fill_row_bg` painted it. One blank
                     // cell beats taking the editor down over a frame that is already

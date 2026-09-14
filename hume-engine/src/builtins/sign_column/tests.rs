@@ -226,11 +226,8 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
-        "x",
-        "",
         0,
         &lane_widths,
         &compose_ctx,
@@ -319,11 +316,8 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
-        "x",
-        "",
         0,
         &lane_widths,
         &compose_ctx,
@@ -549,11 +543,8 @@ fn multi_slot_column_renders_through_compose_gutter() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &dls[0],
-        &graphemes,
+        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
-        "x",
-        "",
         0,
         &lane_widths,
         &compose_ctx,
