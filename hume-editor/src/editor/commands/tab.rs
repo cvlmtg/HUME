@@ -96,6 +96,18 @@ pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, 
 
 // ── Mappable commands ───────────────────────────────────────────────────────
 
+/// `tab-new` — the mappable sibling of `:tabnew` with no path argument, for
+/// `bind-key!`/`call!` callers that have no typed-command dispatch path.
+pub(crate) fn cmd_tab_new(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    open_tab(state, view, super::focused_buffer_id(state, view));
+    Ok(())
+}
+
 /// `goto-next-tab` — switch to the next tab in display order.
 pub(crate) fn cmd_goto_next_tab(
     state: &mut EditorState,

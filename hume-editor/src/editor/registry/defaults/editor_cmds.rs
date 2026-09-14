@@ -456,6 +456,12 @@ impl CommandRegistry {
             cmd_goto_prev_tab,
         )
         .reg(self);
+        ecmd(
+            "tab-new",
+            "Open a fresh pane viewing the focused buffer in a new tab.",
+            cmd_tab_new,
+        )
+        .reg(self);
 
         // ── Editor commands — pane focus stubs ────────────────────────────────
         ecmd(

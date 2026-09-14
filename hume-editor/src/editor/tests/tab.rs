@@ -52,6 +52,42 @@ fn tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane() {
     );
 }
 
+/// `tab-new` — the mappable sibling of `:tabnew` with no path argument, for
+/// `bind-key!`/`call!` callers that have no typed-command dispatch path.
+/// Same assertions as `tabnew_opens_a_fresh_pane_in_a_new_tab_and_focuses_it`
+/// and `tabnew_with_no_arg_views_the_same_buffer_as_the_source_pane`, since
+/// both share the same `open_tab` core.
+#[test]
+fn tab_new_mappable_command_opens_a_fresh_tab_viewing_the_focused_buffer() {
+    use hume_scripting::host::CommandHost;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let pid_a = ed.state.focus.id();
+    let tab_a = ed.state.tabs.current();
+    let bid_a = ed.focused_buffer_id();
+
+    live_host!(ed)
+        .run_command_sync("tab-new", None, false, None)
+        .expect("tab-new must not error");
+
+    assert_eq!(ed.state.tabs.len(), 2, "tab-new must add a tab");
+    assert_ne!(
+        ed.state.tabs.current(),
+        tab_a,
+        "the new tab becomes current"
+    );
+    assert_ne!(
+        ed.state.focus.id(),
+        pid_a,
+        "focus moves to the new tab's own pane"
+    );
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "the new tab views the same buffer as the source pane"
+    );
+}
+
 #[test]
 fn tabclose_is_refused_on_the_last_tab() {
     let mut ed = editor_from("-[h]>ello\n");
