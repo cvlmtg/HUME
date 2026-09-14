@@ -1,4 +1,5 @@
-//! `BufferHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s buffer/pane enumeration, reads, lifecycle, and
+//! viewport geometry.
 
 use std::path::{Path, PathBuf};
 

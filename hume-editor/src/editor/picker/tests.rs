@@ -1,7 +1,5 @@
-//! [`PickerSession`](super::PickerSession) tests, moved out of `picker.rs`
-//! once it grew past the point of fitting the file's own shape on one
-//! screen — matches the convention every other large module in `editor/`
-//! already follows for its own `mod tests`.
+//! [`PickerSession`](super::PickerSession) tests — matches the convention
+//! every other large module in `editor/` follows for its own `mod tests`.
 
 use super::*;
 

@@ -35,17 +35,14 @@ disallowed-methods = [
     # `line_to_char()`/`char_to_line()` call from reaching a bare `usize`, so
     # the ban lives here instead; `hume-rope/src/lines.rs` carries a
     # file-level `#[allow(clippy::disallowed_methods)]` for its own sanctioned
-    # wrappers (`ropey_line_count`, `line_start_char`, `char_to_ropey_line`,
-    # and every other function in that file resolving a line's start the same
-    # way) — its child module `hume-rope/src/lines/tests.rs` inherits the
-    # same allow for its own independent oracle (pinning ropey's own methods,
-    # not our wrappers), needing no `#[allow]` of its own. `hume-rope/src/
-    # grapheme.rs`'s three line-relative column resolvers each carry their
-    # own per-function `#[allow]` instead of a file-level one: they narrow an
-    # already-typed `ContentLine` back to `RopeSlice::line_to_char`'s raw
-    # index, which has no `hume-rope::lines` wrapper to route through, and a
-    # file-level allow would also silently permit a future raw `Rope::` call
-    # landing in the same file.
+    # wrappers (`ropey_line_count`, `line_start_char`, `slice_line_start_char`,
+    # `char_to_ropey_line`, and every other function in that file resolving a
+    # line's start the same way) — its child module `hume-rope/src/lines/tests.rs`
+    # inherits the same allow for its own independent oracle (pinning ropey's
+    # own methods, not our wrappers), needing no `#[allow]` of its own.
+    # `hume-rope/src/grapheme.rs`'s line-relative column resolvers route
+    # through `slice_line_start_char` rather than calling `RopeSlice::line_to_char`
+    # directly, so that file carries no `#[allow]` of its own either.
     "ropey::Rope::len_lines",
     "ropey::RopeSlice::len_lines",
     "ropey::Rope::line_to_char",

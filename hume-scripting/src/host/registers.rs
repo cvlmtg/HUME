@@ -1,5 +1,4 @@
-//! Register content reads/writes — moved out of `host.rs`'s
-//! per-capability split.
+//! Register content reads/writes.
 
 /// Register content reads/writes — accessed through [`EditorHost::registers`](super::EditorHost::registers).
 ///

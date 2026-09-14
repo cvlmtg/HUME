@@ -142,13 +142,9 @@ impl Editor {
                 if hume_rope::line::RopeyLine::from(start_line) >= visible.end {
                     break;
                 }
-                let end_char_excl = span.to_exclusive().end.min(text.end());
-                push_match_highlight_lines(
-                    text,
-                    ExclusiveRange::new(span.start, end_char_excl),
-                    search_scope,
-                    &mut spans,
-                );
+                let mut range = span.to_exclusive();
+                range.end = range.end.min(text.end());
+                push_match_highlight_lines(text, range, search_scope, &mut spans);
             }
             self.state.panes.render[pid].set_search(spans);
         }

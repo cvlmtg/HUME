@@ -1,5 +1,4 @@
-//! Grammar attachment and trigger-char registration — moved out of
-//! `host.rs`'s per-capability split.
+//! Grammar attachment and trigger-char registration.
 
 use crate::types::GrammarReg;
 

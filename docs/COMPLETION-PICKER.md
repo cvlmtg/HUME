@@ -50,7 +50,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 **Steel-facing surface** (this is what makes it already-mostly-scriptable):
 
-- Builtins in `hume-scripting/src/builtins/completion.rs`, registered in `builtins/mod.rs`, host-trait methods in `hume-scripting/src/host.rs`, implementations in `hume-editor/src/editor/host_impl.rs`:
+- Builtins in `hume-scripting/src/builtins/completion.rs`, registered in `builtins/mod.rs`, host-trait methods in `hume-scripting/src/host/completion.rs`, implementations in `hume-editor/src/editor/host_impl/completion.rs`:
   - `(completion-begin! bid items #:incomplete f)` — `items` is a list of completion-item hashmaps (LSP `CompletionItem` JSON shape). Replaces any open session.
   - `(completion-update-filter! text)`, `(completion-top n)`, `(completion-accept! idx)` (idx into the *ranked* order), `(completion-dismiss!)`.
   - `(register-trigger-chars! source language chars)` — writes `EditorState.trigger_chars: FxHashMap<(String, String), Vec<char>>`, keyed `(source, language)` so a second language attaching under the same source never clobbers the first's chars. **Already multi-source by design.**
@@ -92,7 +92,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 - **Async Rust→Steel callbacks**: `lsp-request` queues an `Effect::LspRequest(PendingLspRequest)`; `apply_script_effects` (`scripting_setup.rs`) applies queued effects in emission order, and `send_one_lsp_request` (`hume-editor/src/editor/lsp/bridge.rs`) registers a boxed callback keyed `(ServerId, RequestId)`; reader threads → mpsc → `drain_lsp` each frame → `dispatch_completed` → `Editor::queue_steel_call(callback, args)`. Staleness: response dropped if the buffer's `text_gen` moved, unless `#:allow-stale`. **This is the template for any "async work finishes → call Steel closure" need.**
 - **Timers**: `(after ms thunk)` / `(cancel-timer! id)` builtins; `(debounce ms proc)` is pure Scheme over them (`builtins/bootstrap.scm`).
-- **Generic widgets** (all in `host_impl.rs` + `hume-ui/src/popup.rs` + `hume-ui/src/drawer.rs`):
+- **Generic widgets** (all in `host_impl/ui.rs` + `hume-ui/src/popup.rs` + `hume-ui/src/drawer.rs`):
   - `(show-popup! text #:anchor 'cursor)` / `(close-popup!)` — `PopupModel`, hover-style text panel.
   - `(show-menu! items on-select)` / `(close-menu!)` — `MenuModel { items, selected, callback }`; callback fires exactly once (selection or dismissal); **blocked in Insert mode** (`show_menu` returns Err — deliberate, the completion menu owns that slot). Keys intercepted by `handle_menu_key` (`mappings/mod.rs`) ahead of keymap dispatch.
   - `(show-drawer-list! items on-select)` / `(close-drawer!)` — `DrawerModel { items, selected, scroll, callback }`, bottom chrome band, stays open across Enter (callback may fire repeatedly, `#f` on close), `handle_drawer_key`. Rows are pre-formatted display strings; "Rust never interprets row content."

@@ -1,5 +1,5 @@
 //! Command registry queries, synchronous native dispatch, and Steel
-//! command registration — moved out of `host.rs`'s per-capability split.
+//! command registration.
 
 use crate::attribution::PluginId;
 use crate::types::{SteelCmdDef, SteelTypedCmdDef};

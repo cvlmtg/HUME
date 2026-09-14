@@ -215,9 +215,9 @@ fn delete_sel_region(
             let prev_line = text.char_to_line(del_start);
             let char_col = hume_editing::lines::char_col_in_line(text, prev_line, del_start);
             b.retain(del_start.chars_since(b.old_pos()));
-            // Saturating, not `shift`: earlier lines' edits can shorten the
+            // Saturating, not `retreat`: earlier lines' edits can shorten the
             // content above, landing `new_pos()` below `char_col`.
-            let cursor_new = b.new_pos().shift_saturating(-(char_col.index() as isize));
+            let cursor_new = b.new_pos().retreat_saturating(char_col.index());
             // Delete from the preceding '\n' through the last content char,
             // keeping the structural trailing '\n'. `last_char()` is exactly
             // `last_content_char() + 1` — the buffer's own exclusive content

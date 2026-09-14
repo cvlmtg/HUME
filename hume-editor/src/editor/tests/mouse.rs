@@ -361,8 +361,7 @@ fn click_on_the_tabline_s_blank_tail_is_a_noop() {
 /// branches — the statusline unconditionally owns that one row (`render`'s
 /// own `sl_y = area.bottom() - 1`), so the tab bar must yield it rather than
 /// have both chrome rows paint on top of each other, and a click there must
-/// hit the statusline, not switch tabs (code review fix #6, commit range
-/// 82ce1d7c..10a81a18).
+/// hit the statusline, not switch tabs.
 #[test]
 fn a_one_row_terminal_leaves_the_tabbar_no_room_and_a_click_there_does_not_switch_tabs() {
     use super::render_snapshot::render_to_styled_string;

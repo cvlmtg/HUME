@@ -1,4 +1,4 @@
-//! BufferText diffing — moved out of `host.rs`'s per-capability split.
+//! BufferText diffing.
 
 use hume_engine::pipeline::BufferId;
 

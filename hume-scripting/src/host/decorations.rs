@@ -1,6 +1,5 @@
 //! Inlay hints, signs, virtual lines, extra highlights, EOL text,
-//! statusline text, and the diagnostic pull/count reads — moved out of
-//! `host.rs`'s per-capability split.
+//! statusline text, and the diagnostic pull/count reads.
 
 use hume_engine::pipeline::BufferId;
 

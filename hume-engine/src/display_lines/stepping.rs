@@ -1,6 +1,6 @@
-//! Display-line stepping (`next`/`prev`/`advance`/`distance`/`fits_in`) —
-//! moved out of `display_lines.rs`'s per-role split. Reaches the map only
-//! through its public `block`/`last_line`/`clamp` accessors.
+//! Display-line stepping (`next`/`prev`/`advance`/`distance`/`fits_in`).
+//! Reaches the map only through its public `block`/`last_line`/`clamp`
+//! accessors.
 
 use super::DisplayLineMap;
 use super::pos::DisplayLinePos;

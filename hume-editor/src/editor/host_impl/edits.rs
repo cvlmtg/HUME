@@ -1,4 +1,5 @@
-//! `EditHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s LSP-driven text edits, workspace edits, and
+//! go-to-location.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::column::CharCol;

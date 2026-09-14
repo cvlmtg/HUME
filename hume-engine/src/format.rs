@@ -9,11 +9,11 @@ use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::InlineInsert;
 use crate::types::{CellContent, DisplayLine, DisplayLineKind, Grapheme};
 
-mod buffers;
 mod cells;
+mod scratch;
 mod virtual_cells;
 
-pub use buffers::{FormatBound, LineFormat, VirtualLineScratch};
+pub use scratch::{FormatBound, LineFormat, VirtualLineScratch};
 pub(crate) use virtual_cells::{VirtualRun, push_arena_text, push_virtual_cells};
 
 use cells::grapheme_display;
@@ -340,7 +340,7 @@ pub fn format_buffer_line(
         // (inside the insert-injection loop) could leave a run of `Virtual`
         // cells as the last thing on the display line, and `NearestContent` excludes
         // those, so the real grapheme they decorate would go missing.
-        if bound.reached(&byte_range, start_display_col) {
+        if bound.reached(byte_range, start_display_col) {
             clipped = true;
             break 'lines;
         }
@@ -351,6 +351,12 @@ pub fn format_buffer_line(
     // three sit at or past the true end of line, which is off-screen by
     // definition once the window's right edge has been passed.
     if !clipped {
+        // Both the EOL sentinel and the newline indicator below sit at the
+        // line's own end byte — an empty span, since neither is real line
+        // content.
+        let eol_bytes =
+            ExclusiveRange::new(ByteCol::new(line_str.len()), ByteCol::new(line_str.len()));
+
         // Emit an Empty grapheme at the char offset of the trailing `\n` whenever
         // the line has a trailing newline. This gives the cursor/selection-head a
         // cell to land on when positioned on the newline character (e.g. after `x`
@@ -378,10 +384,7 @@ pub fn format_buffer_line(
                 graphemes_out,
             );
             graphemes_out.push(Grapheme {
-                byte_range: ExclusiveRange::new(
-                    ByteCol::new(line_str.len()),
-                    ByteCol::new(line_str.len()),
-                ),
+                byte_range: eol_bytes,
                 char_offset: char_pos, // char offset of the `\n`
                 display_col: wrap.current_display_col,
                 width: 1,
@@ -415,10 +418,7 @@ pub fn format_buffer_line(
         if had_newline && whitespace.newline {
             let (start, len) = push_arena_text(virtual_texts_out, whitespace.newline_char);
             graphemes_out.push(Grapheme {
-                byte_range: ExclusiveRange::new(
-                    ByteCol::new(line_str.len()),
-                    ByteCol::new(line_str.len()),
-                ),
+                byte_range: eol_bytes,
                 // Same offset as the EOL sentinel (the `\n` position). Style-stage
                 // lookups resolve to the *first* grapheme at a given offset, which
                 // is the EOL sentinel pushed earlier in this function — the

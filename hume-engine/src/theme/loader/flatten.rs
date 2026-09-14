@@ -1,5 +1,4 @@
-//! Real-TOML-section-header flattening (`[ui.cursor]` -> `"ui.cursor"`) —
-//! moved out of `loader.rs`'s per-role split.
+//! Real-TOML-section-header flattening (`[ui.cursor]` -> `"ui.cursor"`).
 
 use crate::theme::error::ThemeError;
 

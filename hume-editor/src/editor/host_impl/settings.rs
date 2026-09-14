@@ -1,4 +1,5 @@
-//! `SettingsHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s global settings, statusline config, and the Steel
+//! eval budget.
 
 use hume_engine::pipeline::BufferId;
 

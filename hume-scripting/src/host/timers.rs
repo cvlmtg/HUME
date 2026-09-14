@@ -1,4 +1,4 @@
-//! Timer scheduling — moved out of `host.rs`'s per-capability split.
+//! Timer scheduling.
 
 /// Timer scheduling — accessed through [`EditorHost::timers`](super::EditorHost::timers).
 pub trait TimerHost {

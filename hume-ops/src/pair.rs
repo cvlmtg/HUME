@@ -8,7 +8,7 @@ use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::lines::next_line_start;
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 // ---------------------------------------------------------------------------
 // Bracket pairs
@@ -333,18 +333,18 @@ fn nearest_bracket(text: &BufferText, sel: Selection) -> Option<(CharOffset, cha
     };
     let head = sel.head();
     let span = if text.char_to_line(sel.start()) == text.char_to_line(sel.end()) {
-        sel.start().index()..sel.end_exclusive(text).index()
+        ExclusiveRange::new(sel.start(), sel.end_exclusive(text))
     } else {
-        head.index()..next_grapheme_boundary(text, head).index()
+        ExclusiveRange::new(head, next_grapheme_boundary(text, head))
     };
-    if head.index() == span.start {
-        text.chars_at(CharOffset::new(span.start))
-            .take(span.len())
+    if head == span.start {
+        text.chars_at(span.start)
+            .take(span.end.chars_since(span.start))
             .find_map(classify)
     } else {
-        let mut cursor = text.chars_at(CharOffset::new(span.end));
+        let mut cursor = text.chars_at(span.end);
         while let Some(hit) = cursor.prev() {
-            if hit.0.index() < span.start {
+            if hit.0 < span.start {
                 return None;
             }
             if let Some(found) = classify(hit) {

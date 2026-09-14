@@ -255,11 +255,6 @@ pub(crate) fn grapheme_count(
 /// This is a logical position (grapheme index), not a display column: wide
 /// characters count as one, not two. The value matches how many times the
 /// user pressed → to reach the cursor from the start of the line.
-// `line_idx.index()` narrows an already-typed `ContentLine` back to the raw
-// index `RopeSlice::line_to_char` wants — `hume-rope::lines` has no
-// `RopeSlice`-taking wrapper for this to route through instead, unlike the
-// `Rope`-taking line functions clippy.toml's ban otherwise closes off.
-#[allow(clippy::disallowed_methods)]
 pub fn grapheme_col_in_line(
     slice: RopeSlice<'_>,
     line_idx: ContentLine,
@@ -267,7 +262,7 @@ pub fn grapheme_col_in_line(
 ) -> GraphemeCol {
     GraphemeCol::new(grapheme_count(
         slice,
-        CharOffset::new(slice.line_to_char(line_idx.index())),
+        crate::lines::slice_line_start_char(slice, line_idx.into()),
         char_pos,
     ))
 }
@@ -305,16 +300,13 @@ fn cluster_str(slice: RopeSlice<'_>, start: CharOffset, end: CharOffset) -> Cow<
 /// dedent-on-Backspace (compute the previous tab stop). Vertical motion uses
 /// `hume_engine::display_lines::DisplayLineMap` instead, which measures through the
 /// decoration layer this rope-only function can't see.
-// See `grapheme_col_in_line`'s comment above for why this needs its own
-// `#[allow]` rather than a file-level one.
-#[allow(clippy::disallowed_methods)]
 pub fn display_col_in_line(
     slice: RopeSlice<'_>,
     line_idx: ContentLine,
     char_pos: CharOffset,
     tab_width: u8,
 ) -> BufferLineCol {
-    let line_start = CharOffset::new(slice.line_to_char(line_idx.index()));
+    let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     let mut display_col = BufferLineCol::new(0);
     let mut pos = line_start;
     while pos < char_pos {
@@ -354,16 +346,13 @@ pub fn display_col_in_line(
 /// clamped back onto the last real character instead — vertical motion's
 /// case — wants `hume_engine::display_lines::DisplayLineMap::char_at_buffer_line_col`, which
 /// also sees the decoration layer this rope-only function can't.
-// See `grapheme_col_in_line`'s comment above for why this needs its own
-// `#[allow]` rather than a file-level one.
-#[allow(clippy::disallowed_methods)]
 pub fn char_pos_at_display_col(
     slice: RopeSlice<'_>,
     line_idx: ContentLine,
     target_display_col: BufferLineCol,
     tab_width: u8,
 ) -> CharOffset {
-    let line_start = CharOffset::new(slice.line_to_char(line_idx.index()));
+    let line_start = crate::lines::slice_line_start_char(slice, line_idx.into());
     if target_display_col == BufferLineCol::new(0) {
         return line_start;
     }

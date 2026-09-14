@@ -1,4 +1,5 @@
-//! `CommandHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s command registry queries, synchronous native
+//! dispatch, and Steel command registration.
 
 use crate::editor::registry::{MappableCommand, TypedBody, TypedCommand};
 

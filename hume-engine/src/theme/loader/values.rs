@@ -1,6 +1,5 @@
-//! Colour and modifier/underline name resolution — moved out of
-//! `loader.rs`'s per-role split. Pure `&str -> value` maps, no outward
-//! dependencies beyond `ThemeError`.
+//! Colour and modifier/underline name resolution. Pure `&str -> value`
+//! maps, no outward dependencies beyond `ThemeError`.
 
 use hume_grid::Rgb;
 use rustc_hash::FxHashMap;

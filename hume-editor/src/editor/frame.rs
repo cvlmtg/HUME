@@ -245,10 +245,9 @@ impl Editor {
     /// settle-drained `close-drawer!`) is re-partitioned into `viewport`
     /// before this same frame renders, instead of lagging a frame behind.
     pub(super) fn sync_viewport_dims(&mut self, terminal_width: u16, terminal_height: u16) {
-        // Shared rect list every per-pane step below drives off — partitioned
-        // through the same `EngineView::pane_area` that `render` uses, so
-        // viewport dims and drawn rects never disagree even when a tab bar is
-        // present.
+        // Partitioned through the same `EngineView::pane_area` that `render`
+        // uses, so viewport dims and drawn rects never disagree even when a
+        // tab bar is present.
         let terminal_area = Rect {
             x: 0,
             y: 0,
@@ -257,24 +256,17 @@ impl Editor {
         };
         let pane_area = self.view.pane_area(terminal_area);
         let reserve_seam = self.state.settings.pane_dividers;
-        let mut rects = Vec::new();
-        self.view
-            .layout()
-            .collect_rects_into(pane_area, reserve_seam, &mut rects);
 
-        for &(pid, rect) in &rects {
-            let vp = &mut self.view.panes[pid].viewport;
-            vp.width = rect.width;
-            vp.height = rect.height;
-        }
-
-        // Stored so pane-focus/split commands, which have no terminal handle
-        // between frames, can recompute geometry from these via
-        // `EngineView::pane_rects`/`pane_rect` rather than trusting a stored
-        // rect list.
+        // Stored before the write below runs — `resync_viewport_dims` reads
+        // these three fields to do the actual per-pane partition and write,
+        // the same partition `EngineView::pane_rects`/`pane_rect` recompute
+        // from for pane-focus/split commands with no terminal handle between
+        // frames. One partition, one write loop, shared with
+        // `resync_viewport_dims`'s other caller (`tab::install_live`).
         self.view.last_pane_area = pane_area;
         self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
+        self.view.resync_viewport_dims();
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:

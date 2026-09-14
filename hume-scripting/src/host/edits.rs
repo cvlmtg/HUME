@@ -1,5 +1,4 @@
-//! LSP-driven text edits, workspace edits, and go-to-location — moved out
-//! of `host.rs`'s per-capability split.
+//! LSP-driven text edits, workspace edits, and go-to-location.
 
 use hume_engine::pipeline::BufferId;
 

@@ -1,5 +1,4 @@
-//! Global settings, statusline config, and the Steel eval budget — moved
-//! out of `host.rs`'s per-capability split.
+//! Global settings, statusline config, and the Steel eval budget.
 
 use hume_engine::pipeline::BufferId;
 

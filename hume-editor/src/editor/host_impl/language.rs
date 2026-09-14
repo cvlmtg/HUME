@@ -1,4 +1,4 @@
-//! `LanguageHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s grammar attachment and trigger-char registration.
 
 use hume_scripting::GrammarReg;
 

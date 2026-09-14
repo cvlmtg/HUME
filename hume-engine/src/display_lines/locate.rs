@@ -1,9 +1,7 @@
-//! Char offset <-> display line conversions — moved out of
-//! `display_lines.rs`'s per-role split. The biggest cluster: internally
-//! self-contained past the map's own private fields and its
+//! Char offset <-> display line conversions. Internally self-contained past
+//! the map's own private fields and its
 //! `content_line_of`/`ensure_formatted`/`format_at` (all defined in the
-//! parent, reachable here as a descendant of `display_lines` the same way
-//! they always were).
+//! parent, reachable here as a descendant of `display_lines`).
 
 use hume_rope::column::{BufferLineCol, ByteCol, DisplayLineCol};
 use hume_rope::line::ContentLine;

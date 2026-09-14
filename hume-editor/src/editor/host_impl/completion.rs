@@ -1,4 +1,4 @@
-//! `CompletionHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s completion session orchestration.
 
 use hume_engine::pipeline::BufferId;
 

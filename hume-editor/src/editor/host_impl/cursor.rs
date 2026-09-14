@@ -1,4 +1,4 @@
-//! `CursorHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s live cursor/selection reads.
 
 use hume_engine::pipeline::BufferId;
 use hume_rope::offset::CharOffset;

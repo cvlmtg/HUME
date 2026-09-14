@@ -1,4 +1,5 @@
-//! `DecorationHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s inlay hints, signs, virtual lines, extra highlights,
+//! EOL text, statusline text, and the diagnostic pull/count reads.
 //!
 //! The five position-validation free functions below are `pub(super)` where
 //! `host_impl/tests.rs` (a sibling of this module, not a descendant) needs

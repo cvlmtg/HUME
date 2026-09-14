@@ -1,4 +1,5 @@
-//! `OutputHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s terminal-safety state around `#:inline-output`
+//! commands.
 
 use crate::editor::registry::MappableCommand;
 

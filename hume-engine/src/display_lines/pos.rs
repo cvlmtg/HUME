@@ -1,5 +1,5 @@
-//! Display-line address types — moved out of `display_lines.rs`'s
-//! per-role split. Zero references to `DisplayLineMap` internals.
+//! Display-line address types. Zero references to `DisplayLineMap`
+//! internals.
 
 use hume_rope::line::ContentLine;
 

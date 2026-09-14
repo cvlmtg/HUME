@@ -129,7 +129,7 @@ pub fn find_matches_in_range(
 ) -> Vec<InclusiveRange<CharOffset>> {
     let start_byte = text.char_to_byte(range.start);
     // range.end is inclusive — we need the byte after the last char in range.
-    let end_byte = text.char_to_byte(range.to_exclusive().end);
+    let end_byte = text.char_to_byte(range.end.shift(1));
 
     let cursor = RopeyCursor::new(text.full_slice());
     let mut input = Input::new(cursor);

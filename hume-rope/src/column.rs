@@ -34,10 +34,10 @@
 //! advances one grapheme's width at a time, and tab-stop math divides and
 //! multiplies by the tab width. The two display-column types keep a private
 //! field like every domain type in this crate, but expose named arithmetic
-//! (`advance`/`cells_since`/`cells_since_saturating` shared by both;
-//! `abs_diff` on [`DisplayLineCol`] alone, `shift` on [`BufferLineCol`]
-//! alone — each of those two lives on the one origin type its callers
-//! actually need) instead of forbidding it — the compile-time win here is
+//! (`advance`/`cells_since` shared by both; `abs_diff`/`cells_since_saturating`
+//! on [`DisplayLineCol`] alone, `shift` on [`BufferLineCol`] alone — each of
+//! those three lives on the one origin type its callers actually need)
+//! instead of forbidding it — the compile-time win here is
 //! keeping `DisplayLineCol` and `BufferLineCol` from being silently interchanged,
 //! not banning `+`/`-` on a column itself. [`CharCol`]/[`GraphemeCol`] see
 //! no such arithmetic in the codebase today and stay as strict as
@@ -111,23 +111,6 @@ macro_rules! display_col_methods {
                 );
                 self.0.saturating_sub(earlier.0)
             }
-
-            /// [`Self::cells_since`] without the ordering precondition — 0
-            /// when `earlier` is actually later, rather than debug-panicking.
-            /// Its one caller that can't prove `earlier <= self`:
-            /// `hume-editor`'s `cursor::place` positions a completion popup
-            /// at an LSP completion session's token-start anchor, which is
-            /// fixed while the live cursor (and the viewport's horizontal
-            /// scroll it drives) keeps moving right — so the anchor can sit
-            /// left of `viewport.horizontal_offset` in a way the live
-            /// cursor, kept on-screen by `ensure_cursor_visible_horizontal`,
-            /// never does. Every other caller of `cells_since` has the
-            /// ordering guarantee and keeps the assert. `BufferLineCol`'s
-            /// copy of this method has no caller today — it exists purely
-            /// because the macro generates it for both types.
-            pub fn cells_since_saturating(self, earlier: Self) -> u32 {
-                self.0.saturating_sub(earlier.0)
-            }
         }
     };
 }
@@ -145,6 +128,20 @@ impl DisplayLineCol {
     /// in the shared macro.
     pub fn abs_diff(self, other: Self) -> u32 {
         self.0.abs_diff(other.0)
+    }
+
+    /// [`Self::cells_since`] without the ordering precondition — 0 when
+    /// `earlier` is actually later, rather than debug-panicking. Its one
+    /// caller that can't prove `earlier <= self`: `hume-editor`'s
+    /// `cursor::place` positions a completion popup at an LSP completion
+    /// session's token-start anchor, which is fixed while the live cursor
+    /// (and the viewport's horizontal scroll it drives) keeps moving right —
+    /// so the anchor can sit left of `viewport.horizontal_offset` in a way
+    /// the live cursor, kept on-screen by `ensure_cursor_visible_horizontal`,
+    /// never does. Display-line-relative only (like `abs_diff` above): its
+    /// one caller works in that domain, and `BufferLineCol` has none.
+    pub fn cells_since_saturating(self, earlier: Self) -> u32 {
+        self.0.saturating_sub(earlier.0)
     }
 }
 
@@ -188,6 +185,14 @@ impl BufferLineCol {
                 .saturating_add(delta as i64)
                 .clamp(0, u32::MAX as i64) as u32,
         )
+    }
+
+    /// `self` moved back by `cells` — the unsigned-length counterpart to
+    /// [`Self::shift`], for the common case of retreating by a `u32` cell
+    /// count rather than a signed delta a caller would otherwise negate by
+    /// hand. Same saturate-at-0 contract as `shift`.
+    pub fn retreat(self, cells: u32) -> Self {
+        self.shift(-(cells as isize))
     }
 }
 
@@ -267,6 +272,18 @@ impl ByteCol {
     /// gaining `cells_since`/`shift`'s full arithmetic surface.
     pub fn advance(self, bytes: usize) -> Self {
         Self(self.0 + bytes)
+    }
+}
+
+impl crate::offset::ExclusiveRange<ByteCol> {
+    /// This range as a `std::ops::Range<usize>` — the shape `str`/`&[u8]`
+    /// slicing (`s.get(range)`) wants. `ExclusiveRange`'s typed fields cost
+    /// two `.index()` calls at a slicing call site otherwise (build the
+    /// `Range` from `self.start.index()..self.end.index()` by hand); this
+    /// names that crossing once instead of repeating it at every byte-range
+    /// slice site in the crate.
+    pub fn as_byte_range(self) -> std::ops::Range<usize> {
+        self.start.index()..self.end.index()
     }
 }
 

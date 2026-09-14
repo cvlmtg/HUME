@@ -1,4 +1,4 @@
-//! `AsyncProcessHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s async subprocess execution (`spawn-async!`/`cancel-async!`).
 
 use std::path::PathBuf;
 

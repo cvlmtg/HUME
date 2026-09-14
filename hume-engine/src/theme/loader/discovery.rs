@@ -1,6 +1,5 @@
-//! Theme-file search-path resolution — moved out of `loader.rs`'s
-//! per-role split. Zero knowledge of TOML or themes: pure filesystem/name
-//! safety.
+//! Theme-file search-path resolution. Zero knowledge of TOML or themes:
+//! pure filesystem/name safety.
 
 use std::path::PathBuf;
 

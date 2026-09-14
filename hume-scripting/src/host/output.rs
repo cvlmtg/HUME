@@ -1,5 +1,4 @@
-//! Terminal-safety state around `#:inline-output` commands — moved out
-//! of `host.rs`'s per-capability split.
+//! Terminal-safety state around `#:inline-output` commands.
 
 /// Terminal-safety state around `#:inline-output` commands — accessed
 /// through [`EditorHost::output`](super::EditorHost::output).

@@ -221,7 +221,7 @@ impl Editor {
     /// fresh change and re-arms this on its own — this guard only skips the
     /// fire for the frames spent hidden, not the one on return.
     pub(super) fn queue_viewport_change(&mut self, pane_id: hume_engine::pipeline::PaneId) {
-        if !self.view.active_pane_ids().contains(&pane_id) {
+        if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
         let Some(pane) = self.view.panes.get(pane_id) else {

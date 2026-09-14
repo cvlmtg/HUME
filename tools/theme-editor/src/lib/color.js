@@ -1,6 +1,7 @@
 // Expand `#rgb` to `#rrggbb`. HUME's loader accepts the shorthand
-// (`parse_hex_color` in hume-engine/src/theme/loader.rs), so a palette entry
-// written that way must be shiftable here rather than silently left alone.
+// (`parse_hex_color` in hume-engine/src/theme/loader/values.rs), so a
+// palette entry written that way must be shiftable here rather than
+// silently left alone.
 // Any other length passes through for the caller's own length check.
 function expandShorthandHex(hex) {
   if (hex.length !== 4) return hex;

@@ -1,7 +1,6 @@
 //! The single emitter behind both kinds of virtual text — inline inserts
-//! and standalone provider virtual lines — moved out of `format.rs`'s
-//! per-role split. Already conceptually one unit before the split; see
-//! [`push_virtual_cells`]'s own doc for why one emitter serves both.
+//! and standalone provider virtual lines. See [`push_virtual_cells`]'s own
+//! doc for why one emitter serves both.
 
 use hume_rope::column::{ByteCol, DisplayLineCol};
 use hume_rope::offset::ExclusiveRange;

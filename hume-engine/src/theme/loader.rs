@@ -11,7 +11,7 @@
 //!   in scope entries just once, from the final merged document
 //! - The sixteen ANSI terminal color names (`red`, `light-gray`, …) as a
 //!   fallback for any color value not found in the palette — see
-//!   `ANSI_COLORS`
+//!   `loader::values::ANSI_COLORS`
 //! - Flat dotted keys: `"keyword.function" = { fg = "red", modifiers = ["bold"] }`
 //! - Real TOML section headers: `[keyword.function]` / `fg = "red"` is
 //!   equivalent to the flat form above — promoted to the same dotted scope

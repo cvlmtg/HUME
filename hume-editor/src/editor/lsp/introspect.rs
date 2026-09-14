@@ -240,10 +240,12 @@ pub(in crate::editor) fn wire_to_char_for_buffer(
     lsp: &LspState,
     id: BufferId,
     pos: hume_rope::position_encoding::WirePos,
-) -> Option<usize> {
+) -> Option<hume_rope::offset::CharOffset> {
     let rope = state.buffers.try_get(id)?.text().rope();
     let encoding = negotiated_encoding(state, lsp, id)?;
-    Some(hume_rope::position_encoding::wire_to_char(rope, pos, encoding).index())
+    Some(hume_rope::position_encoding::wire_to_char(
+        rope, pos, encoding,
+    ))
 }
 
 /// Wire `(line, character)` → char offset, for `lsp-position->offset`.
@@ -261,13 +263,10 @@ pub(in crate::editor) fn wire_point_to_char_for_buffer(
     lsp: &LspState,
     id: BufferId,
     pos: hume_rope::position_encoding::WirePos,
-) -> Option<usize> {
+) -> Option<hume_rope::offset::CharOffset> {
     let offset = wire_to_char_for_buffer(state, lsp, id, pos)?;
     let text = state.buffers.try_get(id)?.text();
-    // Typed comparison, not a raw `offset < len_chars`: `offset` is already a
-    // valid char position (`wire_to_char_for_buffer` proved it), so this is a
-    // trusted re-mint, not a fresh validation.
-    (hume_rope::offset::CharOffset::new(offset) < text.end()).then_some(offset)
+    (offset < text.end()).then_some(offset)
 }
 
 /// `label` sliced by a `ParameterInformation.label` `[start, end)` wire

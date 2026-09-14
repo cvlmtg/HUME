@@ -338,8 +338,7 @@ pub(crate) fn compose_display_line(
                 // against another line's text. `.get()` rather than `&line_str[..]`
                 // because the bounds pair alone says nothing about char boundaries: a
                 // desynced range can still land mid-cluster and panic.
-                let Some(text) = line_str.get(g.byte_range.start.index()..g.byte_range.end.index())
-                else {
+                let Some(text) = line_str.get(g.byte_range.as_byte_range()) else {
                     debug_assert!(
                         false,
                         "grapheme byte range {}..{} does not slice the {}-byte line — \

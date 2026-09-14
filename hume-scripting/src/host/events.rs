@@ -1,5 +1,4 @@
-//! Event-name introspection — moved out of `host.rs`'s per-capability
-//! split.
+//! Event-name introspection.
 
 /// Event-name introspection — accessed through [`EditorHost::events`](super::EditorHost::events).
 ///

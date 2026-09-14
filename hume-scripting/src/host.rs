@@ -1,10 +1,9 @@
 //! The editor interface exposed to scripting builtins, as a capability
 //! directory (`EditorHost`) whose domain methods live one-per-file below,
-//! one module per accessor. Split out of a single 1332-line file once its
-//! shape stopped being visible from the top; each child is private and
-//! re-exported here so every `hume_scripting::host::X` path a caller already
-//! uses keeps resolving unchanged, and no second public path
-//! (`host::ui::UiHost`) is minted alongside it.
+//! one module per accessor. Each child is private and re-exported here so
+//! every `hume_scripting::host::X` path a caller uses keeps resolving
+//! unchanged, and no second public path (`host::ui::UiHost`) is minted
+//! alongside it.
 
 // ── Capability modules ────────────────────────────────────────────────────────
 mod async_process;

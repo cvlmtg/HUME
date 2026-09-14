@@ -1,5 +1,4 @@
-//! Render-stage access (`render_display_line`/`segment_virtual_line`) —
-//! moved out of `display_lines.rs`'s per-role split.
+//! Render-stage access (`render_display_line`/`segment_virtual_line`).
 
 use hume_rope::column::DisplayLineCol;
 

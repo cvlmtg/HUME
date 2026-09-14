@@ -1,5 +1,4 @@
-//! Async subprocess execution (`spawn-async!`/`cancel-async!`) — moved out
-//! of `host.rs`'s per-capability split.
+//! Async subprocess execution (`spawn-async!`/`cancel-async!`).
 
 use std::path::PathBuf;
 

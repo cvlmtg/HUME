@@ -299,14 +299,10 @@ impl Editor {
         // tab is next focused — `queue_viewport_change`'s active-tab guard
         // dropped its `last_viewport_key`, so that pane's first visible
         // frame reads as a change.
-        let panes_on_surviving_buffers: Vec<hume_engine::pipeline::PaneId> = self
-            .view
-            .active_pane_ids()
-            .into_iter()
-            .filter(|&pid| snapshot.survives(self.view.panes[pid].buffer_id, &self.state.buffers))
-            .collect();
-        for pane_id in panes_on_surviving_buffers {
-            self.queue_viewport_change(pane_id);
+        for pane_id in self.view.active_pane_ids() {
+            if snapshot.survives(self.view.panes[pane_id].buffer_id, &self.state.buffers) {
+                self.queue_viewport_change(pane_id);
+            }
         }
 
         // `OnBufferEnter` has no raise site of its own to call here, unlike

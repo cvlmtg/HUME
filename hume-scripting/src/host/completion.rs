@@ -1,5 +1,4 @@
-//! Completion session orchestration — moved out of `host.rs`'s
-//! per-capability split.
+//! Completion session orchestration.
 
 use hume_engine::pipeline::BufferId;
 

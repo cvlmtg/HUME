@@ -1,4 +1,4 @@
-//! `TimerHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s timer scheduling.
 
 use super::EditorHostImpl;
 use hume_scripting::host::TimerHost;

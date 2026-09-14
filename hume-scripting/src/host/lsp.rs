@@ -1,5 +1,4 @@
-//! LSP server introspection — moved out of `host.rs`'s per-capability
-//! split.
+//! LSP server introspection.
 
 use hume_engine::pipeline::BufferId;
 

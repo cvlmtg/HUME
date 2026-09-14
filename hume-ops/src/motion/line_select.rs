@@ -29,29 +29,30 @@ fn repeat_motion(
 /// whether `sel` already covers whole lines.
 ///
 /// If `sel` is not yet linewise, the first press only aligns it to the full
-/// lines it touches — the direction is fixed by `delta`'s sign (`+1` → `x` →
-/// forward, `-1` → `X` → backward), matching the `Move`-mode identity of
+/// lines it touches — the direction is fixed by `forward` (`true` → `x` →
+/// forward, `false` → `X` → backward), matching the `Move`-mode identity of
 /// each command, regardless of `sel`'s own anchor/head direction.
 ///
-/// Once aligned, each press moves the **head**'s line by `delta` and rebuilds
-/// the span between the (unmoved) anchor's line and the new head line. This
-/// is what lets a press in the opposite direction shrink the selection back
-/// down rather than only ever growing it: the anchor's line is always kept in
-/// the span, but the far edge tracks the head. Clamps at the buffer's first
-/// or last line are head-relative (checked against the line the head is
-/// about to leave), not selection-end-relative — a backward selection whose
-/// far edge sits on the last line must still be able to shrink via `x`.
-fn extend_line_span(text: &BufferText, sel: Selection, delta: isize) -> Selection {
+/// Once aligned, each press moves the **head**'s line one line in `forward`'s
+/// direction and rebuilds the span between the (unmoved) anchor's line and
+/// the new head line. This is what lets a press in the opposite direction
+/// shrink the selection back down rather than only ever growing it: the
+/// anchor's line is always kept in the span, but the far edge tracks the
+/// head. Clamps at the buffer's first or last line are head-relative
+/// (checked against the line the head is about to leave), not
+/// selection-end-relative — a backward selection whose far edge sits on the
+/// last line must still be able to shrink via `x`.
+fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selection {
     if !is_selection_linewise(text, &sel) {
         let top_line = text.char_to_line(sel.start());
         let bottom_line = text.char_to_line(sel.end());
         let end = line_break_char(text, bottom_line);
-        return Selection::directed(text.line_to_char(top_line.into()), end, delta > 0);
+        return Selection::directed(text.line_to_char(top_line.into()), end, forward);
     }
 
     let anchor_line = text.char_to_line(sel.anchor());
     let head_line = text.char_to_line(sel.head());
-    let new_head_line = if delta > 0 {
+    let new_head_line = if forward {
         if next_line_start(text, head_line.into()) >= text.end() {
             return sel; // head already on the last line — clamp
         }
@@ -108,7 +109,7 @@ pub fn cmd_select_line(
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
         MotionMode::Move => repeat_motion(text, sel, count, move_select_line),
-        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, 1)),
+        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, true)),
     });
     result.debug_assert_valid(text);
     result
@@ -149,7 +150,7 @@ pub fn cmd_select_line_backward(
 ) -> SelectionSet {
     let result = sels.map(|sel| match mode {
         MotionMode::Move => repeat_motion(text, sel, count, move_select_line_backward),
-        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, -1)),
+        MotionMode::Extend => repeat_motion(text, sel, count, |b, s| extend_line_span(b, s, false)),
     });
     result.debug_assert_valid(text);
     result

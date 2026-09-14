@@ -1,5 +1,6 @@
-//! `hume_rope::position_encoding::WirePos` ↔ the protocol's own wire
-//! representations: `lsp_types::Range` and the raw JSON object shape.
+//! `hume_rope::position_encoding::WirePos` ↔ `lsp_types::Range`, plus
+//! `WirePos` → the protocol's raw JSON object shape (outbound only — nothing
+//! in this crate decodes JSON back into a `WirePos`).
 //!
 //! `hume-rope` deliberately has no `lsp-types` dependency (see
 //! `position_encoding`'s module doc), so the crossing lives here as free

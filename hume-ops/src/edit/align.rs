@@ -62,6 +62,7 @@ pub fn align_selections(
         start_line: ContentLine,
         is_multiline: bool,
         anchor_display_col: BufferLineCol, // display col of sel.anchor() (left for forward, right for backward)
+        start_display_col: BufferLineCol, // display col of sel.start() — same value pass 3 re-derives from the same unedited text, cached here to avoid the second walk
         rem: usize,          // chars removable before sel.start() while keeping ≥1 space
         rem_cells: u32,      // display-cell width of the `rem`-char run (tab-aware)
         slot: Option<usize>, // None = multiline or extra (slot >= N)
@@ -80,6 +81,7 @@ pub fn align_selections(
                     start_line,
                     is_multiline: true,
                     anchor_display_col: BufferLineCol::new(0),
+                    start_display_col: BufferLineCol::new(0),
                     rem: 0,
                     rem_cells: 0,
                     slot: None,
@@ -89,6 +91,15 @@ pub fn align_selections(
                 display_col_in_line(&text, start_line, sel.anchor(), tab_width);
             let line_start = text.line_to_char(start_line.into());
             let sel_start = sel.start();
+            // `sel.start()` is `anchor.min(head)`, so for a forward selection
+            // (anchor <= head) it's the anchor itself — reuse the column just
+            // walked above rather than walking the same prefix again. Only a
+            // backward selection (head == start, anchor == end) needs its own walk.
+            let start_display_col = if sel.anchor() <= sel.head() {
+                anchor_display_col
+            } else {
+                display_col_in_line(&text, start_line, sel_start, tab_width)
+            };
             let rem = (line_start.index()..sel_start.index())
                 .rev()
                 .take_while(|&p| matches!(text.char_at(CharOffset::new(p)), Some(' ') | Some('\t')))
@@ -100,8 +111,8 @@ pub fn align_selections(
             // selection is the head, not the (right-edge) anchor — using
             // the anchor's column here would fold the selection's own
             // content width into the run's width.
-            let run_start = sel_start.shift(-(rem as isize));
-            let rem_cells = display_col_in_line(&text, start_line, sel_start, tab_width)
+            let run_start = sel_start.retreat(rem);
+            let rem_cells = start_display_col
                 .cells_since(display_col_in_line(&text, start_line, run_start, tab_width));
             let counter = slots_on_line.entry(start_line).or_insert(0);
             let slot = *counter;
@@ -110,6 +121,7 @@ pub fn align_selections(
                 start_line,
                 is_multiline: false,
                 anchor_display_col,
+                start_display_col,
                 rem,
                 rem_cells,
                 slot: Some(slot),
@@ -161,14 +173,14 @@ pub fn align_selections(
 
     // k == 0: the only thing slot-0 can compress is its own preceding
     // whitespace run, down to its display-cell width `rem_cells₀`. So the
-    // minimum reachable anchor is anchor_display_col₀ − rem_cells₀. `shift`
+    // minimum reachable anchor is anchor_display_col₀ − rem_cells₀. `retreat`
     // (not a bare subtraction) for the (unlikely) backward-selection case
     // where anchor_display_col < rem_cells, which it clamps to 0 rather than
     // wrapping on.
     let fit_0 = by_line
         .values()
         .filter_map(|ms| ms.iter().find(|m| m.slot == Some(0)))
-        .map(|m| m.anchor_display_col.shift(-(m.rem_cells as isize)))
+        .map(|m| m.anchor_display_col.retreat(m.rem_cells))
         .max()
         .unwrap_or(BufferLineCol::new(0));
     targets[0] = baseline[0].max(fit_0);
@@ -259,26 +271,24 @@ pub fn align_selections(
                     // mixing origins across this subtraction would be worse
                     // than the approximation `line_shift` already makes below.
                     let need = (-amount) as u32;
-                    let start_display_col =
-                        display_col_in_line(text, start_line, sel_start, tab_width);
+                    // Same unedited-text walk pass 1 already did for this
+                    // selection (see `SelMeta::start_display_col`'s doc) —
+                    // reused rather than repeated.
+                    let start_display_col = meta[i].start_display_col;
                     let max_remove = meta[i].rem.min(sel_start.chars_since(b.old_pos()));
                     // Largest position whose column is still `need` cells left
                     // of sel_start: char_pos_at_display_col stops *before* a
                     // grapheme that would overshoot, so a tab straddling the
                     // threshold is deleted whole and the surplus padded back.
-                    let threshold =
-                        BufferLineCol::new(start_display_col.get().saturating_sub(need));
+                    let threshold = start_display_col.retreat(need);
                     let cut = char_pos_at_display_col(text, start_line, threshold, tab_width);
                     let remove = sel_start.chars_since(cut).min(max_remove);
-                    let freed = start_display_col.cells_since(display_col_in_line(
-                        text,
-                        start_line,
-                        sel_start.shift(-(remove as isize)),
-                        tab_width,
-                    ));
+                    let cut_pos = sel_start.retreat(remove);
+                    let freed = start_display_col
+                        .cells_since(display_col_in_line(text, start_line, cut_pos, tab_width));
                     // 0 unless a tab's granularity overshot the exact target.
                     let pad = freed.saturating_sub(need);
-                    b.retain(sel_start.shift(-(remove as isize)).chars_since(b.old_pos()));
+                    b.retain(cut_pos.chars_since(b.old_pos()));
                     if remove > 0 {
                         b.delete(remove);
                     }

@@ -1,8 +1,8 @@
 //! The two per-line/per-frame formatting buffers ([`LineFormat`],
 //! [`VirtualLineScratch`]) and the scan-bound type ([`FormatBound`]) that
-//! [`format_buffer_line`](super::format_buffer_line) reads and writes —
-//! moved out of `format.rs`'s per-role split. Pure container/capacity types
-//! plus the bound enum; `format_buffer_line` itself stays in the parent.
+//! [`format_buffer_line`](super::format_buffer_line) reads and writes. Pure
+//! container/capacity types plus the bound enum; `format_buffer_line`
+//! itself stays in the parent.
 
 use std::ops::Range;
 
@@ -291,7 +291,7 @@ impl FormatBound {
     /// the straddling one, changing what `NearestContent` answers.
     pub(super) fn reached(
         self,
-        bytes: &ExclusiveRange<ByteCol>,
+        bytes: ExclusiveRange<ByteCol>,
         start_display_col: DisplayLineCol,
     ) -> bool {
         match self {

@@ -115,6 +115,25 @@ impl CharOffset {
     pub fn shift_saturating(self, delta: isize) -> CharOffset {
         Self(self.0.saturating_add_signed(delta))
     }
+
+    /// `self` moved back by `n` chars — the unsigned-length counterpart to
+    /// [`Self::shift`], for the common case of retreating by a `usize`
+    /// count (a removed run's length, a typed-char count) rather than a
+    /// signed delta a caller would otherwise negate by hand. Same contract
+    /// as `shift`: panics if `n` exceeds `self`.
+    pub fn retreat(self, n: usize) -> CharOffset {
+        Self(
+            self.0
+                .checked_sub(n)
+                .expect("CharOffset::retreat: result would be negative"),
+        )
+    }
+
+    /// [`Self::retreat`] clamped to 0 instead of panicking — the
+    /// unsigned-length counterpart to [`Self::shift_saturating`].
+    pub fn retreat_saturating(self, n: usize) -> CharOffset {
+        Self(self.0.saturating_sub(n))
+    }
 }
 
 /// A half-open range `[start, end)` — `end` is one past the last position

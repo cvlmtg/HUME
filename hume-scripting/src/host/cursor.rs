@@ -1,5 +1,4 @@
-//! Live cursor/selection reads — moved out of `host.rs`'s per-capability
-//! split.
+//! Live cursor/selection reads.
 
 use hume_engine::pipeline::BufferId;
 

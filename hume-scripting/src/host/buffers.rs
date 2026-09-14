@@ -1,5 +1,4 @@
-//! Buffer/pane enumeration, reads, lifecycle, and viewport geometry —
-//! moved out of `host.rs`'s per-capability split.
+//! Buffer/pane enumeration, reads, lifecycle, and viewport geometry.
 
 use std::path::{Path, PathBuf};
 

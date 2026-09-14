@@ -1,6 +1,5 @@
 //! Cursor-anchored popup, selection menu, bottom drawer, minibuffer
-//! prompt, and the fuzzy-finder picker — moved out of `host.rs`'s
-//! per-capability split.
+//! prompt, and the fuzzy-finder picker.
 
 use hume_engine::types::TruncateEnd;
 

@@ -1,4 +1,4 @@
-//! `LspHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s LSP server introspection.
 
 use hume_engine::pipeline::BufferId;
 
@@ -67,6 +67,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
             id,
             pos,
         )
+        .map(|offset| offset.index())
     }
 
     fn lsp_wire_point_to_char(
@@ -80,6 +81,7 @@ impl<'a> LspHost for EditorHostImpl<'a> {
             id,
             pos,
         )
+        .map(|offset| offset.index())
     }
 
     fn lsp_label_offsets_to_text(

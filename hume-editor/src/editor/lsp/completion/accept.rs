@@ -218,10 +218,7 @@ impl CompletionSession {
         // token-replacement fallback has no server-provided range to
         // overlap in the first place.
         if let ReplaceSpan::Uniform { back, forward } = span {
-            let (start_now, end_now) = (
-                head_now.shift(-(back as isize)),
-                head_now.shift(forward as isize),
-            );
+            let (start_now, end_now) = (head_now.retreat(back), head_now.shift(forward as isize));
             // The half-open overlap test alone (`s < end_now && start_now <
             // e`) misses a *zero-width* additional edit sitting exactly at
             // `end_now`: it inserts before the cursor edit lands, so
@@ -368,11 +365,7 @@ impl CompletionSession {
                                 if head == primary_head {
                                     word_start_before(text, anchor, chars)
                                 } else {
-                                    word_start_before(
-                                        text,
-                                        head.shift_saturating(-(typed as isize)),
-                                        chars,
-                                    )
+                                    word_start_before(text, head.retreat_saturating(typed), chars)
                                 }
                             },
                             forward,

@@ -1,4 +1,5 @@
-//! `UiHost` — moved out of `host_impl.rs`'s per-capability split.
+//! `EditorHostImpl`'s cursor-anchored popup, selection menu, bottom
+//! drawer, minibuffer prompt, and the fuzzy-finder picker.
 
 use super::EditorHostImpl;
 use hume_scripting::host::{

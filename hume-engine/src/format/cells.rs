@@ -1,5 +1,4 @@
-//! Per-grapheme display width/content classification — moved out of
-//! `format.rs`'s per-role split.
+//! Per-grapheme display width/content classification.
 
 use hume_rope::column::DisplayLineCol;
 
