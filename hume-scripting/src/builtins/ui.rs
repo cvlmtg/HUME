@@ -217,7 +217,7 @@ pub(crate) fn picker(
     Ok(SteelVal::IntV(token as isize))
 }
 
-/// `(%live-picker! on-select prompt query on-query-change truncate)` — the
+/// `(%live-picker! on-select prompt query on-query-change truncate actions)` — the
 /// `live-picker!` Scheme wrapper supplies the keyword defaults and composes
 /// `on-query-change` itself (stop-and-clear-then-debounce around the
 /// caller's `#:command`); this layer only decodes it as a required
