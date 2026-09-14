@@ -18,9 +18,10 @@ fn alternate_buffer_none_with_single_buffer() {
 fn goto_alternate_buffer_warns_when_no_alternate() {
     let mut ed = editor_from("-[h]>ello\n");
     let id_before = ed.focused_buffer_id();
-    live_host!(ed)
+    let ran = live_host!(ed)
         .run_command_sync("goto-alternate-buffer", Some(1), false, None)
         .expect("goto-alternate-buffer must not error");
+    assert!(!ran, "a refusal with no alternate must report Ok(false)");
     assert_eq!(
         ed.focused_buffer_id(),
         id_before,

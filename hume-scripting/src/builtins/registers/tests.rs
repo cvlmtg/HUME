@@ -193,7 +193,7 @@ impl crate::host::CommandHost for ValidNameHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
@@ -281,7 +281,7 @@ impl crate::host::CommandHost for RegisterCapableHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {

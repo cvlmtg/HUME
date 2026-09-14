@@ -277,10 +277,10 @@ impl CommandHost for MockHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.dispatched_native
             .push((name.to_owned(), count, extend, register));
-        Ok(())
+        Ok(true)
     }
     fn register_command(&mut self, def: hume_scripting::SteelCmdDef) -> Result<(), String> {
         // Mirrors `EditorHostImpl::register_command` (host_impl.rs), reduced

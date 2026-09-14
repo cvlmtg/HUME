@@ -11,7 +11,7 @@ use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
 use crate::editor::pane_state::PaneTransient;
 use crate::editor::tab::{TabId, install_live, take_live};
-use crate::editor::{EditorState, Mode, Severity};
+use crate::editor::{EditorState, Mode};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
 /// id — but leave it outside every tab's layout (see `TabStore`'s own doc:
@@ -207,8 +207,11 @@ pub(in crate::editor) fn fits_split(
 }
 
 /// Split the focused pane so the new pane views `bid`, and move focus to it.
-/// No-ops with a status warning if the focused pane is too small to fit two
-/// panes plus the seam divider (see `fits_split`).
+/// Refuses with [`SPLIT_TOO_SMALL_MSG`] if the focused pane is too small to
+/// fit two panes plus the seam divider (see `fits_split`) — surfaced to
+/// `run_dispatch_pipeline` as `state.command_refused`, which is how the Steel
+/// `call!` boolean (see `hume_scripting::host::CommandHost::run_command_sync`)
+/// reports the refusal back to a caller like `stdlib/with-pane-command`.
 ///
 /// Shared core for the typed `:split`/`:vsplit [path]` commands (which resolve
 /// `bid` from an optional path argument first) and the bare keymap-bound
@@ -221,8 +224,7 @@ pub(in crate::editor) fn split_pane_onto(
     direction: Direction,
 ) -> Result<(), CommandError> {
     if !fits_split(state, view, direction) {
-        state.report(Severity::Info, SPLIT_TOO_SMALL_MSG.to_string());
-        return Ok(());
+        return Err(CommandError::transient(SPLIT_TOO_SMALL_MSG));
     }
     let old_focused = state.focus.id();
     let old_buffer_id = view.panes[old_focused].buffer_id;

@@ -8,12 +8,16 @@
 //!
 //! - **Activated plugin commands** (in `command_table`): applied directly as an
 //!   ordinary Steel funcall via `(apply proc args)` — never leaving the VM.
-//!   State reads after the call see its effects immediately.
+//!   State reads after the call see its effects immediately, and `call!`
+//!   returns whatever the Steel body itself returns.
 //! - **Lazy activation commands** (unactivated plugin): `%dispatch-command`
 //!   activates the owner inline via `%activate-plugin-inline`, then retries.
 //! - **Native commands**: forwarded to `%call-native!` → `run_command_sync` inline.
-//!   Init mode: warns and skips (buffer access not available during init).
-//! - **Unknown**: forwarded to `%call-native!` → error logged, no-op.
+//!   `call!` returns `#f` if the body refused outright (a too-small split, the
+//!   last pane, …) and `#t` otherwise — see `run_command_sync`'s own doc for
+//!   why `#t` is not proof anything changed. Init mode: warns, skips, and
+//!   returns `#f` (buffer access not available during init).
+//! - **Unknown**: forwarded to `%call-native!` → error logged, `#f` returned.
 //!
 //! `request-wait-char!` allows a Steel command to request that after the
 //! current eval finishes, the editor enters WaitChar mode for the named command.
@@ -226,16 +230,17 @@ pub(crate) fn define_typed_command(
 /// and has no lazy activation command owner (i.e. it is a native or unknown command).
 ///
 /// - **Native** (`Motion`/`Selection`/`Edit`/`EditorCmd`): in command mode,
-///   validates count/extend args and runs synchronously via `run_command_sync`.
-///   In init mode, logs a warning and skips — native commands touch buffers,
-///   which are not available during init.scm evaluation.
+///   validates count/extend args and runs synchronously via `run_command_sync`,
+///   returning its `#t`/`#f` outcome to the Steel caller unchanged. In init
+///   mode, logs a warning, skips, and returns `#f` — native commands touch
+///   buffers, which are not available during init.scm evaluation.
 /// - **Steel-but-not-in-table** (`Ok(false)`): logs an `Error` naming the
-///   command and returns `#void`. Reaching this arm at all means the
+///   command and returns `#f`. Reaching this arm at all means the
 ///   dispatcher's own lookup already missed the command in `command_table`,
 ///   so this is a fallback message, not the common case.
 /// - **Unknown** (`Err(msg)`): the host's registry has no such command at
 ///   all (typo, missing plugin). Logs the host's own error message — it
-///   already names the command — and returns `#void`.
+///   already names the command — and returns `#f`.
 ///
 /// Both misses log `Error`, not `Warning`: an unreachable `call!` target is
 /// a plugin bug (typo or missing dependency), same severity as an unknown
@@ -259,23 +264,23 @@ pub(crate) fn call_command_primitive(
                     LogLevel::Warning,
                     format!("skipped runtime command '{name}' — it can't run while loading config; bind it to a key or call it from a hook instead"),
                 );
-                return Ok(SteelVal::Void);
+                return Ok(SteelVal::BoolV(false));
             }
             let (count, extend) = parse_count_extend(&args_vec)
                 .map_err(|e| generic_err(format!("%call-native!: {e}")))?;
             ctx.host
                 .commands()
                 .run_command_sync(&name, count, extend, ctx.current_register_prefix)
-                .map(|()| SteelVal::Void)
+                .map(SteelVal::BoolV)
                 .map_err(|e| generic_err(format!("%call-native!: {e}")))
         }
         Ok(false) => {
             ctx.log(LogLevel::Error, format!("'{name}' is not a native command"));
-            Ok(SteelVal::Void)
+            Ok(SteelVal::BoolV(false))
         }
         Err(msg) => {
             ctx.log(LogLevel::Error, msg);
-            Ok(SteelVal::Void)
+            Ok(SteelVal::BoolV(false))
         }
     }
 }

@@ -669,7 +669,7 @@ impl Editor {
                 super::registry::TypedBody::Native(fun) => {
                     let result = fun(self, arg, force);
                     if let Err(ref e) = result {
-                        self.report(Severity::Error, e.message().to_owned());
+                        self.report(e.severity(), e.message().to_owned());
                     }
                     result
                 }

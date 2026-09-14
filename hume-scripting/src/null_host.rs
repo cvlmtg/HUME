@@ -175,7 +175,7 @@ impl CommandHost for NullHost {
         _count: Option<usize>,
         _extend: bool,
         _register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         Err("stub host has no native command registry".into())
     }
     fn register_command(&mut self, _def: SteelCmdDef) -> Result<(), String> {
@@ -270,7 +270,7 @@ impl CommandHost for FailingRegisterHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {
@@ -461,7 +461,7 @@ impl CommandHost for LazyStubHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         self.inner.run_command_sync(name, count, extend, register)
     }
     fn register_command(&mut self, def: SteelCmdDef) -> Result<(), String> {

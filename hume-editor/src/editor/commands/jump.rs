@@ -1,7 +1,7 @@
 use hume_engine::pipeline::{Direction, EngineView};
 use hume_ops::MotionMode;
 
-use super::super::{EditorState, Severity};
+use super::super::EditorState;
 use super::{
     alternate_buffer, current_jump_entry, focused_buffer_id, set_current_selections,
     switch_to_buffer_without_jump,
@@ -75,10 +75,12 @@ pub(in crate::editor) fn cmd_goto_alternate_buffer(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     match alternate_buffer(state, view) {
-        Some(id) => switch_to_buffer_without_jump(state, view, id),
-        None => state.report(Severity::Info, "No alternate buffer".to_string()),
+        Some(id) => {
+            switch_to_buffer_without_jump(state, view, id);
+            Ok(())
+        }
+        None => Err(CommandError::transient("No alternate buffer")),
     }
-    Ok(())
 }
 
 // ── Open-order buffer cycling ────────────────────────────────────────────────
@@ -284,8 +286,8 @@ pub(in crate::editor) fn cmd_vsplit_pane(
 }
 
 /// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
-/// No-ops with a status message when it's the tab's only pane (`:q` owns
-/// closing the tab in that case — see `typed_quit`).
+/// Refuses when it's the tab's only pane (`:q` owns closing the tab in that
+/// case — see `typed_quit`).
 pub(in crate::editor) fn cmd_close_pane(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -293,9 +295,8 @@ pub(in crate::editor) fn cmd_close_pane(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     if view.layout().is_single_pane() {
-        state.report(Severity::Info, "cannot close last pane".to_string());
-    } else {
-        super::close_focused_pane(state, view);
+        return Err(CommandError::transient("cannot close last pane"));
     }
+    super::close_focused_pane(state, view);
     Ok(())
 }

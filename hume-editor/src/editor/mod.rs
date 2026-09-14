@@ -394,7 +394,9 @@ pub(crate) struct EditorState {
     /// Steel dispatch path (`Editor::dispatch`) never reads or resets it
     /// directly, but any native `call!` it makes goes through
     /// `run_dispatch_pipeline` too, so a stale value from an earlier dispatch
-    /// can never leak in.
+    /// can never leak in. `run_dispatch_pipeline` also returns this flag's
+    /// negation, so `EditorHostImpl::run_command_sync` can forward it as the
+    /// `#t`/`#f` a Steel `call!` sees for a native command.
     pub(super) command_refused: bool,
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.

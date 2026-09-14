@@ -824,7 +824,7 @@ fn close_pane_redistributes_space_equally() {
 // ── T4: Split-too-small guard ────────────────────────────────────────────────
 
 /// `:vsplit` on a pane too narrow to fit two minimum-width panes plus the
-/// seam divider is a noop with a warning, not a degraded split.
+/// seam divider refuses with an `Err`, not a degraded split.
 #[test]
 fn vsplit_too_narrow_is_noop_with_warning() {
     use hume_engine::pipeline::LayoutTree;
@@ -837,7 +837,11 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     ed.settle();
     ed.prepare_frame(&mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
 
-    ed.execute_typed("vsplit", None).unwrap();
+    let err = ed
+        .execute_typed("vsplit", None)
+        .expect_err("a too-narrow pane must refuse the split");
+    assert_eq!(err.severity(), Severity::Info);
+    assert_eq!(err.message(), "pane too small to split");
 
     assert_eq!(
         ed.state.focus.id(),
@@ -854,7 +858,7 @@ fn vsplit_too_narrow_is_noop_with_warning() {
     );
 }
 
-/// `:split` on a pane too short is likewise a noop with a warning.
+/// `:split` on a pane too short likewise refuses with an `Err`.
 #[test]
 fn split_too_short_is_noop_with_warning() {
     use hume_engine::pipeline::LayoutTree;
@@ -867,7 +871,11 @@ fn split_too_short_is_noop_with_warning() {
     ed.settle();
     ed.prepare_frame(&mut ctx); // 7 rows -> 6 usable after statusline < 2*MIN_PANE_HEIGHT(3)+1 = 7
 
-    ed.execute_typed("split", None).unwrap();
+    let err = ed
+        .execute_typed("split", None)
+        .expect_err("a too-short pane must refuse the split");
+    assert_eq!(err.severity(), Severity::Info);
+    assert_eq!(err.message(), "pane too small to split");
 
     assert_eq!(
         ed.state.focus.id(),

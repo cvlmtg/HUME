@@ -256,6 +256,64 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
     );
 }
 
+/// The success-side counterpart of `files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing`:
+/// in a pane wide enough to split, Ctrl+V creates the new pane and opens the
+/// selection there, leaving the source pane's buffer untouched — the positive
+/// oracle for `stdlib/with-pane-command`'s `(when (call! command) (handler
+/// payload))` guard (untested at the Scheme level before this).
+#[test]
+fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    let source_bid = ed.focused_buffer_id();
+    let panes_before = ed.view.panes.len();
+
+    frame(&mut ed, 80, 25);
+
+    ed.feed_key(key('z'));
+    ed.feed_key(key('f'));
+    drain_until_picker_total(&mut ed, 1);
+
+    for ch in "alpha".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_ctrl('v'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "Ctrl+V must close the picker"
+    );
+    assert_eq!(
+        ed.view.panes.len(),
+        panes_before + 1,
+        "Ctrl+V must create exactly one new pane"
+    );
+    let new_bid = ed.focused_buffer_id();
+    assert_ne!(new_bid, source_bid, "the new pane views a different buffer");
+    let path = ed
+        .state
+        .buffers
+        .get(new_bid)
+        .path()
+        .expect("buffer has a path");
+    assert!(
+        path.ends_with("alpha.txt"),
+        "Ctrl+V must open the selected file in the new pane; got {path:?}"
+    );
+    assert_eq!(
+        ed.state.buffers.get(source_bid).text().to_string(),
+        "hello\n",
+        "the source pane's buffer must be untouched"
+    );
+}
+
 #[test]
 fn files_picker_esc_dismisses_cleanly() {
     let guard = HumeRuntimeGuard::new();

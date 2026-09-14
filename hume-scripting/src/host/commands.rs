@@ -34,8 +34,15 @@ pub trait CommandHost {
     /// commands (`yank`, `delete`, `paste-after`, etc.) route to the right
     /// destination. Pass `None` when no explicit register was set.
     ///
-    /// Returns `Ok(())` on success (includes `EditorCmd` errors, which are reported
-    /// to the user and treated as success for the Steel caller).
+    /// Returns `Ok(false)` if the command's body refused outright (a
+    /// too-small split, the last pane, a read-only buffer, no stashed
+    /// insertion, …) — refusal is reported to the user (as `Severity::Info`)
+    /// before this returns, so the caller need not report it again. Returns
+    /// `Ok(true)` otherwise: this is a negative signal only, not proof
+    /// anything changed — a command that no-ops silently at a buffer edge, or
+    /// one that exhausts mid-count without ever refusing (undo/redo past the
+    /// last step), still returns `Ok(true)`. This is the value `(call! …)`
+    /// yields for a native command.
     /// Returns `Err(msg)` when the name is not found or is not a native command.
     ///
     /// Valid only in command mode; gated by the caller's `cmd`-kind registration.
@@ -45,7 +52,7 @@ pub trait CommandHost {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String>;
+    ) -> Result<bool, String>;
 
     /// Register a Steel command in the editor's `CommandRegistry`.
     ///

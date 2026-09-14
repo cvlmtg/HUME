@@ -426,7 +426,12 @@ pub(in crate::editor::commands::pipeline) fn step_clear_extend(
 
 // ── Native dispatch pipeline (composed from step functions) ────────────────
 
-/// Execute a native command through the full dispatch pipeline.
+/// Execute a native command through the full dispatch pipeline. Returns
+/// `false` if the body refused outright (see `EditorState::command_refused`),
+/// `true` otherwise — `EditorHostImpl::run_command_sync` forwards this to
+/// Steel's `call!` as the outcome of the dispatch; the keypress path ignores
+/// it, since a refusal already reported itself via `state.report` inside the
+/// body.
 ///
 /// Composed from the step functions above.  Both the keypress path
 /// (`Editor::dispatch` → native branch) and the Steel sync path
@@ -436,7 +441,7 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     view: &mut EngineView,
     cmd: MappableCommand,
     ctx: CmdCtx,
-) {
+) -> bool {
     let meta = cmd.meta();
     // Clone the name once, before the body consumes `cmd`. A `&'static str` name
     // (every built-in) clones with no allocation; the AFTER steps reuse this.
@@ -486,4 +491,5 @@ pub(in crate::editor) fn run_dispatch_pipeline(
     };
     step_update_recipe(state, &meta, &name, &ctx, selection_changed);
     step_clear_extend(state, meta.clears_extend);
+    !state.command_refused
 }

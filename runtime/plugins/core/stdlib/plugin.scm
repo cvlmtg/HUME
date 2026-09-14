@@ -133,15 +133,13 @@
 ;;; own guard, which checks before opening its path argument rather than
 ;;; opening it in the pane that stayed put — so `handler` (and whatever it
 ;;; opens) is skipped too rather than silently replacing what the pane
-;;; already showed. `(length (panes))` before/after is the success check:
-;;; `command` always moves focus onto the new pane, so `handler` runs there.
+;;; already showed. `call!` on a native command returns `#t`/`#f` for exactly
+;;; this ("did the body do its job?"), so that's the success check directly —
+;;; no need to infer it from a side effect like `(panes)`'s count.
 (define (stdlib/with-pane-command command handler)
   (lambda (payload)
     (if payload
-        (let ([before (length (panes))])
-          (call! command)
-          (when (> (length (panes)) before)
-            (handler payload)))
+        (when (call! command) (handler payload))
         (handler payload))))
 
 (define (stdlib/with-vsplit handler)

@@ -169,7 +169,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         count: Option<usize>,
         extend: bool,
         register: Option<char>,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         let Some(cmd) = self.state.config.registry.get_mappable(name).cloned() else {
             return Err(format!("unknown command: {name}"));
         };
@@ -187,7 +187,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // Delegate to the shared pipeline — all bookkeeping (paste session, jump
         // list, dot-repeat) lives there so the sync path is identical to the
         // keypress path.
-        crate::editor::commands::run_dispatch_pipeline(
+        let ran = crate::editor::commands::run_dispatch_pipeline(
             self.state,
             self.view,
             cmd,
@@ -205,6 +205,6 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         if register.is_some() {
             self.state.register_prefix = None;
         }
-        Ok(())
+        Ok(ran)
     }
 }

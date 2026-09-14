@@ -159,6 +159,8 @@ Use `(call! ...)` to dispatch other commands from within a plugin:
 
 `call!` dispatches any editor command — built-in and Scheme-defined alike — activating the target plugin on demand.
 
+For a built-in command, `call!` returns `#f` when the command refused (a too-small split, the last pane, …) or the name didn't resolve, and `#t` otherwise — not a guarantee anything changed, just that nothing was refused. A Scheme-defined command returns whatever its own body returns.
+
 ::: warning `call!` can't run typed commands
 Typed commands like `write`, `quit`, or `edit` are not reachable through `call!` — only editor commands work here. Calling one logs an error and does nothing, so `(call! "write")` will not save.
 :::
@@ -201,7 +203,7 @@ If your plugin calls another plugin's commands via `call!`, check that the other
   (error "my-plugin: requires core:stdlib — declare or load it before my-plugin"))
 ```
 
-This is enough as long as the command you're calling is one of the dependency's own activation entries — its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#void` instead of raising, and the check above can't catch it, since the plugin genuinely is declared — just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a `#void` on the specific command name never happens — the trade-off is that this forces the dependency to be loaded eagerly, not just declared.
+This is enough as long as the command you're calling is one of the dependency's own activation entries — its `manifest.scm` defaults, or an explicit `#:commands`/`#:events`/`#:languages` list that includes it. If whoever declared the dependency wrote a narrower list that leaves your command out, there's no activation stub for it: `call!` logs an error and returns `#f` instead of raising, and the check above can't catch it, since the plugin genuinely is declared — just not for the command you need. When you don't control how a dependency gets declared and want a stronger guarantee, check `(loaded-plugins)` instead: it only lists plugins that have actually finished activating, so a missed-activation `#f` on the specific command name never happens — the trade-off is that this forces the dependency to be loaded eagerly, not just declared.
 
 ```scheme
 (unless (member "core:stdlib" (loaded-plugins))

@@ -97,6 +97,66 @@ fn run_command_sync_unknown_name_errors() {
     assert!(result.is_err(), "unknown command must return Err");
 }
 
+/// `run_command_sync` on a native command that refuses outright (here:
+/// `pane-vsplit` too small to fit — see `multi_pane.rs`'s
+/// `vsplit_too_narrow_is_noop_with_warning` for the Rust-level guard this
+/// exercises through the Steel sync path) must return `Ok(false)` — this is
+/// the value `stdlib/with-pane-command` reads via `call!` to decide whether
+/// to run its handler.
+///
+/// Fail oracle: hardcode `Ok(true)`/`Ok(())` in
+/// `EditorHostImpl::run_command_sync` → this passes when it should fail.
+#[test]
+fn run_command_sync_returns_false_when_the_split_is_refused() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let panes_before = ed.view.panes.len();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(20, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
+
+    let ran = {
+        let mut host = live_host!(ed);
+        host.run_command_sync("pane-vsplit", Some(1), false, None)
+            .expect("a refused split is Ok(false), not an Err")
+    };
+
+    assert!(!ran, "a too-small split must report Ok(false)");
+    assert_eq!(
+        ed.view.panes.len(),
+        panes_before,
+        "a refused split must not create a pane"
+    );
+}
+
+/// The success-side counterpart: a split that fits must return `Ok(true)` —
+/// the independent oracle proving `run_command_sync` doesn't just always
+/// return `false` for `pane-vsplit`.
+#[test]
+fn run_command_sync_returns_true_on_a_successful_split() {
+    let mut ed = editor_from("-[h]>ello\n");
+    let panes_before = ed.view.panes.len();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    let ran = {
+        let mut host = live_host!(ed);
+        host.run_command_sync("pane-vsplit", Some(1), false, None)
+            .expect("run_command_sync must not error for a fitting split")
+    };
+
+    assert!(ran, "a split that fits must report Ok(true)");
+    assert_eq!(
+        ed.view.panes.len(),
+        panes_before + 1,
+        "a successful split must create exactly one new pane"
+    );
+}
+
 /// `current_line_number` must reflect a live position change across lines.
 ///
 /// A stub always returning 1 would pass a single-line check; the move to a

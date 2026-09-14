@@ -6,19 +6,25 @@ fn make_list(vals: Vec<SteelVal>) -> SteelVal {
 }
 
 /// NullHost returns `Ok(false)` for `command_is_native` (no registry) →
-/// "not a native command" path → error logged.
+/// "not a native command" path → error logged, `#f` returned.
 #[test]
 fn call_bang_unknown_command_logs_error() {
     let mut h = SteelCtxTestHarness::new();
-    {
+    let result = {
         let mut ctx = h.ctx_init();
         call_command_primitive(
             &mut ctx,
             "plum-ensure-grammars".to_string(),
             make_list(vec![]),
         )
-        .unwrap();
-    }
+        .unwrap()
+    };
+    assert_eq!(
+        result,
+        SteelVal::BoolV(false),
+        "a miss must return #f, not #void — a Scheme guard like \
+         `(when (call! …) …)` must treat it as a refusal, not a truthy no-op"
+    );
     assert!(
         h.pending_messages
             .iter()

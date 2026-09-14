@@ -105,10 +105,9 @@ pub(in crate::editor) fn cmd_change(
 /// `Extend` unions them into the current selection set instead of
 /// discarding it, matching the `.extendable()` contract.
 ///
-/// Reports [`Severity::Info`] and leaves selections untouched if there is no
-/// stashed insertion, or if a later mutation (any edit, undo, or redo) has
-/// moved the buffer's `text_gen` past the stamp — see
-/// [`crate::editor::buffer::LastInsert`].
+/// Refuses (leaving selections untouched) if there is no stashed insertion,
+/// or if a later mutation (any edit, undo, or redo) has moved the buffer's
+/// `text_gen` past the stamp — see [`crate::editor::buffer::LastInsert`].
 pub(in crate::editor) fn cmd_select_last_insertion(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -122,8 +121,7 @@ pub(in crate::editor) fn cmd_select_last_insertion(
         .filter(|last| last.text_gen == buf.text_gen)
         .map(|last| last.spans.clone());
     let Some(spans) = fresh else {
-        state.report(Severity::Info, "no last insertion".to_string());
-        return Ok(());
+        return Err(CommandError::transient("no last insertion"));
     };
     // Non-empty by construction: `end_insert_session` only ever stashes a
     // non-empty `spans` vec (see `begin_typed_run`'s caller). The last

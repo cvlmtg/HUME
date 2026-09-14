@@ -176,8 +176,7 @@ fn split_focused_pane(
     direction: Direction,
 ) -> Result<(), CommandError> {
     if !super::fits_split(&ed.state, &ed.view, direction) {
-        ed.report(Severity::Info, super::SPLIT_TOO_SMALL_MSG.to_string());
-        return Ok(());
+        return Err(CommandError::transient(super::SPLIT_TOO_SMALL_MSG));
     }
     let bid = match arg {
         Some(path) => open_path_arg(ed, path)?,
@@ -217,7 +216,9 @@ pub(in crate::editor) fn typed_tabnew(
 
 /// `:tabclose` — close the current tab and every pane it owns. Refused with
 /// a status message when it's the only tab open (fail fast, no silent
-/// no-op) — mirrors `:split`'s `fits_split` refusal shape.
+/// no-op). Typed-only — unlike `:split`'s shared core (`split_pane_onto`),
+/// this has no keymap-bound/`call!`-reachable native sibling, so there is no
+/// `Err` counterpart to give this refusal a `call!` boolean.
 pub(in crate::editor) fn typed_tabclose(
     ed: &mut Editor,
     _arg: Option<&str>,

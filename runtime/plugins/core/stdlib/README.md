@@ -23,8 +23,8 @@ dependency-ordering rule every other core plugin follows.
 
 That mechanism breaks only if `core:stdlib` is declared with an explicit
 `#:commands`/`#:events`/`#:languages` that omits a helper a dependent needs — the override
-leaves no activation stub, so `call!` logs an error and returns `#void` instead of raising,
-silently resolving the dependent's config read to `#void`.
+leaves no activation stub, so `call!` logs an error and returns `#f` instead of raising,
+silently resolving the dependent's config read to `#f`.
 
 ## Commands
 
@@ -54,8 +54,9 @@ on Windows specifically: a segment like `c:evil` after a single path component m
 `PathBuf::push` treat it as a drive-relative root, replacing the sandboxed base path
 entirely instead of joining onto it (mirrors `hume_platform::path::is_safe_segment`'s
 rule on the Rust side). Every call site checks `(eq? #t (call! "stdlib/safe-path-segment?"
-…))` rather than a bare truthiness test — see "Usage" above for why a bare `call!` result
-can be non-#f `#void` on a miss.
+…))` rather than a bare truthiness test — a miss (see "Usage" above) already falls back to
+`#f`, same as a genuine rejection, but the `eq?` guard keeps the two distinguishable in case
+that ever changes.
 
 ### Subprocess
 
@@ -109,8 +110,8 @@ And a split refused for being too small — `split_pane_onto`'s own guard, repor
 message — skips the handler entirely rather than opening the payload in the pane that stayed
 put, matching the typed `:split`/`:vsplit [path]` commands' own precedent of aborting before
 the side effect rather than silently redirecting it. `with-pane-command` detects a refused
-split by comparing `(length (panes))` before and after the `call!` — an existing builtin, so
-this needs no bespoke Rust predicate of its own.
+split from `call!`'s own return value — `#f` for a native command that refused, `#t` for one
+that ran — needing no bespoke predicate of its own.
 
 `buffer-actions` composes all three plus a bare `Ctrl-O` (the handler as-is, an `Enter`
 synonym) into one `#:actions` alist: `(picker! items handler #:actions (call!
