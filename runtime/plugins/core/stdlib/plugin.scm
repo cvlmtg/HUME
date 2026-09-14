@@ -114,6 +114,23 @@
   (and (which "git")
        (stdlib/run-stdout "git" '("rev-parse" "--show-toplevel"))))
 
+;; ── Picker buffer-placement actions ──────────────────────────────────────────
+
+(define (stdlib/with-tab handler)
+  (lambda (payload) (call! "tab-new") (handler payload)))
+
+(define (stdlib/with-vsplit handler)
+  (lambda (payload) (call! "pane-vsplit") (handler payload)))
+
+(define (stdlib/with-split handler)
+  (lambda (payload) (call! "pane-split") (handler payload)))
+
+(define (stdlib/buffer-actions handler)
+  (list (cons "ctrl-o" handler)
+        (cons "ctrl-t" (stdlib/with-tab handler))
+        (cons "ctrl-v" (stdlib/with-vsplit handler))
+        (cons "ctrl-s" (stdlib/with-split handler))))
+
 ;; ── Command-argument helper ──────────────────────────────────────────────────
 
 (define (stdlib/resolve-lang-arg cmd arg)
@@ -252,3 +269,19 @@
 (define-command! "stdlib/config-list"
   "A #:config hash's value for the given key, or the given default if absent; errors if it isn't a list of strings."
   stdlib/config-list)
+
+(define-command! "stdlib/with-tab"
+  "Wraps the given handler: opens a new tab, then calls the handler with the picker's payload."
+  stdlib/with-tab)
+
+(define-command! "stdlib/with-vsplit"
+  "Wraps the given handler: splits the focused pane side by side, then calls the handler with the picker's payload."
+  stdlib/with-vsplit)
+
+(define-command! "stdlib/with-split"
+  "Wraps the given handler: splits the focused pane stacked, then calls the handler with the picker's payload."
+  stdlib/with-split)
+
+(define-command! "stdlib/buffer-actions"
+  "A picker!/live-picker! #:actions alist binding Ctrl-O/T/V/S to the given handler placed in the current pane, a new tab, a vertical split, and a horizontal split respectively."
+  stdlib/buffer-actions)

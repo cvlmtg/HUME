@@ -109,6 +109,64 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     );
 }
 
+/// End-to-end proof that `#:actions (call! "stdlib/buffer-actions" ...)`
+/// reaches a real picker through the full Steel round-trip (`picker!` →
+/// `%picker!` → `picker_actions` decode → `PickerSession::action_for` →
+/// `close_picker_with`) — the Rust-level unit tests in `tests/picker.rs`
+/// cover the dispatch mechanism itself with a synthetic session; this proves
+/// `core:pickers`' actual shipped wiring, `stdlib/with-tab`'s `(call!
+/// "tab-new")`, and the hoisted-handler refactor all still compose.
+#[test]
+fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    let source_bid = ed.focused_buffer_id();
+    let tabs_before = ed.state.tabs.len();
+
+    ed.feed_key(key('z'));
+    ed.feed_key(key('f'));
+    drain_until_picker_total(&mut ed, 1);
+
+    for ch in "alpha".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_ctrl('t'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "Ctrl+T must close the picker"
+    );
+    assert_eq!(
+        ed.state.tabs.len(),
+        tabs_before + 1,
+        "Ctrl+T must open a new tab"
+    );
+    let new_bid = ed.focused_buffer_id();
+    assert_ne!(new_bid, source_bid, "the new tab views a different buffer");
+    let path = ed
+        .state
+        .buffers
+        .get(new_bid)
+        .path()
+        .expect("buffer has a path");
+    assert!(
+        path.ends_with("alpha.txt"),
+        "Ctrl+T must open the selected file in the new tab; got {path:?}"
+    );
+    assert_eq!(
+        ed.state.buffers.get(source_bid).text().to_string(),
+        "hello\n",
+        "the source tab's buffer must be untouched"
+    );
+}
+
 #[test]
 fn files_picker_esc_dismisses_cleanly() {
     let guard = HumeRuntimeGuard::new();

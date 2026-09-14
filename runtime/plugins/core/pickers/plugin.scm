@@ -18,12 +18,18 @@
 
 ;; ── Files picker ──────────────────────────────────────────────────────────────
 
+;;; Hoisted to a name (rather than an inline lambda) so it can be passed
+;;; twice: once as `on-select`, once into `stdlib/buffer-actions` — both
+;;; need the identical handler.
+(define (pickers/open-file! path)
+  (when path
+    (switch-to-buffer! (open-buffer! path))))
+
 (define (pickers/open-files-picker! cmd args)
   (let ([token (picker! '()
-                        (lambda (path)
-                          (when path
-                            (switch-to-buffer! (open-buffer! path))))
-                        #:prompt "files: ")])
+                        pickers/open-file!
+                        #:prompt "files: "
+                        #:actions (call! "stdlib/buffer-actions" pickers/open-file!))])
     (picker-source-spawn! token cmd args #:nul #t)))
 
 ;;; Test seam — see README's "How it works".
@@ -58,13 +64,17 @@
 
 (define (pickers/open-git-picker! root)
   (let* ([job-id #f]
+         ;; Hoisted to a name (see `pickers/open-file!`'s comment) so it can
+         ;; be passed twice — as `on-select` and into `stdlib/buffer-actions`.
+         [handler (lambda (path)
+                    (if path
+                        (switch-to-buffer! (open-buffer! (path-join root path)))
+                        (cancel-async! job-id)))]
          [token (picker! '()
-                         (lambda (path)
-                           (if path
-                               (switch-to-buffer! (open-buffer! (path-join root path)))
-                               (cancel-async! job-id)))
+                         handler
                          #:prompt "git: "
-                         #:pending #t)])
+                         #:pending #t
+                         #:actions (call! "stdlib/buffer-actions" handler))])
     (set! job-id
       (spawn-async! "git"
                     (list "status" "--porcelain" "-z" "--no-renames"
@@ -98,12 +108,18 @@
   (let ([path (buffer-display-path bid)])
     (cons (or path (buffer-name bid)) bid)))
 
+;;; Hoisted to a name (see `pickers/open-file!`'s comment) so it can be
+;;; passed twice — as `on-select` and into `stdlib/buffer-actions`.
+(define (pickers/switch-to-buffer! bid)
+  (when bid (switch-to-buffer! bid)))
+
 (define-command! "picker-buffers"
   "Fuzzy-pick an open buffer and switch to it."
   (lambda ()
     (picker! (map pickers/buffer-item (buffers))
-             (lambda (bid) (when bid (switch-to-buffer! bid)))
-             #:prompt "buffers: ")))
+             pickers/switch-to-buffer!
+             #:prompt "buffers: "
+             #:actions (call! "stdlib/buffer-actions" pickers/switch-to-buffer!))))
 
 ;; ── Keybindings ───────────────────────────────────────────────────────────────
 

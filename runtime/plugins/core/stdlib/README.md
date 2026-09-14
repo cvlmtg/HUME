@@ -88,6 +88,28 @@ dispatch hands a bare invocation or a keymap press an integer instead (see
 `hume-editor/src/editor/dispatch.rs`'s `ArgSource` marshalling); with nothing typed, the
 minibuffer injects the default count `1`.
 
+### Picker buffer-placement
+
+`with-tab`/`with-vsplit`/`with-split` each wrap a handler proc — the same one a picker
+already passes as `on-select` — in a lambda that places a pane (new tab, side-by-side split,
+stacked split) and focuses it *before* calling the handler with the picker's selected
+payload. That ordering is what lets the handler stay unchanged: its existing
+`(switch-to-buffer! (open-buffer! path))` (or `(goto-location! ...)`) targets whichever pane
+is focused, so it lands in the newly placed one for free — none of the three interprets
+`payload` itself, so any picker's handler works no matter what shape its payload is (a path,
+a buffer id, a `path:line:col` location).
+
+`buffer-actions` composes all three plus a bare `Ctrl-O` (the handler as-is, an `Enter`
+synonym) into one `#:actions` alist: `(picker! items handler #:actions (call!
+"stdlib/buffer-actions" handler))`. `core:pickers`' three built-in pickers all opt in this
+way. A picker whose payload isn't a placeable buffer target (a theme picker, a command
+palette) simply doesn't pass `#:actions` — there's no flag to turn off, only a kwarg to omit.
+
+Reserved keys always win: `picker!`/`live-picker!` try `#:actions` only after every built-in
+picker key (movement, `Backspace`, `Enter`, `Escape`, query input), so `buffer-actions`'
+`Ctrl-O`/`T`/`V`/`S` are safe choices precisely because none of them collides with a
+built-in — a plugin adding its own entries should pick keys the same way.
+
 ### Plugin config
 
 Every error names the calling plugin (its first argument) and the offending key, so a bad

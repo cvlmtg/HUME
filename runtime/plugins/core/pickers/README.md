@@ -38,6 +38,13 @@ would need a Rust PR for every new finder. Accepting a row switches the focused 
 just opens the buffer (`switch-to-buffer!` wrapping `open-buffer!`, never `open-buffer!`
 alone).
 
+All three pickers pass `#:actions (call! "stdlib/buffer-actions" handler)`, giving each of
+them `Ctrl-O`/`Ctrl-T`/`Ctrl-V`/`Ctrl-S` for free (current pane, new tab, vertical split,
+horizontal split — see `core:stdlib`'s README). That's why each picker's own handler is a
+named `define` (`pickers/open-file!`, `pickers/switch-to-buffer!`, and the git picker's
+`let*`-bound `handler`) rather than an inline lambda: `buffer-actions` needs the identical
+proc twice, once as `on-select` and once wrapped for each placement.
+
 `picker-files` and `picker-git-modified` are each split into a public command and an internal
 `pickers/*-with` command that takes the git/fd probe result (or repo root) as an explicit
 argument, rather than probing inline — a test seam that lets a test drive each branch (repo /
