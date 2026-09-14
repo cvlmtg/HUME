@@ -167,6 +167,95 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     );
 }
 
+/// A query matching nothing leaves the picker's payload false —
+/// `stdlib/with-tab`'s payload guard must skip `(call! "tab-new")` for that
+/// case, not open a stray tab and then no-op the file open.
+#[test]
+fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    let tabs_before = ed.state.tabs.len();
+
+    ed.feed_key(key('z'));
+    ed.feed_key(key('f'));
+    drain_until_picker_total(&mut ed, 1);
+
+    for ch in "zzz_no_such_file".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_ctrl('t'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "Ctrl+T is still a terminal action even on no match"
+    );
+    assert_eq!(
+        ed.state.tabs.len(),
+        tabs_before,
+        "a false payload must not open a tab"
+    );
+}
+
+/// A pane too small to split must abort the whole action — no split, and no
+/// file opened in the pane that stayed put — matching the typed `:vsplit
+/// [path]` command's own guard, which checks before opening its path
+/// argument rather than after.
+#[test]
+fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
+    let guard = HumeRuntimeGuard::new();
+    let sandbox = CwdSandbox::new();
+    git(sandbox.raw(), &["init", "-q"]);
+    std::fs::write(sandbox.raw().join("alpha.txt"), "").unwrap();
+
+    let tmp = safe_tempdir();
+    let mut ed = setup(&guard, tmp.path(), "-[h]>ello\n", "");
+    ed.set_cwd(&sandbox.path()).unwrap();
+    let source_bid = ed.focused_buffer_id();
+    let panes_before = ed.view.panes.len();
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(20, 25); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    ed.feed_key(key('z'));
+    ed.feed_key(key('f'));
+    drain_until_picker_total(&mut ed, 1);
+
+    for ch in "alpha".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_ctrl('v'));
+    ed.settle();
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "Ctrl+V is still a terminal action even when the split is refused"
+    );
+    assert_eq!(
+        ed.view.panes.len(),
+        panes_before,
+        "a refused split must not create a pane"
+    );
+    assert_eq!(
+        ed.focused_buffer_id(),
+        source_bid,
+        "the refused split's payload must not be opened in the pane that stayed put"
+    );
+    assert_eq!(
+        ed.state.buffers.get(source_bid).text().to_string(),
+        "hello\n",
+        "the source pane's buffer must be untouched"
+    );
+}
+
 #[test]
 fn files_picker_esc_dismisses_cleanly() {
     let guard = HumeRuntimeGuard::new();

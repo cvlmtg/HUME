@@ -92,12 +92,25 @@ minibuffer injects the default count `1`.
 
 `with-tab`/`with-vsplit`/`with-split` each wrap a handler proc — the same one a picker
 already passes as `on-select` — in a lambda that places a pane (new tab, side-by-side split,
-stacked split) and focuses it *before* calling the handler with the picker's selected
-payload. That ordering is what lets the handler stay unchanged: its existing
+stacked split) and focuses it before calling the handler with the picker's selected payload.
+That ordering is what lets the handler stay unchanged: its existing
 `(switch-to-buffer! (open-buffer! path))` (or `(goto-location! ...)`) targets whichever pane
 is focused, so it lands in the newly placed one for free — none of the three interprets
 `payload` itself, so any picker's handler works no matter what shape its payload is (a path,
 a buffer id, a `path:line:col` location).
+
+Two guards sit in front of that placement, both in `with-pane-command` (`with-vsplit`'s and
+`with-split`'s shared core — `with-tab` keeps its own simpler payload-only check, since
+`tab-new` has no minimum-size failure mode to guard against). A false payload (an empty or
+not-yet-matching picker, `#f` explicitly threaded through per the selection helpers'
+convention) skips placement but still calls the handler — the git-modified picker's handler
+cancels its in-flight async job on `#f`, so skipping *that* call too would leave it running.
+And a split refused for being too small — `split_pane_onto`'s own guard, reported as a status
+message — skips the handler entirely rather than opening the payload in the pane that stayed
+put, matching the typed `:split`/`:vsplit [path]` commands' own precedent of aborting before
+the side effect rather than silently redirecting it. `with-pane-command` detects a refused
+split by comparing `(length (panes))` before and after the `call!` — an existing builtin, so
+this needs no bespoke Rust predicate of its own.
 
 `buffer-actions` composes all three plus a bare `Ctrl-O` (the handler as-is, an `Enter`
 synonym) into one `#:actions` alist: `(picker! items handler #:actions (call!

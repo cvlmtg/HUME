@@ -116,14 +116,39 @@
 
 ;; ── Picker buffer-placement actions ──────────────────────────────────────────
 
+;;; A false/no payload (an empty or not-yet-matching picker) means there is
+;;; nothing to place — skip the tab and call `handler` on it directly, the
+;;; same "pass #f straight through" contract every selection helper above
+;;; keeps, so a handler that treats #f as its own signal (cancelling an
+;;; in-flight async source, say) still runs.
 (define (stdlib/with-tab handler)
-  (lambda (payload) (call! "tab-new") (handler payload)))
+  (lambda (payload)
+    (when payload (call! "tab-new"))
+    (handler payload)))
+
+;;; Shared core for `with-vsplit`/`with-split`: skip `command` on a false
+;;; payload (see `with-tab`), and on a truthy one, call `handler` only if
+;;; `command` actually created a new pane. A too-small pane refuses the
+;;; split with a status message and no other effect — matching `:split`'s
+;;; own guard, which checks before opening its path argument rather than
+;;; opening it in the pane that stayed put — so `handler` (and whatever it
+;;; opens) is skipped too rather than silently replacing what the pane
+;;; already showed. `(length (panes))` before/after is the success check:
+;;; `command` always moves focus onto the new pane, so `handler` runs there.
+(define (stdlib/with-pane-command command handler)
+  (lambda (payload)
+    (if payload
+        (let ([before (length (panes))])
+          (call! command)
+          (when (> (length (panes)) before)
+            (handler payload)))
+        (handler payload))))
 
 (define (stdlib/with-vsplit handler)
-  (lambda (payload) (call! "pane-vsplit") (handler payload)))
+  (stdlib/with-pane-command "pane-vsplit" handler))
 
 (define (stdlib/with-split handler)
-  (lambda (payload) (call! "pane-split") (handler payload)))
+  (stdlib/with-pane-command "pane-split" handler))
 
 (define (stdlib/buffer-actions handler)
   (list (cons "ctrl-o" handler)
@@ -271,15 +296,15 @@
   stdlib/config-list)
 
 (define-command! "stdlib/with-tab"
-  "Wraps the given handler: opens a new tab, then calls the handler with the picker's payload."
+  "Wraps the given handler: opens a new tab, then calls the handler with the picker's payload. A false payload skips opening the tab but still calls the handler."
   stdlib/with-tab)
 
 (define-command! "stdlib/with-vsplit"
-  "Wraps the given handler: splits the focused pane side by side, then calls the handler with the picker's payload."
+  "Wraps the given handler: splits the focused pane side by side and calls the handler in the new pane with the picker's payload. A false payload skips the split (still calls the handler); a pane too small to split skips the handler too, leaving the current pane untouched."
   stdlib/with-vsplit)
 
 (define-command! "stdlib/with-split"
-  "Wraps the given handler: splits the focused pane stacked, then calls the handler with the picker's payload."
+  "Wraps the given handler: splits the focused pane stacked and calls the handler in the new pane with the picker's payload. A false payload skips the split (still calls the handler); a pane too small to split skips the handler too, leaving the current pane untouched."
   stdlib/with-split)
 
 (define-command! "stdlib/buffer-actions"
