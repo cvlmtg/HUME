@@ -190,6 +190,86 @@ fn backspace_on_empty_keeps_picker_open() {
     assert_eq!(ed.state.config.picker.as_ref().unwrap().query(), "");
 }
 
+// ── #:actions ────────────────────────────────────────────────────────────────
+
+#[test]
+fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one", "two"],
+        marker("cb"),
+        PickerOpts {
+            actions: vec![(key_ctrl('t'), marker("split-cb"))],
+            ..Default::default()
+        },
+    );
+
+    ed.feed_key(key_ctrl('t'));
+
+    assert!(
+        ed.state.config.picker.is_none(),
+        "a bound action key must close the picker"
+    );
+    assert_eq!(pending_calls(&ed).len(), 1);
+    let (proc, args) = pending_calls(&ed)[0];
+    assert_eq!(
+        callback_name(proc),
+        "split-cb",
+        "the action's own proc must fire, not on-select"
+    );
+    assert_eq!(args.len(), 1);
+    assert_eq!(payload_str(&args[0]), "one", "top-ranked item's payload");
+}
+
+#[test]
+fn unbound_ctrl_key_stays_consumed_and_ignored_when_no_actions_declared() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["one"]);
+
+    ed.feed_key(key_ctrl('t'));
+
+    assert!(
+        ed.state.config.picker.is_some(),
+        "an unbound action key must not close the picker"
+    );
+    assert_eq!(pending_calls(&ed).len(), 0);
+}
+
+#[test]
+fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one", "two"],
+        marker("cb"),
+        PickerOpts {
+            // Enter and Ctrl+N are already handled by handle_picker_key
+            // before the action-lookup arm ever runs.
+            actions: vec![
+                (key_enter(), marker("hijacked-enter")),
+                (key_ctrl('n'), marker("hijacked-ctrl-n")),
+            ],
+            ..Default::default()
+        },
+    );
+
+    ed.feed_key(key_ctrl('n'));
+    assert_eq!(
+        ed.state.config.picker.as_ref().unwrap().selected(),
+        1,
+        "Ctrl+N must still move the selection, not fire the actions entry"
+    );
+
+    ed.feed_key(key_enter());
+    assert_eq!(pending_calls(&ed).len(), 1);
+    assert_eq!(
+        callback_name(pending_calls(&ed)[0].0),
+        "cb",
+        "Enter must still fire on-select, not the actions entry"
+    );
+}
+
 // ── Stray keys ───────────────────────────────────────────────────────────────
 
 #[test]

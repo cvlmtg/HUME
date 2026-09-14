@@ -346,7 +346,20 @@ impl Editor {
                 let cb = self.picker_mut().insert_char(ch);
                 self.queue_query_change(cb);
             }
-            _ => {}
+            _ => {
+                // `#:actions` — tried only here, after every built-in key
+                // above has already had first refusal, so a declared action
+                // can never override movement/Backspace/Enter/Escape/query
+                // input (see `PickerSession::action_for`'s doc).
+                if let Some(proc) = self.picker_mut().action_for(key).cloned() {
+                    let payload = self
+                        .picker_mut()
+                        .selected_payload()
+                        .cloned()
+                        .unwrap_or(steel::rvals::SteelVal::BoolV(false));
+                    super::super::picker::close_picker_with(&mut self.state, Some(proc), payload);
+                }
+            }
         }
         true
     }

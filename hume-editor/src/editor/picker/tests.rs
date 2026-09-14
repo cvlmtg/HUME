@@ -33,6 +33,7 @@ fn open_live() -> PickerSession {
             query: String::new(),
             on_query_change: dummy_on_select(),
             truncate: TruncateEnd::Head,
+            actions: Vec::new(),
         },
     )
 }

@@ -20,8 +20,10 @@ use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
+use termina::event::KeyEvent;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use super::keymap::canonical;
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -165,6 +167,12 @@ pub(in crate::editor) struct PickerSession {
     /// still in flight from the *outgoing* source can also reach (see
     /// `replace`'s doc).
     requery_armed: bool,
+    /// `#:actions` — extra key→proc bindings tried, in order, after every
+    /// built-in picker key. A linear scan, not a map: real sessions carry a
+    /// handful of entries at most, and canonicalizing each on lookup instead
+    /// of hashing keeps the comparison in one place ([`canonical`]) rather
+    /// than needing a `Hash`/`Eq` impl to agree with it separately.
+    actions: Vec<(KeyEvent, SteelVal)>,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -184,6 +192,7 @@ impl PickerSession {
             opts.prompt,
             opts.query,
             opts.truncate,
+            opts.actions,
             population,
             PickerMode::Filter,
         )
@@ -202,6 +211,7 @@ impl PickerSession {
             opts.prompt,
             opts.query,
             opts.truncate,
+            opts.actions,
             Population::Complete,
             PickerMode::Live {
                 on_query_change: opts.on_query_change,
@@ -214,6 +224,7 @@ impl PickerSession {
         prompt: String,
         query: String,
         truncate: TruncateEnd,
+        actions: Vec<(KeyEvent, SteelVal)>,
         population: Population,
         mode: PickerMode,
     ) -> Self {
@@ -232,6 +243,10 @@ impl PickerSession {
             population,
             mode,
             requery_armed: false,
+            actions: actions
+                .into_iter()
+                .map(|(k, p)| (canonical(k), p))
+                .collect(),
         }
     }
 
@@ -565,6 +580,17 @@ impl PickerSession {
         &self.on_select
     }
 
+    /// The `#:actions` proc bound to `key`, if any — tried only after every
+    /// built-in picker key, so an entry for a key `handle_picker_key`
+    /// already matches (movement, `Backspace`, `Enter`, `Escape`, query
+    /// input) can never be reached from here.
+    pub(in crate::editor) fn action_for(&self, key: KeyEvent) -> Option<&SteelVal> {
+        let key = canonical(key);
+        self.actions
+            .iter()
+            .find_map(|(bound, proc)| (*bound == key).then_some(proc))
+    }
+
     /// Rebuilds `filtered` from `items`/`query` — the ranking-only half
     /// shared by [`rerank`](Self::rerank) (used directly by `replace`,
     /// `set_query`, `insert_char`, and `pop_grapheme` — a live session
@@ -697,10 +723,10 @@ pub(in crate::editor) fn open_picker(
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
-/// open) and fires its `on_select` callback exactly once with `payload`.
-/// Shared by `Esc`, `Enter` (with the selected payload), `picker-close!`, and
-/// `open_picker`'s replace-on-open path — one chokepoint, not one copy per
-/// caller.
+/// open) and fires exactly one callback with `payload` — `on_select` unless
+/// `callback` overrides it. Shared by `Esc`, `Enter` (with the selected
+/// payload), a bound `#:actions` key, `picker-close!`, and `open_picker`'s
+/// replace-on-open path — one chokepoint, not one copy per caller.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
 /// "fires exactly once" contract: its wholesale `ConfigState` rebuild drops
@@ -708,12 +734,21 @@ pub(in crate::editor) fn open_picker(
 /// the `pending_work` queue this function would have pushed the callback
 /// onto — the outgoing engine that owns the callback is seconds from being
 /// dropped, so firing it would be observable to nothing.
-pub(in crate::editor) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
+pub(in crate::editor) fn close_picker_with(
+    state: &mut super::EditorState,
+    callback: Option<SteelVal>,
+    payload: SteelVal,
+) {
     let Some(session) = state.config.picker.take() else {
         return;
     };
-    let callback = session.on_select().clone();
+    let callback = callback.unwrap_or_else(|| session.on_select().clone());
     state.queue_steel_call(callback, vec![payload]);
+}
+
+/// `close_picker_with`'s common case: fire `on_select` itself.
+pub(in crate::editor) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
+    close_picker_with(state, None, payload);
 }
 
 /// One `PickerItem` from a display string, its own payload — shared by this

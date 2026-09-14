@@ -25,6 +25,7 @@ fn open_live_picker(ed: &mut Editor) {
             query: String::new(),
             on_query_change: SteelVal::BoolV(false),
             truncate: TruncateEnd::Head,
+            actions: Vec::new(),
         },
     );
     picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);

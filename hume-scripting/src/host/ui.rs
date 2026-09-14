@@ -1,6 +1,8 @@
 //! Cursor-anchored popup, selection menu, bottom drawer, minibuffer
 //! prompt, and the fuzzy-finder picker.
 
+use termina::event::KeyEvent;
+
 use hume_engine::types::TruncateEnd;
 
 /// How an open popup reacts to key and mouse input — `show-popup!`'s
@@ -42,6 +44,12 @@ pub struct PickerOpts {
     pub query: String,
     /// `#:truncate` — see [`TruncateEnd`].
     pub truncate: TruncateEnd,
+    /// `#:actions` — extra key→proc bindings tried, in order, after every
+    /// built-in picker key (movement, `Backspace`, `Enter`, `Escape`, query
+    /// input) — see [`UiHost::open_picker`]'s doc. Empty by default: a
+    /// picker whose payload isn't a placeable buffer target simply omits
+    /// `#:actions` rather than opting out of a flag.
+    pub actions: Vec<(KeyEvent, steel::rvals::SteelVal)>,
 }
 
 /// Grouped `live-picker!` open-time keyword options — the live counterpart
@@ -69,6 +77,8 @@ pub struct LivePickerOpts {
     pub on_query_change: steel::rvals::SteelVal,
     /// `#:truncate` — see [`TruncateEnd`].
     pub truncate: TruncateEnd,
+    /// `#:actions` — see [`PickerOpts::actions`].
+    pub actions: Vec<(KeyEvent, steel::rvals::SteelVal)>,
 }
 
 /// Grouped `picker-source-spawn!` keyword options — the same split
@@ -198,7 +208,12 @@ pub trait UiHost {
     /// `picker-source-spawn!` (which already implies "still populating" on
     /// its own) — surfaced to the UI as a "results still arriving"
     /// indicator, cleared by the first `push!`/`replace!` that actually
-    /// applies. `query`: see [`PickerOpts`].
+    /// applies. `query`, `actions`: see [`PickerOpts`]. An `actions` entry is
+    /// tried only after every built-in picker key (movement, `Backspace`,
+    /// `Enter`, `Escape`, query input) — it can never override one of those,
+    /// so `#:actions` is purely additive. A matching entry fires *instead
+    /// of* `on-select` for that keystroke — not in addition to it — with the
+    /// same selected-payload argument and exactly-once, queued contract.
     fn open_picker(
         &mut self,
         items: Vec<(String, steel::rvals::SteelVal)>,

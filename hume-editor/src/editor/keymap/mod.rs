@@ -104,7 +104,7 @@ pub(super) enum WalkResult {
 /// `kind` (a kitty autorepeat is a `Repeat` event, not `Press` — held keys
 /// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
 /// `state`, and the Caps/Num Lock modifier bits.
-fn canonical(mut key: KeyEvent) -> KeyEvent {
+pub(in crate::editor) fn canonical(mut key: KeyEvent) -> KeyEvent {
     key.kind = KeyEventKind::Press;
     key.state = KeyEventState::NONE;
     key.modifiers -= Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK;

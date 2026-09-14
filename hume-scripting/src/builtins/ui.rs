@@ -8,11 +8,13 @@
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
+use termina::event::KeyEvent;
 
 use hume_engine::types::TruncateEnd;
 
 use crate::SteelCtx;
 use crate::host::{LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind};
+use crate::keys::parse_key_sequence;
 
 use super::SteelResult;
 use super::args::{
@@ -144,6 +146,32 @@ fn picker_items(items: SteelVal, ctx_name: &str) -> Result<Vec<(String, SteelVal
         .collect()
 }
 
+/// Decodes `picker!`'s/`live-picker!`'s `#:actions` alist: each entry is a
+/// `(key-spec . proc)` dotted pair — a proper list entry is rejected by
+/// `pair_fields`, same as `picker_items`. `key-spec` must parse (via
+/// `parse_key_sequence`) to exactly one `KeyEvent` — the picker dispatches
+/// one chord at a time, so a multi-key spec like `"z f"` silently binding
+/// only its first key would be a trap rather than a useful feature.
+fn picker_actions(
+    actions: SteelVal,
+    ctx_name: &str,
+) -> Result<Vec<(KeyEvent, SteelVal)>, SteelErr> {
+    list_items(actions, ctx_name)?
+        .into_iter()
+        .map(|entry| {
+            let (spec, proc) = pair_fields(entry, ctx_name, "(key-spec . proc)")?;
+            let spec = string_arg(spec, ctx_name)?;
+            let proc = callable_arg(proc, ctx_name)?;
+            let mut keys = parse_key_sequence(&spec)
+                .map_err(|e| generic_err(format!("{ctx_name}: invalid key spec '{spec}': {e}")))?;
+            if keys.len() != 1 {
+                steel::stop!(Generic => "{}: key spec '{}' must name exactly one key, not a sequence", ctx_name, spec);
+            }
+            Ok((keys.remove(0), proc))
+        })
+        .collect()
+}
+
 /// Decodes `picker!`'s/`live-picker!`'s `#:truncate` symbol — `'head`
 /// (default, drop the front) or `'tail` (drop the back). Shared so the two
 /// builtins can't drift on the accepted spelling or the error message.
@@ -157,7 +185,7 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
     }
 }
 
-/// `(%picker! items on-select prompt pending query truncate)` — the
+/// `(%picker! items on-select prompt pending query truncate actions)` — the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
 /// session's token.
 pub(crate) fn picker(
@@ -168,17 +196,20 @@ pub(crate) fn picker(
     pending: SteelVal,
     query: SteelVal,
     truncate: SteelVal,
+    actions: SteelVal,
 ) -> SteelResult {
     let items = picker_items(items, "picker! items")?;
     let prompt = string_arg(prompt, "picker! #:prompt")?;
     let pending = bool_arg(pending, "picker! #:pending")?;
     let query = string_arg(query, "picker! #:query")?;
     let truncate = truncate_end_arg(truncate, "picker! #:truncate")?;
+    let actions = picker_actions(actions, "picker! #:actions")?;
     let opts = PickerOpts {
         prompt,
         pending,
         query,
         truncate,
+        actions,
     };
     let token = require_cap(ctx.host.ui(), "picker!")?
         .open_picker(items, on_select, opts)
@@ -201,16 +232,19 @@ pub(crate) fn live_picker(
     query: SteelVal,
     on_query_change: SteelVal,
     truncate: SteelVal,
+    actions: SteelVal,
 ) -> SteelResult {
     let prompt = string_arg(prompt, "live-picker! #:prompt")?;
     let query = string_arg(query, "live-picker! #:query")?;
     let on_query_change = callable_arg(on_query_change, "live-picker! on-query-change")?;
     let truncate = truncate_end_arg(truncate, "live-picker! #:truncate")?;
+    let actions = picker_actions(actions, "live-picker! #:actions")?;
     let opts = LivePickerOpts {
         prompt,
         query,
         on_query_change,
         truncate,
+        actions,
     };
     let token = require_cap(ctx.host.ui(), "live-picker!")?
         .open_live_picker(on_select, opts)
