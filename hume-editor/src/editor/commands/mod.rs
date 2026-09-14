@@ -176,7 +176,7 @@ pub(super) fn current_selections<'a>(
     view: &EngineView,
 ) -> &'a SelectionSet {
     let bid = focused_buffer_id(state, view);
-    &state.focused_buffer_state_or_panic(bid).selections
+    state.focused_buffer_state_or_panic(bid).selections()
 }
 
 /// The most-recently-focused buffer other than the current one.
@@ -309,7 +309,7 @@ pub(super) fn pane_display_lines<'a>(
 pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> JumpEntry {
     let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
-    let sels = state.panes.state[pid][bid].selections.clone();
+    let sels = state.panes.state[pid][bid].selections().clone();
     JumpEntry::new(sels, state.buffers.get(bid).text(), bid)
 }
 
@@ -352,7 +352,7 @@ pub(super) fn set_current_selections(
     sels: SelectionSet,
 ) {
     let bid = focused_buffer_id(state, view);
-    state.panes.state[state.focus.id()][bid].selections = sels;
+    state.panes.state[state.focus.id()][bid].set_selections(sels);
 }
 
 /// Replace the primary selection in the focused pane (merging overlaps).
@@ -363,9 +363,11 @@ pub(super) fn set_primary_selection(
 ) {
     let pid = state.focus.id();
     let bid = focused_buffer_id(state, view);
-    let idx = state.panes.state[pid][bid].selections.primary_index();
-    let sels = std::mem::take(&mut state.panes.state[pid][bid].selections);
-    state.panes.state[pid][bid].selections = sels.replace(idx, new_sel);
+    let pbs = &mut state.panes.state[pid][bid];
+    let idx = pbs.selections().primary_index();
+    let old_head = pbs.selections().primary().head();
+    let sels = pbs.take_selections();
+    pbs.restore_selections(sels.replace(idx, new_sel), old_head);
 }
 
 mod edit;

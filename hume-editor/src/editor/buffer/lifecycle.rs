@@ -124,7 +124,11 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     ev.panes[pid].remember_scroll();
     ev.panes[pid].buffer_id = target;
     ev.panes[pid].recall_scroll(target, buffers.get(target).text().last_content_line());
-    pane_state::ensure(pane_state, buffers, pid, target);
+    // A different buffer's cursor/viewport pairing needs re-settling
+    // regardless of whether the recalled selection's head happens to equal
+    // the outgoing one — one of `PaneBufferState::reveal_pending`'s
+    // explicit non-selection sources.
+    pane_state::ensure(pane_state, buffers, pid, target).reveal_pending = true;
 }
 
 // ── switch_to_buffer_with_jump ────────────────────────────────────────────────
@@ -151,7 +155,7 @@ pub(in crate::editor) fn switch_to_buffer_with_jump(
 ) {
     if current_buffer_id != target {
         let sels = pane_state[focused_pane_id][current_buffer_id]
-            .selections
+            .selections()
             .clone();
         let entry = JumpEntry::new(
             sels,

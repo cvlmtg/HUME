@@ -607,7 +607,7 @@ fn picker_accept_switching_buffers_mid_frame_scrolls_new_buffer_into_view() {
         "sanity: switched to the tall buffer"
     );
 
-    let cursor_char = ed.state.panes.state[pid][bid].selections.primary().head();
+    let cursor_char = ed.state.panes.state[pid][bid].selections().primary().head();
     let rope = ed.state.buffers.get(bid).text().rope();
     let cursor_line = hume_rope::lines::char_to_ropey_line(rope, cursor_char).index();
 

@@ -47,7 +47,7 @@ impl Editor {
     fn focused_cursor_char(&self) -> hume_rope::offset::CharOffset {
         let pid = self.state.focus.id();
         self.state.panes.state[pid][self.focused_buffer_id()]
-            .selections
+            .selections()
             .primary()
             .head()
     }

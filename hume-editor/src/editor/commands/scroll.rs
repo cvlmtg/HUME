@@ -51,10 +51,12 @@ pub(in crate::editor) fn scroll_view(
     };
     viewport.scroll_by(&mut dlm, geo, delta);
 
-    // Not the same predicate as `apply_visual_vertical`'s own multi-selection
-    // guards: `frame.rs`'s scroll step only ever compares the primary head,
-    // so the pin is decided from the primary alone here.
-    let head_before = state.panes.state[pid][buf_id].selections.primary().head();
+    // `apply_doc_motion`'s own head-before/after comparison is what raises
+    // `PaneBufferState::reveal_pending` here — no separate pin to track: a
+    // scroll that couldn't carry a selection anywhere (parked behind a
+    // virtual block, or already at a document edge) leaves that selection's
+    // head unchanged, which is exactly the case the funnel already treats
+    // as "nothing to reveal".
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
@@ -77,9 +79,6 @@ pub(in crate::editor) fn scroll_view(
             })
         },
     );
-    let head_after = state.panes.state[pid][buf_id].selections.primary().head();
-    // Written unconditionally — see `PaneBufferState::scroll_pin`.
-    state.panes.state[pid][buf_id].scroll_pin = (head_before == head_after).then_some(head_after);
 }
 
 fn scroll_page(

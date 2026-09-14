@@ -187,7 +187,7 @@ impl Editor {
     /// reason to let it sit in the wheel until it fires).
     ///
     /// A pane's line store needs no entry here — it lives on the pane and
-    /// dies with it, as does `PaneBufferState::scroll_pin`, which goes with
+    /// dies with it, as does `PaneBufferState::reveal_pending`, which goes with
     /// the closed pane's `SecondaryMap` entries.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
@@ -267,7 +267,35 @@ impl Editor {
         self.view.last_pane_area = pane_area;
         self.view.last_terminal_area = terminal_area;
         self.view.reserve_seam = reserve_seam;
+
+        // A resize can move the cursor's own display line relative to the
+        // viewport (a shorter pane can push it out of view) without the
+        // selection itself moving at all, so this is one of
+        // `PaneBufferState::reveal_pending`'s explicit non-selection
+        // sources — snapshot every pane's size before the write below,
+        // and flag whichever ones it actually changed.
+        let before: Vec<(PaneId, u16, u16)> = self
+            .view
+            .panes
+            .every_pane_across_all_tabs()
+            .map(|(pid, pane)| (pid, pane.viewport.width, pane.viewport.height))
+            .collect();
         self.view.resync_viewport_dims();
+        for (pid, w, h) in before {
+            let pane = &self.view.panes[pid];
+            if pane.viewport.width == w && pane.viewport.height == h {
+                continue;
+            }
+            if let Some(pbs) = self
+                .state
+                .panes
+                .state
+                .get_mut(pid)
+                .and_then(|by_buf| by_buf.get_mut(pane.buffer_id))
+            {
+                pbs.reveal_pending = true;
+            }
+        }
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
@@ -571,25 +599,20 @@ impl Editor {
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let format_key = self.state.format_key(&self.view.panes[pid]);
-            // `scroll_pin` lives on the current (pane, buffer)'s own
+            // `reveal_pending` lives on the current (pane, buffer)'s own
             // `PaneBufferState` — a pane that switched buffers this frame
-            // reads a different, freshly-seeded state whose pin is `None`
-            // by construction, so no separate buffer-identity filter is
-            // needed here.
+            // reads a different, freshly-seeded state, so no separate
+            // buffer-identity filter is needed here.
             let pbs = &mut self.state.panes.state[pid][buf_id];
-            let cursor_char = pbs.selections.primary().head();
-            // Drop a stale/mismatched pin — see `scroll_pin`'s own doc on
-            // why a mismatch clears it instead of just failing the
-            // comparison.
-            pbs.scroll_pin = pbs.scroll_pin.filter(|&p| p == cursor_char);
-            let pinned = pbs.scroll_pin.is_some();
+            let cursor_char = pbs.selections().primary().head();
+            let reveal_pending = std::mem::take(&mut pbs.reveal_pending);
             let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
                 cursor_char,
                 format_key,
                 scrolloff,
-                pinned,
+                reveal_pending,
             );
             if pid == self.state.focus.id() {
                 ctx.cursor_content_pos = cursor_screen;
@@ -669,7 +692,7 @@ impl Editor {
         for &pid in active {
             let pane = &mut view.panes[pid];
             if let Some(pbs) = state.panes.buffer_state(pid, pane.buffer_id) {
-                write_pane_mirror(pane, &pbs.selections);
+                write_pane_mirror(pane, pbs.selections());
             }
         }
     }
@@ -714,17 +737,18 @@ impl Editor {
 /// ever *writes* the viewport, and the display-line map holds no viewport,
 /// so no arm below can change what `locate` already answered.
 ///
-/// `pinned` is `PaneBufferState::scroll_pin`'s verdict for this frame,
-/// already resolved by the caller — see that field's own doc for why the
-/// vertical `reveal` correction is skipped in favour of `cursor::content_pos`'s
-/// plain re-lookup when `pinned`, and what gap that leaves.
+/// `reveal_pending` is `PaneBufferState::reveal_pending`'s value for this
+/// frame, already taken by the caller — see that field's own doc for why the
+/// vertical `reveal` correction runs only when it's `true`, falling back to
+/// `cursor::content_pos`'s plain re-lookup otherwise, and what that leaves
+/// hidden.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor_char: hume_rope::offset::CharOffset,
     format_key: hume_engine::display_lines::line_store::FormatKey,
     scrolloff: usize,
-    pinned: bool,
+    reveal_pending: bool,
 ) -> Option<(u16, u16)> {
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done — both work through this pane's one store.
@@ -744,17 +768,17 @@ fn scroll_into_view(
     // has no snap-back to guard against, so it always runs: a
     // same-display-line cursor move (`l` on a long unwrapped line) changes
     // the column without changing `cursor_pos`, and gating this on the same
-    // pin the vertical arm below reads would leave it stale for exactly
-    // that case.
+    // `reveal_pending` the vertical arm below reads would leave it stale for
+    // exactly that case.
     viewport.reveal_horizontal(&mut dlm, cursor_display_col);
-    if pinned {
-        super::cursor::content_pos(viewport, &mut dlm, cursor_char)
-    } else {
+    if reveal_pending {
         let screen_row = viewport.reveal(&mut dlm, geo, cursor_pos);
         Some(super::cursor::place(
             viewport,
             cursor_display_col,
             screen_row,
         ))
+    } else {
+        super::cursor::content_pos(viewport, &mut dlm, cursor_char)
     }
 }

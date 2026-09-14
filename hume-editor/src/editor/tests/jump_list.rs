@@ -848,7 +848,7 @@ fn view_buffer_refresh_reseeds_every_pane_viewing_it() {
     );
 
     assert_eq!(
-        ed.state.panes.state[pid_b][bid].selections,
+        *ed.state.panes.state[pid_b][bid].selections(),
         ed.state.buffers.get(bid).initial_sels(),
         "a sibling pane's selection must be reseeded on a view-buffer refresh, not left stale"
     );

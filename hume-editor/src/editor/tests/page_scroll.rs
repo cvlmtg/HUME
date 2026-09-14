@@ -243,19 +243,19 @@ fn ctrl_d_to_eof_then_an_ordinary_motion_does_not_jump_the_view() {
     );
 }
 
-/// The park a `Ctrl+D`/wheel stall records (`PaneBufferState::scroll_pin`)
-/// must survive more than one idle frame — a one-shot "already handled"
-/// flag would only protect the frame right after the scroll and let the
-/// very next unrelated render snap the view back onto the stalled cursor.
-/// Render several frames with no input at all in between and confirm
-/// nothing moves.
+/// The park a `Ctrl+D`/wheel stall leaves behind (every selection's head
+/// unchanged, so `PaneBufferState::reveal_pending` was never raised) must
+/// survive more than one idle frame — a signal that got set anyway on that
+/// first idle render would let the very next one snap the view back onto
+/// the stalled cursor. Render several frames with no input at all in
+/// between and confirm nothing moves.
 #[test]
 fn a_stalled_scroll_survives_repeated_idle_frames() {
     let (mut ed, rect) = ctrl_d_to_eof();
     let before = viewport_top(&ed);
 
-    // No input between these renders — a one-shot pin would already have
-    // been consumed by the first of them, letting the second snap back.
+    // No input between these renders — a `reveal_pending` raised by the
+    // first of them would let the second snap back.
     ed.render_to_buf(rect);
     ed.render_to_buf(rect);
     ed.render_to_buf(rect);
@@ -268,11 +268,9 @@ fn a_stalled_scroll_survives_repeated_idle_frames() {
 }
 
 /// `z k` (`top-view-on-cursor`) only writes the viewport — the cursor is
-/// unmoved by construction. Since `z k` writes no `scroll_pin`, the very
-/// next frame still runs the vertical `ensure_cursor_visible` correction
-/// unconditionally; `scroll_cursor_to_display_line` must apply the
-/// scrolloff clamp itself rather than leaving it to that correction, so the
-/// two agree instead of the correction re-trimming what `z k` already set.
+/// unmoved by construction, and writes no selection, so it raises no
+/// `reveal_pending` of its own; `scroll_cursor_to_display_line` must apply
+/// the scrolloff clamp itself, since no follow-up `Viewport::reveal` will.
 #[test]
 fn view_top_lands_the_cursor_at_scrolloff_through_the_real_frame() {
     let content: String = numbered_lines(50);

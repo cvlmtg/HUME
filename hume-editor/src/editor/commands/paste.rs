@@ -102,7 +102,7 @@ impl EditorState {
         if self.panes.state[focused][buf].paste_group.is_none() {
             return;
         }
-        let post_sels = self.panes.state[focused][buf].selections.clone();
+        let post_sels = self.panes.state[focused][buf].selections().clone();
         let pbs = &mut self.panes.state[focused][buf];
         self.buffers
             .get_mut(buf)
@@ -192,7 +192,7 @@ fn do_paste(
     let ResolvedPaste { values, from, bare } = resolved;
 
     let pre_sels = sels.clone();
-    state.panes.state[focused][buf].selections = sels;
+    state.panes.state[focused][buf].set_selections(sels);
     state.panes.state[focused][buf].paste_before = before;
     state
         .buffers
@@ -362,7 +362,7 @@ fn do_normal_paste(state: &mut EditorState, view: &mut EngineView, before: bool)
     };
     let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
-    let sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+    let sels = state.panes.state[focused][buf].take_selections();
     do_paste(state, focused, buf, before, resolved, sels);
 }
 
@@ -380,7 +380,7 @@ fn do_smart_paste(state: &mut EditorState, view: &mut EngineView, before: bool) 
     };
     let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
-    let mut sels = std::mem::take(&mut state.panes.state[focused][buf].selections);
+    let mut sels = state.panes.state[focused][buf].take_selections();
     if resolved.bare {
         let text = state.buffers.get(buf).text();
         sels = collapse_if_repeat(text, sels, &resolved.values, before);

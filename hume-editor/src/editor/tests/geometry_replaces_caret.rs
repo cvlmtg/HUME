@@ -1,20 +1,18 @@
 //! A resize or a wrap-mode change must still replace the caret even though
 //! the cursor itself is unmoved between the two frames each test drives.
-//! Neither fixture triggers a `ViewScroll`, so `PaneBufferState::scroll_pin`
-//! stays `None` throughout and `frame.rs`'s vertical `ensure_cursor_visible`
-//! correction runs unconditionally — these tests pin that a geometry change
-//! is never mistaken, by anything, for the one case meant to skip that
-//! correction (a `ViewScroll`'s deliberate park; see `scroll_into_view`'s own
-//! doc).
+//! Neither fixture moves the primary head, so `PaneBufferState::reveal_pending`
+//! would stay `false` if resize and wrap-mode change did not each explicitly
+//! raise it themselves — these tests pin that both do, closing exactly the
+//! gap a purely selection-driven reveal signal would otherwise have.
 
 use super::*;
 
-/// A resize with the cursor unmoved must still replace the caret: no
-/// `ViewScroll` ran between the two frames below, so `scroll_pin` is `None`
-/// and `ensure_cursor_visible` runs unconditionally — it must scroll the
-/// (unchanged) viewport top far enough for the shrunk height to still cover
-/// the cursor, rather than trusting a stale top left over from the taller
-/// frame.
+/// A resize with the cursor unmoved must still replace the caret:
+/// `sync_viewport_dims` raises `reveal_pending` itself when a pane's height
+/// actually changes, so `frame.rs`'s scroll step runs `Viewport::reveal` and
+/// scrolls the (unchanged) viewport top far enough for the shrunk height to
+/// still cover the cursor, rather than trusting a stale top left over from
+/// the taller frame.
 #[test]
 fn a_height_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
     let content: String = numbered_lines(60);
@@ -34,9 +32,9 @@ fn a_height_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
 }
 
 /// A wrap-mode change with the cursor unmoved must still replace the caret:
-/// again, no `ViewScroll` ran between the two frames, so `scroll_pin` is
-/// `None` and `ensure_cursor_visible` runs unconditionally — it must
-/// re-place the caret against wrapping's now-different display-line layout
+/// `set_focused_wrap_override`/`toggle_focused_wrap` raise `reveal_pending`
+/// themselves on an actual mode change, so `frame.rs`'s scroll step
+/// re-places the caret against wrapping's now-different display-line layout
 /// rather than trusting the unwrapped frame's screen position.
 #[test]
 fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
@@ -51,11 +49,13 @@ fn a_wrap_mode_change_replaces_the_caret_even_when_the_cursor_has_not_moved() {
         "sanity: the cursor is visible unwrapped"
     );
 
-    let pid = ed.state.focus.id();
-    ed.view.panes[pid].set_wrap(hume_engine::pane::WrapOverride {
-        mode: Some(hume_engine::pane::WrapMode::Soft { width: 0 }),
-        saved: None,
-    });
+    // Through the real production path (`:set pane wrap-mode=…`), not a raw
+    // `Pane::set_wrap` poke: only `set_focused_wrap_override`/
+    // `toggle_focused_wrap` ever change wrap mode in a running editor, and
+    // both raise `PaneBufferState::reveal_pending` — a poke that bypasses
+    // them bypasses the signal too, which is not a gap this test should
+    // exercise.
+    run_set(&mut ed, "pane wrap-mode=soft:0").expect(":set pane wrap-mode=soft:0 failed");
 
     assert!(
         frame(&mut ed, 80, 15).cursor_content_pos.is_some(),

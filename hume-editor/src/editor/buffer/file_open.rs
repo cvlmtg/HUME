@@ -217,7 +217,7 @@ impl Editor {
             .map(|(pid, _)| pid)
             .collect();
         let focused = self.state.focus.id();
-        let pre_sels = self.state.panes.state[focused][id].selections.clone();
+        let pre_sels = self.state.panes.state[focused][id].selections().clone();
 
         let cursor_coords: Vec<(
             PaneId,
@@ -228,7 +228,10 @@ impl Editor {
             pane_ids
                 .iter()
                 .map(|&pid| {
-                    let head = self.state.panes.state[pid][id].selections.primary().head();
+                    let head = self.state.panes.state[pid][id]
+                        .selections()
+                        .primary()
+                        .head();
                     let line = text.char_to_line(head);
                     let char_col = char_col_in_line(text, line, head);
                     (pid, line, char_col)

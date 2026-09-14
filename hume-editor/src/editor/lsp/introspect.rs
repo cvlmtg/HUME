@@ -190,8 +190,11 @@ pub(in crate::editor) fn position_params(
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let pbs = state.shown_buffer_state(view, id)?;
     let rope = state.buffers.get(id).text().rope();
-    let pos =
-        hume_rope::position_encoding::char_to_wire(rope, pbs.selections.primary().head(), encoding);
+    let pos = hume_rope::position_encoding::char_to_wire(
+        rope,
+        pbs.selections().primary().head(),
+        encoding,
+    );
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
         "position": hume_lsp::position::to_json_position(pos),
@@ -559,7 +562,7 @@ pub(in crate::editor) fn primary_range_params(
     id: BufferId,
 ) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
-    let sel = state.shown_buffer_state(view, id)?.selections.primary();
+    let sel = state.shown_buffer_state(view, id)?.selections().primary();
     let text = state.buffers.get(id).text();
     Some(serde_json::json!({
         "textDocument": {"uri": uri},
@@ -594,7 +597,7 @@ pub(in crate::editor) fn linewise_ranges_params(
 ) -> Option<serde_json::Value> {
     let (uri, encoding) = uri_and_encoding(state, lsp, id)?;
     let text = state.buffers.get(id).text();
-    let selections = &state.shown_buffer_state(view, id)?.selections;
+    let selections = state.shown_buffer_state(view, id)?.selections();
 
     let linewise: Vec<_> = selections
         .iter_sorted()

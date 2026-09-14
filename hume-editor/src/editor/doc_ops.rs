@@ -108,7 +108,7 @@ fn finish_edit(
     text_pre: &BufferText,
     rope_pre: &ropey::Rope,
 ) {
-    pane_state[focused_pane_id][buf_id].selections = new_sels;
+    pane_state[focused_pane_id][buf_id].set_selections(new_sels);
     // An identity `cs` moved no bytes: `Buffer::apply_edit*` skipped
     // `set_text` for it directly, and `commit_edit_group` never records it as
     // a revision for `undo`/`redo` to later replay — so `text_gen` did not
@@ -175,7 +175,7 @@ pub(in crate::editor) fn apply_doc_edit(
     // O(1) clones — ropey uses structural sharing (reference-counted tree nodes).
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
+    let sels = pane_state[focused_pane_id][buf_id].take_selections();
     let (new_sels, cs) = buffers.get_mut(buf_id).apply_edit(sels, cmd);
     finish_edit(
         buffers,
@@ -219,7 +219,7 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
     }
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
+    let sels = pane_state[focused_pane_id][buf_id].take_selections();
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     let (new_sels, cs) = doc.apply_edit_grouped(sels, &mut pbs.edit_group, cmd);
@@ -372,12 +372,16 @@ pub(in crate::editor) fn apply_doc_motion(
     buf_id: BufferId,
     f: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
+    let old_head = pane_state[focused_pane_id][buf_id]
+        .selections()
+        .primary()
+        .head();
     let new_sels = {
         let text = buffers.get(buf_id).text();
-        let sels = std::mem::take(&mut pane_state[focused_pane_id][buf_id].selections);
+        let sels = pane_state[focused_pane_id][buf_id].take_selections();
         f(text, sels)
     };
-    pane_state[focused_pane_id][buf_id].selections = new_sels;
+    pane_state[focused_pane_id][buf_id].restore_selections(new_sels, old_head);
 }
 
 /// Open an edit group on the focused buffer.
@@ -391,7 +395,7 @@ pub(in crate::editor) fn begin_edit_group(
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
-    let sels = pane_state[focused_pane_id][buf_id].selections.clone();
+    let sels = pane_state[focused_pane_id][buf_id].selections().clone();
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
@@ -412,7 +416,7 @@ pub(in crate::editor) fn commit_edit_group(
     focused_pane_id: PaneId,
     buf_id: BufferId,
 ) {
-    let sels = pane_state[focused_pane_id][buf_id].selections.clone();
+    let sels = pane_state[focused_pane_id][buf_id].selections().clone();
     let doc = buffers.get_mut(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.commit_edit_group(&mut pbs.edit_group, sels);
@@ -447,8 +451,16 @@ pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
         })
         .collect();
     for pid in affected {
-        pane_state[pid][buf_id]
-            .selections
-            .translate_in_place_with(edits, cs, text_pre);
+        let pbs = &mut pane_state[pid][buf_id];
+        let old_head = pbs.selections().primary().head();
+        pbs.translate_selections_in_place(edits, cs, text_pre);
+        // A sibling pane can be visible in its own split with the shifted
+        // position now out of its own view — same reveal-on-head-move rule
+        // `set_selections`/`restore_selections` apply for the focused pane,
+        // spelled out by hand here since this mutates in place rather than
+        // going through either of those.
+        if pbs.selections().primary().head() != old_head {
+            pbs.reveal_pending = true;
+        }
     }
 }

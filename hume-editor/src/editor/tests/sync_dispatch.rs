@@ -228,7 +228,7 @@ fn call_bang_count_arg_dispatches_synchronously() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     assert_eq!(
@@ -797,7 +797,7 @@ fn steel_lambda_receives_count_and_extend() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     assert_eq!(
@@ -818,7 +818,7 @@ fn steel_lambda_receives_count_and_extend() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     assert_eq!(
@@ -853,7 +853,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     ed.execute_keymap_command("fixed-right".into(), Some(5), false);
@@ -866,7 +866,7 @@ fn steel_zero_arity_lambda_ignores_injection() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     assert_eq!(
@@ -910,7 +910,7 @@ fn steel_arity_1_lambda_receives_count_only() {
         .values()
         .next()
         .unwrap()
-        .selections
+        .selections()
         .primary()
         .head();
     assert_eq!(

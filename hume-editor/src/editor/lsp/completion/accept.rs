@@ -105,10 +105,10 @@ impl CompletionSession {
             // completing at it, and `replace_*_cursors` force-collapses
             // every selection it touches, which would silently discard a
             // real selection set.
-            if !pbs.selections.iter_sorted().all(|s| s.is_collapsed()) {
+            if !pbs.selections().iter_sorted().all(|s| s.is_collapsed()) {
                 return Err("completion-accept!: selections must be collapsed".to_string());
             }
-            pbs.selections.primary().head()
+            pbs.selections().primary().head()
         };
 
         let (span, new_text) = match &item.text_edit {

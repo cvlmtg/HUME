@@ -586,7 +586,7 @@ fn apply_startup_positions_parks_a_non_focused_buffer_without_switching_focus() 
 
     let pid = ed.state.focus.id();
     assert_eq!(
-        ed.state.panes.state[pid][extra_bid].selections,
+        *ed.state.panes.state[pid][extra_bid].selections(),
         SelectionSet::single(hume_editing::selection::Selection::collapsed(co(12))),
         "non-focused buffer's parked pane state must hold the requested position"
     );

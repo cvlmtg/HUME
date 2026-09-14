@@ -358,10 +358,9 @@ impl HumeStatusline<'_> {
     pub(in crate::statusline) fn current_selections(
         &self,
     ) -> &hume_editing::selection::SelectionSet {
-        &self
-            .state
+        self.state
             .focused_buffer_state_or_panic(self.focused_bid)
-            .selections
+            .selections()
     }
 
     pub(in crate::statusline) fn current_search_cursor(

@@ -88,7 +88,7 @@ impl Editor {
         let bid = self.focused_buffer_id();
         // pane_transient and pane_state are disjoint fields — no &mut self needed.
         if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.as_ref() {
-            self.state.panes.state[pid][bid].selections = sels.clone();
+            self.state.panes.state[pid][bid].set_selections(sels.clone());
         }
     }
 }

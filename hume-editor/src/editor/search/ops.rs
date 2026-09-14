@@ -93,7 +93,7 @@ pub(in crate::editor::search::ops) fn update_pane_cursor(
     pid: PaneId,
     bid: BufferId,
 ) {
-    let head = pane_state[pid][bid].selections.primary().head();
+    let head = pane_state[pid][bid].selections().primary().head();
     let sm = &buffers.get(bid).search_matches;
     let cur = &pane_state[pid][bid].search_cursor;
 

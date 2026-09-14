@@ -77,8 +77,12 @@ pub(crate) struct TypedRun {
 /// `selections` with `buffer.initial_sels()` when seeding for the first time.
 #[derive(Default)]
 pub(crate) struct PaneBufferState {
-    /// The focused pane's cursor / selection state for this buffer.
-    pub selections: SelectionSet,
+    /// The focused pane's cursor / selection state for this buffer. Private:
+    /// every write goes through [`PaneBufferState::set_selections`] or the
+    /// [`PaneBufferState::take_selections`]/[`PaneBufferState::restore_selections`]
+    /// pair, which is what raises [`PaneBufferState::reveal_pending`] — see
+    /// that field's own doc.
+    selections: SelectionSet,
     /// Per-pane cursor through the buffer's shared match list.
     pub search_cursor: SearchCursor,
     /// Some only while this pane is in Insert mode for this buffer.
@@ -116,33 +120,96 @@ pub(crate) struct PaneBufferState {
     /// session closes — refreshing its `seq` here is what keeps
     /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
     pub kill_opened_session: bool,
-    /// The primary head's position at the moment a `ViewScroll`
-    /// (`commands::scroll_view` — wheel/`Ctrl+D`/`Ctrl+U`/page scroll) parked
-    /// the viewport somewhere the cursor could not follow (a document edge,
-    /// or short of a virtual-line block's far side). `Some` only in that
-    /// exact case; `scroll_view` writes it unconditionally on every
-    /// `ViewScroll`, so a scroll that *did* carry the cursor clears it back
-    /// to `None`.
+    /// A fact worth re-settling the viewport for happened since the last
+    /// frame handled one — raised at the source, not inferred from state.
     ///
-    /// Read every frame by `frame.rs`'s scroll step: while the primary head
-    /// still equals this value, the vertical `Viewport::reveal`
-    /// correction is skipped — re-running it on an unmoved cursor is exactly
-    /// what would snap a parked view straight back onto it, making a scroll
-    /// into a virtual-line block impossible. Any other head value means the
-    /// park is over (an ordinary motion moved the cursor, or an edit did);
-    /// the reader clears the field back to `None` on that mismatch rather
-    /// than only comparing, so a later coincidental revisit of the same
-    /// offset (a search, a goto) can't resurrect a stale park.
+    /// Set by [`PaneBufferState::set_selections`]/`restore_selections`
+    /// whenever a write actually moves the primary head (not on a write that
+    /// leaves it where it was — a `commands::scroll_view` that couldn't
+    /// carry a selection past a virtual block, say, leaves this `false` for
+    /// that write); by a resize or wrap-mode change that alters this pane's
+    /// geometry; by a buffer switch; and by a virtual-line/inlay-hint
+    /// provider sync that changes a pane's decoration generation, since any
+    /// of these can change where the cursor's own display line sits without
+    /// the selection itself moving at all.
     ///
-    /// Deliberately a bare `CharOffset`, not a geometry snapshot: a resize,
-    /// wrap-mode toggle, or `:vsplit` *while* parked (`Ctrl+D` to EOF, then
-    /// one of those with no cursor movement in between) leaves the pin
-    /// matching against the new geometry, so the view doesn't re-settle and
-    /// the caret hides until the next cursor motion clears the pin. Accepted
-    /// as an edge case rather than fixed: it takes a park immediately
-    /// followed by a geometry change with zero intervening cursor movement,
-    /// and self-heals on the very next keystroke.
-    pub scroll_pin: Option<CharOffset>,
+    /// Read and cleared every frame by `frame.rs`'s scroll step: `true`
+    /// means the vertical `Viewport::reveal` correction runs this frame;
+    /// `false` means `cursor::content_pos` re-derives the caret's current
+    /// position without moving the viewport — the same "hidden caret until
+    /// an ordinary motion resyncs the view" behavior a scroll that parks a
+    /// selection behind a virtual block always could produce. Unlike the
+    /// `CharOffset`-pin design this replaced, there is nothing here to go
+    /// stale against a later geometry change: a resize/wrap-toggle that
+    /// happens while parked is itself one of the sources that sets this
+    /// flag, so it re-settles the same frame instead of waiting for the
+    /// next cursor motion.
+    pub reveal_pending: bool,
+}
+
+impl PaneBufferState {
+    /// Read-only access to the current selections.
+    pub(crate) fn selections(&self) -> &SelectionSet {
+        &self.selections
+    }
+
+    /// Replace the selections outright, raising [`PaneBufferState::reveal_pending`]
+    /// iff the primary head actually moved. The ordinary write path for a
+    /// caller that already holds the new value (as opposed to
+    /// [`PaneBufferState::take_selections`]'s destructive-read pattern).
+    pub(in crate::editor) fn set_selections(&mut self, new: SelectionSet) {
+        let old_head = self.selections.primary().head();
+        self.restore_selections(new, old_head);
+    }
+
+    /// Take ownership of the current selections, replacing them with the
+    /// default (a single collapsed cursor at char 0) — for a caller that
+    /// needs to destructively consume them (typically to feed a pure
+    /// `(&BufferText, SelectionSet) -> SelectionSet` motion/edit) without a
+    /// clone. The default is transient: a panic before
+    /// [`PaneBufferState::restore_selections`] runs leaves it in place
+    /// rather than corrupting a partially-applied result, the same
+    /// infallible-closure assumption `apply_doc_motion` already documented.
+    ///
+    /// Pairs with `restore_selections`, which must be called with the
+    /// primary head this returned before this state is next read.
+    pub(in crate::editor) fn take_selections(&mut self) -> SelectionSet {
+        std::mem::take(&mut self.selections)
+    }
+
+    /// Write `new` back after a [`PaneBufferState::take_selections`], raising
+    /// [`PaneBufferState::reveal_pending`] iff `new`'s primary head differs
+    /// from `old_head` — the head `take_selections` returned's own value,
+    /// captured by the caller before transforming it. Comparing against a
+    /// caller-supplied `old_head` rather than `self.selections.primary().head()`
+    /// is what makes this safe to call after `take_selections` already left
+    /// `self.selections` at its transient default.
+    pub(in crate::editor) fn restore_selections(
+        &mut self,
+        new: SelectionSet,
+        old_head: CharOffset,
+    ) {
+        if new.primary().head() != old_head {
+            self.reveal_pending = true;
+        }
+        self.selections = new;
+    }
+
+    /// In-place remap for a sibling pane's selections after an edit another
+    /// pane made to the same buffer. Does not itself raise `reveal_pending`
+    /// — `doc_ops::propagate_cs_to_panes`, the sole caller, does that with
+    /// its own before/after head comparison, since it already needs the
+    /// "before" value for a different purpose (deciding whether to remap at
+    /// all is not the same question, but the head it reads to answer this
+    /// one is the same read).
+    pub(in crate::editor) fn translate_selections_in_place(
+        &mut self,
+        edits: &[hume_rope::offset::ExclusiveRange<CharOffset>],
+        cs: &hume_editing::changeset::ChangeSet,
+        text_pre: &hume_editing::text::BufferText,
+    ) {
+        self.selections.translate_in_place_with(edits, cs, text_pre);
+    }
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────
@@ -193,8 +260,8 @@ pub(in crate::editor) fn write_cursor(
     bid: BufferId,
     char_pos: CharOffset,
 ) {
-    ensure(pane_state, buffers, pid, bid).selections =
-        SelectionSet::single(Selection::collapsed(char_pos));
+    ensure(pane_state, buffers, pid, bid)
+        .set_selections(SelectionSet::single(Selection::collapsed(char_pos)));
 }
 
 /// Collapse `pane_state[pid][bid]`'s selection onto a 0-based
@@ -489,6 +556,12 @@ impl Editor {
         pane.set_wrap(wrap);
         if mode != before {
             self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
+            // A wrap-mode change can move the cursor's own display line
+            // relative to the viewport without the selection itself
+            // moving — one of `PaneBufferState::reveal_pending`'s explicit
+            // non-selection sources.
+            let bid = self.view.panes[pid].buffer_id;
+            self.state.panes.state[pid][bid].reveal_pending = true;
         }
     }
 
@@ -570,6 +643,13 @@ impl Editor {
             true
         };
         self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
+        // Toggling always flips whether the pane is actually wrapping (see
+        // this function's own doc), which can move the cursor's own display
+        // line relative to the viewport without the selection itself
+        // moving — one of `PaneBufferState::reveal_pending`'s explicit
+        // non-selection sources.
+        let bid = self.view.panes[pid].buffer_id;
+        self.state.panes.state[pid][bid].reveal_pending = true;
         now_wrapping
     }
 }

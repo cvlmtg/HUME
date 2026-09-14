@@ -667,7 +667,7 @@ impl Editor {
             .state
             .get(pane)
             .and_then(|m| m.get(buf))
-            .map(|s| &s.selections)
+            .map(|s| s.selections())
     }
 
     /// Execute a typed command string (e.g. `"bd"`, `"e! path"`) programmatically.

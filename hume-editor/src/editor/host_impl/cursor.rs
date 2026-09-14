@@ -31,7 +31,7 @@ impl<'a> EditorHostImpl<'a> {
     )> {
         Some((
             self.buffer(bid)?,
-            &self.state.shown_buffer_state(self.view, bid)?.selections,
+            self.state.shown_buffer_state(self.view, bid)?.selections(),
         ))
     }
 
@@ -65,14 +65,14 @@ impl<'a> EditorHostImpl<'a> {
 impl<'a> CursorHost for EditorHostImpl<'a> {
     fn current_line_number(&self) -> Option<usize> {
         let pbs = self.focused_pane_buffer_state()?;
-        self.char_index_to_line(pbs.selections.primary().head().index())
+        self.char_index_to_line(pbs.selections().primary().head().index())
     }
 
     fn current_selections(&self) -> Option<Vec<(usize, usize, bool)>> {
         let pbs = self.focused_pane_buffer_state()?;
-        let primary_index = pbs.selections.primary_index();
+        let primary_index = pbs.selections().primary_index();
         Some(
-            pbs.selections
+            pbs.selections()
                 .iter_sorted()
                 .enumerate()
                 .map(|(i, sel)| (sel.anchor().index(), sel.head().index(), i == primary_index))

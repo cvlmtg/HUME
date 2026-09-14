@@ -281,7 +281,7 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let head = |ed: &Editor, pid| ed.state.panes.state[pid][bid].selections.primary().head();
+    let head = |ed: &Editor, pid| ed.state.panes.state[pid][bid].selections().primary().head();
     assert_eq!(
         head(&ed, pid_a),
         co(0),
@@ -378,10 +378,13 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(10));
-    ed.state.panes.state[pid_a][bid].selections =
-        SelectionSet::single(Selection::collapsed(head_a));
+    ed.state.panes.state[pid_a][bid]
+        .set_selections(SelectionSet::single(Selection::collapsed(head_a)));
 
-    let head_b_before = ed.state.panes.state[pid_b][bid].selections.primary().head();
+    let head_b_before = ed.state.panes.state[pid_b][bid]
+        .selections()
+        .primary()
+        .head();
 
     // Wheel at screen col 7 (inside pane A's rect, gutter width 0 — see
     // `vsplit_click_...`'s doc for why pane A has no gutter).
@@ -398,7 +401,10 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "pane A's viewport must scroll up by mouse_scroll_lines (3)"
     );
     assert_eq!(
-        ed.state.panes.state[pid_a][bid].selections.primary().head(),
+        ed.state.panes.state[pid_a][bid]
+            .selections()
+            .primary()
+            .head(),
         ed.state
             .buffers
             .get(bid)
@@ -412,7 +418,10 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         "pane B's viewport must be untouched"
     );
     assert_eq!(
-        ed.state.panes.state[pid_b][bid].selections.primary().head(),
+        ed.state.panes.state[pid_b][bid]
+            .selections()
+            .primary()
+            .head(),
         head_b_before,
         "pane B's selection must be untouched"
     );
@@ -442,8 +451,8 @@ fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
         .get(bid)
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(10));
-    ed.state.panes.state[pid_b][bid].selections =
-        SelectionSet::single(Selection::collapsed(head_b));
+    ed.state.panes.state[pid_b][bid]
+        .set_selections(SelectionSet::single(Selection::collapsed(head_b)));
 
     // Row 24 is the statusline (usable pane height is 24 after its
     // reservation) — outside every pane's rect, same row
@@ -488,7 +497,7 @@ fn stacked_split_click_translates_row_by_the_panes_rect_origin() {
     // 0..3 lands on 'D' — the whole line is the same character).
     ed.handle_input(mouse_left_down(6, 15));
 
-    let sel = ed.state.panes.state[pid_b][bid].selections.primary();
+    let sel = ed.state.panes.state[pid_b][bid].selections().primary();
     assert_eq!(
         ed.doc().text().char_to_line(sel.head()),
         hume_rope::line::ContentLine::new(3),

@@ -575,7 +575,8 @@ fn ensure_seeds_new_entry_with_initial_sels() {
     // and returns a state with the initial selections.
     let state = pane_state::ensure(&mut ed.state.panes.state, &ed.state.buffers, pid, bid2);
     assert_eq!(
-        state.selections, expected_sels,
+        *state.selections(),
+        expected_sels,
         "ensure must seed with buffer's initial_sels on first visit",
     );
 }
@@ -1637,7 +1638,8 @@ fn split_inherits_focused_panes_selection_and_scroll() {
     assert_ne!(pid_a, pid_b);
 
     assert_eq!(
-        ed.state.panes.state[pid_b][bid].selections, ed.state.panes.state[pid_a][bid].selections,
+        ed.state.panes.state[pid_b][bid].selections(),
+        ed.state.panes.state[pid_a][bid].selections(),
         "new pane inherits the source pane's selection"
     );
     assert_eq!(

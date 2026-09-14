@@ -168,7 +168,7 @@ impl Editor {
             let focused = self.state.focus.id();
             let text = self.doc().text();
             let primary = self.state.panes.state[focused][self.focused_buffer_id()]
-                .selections
+                .selections()
                 .primary();
             if let Some(match_pos) = matching_bracket(text, primary) {
                 let (line, byte) = char_to_line_byte(text, match_pos);
@@ -569,6 +569,13 @@ impl Editor {
 
             self.state.panes.render[pid].set_virtual_lines(by_line);
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
+            // A virtual-line block appearing or changing shape above the
+            // cursor can move its own display line relative to the
+            // viewport without the selection itself moving — one of
+            // `PaneBufferState::reveal_pending`'s explicit non-selection
+            // sources, closing the residual gap the former `CursorFollow`
+            // mechanism (117bcc00) could only document, not fix.
+            self.state.panes.state[pid][bid].reveal_pending = true;
         }
     }
 
