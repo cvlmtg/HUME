@@ -313,13 +313,14 @@ fn signs_pure_deletion_marks_line_above_gap() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus".to_string())],
-        "deleting 'c' must mark line 1 ('b'), the line above the gap"
+        vec![(1, "▁".to_string(), "diff.minus".to_string())],
+        "deleting 'c' must mark line 1 ('b'), the line above the gap, with the \
+         bottom-aligned boundary glyph"
     );
 }
 
 #[test]
-fn signs_deletion_at_start_clamps_to_line_zero() {
+fn signs_deletion_at_start_marks_line_zero_with_top_glyph() {
     // `setup()`'s claim must be held before any `git` spawn below.
     let tmp = safe_tempdir();
     let (mut ed, _guard) = setup(tmp.path(), None);
@@ -340,8 +341,9 @@ fn signs_deletion_at_start_clamps_to_line_zero() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(0, "-".to_string(), "diff.minus".to_string())],
-        "deleting the first line must clamp to line 0, never go negative"
+        vec![(0, "▔".to_string(), "diff.minus".to_string())],
+        "deleting the first line has no line above to anchor on, so it marks line \
+         0 with the top-aligned boundary glyph instead"
     );
 }
 
@@ -367,7 +369,7 @@ fn signs_deletion_at_end_of_file_marks_last_content_line() {
 
     assert_eq!(
         signs(&ed, bid),
-        vec![(1, "-".to_string(), "diff.minus".to_string())],
+        vec![(1, "▁".to_string(), "diff.minus".to_string())],
         "deleting the last line ('c') must mark line 1 ('b') without an \
          out-of-range set-signs! call — new-start (2) equals the buffer's \
          content line count"
@@ -553,6 +555,47 @@ fn inline_pure_addition_has_no_virtual_line_only_tint() {
         "nothing was removed, so a pure addition contributes no virtual line"
     );
     assert_eq!(line_bgs(&ed, bid), vec![(1, "diff.plus.line".to_string())]);
+}
+
+#[test]
+fn inline_pure_deletion_over_four_lines_renders_every_ghost_line() {
+    // Real-world regression: a pure-deletion hunk of more than 4 lines
+    // showed its gutter mark but no ghost lines. Root cause: steel-core
+    // 0.8.2's `append` silently drops every element past the 4th when its
+    // *first* argument is the literal empty list — `render.scm`'s unpaired
+    // lines hit exactly that shape (`paired` is always `'()` for a pure
+    // deletion). See `git-diff/hunk-old-lines->virtual+spans`'s doc.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), Some(r#"(hash "inline" #t)"#));
+
+    let repo = safe_tempdir();
+    git_init(repo.path());
+    commit_file(
+        repo.path(),
+        "f.txt",
+        "top\ndel1\ndel2\ndel3\ndel4\ndel5\nbottom\n",
+        "v1",
+    );
+    std::fs::write(repo.path().join("f.txt"), "top\nbottom\n").unwrap();
+    let bid = open(&mut ed, &repo.path().join("f.txt"));
+
+    drain_until(&mut ed, |ed| {
+        !ed.state
+            .config
+            .decorations
+            .virtual_lines_for(SOURCE, bid)
+            .is_empty()
+    });
+
+    let texts: Vec<String> = vlines(&ed, bid)
+        .into_iter()
+        .map(|(_, _, text, ..)| text)
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["del1", "del2", "del3", "del4", "del5"],
+        "all 5 removed lines must render as ghost lines, in order"
+    );
 }
 
 // ── Commands and shared state ────────────────────────────────────────────────

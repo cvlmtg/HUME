@@ -18,14 +18,17 @@
 
 ;;; One `diff-buffer-lines` hunk -> a list of `(line text scope)` sign
 ;;; entries, one per changed line (VSCode/gitsigns density, not one per
-;;; hunk) — see docs/rendering.md for the deletion-anchor math.
+;;; hunk) — see docs/rendering.md for the deletion-anchor math and the
+;;; boundary-mark glyphs.
 (define (git-diff/hunk->signs hunk)
   (let* ([old-count (list-ref hunk 1)]
          [new-start (list-ref hunk 2)]
          [new-count (list-ref hunk 3)])
     (cond
+      [(and (= new-count 0) (= new-start 0))
+       (list (list 0 "▔" "diff.minus"))]
       [(= new-count 0)
-       (list (list (max 0 (- new-start 1)) "-" "diff.minus"))]
+       (list (list (- new-start 1) "▁" "diff.minus"))]
       [(= old-count 0) (git-diff/line-signs new-start new-count "+" "diff.plus")]
       [else (git-diff/line-signs new-start new-count "~" "diff.delta")])))
 
@@ -92,6 +95,15 @@
 
 ;;; One hunk's removed old-side lines -> `(virtual-lines . spans)` — see
 ;;; docs/rendering.md for the paired/unpaired split.
+;;;
+;;; `all` skips the `append` when `paired` is empty (a pure deletion, the
+;;; common case) rather than always going through `(append paired
+;;; unpaired)`: steel-core 0.8.2 silently drops every `unpaired` entry past
+;;; the 4th specifically when the *first* argument to `append` is the
+;;; literal empty list — confirmed by hand (a 5th+ deleted line vanishing
+;;; only when nothing precedes it; the identical `map`/`append` shape over a
+;;; non-empty `paired`, of any size, is unaffected). A VM bug, not fixable
+;;; here.
 (define (git-diff/hunk-old-lines->virtual+spans bid old-lines new-lines new-start paired-count anchor)
   (let* ([offsets (if (> paired-count 0)
                        (git-diff/paired-line-offsets bid new-start new-lines paired-count)
@@ -108,7 +120,7 @@
          [unpaired (map (lambda (old-line)
                           (cons (git-diff/plain-virtual-line old-line anchor) '()))
                         (list-tail old-lines paired-count))]
-         [all (append paired unpaired)])
+         [all (if (null? paired) unpaired (append paired unpaired))])
     (cons (map car all) (apply append (map cdr all)))))
 
 ;;; One hunk -> `(virtual-lines . spans)` for `render-inline!`. A pure

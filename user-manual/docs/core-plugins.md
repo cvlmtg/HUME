@@ -125,8 +125,9 @@ modified-files details.
 ## core:git-diff
 
 Live, VSCode-style inline git diff. As you type, compares the buffer against a git ref
-(default `HEAD`) and renders gutter `+`/`-`/`~` signs, deleted lines as virtual lines,
-added/changed lines with a background tint, and word-level highlights inside changed lines.
+(default `HEAD`) and renders gutter `+`/`~` signs plus a boundary mark (`▁`/`▔`) for
+deletions, deleted lines as virtual lines, added/changed lines with a background tint, and
+word-level highlights inside changed lines.
 
 ```scheme
 (declare-plugin "core:stdlib")

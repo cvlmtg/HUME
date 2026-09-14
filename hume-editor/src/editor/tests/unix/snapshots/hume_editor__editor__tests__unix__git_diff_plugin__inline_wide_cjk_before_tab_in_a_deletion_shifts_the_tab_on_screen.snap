@@ -1,8 +1,9 @@
 ---
 source: hume-editor/src/editor/tests/unix/git_diff_plugin.rs
+assertion_line: 529
 expression: snap
 ---
-<fg=#fb4934,bg=#3c3836>- </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#bdae93>o</><fg=#ebdbb2,bg=#3c3836>ne</>
+<fg=#fb4934,bg=#3c3836>▁ </><fg=#fabd2f,bg=#3c3836>1 </><fg=#3c3836,bg=#bdae93>o</><fg=#ebdbb2,bg=#3c3836>ne</>
 <fg=#665c54,bg=#4e2e2a>    </><fg=#ebdbb2,bg=#4e2e2a>漢   tabbed</>
 <fg=#665c54,bg=#282828>  1 </><fg=#ebdbb2,bg=#282828>three</>
 <fg=#928374,bg=#282828>~</>

@@ -24,9 +24,11 @@ buffer.
 Deciding a hunk's sign kind: a pure deletion has no new-side lines to anchor on, so the
 sign lands on the line above the gap instead (gitsigns' convention) — `(- new-start 1)`
 rather than `new-start` sidesteps an out-of-range `set-signs!` call for a deletion at
-end of file, and `(max 0 …)` covers a deletion at line 0. A pure addition (`old-count`
-zero) gets a `+` sign on every new-side line; anything else gets `~` on every new-side
-line.
+end of file. It draws as `▁` (bottom-aligned), not `-`, so it reads as a mark on the
+boundary *below* that line rather than on the line itself; a deletion at line 0 has no
+line above to anchor on, so it gets its own case — line 0, `▔` (top-aligned) instead.
+A pure addition (`old-count` zero) gets a `+` sign on every new-side line; anything else
+gets `~` on every new-side line.
 
 `git-diff/render-signs!`'s `(apply append …)`, not `flatten`, joins the per-hunk sign
 lists — a sign entry is itself a list, and `flatten` would tear each one apart. An empty
