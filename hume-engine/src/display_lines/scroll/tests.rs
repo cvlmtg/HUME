@@ -14,48 +14,20 @@ use std::rc::Rc;
 use ropey::Rope;
 
 use super::*;
-use crate::display_lines::line_store::{FormatKey, PaneLineStore};
-use crate::pane::{Viewport, WhitespaceConfig, WrapMode};
+use crate::display_lines::line_store::PaneLineStore;
+use crate::pane::{Viewport, WrapMode};
 use crate::providers::{
-    Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLine, VirtualLineAnchor,
+    Decoration, DecorationKinds, DecorationSource, ProviderSet, VirtualLineAnchor,
 };
+use crate::test_support::{VirtualLineBlock, co, map};
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::CharOffset;
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
-
-fn rope(text: &str) -> Rope {
-    Rope::from_str(text)
-}
 
 fn viewport(top: usize, height: u16, width: u16) -> Viewport {
     let mut v = Viewport::new(width, height);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(top), 0));
     v
-}
-
-fn map<'a>(
-    rope: &'a Rope,
-    wrap: WrapMode,
-    providers: &'a ProviderSet,
-    content_width: u16,
-    store: &'a mut PaneLineStore,
-) -> DisplayLineMap<'a> {
-    DisplayLineMap::new(
-        rope,
-        providers,
-        content_width,
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: WhitespaceConfig::default(),
-        },
-        store,
-    )
 }
 
 /// Mirror of `hume-editor`'s `cursor::content_pos` — see this module's doc.
@@ -85,68 +57,6 @@ fn local_place(v: &Viewport, cursor_display_col: DisplayLineCol, row: usize) -> 
 // ---------------------------------------------------------------------------
 // Test doubles
 // ---------------------------------------------------------------------------
-
-/// What each of a [`VirtualLineBlock`]'s display lines says.
-enum BlockText {
-    Same(&'static str),
-    Ordinal,
-}
-
-/// A VIRTUAL_LINE source emitting `count` display lines at one anchor, and
-/// nothing for any other line.
-struct VirtualLineBlock {
-    anchor: VirtualLineAnchor,
-    count: usize,
-    text: BlockText,
-}
-
-impl VirtualLineBlock {
-    fn uniform(anchor: VirtualLineAnchor, count: usize, text: &'static str) -> Self {
-        Self {
-            anchor,
-            count,
-            text: BlockText::Same(text),
-        }
-    }
-
-    fn numbered(anchor: VirtualLineAnchor, count: usize) -> Self {
-        Self {
-            anchor,
-            count,
-            text: BlockText::Ordinal,
-        }
-    }
-
-    fn line(&self) -> ContentLine {
-        match self.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
-        }
-    }
-}
-
-impl DecorationSource for VirtualLineBlock {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-
-    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if line_idx != self.line() {
-            return;
-        }
-        for i in 0..self.count {
-            out.push(Decoration::VirtualLine(VirtualLine {
-                anchor: self.anchor,
-                provider_id: 0,
-                text: match self.text {
-                    BlockText::Same(t) => t.to_string(),
-                    BlockText::Ordinal => (i + 1).to_string(),
-                },
-                segments: Vec::new(),
-                base_scope: None,
-            }));
-        }
-    }
-}
 
 /// Counts how many times `line` is formatted, and decorates nothing.
 struct FormatProbe {
@@ -193,7 +103,7 @@ fn providers_with_before_line(line: usize) -> ProviderSet {
 
 #[test]
 fn no_wrap_cursor_visible_no_scroll_needed() {
-    let r = rope("a\nb\nc\nd\ne\n");
+    let r = Rope::from_str("a\nb\nc\nd\ne\n");
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -205,7 +115,7 @@ fn no_wrap_cursor_visible_no_scroll_needed() {
 
 #[test]
 fn no_wrap_cursor_below_viewport_scrolls_down() {
-    let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
+    let r = Rope::from_str("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -219,7 +129,7 @@ fn no_wrap_cursor_below_viewport_scrolls_down() {
 
 #[test]
 fn no_wrap_cursor_above_viewport_scrolls_up() {
-    let r = rope("a\nb\nc\nd\ne\nf\ng\nh\n");
+    let r = Rope::from_str("a\nb\nc\nd\ne\nf\ng\nh\n");
     let mut v = viewport(5, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -240,7 +150,7 @@ fn no_wrap_cursor_above_viewport_scrolls_up() {
 #[test]
 fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
     let text: String = (0..50).map(|i| format!("line{i}\n")).collect();
-    let r = rope(&text);
+    let r = Rope::from_str(&text);
     let mut v = viewport(0, 24, 80);
     let providers = no_providers();
     let cursor_pos = DisplayLinePos::new(ContentLine::new(20), 0);
@@ -272,7 +182,7 @@ fn no_wrap_huge_scrolloff_at_even_height_settles_after_one_scroll() {
 
 #[test]
 fn cursor_sub_display_line_no_wrap() {
-    let r = rope("hello world\n");
+    let r = Rope::from_str("hello world\n");
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -282,7 +192,7 @@ fn cursor_sub_display_line_no_wrap() {
 
 #[test]
 fn cursor_sub_display_line_wrapped() {
-    let r = rope("abcdefgh\n");
+    let r = Rope::from_str("abcdefgh\n");
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::Soft { width: 4 }, &providers, 80, &mut s);
@@ -294,7 +204,7 @@ fn cursor_sub_display_line_wrapped() {
 
 #[test]
 fn wrap_cursor_within_top_margin_scrolls_up() {
-    let r = rope(&"ab\n".repeat(10));
+    let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(3), 0));
     let cursor_char =
@@ -310,7 +220,7 @@ fn wrap_cursor_within_top_margin_scrolls_up() {
 
 #[test]
 fn wrap_cursor_within_bottom_margin_scrolls_down() {
-    let r = rope(&"ab\n".repeat(10));
+    let r = Rope::from_str(&"ab\n".repeat(10));
     let mut v = Viewport::new(3, 8);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 0));
     let cursor_char =
@@ -328,7 +238,7 @@ fn wrap_cursor_within_bottom_margin_scrolls_down() {
 
 #[test]
 fn view_top_then_scrolloff_trims_cursor_inward() {
-    let r = rope(&"a\n".repeat(50));
+    let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char =
         co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
@@ -348,7 +258,7 @@ fn view_top_then_scrolloff_trims_cursor_inward() {
 
 #[test]
 fn view_bottom_then_scrolloff_trims_cursor_inward() {
-    let r = rope(&"a\n".repeat(50));
+    let r = Rope::from_str(&"a\n".repeat(50));
     let mut v = viewport(0, 24, 80);
     let cursor_char =
         co(hume_rope::lines::line_start_char(&r, hume_rope::line::RopeyLine::new(25)).index());
@@ -370,7 +280,7 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
 
 #[test]
 fn reveal_accounts_for_a_stolen_virtual_display_line() {
-    let r = rope("a\nb\nc\nd\n");
+    let r = Rope::from_str("a\nb\nc\nd\n");
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::Soft { width: 80 };
     let providers = providers_with_before_line(2);
@@ -395,7 +305,7 @@ fn reveal_accounts_for_a_stolen_virtual_display_line() {
 
 #[test]
 fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
-    let r = rope("a\nb\nc\nd\n");
+    let r = Rope::from_str("a\nb\nc\nd\n");
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::None;
     let providers = providers_with_before_line(2);
@@ -420,7 +330,7 @@ fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
 
 #[test]
 fn scroll_backward_from_cursor_reaches_into_before_line_0() {
-    let r = rope("a\nb\nc\n");
+    let r = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::Before(ContentLine::new(0)),
@@ -449,7 +359,7 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
 /// block size, in either wrap mode.
 #[test]
 fn heal_shrinks_stale_offset() {
-    let r = rope("a\nb\n");
+    let r = Rope::from_str("a\nb\n");
     let providers = providers_with_before_line(0); // Before(0): 1 display line + content: 1 = total 2
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 80 }] {
@@ -467,7 +377,7 @@ fn heal_shrinks_stale_offset() {
 
 #[test]
 fn heal_is_a_noop_when_already_valid() {
-    let r = rope("a\nb\n");
+    let r = Rope::from_str("a\nb\n");
     let providers = providers_with_before_line(0);
     let mut v = viewport(0, 5, 80);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 1));
@@ -480,7 +390,7 @@ fn heal_is_a_noop_when_already_valid() {
 
 #[test]
 fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
-    let r = rope(&("a".repeat(100) + "\n"));
+    let r = Rope::from_str(&("a".repeat(100) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -499,7 +409,7 @@ fn horizontal_scroll_margin_uses_content_width_not_viewport_width() {
 
 #[test]
 fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
-    let r = rope(&("a".repeat(100) + "\n"));
+    let r = Rope::from_str(&("a".repeat(100) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -520,7 +430,7 @@ fn horizontal_scroll_margin_no_scroll_when_within_content_width() {
 /// true (unclamped) column, not a `u16`-truncated one.
 #[test]
 fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
-    let r = rope(&("a".repeat(70_000) + "\n"));
+    let r = Rope::from_str(&("a".repeat(70_000) + "\n"));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -545,7 +455,7 @@ fn horizontal_scroll_reaches_past_former_u16_column_ceiling() {
 
 #[test]
 fn reported_screen_row_agrees_with_a_forward_walk() {
-    let r = rope("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    let r = Rope::from_str("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::Before(ContentLine::new(3)),
@@ -589,7 +499,7 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
 
 #[test]
 fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
-    let r = rope(&("a".repeat(5_000) + "\n"));
+    let r = Rope::from_str(&("a".repeat(5_000) + "\n"));
     let formats = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FormatProbe::new(0, Rc::clone(&formats))));
@@ -629,7 +539,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
 #[test]
 fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
     let text: String = (0..150).map(|i| format!("line{i}\n")).collect();
-    let r = rope(&text);
+    let r = Rope::from_str(&text);
     let providers = no_providers();
     let mut v = viewport(0, 10, 80);
     let height = 10usize;
@@ -653,7 +563,7 @@ fn far_jump_lands_at_the_same_top_as_before_the_cap_change() {
 #[test]
 fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
     let text: String = (0..150).map(|i| format!("line{i}\n")).collect();
-    let r = rope(&text);
+    let r = Rope::from_str(&text);
     let formats = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FormatProbe::new(9, Rc::clone(&formats))));
@@ -675,7 +585,7 @@ fn far_jump_forward_walk_does_not_format_past_the_tightened_cap() {
 #[test]
 fn distance_line_delta_short_circuit_never_formats_when_unreachable() {
     let text: String = (0..1200).map(|i| format!("line{i}\n")).collect();
-    let r = rope(&text);
+    let r = Rope::from_str(&text);
     let formats = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(FormatProbe::new(0, Rc::clone(&formats))));
@@ -701,7 +611,7 @@ fn distance_line_delta_short_circuit_never_formats_when_unreachable() {
 
 #[test]
 fn down_no_wrap_clamps_so_the_last_real_line_reaches_the_bottom_row() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -720,7 +630,7 @@ fn down_no_wrap_clamps_so_the_last_real_line_reaches_the_bottom_row() {
 
 #[test]
 fn down_no_wrap_file_fits_no_movement() {
-    let r = rope(&"a\n".repeat(3));
+    let r = Rope::from_str(&"a\n".repeat(3));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -736,7 +646,7 @@ fn down_no_wrap_file_fits_no_movement() {
 
 #[test]
 fn down_no_wrap_advances_by_count() {
-    let r = rope(&"a\n".repeat(20));
+    let r = Rope::from_str(&"a\n".repeat(20));
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -756,7 +666,7 @@ fn down_never_moves_the_top_backwards_from_past_max_scroll_top() {
     // see its own doc — so it, and an LSP goto near EOF, can leave the top
     // past max_scroll_top. 10 content lines, height 5, margin 0: the bound
     // is line 5. Seed the top at line 8, well past it.
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let mut v = viewport(8, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -772,7 +682,7 @@ fn down_never_moves_the_top_backwards_from_past_max_scroll_top() {
 
 #[test]
 fn up_no_wrap_clamps_at_zero() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let mut v = viewport(1, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -788,7 +698,7 @@ fn up_no_wrap_clamps_at_zero() {
 
 #[test]
 fn up_no_wrap_decrements_by_count() {
-    let r = rope(&"a\n".repeat(20));
+    let r = Rope::from_str(&"a\n".repeat(20));
     let mut v = viewport(10, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -800,7 +710,7 @@ fn up_no_wrap_decrements_by_count() {
 
 #[test]
 fn up_at_top_is_no_op() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -812,7 +722,7 @@ fn up_at_top_is_no_op() {
 
 #[test]
 fn down_wrap_file_fits_no_movement() {
-    let r = rope(&"a\n".repeat(2));
+    let r = Rope::from_str(&"a\n".repeat(2));
     let mut v = viewport(0, 10, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -831,7 +741,7 @@ fn down_wrap_file_fits_no_movement() {
 /// row sits on the bottom screen row, and then stay there.
 #[test]
 fn down_reaches_the_after_last_line_block_until_it_fills_the_bottom_row() {
-    let r = rope(&"a\n".repeat(2));
+    let r = Rope::from_str(&"a\n".repeat(2));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::After(ContentLine::new(1)),
@@ -868,7 +778,7 @@ fn down_reaches_the_after_last_line_block_until_it_fills_the_bottom_row() {
 /// must clamp to the bound in one jump, not reset to 0.
 #[test]
 fn down_overshoot_past_after_last_line_clamps_not_resets() {
-    let r = rope(&"a\n".repeat(2));
+    let r = Rope::from_str(&"a\n".repeat(2));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::After(ContentLine::new(1)),
@@ -898,7 +808,7 @@ fn down_overshoot_past_after_last_line_clamps_not_resets() {
 /// same top.
 #[test]
 fn down_with_margin_stops_short_of_the_bottom_row() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let mut v = viewport(0, 5, 80);
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -931,7 +841,7 @@ fn generous_band() -> (ViewGeometry, DisplayLinePos) {
 
 #[test]
 fn carry_moves_head_the_requested_display_lines_down() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -943,7 +853,7 @@ fn carry_moves_head_the_requested_display_lines_down() {
 
 #[test]
 fn carry_returns_none_when_head_is_already_at_the_document_edge() {
-    let r = rope(&"a\n".repeat(3));
+    let r = Rope::from_str(&"a\n".repeat(3));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -958,7 +868,7 @@ fn carry_returns_none_when_head_is_already_at_the_document_edge() {
 
 #[test]
 fn carry_zero_rows_is_always_none() {
-    let r = rope("a\n");
+    let r = Rope::from_str("a\n");
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -977,7 +887,7 @@ fn carry_zero_rows_is_always_none() {
 /// below.
 #[test]
 fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
-    let r = rope("a\nb\n");
+    let r = Rope::from_str("a\nb\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::Before(ContentLine::new(1)),
@@ -1003,7 +913,7 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
 /// on row 2, short of `margin`, so the clamp must walk it 1 further, to row 3.
 #[test]
 fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
-    let r = rope(&"a\n".repeat(10));
+    let r = Rope::from_str(&"a\n".repeat(10));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -1025,7 +935,7 @@ fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
 /// lands on row 8, past `target`, so the clamp must pull it back to row 6.
 #[test]
 fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
-    let r = rope(&"a\n".repeat(20));
+    let r = Rope::from_str(&"a\n".repeat(20));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
@@ -1049,7 +959,7 @@ fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
 /// block swallows every display line through row 8, past `target`.
 #[test]
 fn carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it() {
-    let r = rope("a\nb\n");
+    let r = Rope::from_str("a\nb\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
         VirtualLineAnchor::Before(ContentLine::new(1)),

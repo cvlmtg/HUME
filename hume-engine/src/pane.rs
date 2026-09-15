@@ -136,11 +136,18 @@ impl Viewport {
 /// cursor motion share one viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {
+    /// A terminal-cell count at its root (`Viewport::height`), but read in
+    /// three different units depending on the caller: a display-line cap
+    /// (`place_in_band`'s `distance` call), a buffer-line cap (`scroll_by`'s
+    /// `lines_to_end` short-circuit), and a genuine terminal-row cap
+    /// (`Viewport::geometry`'s own `margin`/`target` derivation, below). Each
+    /// site reasons about which unit it needs inline; this field commits to
+    /// none of them.
     pub height: usize,
     /// Display lines of look-ahead kept above/below the cursor, clamped so
     /// the two margins can never meet in the middle of an odd-or-even height.
     pub margin: usize,
-    /// Display row (0-indexed from the top) the far edge settles at once
+    /// Display line (0-indexed from the top) the far edge settles at once
     /// `margin` is reserved on both sides — always `>= margin`.
     pub target: usize,
 }

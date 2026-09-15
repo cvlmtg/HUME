@@ -8,7 +8,7 @@ fn with_counting_anchor() -> (ProviderSet, Rc<Cell<usize>>) {
     let calls = Rc::new(Cell::new(0));
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(
-        FixedAnchor::new(VirtualLineAnchor::Before(ContentLine::new(0)), 1)
+        VirtualLineBlock::uniform(VirtualLineAnchor::Before(ContentLine::new(0)), 1, "V")
             .counting(Rc::clone(&calls)),
     ));
     (providers, calls)

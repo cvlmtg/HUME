@@ -107,9 +107,10 @@ fn a_column_query_after_an_offset_query_reformats() {
 fn locate_display_line_answers_without_formatting_in_no_wrap() {
     let rope = long_unwrapped_line();
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         2,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -139,9 +140,10 @@ fn locate_display_line_agrees_with_locate_in_both_wrap_modes() {
     // multi-byte grapheme, and the phantom line past the last `\n`.
     let rope = Rope::from_str("a\n\nébc\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(1)),
         2,
+        "V",
     )));
 
     for wrap in [WrapMode::None, WrapMode::Soft { width: 2 }] {

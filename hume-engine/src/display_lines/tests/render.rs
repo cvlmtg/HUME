@@ -51,7 +51,7 @@ fn render_display_line_segments_a_virtual_lines_text() {
     // Consume id 0 so the emitting provider's real id is 1 — it self-reports
     // 0, which must be overwritten.
     providers.add_decoration_source(Box::new(NoVirtualLines));
-    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "deleted line",
@@ -80,7 +80,7 @@ fn render_display_line_expands_a_tab_in_a_virtual_lines_text() {
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));
-    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "\tx",
@@ -116,7 +116,7 @@ fn render_display_line_wide_cjk_before_tab_in_a_virtual_lines_text_shifts_the_st
     let rope = Rope::from_str("hi\n");
     let mut providers = ProviderSet::new();
     providers.add_decoration_source(Box::new(NoVirtualLines));
-    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "\u{6F22}\tx",
@@ -190,9 +190,10 @@ fn render_display_line_does_not_reformat_a_line_because_of_its_virtual_lines() {
     // state that follows it in the same block.
     let rope = Rope::from_str("abcdef\n");
     let (mut providers, calls) = with_counting_insert(ContentLine::new(0), 0, "hint");
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 8 }, &providers, &mut s);
@@ -215,7 +216,7 @@ fn render_display_line_yields_correct_content_display_lines_after_a_virtual_disp
     // it in the same block: they must still come back correct.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::texted(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
         "V",

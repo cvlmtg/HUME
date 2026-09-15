@@ -5,7 +5,8 @@ use ropey::Rope;
 
 use super::*;
 use crate::pane::{WhitespaceConfig, WrapMode};
-use crate::providers::{DecorationSource, VirtualLine};
+use crate::providers::DecorationSource;
+use crate::test_support::{VirtualLineBlock, co};
 use crate::types::{CellContent, ScopeId};
 use hume_rope::column::{BufferLineCol, DisplayLineCol};
 use hume_rope::line::{ContentLine, RopeyLine};
@@ -19,10 +20,6 @@ mod locate;
 mod render;
 mod shared_store;
 mod stepping;
-
-fn co(n: usize) -> CharOffset {
-    CharOffset::new(n)
-}
 
 fn dc(n: u32) -> DisplayLineCol {
     DisplayLineCol::new(n)
@@ -44,81 +41,15 @@ fn ws() -> WhitespaceConfig {
     WhitespaceConfig::default()
 }
 
+/// [`crate::test_support::map`] at this suite's fixed 80-column width —
+/// every test in this tree that doesn't specifically vary width uses this.
 fn map<'a>(
     rope: &'a Rope,
     wrap: WrapMode,
     providers: &'a ProviderSet,
     store: &'a mut PaneLineStore,
 ) -> DisplayLineMap<'a> {
-    DisplayLineMap::new(
-        rope,
-        providers,
-        80,
-        FormatKey {
-            buffer_tag: [0; 3],
-            wrap_mode: wrap,
-            tab_width: 4,
-            whitespace: ws(),
-        },
-        store,
-    )
-}
-
-/// Emits `count` identical display lines at one fixed anchor. Self-reports
-/// `provider_id: 0` so the id-stamping test has something wrong to correct.
-struct FixedAnchor {
-    anchor: VirtualLineAnchor,
-    count: usize,
-    text: &'static str,
-    calls: Option<Rc<Cell<usize>>>,
-}
-
-impl FixedAnchor {
-    fn new(anchor: VirtualLineAnchor, count: usize) -> Self {
-        Self::texted(anchor, count, "V")
-    }
-
-    fn texted(anchor: VirtualLineAnchor, count: usize, text: &'static str) -> Self {
-        Self {
-            anchor,
-            count,
-            text,
-            calls: None,
-        }
-    }
-
-    /// Count *every* `decorations_for_line` call, whatever line it asks about
-    /// — the only observable proxy for whether `block_entry` treated a line as
-    /// already known rather than re-querying providers for it.
-    fn counting(mut self, calls: Rc<Cell<usize>>) -> Self {
-        self.calls = Some(calls);
-        self
-    }
-}
-
-impl DecorationSource for FixedAnchor {
-    fn kinds(&self) -> DecorationKinds {
-        DecorationKinds::VIRTUAL_LINE
-    }
-    fn decorations_for_line(&self, line_idx: ContentLine, out: &mut Vec<Decoration>) {
-        if let Some(calls) = &self.calls {
-            calls.set(calls.get() + 1);
-        }
-        let line = match self.anchor {
-            VirtualLineAnchor::Before(n) | VirtualLineAnchor::After(n) => n,
-        };
-        if line_idx == line {
-            for _ in 0..self.count {
-                out.push(Decoration::VirtualLine(VirtualLine {
-                    anchor: self.anchor,
-                    provider_id: 0,
-                    text: self.text.to_string(),
-                    segments: Vec::new(),
-                    base_scope: None,
-                }));
-            }
-        }
-    }
+    crate::test_support::map(rope, wrap, providers, 80, store)
 }
 
 /// One inline insert on `line`, counting how often it is queried — the only

@@ -57,13 +57,15 @@ fn block_counts_before_and_after_virtual_lines() {
     // two separate providers, on top of its own single unwrapped content display line.
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(5)),
         2,
+        "V",
     )));
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::After(ContentLine::new(5)),
         1,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -84,9 +86,10 @@ fn block_counts_before_and_after_virtual_lines() {
 fn block_ignores_virtual_lines_anchored_to_other_lines() {
     let rope = Rope::from_str("a\nb\nc\nd\ne\nf\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(2)),
         3,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -180,13 +183,15 @@ fn no_wrap_block_counts_without_running_the_formatter() {
 /// a 5-display-line block whose every display line slot is hand-known.
 fn mixed_block_providers() -> ProviderSet {
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         2,
+        "V",
     )));
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::After(ContentLine::new(0)),
         1,
+        "V",
     )));
     providers
 }
@@ -262,9 +267,10 @@ fn clamp_reaches_the_documents_very_last_display_line() {
     // documented way to reach it (DisplayLineMap has no dedicated accessor).
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::After(ContentLine::new(2)),
         1,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);

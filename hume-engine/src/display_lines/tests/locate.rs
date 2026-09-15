@@ -42,9 +42,10 @@ fn locate_offsets_the_display_line_by_the_lines_before_block() {
     // its block display line shifts from 1 to 3.
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         2,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);
@@ -316,13 +317,15 @@ fn char_at_on_a_virtual_display_line_clamps_to_the_lines_own_content() {
     // against the nearest content display line of the line it is anchored to.
     let rope = Rope::from_str("a\nb\nc\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(1)),
         1,
+        "V",
     )));
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::After(ContentLine::new(2)),
         1,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
@@ -381,9 +384,10 @@ fn content_display_line_char_bounds_scopes_to_one_wrap_display_line() {
 fn content_display_line_char_bounds_rejects_a_virtual_display_line() {
     let rope = Rope::from_str("abcdefgh\n");
     let mut providers = ProviderSet::new();
-    providers.add_decoration_source(Box::new(FixedAnchor::new(
+    providers.add_decoration_source(Box::new(VirtualLineBlock::uniform(
         VirtualLineAnchor::Before(ContentLine::new(0)),
         1,
+        "V",
     )));
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::Soft { width: 4 }, &providers, &mut s);

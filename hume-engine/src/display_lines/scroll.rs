@@ -33,9 +33,9 @@
 //! and nothing enforces that on its own: `max_scroll_top`'s bound and
 //! [`Viewport::reveal`]'s own settle point merely happen to share a
 //! `geo.target` number. `carry` closes that gap itself instead, in a second
-//! pass over whatever the delta-walk above already landed on: it clamps
-//! that landing's row, measured from the viewport's *new* top (the caller
-//! reads `Viewport::top` after its own `scroll_by` call), into `[geo.margin,
+//! pass over whatever the delta-walk above already landed on: it clamps how
+//! many display lines below the viewport's *new* top that landing sits (the
+//! caller reads `Viewport::top` after its own `scroll_by` call), into `[geo.margin,
 //! geo.target]` — walking forward from the new top to the band's near or
 //! far edge if the raw landing fell outside it. A landing already in-band
 //! (the common case — most scrolls have somewhere to land within it) passes
@@ -129,18 +129,20 @@ impl Viewport {
         // well inside the second arm below without needing its own
         // upper-bound check.
         match dlm.distance(top, cursor_pos, geo.target) {
-            Some(rows) if rows < geo.margin => self.scroll_back_from(dlm, cursor_pos, geo.margin),
-            Some(rows) => rows,
+            Some(display_lines_below_top) if display_lines_below_top < geo.margin => {
+                self.scroll_back_from(dlm, cursor_pos, geo.margin)
+            }
+            Some(display_lines_below_top) => display_lines_below_top,
             None => self.scroll_back_from(dlm, cursor_pos, geo.target),
         }
     }
 
-    /// Scroll so `cursor_pos` lands `row` display lines below `top`, clamped
-    /// to `[geo.margin, geo.target]` — the same scrolloff range
-    /// [`Viewport::reveal`] settles a too-close cursor into. Used by the
-    /// `z z`/`z k`/`z j` view commands, which write no reveal-on-demand
-    /// signal of their own, so the clamp is applied here rather than left to
-    /// a follow-up `reveal` call.
+    /// Scroll so `cursor_pos` lands `display_lines_below_top` display lines
+    /// below `top`, clamped to `[geo.margin, geo.target]` — the same
+    /// scrolloff range [`Viewport::reveal`] settles a too-close cursor into.
+    /// Used by the `z z`/`z k`/`z j` view commands, which write no
+    /// reveal-on-demand signal of their own, so the clamp is applied here
+    /// rather than left to a follow-up `reveal` call.
     ///
     /// Top-of-buffer is clamped to the document's first display line;
     /// bottom-of-buffer is *not* clamped (vim/Helix semantics — empty
@@ -150,10 +152,10 @@ impl Viewport {
         dlm: &mut DisplayLineMap<'_>,
         geo: ViewGeometry,
         cursor_pos: DisplayLinePos,
-        row: usize,
+        display_lines_below_top: usize,
     ) {
-        let row = row.clamp(geo.margin, geo.target);
-        self.scroll_back_from(dlm, cursor_pos, row);
+        let display_lines_below_top = display_lines_below_top.clamp(geo.margin, geo.target);
+        self.scroll_back_from(dlm, cursor_pos, display_lines_below_top);
     }
 
     /// Adjust `horizontal_offset` so `cursor_display_col` stays visible.
@@ -263,9 +265,9 @@ impl<'a> DisplayLineMap<'a> {
 /// walk from `head` would land (`None` if it never reaches a content
 /// line — `head` already sat at the document's edge in the direction of
 /// travel, `delta == 0`, or a virtual-line block past the band swallowed the
-/// walk whole); [`place_in_band`] then clamps that landing's row into
-/// `[geo.margin, geo.target]`, measured from `top`, if it isn't there
-/// already. Either pass returning `None` is not an error: it is the same
+/// walk whole); [`place_in_band`] then clamps how many display lines below
+/// `top` that landing sits into `[geo.margin, geo.target]`, if it isn't
+/// there already. Either pass returning `None` is not an error: it is the same
 /// "cursor can't follow" state a pure view scroll into a trailing
 /// virtual-line block always could produce, and it leaves the selection
 /// untouched rather than collapsing it.
@@ -308,7 +310,7 @@ fn walk_by_delta(
     while remaining > 0 || last_content.is_none() {
         if remaining == 0 {
             match dlm.distance(top, pos, geo.target) {
-                Some(row) if row < geo.target => {}
+                Some(display_lines_below_top) if display_lines_below_top < geo.target => {}
                 _ => break,
             }
         }
@@ -324,11 +326,12 @@ fn walk_by_delta(
     last_content
 }
 
-/// `carry`'s second pass: clamp `candidate`'s row, measured from `top`, into
-/// `[geo.margin, geo.target]` — walking forward from `top` to the band's
-/// near or far edge via [`walk_from_top`] if it isn't there already. A
-/// landing already in-band (the common case) passes through unchanged, so
-/// "the cursor keeps its screen row" still holds exactly for it.
+/// `carry`'s second pass: clamp how many display lines below `top`
+/// `candidate` sits into `[geo.margin, geo.target]` — walking forward from
+/// `top` to the band's near or far edge via [`walk_from_top`] if it isn't
+/// there already. A landing already in-band (the common case) passes
+/// through unchanged, so "the cursor keeps its screen row" still holds
+/// exactly for it.
 fn place_in_band(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry,
@@ -336,30 +339,37 @@ fn place_in_band(
     candidate: DisplayLinePos,
 ) -> Option<DisplayLinePos> {
     match dlm.distance(top, candidate, geo.height) {
-        Some(row) if (geo.margin..=geo.target).contains(&row) => Some(candidate),
-        Some(row) if row > geo.target => walk_from_top(dlm, geo, top, geo.target),
-        // `row < geo.margin`, or `candidate` sits before `top` (or too far
-        // past `geo.height` to tell) — either way, not in band.
+        Some(display_lines_below_top)
+            if (geo.margin..=geo.target).contains(&display_lines_below_top) =>
+        {
+            Some(candidate)
+        }
+        Some(display_lines_below_top) if display_lines_below_top > geo.target => {
+            walk_from_top(dlm, geo, top, geo.target)
+        }
+        // `display_lines_below_top < geo.margin`, or `candidate` sits before
+        // `top` (or too far past `geo.height` to tell) — either way, not in band.
         _ => walk_from_top(dlm, geo, top, geo.margin),
     }
 }
 
-/// Walk forward (`next`) from `top` by `rows` display lines, landing on the
-/// last content display line reached — continuing past a virtual landing
-/// exactly like [`walk_by_delta`]'s own overshoot, capped at `geo.target`
-/// total steps so this can never itself land past the band. `top` counts as
-/// a landing in its own right when it's already content and `rows == 0`
-/// (the `geo.margin == 0` case a very short viewport clamps to).
+/// Walk forward (`next`) from `top` by `display_lines_below_top` display
+/// lines, landing on the last content display line reached — continuing
+/// past a virtual landing exactly like [`walk_by_delta`]'s own overshoot,
+/// capped at `geo.target` total steps so this can never itself land past the
+/// band. `top` counts as a landing in its own right when it's already
+/// content and `display_lines_below_top == 0` (the `geo.margin == 0` case a
+/// very short viewport clamps to).
 fn walk_from_top(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry,
     top: DisplayLinePos,
-    rows: usize,
+    display_lines_below_top: usize,
 ) -> Option<DisplayLinePos> {
     let mut pos = top;
     let mut last_content = dlm.slot(top).is_content().then_some(top);
     let mut steps = 0usize;
-    while steps < rows || last_content.is_none() {
+    while steps < display_lines_below_top || last_content.is_none() {
         if steps >= geo.target {
             break;
         }
