@@ -197,7 +197,6 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         gutter_width: 2,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -212,7 +211,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -287,7 +286,6 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -302,7 +300,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -514,7 +512,6 @@ fn multi_slot_column_renders_through_compose_gutter() {
         gutter_width: 3,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -529,7 +526,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     let compose_ctx = crate::render::ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: DisplayLineCol::new(0),
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,

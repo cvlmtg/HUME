@@ -104,16 +104,14 @@ pub(crate) fn render_pane(
     // The render pass resolves the top it walks from — see `Viewport::top_at`
     // — so a host with no per-frame healing discipline of its own (a
     // different embedder, or this crate's own `pipeline/tests.rs`) can never
-    // desync the walk from a stale address. Must run before `compose_ctx`
-    // below takes its own (shared) reborrow of `pane_ctx.viewport` — this is
-    // the last `&mut` use of it in this function.
+    // desync the walk from a stale address.
     let mut pos = pane_ctx.viewport.top_at(&mut dlm);
 
     // Bundle per-frame constants so compose_display_line call sites stay concise.
     let compose_ctx = ComposeCtx {
         gutter_columns: &pane_ctx.providers.gutter_columns,
         visible: &visible,
-        viewport: pane_ctx.viewport,
+        horizontal_offset: pane_ctx.viewport.horizontal_offset,
         mode: pane_ctx.settings.mode,
         primary_head_line: crate::pane::primary_head_line(
             pane_ctx.selections,

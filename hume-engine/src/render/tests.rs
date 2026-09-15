@@ -81,7 +81,7 @@ fn renders_simple_text() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -146,7 +146,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -193,7 +193,7 @@ fn filler_rows_have_tilde() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -247,7 +247,7 @@ fn do_compose_display_line(
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width,
@@ -613,7 +613,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -850,7 +850,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -924,7 +924,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -1054,7 +1054,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -1159,7 +1159,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -1271,7 +1271,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         let ctx = ComposeCtx {
             gutter_columns: &gutter_columns,
             visible: &visible,
-            viewport: &viewport,
+            horizontal_offset: viewport.horizontal_offset,
             mode: EditorMode::Normal,
             primary_head_line: ContentLine::new(0),
             tab_width: 4,
@@ -1384,7 +1384,7 @@ fn gutter_column_reads_rope_via_ctx() {
     let ctx = ComposeCtx {
         gutter_columns: &gutter_columns,
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -1497,7 +1497,7 @@ fn compose_display_line_dims_cells_inline() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,
@@ -1553,7 +1553,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
     let ctx = ComposeCtx {
         gutter_columns: &[],
         visible: &visible,
-        viewport: &viewport,
+        horizontal_offset: viewport.horizontal_offset,
         mode: EditorMode::Normal,
         primary_head_line: ContentLine::new(0),
         tab_width: 4,

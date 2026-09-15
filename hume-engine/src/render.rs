@@ -10,7 +10,6 @@ pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
 use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
-use crate::pane::Viewport;
 use crate::providers::{GutterColumn, GutterCtx, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
@@ -29,7 +28,9 @@ pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
 pub(crate) struct ComposeCtx<'a> {
     pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
     pub visible: &'a PaneGeometry,
-    pub viewport: &'a Viewport,
+    /// Pulled straight from the pane's `Viewport` rather than borrowing the
+    /// whole thing — the only field of it `compose_display_line` ever needs.
+    pub horizontal_offset: DisplayLineCol,
     pub mode: EditorMode,
     pub primary_head_line: hume_rope::line::ContentLine,
     pub tab_width: u8,
@@ -259,7 +260,7 @@ pub(crate) fn compose_display_line(
 
     // ── Content ───────────────────────────────────────────────────────
     let content_x_origin = compose_ctx.pane_rect.x + compose_ctx.visible.gutter_width;
-    let h_offset = compose_ctx.viewport.horizontal_offset;
+    let h_offset = compose_ctx.horizontal_offset;
 
     // Fill trailing cells with row bg (cursorline) or pane bg, so the theme
     // background shows past the last grapheme rather than the terminal default.
