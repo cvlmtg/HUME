@@ -539,7 +539,7 @@ fn assert_cursor_at_marker(ed: &Editor, text: &str, marker: &str, msg: &str) {
     assert_eq!(state(ed), expected, "{msg}");
 }
 
-/// Inserting a line above a recorded jump entry must not leave `Ctrl+O`
+/// Inserting a line above a recorded jump entry must not leave `Ctrl-o`
 /// landing on the entry's stale (now-wrong) line — it must follow the text.
 #[test]
 fn insert_above_jump_entry_lands_on_marker_text() {
@@ -560,7 +560,7 @@ fn insert_above_jump_entry_lands_on_marker_text() {
         &ed,
         &text_after,
         "line 10\n",
-        "Ctrl+O must land on the marker text, not the pre-edit line index",
+        "Ctrl-o must land on the marker text, not the pre-edit line index",
     );
 }
 
@@ -584,7 +584,7 @@ fn delete_above_jump_entry_lands_on_marker_text() {
         &ed,
         &text_after,
         "line 10\n",
-        "Ctrl+O must land on the marker text after a deletion above it",
+        "Ctrl-o must land on the marker text after a deletion above it",
     );
 }
 
@@ -718,7 +718,7 @@ fn edit_in_one_buffer_does_not_move_a_jump_entry_for_another_buffer() {
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
 
-    // First Ctrl+O returns to the switch-away point in file1; second Ctrl+O
+    // First Ctrl-o returns to the switch-away point in file1; second Ctrl-o
     // reaches the earlier (file1, line 10) entry.
     ed.handle_key(key_ctrl('o'));
     ed.handle_key(key_ctrl('o'));
@@ -768,7 +768,7 @@ fn reload_remaps_jump_entries_through_line_diff() {
         &ed,
         &new_content,
         "line 10\n",
-        "Ctrl+O must land on the marker text after :e! shifted it",
+        "Ctrl-o must land on the marker text after :e! shifted it",
     );
 }
 

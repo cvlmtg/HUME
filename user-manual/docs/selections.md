@@ -12,12 +12,12 @@ A selection has two ends: the **anchor** and the **head**. The head is the movin
 
 Press `e` to enter Extend mode. In Extend mode, every motion grows the selection instead of moving it — and moving back toward where you started shrinks it again, since only the moving end travels while the anchor stays put. Press `e` again or `Esc` to return to Normal. The status bar shows `EXT` while Extend mode is active.
 
-You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`/`Ctrl+w`/`Ctrl+b` run the corresponding motion with extend on for that single keypress. `Ctrl+x` extends the line selection downward on any terminal; its backward twin `Ctrl+X` needs kitty, since older terminals can't tell the two apart.
+You can also do a one-shot extend without entering Extend mode: under the kitty keyboard protocol, `Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`/`Ctrl-w`/`Ctrl-b` run the corresponding motion with extend on for that single keypress. `Ctrl-x` extends the line selection downward on any terminal; its backward twin `Ctrl-Shift-x` needs kitty, since older terminals can't tell the two apart.
 
-The same one-shot extend applies to search: `Ctrl+n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl+N` does the same backward, extending to the previous match.
+The same one-shot extend applies to search: `Ctrl-n` (kitty only) jumps the head to the next search match while the anchor stays put, growing the selection to cover everything from where you started through the new match — without entering Extend mode. `Ctrl-Shift-n` does the same backward, extending to the previous match.
 
 ::: tip Extending to a brand-new search
-Extend mode also works with a fresh `/` or `?` search, not just `Ctrl+n`/`Ctrl+N` stepping through an existing one. Enter Extend mode with `e`, then start a search: the anchor stays where you were, and the head jumps to the first match as you type and again on every `n`/`N` afterward.
+Extend mode also works with a fresh `/` or `?` search, not just `Ctrl-n`/`Ctrl-Shift-n` stepping through an existing one. Enter Extend mode with `e`, then start a search: the anchor stays where you were, and the head jumps to the first match as you type and again on every `n`/`N` afterward.
 :::
 
 `w`/`b` and `x`/`X` additionally shrink in whole units: pressing the opposite key shrinks the selection back down one word or one line at a time, rather than one character at a time. The word or line where you started stays fully selected no matter which way you shrink or grow from there — crossing back past your starting point flips the selection's direction instead of cutting it off partway.
@@ -111,8 +111,8 @@ call<span class="sel">(one, two<span class="head">)</span></span>
 | Key | Effect |
 |-----|--------|
 | `;` | Collapse selection to head and exit Extend mode |
-| `Ctrl+;` | Collapse selection to anchor and exit Extend mode (kitty only) |
-| `Ctrl+e` | Swap anchor and head of each selection (any mode; works on legacy terminals too) |
+| `Ctrl-;` | Collapse selection to anchor and exit Extend mode (kitty only) |
+| `Ctrl-e` | Swap anchor and head of each selection (any mode; works on legacy terminals too) |
 
 ## Multiple selections
 
@@ -125,7 +125,7 @@ HUME supports multiple simultaneous selections. Each selection behaves independe
 | Copy to next line | `C` | Duplicate each selection to the same character column on the line below, adding a multi-cursor. No text is copied — the new selections cover the same column range on the next line. A count prefix (e.g. `3C`) copies onto that many lines below in one step; repeating `C` also stacks cursors line by line for column-style editing. HUME has no rectangular/visual-block selection primitive. |
 | Trim whitespace | `_` | Remove leading/trailing whitespace from all selections |
 | Keep primary | `,` | Remove all selections except the primary |
-| Remove primary | `Ctrl+,` | Remove the primary selection, promote next (kitty only) |
+| Remove primary | `Ctrl-,` | Remove the primary selection, promote next (kitty only) |
 | Cycle primary forward | `)` | Make the next selection the primary |
 | Cycle primary backward | `(` | Make the previous selection the primary |
 

@@ -24,7 +24,7 @@ The popup docks at the bottom instead of floating near the cursor once its line 
 exceeds ⅓ of the last-known viewport height (falling back to a flat 15 lines before
 the first `on-viewport-change` event) — either way it's still `show-popup!`, just with
 a different `#:anchor`. Dismissal (any key, mouse input, or mode change, except
-Ctrl+u/d scrolling) is shared with signature help via `lib.scm`'s registration, not
+Ctrl-u/d scrolling) is shared with signature help via `lib.scm`'s registration, not
 duplicated here.
 
 ## Signature help
@@ -51,7 +51,7 @@ Never passes `#:allow-stale` to `lsp-request` — unlike hover, a stale completi
 response is auto-cancelled/dropped rather than shown. Snippet stripping happens in
 Rust at the store ingress, so items arriving here already have plain
 `insertText`/`textEdit.newText`. Two entry points reach the same request function:
-`Ctrl+Space` (bound to `lsp-completion-trigger`) and a registered server trigger
+`Ctrl-Space` (bound to `lsp-completion-trigger`) and a registered server trigger
 character. Per-keystroke refiltering can re-issue the request before a prior response
 lands, so it's sent with `#:supersede "completion"` rather than racing two sessions;
 the `on-completion-refilter` hook needs no capability re-guard, since the capability

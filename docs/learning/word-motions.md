@@ -102,7 +102,7 @@ covered, and any subsequent deletion removes the whole grapheme.
 
 ## Extend-mode word selection
 
-When word motions run in extend mode (sticky extend, or Ctrl+key), each press
+When word motions run in extend mode (sticky extend, or Ctrl-key), each press
 grows or shrinks the selection one word at a time, rather than replacing it
 entirely. `w` reaches toward the next word; `b` toward the previous one — and
 pressing the opposite key walks back the way you came instead of only ever
@@ -114,7 +114,7 @@ to fully include the next word in that direction. Shrinking back toward it
 peels words off the far end, one whole word at a time — a word is never cut
 down to a single character. If you keep shrinking past the anchor word
 itself, the selection flips to grow in the *other* direction instead, again
-always keeping full words. This mirrors how `Ctrl+h`/`Ctrl+j`/`Ctrl+k`/`Ctrl+l`
+always keeping full words. This mirrors how `Ctrl-h`/`Ctrl-j`/`Ctrl-k`/`Ctrl-l`
 already let you walk a selection back and forth character-by-character or
 line-by-line — `w`/`b` do the same thing one word at a time.
 

@@ -1234,8 +1234,8 @@ fn colon_goto_no_arg_is_error() {
     );
 }
 
-/// `:goto` records the pre-jump position so `Ctrl+O` returns to it.
-/// Validity: remove the jump-push block and Ctrl+O leaves the cursor at line 14
+/// `:goto` records the pre-jump position so `Ctrl-o` returns to it.
+/// Validity: remove the jump-push block and Ctrl-o leaves the cursor at line 14
 /// instead of restoring to before.
 #[test]
 fn colon_goto_records_jump() {
@@ -1251,12 +1251,12 @@ fn colon_goto_records_jump() {
         ":goto 15 must land on line 15 (index 14)"
     );
 
-    // Ctrl+O must restore the pre-jump position.
+    // Ctrl-o must restore the pre-jump position.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(
         state(&ed),
         before,
-        "Ctrl+O must restore the pre-goto position"
+        "Ctrl-o must restore the pre-goto position"
     );
 }
 

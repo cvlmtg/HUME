@@ -429,10 +429,10 @@ fn dot_repeats_select_line_delete() {
     );
 }
 
-/// `x Ctrl+x d` selects two lines (one establish + one extend) and deletes them.
+/// `x Ctrl-x d` selects two lines (one establish + one extend) and deletes them.
 /// `.` replays the full two-step recipe, deleting the next two lines.
 ///
-/// Independent oracle: four-line buffer: first `x Ctrl+x d` leaves two lines;
+/// Independent oracle: four-line buffer: first `x Ctrl-x d` leaves two lines;
 /// second replay deletes both → one structural line remains.
 #[test]
 fn dot_repeats_extend_select_delete() {
@@ -455,7 +455,7 @@ fn dot_repeats_extend_select_delete() {
     assert!(!recipe[0].extend, "first step must be Move (establish)");
     assert!(recipe[1].extend, "second step must be Extend");
 
-    // `.` replays: x (select "ccc\n") + Ctrl+x (extend to "ccc\nddd\n") + d.
+    // `.` replays: x (select "ccc\n") + Ctrl-x (extend to "ccc\nddd\n") + d.
     ed.feed_key(key('.'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -991,17 +991,17 @@ fn dot_repeat_of_keep_primary_selection_composes_onto_the_prior_recipe() {
     );
 }
 
-/// `S` (`split-selection-on-newlines`) after `x` + `Ctrl+x` must APPEND onto
+/// `S` (`split-selection-on-newlines`) after `x` + `Ctrl-x` must APPEND onto
 /// the recipe those steps already built, not reset it — it splits whatever
 /// multi-line extent is staged into per-line pieces rather than establishing
 /// a fresh extent of its own.
 ///
-/// Buffer "aaa\nbbb\nccc\nddd\n": `x` selects "aaa\n", `Ctrl+x` extends to
+/// Buffer "aaa\nbbb\nccc\nddd\n": `x` selects "aaa\n", `Ctrl-x` extends to
 /// "aaa\nbbb\n", `S` splits into two per-line selections ("aaa" and "bbb\n").
 /// `d` deletes both: the first piece excludes its line's newline (so "aaa"
 /// → "", newline kept), the second piece runs through its own trailing
 /// newline (so "bbb\n" is removed whole) — net effect, one line disappears:
-/// "\nccc\nddd\n". `.` must replay `x` + `Ctrl+x` + `S` + `d` on the next two
+/// "\nccc\nddd\n". `.` must replay `x` + `Ctrl-x` + `S` + `d` on the next two
 /// lines too, removing another: "\n\n".
 ///
 /// Fail oracle: if `split-selection-on-newlines` reset the recipe instead of
@@ -1017,14 +1017,14 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
     assert_eq!(
         ed.state.selection_recipe.len(),
         2,
-        "setup: x + Ctrl+x must push two recipe steps"
+        "setup: x + Ctrl-x must push two recipe steps"
     );
 
     ed.feed_key(key('S')); // split into "aaa" + "bbb\n"
     assert_eq!(
         ed.state.selection_recipe.len(),
         3,
-        "S must compose onto the x/Ctrl+x steps, not reset them"
+        "S must compose onto the x/Ctrl-x steps, not reset them"
     );
     assert_eq!(
         ed.state.selection_recipe[2].command.as_ref(),
@@ -1035,11 +1035,11 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
     assert_eq!(ed.doc().text().to_string(), "\nccc\nddd\n");
 
     ed.feed_key(key('j')); // move onto "ccc"
-    ed.feed_key(key('.')); // replay x + Ctrl+x + S + d
+    ed.feed_key(key('.')); // replay x + Ctrl-x + S + d
     assert_eq!(
         ed.doc().text().to_string(),
         "\n\n",
-        "`.` must replay x + Ctrl+x + S + d and clear 'ccc'/'ddd'"
+        "`.` must replay x + Ctrl-x + S + d and clear 'ccc'/'ddd'"
     );
 }
 

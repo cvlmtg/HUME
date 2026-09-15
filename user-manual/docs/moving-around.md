@@ -90,7 +90,7 @@ and select it as a whole — cursor (head) on its first character:
 Lowercase jumps forward, uppercase jumps backward — the same letter each kind uses as its
 [text object](selections.md) key. Each also runs from the command mode prompt, e.g.
 `:goto-next-function`. They stop at either end of the buffer instead of wrapping, and each
-records a jump-list entry, so `Ctrl+o` returns to where you jumped from. Without a matching
+records a jump-list entry, so `Ctrl-o` returns to where you jumped from. Without a matching
 grammar, every one of these commands is a silent no-op.
 
 ## Jump to a line by number
@@ -102,7 +102,7 @@ Type `:` then a line number and press `Enter` to jump there:
 | `:<n>` | Jump to line `<n>` (e.g. `:42`) |
 | `:goto <n>` | Same, full form |
 
-Line numbers are 1-based. A number past the end of the file lands on the last line. The jump is recorded, so `Ctrl+o` brings you back.
+Line numbers are 1-based. A number past the end of the file lands on the last line. The jump is recorded, so `Ctrl-o` brings you back.
 
 ## Paragraph movement
 
@@ -111,7 +111,7 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 | `{` | The previous paragraph |
 | `}` | The next paragraph |
 
-A paragraph is a block of non-empty lines delimited by empty lines. Both keys select the whole paragraph they land on, plus the empty-line gap below it, if it has one. The jump is recorded, so `Ctrl+o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md) for `m i p`, which selects just the paragraph without moving.
+A paragraph is a block of non-empty lines delimited by empty lines. Both keys select the whole paragraph they land on, plus the empty-line gap below it, if it has one. The jump is recorded, so `Ctrl-o` brings you back. Pressing `{`/`}` past the first/last paragraph does nothing. See [Text objects](selections.md) for `m i p`, which selects just the paragraph without moving.
 
 ## Scrolling
 
@@ -119,8 +119,8 @@ A paragraph is a block of non-empty lines delimited by empty lines. Both keys se
 |-----|--------|
 | `PageDown` | Scroll one viewport down |
 | `PageUp` | Scroll one viewport up |
-| `Ctrl+d` | Scroll half a viewport down |
-| `Ctrl+u` | Scroll half a viewport up |
+| `Ctrl-d` | Scroll half a viewport down |
+| `Ctrl-u` | Scroll half a viewport up |
 
 ## View prefix (`z`)
 
@@ -144,7 +144,7 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 | `N` | Previous match |
 | `*` | Search the whole word under the cursor, ignoring any current selection. Words are wrapped in word boundaries (`\b…\b`); punctuation is searched literally. Does nothing on whitespace or a blank line. With `word-chars` configured, a match can still bleed into a longer run sharing the same edge character (e.g. searching `foo-bar` inside `foo-bar-baz` also matches there) |
 | `m /` | Turn every search match in the buffer into a selection |
-| `Ctrl+/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only). Does nothing when the selection is just a line ending |
+| `Ctrl-/` | Use the primary selection's text, literally, as the search pattern — no word expansion, no boundaries (kitty only). Does nothing when the selection is just a line ending |
 
 ### `m /` precondition
 
@@ -177,8 +177,8 @@ HUME maintains a jump list of recent cursor positions.
 
 | Key | Effect |
 |-----|--------|
-| `Ctrl+o` | Jump to previous position |
-| `Ctrl+i` | Jump to next position |
+| `Ctrl-o` | Jump to previous position |
+| `Ctrl-i` | Jump to next position |
 | `Tab` | Jump to next position (except under the kitty protocol, where `Tab` moves between panes) |
 
 To get back to the buffer you were last in, use `:b #`. `:e #` does the same but only for buffers that have a file on disk.

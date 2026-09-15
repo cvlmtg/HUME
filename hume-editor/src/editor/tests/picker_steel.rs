@@ -259,7 +259,7 @@ fn picker_bang_with_no_actions_leaves_an_unbound_key_consumed_and_ignored() {
 
     assert!(
         ed.state.config.picker.is_some(),
-        "with no #:actions, Ctrl+T must be an inert no-op, same as today"
+        "with no #:actions, Ctrl-t must be an inert no-op, same as today"
     );
     assert!(ed.state.status_msg.is_none());
 }

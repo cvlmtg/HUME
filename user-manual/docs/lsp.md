@@ -251,15 +251,15 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
-| `Ctrl+Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
+| `Ctrl-Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
-opens that file as a buffer; `Ctrl+o` jumps back. A goto with more than one match opens a
+opens that file as a buffer; `Ctrl-o` jumps back. A goto with more than one match opens a
 list to pick from instead of jumping directly, and `z r` (references) always opens the list,
 even for a single hit.
 
 Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry,
-`Shift+Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc`
+`Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc`
 dismisses the menu. Signature help pops up automatically as you type an argument list for a
 function the server knows about, and inlay hints (see below) appear inline once enabled.
 

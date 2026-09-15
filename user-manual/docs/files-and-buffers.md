@@ -63,11 +63,11 @@ A **pane** is a viewport onto a buffer. A buffer is the open file itself; a pane
 
 | Key | Effect |
 |-----|--------|
-| `Ctrl+p s` | Split the focused pane, stacking the new pane below it |
-| `Ctrl+p v` | Split the focused pane side by side |
-| `Ctrl+p p` | Focus next pane |
-| `Ctrl+p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
-| `Ctrl+p c` | Close the focused pane (does nothing if it's the only pane) |
+| `Ctrl-p s` | Split the focused pane, stacking the new pane below it |
+| `Ctrl-p v` | Split the focused pane side by side |
+| `Ctrl-p p` | Focus next pane |
+| `Ctrl-p h` / `j` / `k` / `l` | Focus the pane to the left / below / above / to the right |
+| `Ctrl-p c` | Close the focused pane (does nothing if it's the only pane) |
 
 Splitting is refused with a message when the pane is already too small to divide. Every pane sharing a split axis is kept an equal size — three `:vsplit`s in a row give three equal columns, not one half and two quarters — and closing a pane redistributes its space equally between the survivors.
 
@@ -90,8 +90,8 @@ A **tab** is a saved window layout — its own splits and focused pane — not a
 
 | Key | Effect |
 |-----|--------|
-| `Ctrl+p t` | Switch to the next tab |
-| `Ctrl+p T` | Switch to the previous tab |
+| `Ctrl-p t` | Switch to the next tab |
+| `Ctrl-p T` | Switch to the previous tab |
 
 `:tabnext`/`:tabprev` also have bindable editor-command spellings, `goto-next-tab` and `goto-prev-tab`, for mapping to a key — as does bare `:tabnew` (no `[path]`), spelled `tab-new`.
 

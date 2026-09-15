@@ -63,7 +63,7 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
 }
 
 /// Native default keymaps must never bind a key to a command that isn't a Rust
-/// built-in — `lsp-completion-trigger` (Ctrl+Space) lives entirely in
+/// built-in — `lsp-completion-trigger` (Ctrl-Space) lives entirely in
 /// `core:lsp`'s `plugin.scm` now, not in `keymap/defaults.rs`, so an editor
 /// that never loads or declares `core:lsp` must start up with no keymap-lint
 /// warning naming it.

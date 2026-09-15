@@ -25,7 +25,7 @@ HUME has distinct modes. Every key you press is interpreted in the context of th
 
 ### How is this different from a normal editor?
 
-In a conventional editor every letter you type lands in the document, so actions have to be chorded shortcuts — `Ctrl+C`, `Cmd+V`, `Ctrl+F` — and many moves need the mouse.
+In a conventional editor every letter you type lands in the document, so actions have to be chorded shortcuts — `Ctrl-c`, `Cmd-v`, `Ctrl-f` — and many moves need the mouse.
 
 Modal editors invert that. In Normal mode letters are *commands*: `d` deletes, `w` jumps a word, `x` selects a line, and nothing you type reaches the buffer. To write prose you switch to Insert mode, type, and press `Esc` to come back. The payoff is that almost every edit is a plain keystroke — no modifiers, no mouse.
 

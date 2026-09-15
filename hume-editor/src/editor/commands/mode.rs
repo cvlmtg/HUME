@@ -259,7 +259,7 @@ pub(in crate::editor) fn cmd_collapse_to_head_and_exit_extend(
 /// Mirror of [`cmd_collapse_to_head_and_exit_extend`] — the cursor lands on the
 /// stationary (anchor) end. For a forward word selection this puts the cursor
 /// on the first character of the word. Only reachable via the kitty keyboard
-/// protocol (`Ctrl+;`); harmless no-op on legacy terminals.
+/// protocol (`Ctrl-;`); harmless no-op on legacy terminals.
 pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
     state: &mut EditorState,
     view: &mut EngineView,

@@ -27,7 +27,7 @@ fn run_inline_output_honors_cwd() {
     assert!(status.success(), "marker.txt must be found via cwd");
 }
 
-/// Verify that Ctrl+C (SIGINT to the child's process group) kills the
+/// Verify that Ctrl-c (SIGINT to the child's process group) kills the
 /// child but not HUME.
 ///
 /// Behavioral guarantee: after `process_group(0)` the child is its own

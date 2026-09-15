@@ -7,7 +7,7 @@ use pretty_assertions::assert_eq;
 // hume-ops/src/motion/tests/word.rs and hume-ops/src/text_object/tests/word.rs
 // cover the span math; these confirm the setting actually reaches behavior
 // through the real keymap/registry/dispatch path (:set, direct field write,
-// insert-mode Ctrl-W, `*`, symbol-under-cursor, and replay).
+// insert-mode Ctrl-w, `*`, symbol-under-cursor, and replay).
 
 #[test]
 fn w_follows_buffer_word_chars() {
@@ -59,7 +59,7 @@ fn ctrl_w_deletes_whole_hyphenated_word() {
     assert_eq!(
         ed.doc().text().to_string(),
         "\n",
-        "Ctrl-W must delete the whole hyphenated run, not just \"bar\""
+        "Ctrl-w must delete the whole hyphenated run, not just \"bar\""
     );
 }
 

@@ -78,7 +78,7 @@ fn extend_line_span(text: &BufferText, sel: Selection, forward: bool) -> Selecti
 /// or — if `sel` already ends on the trailing `\n` — jumps to the next line.
 /// Always produces a forward selection. `count` replays this exactly as if
 /// `x` were pressed `count` times in a row: it moves, landing on a single
-/// line, rather than growing a span (that's `Ctrl+x` / [`extend_line_span`]).
+/// line, rather than growing a span (that's `Ctrl-x` / [`extend_line_span`]).
 fn move_select_line(text: &BufferText, sel: Selection) -> Selection {
     let bottom_line = text.char_to_line(sel.end());
     let end_excl = next_line_start(text, bottom_line.into());
@@ -120,7 +120,7 @@ pub fn cmd_select_line(
 /// already starts at a line boundary — jumps to the previous line. `count`
 /// replays this exactly as if `X` were pressed `count` times in a row: it
 /// moves, landing on a single line, rather than growing a span (that's
-/// `Ctrl+X` / [`extend_line_span`]).
+/// `Ctrl-X` / [`extend_line_span`]).
 fn move_select_line_backward(text: &BufferText, sel: Selection) -> Selection {
     let top_line = text.char_to_line(sel.start());
     // If selection already starts at line start, jump to previous line.

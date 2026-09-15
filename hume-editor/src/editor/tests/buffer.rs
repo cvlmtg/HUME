@@ -106,4 +106,4 @@ fn buffer_bang_force_is_ignored() {
 
 // ── :b on a buffer whose backing file has been deleted ───────────────────────
 
-// ── Ctrl+O restores position after :b ────────────────────────────────────────
+// ── Ctrl-o restores position after :b ────────────────────────────────────────

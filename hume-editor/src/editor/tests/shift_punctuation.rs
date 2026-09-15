@@ -68,7 +68,7 @@ fn question_enters_search_when_shift_set() {
     assert_eq!(state(&ed), "ab -[ab]> ab\n");
 }
 
-/// Regression guard: Shift+Tab arrives as KeyCode::BackTab + SHIFT (not a
+/// Regression guard: Shift-Tab arrives as KeyCode::BackTab + SHIFT (not a
 /// Char), so the SHIFT strip must leave it untouched and the completion
 /// back-cycle stays intact.
 #[test]

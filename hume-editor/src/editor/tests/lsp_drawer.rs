@@ -256,7 +256,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     );
 }
 
-// ── Ctrl+d/Ctrl+u: half-page scroll ───────────────────────────────────────────
+// ── Ctrl-d/Ctrl-u: half-page scroll ───────────────────────────────────────────
 
 /// Arms the same 20-item / 40×10 fixture as
 /// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =

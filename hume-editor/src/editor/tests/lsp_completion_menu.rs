@@ -348,7 +348,7 @@ fn backspace_past_the_anchor_dismisses_the_session() {
     );
 }
 
-// ── Tab/Shift+Tab: selection wraps at the boundaries ─────────────────────────
+// ── Tab/Shift-Tab: selection wraps at the boundaries ─────────────────────────
 
 #[test]
 fn tab_at_last_item_wraps_to_first() {
@@ -382,7 +382,7 @@ fn shift_tab_at_first_item_wraps_to_last() {
     assert_eq!(
         ed.lsp.completion_ui.as_ref().unwrap().selected,
         2,
-        "Shift+Tab before the first item must wrap to the last"
+        "Shift-Tab before the first item must wrap to the last"
     );
 }
 
@@ -531,7 +531,7 @@ fn right_arrow_then_enter_dismisses_instead_of_swallowing_the_passed_over_char()
 
 #[test]
 fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_anchor() {
-    // `Ctrl+W` (delete-word-backward) is bound in the insert trie and, being
+    // `Ctrl-w` (delete-word-backward) is bound in the insert trie and, being
     // an edit rather than a motion, reaches the buffer without ever calling
     // `apply_insert_edit` — so it can never call `observe_edit` to keep the
     // session's anchor in sync. Before this fix the session survived with a
@@ -548,7 +548,7 @@ fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_anchor() {
     ed.feed_key(key_ctrl('w'));
     assert!(
         ed.lsp.completion.is_none(),
-        "Ctrl+W must dismiss the session immediately"
+        "Ctrl-w must dismiss the session immediately"
     );
     assert_eq!(
         ed.doc().text().to_string(),

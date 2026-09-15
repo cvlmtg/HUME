@@ -206,7 +206,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     // 50 lines — comfortably taller than any popup's visible window (cursor
-    // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl+d/Ctrl+u below exercise a
+    // cap ~⅓ pane, docked cap ~½ terminal), so Ctrl-d/Ctrl-u below exercise a
     // real scroll, not a short popup with nothing to page through.
     let value = (0..50)
         .map(|i| format!("line {i}"))
@@ -249,16 +249,16 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
         "hover must open a scrollable popup (`#:kind 'scrollable`), not the sticky mode-change-only one"
     );
 
-    // Ctrl+d/Ctrl+u scroll the popup instead of closing it.
+    // Ctrl-d/Ctrl-u scroll the popup instead of closing it.
     ed.feed_key(key_ctrl('d'));
     assert!(
         ed.state.config.popup.is_some(),
-        "Ctrl+d must scroll the hover popup, not close it"
+        "Ctrl-d must scroll the hover popup, not close it"
     );
     ed.feed_key(key_ctrl('u'));
     assert!(
         ed.state.config.popup.is_some(),
-        "Ctrl+u must scroll the hover popup, not close it"
+        "Ctrl-u must scroll the hover popup, not close it"
     );
 
     // Any other key (here, cursor movement) dismisses it — the fix for
@@ -273,7 +273,7 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
 #[test]
 fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     // A hover popup whose content fits on screen has nothing to scroll —
-    // Ctrl+d/Ctrl+u must not become a silent no-op that also blocks the
+    // Ctrl-d/Ctrl-u must not become a silent no-op that also blocks the
     // buffer's own half-page scroll (the bug: `scroll_popup` used to consume
     // the key unconditionally, even with `max_scroll == 0`).
     let tmp = safe_tempdir();
@@ -301,11 +301,11 @@ fn short_popup_falls_through_ctrl_d_instead_of_swallowing_it() {
     ed.feed_key(key_ctrl('d'));
     assert!(
         ed.state.config.popup.is_none(),
-        "Ctrl+d on a popup with nothing to scroll must close it, not swallow the key"
+        "Ctrl-d on a popup with nothing to scroll must close it, not swallow the key"
     );
     assert!(
         ed.current_selections().primary().head() > head_before,
-        "Ctrl+d must fall through to the buffer's half-page-down motion once the popup closes"
+        "Ctrl-d must fall through to the buffer's half-page-down motion once the popup closes"
     );
 }
 

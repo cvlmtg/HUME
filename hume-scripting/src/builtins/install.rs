@@ -202,7 +202,7 @@ pub(crate) fn acquire_install_lock(ctx: &mut SteelCtx) -> SteelResult {
 /// rather than Steel's own `spawn-process`: `#:inline-output` commands run
 /// with terminal raw mode off (see `run_inline_output`'s doc comment in
 /// `hume-platform::process`), so an unisolated child would be killed by the
-/// same Ctrl+C that's meant to interrupt only it. No sandbox checks — plugins
+/// same Ctrl-c that's meant to interrupt only it. No sandbox checks — plugins
 /// are trusted code (see `user-manual/docs/plugins.md`'s "Filesystem and processes").
 ///
 /// # Errors

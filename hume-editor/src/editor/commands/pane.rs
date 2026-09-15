@@ -249,7 +249,7 @@ pub(in crate::editor) fn split_pane_onto(
         new_pane.inherit_view_state(old_pane);
 
         // A same-buffer split inherits the source pane's jump history so the
-        // new pane can Ctrl+O back to positions the user visited before the
+        // new pane can Ctrl-o back to positions the user visited before the
         // split. The two lists diverge from here — later jumps in either pane
         // don't affect the other. Cursor position within the history is
         // preserved too, so a split mid-navigation stays mid-navigation.

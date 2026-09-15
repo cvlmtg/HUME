@@ -1,5 +1,5 @@
 // Tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev`, their mappable
-// `goto-next-tab`/`goto-prev-tab` siblings (`Ctrl+p t`/`Ctrl+p T`), and the
+// `goto-next-tab`/`goto-prev-tab` siblings (`Ctrl-p t`/`Ctrl-p T`), and the
 // tabline's own visibility setting. See `editor::tab`'s module doc for the
 // model — a tab is a saved window layout, not a per-buffer strip.
 
@@ -272,7 +272,7 @@ fn quit_on_a_tab_s_last_pane_closes_the_tab() {
     assert_eq!(ed.state.tabs.current(), tab_a, "focus returns to tab A");
 }
 
-/// `Ctrl+p c` stays pane-scoped: on a tab's own last pane it refuses with a
+/// `Ctrl-p c` stays pane-scoped: on a tab's own last pane it refuses with a
 /// status message, even with other tabs open — `:q` owns closing the tab.
 #[test]
 fn close_pane_is_refused_on_a_tab_s_last_pane_with_other_tabs_open() {
@@ -426,7 +426,7 @@ fn tabnext_and_tabprev_aliases_work() {
     assert_eq!(ed.state.tabs.current(), tab_b);
 }
 
-/// `Ctrl+p t` / `Ctrl+p T` — the mappable `goto-next-tab`/`goto-prev-tab`
+/// `Ctrl-p t` / `Ctrl-p T` — the mappable `goto-next-tab`/`goto-prev-tab`
 /// siblings of `:tabnext`/`:tabprev`.
 #[test]
 fn ctrl_p_t_and_shift_t_cycle_tabs() {
@@ -440,7 +440,7 @@ fn ctrl_p_t_and_shift_t_cycle_tabs() {
     assert_eq!(
         ed.state.tabs.current(),
         tab_a,
-        "Ctrl+p T goes to the previous tab"
+        "Ctrl-p T goes to the previous tab"
     );
 
     ed.handle_key(key_ctrl('p'));
@@ -448,7 +448,7 @@ fn ctrl_p_t_and_shift_t_cycle_tabs() {
     assert_eq!(
         ed.state.tabs.current(),
         tab_b,
-        "Ctrl+p t goes to the next tab"
+        "Ctrl-p t goes to the next tab"
     );
 }
 

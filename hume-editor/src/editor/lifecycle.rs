@@ -220,7 +220,7 @@ impl Editor {
     /// [`Self::queue_startup_position`], then center the focused buffer's
     /// viewport on its cursor the same way `zz`/`goto-location!` do. No jump
     /// entry is recorded — a startup position is the buffer's origin, not a
-    /// jump away from one, so `Ctrl+o` has nothing to return to here (unlike
+    /// jump away from one, so `Ctrl-o` has nothing to return to here (unlike
     /// `:goto` and `goto-location!`, which both do).
     ///
     /// Must run after `run`'s own first `sync_viewport_dims` call: centring

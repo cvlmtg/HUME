@@ -22,7 +22,7 @@
 //! via separate extend-variant commands. All Motion and Selection commands
 //! accept `MotionMode` and branch on `Move` vs `Extend`. EditorCmds that
 //! support extend carry `extendable: true`; the dispatcher passes the correct
-//! `MotionMode` based on the current mode or Ctrl+letter state.
+//! `MotionMode` based on the current mode or Ctrl-letter state.
 //!
 //! # Mappable command variants
 //!

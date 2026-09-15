@@ -33,49 +33,49 @@ fn insert_char_is_no_match() {
 #[test]
 fn ctrl_bindings_in_normal_keymap() {
     let trie = default_normal_keymap();
-    // Ctrl+c is intentionally unbound in normal mode — quitting must go
+    // Ctrl-c is intentionally unbound in normal mode — quitting must go
     // via :quit or :q to avoid accidental data loss.
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'c')]), WalkResult::NoMatch),
-        "Ctrl+c must be unbound in normal mode"
+        "Ctrl-c must be unbound in normal mode"
     );
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'r')]), WalkResult::Leaf(ref cmd) if cmd.name == "redo"),
-        "Ctrl+r should map to redo"
+        "Ctrl-r should map to redo"
     );
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'x')]), WalkResult::Leaf(ref cmd) if cmd.name == "select-line"),
-        "Ctrl+x should map to select-line"
+        "Ctrl-x should map to select-line"
     );
-    // Ctrl+e flips anchor↔head and works on legacy terminals (0x05 control byte).
+    // Ctrl-e flips anchor↔head and works on legacy terminals (0x05 control byte).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'e')]), WalkResult::Leaf(ref cmd) if cmd.name == "flip-selections"),
-        "Ctrl+e should map to flip-selections"
+        "Ctrl-e should map to flip-selections"
     );
-    // Ctrl+w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
+    // Ctrl-w is deliberately unbound (kitty one-shot extend via strip-CONTROL).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'w')]), WalkResult::NoMatch),
-        "Ctrl+w must be unbound — pane prefix is Ctrl+p"
+        "Ctrl-w must be unbound — pane prefix is Ctrl-p"
     );
-    // Ctrl+p is the pane prefix (Interior node).
+    // Ctrl-p is the pane prefix (Interior node).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + 'p')]), WalkResult::Interior),
-        "Ctrl+p must be the pane prefix Interior node"
+        "Ctrl-p must be the pane prefix Interior node"
     );
-    // Ctrl+/ → search-selection (kitty-only).
+    // Ctrl-/ → search-selection (kitty-only).
     assert!(
         matches!(trie.walk(&[key!(Ctrl + '/')]), WalkResult::Leaf(ref cmd) if cmd.name == "search-selection"),
-        "Ctrl+/ should map to search-selection"
+        "Ctrl-/ should map to search-selection"
     );
-    // Legacy terminals encode Ctrl+/ as Ctrl+'7' (control byte 0x1F) — must
+    // Legacy terminals encode Ctrl-/ as Ctrl-'7' (control byte 0x1F) — must
     // stay unbound rather than accidentally aliasing to search-selection.
     assert!(
         matches!(trie.walk(&[key!(Ctrl + '7')]), WalkResult::NoMatch),
-        "Ctrl+7 must be unbound — Ctrl+/ is kitty-only, no legacy alias"
+        "Ctrl-7 must be unbound — Ctrl-/ is kitty-only, no legacy alias"
     );
 }
 
-/// Explicit Ctrl+x/X must carry force_extend=true; scroll and jump bindings must not.
+/// Explicit Ctrl-x/X must carry force_extend=true; scroll and jump bindings must not.
 #[test]
 fn force_extend_flags_are_correct() {
     let trie = default_normal_keymap();
@@ -85,7 +85,7 @@ fn force_extend_flags_are_correct() {
     };
     assert!(
         cx.force_extend,
-        "Ctrl+x (select-line) must have force_extend=true"
+        "Ctrl-x (select-line) must have force_extend=true"
     );
 
     let WalkResult::Leaf(cx_upper) = trie.walk(&[key!(Ctrl + 'X')]) else {
@@ -93,7 +93,7 @@ fn force_extend_flags_are_correct() {
     };
     assert!(
         cx_upper.force_extend,
-        "Ctrl+X (select-line-backward) must have force_extend=true"
+        "Ctrl-X (select-line-backward) must have force_extend=true"
     );
 
     let WalkResult::Leaf(cd) = trie.walk(&[key!(Ctrl + 'd')]) else {
@@ -101,7 +101,7 @@ fn force_extend_flags_are_correct() {
     };
     assert!(
         !cd.force_extend,
-        "Ctrl+d (half-page-down) must have force_extend=false"
+        "Ctrl-d (half-page-down) must have force_extend=false"
     );
 
     let WalkResult::Leaf(cu) = trie.walk(&[key!(Ctrl + 'u')]) else {
@@ -109,7 +109,7 @@ fn force_extend_flags_are_correct() {
     };
     assert!(
         !cu.force_extend,
-        "Ctrl+u (half-page-up) must have force_extend=false"
+        "Ctrl-u (half-page-up) must have force_extend=false"
     );
 
     let WalkResult::Leaf(co) = trie.walk(&[key!(Ctrl + 'o')]) else {
@@ -117,7 +117,7 @@ fn force_extend_flags_are_correct() {
     };
     assert!(
         !co.force_extend,
-        "Ctrl+o (jump-backward) must have force_extend=false"
+        "Ctrl-o (jump-backward) must have force_extend=false"
     );
 }
 
@@ -176,16 +176,16 @@ fn essential_keys_are_bound() {
 #[test]
 fn default_keymap_omits_kitty_only_binds() {
     let km = Keymap::default();
-    // Ctrl+; and Ctrl+, must NOT be present in the legacy-accurate default
+    // Ctrl-; and Ctrl-, must NOT be present in the legacy-accurate default
     // trie — they are installed by apply_kitty_defaults only when the kitty
     // probe succeeds.
     assert!(
         matches!(km.normal.walk(&[key!(Ctrl + ';')]), WalkResult::NoMatch),
-        "Ctrl+; must be unbound in default keymap (legacy mode)"
+        "Ctrl-; must be unbound in default keymap (legacy mode)"
     );
     assert!(
         matches!(km.normal.walk(&[key!(Ctrl + ',')]), WalkResult::NoMatch),
-        "Ctrl+, must be unbound in default keymap (legacy mode)"
+        "Ctrl-, must be unbound in default keymap (legacy mode)"
     );
     // The plain-key counterparts remain bound regardless of kitty mode.
     assert!(
@@ -269,11 +269,11 @@ fn apply_kitty_defaults_binds_kitty_only_keys() {
     let mut km = Keymap::default();
     km.apply_kitty_defaults();
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ';')]) else {
-        panic!("Ctrl+; should bind to collapse-to-anchor-and-exit-extend");
+        panic!("Ctrl-; should bind to collapse-to-anchor-and-exit-extend");
     };
     assert_eq!(c.name, "collapse-to-anchor-and-exit-extend");
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Ctrl + ',')]) else {
-        panic!("Ctrl+, should bind to remove-primary-selection");
+        panic!("Ctrl-, should bind to remove-primary-selection");
     };
     assert_eq!(c.name, "remove-primary-selection");
     let WalkResult::Leaf(c) = km.normal.walk(&[key!(Tab)]) else {

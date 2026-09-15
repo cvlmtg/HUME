@@ -267,7 +267,7 @@ fn stream_uppercase_literal_char() {
 
 #[test]
 fn stream_uppercase_in_brackets() {
-    // <c-X> → Ctrl+X (uppercase preserved in key name).
+    // <c-X> → Ctrl-X (uppercase preserved in key name).
     assert_eq!(stream("<c-X>").unwrap(), vec![ctrl(KeyCode::Char('X'))]);
 }
 

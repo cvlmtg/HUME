@@ -52,7 +52,7 @@ use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 #[derive(Debug, Clone)]
 pub(crate) struct WaitCharPending {
     pub cmd_name: Cow<'static, str>,
-    /// Set to `true` when this wait-char was triggered via Ctrl+key (kitty
+    /// Set to `true` when this wait-char was triggered via Ctrl-key (kitty
     /// protocol). The dispatcher uses this to force extend resolution at
     /// char-consumption time.
     pub ctrl_extend: bool,
@@ -73,7 +73,7 @@ pub(in crate::editor) struct KeymapCommand {
     pub name: Cow<'static, str>,
     /// When `true`, the dispatcher always dispatches this command with
     /// `extend = true`, regardless of kitty mode. Only set on explicit Ctrl
-    /// bindings whose extend-line semantics are inherent (e.g. `Ctrl+x` →
+    /// bindings whose extend-line semantics are inherent (e.g. `Ctrl-x` →
     /// `select-line`). Not exposed to Steel's `bind-key!`.
     pub force_extend: bool,
 }

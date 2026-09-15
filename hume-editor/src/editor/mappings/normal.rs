@@ -50,9 +50,9 @@ impl Editor {
         // for any Char and is stripped here. This covers both kitty's letter
         // reporting and the shifted-punctuation gap on partially-compliant terminals.
         //
-        // Only strip SHIFT when it is the *only* modifier. Ctrl+Shift combinations
-        // (e.g. Ctrl+X, Ctrl+}) keep CONTROL so they match their explicit Ctrl
-        // bindings; Shift+Tab arrives as KeyCode::BackTab (not Char), so it is
+        // Only strip SHIFT when it is the *only* modifier. Ctrl-Shift combinations
+        // (e.g. Ctrl-X, Ctrl-}) keep CONTROL so they match their explicit Ctrl
+        // bindings; Shift-Tab arrives as KeyCode::BackTab (not Char), so it is
         // untouched and keeps its SHIFT bit for the completion back-cycle.
         let key = if key.modifiers == Modifiers::SHIFT {
             if let KeyCode::Char(_) = key.code {
@@ -135,7 +135,7 @@ impl Editor {
                             self.state.macro_recording = Some((reg, Vec::new()));
                             self.state.skip_macro_record = true;
                         }
-                        // Esc, Ctrl-C, non-Char, or invalid Char — cancel.
+                        // Esc, Ctrl-c, non-Char, or invalid Char — cancel.
                         _ => {}
                     }
                     return;
@@ -174,7 +174,7 @@ impl Editor {
 
         // ── Count prefix accumulation ─────────────────────────────────────────
         // Only accumulate when we're at the trie root (no pending sequence)
-        // and no modifiers are held (Ctrl+4 is not a count digit).
+        // and no modifiers are held (Ctrl-4 is not a count digit).
         // `0` without an existing count is not a digit — it falls through to the
         // trie (unbound by default; core:vim-keybind binds it to goto-line-start).
         // NOTE: this runs AFTER macro_pending so that `Q1`/`q1` treat `1` as a
@@ -272,12 +272,12 @@ impl Editor {
         // ── Stage 2: Ctrl-key normalisation + one-shot extend ────────────────
         //
         // Two categories of CONTROL keys:
-        // 1. Explicit Ctrl bindings (Ctrl+c, Ctrl+r, Ctrl+,, Ctrl+x, Ctrl+X):
+        // 1. Explicit Ctrl bindings (Ctrl-c, Ctrl-r, Ctrl-,, Ctrl-x, Ctrl-X):
         //    have a dedicated trie entry, used as-is regardless of kitty mode.
-        // 2. Implicit Ctrl+motion (Ctrl+h/j/k/l/w/b, …): no explicit binding.
+        // 2. Implicit Ctrl-motion (Ctrl-h/j/k/l/w/b, …): no explicit binding.
         //    With kitty enabled, one-shot extend: strip CONTROL, look up the
         //    bare key, dispatch extend=true. Without kitty, no-op — legacy
-        //    terminals can't reliably distinguish Ctrl+letter from control
+        //    terminals can't reliably distinguish Ctrl-letter from control
         //    codes.
         //
         // Detection: try the key as-is first; on NoMatch with CONTROL set,
@@ -285,7 +285,7 @@ impl Editor {
         //
         // REPORT_ALTERNATE_KEYS (enabled at init) makes the terminal send the
         // shifted character directly — the decoder swaps in the alternate
-        // keycode and strips SHIFT, so Ctrl+} arrives as Char('}') with just
+        // keycode and strips SHIFT, so Ctrl-} arrives as Char('}') with just
         // CONTROL, and stripping CONTROL gives the correct bare key,
         // independent of layout.
 
@@ -299,7 +299,7 @@ impl Editor {
                 match self.state.config.keymap.normal.walk(&[key]) {
                     WalkResult::NoMatch if self.kitty_enabled => {
                         // Kitty mode: strip CONTROL, re-walk as extend. Only proceed if the
-                        // resolved command is extendable — prevents e.g. Ctrl+u running
+                        // resolved command is extendable — prevents e.g. Ctrl-u running
                         // "undo" (not a motion) as a one-shot extend.
                         let bare = KeyEvent::new(key.code, Modifiers::NONE);
                         self.state.pending_keys.push(bare);
@@ -339,13 +339,13 @@ impl Editor {
                         (result, true)
                     }
                     WalkResult::NoMatch => return, // Legacy: no-op.
-                    // Explicit Ctrl+letter binding. Extend only if the binding
-                    // itself declares force_extend (e.g. Ctrl+x → select-line).
+                    // Explicit Ctrl-letter binding. Extend only if the binding
+                    // itself declares force_extend (e.g. Ctrl-x → select-line).
                     // Registry's is_extendable() is not consulted here — that
                     // flag means "compatible with sticky Extend mode", not
                     // "pressing Ctrl means the user asked to extend".
-                    // Interior: the Ctrl+key starts a multi-key sequence (e.g.
-                    // Ctrl+p → pane prefix); save it in pending_keys so the
+                    // Interior: the Ctrl-key starts a multi-key sequence (e.g.
+                    // Ctrl-p → pane prefix); save it in pending_keys so the
                     // follow-up keypress can complete the trie walk.
                     matched => {
                         let ctrl_extend = match &matched {

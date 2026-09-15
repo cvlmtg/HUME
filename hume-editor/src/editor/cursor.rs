@@ -25,7 +25,7 @@ use hume_rope::column::DisplayLineCol;
 /// Returns `None` if the position is outside the visible viewport. This is a
 /// legitimate steady state, not just a defensive fallback: the cursor can
 /// only occupy content display lines, so a pure view scroll (mouse wheel,
-/// `Ctrl+D`/`Ctrl+U`, `PageDown`/`PageUp`) into a virtual-line block — an
+/// `Ctrl-d`/`Ctrl-u`, `PageDown`/`PageUp`) into a virtual-line block — an
 /// inline diff's ghost lines — can carry the viewport further than the
 /// cursor can follow, and the cursor-follow gate deliberately skips
 /// re-centering for that case (see `frame.rs`'s `scroll_into_view`). The

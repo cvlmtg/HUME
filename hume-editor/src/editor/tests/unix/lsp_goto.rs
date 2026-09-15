@@ -383,7 +383,7 @@ fn jump_back_returns_to_the_origin_after_a_jump() {
     assert_eq!(
         state(&ed),
         before,
-        "Ctrl+o must return to the pre-jump position"
+        "Ctrl-o must return to the pre-jump position"
     );
 }
 

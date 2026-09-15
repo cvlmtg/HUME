@@ -354,7 +354,7 @@ fn command_plugin_unknown_returns_hume() {
 }
 
 // ── define-command! — no extendable flag ─────────────────────────────────
-// All Steel commands participate in Ctrl+key one-shot extend; the body
+// All Steel commands participate in Ctrl-key one-shot extend; the body
 // receives `extend` as a lambda arg. There is no separate define-command-extend!.
 
 /// `define-command!` registers the command; `define-command-extend!` does not

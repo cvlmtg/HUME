@@ -9,7 +9,7 @@ as an alternative to HUME's default smart-p heuristic.
 (load-plugin "core:classic-paste")
 ```
 
-Loads eagerly: it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior, and only those
+Loads eagerly: it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior, and only those
 key bindings ever trigger it, so a lazy `declare-plugin` would have no other trigger to
 activate it. See
 [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-classic-paste) for the
@@ -34,7 +34,7 @@ invocations. This is the same mechanism the raw register-prefixed commands (`"kp
 etc.) use; these wrappers just pre-arm the prefix so a single keypress does what would
 otherwise take two.
 
-`Ctrl+Shift+V` is only delivered as a distinct event under the kitty keyboard protocol. On
-legacy terminals it's typically encoded identically to `Ctrl+V`, or intercepted by the
-terminal emulator as its own paste shortcut, so it may never reach HUME. `Ctrl+V` itself is
+`Ctrl-Shift-v` is only delivered as a distinct event under the kitty keyboard protocol. On
+legacy terminals it's typically encoded identically to `Ctrl-v`, or intercepted by the
+terminal emulator as its own paste shortcut, so it may never reach HUME. `Ctrl-v` itself is
 delivered reliably under both kitty and legacy encodings.

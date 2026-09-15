@@ -166,7 +166,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
 /// At the top of the document with the cursor already on line 0, neither the
 /// viewport nor the cursor has anywhere to go — `move_vertical` (like every
 /// `j`/`k`/motion) already leaves a document-start cursor untouched, the same
-/// as `commands::scroll_view`'s other callers (`Ctrl+U`, `PageUp`).
+/// as `commands::scroll_view`'s other callers (`Ctrl-u`, `PageUp`).
 #[test]
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -181,7 +181,7 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     assert_eq!(ed.current_selections().primary().head(), co(0));
 }
 
-/// `scroll_view` — shared with `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` — always
+/// `scroll_view` — shared with `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` — always
 /// carries the cursor, even when the viewport itself has nowhere to go
 /// because the whole document already fits on screen. The cursor stops
 /// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1) — short of

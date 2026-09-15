@@ -647,7 +647,7 @@ fn nearest_no_sticky_display_col_is_cleared() {
 
 #[test]
 fn nearest_extend_grows_selection_to_snapped_word() {
-    // Simulates Ctrl+j with an existing selection:
+    // Simulates Ctrl-j with an existing selection:
     // Buffer: "hello\n     world\n"
     //          0 1 2 3 4 5 | 6 7 8 9 10 11 12 13 14 15 16
     //         h e l l o \n  _ _ _ _  _ w  o  r  l  d \n

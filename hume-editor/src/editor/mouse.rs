@@ -13,7 +13,7 @@
 //! to a buffer char offset.
 //!
 //! Scroll wheel events are `commands::scroll_view` with `count =
-//! mouse-scroll-lines` — the same viewport-plus-cursor scroll `Ctrl+D`/`Ctrl+U`
+//! mouse-scroll-lines` — the same viewport-plus-cursor scroll `Ctrl-d`/`Ctrl-u`
 //! and `PageDown`/`PageUp` use, just with a smaller count. Unlike those
 //! keyboard commands (always the focused pane), the wheel hit-tests its own
 //! event coordinates through `pane_at_screen_pos` to scroll whichever pane

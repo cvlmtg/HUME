@@ -150,7 +150,7 @@ pub fn find_matches_in_range(
 
 /// Escape regex metacharacters so the string matches literally.
 ///
-/// Used by `*` (search-word-under-cursor) and Ctrl+/ (search-selection) to
+/// Used by `*` (search-word-under-cursor) and Ctrl-/ (search-selection) to
 /// turn arbitrary text into a pattern that matches exactly that text.
 pub fn escape_regex(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);

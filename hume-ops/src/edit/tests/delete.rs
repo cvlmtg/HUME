@@ -338,7 +338,7 @@ fn delete_backward_adjacent_cursors_merge() {
 
 #[test]
 fn delete_word_backward_at_end_of_word() {
-    // Cursor after "hello"; Ctrl-W deletes the word; cursor at buffer start.
+    // Cursor after "hello"; Ctrl-w deletes the word; cursor at buffer start.
     assert_state!(
         "hello-[\n]>",
         |(text, sels)| delete_word_backward(text, sels, WordChars::default()),
@@ -441,7 +441,7 @@ fn delete_word_backward_only_whitespace_goes_to_start() {
 
 #[test]
 fn delete_word_backward_with_extra_word_char_deletes_whole_run() {
-    // With '-' configured as a word char, Ctrl-W after "foo-bar" deletes the
+    // With '-' configured as a word char, Ctrl-w after "foo-bar" deletes the
     // whole hyphenated run in one press, not just "bar".
     assert_state!(
         "foo-bar-[\n]>",

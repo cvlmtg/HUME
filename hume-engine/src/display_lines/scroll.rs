@@ -241,7 +241,7 @@ impl<'a> DisplayLineMap<'a> {
     /// trailing virtual block at all; without it, the cursor being unable to
     /// follow would cap the scroll at the block's near edge. The two anchors
     /// coincide, and so land on the same top, only when the cursor sits on
-    /// the document's last display line — the case a plain `Ctrl+D`/wheel
+    /// the document's last display line — the case a plain `Ctrl-d`/wheel
     /// scroll to EOF followed by an ordinary cursor motion exercises.
     /// Saturates at the document's first display line, so a document that
     /// fits on screen (plus its margin) cannot be scrolled at all.

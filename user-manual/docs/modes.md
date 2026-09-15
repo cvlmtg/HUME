@@ -18,7 +18,7 @@ Insert mode lets you type text directly into the buffer. The cursor changes to a
 
 Enter Insert mode with `i`, `a`, `I`, `A`, `o`, `O`, or `c`. See [Editing](editing.md) for what each key does.
 
-**Exit:** `Esc` or `Ctrl+c`
+**Exit:** `Esc` or `Ctrl-c`
 
 ## Extend mode
 
@@ -26,7 +26,7 @@ Extend mode works like Normal mode, but every motion *extends* the current selec
 
 **Enter:** `e` (toggles; status bar shows `EXT`)
 
-**Exit:** `Esc`, `e` again, or `;` (collapse to head) / `Ctrl+;` (collapse to anchor, kitty only)
+**Exit:** `Esc`, `e` again, or `;` (collapse to head) / `Ctrl-;` (collapse to anchor, kitty only)
 
 ## Command mode
 
@@ -57,7 +57,7 @@ Some Normal-mode keys wait for a second key before doing anything. Either they o
 | Match | `m` + key | Select text objects and surrounding delimiters — see [Selections](selections.md) |
 | Match WORD | `M M` | Select the WORD under the cursor — see [Selections](selections.md) |
 | View | `z` + key | Scroll the view to a position, or open a fuzzy picker — see [Moving Around](moving-around.md) and [Fuzzy Finder](pickers.md) |
-| Pane | `Ctrl+p` + key | Move focus between panes — see [Default Keys](default-keys.md) |
+| Pane | `Ctrl-p` + key | Move focus between panes — see [Default Keys](default-keys.md) |
 | Register | `"` + char | Target a specific register for yank, paste, or delete — see [Copy & Paste](copy-and-paste.md#register-prefix) |
 
 ### Keys that take a character

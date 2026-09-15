@@ -94,7 +94,7 @@ fn parse_single_key(token: &str) -> Result<KeyEvent, String> {
     }
 
     let code = parse_key_code(key_name)?;
-    // Terminal input reports Shift+Tab as `BackTab`, not `Tab | SHIFT`.
+    // Terminal input reports Shift-Tab as `BackTab`, not `Tab | SHIFT`.
     let (code, modifiers) = normalise_shift_tab(code, modifiers);
     Ok(KeyEvent::new(code, modifiers))
 }
@@ -199,7 +199,7 @@ pub fn parse_key_stream(s: &str) -> Result<Vec<KeyEvent>, String> {
     Ok(keys)
 }
 
-/// Terminal input reports Shift+Tab as `BackTab`, not `Tab | SHIFT`.
+/// Terminal input reports Shift-Tab as `BackTab`, not `Tab | SHIFT`.
 fn normalise_shift_tab(code: KeyCode, mods: Modifiers) -> (KeyCode, Modifiers) {
     if code == KeyCode::Tab && mods.contains(Modifiers::SHIFT) {
         (KeyCode::BackTab, mods)

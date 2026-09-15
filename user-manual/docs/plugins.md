@@ -123,7 +123,7 @@ An editor command's lambda receives the leading arguments its declared arity ask
 
 For commands that stream subprocess output to the terminal (installers, git operations), add the `#:inline-output #t` keyword — accepted by both verbs. The alt-screen opens on the command's first real output — not eagerly at the start — so a run that produces no output (an already-up-to-date check, a validation error) never flashes an empty screen or waits on an unneeded keypress. Once something is printed, HUME waits for a keypress before returning to the editor, so the output stays on screen until you've read it. This applies no matter how the command is reached — a key binding, `:`, or `call!` from another command's body, a hook, or a timer — and a command `call!`'d from inside another `#:inline-output` command shares its already-open screen and single keypress prompt rather than opening a second one.
 
-Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl+C meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
+Plugins run with the same privileges as HUME itself, so any Scheme process/filesystem function is available — there's no separate "shell builtin" layer. The one exception: inside an `#:inline-output` command, spawn subprocesses whose output should reach the terminal via `run-inline-output!` rather than a raw `spawn-process`/`command` call — it isolates the child into its own process group so a Ctrl-c meant to interrupt the subprocess doesn't kill HUME too, and it's the trigger that opens the alt-screen:
 
 ```scheme
 (define-command! "fetch-config"
@@ -525,7 +525,7 @@ accept it:
 ```
 
 `stdlib/buffer-actions` (from `core:stdlib`) is a ready-made `#:actions` list that binds
-`Ctrl-O` to `on-select` itself (a synonym for `Enter`), and `Ctrl-T`/`Ctrl-V`/`Ctrl-S` to
+`Ctrl-o` to `on-select` itself (a synonym for `Enter`), and `Ctrl-t`/`Ctrl-v`/`Ctrl-s` to
 opening the selection in a new tab, a side-by-side split, or a stacked split respectively —
 see `core:pickers`' own file, buffer, and modified-files pickers for the pattern in use, and
 `core:stdlib`'s reference for `with-tab`/`with-vsplit`/`with-split`, the three combinators it

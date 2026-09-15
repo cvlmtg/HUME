@@ -1,9 +1,9 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-// ── Kitty keyboard protocol — Ctrl+motion one-shot extend ──────────────────
+// ── Kitty keyboard protocol — Ctrl-motion one-shot extend ──────────────────
 
-/// Ctrl+h extends the selection left (kitty mode only).
+/// Ctrl-h extends the selection left (kitty mode only).
 #[test]
 fn kitty_ctrl_h_extends_left() {
     let mut ed = editor_from_kitty("hell-[o]>\n");
@@ -12,7 +12,7 @@ fn kitty_ctrl_h_extends_left() {
     assert_eq!(state(&ed), "hel<[lo]-\n");
 }
 
-/// Ctrl+l extends the selection right (kitty mode only).
+/// Ctrl-l extends the selection right (kitty mode only).
 #[test]
 fn kitty_ctrl_l_extends_right() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
@@ -20,7 +20,7 @@ fn kitty_ctrl_l_extends_right() {
     assert_eq!(state(&ed), "-[he]>llo\n");
 }
 
-/// Ctrl+j extends the selection down one line (kitty mode only).
+/// Ctrl-j extends the selection down one line (kitty mode only).
 #[test]
 fn kitty_ctrl_j_extends_down() {
     let mut ed = editor_from_kitty("-[h]>ello\nworld\n");
@@ -28,7 +28,7 @@ fn kitty_ctrl_j_extends_down() {
     assert_eq!(state(&ed), "-[hello\nw]>orld\n");
 }
 
-/// Ctrl+k extends the selection up one line (kitty mode only).
+/// Ctrl-k extends the selection up one line (kitty mode only).
 #[test]
 fn kitty_ctrl_k_extends_up() {
     let mut ed = editor_from_kitty("hello\n-[w]>orld\n");
@@ -37,8 +37,8 @@ fn kitty_ctrl_k_extends_up() {
     assert_eq!(state(&ed), "<[hello\nw]-orld\n");
 }
 
-/// Ctrl+w extends to the next word in kitty mode.
-/// Ctrl+w has no explicit trie binding; the strip-CONTROL fallback resolves it
+/// Ctrl-w extends to the next word in kitty mode.
+/// Ctrl-w has no explicit trie binding; the strip-CONTROL fallback resolves it
 /// to bare 'w' → select-next-word with ctrl_extend=true.
 #[test]
 fn kitty_ctrl_w_extends_next_word() {
@@ -50,8 +50,8 @@ fn kitty_ctrl_w_extends_next_word() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
-/// Ctrl+p is the pane prefix — pressing it alone waits for a second key.
-/// The state is unchanged after just Ctrl+p (Interior node, not a leaf).
+/// Ctrl-p is the pane prefix — pressing it alone waits for a second key.
+/// The state is unchanged after just Ctrl-p (Interior node, not a leaf).
 #[test]
 fn ctrl_p_starts_pane_prefix() {
     let mut ed = editor_from_kitty("-[h]>ello world\n");
@@ -59,11 +59,11 @@ fn ctrl_p_starts_pane_prefix() {
     assert_eq!(
         state(&ed),
         "-[h]>ello world\n",
-        "Ctrl+p alone must not change state"
+        "Ctrl-p alone must not change state"
     );
 }
 
-/// Ctrl+p, p → pane-focus-next. Single-pane no-op: no neighbour to cycle to,
+/// Ctrl-p, p → pane-focus-next. Single-pane no-op: no neighbour to cycle to,
 /// so the command returns `Ok` silently and leaves state untouched.
 #[test]
 fn ctrl_p_p_is_noop_with_single_pane() {
@@ -82,7 +82,7 @@ fn ctrl_p_p_is_noop_with_single_pane() {
     );
 }
 
-/// Ctrl+p, s → pane-split. Creates a second pane, stacking it below the
+/// Ctrl-p, s → pane-split. Creates a second pane, stacking it below the
 /// focused one, and moves focus onto the new pane.
 #[test]
 fn ctrl_p_s_splits_pane() {
@@ -99,7 +99,7 @@ fn ctrl_p_s_splits_pane() {
     );
 }
 
-/// Ctrl+p, v → pane-vsplit. Creates a second pane side by side, and moves
+/// Ctrl-p, v → pane-vsplit. Creates a second pane side by side, and moves
 /// focus onto the new pane.
 #[test]
 fn ctrl_p_v_vsplits_pane() {
@@ -116,7 +116,7 @@ fn ctrl_p_v_vsplits_pane() {
     );
 }
 
-/// Ctrl+p, c → pane-close. Closes the focused pane, collapsing the split back
+/// Ctrl-p, c → pane-close. Closes the focused pane, collapsing the split back
 /// onto its sibling and moving focus there.
 #[test]
 fn ctrl_p_c_closes_pane() {
@@ -144,7 +144,7 @@ fn ctrl_p_c_closes_pane() {
     );
 }
 
-/// Ctrl+p, c on the sole pane warns instead of quitting — `:q` alone owns
+/// Ctrl-p, c on the sole pane warns instead of quitting — `:q` alone owns
 /// quitting the editor.
 #[test]
 fn ctrl_p_c_is_noop_with_single_pane() {
@@ -162,7 +162,7 @@ fn ctrl_p_c_is_noop_with_single_pane() {
     );
 }
 
-/// Ctrl+p, h/j/k/l → directional pane focus. Single-pane no-op: no neighbour in
+/// Ctrl-p, h/j/k/l → directional pane focus. Single-pane no-op: no neighbour in
 /// the requested direction → silent `Ok`, no status message and no state change.
 #[test]
 fn ctrl_p_directionals_are_noop_with_single_pane() {
@@ -173,17 +173,17 @@ fn ctrl_p_directionals_are_noop_with_single_pane() {
         assert_eq!(
             state(&ed),
             "-[h]>ello world\n",
-            "Ctrl+p {second_key}: single pane: cursor must not move",
+            "Ctrl-p {second_key}: single pane: cursor must not move",
         );
         assert!(
             ed.state.status_msg.is_none(),
-            "Ctrl+p {second_key}: single pane: silent no-op, got {:?}",
+            "Ctrl-p {second_key}: single pane: silent no-op, got {:?}",
             ed.state.status_msg,
         );
     }
 }
 
-/// Ctrl+b extends to the previous word (kitty mode only). The cursor at 'w'
+/// Ctrl-b extends to the previous word (kitty mode only). The cursor at 'w'
 /// (pos 6) sits inside "world", the anchor's own word; select_prev_word finds
 /// "hello" (0,4), behind it, so the selection grows backward to cover both
 /// words in full — flipping to a backward selection rather than truncating
@@ -195,8 +195,8 @@ fn kitty_ctrl_b_extends_prev_word() {
     assert_eq!(state(&ed), "<[hello world]-\n");
 }
 
-/// Without kitty, Ctrl+h is a no-op — legacy terminals can't reliably
-/// distinguish Ctrl+letter from control codes, so implicit Ctrl+motion
+/// Without kitty, Ctrl-h is a no-op — legacy terminals can't reliably
+/// distinguish Ctrl-letter from control codes, so implicit Ctrl-motion
 /// is suppressed entirely.
 #[test]
 fn legacy_ctrl_h_is_noop() {
@@ -205,8 +205,8 @@ fn legacy_ctrl_h_is_noop() {
     assert_eq!(state(&ed), "-[hello]>world\n");
 }
 
-/// Without kitty, Ctrl+w is a no-op. Ctrl+w has no explicit trie binding
-/// (the pane prefix is Ctrl+p), so without kitty the strip-CONTROL fallback
+/// Without kitty, Ctrl-w is a no-op. Ctrl-w has no explicit trie binding
+/// (the pane prefix is Ctrl-p), so without kitty the strip-CONTROL fallback
 /// is suppressed and the key is silently ignored.
 #[test]
 fn legacy_ctrl_w_is_noop() {
@@ -215,8 +215,8 @@ fn legacy_ctrl_w_is_noop() {
     assert_eq!(state(&ed), "-[hello]> world foo\n");
 }
 
-/// Ctrl+u runs half-page-up (explicit leaf binding) and must not run undo.
-/// Undo is bound to bare 'u'; the explicit Ctrl+u binding takes priority so
+/// Ctrl-u runs half-page-up (explicit leaf binding) and must not run undo.
+/// Undo is bound to bare 'u'; the explicit Ctrl-u binding takes priority so
 /// the strip-CONTROL fallback (which would reach 'u' = undo) is never reached.
 #[test]
 fn kitty_ctrl_u_is_not_undo() {
@@ -224,19 +224,19 @@ fn kitty_ctrl_u_is_not_undo() {
     // Make an edit so undo would have something to revert.
     ed.handle_key(key('d'));
     assert_eq!(ed.doc().text().to_string(), "ello\n");
-    // Ctrl+u runs half-page-up (scroll), not undo — text must be unchanged.
+    // Ctrl-u runs half-page-up (scroll), not undo — text must be unchanged.
     ed.handle_key(key_ctrl('u'));
     assert_eq!(
         ed.doc().text().to_string(),
         "ello\n",
-        "Ctrl+u must not run undo"
+        "Ctrl-u must not run undo"
     );
 }
 
-/// Ctrl+} extends to the next paragraph (kitty mode).
+/// Ctrl-} extends to the next paragraph (kitty mode).
 ///
 /// With REPORT_ALTERNATE_KEYS, the terminal delivers the shifted character
-/// directly: Ctrl+} arrives as Char('}') with CONTROL (no SHIFT).
+/// directly: Ctrl-} arrives as Char('}') with CONTROL (no SHIFT).
 #[test]
 fn kitty_ctrl_close_brace_extends_next_paragraph() {
     let mut ed = editor_from_kitty("-[h]>ello\n\nworld\n");
@@ -246,7 +246,7 @@ fn kitty_ctrl_close_brace_extends_next_paragraph() {
     assert_eq!(state(&ed), "-[hello\n\nworld]>\n");
 }
 
-/// Ctrl+$ extends to end of line (kitty mode).
+/// Ctrl-$ extends to end of line (kitty mode).
 ///
 /// `$` is bound by the opt-in `core:vim-keybind` plugin, not the defaults —
 /// bind it here to keep exercising the Ctrl one-shot-extend mechanism on a
@@ -266,7 +266,7 @@ fn kitty_ctrl_dollar_extends_line_end() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
-/// Ctrl+0 extends to start of line (kitty mode).
+/// Ctrl-0 extends to start of line (kitty mode).
 ///
 /// `0` is bound by the opt-in `core:vim-keybind` plugin, not the defaults —
 /// bind it here to keep exercising the Ctrl one-shot-extend mechanism on a
@@ -286,10 +286,10 @@ fn kitty_ctrl_0_extends_line_start() {
     assert_eq!(state(&ed), "<[hello w]-orld\n");
 }
 
-// ── Ctrl+prefix sequences — one-shot extend via Interior nodes ─────────────
+// ── Ctrl-prefix sequences — one-shot extend via Interior nodes ─────────────
 
-/// Ctrl+g l extends to end of line via the goto-prefix trie.
-/// The kitty strip-CONTROL path resolves Ctrl+g to the Interior "goto" node,
+/// Ctrl-g l extends to end of line via the goto-prefix trie.
+/// The kitty strip-CONTROL path resolves Ctrl-g to the Interior "goto" node,
 /// persists `pending_ctrl_extend`, and the follow-up `l` completes the
 /// sequence with extend=true.
 #[test]
@@ -300,7 +300,7 @@ fn kitty_ctrl_g_l_extends_line_end() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 }
 
-/// Ctrl+g h extends to start of line.
+/// Ctrl-g h extends to start of line.
 #[test]
 fn kitty_ctrl_g_h_extends_line_start() {
     let mut ed = editor_from_kitty("hello -[w]>orld\n");
@@ -309,7 +309,7 @@ fn kitty_ctrl_g_h_extends_line_start() {
     assert_eq!(state(&ed), "<[hello w]-orld\n");
 }
 
-/// Ctrl+g g extends to first line of buffer.
+/// Ctrl-g g extends to first line of buffer.
 #[test]
 fn kitty_ctrl_g_g_extends_to_first_line() {
     let mut ed = editor_from_kitty("first\n-[s]>econd\n");
@@ -318,7 +318,7 @@ fn kitty_ctrl_g_g_extends_to_first_line() {
     assert_eq!(state(&ed), "<[first\ns]-econd\n");
 }
 
-/// Ctrl+z z must NOT extend — center-view-on-cursor is not extendable.
+/// Ctrl-z z must NOT extend — center-view-on-cursor is not extendable.
 /// The flag is persisted at the Interior node but rejected at Leaf resolution.
 #[test]
 fn kitty_ctrl_z_z_does_not_extend() {
@@ -327,10 +327,10 @@ fn kitty_ctrl_z_z_does_not_extend() {
     ed.handle_key(key('z'));
     // Selection must stay collapsed.
     let sel = ed.current_selections().primary();
-    assert_eq!(sel.anchor(), sel.head(), "Ctrl+z z must not extend");
+    assert_eq!(sel.anchor(), sel.head(), "Ctrl-z z must not extend");
 }
 
-/// Esc after Ctrl+g must clear pending_ctrl_extend so the next keypress
+/// Esc after Ctrl-g must clear pending_ctrl_extend so the next keypress
 /// doesn't incorrectly extend. Regression test for the Esc reset path.
 #[test]
 fn kitty_ctrl_g_esc_then_l_does_not_extend() {
@@ -338,7 +338,7 @@ fn kitty_ctrl_g_esc_then_l_does_not_extend() {
     ed.handle_key(key_ctrl('g'));
     ed.handle_key(key_esc());
     ed.handle_key(key('l'));
-    // Selection must stay collapsed — Esc cancelled the Ctrl+g sequence.
+    // Selection must stay collapsed — Esc cancelled the Ctrl-g sequence.
     let sel = ed.current_selections().primary();
     assert_eq!(
         sel.anchor(),
@@ -347,7 +347,7 @@ fn kitty_ctrl_g_esc_then_l_does_not_extend() {
     );
 }
 
-/// Ctrl+U (redo) must also be a no-op in kitty mode.
+/// Ctrl-U (redo) must also be a no-op in kitty mode.
 #[test]
 fn kitty_ctrl_shift_u_is_noop() {
     let mut ed = editor_from_kitty("-[h]>ello\n");
@@ -355,16 +355,16 @@ fn kitty_ctrl_shift_u_is_noop() {
     assert_eq!(ed.doc().text().to_string(), "ello\n");
     ed.handle_key(key('u')); // regular undo
     assert_eq!(ed.doc().text().to_string(), "hello\n");
-    // Ctrl+U should NOT run redo.
+    // Ctrl-U should NOT run redo.
     ed.handle_key(key_ctrl('U'));
     assert_eq!(
         ed.doc().text().to_string(),
         "hello\n",
-        "Ctrl+U should be a no-op in kitty mode"
+        "Ctrl-U should be a no-op in kitty mode"
     );
 }
 
-// ── Ctrl+d / Ctrl+u — explicit leaf, must NOT extend ─────────────────────
+// ── Ctrl-d / Ctrl-u — explicit leaf, must NOT extend ─────────────────────
 
 fn scroll_test_editor_kitty() -> Editor {
     use hume_editing::selection::{Selection, SelectionSet};
@@ -379,10 +379,10 @@ fn scroll_test_editor_kitty() -> Editor {
     ed
 }
 
-/// Ctrl+d scrolls without extending — the selection stays collapsed (anchor == head)
+/// Ctrl-d scrolls without extending — the selection stays collapsed (anchor == head)
 /// even though half-page-down is registered with `.extendable()` for sticky-Extend mode.
-/// In Normal mode, pressing an explicit Ctrl+key only extends when the binding
-/// carries `force_extend = true` (e.g. Ctrl+x). Scroll commands do not.
+/// In Normal mode, pressing an explicit Ctrl-key only extends when the binding
+/// carries `force_extend = true` (e.g. Ctrl-x). Scroll commands do not.
 #[test]
 fn ctrl_d_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
@@ -400,17 +400,17 @@ fn ctrl_d_does_not_extend_in_normal_mode() {
     assert_eq!(
         after.anchor(),
         after.head(),
-        "Ctrl+d must not extend the selection"
+        "Ctrl-d must not extend the selection"
     );
     // The cursor must have moved (scroll actually did something).
-    assert_ne!(after.head(), before.head(), "Ctrl+d must move the cursor");
+    assert_ne!(after.head(), before.head(), "Ctrl-d must move the cursor");
 }
 
-/// Ctrl+u scrolls without extending (symmetric with Ctrl+d).
+/// Ctrl-u scrolls without extending (symmetric with Ctrl-d).
 #[test]
 fn ctrl_u_does_not_extend_in_normal_mode() {
     let mut ed = scroll_test_editor_kitty();
-    // First scroll down so Ctrl+u has room to scroll back up.
+    // First scroll down so Ctrl-u has room to scroll back up.
     ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_ctrl('u'));
 
@@ -418,11 +418,11 @@ fn ctrl_u_does_not_extend_in_normal_mode() {
     assert_eq!(
         after.anchor(),
         after.head(),
-        "Ctrl+u must not extend the selection"
+        "Ctrl-u must not extend the selection"
     );
 }
 
-/// In sticky Extend mode (`e`), Ctrl+d DOES extend — the explicit-leaf
+/// In sticky Extend mode (`e`), Ctrl-d DOES extend — the explicit-leaf
 /// non-extend rule only applies in Normal mode. Sticky Extend overrides it.
 #[test]
 fn extend_mode_ctrl_d_extends() {

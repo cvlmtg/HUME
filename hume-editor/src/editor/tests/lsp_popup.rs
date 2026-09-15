@@ -220,16 +220,16 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
         .config
         .popup
         .as_ref()
-        .expect("Ctrl+d must not close it")
+        .expect("Ctrl-d must not close it")
         .scroll;
     assert!(
         scroll_after_down > 0,
-        "Ctrl+d must scroll a docked popup's content forward"
+        "Ctrl-d must scroll a docked popup's content forward"
     );
     assert_eq!(
         state(&ed),
         before,
-        "Ctrl+d must scroll the popup, not the buffer"
+        "Ctrl-d must scroll the popup, not the buffer"
     );
 
     ed.feed_key(key_ctrl('u'));
@@ -241,11 +241,11 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
         .config
         .popup
         .as_ref()
-        .expect("Ctrl+u must not close it")
+        .expect("Ctrl-u must not close it")
         .scroll;
     assert!(
         scroll_after_up < scroll_after_down,
-        "Ctrl+u must scroll a docked popup's content back"
+        "Ctrl-u must scroll a docked popup's content back"
     );
 }
 
@@ -535,7 +535,7 @@ fn popup_content_is_rebuilt_after_a_theme_reload() {
     );
 }
 
-// ── Scrollable popup (`#:kind 'scrollable`) dismissal + Ctrl+u/Ctrl+d ───────
+// ── Scrollable popup (`#:kind 'scrollable`) dismissal + Ctrl-u/Ctrl-d ───────
 
 #[test]
 fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
@@ -574,16 +574,16 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
         .config
         .popup
         .as_ref()
-        .expect("Ctrl+d must not close a scrollable popup")
+        .expect("Ctrl-d must not close a scrollable popup")
         .scroll;
     assert!(
         scroll_after_down > 0,
-        "Ctrl+d must scroll a scrollable popup's content forward"
+        "Ctrl-d must scroll a scrollable popup's content forward"
     );
     assert_eq!(
         state(&ed),
         before,
-        "Ctrl+d must scroll the popup, not the buffer, while a scrollable popup is open"
+        "Ctrl-d must scroll the popup, not the buffer, while a scrollable popup is open"
     );
 
     ed.feed_key(key_ctrl('u'));
@@ -595,11 +595,11 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
         .config
         .popup
         .as_ref()
-        .expect("Ctrl+u must not close a scrollable popup")
+        .expect("Ctrl-u must not close a scrollable popup")
         .scroll;
     assert!(
         scroll_after_up < scroll_after_down,
-        "Ctrl+u must scroll a scrollable popup's content back"
+        "Ctrl-u must scroll a scrollable popup's content back"
     );
 }
 
@@ -612,7 +612,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // hold a scroll value now far beyond the shrunk `max_scroll`. Fail
     // oracle: subtracting from that stale value directly, without first
     // clamping it to the current `max_scroll`, could still land above it —
-    // visibly a no-op on the first Ctrl+u press.
+    // visibly a no-op on the first Ctrl-u press.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let tall = (0..40)
@@ -661,11 +661,11 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
         .config
         .popup
         .as_ref()
-        .expect("Ctrl+u must not close a scrollable popup")
+        .expect("Ctrl-u must not close a scrollable popup")
         .scroll;
     assert!(
         scroll_after_up <= max_scroll_before_key,
-        "Ctrl+u must clamp a stale model scroll to the current window before \
+        "Ctrl-u must clamp a stale model scroll to the current window before \
          subtracting, not just after — got {scroll_after_up}, current max was \
          {max_scroll_before_key}"
     );
@@ -707,7 +707,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
 fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     // Regression guard: a plain popup (`#:kind` omitted or `'sticky` —
     // hover/sighelp today, or the diagnostic overlay before its own
-    // `'transient` clear) must leave Ctrl+d/Ctrl+u to their ordinary
+    // `'transient` clear) must leave Ctrl-d/Ctrl-u to their ordinary
     // half-page-scroll binding.
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
@@ -730,12 +730,12 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
             ed.state.config.popup.as_ref().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Sticky)
         ),
-        "a plain popup must be untouched by Ctrl+d"
+        "a plain popup must be untouched by Ctrl-d"
     );
     assert_ne!(
         state(&ed),
         before,
-        "Ctrl+d must still run half-page-down on the buffer when the open popup isn't scrollable"
+        "Ctrl-d must still run half-page-down on the buffer when the open popup isn't scrollable"
     );
 }
 
@@ -846,7 +846,7 @@ fn a_sticky_popup_survives_mouse_input() {
 
 #[test]
 fn scrollable_popup_paints_its_scrolled_window() {
-    // Appearance lock: the painted rows actually shift after Ctrl+d, not
+    // Appearance lock: the painted rows actually shift after Ctrl-d, not
     // just the underlying `scroll` field (a regression in `draw_menu_box`'s
     // windowing wouldn't be caught by the data-only assertions above).
     let tmp = safe_tempdir();

@@ -28,7 +28,7 @@ pub(in crate::editor::jump_list) const DEFAULT_JUMP_LIST_CAPACITY: usize = 100;
 /// A single saved cursor position in the jump list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::editor) struct JumpEntry {
-    /// Buffer this position belongs to — needed for cross-buffer Ctrl+O/I.
+    /// Buffer this position belongs to — needed for cross-buffer Ctrl-o/I.
     pub buffer_id: BufferId,
     /// Full selection state at the moment of the jump.
     pub selections: SelectionSet,
@@ -176,7 +176,7 @@ impl JumpList {
     /// line.
     ///
     /// Entries for any other buffer are left untouched — the jump list is
-    /// cross-buffer (that's what makes cross-buffer Ctrl+O work), so a remap
+    /// cross-buffer (that's what makes cross-buffer Ctrl-o work), so a remap
     /// triggered by an edit in one buffer must not touch another buffer's
     /// entries. This holds for the merge too: two untouched entries always
     /// have equal pre- and post-edit lines, which the merge condition below
@@ -364,7 +364,7 @@ impl JumpLists {
     /// Unlike sibling-pane selection propagation, this does **not** filter by
     /// which panes currently view `buf_id` — a pane's jump list holds entries
     /// for buffers that pane isn't showing right now (that's what makes
-    /// cross-buffer Ctrl+O work), so every pane's list must be checked,
+    /// cross-buffer Ctrl-o work), so every pane's list must be checked,
     /// including the focused one (its own live cursor isn't a jump-list
     /// entry, so nothing is mapped twice).
     ///

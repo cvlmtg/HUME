@@ -983,7 +983,7 @@ define_settings! {
         // the built-in alphanumeric-plus-`_` rule (Vim's `iskeyword`, minus
         // the range syntax) — e.g. `-` makes `foo-bar` one word in CSS.
         // Affects `w`/`b`, `mm`, `miw`/`maw`, `select-word-nearest-on-line`,
-        // Ctrl-W, `*`, `(symbol-under-cursor)`, symmetric auto-pair
+        // Ctrl-w, `*`, `(symbol-under-cursor)`, symmetric auto-pair
         // suppression, and the LSP completion fallback replace span (no
         // server `textEdit`); the classifier itself is
         // `hume_editing::word::WordChars`. Does NOT affect `W`/`B`/`MM` —

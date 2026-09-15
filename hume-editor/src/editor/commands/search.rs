@@ -344,7 +344,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
     set_search_pattern(state, view, pattern)
 }
 
-// ── Search selection (Ctrl+/) ────────────────────────────────────────────────
+// ── Search selection (Ctrl-/) ────────────────────────────────────────────────
 
 /// Use the primary selection's literal text as the search pattern — unlike
 /// `*`, no whole-word anchors and no word expansion. Selects the exact text
@@ -376,7 +376,7 @@ pub(in crate::editor) fn cmd_search_selection(
 
 /// Compile `pattern`, write it to the search register, and set it as the
 /// focused buffer's active search pattern (forward direction). Shared tail
-/// of `*` and Ctrl+/ — both set the same (register, direction, pattern)
+/// of `*` and Ctrl-/ — both set the same (register, direction, pattern)
 /// triple that live search sets on confirm; the match-cache/highlights are
 /// rebuilt lazily per-frame regardless of which path set the pattern.
 fn set_search_pattern(

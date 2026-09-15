@@ -71,12 +71,12 @@ Once a picker is open:
 |-----------------------------|--------|
 | Type                        | Filter the list |
 | `Backspace`                 | Edit the query |
-| `Down` / `Ctrl+n`            | Move selection down |
-| `Up` / `Ctrl+p`               | Move selection up |
+| `Down` / `Ctrl-n`            | Move selection down |
+| `Up` / `Ctrl-p`               | Move selection up |
 | `PageDown` / `PageUp`        | Page the list |
-| `Ctrl+d` / `Ctrl+u`           | Move selection by half a page |
-| `Enter` / `Ctrl+o`           | Open the selected item in the current pane |
-| `Ctrl+t`                    | Open the selected item in a new tab |
-| `Ctrl+v`                    | Open the selected item in a side-by-side split |
-| `Ctrl+s`                    | Open the selected item in a stacked split |
+| `Ctrl-d` / `Ctrl-u`           | Move selection by half a page |
+| `Enter` / `Ctrl-o`           | Open the selected item in the current pane |
+| `Ctrl-t`                    | Open the selected item in a new tab |
+| `Ctrl-v`                    | Open the selected item in a side-by-side split |
+| `Ctrl-s`                    | Open the selected item in a stacked split |
 | `Esc`                       | Dismiss without opening anything |

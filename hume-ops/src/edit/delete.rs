@@ -132,13 +132,13 @@ pub fn dedent_tab_backward(
     })
 }
 
-/// Delete the word before each cursor (Ctrl-W in insert mode).
+/// Delete the word before each cursor (Ctrl-w in insert mode).
 ///
 /// - **Collapsed cursor**: deletes from the word start to the cursor position,
 ///   using `prev_word_start` to find the boundary. No-op at buffer start.
 /// - **Non-collapsed selection**: delegates to `delete_sel_region`.
 ///
-/// Non-yanking by design: Ctrl-W is readline-style word-rubout, not a kill —
+/// Non-yanking by design: Ctrl-w is readline-style word-rubout, not a kill —
 /// the deleted text is not pushed to the kill ring or any register.
 pub fn delete_word_backward(
     text: BufferText,

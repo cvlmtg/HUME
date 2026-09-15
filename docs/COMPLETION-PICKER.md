@@ -59,7 +59,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 **The LSP feature plugin — `runtime/plugins/core/lsp/completion.scm`** (the model for what any source looks like):
 
 - `lsp/request-and-begin-completions`: `lsp-request "textDocument/completion"` → decode (`CompletionItem[]` or `CompletionList`) → `completion-begin!`. Snippet stripping happens Rust-side at store ingress — items arriving here already have plain `insertText`/`textEdit.newText`.
-- Entry points: `(define-command! "lsp-completion-trigger" …)` (Ctrl+Space is bound to that command name) and the `on-trigger-char` hook filtered by the server's registered trigger characters (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
+- Entry points: `(define-command! "lsp-completion-trigger" …)` (Ctrl-Space is bound to that command name) and the `on-trigger-char` hook filtered by the server's registered trigger characters (populated on `on-lsp-attach` from `completionProvider.triggerCharacters`, cleared on detach).
 - No `on-completion-accept` handler here, deliberately: Rust applies the main edit, `additionalTextEdits`, and `completionItem/resolve` atomically.
 - `on-completion-refilter` handler: re-requests (isIncomplete flow).
 

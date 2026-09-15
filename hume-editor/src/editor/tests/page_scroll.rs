@@ -48,7 +48,7 @@ fn key_page_up() -> KeyEvent {
     KeyEvent::new(KeyCode::PageUp, Modifiers::NONE)
 }
 
-/// Ctrl+d (half-page-down) moves cursor down by half the viewport height (12 lines).
+/// Ctrl-d (half-page-down) moves cursor down by half the viewport height (12 lines).
 #[test]
 fn half_page_down_moves_half_viewport() {
     let mut ed = page_test_editor();
@@ -61,7 +61,7 @@ fn half_page_down_moves_half_viewport() {
     );
 }
 
-/// Ctrl+u (half-page-up) moves cursor up by half the viewport height. The
+/// Ctrl-u (half-page-up) moves cursor up by half the viewport height. The
 /// document's own start saturates both the view and a plain 12-line-up walk
 /// at line 0, and landing exactly at the new top (row 0) is in-band there:
 /// `top` has no room left to scroll back further, so `carry`'s band clamp
@@ -111,7 +111,7 @@ fn page_up_moves_full_viewport() {
     );
 }
 
-// ── Ctrl+D/Ctrl+U/PageDown/PageUp now scroll the view, not just the cursor ──
+// ── Ctrl-d/Ctrl-u/PageDown/PageUp now scroll the view, not just the cursor ──
 //
 // Before unification, these commands only moved the cursor; the viewport
 // followed later, once the cursor reached `scrolloff`. From the top of a
@@ -169,11 +169,11 @@ fn scroll_view_leaves_nothing_for_reveal_to_correct() {
     );
 }
 
-// ── Wheel and Ctrl+D are the same action ────────────────────────────────────
+// ── Wheel and Ctrl-d are the same action ────────────────────────────────────
 
-/// A wheel notch and `Ctrl+D` are `scroll_view` with different `count`s —
+/// A wheel notch and `Ctrl-d` are `scroll_view` with different `count`s —
 /// with `mouse-scroll-lines` set to match `height / 2`, one notch must land
-/// on exactly the same viewport and cursor as one `Ctrl+D`.
+/// on exactly the same viewport and cursor as one `Ctrl-d`.
 #[test]
 fn wheel_and_half_page_down_agree() {
     let mut wheel_ed = long_page_test_editor();
@@ -186,13 +186,13 @@ fn wheel_and_half_page_down_agree() {
     assert_eq!(
         wheel_ed.viewport().top().line,
         key_ed.viewport().top().line,
-        "wheel and Ctrl+D must scroll the view by the same amount"
+        "wheel and Ctrl-d must scroll the view by the same amount"
     );
     assert_eq!(wheel_ed.viewport().top().slot, key_ed.viewport().top().slot);
     assert_eq!(
         wheel_ed.current_selections().primary().head(),
         key_ed.current_selections().primary().head(),
-        "wheel and Ctrl+D must carry the cursor the same distance"
+        "wheel and Ctrl-d must carry the cursor the same distance"
     );
 }
 
@@ -201,7 +201,7 @@ fn wheel_and_half_page_down_agree() {
 /// A page_test_editor's 30 lines nearly fill the 24-row viewport. Line 29
 /// (the last) settles `scrolloff` (default 3) rows above the bottom row —
 /// row 20 of 0..23 — not pinned to the bottom itself, so top stops at line 9
-/// (29 - 20), matching where `Ctrl+D`/an ordinary cursor motion would
+/// (29 - 20), matching where `Ctrl-d`/an ordinary cursor motion would
 /// independently settle once the cursor reaches line 29.
 #[test]
 fn page_scroll_stops_at_max_scroll_top() {
@@ -239,12 +239,12 @@ fn page_down_in_a_zero_height_pane_moves_neither_cursor_nor_view() {
     );
 }
 
-/// `page_test_editor`, scrolled to EOF with 10×`Ctrl+D` and settled — the
+/// `page_test_editor`, scrolled to EOF with 10×`Ctrl-d` and settled — the
 /// shared starting point for the EOF-stall regression tests below.
 fn ctrl_d_to_eof() -> (Editor, hume_grid::Rect) {
     let mut ed = page_test_editor();
     let rect = hume_grid::Rect::new(0, 0, 80, 25); // 24 content rows
-    ed.render_to_buf(rect); // settle before the first Ctrl+D
+    ed.render_to_buf(rect); // settle before the first Ctrl-d
 
     for _ in 0..10 {
         ed.handle_key(key_ctrl('d'));
@@ -253,7 +253,7 @@ fn ctrl_d_to_eof() -> (Editor, hume_grid::Rect) {
     (ed, rect)
 }
 
-/// Scrolling all the way to EOF with `Ctrl+D`, then moving the cursor with
+/// Scrolling all the way to EOF with `Ctrl-d`, then moving the cursor with
 /// an ordinary motion (`k`), must not jump the view: `Viewport::scroll_by`'s
 /// `max_scroll_top` bound and `Viewport::reveal`'s `geo.target` settle point
 /// both derive from the same `Viewport::geometry`, so the cursor motion's
@@ -279,7 +279,7 @@ fn ctrl_d_to_eof_then_an_ordinary_motion_does_not_jump_the_view() {
     );
 }
 
-/// The park a `Ctrl+D`/wheel stall leaves behind (every selection's head
+/// The park a `Ctrl-d`/wheel stall leaves behind (every selection's head
 /// unchanged, so `PaneBufferState::reveal_pending` was never raised) must
 /// survive more than one idle frame — a signal that got set anyway on that
 /// first idle render would let the very next one snap the view back onto
@@ -329,15 +329,15 @@ fn view_top_lands_the_cursor_at_scrolloff_through_the_real_frame() {
 
 // ── The cursor must make progress through a virtual-line block ─────────────
 //
-// `carry` (mouse wheel, Ctrl+D/Ctrl+U, PageDown/PageUp) walks display lines,
+// `carry` (mouse wheel, Ctrl-d/Ctrl-u, PageDown/PageUp) walks display lines,
 // virtual ones included, against its `delta` budget. A block taller than the
 // budget would otherwise swallow it whole and leave the cursor exactly where
-// it started — which, since the wheel and Ctrl+D also write the viewport
+// it started — which, since the wheel and Ctrl-d also write the viewport
 // directly, would let the view scroll on every notch while the cursor (and
 // the caret it drives) stayed frozen on the block's near edge. `carry`'s own
 // doc explains the overshoot this section tests for.
 
-/// A 4-line `After(1)` virtual block, `Ctrl+D` with a budget of 3 (height 6,
+/// A 4-line `After(1)` virtual block, `Ctrl-d` with a budget of 3 (height 6,
 /// half 3) — one shy of the block. The cursor must overshoot the block to
 /// land on line 2, not stall on line 1.
 #[test]

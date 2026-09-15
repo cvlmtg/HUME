@@ -87,8 +87,8 @@ impl CommandRegistry {
         // that signature has no channel for. See
         // `visual_move.rs::copy_selection_vertically`. `.extendable()`
         // restores the extendability `Selection` carries implicitly — without
-        // it, a one-shot Ctrl+key extend of this command is silently dropped
-        // (see the Ctrl+key guard in `mappings/normal.rs`). `.composes_selection()`
+        // it, a one-shot Ctrl-key extend of this command is silently dropped
+        // (see the Ctrl-key guard in `mappings/normal.rs`). `.composes_selection()`
         // — see `SelectionTracking::Composes`. The recorded step's `extend`
         // flag is inert on replay (`cmd_copy_selection_on_next_line` ignores
         // `MotionMode`), but is still recorded faithfully for the recipe's

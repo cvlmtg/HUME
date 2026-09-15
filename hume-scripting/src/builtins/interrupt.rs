@@ -10,9 +10,9 @@
 //! - The [`EvalWatchdog`](crate::EvalWatchdog) armed at the start of
 //!   each eval (fires after the configured budget; see `steel-init-budget-ms`
 //!   and `steel-command-budget-ms`).
-//! - Future Ctrl-C handling: the editor can set
+//! - Future Ctrl-c handling: the editor can set
 //!   [`ScriptingHost::interrupt_flag`](crate::ScriptingHost) when
-//!   the user presses Ctrl-C while a script is running.
+//!   the user presses Ctrl-c while a script is running.
 //!
 //! **Limitation:** interruption is cooperative only.  A script without
 //! `(hume/yield!)` calls will run to completion regardless of the budget.

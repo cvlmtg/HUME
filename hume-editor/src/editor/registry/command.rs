@@ -320,8 +320,8 @@ pub(in crate::editor) enum MappableCommand {
         /// Whether this command is a visual-line motion (move-down/up, extend-down/up).
         /// The preferred display column is preserved across consecutive visual-line moves.
         visual_move: bool,
-        /// Whether this EditorCmd has extend semantics (used by the Ctrl+key guard
-        /// to decide if Ctrl+key should trigger extend dispatch).
+        /// Whether this EditorCmd has extend semantics (used by the Ctrl-key guard
+        /// to decide if Ctrl-key should trigger extend dispatch).
         ///
         /// Motion and Selection are always extendable (implicit). Edit is never
         /// extendable (implicit). Only EditorCmd needs an explicit flag.
@@ -340,7 +340,7 @@ pub(in crate::editor) enum MappableCommand {
     /// Dispatched by [`hume_scripting::ScriptingHost::call_steel_cmd`], which
     /// routes through `%dispatch-command` → `command_table` → `(apply proc args)`.
     ///
-    /// All Steel commands are extendable (Ctrl+key delivers `extend = #t` to the
+    /// All Steel commands are extendable (Ctrl-key delivers `extend = #t` to the
     /// lambda body). Dot-repeat is opt-in via `#:repeatable #t` in `(define-command! …)`.
     SteelBacked {
         name: Cow<'static, str>,
@@ -511,7 +511,7 @@ impl MappableCommand {
     }
 
     /// Returns `true` if this command has extend semantics and can be triggered
-    /// as a one-shot extend via Ctrl+key.
+    /// as a one-shot extend via Ctrl-key.
     ///
     /// Motion and Selection are always extendable. Edit is never extendable.
     /// EditorCmd has an explicit flag set at registration time.

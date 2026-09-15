@@ -244,7 +244,7 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
         &["one", "two"],
         marker("cb"),
         PickerOpts {
-            // Enter and Ctrl+N are already handled by handle_picker_key
+            // Enter and Ctrl-n are already handled by handle_picker_key
             // before the action-lookup arm ever runs.
             actions: vec![
                 (key_enter(), marker("hijacked-enter")),
@@ -258,7 +258,7 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
     assert_eq!(
         ed.state.config.picker.as_ref().unwrap().selected(),
         1,
-        "Ctrl+N must still move the selection, not fire the actions entry"
+        "Ctrl-n must still move the selection, not fire the actions entry"
     );
 
     ed.feed_key(key_enter());

@@ -36,7 +36,7 @@ pub const KILL_RING_REGISTER: char = 'k';
 pub const BLACK_HOLE_REGISTER: char = 'b';
 
 /// The search register (`s`) — holds the last search pattern.
-/// Written on search confirm and by `*`/Ctrl+/; read only to reseed a
+/// Written on search confirm and by `*`/Ctrl-/; read only to reseed a
 /// buffer's compiled pattern. Not addressable via the `"` prefix — go
 /// through [`RegisterSet::search_register`] / [`RegisterSet::set_search_register`].
 pub(crate) const SEARCH_REGISTER: char = 's';

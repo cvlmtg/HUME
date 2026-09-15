@@ -61,13 +61,13 @@ pub(in crate::editor) fn cmd_jump_forward(
 
 // ── Alternate buffer ─────────────────────────────────────────────────────────
 
-/// `Ctrl+6` / `goto-alternate-buffer` — switch to the most-recently-focused
+/// `Ctrl-6` / `goto-alternate-buffer` — switch to the most-recently-focused
 /// other buffer.
 ///
 /// Uses `switch_to_buffer_without_jump` because `execute_keymap_command` already
 /// records the pre-switch state for all `is_jump=true` commands. Using the
 /// `_with_jump` variant here would push twice, corrupting the jump list on the
-/// second Ctrl+O.
+/// second Ctrl-o.
 pub(in crate::editor) fn cmd_goto_alternate_buffer(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -260,7 +260,7 @@ pub(in crate::editor) fn cmd_pane_focus_down(
 
 // ── Pane split (keymap-bound, no path argument) ─────────────────────────────
 
-/// `Ctrl+p s` — split the focused pane, stacking the new pane below it, onto
+/// `Ctrl-p s` — split the focused pane, stacking the new pane below it, onto
 /// the same buffer. Keymap-bound sibling of the typed `:split` (which also
 /// accepts an optional path argument); shares its core via `split_pane_onto`.
 pub(in crate::editor) fn cmd_split_pane(
@@ -273,7 +273,7 @@ pub(in crate::editor) fn cmd_split_pane(
     super::split_pane_onto(state, view, bid, Direction::Vertical)
 }
 
-/// `Ctrl+p v` — split the focused pane side by side, onto the same buffer.
+/// `Ctrl-p v` — split the focused pane side by side, onto the same buffer.
 /// Keymap-bound sibling of the typed `:vsplit`.
 pub(in crate::editor) fn cmd_vsplit_pane(
     state: &mut EditorState,
@@ -285,7 +285,7 @@ pub(in crate::editor) fn cmd_vsplit_pane(
     super::split_pane_onto(state, view, bid, Direction::Horizontal)
 }
 
-/// `Ctrl+p c` — close the focused pane, collapsing the split onto its sibling.
+/// `Ctrl-p c` — close the focused pane, collapsing the split onto its sibling.
 /// Refuses when it's the tab's only pane (`:q` owns closing the tab in that
 /// case — see `typed_quit`).
 pub(in crate::editor) fn cmd_close_pane(

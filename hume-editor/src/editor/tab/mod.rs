@@ -82,7 +82,7 @@ pub(in crate::editor) fn install_live(
 
 /// Switch the active tab to `target`, snapshotting the outgoing tab's live
 /// layout/focus into its stash slot first. No-op if `target` is already
-/// current — every caller (`:tabnext`/`:tabprev`, `Ctrl+p t`/`Ctrl+p T`, a
+/// current — every caller (`:tabnext`/`:tabprev`, `Ctrl-p t`/`Ctrl-p T`, a
 /// tabline click) can pass the current tab's own id without a special case.
 pub(in crate::editor) fn switch_to_tab(
     state: &mut EditorState,

@@ -39,7 +39,7 @@ just opens the buffer (`switch-to-buffer!` wrapping `open-buffer!`, never `open-
 alone).
 
 All three pickers pass `#:actions (call! "stdlib/buffer-actions" handler)`, giving each of
-them `Ctrl-O`/`Ctrl-T`/`Ctrl-V`/`Ctrl-S` for free (current pane, new tab, vertical split,
+them `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` for free (current pane, new tab, vertical split,
 horizontal split — see `core:stdlib`'s README). That's why each picker's own handler is a
 named `define` (`pickers/open-file!`, `pickers/switch-to-buffer!`, and the git picker's
 `let*`-bound `handler`) rather than an inline lambda: `buffer-actions` needs the identical

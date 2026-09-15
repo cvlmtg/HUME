@@ -180,7 +180,7 @@ impl Editor {
     ///
     /// Returns `true` if the popup actually has content past one screenful
     /// (`max_scroll > 0`) — the caller (`handle_key`) uses this to tell a
-    /// real scroll from a popup too short to scroll, so Ctrl+d/Ctrl+u fall
+    /// real scroll from a popup too short to scroll, so Ctrl-d/Ctrl-u fall
     /// through to their usual buffer effect instead of being silently eaten.
     pub(super) fn scroll_popup(&mut self, down: bool) -> bool {
         let Some(layout) = self.state.config.popup.as_ref().map(|p| &p.layout) else {
@@ -245,7 +245,7 @@ impl Editor {
     /// is `EngineView::bottom_band_max` of the last-rendered *terminal*
     /// height (not the already-chrome-reduced pane height) — the same call
     /// the engine itself makes, so this can never drift from what it will
-    /// next paint. Shared by `clamp_drawer_scroll` and the Ctrl+u/Ctrl+d
+    /// next paint. Shared by `clamp_drawer_scroll` and the Ctrl-u/Ctrl-d
     /// half-page handlers so "half a page" always agrees with what's on
     /// screen.
     fn drawer_visible_rows(&self) -> usize {

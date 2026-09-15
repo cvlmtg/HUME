@@ -58,6 +58,6 @@ never trip the interrupt before the budget has actually elapsed. This also
 means standing the watchdog down is fast: no waiting out the remainder of the
 budget on the common case where the eval finishes early. The interrupt flag
 is reset right after every eval, so a trip on one eval cannot bleed into the
-next. The mechanism is designed so that a future Ctrl-C handler can set the
+next. The mechanism is designed so that a future Ctrl-c handler can set the
 same flag from outside the script and abort long-running code by the same
 cooperative protocol — for now that wiring is not yet hooked up.

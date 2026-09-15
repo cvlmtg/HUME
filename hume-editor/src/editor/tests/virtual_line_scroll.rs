@@ -131,7 +131,7 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
     assert_eq!(ed.viewport().top().slot, 1);
 }
 
-// ── The wheel and Ctrl+D must pass a mid-buffer ghost block, not stall ─────
+// ── The wheel and Ctrl-d must pass a mid-buffer ghost block, not stall ─────
 //
 // The reported bug: opening a file with `:toggle-inline-diff` on and
 // scrolling with the mouse wheel through a deletion hunk. Reproduced here
@@ -199,7 +199,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 
 // ── A trailing ghost block is fully reachable ─────────────────────────────
 //
-// Reachable by *no* keyboard command: `Ctrl+D`/`PageDown` cap the view at
+// Reachable by *no* keyboard command: `Ctrl-d`/`PageDown` cap the view at
 // `scrolloff` rows below the last content line (`Viewport::scroll_by`'s own
 // `max_scroll_top` bound). Only a view-led scroll can go further — once the
 // cursor reaches the document's last content line it can advance no further
@@ -211,7 +211,7 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 //
 // `max_scroll_top` itself leaves `scrolloff` rows of look-ahead past the
 // block's last virtual line, exactly like a real buffer line — matching
-// where `Ctrl+D`/an ordinary cursor motion would independently settle once
+// where `Ctrl-d`/an ordinary cursor motion would independently settle once
 // the cursor reaches the document's end, so a scroll all the way down and
 // the very next unrelated cursor move land on the same top.
 

@@ -27,14 +27,14 @@ HUME's uppercase keys are not extends. `W` and `B` are the WORD variants, the jo
 
 | Kakoune | HUME |
 |---------|------|
-| `W` (extend by word) | `Ctrl+w`, or `e` then `w` |
+| `W` (extend by word) | `Ctrl-w`, or `e` then `w` |
 | `<a-w>` (WORD motion) | `W` |
-| `H` / `J` / `K` / `L` | `Ctrl+h` / `Ctrl+j` / `Ctrl+k` / `Ctrl+l`, or Extend mode |
-| `<a-;>` (flip direction) | `Ctrl+e` |
-| `<a-,>` (remove main selection) | `Ctrl+,` |
+| `H` / `J` / `K` / `L` | `Ctrl-h` / `Ctrl-j` / `Ctrl-k` / `Ctrl-l`, or Extend mode |
+| `<a-;>` (flip direction) | `Ctrl-e` |
+| `<a-,>` (remove main selection) | `Ctrl-,` |
 | *(no equivalent)* | `e` — a persistent Extend mode |
 
-The `Ctrl` one-shots and `Ctrl+,` need the kitty keyboard protocol; Extend mode works on any terminal. See [Terminal compatibility](installation.md#terminal-compatibility).
+The `Ctrl` one-shots and `Ctrl-,` need the kitty keyboard protocol; Extend mode works on any terminal. See [Terminal compatibility](installation.md#terminal-compatibility).
 
 Bare `K` (no modifier) is not an extend at all in HUME — it shows LSP hover docs for the symbol under the cursor (with `core:lsp` loaded).
 
@@ -68,13 +68,13 @@ Kakoune's `x` expands the selection to cover full lines and keeps growing it on 
 
 HUME's `x` re-anchors instead: each press selects one line and moves on, rather than accumulating. Growing is the job of the extend keys.
 
-| Press | Kakoune `x` | HUME `x` | HUME `Ctrl+x` |
+| Press | Kakoune `x` | HUME `x` | HUME `Ctrl-x` |
 |-------|-------------|----------|---------------|
 | 1st | Select whole line | Select whole line | Select whole line |
 | 2nd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 | 3rd | Extend to next line | Jump to next line (re-anchor) | Extend to next line |
 
-`X` and `Ctrl+X` are the backward forms, so a line selection grown downward with `Ctrl+x` shrinks back up with `Ctrl+X`. There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
+`X` and `Ctrl-Shift-x` are the backward forms, so a line selection grown downward with `Ctrl-x` shrinks back up with `Ctrl-Shift-x`. There is no equivalent of `<a-x>`; `_` trims whitespace, not to line bounds.
 
 ### Splitting and merging selections
 
@@ -108,7 +108,7 @@ The search keys overlap heavily in spelling and barely at all in meaning.
 `N` is the other one. Kakoune's incremental "add the next match too" has no key here — HUME goes the other way and gives you `m /`, which turns *every* match in the buffer into a selection in one press. Narrow from there with `,` and `(` / `)`.
 :::
 
-Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl+/` is the closer match to Kakoune's `*` family, and it needs kitty.
+Neither `*` moves the cursor; both just set the pattern for `n` to use. The difference is what they read: Kakoune uses whatever is selected, HUME expands to the whole word under the cursor and ignores the selection. `Ctrl-/` is the closer match to Kakoune's `*` family, and it needs kitty.
 
 ### Text objects
 
@@ -162,9 +162,9 @@ The philosophies genuinely differ here. Kakoune composes with UNIX; HUME embeds 
 
 Kakoune has no window management by design — you run multiple clients against one session and let tmux or your window manager arrange them.
 
-HUME has panes built in: `Ctrl+p` is the prefix, `Ctrl+p s` and `Ctrl+p v` split, `Ctrl+p h/j/k/l` move focus, `Ctrl+p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
+HUME has panes built in: `Ctrl-p` is the prefix, `Ctrl-p s` and `Ctrl-p v` split, `Ctrl-p h/j/k/l` move focus, `Ctrl-p c` closes. `:sp` and `:vsp` do the same from the command mode prompt. There is no client/server model, so no attaching a second client to a running session.
 
-On top of that, a **tab** saves a whole pane layout — its own splits and focused pane. `:tabnew` opens a second arrangement, `:tabclose` drops it, and `Ctrl+p t` / `Ctrl+p T` cycle between them. Buffers are shared across every tab; only the layout differs. The nearest Kakoune analogue is a second tmux window with another client attached to the same session — see [Tabs](files-and-buffers.md#tabs).
+On top of that, a **tab** saves a whole pane layout — its own splits and focused pane. `:tabnew` opens a second arrangement, `:tabclose` drops it, and `Ctrl-p t` / `Ctrl-p T` cycle between them. Buffers are shared across every tab; only the layout differs. The nearest Kakoune analogue is a second tmux window with another client attached to the same session — see [Tabs](files-and-buffers.md#tabs).
 
 ### Configuration
 
@@ -177,7 +177,7 @@ Kakoune's `kakrc` is kakscript: `map` for keys, `set-option` for options, `hook`
 
 Being a real programming language, the config has conditionals, loops and abstraction from day one — closer to what you would reach `%sh{}` for in kakrc, without leaving the editor.
 
-One thing that does not carry over: Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes — `g`, `m`, `z`, `Ctrl+p` — are fixed rather than user-declarable.
+One thing that does not carry over: Kakoune's user mode (the `Space` leader) and `declare-user-mode` have no direct equivalent. HUME's prefixes — `g`, `m`, `z`, `Ctrl-p` — are fixed rather than user-declarable.
 
 ### Plugins and language servers
 

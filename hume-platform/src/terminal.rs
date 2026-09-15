@@ -145,12 +145,12 @@ pub(crate) fn dec_reset(code: DecPrivateModeCode) -> Csi {
 }
 
 fn kitty_flags() -> KittyKeyboardFlags {
-    // REPORT_ALTERNATE_KEYS is required so that Ctrl+shifted-chars (e.g.
-    // Ctrl+}) arrive with the correct keycode instead of the base key plus
+    // REPORT_ALTERNATE_KEYS is required so that Ctrl-shifted-chars (e.g.
+    // Ctrl-}) arrive with the correct keycode instead of the base key plus
     // SHIFT. See docs/learning/command-keymap-dispatch.md.
     //
     // Known limitation: WezTerm 20240203-110809-5046fc22 does not fully
-    // support REPORT_ALTERNATE_KEYS — Ctrl+shifted-char one-shot extend may
+    // support REPORT_ALTERNATE_KEYS — Ctrl-shifted-char one-shot extend may
     // not work on that version.
     KittyKeyboardFlags::DISAMBIGUATE_ESCAPE_CODES
         | KittyKeyboardFlags::REPORT_EVENT_TYPES

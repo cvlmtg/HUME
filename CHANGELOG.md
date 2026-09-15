@@ -9,17 +9,17 @@
 - New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
 
 ### Panes & interface
-- New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl+p t`/`Ctrl+p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
+- New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl-p t`/`Ctrl-p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
 - New mappable `tab-new` command — the bindable equivalent of bare `:tabnew`.
-- `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` now scroll the view itself, not just the cursor — matching mouse-wheel scrolling and most other editors.
-- The file, buffer, and modified-files pickers (`z f`/`z b`/`z m`) now accept `Ctrl+o`/`Ctrl+t`/`Ctrl+v`/`Ctrl+s` to open a selection in the current pane, a new tab, a side-by-side split, or a stacked split, alongside `Enter`.
+- `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` now scroll the view itself, not just the cursor — matching mouse-wheel scrolling and most other editors.
+- The file, buffer, and modified-files pickers (`z f`/`z b`/`z m`) now accept `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` to open a selection in the current pane, a new tab, a side-by-side split, or a stacked split, alongside `Enter`.
 
 ### Plugins & scripting
 - `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
 
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.
-- Scrolling all the way to the end of a file with `Ctrl+D`/`PageDown`/the mouse wheel, then moving the cursor, no longer jumps the view — the last line now settles `scrolloff` rows above the bottom from the scroll itself, instead of only once an unrelated cursor movement corrected it.
+- Scrolling all the way to the end of a file with `Ctrl-d`/`PageDown`/the mouse wheel, then moving the cursor, no longer jumps the view — the last line now settles `scrolloff` rows above the bottom from the scroll itself, instead of only once an unrelated cursor movement corrected it.
 - `j`/`k` at the top or bottom of a file no longer leave a selection uncollapsed — a non-empty selection already touching the document's edge now collapses onto its head like it does everywhere else, instead of being left untouched.
 
 ## [0.12.0] - 2026-09-08
@@ -40,7 +40,7 @@
 ### Editing
 - Leaving Insert mode now selects the text you just typed, however you entered it (`i`, `a`, `I`, `A`, `o`, `O`, `c`, …) — previously only `c` did this. Controlled by `select-inserted-text` (default on). One consequence: `i` re-enters Insert *before* that selection, so `a` — not `i` — is the key to continue typing past what you just typed.
 - New `#` jumps between a bracket or tag and its matching partner — vim's `%`, without disturbing HUME's own `%` (select-all).
-- Word motions, `miw`/`maw`, `Ctrl+W`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
+- Word motions, `miw`/`maw`, `Ctrl-w`, `*`, and quote auto-pairing now honor the new `word-chars` setting, so e.g. `foo-bar` can be treated as one word instead of three.
 - New `>`/`<` indent/unindent every selected line by one level (`3>` for three levels).
 - Count prefixes (`3w`, `12j`) are capped at 10,000.
 - Pasting or typing unusual line-break characters no longer splits the buffer into an extra line.
@@ -77,14 +77,14 @@
 
 ### Fixes
 - "Nothing to do here" refusals (no search match, unknown buffer name, mistyped setting, …) now just flash a message instead of being logged as errors.
-- `Ctrl+O`/`Ctrl+I` jumps now land correctly even after the buffer was edited, undone, or reloaded.
+- `Ctrl-o`/`Ctrl-i` jumps now land correctly even after the buffer was edited, undone, or reloaded.
 - `p` on an empty line now pastes onto that line instead of the next one.
 - `:reload-config` no longer leaves plugin-driven statusline elements (e.g. the git branch) blank until the next buffer switch or save.
 - The sign column no longer shifts or resizes as gutter signs come and go.
 - Diagnostic gutter markers no longer render underlined.
-- `.` (repeat) now correctly replays the selection step, not just the edit, for: `m/` (select all matches), `ms` (surround), `C` (copy selection to adjacent line), `,` (keep primary selection), `S` (split into lines), `_` (trim whitespace), `(`/`)` (cycle selection), `Ctrl+,` (remove primary selection), `Ctrl+e` (flip anchor/head), and `select-word-nearest-on-line`.
+- `.` (repeat) now correctly replays the selection step, not just the edit, for: `m/` (select all matches), `ms` (surround), `C` (copy selection to adjacent line), `,` (keep primary selection), `S` (split into lines), `_` (trim whitespace), `(`/`)` (cycle selection), `Ctrl-,` (remove primary selection), `Ctrl-e` (flip anchor/head), and `select-word-nearest-on-line`.
 - The bracket-match highlight no longer treats `<`/`>` as a pair, so it no longer misfires on generics or comparisons.
-- The alternate buffer (`Ctrl+6`, `#`, `:b#`) now follows visit order, so it keeps toggling with the buffer you actually came from.
+- The alternate buffer (`Ctrl-6`, `#`, `:b#`) now follows visit order, so it keeps toggling with the buffer you actually came from.
 - `:format-source` now correctly range-formats a multi-line selection instead of formatting the whole document.
 - `:split`/`:vsplit` now resize every pane on that axis equally instead of just halving the one being split; closing a pane redistributes its space evenly.
 
@@ -150,7 +150,7 @@
   `<data>/plugins/<user>/<repo>/`.
 - Fixed `C`/`copy-selection-on-{next,prev}-line` landing a copy one column off when a tab or wide (e.g. CJK) grapheme precedes the cursor — it now targets the same display column `9j`/`9k` land on, instead of a raw char offset.
 - Fixed `C`/`copy-selection-on-{next,prev}-line` on a selection spanning more than one buffer line: it used to shift the copy just one line away, which overlapped the original and merged into it instead of duplicating it. Each copy is now offset by the selection's own line span, landing cleanly above or below it.
-- Fixed a bug where the fuzzy picker silently ignored Ctrl+u/Ctrl+d; they now move the selection by half a page, matching the drawer and scrollable popups.
+- Fixed a bug where the fuzzy picker silently ignored Ctrl-u/Ctrl-d; they now move the selection by half a page, matching the drawer and scrollable popups.
 - Fixed a bug where a closed terminal with no controlling process could leave a HUME process spinning at 100% CPU.
 - Fixed a bug where opening a `.tsx`/`.jsx` file made the language server log an "Invalid languageId" warning.
 - Quitting with an attached language server no longer leaves the screen frozen in the alternate screen while it shuts down: the terminal is restored first.

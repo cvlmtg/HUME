@@ -175,7 +175,7 @@ for them; HUME's bundled themes do.
 
 ## core:vim-keybind
 
-Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl+6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
+Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.
 
 ```scheme
 (declare-plugin "core:stdlib")
@@ -205,10 +205,10 @@ Must be loaded eagerly: it takes over `m s` — which by default *selects* a sur
 
 ## core:classic-paste
 
-GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P` paste the kill ring, `Ctrl+V` / `Ctrl+Shift+V` paste the system clipboard (`Ctrl+Shift+V` needs the kitty protocol).
+GUI-style paste, if you'd rather not have `p` choose a source for you: `p` / `P` paste the kill ring, `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
 
 ```scheme
 (load-plugin "core:classic-paste")
 ```
 
-Must be loaded eagerly — it replaces `p`/`P`/`Ctrl+V`/`Ctrl+Shift+V`'s default behavior, so until it loads `p` keeps pasting the default way instead of erroring or doing nothing.
+Must be loaded eagerly — it replaces `p`/`P`/`Ctrl-v`/`Ctrl-Shift-v`'s default behavior, so until it loads `p` keeps pasting the default way instead of erroring or doing nothing.

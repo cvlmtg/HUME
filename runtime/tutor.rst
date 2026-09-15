@@ -105,7 +105,7 @@ config.toml log-file backup.zip
 +----+----------+---------------------------------------+
 
 To select a range up to the start/end of the line: use
-``Ctrl+g h`` / ``Ctrl+g s`` / ``Ctrl+g l`` for a one-shot
+``Ctrl-g h`` / ``Ctrl-g s`` / ``Ctrl-g l`` for a one-shot
 extend, or enter Extend mode first (see Lesson 2.2).
 
 Exercise
@@ -126,21 +126,21 @@ The release pipeline failed during artifact signing because the certificate had 
 
 To jump to a specific line by number, type ``:N`` at the command prompt
 (for example, ``:42`` lands on line 42). The full name is ``:goto 42``.
-Both forms record a jump, so ``Ctrl+o`` brings you back.
+Both forms record a jump, so ``Ctrl-o`` brings you back.
 
 +--------+---------------------------------------------+
-| Ctrl+o | jump backward through your movement history |
+| Ctrl-o | jump backward through your movement history |
 +--------+---------------------------------------------+
-| Ctrl+i | jump forward through your movement history  |
+| Ctrl-i | jump forward through your movement history  |
 +--------+---------------------------------------------+
 
 Opening a file, jumping to search results, or switching buffers all
-record an entry. Use ``Ctrl+o`` to retrace your steps — for instance,
+record an entry. Use ``Ctrl-o`` to retrace your steps — for instance,
 to return from a tutor exercise to wherever you were before.
 
-Some Ctrl key combinations — including ``Ctrl+i`` — require the Kitty
+Some Ctrl key combinations — including ``Ctrl-i`` — require the Kitty
 keyboard protocol to work correctly. Without it, the terminal cannot
-distinguish ``Ctrl+i`` from Tab, so the forward-jump command will not
+distinguish ``Ctrl-i`` from Tab, so the forward-jump command will not
 fire. To check whether the protocol is active, look for the cat
 glyph (ᓚᘏᗢ) in the statusline.
 
@@ -148,21 +148,21 @@ Exercise
 ~~~~~~~~
 
 Press ``gg`` to jump to the top of the tutor, then press ``ge``
-to jump to the end, then press ``Ctrl+o`` twice to return here.
+to jump to the end, then press ``Ctrl-o`` twice to return here.
 
 Exercise
 ~~~~~~~~
 
 Type ``:goto 3`` and press ``Enter`` to jump to the line nr. 3 of
-this buffer. Then press ``Ctrl+o`` to return here.
+this buffer. Then press ``Ctrl-o`` to return here.
 
 1.5 Scrolling
 -------------
 
 +----------+-------------------------+
-| Ctrl+d   | scroll down half a page |
+| Ctrl-d   | scroll down half a page |
 +----------+-------------------------+
-| Ctrl+u   | scroll up half a page   |
+| Ctrl-u   | scroll up half a page   |
 +----------+-------------------------+
 | PageDown | scroll down a full page |
 +----------+-------------------------+
@@ -185,7 +185,7 @@ To reposition the viewport around the cursor:
 Exercise
 ~~~~~~~~
 
-Press ``Ctrl+d`` to scroll down half a page, then ``Ctrl+u`` to
+Press ``Ctrl-d`` to scroll down half a page, then ``Ctrl-u`` to
 scroll back up. Then press ``zk`` to pull the current line to the
 top of the window, ``zz`` to center it, and ``zj`` to drop it to
 the bottom.
@@ -247,11 +247,11 @@ Summary
 +-----------------+---------------------------------------------+
 | { / }           | select previous / next paragraph            |
 +-----------------+---------------------------------------------+
-| Ctrl+d / Ctrl+u | scroll half-page down / up                  |
+| Ctrl-d / Ctrl-u | scroll half-page down / up                  |
 +-----------------+---------------------------------------------+
 | zk / zz / zj    | top / center / bottom viewport              |
 +-----------------+---------------------------------------------+
-| Ctrl+o / Ctrl+i | jump backward / forward in movement history |
+| Ctrl-o / Ctrl-i | jump backward / forward in movement history |
 +-----------------+---------------------------------------------+
 | 3w / 5j         | count + motion                              |
 +-----------------+---------------------------------------------+
@@ -274,7 +274,7 @@ HUME can also handle multiple selections. They will be covered in Lesson 9.
 +--------+----------------------------------------------------------+
 | X      | select the line in the backward direction                |
 +--------+----------------------------------------------------------+
-| Ctrl+x | like  x , but EXTENDS (accumulates) rather than replaces |
+| Ctrl-x | like  x , but EXTENDS (accumulates) rather than replaces |
 +--------+----------------------------------------------------------+
 
 Repeated ``x`` walks the selection down through multiple lines.
@@ -283,7 +283,7 @@ Exercise
 ~~~~~~~~
 
 Navigate onto the first line of the exercise, press ``x`` to select
-it, then press ``Ctrl+x`` twice to extend to all three lines.
+it, then press ``Ctrl-x`` twice to extend to all three lines.
 Observe the selection spans all three lines. Now press ``X`` twice —
 the selection shrinks back up one line at a time instead of growing
 further. The opposite key reverses direction.
@@ -331,25 +331,25 @@ One-shot Extend with Ctrl
 You can extend the selection for a single motion without entering
 Extend mode by holding Ctrl. Every motion supports it:
 
-+-----------+--------------------------------------------------------+
-| Ctrl+w    | extend to the next word (parallel to ``e`` then ``w``) |
-+-----------+--------------------------------------------------------+
-| Ctrl+f<c> | extend forward to <char> (inclusive)                   |
-+-----------+--------------------------------------------------------+
-| Ctrl+t<c> | extend forward to just before <char>                   |
-+-----------+--------------------------------------------------------+
-| Ctrl+F<c> | extend backward to <char>                              |
-+-----------+--------------------------------------------------------+
-| Ctrl+T<c> | extend backward to just after <char>                   |
-+-----------+--------------------------------------------------------+
-| Ctrl+g h  | extend to start of line                                |
-+-----------+--------------------------------------------------------+
-| Ctrl+g l  | extend to end of line                                  |
-+-----------+--------------------------------------------------------+
-| Ctrl+g s  | extend to first non-blank character                    |
-+-----------+--------------------------------------------------------+
++-----------------+--------------------------------------------------------+
+| Ctrl-w          | extend to the next word (parallel to ``e`` then ``w``) |
++-----------------+--------------------------------------------------------+
+| Ctrl-f<c>       | extend forward to <char> (inclusive)                   |
++-----------------+--------------------------------------------------------+
+| Ctrl-t<c>       | extend forward to just before <char>                   |
++-----------------+--------------------------------------------------------+
+| Ctrl-Shift-f<c> | extend backward to <char>                              |
++-----------------+--------------------------------------------------------+
+| Ctrl-Shift-t<c> | extend backward to just after <char>                   |
++-----------------+--------------------------------------------------------+
+| Ctrl-g h        | extend to start of line                                |
++-----------------+--------------------------------------------------------+
+| Ctrl-g l        | extend to end of line                                  |
++-----------------+--------------------------------------------------------+
+| Ctrl-g s        | extend to first non-blank character                    |
++-----------------+--------------------------------------------------------+
 
-The idiomatic delete-to-char pattern: press ``Ctrl+f.`` to extend the
+The idiomatic delete-to-char pattern: press ``Ctrl-f.`` to extend the
 selection to the next period, then act on the span (``d`` to delete,
 ``c`` to change, etc. — see Lesson 3). The ``f``/``t`` find commands
 are taught in full in Lesson 6.
@@ -359,14 +359,14 @@ Note
 
 One-shot Ctrl extend requires the kitty keyboard protocol
 (look for the cat glyph ᓚᘏᗢ in the statusline). Without it,
-Ctrl+w / Ctrl+f / etc. do nothing — use Extend mode instead.
+Ctrl-w / Ctrl-f / etc. do nothing — use Extend mode instead.
 The exercises below are labelled (Kitty) for terminals with
 the protocol and (Legacy) for those without.
 
 Exercise
 ~~~~~~~~
 
-(Kitty) Press ``Ctrl+w`` a few times to grow the selection across
+(Kitty) Press ``Ctrl-w`` a few times to grow the selection across
 words below, then press ``;`` to collapse it.
 (Legacy) Press ``e`` then ``w`` repeatedly to the same effect.
 
@@ -375,7 +375,7 @@ the pipeline runs tests before merging any pull request
 Exercise
 ~~~~~~~~
 
-(Kitty) Press ``Ctrl+f,`` to extend the selection to the comma
+(Kitty) Press ``Ctrl-f,`` to extend the selection to the comma
 below, then press ``;`` to collapse it.
 (Legacy) Press ``e`` then ``f,`` to the same effect.
 
@@ -387,16 +387,16 @@ The server starts on port 8080, then waits for connections.
 +--------+---------------------------------------------------------+
 | ;      | collapse the selection to a single-char at HEAD         |
 +--------+---------------------------------------------------------+
-| Ctrl+; | collapse the selection to a single-char at ANCHOR       |
+| Ctrl-; | collapse the selection to a single-char at ANCHOR       |
 +--------+---------------------------------------------------------+
 
-Both ``;`` and ``Ctrl+;`` also exit Extend mode if it is active.
+Both ``;`` and ``Ctrl-;`` also exit Extend mode if it is active.
 
-Note: ``Ctrl+;`` requires the kitty keyboard protocol.
+Note: ``Ctrl-;`` requires the kitty keyboard protocol.
 
 Support for this protocol varies between terminals. Some implement only
 part of it, some have rough edges, and some need it enabled in their
-configuration. If ``Ctrl+;`` does nothing in your terminal, check its
+configuration. If ``Ctrl-;`` does nothing in your terminal, check its
 documentation for keyboard-protocol settings — or fall back to the
 plain ``;`` command above.
 
@@ -404,7 +404,7 @@ Flipping the Selection
 ~~~~~~~~~~~~~~~~~~~~~~
 
 +--------+---------------------------------------------------------+
-| Ctrl+e | swap anchor and head — works in Normal and Extend mode, |
+| Ctrl-e | swap anchor and head — works in Normal and Extend mode, |
 |        | and works on all terminals.                             |
 +--------+---------------------------------------------------------+
 
@@ -419,7 +419,7 @@ end instead.
 Exercise
 ~~~~~~~~
 
-Press ``w`` to select the word below, then press ``Ctrl+e`` to flip
+Press ``w`` to select the word below, then press ``Ctrl-e`` to flip
 — the cursor jumps from the end of the word to the start. Press
 ``;`` to collapse back to a single character. Notice how the cursor
 is now on the first letter of the word instead of the last:
@@ -432,19 +432,19 @@ Summary
 +------------------+---------------------------------------+
 | x / X            | select line / select line backward    |
 +------------------+---------------------------------------+
-| Ctrl+x           | extend line selection                 |
+| Ctrl-x           | extend line selection                 |
 +------------------+---------------------------------------+
 | e                | toggle Extend mode                    |
 +------------------+---------------------------------------+
 | ;                | collapse to head                      |
 +------------------+---------------------------------------+
-| Ctrl+;           | collapse to anchor                    |
+| Ctrl-;           | collapse to anchor                    |
 +------------------+---------------------------------------+
-| Ctrl+e           | flip anchor ↔ head (any mode)         |
+| Ctrl-e           | flip anchor ↔ head (any mode)         |
 +------------------+---------------------------------------+
 
-``Ctrl+w`` / ``Ctrl+f<c>`` / ``Ctrl+t<c>`` — one-shot extend (kitty only)
-``Ctrl+g h`` / ``Ctrl+g l`` / ``Ctrl+g s`` — one-shot extend line motions
+``Ctrl-w`` / ``Ctrl-f<c>`` / ``Ctrl-t<c>`` — one-shot extend (kitty only)
+``Ctrl-g h`` / ``Ctrl-g l`` / ``Ctrl-g s`` — one-shot extend line motions
 
 Lesson 3 — Editing with Selections
 ==================================
@@ -569,7 +569,7 @@ due to a missing environment variable.
 +---+------+----------------------+
 | u | undo |                      |
 +---+------+----------------------+
-| U | redo | (Ctrl+r also redoes) |
+| U | redo | (Ctrl-r also redoes) |
 +---+------+----------------------+
 
 Exercise
@@ -826,7 +826,7 @@ Lesson 6 — Find, Till, and Repeat
 
 These are single-key commands followed by one character. The selection
 lands on (or just before/after) the target — a fresh 1-char selection.
-To select a range up to a char: use ``Ctrl+f<c>`` / ``Ctrl+t<c>`` for
+To select a range up to a char: use ``Ctrl-f<c>`` / ``Ctrl-t<c>`` for
 a one-shot extend, or enter Extend mode first (see Lesson 2.2).
 
 Find and till search *only the current line* — they stop at the end
@@ -935,7 +935,7 @@ Lesson 7 — Search and Replace
 The selection lands on the match. Press ``n`` to advance.
 
 +---------+----------------------------------------------------------+
-| Ctrl+/  | use the selected text, literally, as the search pattern  |
+| Ctrl-/  | use the selected text, literally, as the search pattern  |
 +---------+----------------------------------------------------------+
 
 Unlike ``*``, this does not expand to a whole word and adds no
@@ -965,8 +965,8 @@ We saw a warning in the dev build, a warning in the staging run,
 and a warning in the production log.
 
 ``n`` and ``N`` can also extend the selection instead of just moving it:
-``Ctrl+n`` jumps to the next match while keeping the anchor where it is,
-growing the selection to cover everything in between, and ``Ctrl+N``
+``Ctrl-n`` jumps to the next match while keeping the anchor where it is,
+growing the selection to cover everything in between, and ``Ctrl-Shift-n``
 does the same backward. This is a one-shot extend — no need to enter
 Extend mode first. Requires a terminal with the kitty keyboard protocol.
 
@@ -980,7 +980,7 @@ Exercise
 ~~~~~~~~
 
 Navigate onto "risk" below and press ``*`` to search for it, then
-press ``Ctrl+n`` twice to grow the selection across all three matches,
+press ``Ctrl-n`` twice to grow the selection across all three matches,
 covering everything from the first "risk" to the last:
 
 The audit flagged risk in module A, risk in module B, and risk in module C.
@@ -988,11 +988,11 @@ The audit flagged risk in module A, risk in module B, and risk in module C.
 Exercise
 ~~~~~~~~
 
-Unlike ``*``, ``Ctrl+/`` searches any substring, not just whole
+Unlike ``*``, ``Ctrl-/`` searches any substring, not just whole
 words — useful for surveying every function that shares a prefix.
-Navigate onto the "p" of "parse_header" below, press ``Ctrl+f_`` to
+Navigate onto the "p" of "parse_header" below, press ``Ctrl-f_`` to
 extend the selection through the underscore ("parse_"), then
-``Ctrl+/`` and ``n`` to jump through the other two:
+``Ctrl-/`` and ``n`` to jump through the other two:
 
 fn parse_header(input: &str) -> Header {
 fn parse_body(input: &str) -> Body {
@@ -1003,7 +1003,7 @@ Exercise
 
 Because the text you just changed with ``c`` stays selected, you can
 search for it right away. Change "TODO" to "FIXME" below (``w`` to
-select it, ``c``, type "FIXME", ``Esc``), then press ``Ctrl+/`` and
+select it, ``c``, type "FIXME", ``Esc``), then press ``Ctrl-/`` and
 ``n`` to jump to the next "FIXME":
 
 TODO: validate input before saving
@@ -1056,19 +1056,19 @@ if (ready) {
 Summary
 -------
 
-+------------+------------------------------------------------+
-| / ? n N    | search forward / backward / next / prev        |
-+------------+------------------------------------------------+
-| *          | search word under cursor                       |
-+------------+------------------------------------------------+
-| Ctrl+/     | search selection literally                     |
-+------------+------------------------------------------------+
-| Ctrl+n / N | extend to next / previous match                |
-+------------+------------------------------------------------+
-| m/         | select every match in the buffer               |
-+------------+------------------------------------------------+
-| s          | select matches inside the current selection(s) |
-+------------+------------------------------------------------+
++-----------------------+------------------------------------------------+
+| / ? n N               | search forward / backward / next / prev        |
++-----------------------+------------------------------------------------+
+| *                     | search word under cursor                       |
++-----------------------+------------------------------------------------+
+| Ctrl-/                | search selection literally                     |
++-----------------------+------------------------------------------------+
+| Ctrl-n / Ctrl-Shift-n | extend to next / previous match                |
++-----------------------+------------------------------------------------+
+| m/                    | select every match in the buffer               |
++-----------------------+------------------------------------------------+
+| s                     | select matches inside the current selection(s) |
++-----------------------+------------------------------------------------+
 
 Lesson 8 — Text Objects
 =======================
@@ -1186,10 +1186,10 @@ covers how to create and manage them.
 +--------+---------------------------------------------------------+
 | ,      | keep only the PRIMARY selection (discard all others)    |
 +--------+---------------------------------------------------------+
-| Ctrl+, | remove the PRIMARY selection (the next becomes primary) |
+| Ctrl-, | remove the PRIMARY selection (the next becomes primary) |
 +--------+---------------------------------------------------------+
 
-Note: ``Ctrl+,`` requires the kitty keyboard protocol. If it does
+Note: ``Ctrl-,`` requires the kitty keyboard protocol. If it does
 nothing in your terminal, check its documentation for keyboard-protocol
 settings (see also the note in Lesson 2.3) — or fall back to ``,``.
 
@@ -1200,7 +1200,7 @@ and lean on it throughout.
 Exercise
 ~~~~~~~~
 
-Select all three lines below with ``x Ctrl+x Ctrl+x``, then press ``J``
+Select all three lines below with ``x Ctrl-x Ctrl-x``, then press ``J``
 to join them into one line. Press ``,`` to collapse back to a single
 selection:
 
@@ -1223,7 +1223,7 @@ Exercise
 
 Press ``%`` and observe the selection covers every character. Then
 press ``;`` to collapse back to a single-character selection. Press
-``Ctrl+o`` to jump back to where you were before ``%``.
+``Ctrl-o`` to jump back to where you were before ``%``.
 
 9.3 Select Within
 -----------------
@@ -1264,7 +1264,7 @@ structure — one piece per line.
 Exercise
 ~~~~~~~~
 
-Navigate onto the first line below, press ``Ctrl+x`` three times to
+Navigate onto the first line below, press ``Ctrl-x`` three times to
 select all three lines, then press ``S`` to get one cursor per line.
 Press ``c``, type replacement text and ``Esc`` — the edit applies
 independently on each line:
@@ -1283,7 +1283,7 @@ build: skipped
 Exercise
 ~~~~~~~~
 
-Select the three lines below with ``Ctrl+x`` three times, press ``S``
+Select the three lines below with ``Ctrl-x`` three times, press ``S``
 to split into one cursor per line, then press ``_`` to trim the
 trailing whitespace from each line at once:
 
@@ -1306,7 +1306,7 @@ After multi-cursor operations, you can walk through which cursor is
 Exercise
 ~~~~~~~~
 
-Select the following lines with ``x`` and then ``Ctrl+x``, then
+Select the following lines with ``x`` and then ``Ctrl-x``, then
 press ``s`` and type "FIXME". Use ``(`` and ``)`` to cycle the
 primary selection. Press ``,`` when done.
 
@@ -1365,9 +1365,9 @@ aligns right edges.
 Exercise
 ~~~~~~~~
 
-Select the lines below with ``Ctrl+x Ctrl+x Ctrl+x``, then press ``s`` and type
+Select the lines below with ``Ctrl-x Ctrl-x Ctrl-x``, then press ``s`` and type
 ``\d+``, then press ``Enter`` to put a cursor on each number. Press ``)`` to rotate
-the primary to "1000". Press ``Ctrl+e`` to flip all selections (anchor moves
+the primary to "1000". Press ``Ctrl-e`` to flip all selections (anchor moves
 to the last digit of each number). Press ``&`` to right-align all numbers:
 
 price: 5
@@ -1377,7 +1377,7 @@ price: 42
 Exercise
 ~~~~~~~~
 
-Select the lines below with ``Ctrl+x Ctrl+x Ctrl+x``, then press ``s`` and type
+Select the lines below with ``Ctrl-x Ctrl-x Ctrl-x``, then press ``s`` and type
 ``=|//`` to select the equal signs and the comments. Press ``Enter`` and then
 press ``&`` to align the text, finally press ``,`` to discard all the secondary
 selections.
@@ -1390,7 +1390,7 @@ Summary
 -------
 
 +--------+-------------------+--------+--------------------+
-| ,      | keep primary only | Ctrl+, | remove primary     |
+| ,      | keep primary only | Ctrl-, | remove primary     |
 +--------+-------------------+--------+--------------------+
 | %      | select all        | s      | select within      |
 +--------+-------------------+--------+--------------------+

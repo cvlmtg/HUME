@@ -55,7 +55,7 @@ pub fn run_keys(
     // without a terminal, so scores are reproducible.
     let mut editor = editor::Editor::open(Some(input), std::sync::Arc::new(|| {}))?;
     // Headless mode: no terminal to negotiate kitty protocol, so assume
-    // full capability. Ctrl+letter keys (e.g. `<c-w>`) are no-ops without
+    // full capability. Ctrl-letter keys (e.g. `<c-w>`) are no-ops without
     // this since the dispatcher strips the Ctrl modifier only when
     // kitty_enabled is true (see handle_normal). The kitty-only default
     // binds are also installed to match interactive kitty.
@@ -156,7 +156,7 @@ pub fn run(
         }
     };
     if let Err(e) = hume_platform::spawn_terminator(shared.clone(), request_quit) {
-        // Non-fatal: Ctrl+C/SIGTERM/SIGHUP will leak terminal
+        // Non-fatal: Ctrl-c/SIGTERM/SIGHUP will leak terminal
         // state or spin the event loop instead of exiting, but the editor
         // still works correctly for normal exit.
         eprintln!("hume: failed to start terminator: {e}");

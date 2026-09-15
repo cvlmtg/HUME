@@ -35,7 +35,7 @@ fn editor_from(input: &str) -> Editor {
     Editor::for_testing(Buffer::new(text, sels))
 }
 
-/// Build a kitty-protocol-enabled editor for testing Ctrl+motion bindings.
+/// Build a kitty-protocol-enabled editor for testing Ctrl-motion bindings.
 /// Mirrors interactive kitty mode: sets the flag AND installs the kitty-only
 /// default keybinds that `Keymap::default()` omits.
 fn editor_from_kitty(input: &str) -> Editor {

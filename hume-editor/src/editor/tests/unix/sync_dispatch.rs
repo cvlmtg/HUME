@@ -1,7 +1,7 @@
 use super::*;
 use hume_scripting::ScriptingHost;
 
-/// When a Lazy command stub is dispatched with extend=true (e.g. Ctrl+key), the
+/// When a Lazy command stub is dispatched with extend=true (e.g. Ctrl-key), the
 /// injection must forward extend=true to the resolved SteelBacked lambda body.
 ///
 /// The lambda here distinguishes extend by branching: extend=true → move-right,

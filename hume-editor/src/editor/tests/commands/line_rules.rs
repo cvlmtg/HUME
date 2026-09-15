@@ -228,9 +228,9 @@ fn capital_s_splits_selection_on_newlines() {
     assert_eq!(state(&ed), "-[foo]>\n-[bar]>\n-[baz]>\n");
 }
 
-// ── `ctrl+,` removes the primary selection ────────────────────────────────────
+// ── `ctrl-,` removes the primary selection ────────────────────────────────────
 
-/// `ctrl+,` must drop the primary selection and promote one of the secondaries,
+/// `ctrl-,` must drop the primary selection and promote one of the secondaries,
 /// leaving all other cursors intact. Plain `,` must still keep only the primary.
 #[test]
 fn ctrl_comma_removes_primary_selection() {
@@ -280,10 +280,10 @@ fn o_in_normal_mode_still_opens_line_below() {
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
-// ── `Ctrl+e` flips the selection in Normal AND Extend mode ───────────────────
+// ── `Ctrl-e` flips the selection in Normal AND Extend mode ───────────────────
 
-/// `Ctrl+e` in Normal mode must swap anchor and head. This works on legacy
-/// terminals because `Ctrl+e` emits 0x05.
+/// `Ctrl-e` in Normal mode must swap anchor and head. This works on legacy
+/// terminals because `Ctrl-e` emits 0x05.
 #[test]
 fn ctrl_e_in_normal_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
@@ -297,7 +297,7 @@ fn ctrl_e_in_normal_mode_flips_selection() {
     assert_eq!(ed.state.mode, Mode::Normal);
 }
 
-/// `Ctrl+e` in Extend mode also flips (it falls through to the Normal trie with
+/// `Ctrl-e` in Extend mode also flips (it falls through to the Normal trie with
 /// extend=true; `cmd_flip_selections` ignores MotionMode). Extend mode must
 /// remain active after the flip.
 #[test]
@@ -328,9 +328,9 @@ fn semicolon_collapses_selection_and_resets_extend() {
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
-// ── `Ctrl+;` collapses selection to anchor AND clears extend mode ─────────────
+// ── `Ctrl-;` collapses selection to anchor AND clears extend mode ─────────────
 
-/// `Ctrl+;` must (a) collapse every selection to its anchor and (b) clear the
+/// `Ctrl-;` must (a) collapse every selection to its anchor and (b) clear the
 /// `extend` flag — the exact mirror of `;` with `head` replaced by `anchor`.
 #[test]
 fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
@@ -339,7 +339,7 @@ fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
 
     ed.handle_key(key_ctrl(';'));
 
-    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by 'Ctrl+;'");
+    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by 'Ctrl-;'");
     // anchor of the original selection was 'h' (offset 0).
     assert_eq!(state(&ed), "-[h]>ello\n");
 }

@@ -314,7 +314,7 @@ fn ls_does_not_pollute_jump_list() {
     );
 }
 
-/// `u` and `Ctrl+R` on a read-only buffer must be no-ops.
+/// `u` and `Ctrl-r` on a read-only buffer must be no-ops.
 /// Validity: remove the is_read_only() guards from apply_doc_undo/apply_doc_redo
 /// and this test fails (undo reverts the edit, changing the buffer text).
 #[test]
@@ -337,7 +337,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
         "u must not undo on a read-only buffer"
     );
 
-    // Ctrl+R (redo) must also be a no-op.
+    // Ctrl-r (redo) must also be a no-op.
     ed.doc_mut().read_only = false; // undo first to create redo history
     ed.handle_key(key('u'));
     let after_undo = ed.doc().text().to_string();
@@ -347,7 +347,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
     assert_eq!(
         ed.doc().text().to_string(),
         after_undo,
-        "Ctrl+R must not redo on a read-only buffer"
+        "Ctrl-r must not redo on a read-only buffer"
     );
 }
 

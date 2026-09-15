@@ -56,7 +56,7 @@ pub fn quit_grace() -> Duration {
 }
 
 /// Windows' uniform "killed by signal" exit code — `ctrlc` fires one handler
-/// for every console control event (Ctrl+C, Ctrl+Break, console close,
+/// for every console control event (Ctrl-c, Ctrl-Break, console close,
 /// logoff, shutdown) without saying which, so there's no per-event code to
 /// derive the way Unix derives `128 + signo`. Numerically the same as Unix's
 /// `SIGINT` code, but that's incidental — a different exit code with a
@@ -172,8 +172,8 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
     None
 }
 
-/// Spawn a background watcher that terminates the process on: Ctrl+C, `kill
-/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl+Break and
+/// Spawn a background watcher that terminates the process on: Ctrl-c, `kill
+/// <pid>` (SIGINT/SIGTERM/SIGHUP/SIGQUIT) on Unix, and Ctrl-Break and
 /// console-close on Windows. See `unix::spawn_terminator` for the Unix
 /// implementation.
 ///
@@ -189,7 +189,7 @@ pub fn hangup_exit_code(err: &std::io::Error) -> Option<i32> {
 /// all does not go through this function at all — see
 /// [`hangup_exit_code`]'s doc.
 ///
-/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
+/// In raw mode the kernel does not deliver SIGINT for Ctrl-c (ISIG is
 /// cleared), so on Unix this primarily covers `kill <pid>` — SIGINT stays
 /// registered for the rare case something re-enables ISIG.
 pub fn spawn_terminator(
@@ -204,7 +204,7 @@ pub fn spawn_terminator(
     {
         ctrlc::set_handler(move || {
             // ctrlc fires this handler for every console control event
-            // (Ctrl+C, Ctrl+Break, console close, logoff, shutdown) without
+            // (Ctrl-c, Ctrl-Break, console close, logoff, shutdown) without
             // telling us which one, so every trigger uses the same
             // conventional "killed by signal" code.
             request_quit(WINDOWS_SIGNAL_EXIT_CODE);
@@ -212,7 +212,7 @@ pub fn spawn_terminator(
             // interruptible by a second control event: `ctrlc` gives no
             // shared wait primitive to interrupt, and every event already
             // maps to the same `WINDOWS_SIGNAL_EXIT_CODE`, so there's no
-            // second signal's code to race ahead for. A repeat Ctrl+C during
+            // second signal's code to race ahead for. A repeat Ctrl-c during
             // this window is a harmless no-op, not a faster exit — accepted
             // asymmetry with the Unix path rather than a bug.
             std::thread::sleep(QUIT_GRACE);

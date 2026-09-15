@@ -51,7 +51,7 @@ HUME&nbsp;&nbsp;&nbsp;Lorem<span class="sel"> ipsu<span class="head">m</span></s
 
 ### Growing selections
 
-To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl+w` under the kitty protocol). Both editors can shrink a grown selection back the same way: since extending keeps the anchor fixed and only moves the head, reversing direction (`b`/`Ctrl+b` after `w`/`Ctrl+w` in HUME; `b` after `w` in Helix's select mode) moves the head back toward the anchor instead of growing further. What differs is how you get into extending: Helix requires pressing `v` (select mode) first, after which every motion extends until you leave the mode; HUME's Extend mode (`e`) works the same way, but HUME also offers one-shot per-keystroke extends (`Ctrl+w`/`Ctrl+b`) that skip the mode switch entirely.
+To grow a selection across multiple words in HUME, use Extend mode (`e` then `w`), or a one-shot extend (`Ctrl-w` under the kitty protocol). Both editors can shrink a grown selection back the same way: since extending keeps the anchor fixed and only moves the head, reversing direction (`b`/`Ctrl-b` after `w`/`Ctrl-w` in HUME; `b` after `w` in Helix's select mode) moves the head back toward the anchor instead of growing further. What differs is how you get into extending: Helix requires pressing `v` (select mode) first, after which every motion extends until you leave the mode; HUME's Extend mode (`e`) works the same way, but HUME also offers one-shot per-keystroke extends (`Ctrl-w`/`Ctrl-b`) that skip the mode switch entirely.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -65,9 +65,9 @@ Both editors bind `x` to select the current line. The difference is depth:
 
 Helix's `x` is **modal** — once pressed, all subsequent `x` presses extend the selection line-wise until you cancel.
 
-HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl+x` for a one-shot extend without entering the mode.
+HUME's `x` is **one-shot**. Each press re-anchors to the next line. To get Helix's repeat-extend behavior, enter **Extend mode** first (`e`) — in Extend mode, `x` (and every other motion) extends rather than replaces. Use `Ctrl-x` for a one-shot extend without entering the mode.
 
-Unlike its word motions, Helix's `x` doesn't share the anchor-fixed extend mechanism — it's hardcoded to always grow downward one line per press, and the default keymap has no key that shrinks a grown line selection back up (`X` normalizes the existing selection to whole-line boundaries rather than undoing a previous `x`; `Alt-x` shrinks to line bounds from an unrelated starting point). HUME's `x`/`X` are genuinely bidirectional: after growing downward with `x`/`Ctrl+x`, pressing `X`/`Ctrl+X` shrinks the selection back up one line at a time (and vice versa).
+Unlike its word motions, Helix's `x` doesn't share the anchor-fixed extend mechanism — it's hardcoded to always grow downward one line per press, and the default keymap has no key that shrinks a grown line selection back up (`X` normalizes the existing selection to whole-line boundaries rather than undoing a previous `x`; `Alt-x` shrinks to line bounds from an unrelated starting point). HUME's `x`/`X` are genuinely bidirectional: after growing downward with `x`/`Ctrl-x`, pressing `X`/`Ctrl-Shift-x` shrinks the selection back up one line at a time (and vice versa).
 
 ### Multiple selections
 
@@ -77,8 +77,8 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 |-----------|-------|------|
 | Copy selection on line below | `C` | `C` (duplicates each selection to the same column on the next line, adding a multi-cursor — column-style editing via multi-cursor, not a rectangular visual block) |
 | Copy selection on line above | `Alt-C` | (unbound) |
-| Remove primary selection | `Alt-,` | `Ctrl+,` (kitty only) |
-| Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl+e` (Normal and Extend mode) |
+| Remove primary selection | `Alt-,` | `Ctrl-,` (kitty only) |
+| Flip selections | `Alt-;` (Normal and Select mode) | `Ctrl-e` (Normal and Extend mode) |
 | Merge consecutive selections | `Alt-_` (touching selections only); `Alt--` merges all into one span | automatic — adjacent selections never persist |
 | Align selections | `&` | `&` |
 | Trim whitespace at edges | `_` | `_` |
@@ -87,14 +87,14 @@ Both editors share the same foundations — multiple cursors, `;` to collapse, `
 | Select all search matches | no dedicated key — `%` (select whole buffer) then `s` (sift to regex matches) | `m /` |
 | Search selection, auto word-boundary anchors | `*` | *(none)* |
 | Search word under cursor (Vim-style) | *(unbound)* | `*` |
-| Search selection literally, no anchors | `Alt-*` | `Ctrl+/` (kitty only) |
+| Search selection literally, no anchors | `Alt-*` | `Ctrl-/` (kitty only) |
 
 ::: warning
 HUME's `*` is not the same operation as Helix's `*`. Helix's `*` searches the literal current selection (or just the character under a collapsed cursor), adding `\b` anchors only when that text looks like a word — it never expands past what's already selected. HUME's `*` is Vim-style: it expands to the whole run under the cursor, ignoring any existing selection. A word gets `\b` anchors; a run of punctuation is searched literally without them, and on whitespace `*` does nothing at all.
 
-HUME's `Ctrl+/` is the closer match — to Helix's `Alt-*` (literal selection, no anchors). HUME has no equivalent of Helix's `*` (selection-based search with automatic boundary detection).
+HUME's `Ctrl-/` is the closer match — to Helix's `Alt-*` (literal selection, no anchors). HUME has no equivalent of Helix's `*` (selection-based search with automatic boundary detection).
 
-To put `Ctrl+/`'s behavior on the `*` key instead — matching Helix's `Alt-*`, not `*` — rebind it in your `init.scm`:
+To put `Ctrl-/`'s behavior on the `*` key instead — matching Helix's `Alt-*`, not `*` — rebind it in your `init.scm`:
 
 ```scheme
 (bind-key! 'normal "*" "search-selection")

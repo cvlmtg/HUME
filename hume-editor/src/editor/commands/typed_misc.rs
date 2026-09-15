@@ -462,7 +462,7 @@ pub(in crate::editor) fn typed_tutor(
 
 /// `:goto N` — jump to 1-based line `N`, clamped to the last content line.
 ///
-/// The pre-jump position is recorded in the jump list so `Ctrl+o` returns here.
+/// The pre-jump position is recorded in the jump list so `Ctrl-o` returns here.
 /// `:42` is accepted as shorthand (the command-mode dispatcher intercepts bare
 /// digit strings and routes them here before the normal registry lookup).
 pub(in crate::editor) fn typed_goto_line(
@@ -478,7 +478,7 @@ pub(in crate::editor) fn typed_goto_line(
     let line0 = hume_rope::line::ContentLine::from_number(n)
         .ok_or_else(|| CommandError::transient(crate::cli::LINE_NUMBERS_START_AT_1))?;
 
-    // Snapshot before moving so Ctrl+O can return here — pushed only if
+    // Snapshot before moving so Ctrl-o can return here — pushed only if
     // `:goto` actually lands somewhere else (record_jump_if_moved).
     let entry = current_jump_entry(&ed.state, &ed.view);
 

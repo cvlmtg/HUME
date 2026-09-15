@@ -59,10 +59,10 @@ via the shared selection-recipe accumulator, regardless of whether the wrapper t
 them is flagged repeatable.
 
 `o` (bound in Extend mode) restores vim's visual-mode "flip the selection" gesture. HUME's
-native `Ctrl+e` already flips in any mode — including Normal — and works on legacy terminals,
+native `Ctrl-e` already flips in any mode — including Normal — and works on legacy terminals,
 so `o` is purely a muscle-memory alias, not new capability.
 
-`Ctrl+6` is the portable form of vim's `Ctrl+^` — both share a keycap on US layouts and emit
+`Ctrl-6` is the portable form of vim's `Ctrl-^` — both share a keycap on US layouts and emit
 identical bytes. Under the kitty keyboard protocol this arrives as `Char('6')` + `CONTROL`;
 legacy terminals emit `0x1E`, which HUME does not currently surface as this binding (falls
 back to `:e #` on those terminals).

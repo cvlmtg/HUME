@@ -922,12 +922,12 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
     );
 }
 
-/// `Ctrl+p c` (`pane-close`) reaches the same reveal as multi-pane `:q`, but
+/// `Ctrl-p c` (`pane-close`) reaches the same reveal as multi-pane `:q`, but
 /// as a keymap `EditorCmd` with no `&mut Editor` at all to call the check on
 /// — pins that the post-dispatch chokepoint covers a keymap command with no
 /// per-command plumbing. Also pins that `pending_keys` is cleared before the
 /// `c` leaf runs (`mappings/normal.rs`'s Leaf arm), so `can_open_confirm`
-/// isn't blocked by the still-just-consumed `Ctrl+p` prefix.
+/// isn't blocked by the still-just-consumed `Ctrl-p` prefix.
 #[test]
 fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, _bid_b) = two_panes_with_b_focused();
@@ -942,7 +942,7 @@ fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
     assert_eq!(
         ed.view.panes.len(),
         1,
-        "setup: Ctrl+p c must close the pane"
+        "setup: Ctrl-p c must close the pane"
     );
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
@@ -951,7 +951,7 @@ fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
     );
 }
 
-/// Cycling pane focus (`Ctrl+p p`, `pane-focus-next`) routes through
+/// Cycling pane focus (`Ctrl-p p`, `pane-focus-next`) routes through
 /// `focus_pane` (`commands/jump.rs`), which changes which pane is focused but
 /// has no notion of disk state — without this check, cycling onto a pane
 /// showing an externally-changed file would show stale content with `:w`

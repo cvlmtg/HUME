@@ -25,7 +25,7 @@ pub(crate) struct MiniBuffer {
 /// Callers match on this to perform the mode-specific follow-up action
 /// (e.g. search confirmation vs. command execution on `Confirm`).
 pub(super) enum MiniBufferEvent {
-    /// Esc or Ctrl+C — caller should cancel/close the mini-buffer.
+    /// Esc or Ctrl-c — caller should cancel/close the mini-buffer.
     Cancel,
     /// Enter with non-empty input — `String` is the confirmed text.
     Confirm(String),
@@ -78,7 +78,7 @@ impl MiniBuffer {
 
     /// Handle a single key event for standard mini-buffer editing.
     ///
-    /// Covers: cancel (Esc/Ctrl+C), confirm (Enter), char insertion, grapheme-aware
+    /// Covers: cancel (Esc/Ctrl-c), confirm (Enter), char insertion, grapheme-aware
     /// backspace, and left/right cursor movement. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
     pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
@@ -114,7 +114,7 @@ impl MiniBuffer {
                     }
                 }
             }
-            // Ctrl-W: readline-style delete-word-backward. Skip trailing
+            // Ctrl-w: readline-style delete-word-backward. Skip trailing
             // whitespace first, then remove the word. Never closes the minibuf
             // on empty (unlike Backspace) — emits `Ignored` when there's
             // nothing to the left of the cursor.
@@ -144,7 +144,7 @@ impl MiniBuffer {
             KeyCode::Tab => MiniBufferEvent::CompleteRequested { reverse: false },
             KeyCode::BackTab => MiniBufferEvent::CompleteRequested { reverse: true },
             // Up/Down are handled by the caller (mode-specific history ring).
-            // Do NOT bind Ctrl+N / Ctrl+P here — those are reserved for
+            // Do NOT bind Ctrl-n / Ctrl-p here — those are reserved for
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
@@ -165,7 +165,7 @@ impl MiniBuffer {
 }
 
 /// Walk back from `cursor` over trailing whitespace, then over one run of
-/// non-whitespace graphemes — the readline Ctrl-W "delete word" boundary.
+/// non-whitespace graphemes — the readline Ctrl-w "delete word" boundary.
 /// Returns the byte offset where the deletion should begin; equals `cursor`
 /// when there is nothing to delete.
 ///

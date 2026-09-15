@@ -33,6 +33,6 @@ fn without_plugin_dollar_caret_zero_ctrl6_are_noops() {
     assert_eq!(
         state(&ed),
         before,
-        "Ctrl+6 must be inert without core:vim-keybind"
+        "Ctrl-6 must be inert without core:vim-keybind"
     );
 }

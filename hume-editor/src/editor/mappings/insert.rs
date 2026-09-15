@@ -77,18 +77,18 @@ impl Editor {
             return;
         }
 
-        // Walk the insert trie first: handles Esc, Ctrl+C, and arrow keys.
+        // Walk the insert trie first: handles Esc, Ctrl-c, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
         let trie_result = self.state.config.keymap.insert.walk(&[key]);
         match trie_result {
             WalkResult::Leaf(cmd) => {
                 // Every key that resolves to a trie leaf is a cursor motion
-                // or an edit command — Esc, arrows, Ctrl-W, any user-bound
+                // or an edit command — Esc, arrows, Ctrl-w, any user-bound
                 // insert key. None of them route through `apply_insert_edit`
                 // (motions bypass it entirely; an edit command reaches the
                 // buffer either via `MappableCommand::Edit` below through
-                // `run_native_body`, or — like Ctrl-W's `EditorCmd` — through
+                // `run_native_body`, or — like Ctrl-w's `EditorCmd` — through
                 // the ordinary `execute_keymap_command` dispatch further
                 // down; neither hands its `ChangeSet` back here), so an open
                 // completion session can't stay correctly anchored past one:
@@ -110,7 +110,7 @@ impl Editor {
                     );
                     return;
                 };
-                // Edit commands (e.g. Ctrl-W) must compose into the open insert-session
+                // Edit commands (e.g. Ctrl-w) must compose into the open insert-session
                 // edit group. `run_native_body` routes through `apply_doc_edit_grouped`
                 // when a group is open, so no special-casing is needed here.
                 if let MappableCommand::Edit { .. } = reg_cmd {
@@ -243,7 +243,7 @@ impl Editor {
 
             // ── Delete ────────────────────────────────────────────────────────
             // Deliberately does NOT clear `autoindent_pending`: `:help
-            // autoindent` names `<BS>` (alongside CTRL-D) as the one key that
+            // autoindent` names `<BS>` (alongside Ctrl-D) as the one key that
             // doesn't cancel the "nothing typed on this line" state.
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) =

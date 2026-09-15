@@ -86,7 +86,7 @@ fn redo_with_count_shows_message_on_exhaustion() {
     ed.handle_key(key('x'));
     ed.handle_key(key_esc());
     ed.handle_key(key('u'));
-    // Type a count prefix "2" before Ctrl+r
+    // Type a count prefix "2" before Ctrl-r
     ed.handle_key(key('2'));
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
@@ -417,7 +417,7 @@ fn shift_x_clamps_at_first_line() {
     assert_eq!(state(&ed), "<[hello world\n]-foo\n");
 }
 
-/// Ctrl+x accumulates lines downward (extend behavior).
+/// Ctrl-x accumulates lines downward (extend behavior).
 #[test]
 fn ctrl_x_extends_selection_down() {
     let mut ed = editor_from("hello -[w]>orld\nfoo\nbar\n");
@@ -429,7 +429,7 @@ fn ctrl_x_extends_selection_down() {
     assert_eq!(state(&ed), "-[hello world\nfoo\nbar\n]>", "lines 1-3");
 }
 
-/// Ctrl+X accumulates lines upward (extend behavior).
+/// Ctrl-X accumulates lines upward (extend behavior).
 #[test]
 fn ctrl_shift_x_extends_selection_up() {
     let mut ed = editor_from("aaa\nbbb\nhello -[w]>orld\n");
@@ -464,25 +464,25 @@ fn shift_x_then_x_flips_direction() {
     assert_eq!(state(&ed), "aaa\nhello world\n-[foo\n]>");
 }
 
-/// Ctrl+x after `X` (backward selection): extends forward, flipping direction.
+/// Ctrl-x after `X` (backward selection): extends forward, flipping direction.
 #[test]
 fn ctrl_x_after_shift_x() {
     // Cursor mid-line so `X` selects the current line (doesn't jump back).
     let mut ed = editor_from("aaa\nfoo -[b]>ar\nbaz\n");
     ed.handle_key(key('X'));
     assert_eq!(state(&ed), "aaa\n<[foo bar\n]-baz\n");
-    // Ctrl+x extends forward (adds next line, switches to forward selection).
+    // Ctrl-x extends forward (adds next line, switches to forward selection).
     ed.handle_key(key_ctrl('x'));
     assert_eq!(state(&ed), "aaa\n-[foo bar\nbaz\n]>");
 }
 
-/// Ctrl+X after `x` (forward selection): extends backward, flipping direction.
+/// Ctrl-X after `x` (forward selection): extends backward, flipping direction.
 #[test]
 fn ctrl_shift_x_after_x() {
     let mut ed = editor_from("aaa\nbbb\n-[f]>oo\n");
     ed.handle_key(key('x'));
     assert_eq!(state(&ed), "aaa\nbbb\n-[foo\n]>");
-    // Ctrl+X extends backward (adds previous line, switches to backward selection).
+    // Ctrl-X extends backward (adds previous line, switches to backward selection).
     ed.handle_key(key_ctrl('X'));
     assert_eq!(state(&ed), "aaa\n<[bbb\nfoo\n]-");
 }

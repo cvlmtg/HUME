@@ -5,7 +5,7 @@ use pretty_assertions::assert_eq;
 //
 // `scroll_into_view` (`frame.rs`) runs the vertical `Viewport::reveal`
 // correction only when `PaneBufferState::reveal_pending` is set — false for
-// a view-led scroll (mouse wheel, `Ctrl+D`) that carries the cursor past a
+// a view-led scroll (mouse wheel, `Ctrl-d`) that carries the cursor past a
 // virtual-line block without being able to place it, so the block is passed
 // without being snapped back. `Viewport::reveal_horizontal` has no such gate:
 // it runs unconditionally, every frame, before that branch — so a cursor

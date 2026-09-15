@@ -13,7 +13,7 @@ Say what you mean, then say what to do with it. Because the selection always com
 | `o` | New line below |
 | `O` | New line above |
 
-Press `Esc` or `Ctrl+c` to return to Normal mode. `Ctrl+w` deletes the word before the cursor while you type.
+Press `Esc` or `Ctrl-c` to return to Normal mode. `Ctrl-w` deletes the word before the cursor while you type.
 
 Leaving Insert mode selects the text you just typed, instead of leaving a plain cursor — so you can immediately act on it again: delete it, surround it, search for it. Pressing `Esc` without typing anything leaves the cursor where you started. Disable this with the `select-inserted-text` option (see [Configuration](configuration.md)).
 
@@ -63,7 +63,7 @@ Line endings inside the selection are left alone, so replacing across several li
 
 `&` lines up your selections using the primary selection's line as the starting point. Spaces are inserted at the left edge of each selection to reach that column, and if some other line needs more room, the column widens for everybody — which means the primary selection can shift right too. Multi-line selections are left alone. Where a selection sits too far right already, the run of spaces or tabs immediately to its left is squeezed down (never below one).
 
-You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl+e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
+You can align to the left or the right depending on which end of the selection is the anchor; `Ctrl-e` swaps anchor and head. See [Selections](selections.md#flipping-and-collapsing-the-selection).
 
 `>`/`<` shift every line touched by a selection by one indent level, using the buffer's `tab-width` and `tab-style` (see [Configuration](configuration.md)) — a prefix count shifts by that many levels at once (`3>`). A blank or whitespace-only line inside the selection is left alone, so it never picks up trailing whitespace. Each touched line's whole indent is re-rendered to the new width in the current `tab-style`, not just prepended to or trimmed from — so `<` immediately after `>` restores the previous indent width exactly (the characters themselves are re-rendered in `tab-style`, so a mixed tabs-and-spaces indent normalizes rather than coming back byte-identical). `<` on an indent narrower than one level flattens it to the left margin instead of going negative, so `>` afterward lands on a full level rather than back where the first `<` started.
 
@@ -72,7 +72,7 @@ You can align to the left or the right depending on which end of the selection i
 | Key | Effect |
 |-----|--------|
 | `u` | Undo (accepts a count — `5u` undoes five steps) |
-| `U` / `Ctrl+r` | Redo |
+| `U` / `Ctrl-r` | Redo |
 
 Undo history is a tree rather than a straight line, so redoing after new edits follows the most recent branch. The history lives in memory only and starts fresh each time you open a file.
 

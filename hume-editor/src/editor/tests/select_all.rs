@@ -194,9 +194,9 @@ fn star_punctuation_run_stays_literal() {
     assert_eq!(r, vec!["->"]);
 }
 
-// ── Search selection (Ctrl+/) ────────────────────────────────────────────────
+// ── Search selection (Ctrl-/) ────────────────────────────────────────────────
 
-/// `Ctrl+/` on a partial-word selection searches the literal substring —
+/// `Ctrl-/` on a partial-word selection searches the literal substring —
 /// unlike `*`, it does NOT expand to the whole word, and it does NOT add
 /// word-boundary anchors. This is the point of the feature: it finds "ell"
 /// wherever it occurs, including as a substring of other words.
@@ -225,7 +225,7 @@ fn search_selection_uses_literal_text() {
     );
 }
 
-/// After `Ctrl+/`, `n` cycles to the next literal occurrence — the full
+/// After `Ctrl-/`, `n` cycles to the next literal occurrence — the full
 /// "select, mark as search, jump" flow this feature exists for.
 #[test]
 fn search_selection_then_n_jumps_to_next_occurrence() {
@@ -238,7 +238,7 @@ fn search_selection_then_n_jumps_to_next_occurrence() {
     assert_eq!(state(&ed), "hello -[ell]> x\n");
 }
 
-/// `Ctrl+/` escapes regex metacharacters in the selected text.
+/// `Ctrl-/` escapes regex metacharacters in the selected text.
 #[test]
 fn search_selection_escapes_metacharacters() {
     // "a.b axb\n" — select "a.b".
@@ -257,7 +257,7 @@ fn search_selection_escapes_metacharacters() {
     );
 }
 
-/// `Ctrl+/` on a collapsed cursor searches just that one character literally.
+/// `Ctrl-/` on a collapsed cursor searches just that one character literally.
 #[test]
 fn search_selection_on_collapsed_cursor_searches_char() {
     let mut ed = editor_from("-[a]>bc abc\n");
@@ -265,7 +265,7 @@ fn search_selection_on_collapsed_cursor_searches_char() {
     assert_eq!(reg(&ed, 's'), vec!["a"]);
 }
 
-/// `Ctrl+/` on a collapsed cursor sitting on a structural `\n` is a no-op.
+/// `Ctrl-/` on a collapsed cursor sitting on a structural `\n` is a no-op.
 ///
 /// Regression: without this guard, the 1-char selection "\n" becomes the
 /// search pattern — a raw-newline regex that matches every line end,

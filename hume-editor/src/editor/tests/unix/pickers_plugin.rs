@@ -141,12 +141,12 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
 
     assert!(
         ed.state.config.picker.is_none(),
-        "Ctrl+T must close the picker"
+        "Ctrl-t must close the picker"
     );
     assert_eq!(
         ed.state.tabs.len(),
         tabs_before + 1,
-        "Ctrl+T must open a new tab"
+        "Ctrl-t must open a new tab"
     );
     let new_bid = ed.focused_buffer_id();
     assert_ne!(new_bid, source_bid, "the new tab views a different buffer");
@@ -158,7 +158,7 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
         .expect("buffer has a path");
     assert!(
         path.ends_with("alpha.txt"),
-        "Ctrl+T must open the selected file in the new tab; got {path:?}"
+        "Ctrl-t must open the selected file in the new tab; got {path:?}"
     );
     assert_eq!(
         ed.state.buffers.get(source_bid).text().to_string(),
@@ -194,7 +194,7 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
 
     assert!(
         ed.state.config.picker.is_none(),
-        "Ctrl+T is still a terminal action even on no match"
+        "Ctrl-t is still a terminal action even on no match"
     );
     assert_eq!(
         ed.state.tabs.len(),
@@ -234,7 +234,7 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 
     assert!(
         ed.state.config.picker.is_none(),
-        "Ctrl+V is still a terminal action even when the split is refused"
+        "Ctrl-v is still a terminal action even when the split is refused"
     );
     assert_eq!(
         ed.view.panes.len(),
@@ -254,7 +254,7 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
 }
 
 /// The success-side counterpart of `files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing`:
-/// in a pane wide enough to split, Ctrl+V creates the new pane and opens the
+/// in a pane wide enough to split, Ctrl-v creates the new pane and opens the
 /// selection there, leaving the source pane's buffer untouched — the positive
 /// oracle for `stdlib/with-pane-command`'s `(when (call! command) (handler
 /// payload))` guard (untested at the Scheme level before this).
@@ -285,12 +285,12 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
 
     assert!(
         ed.state.config.picker.is_none(),
-        "Ctrl+V must close the picker"
+        "Ctrl-v must close the picker"
     );
     assert_eq!(
         ed.view.panes.len(),
         panes_before + 1,
-        "Ctrl+V must create exactly one new pane"
+        "Ctrl-v must create exactly one new pane"
     );
     let new_bid = ed.focused_buffer_id();
     assert_ne!(new_bid, source_bid, "the new pane views a different buffer");
@@ -302,7 +302,7 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
         .expect("buffer has a path");
     assert!(
         path.ends_with("alpha.txt"),
-        "Ctrl+V must open the selected file in the new pane; got {path:?}"
+        "Ctrl-v must open the selected file in the new pane; got {path:?}"
     );
     assert_eq!(
         ed.state.buffers.get(source_bid).text().to_string(),

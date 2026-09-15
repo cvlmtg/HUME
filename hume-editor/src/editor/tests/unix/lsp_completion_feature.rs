@@ -1,4 +1,4 @@
-// The full completion flow: trigger (Ctrl+Space + server trigger chars) ->
+// The full completion flow: trigger (Ctrl-Space + server trigger chars) ->
 // textDocument/completion -> completion-begin!; on-completion-accept applies
 // additionalTextEdits or resolves; on-completion-refilter re-requests while
 // isIncomplete. Named lsp_completion_feature.rs (not lsp_completion.rs — that

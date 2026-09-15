@@ -37,11 +37,11 @@
 (bind-key! 'normal "$" "goto-line-end")
 
 ;; ── Flip selection ────────────────────────────────────────────────────────────
-;; Vim muscle-memory alias for HUME's native Ctrl+e.
+;; Vim muscle-memory alias for HUME's native Ctrl-e.
 (bind-key! 'extend "o" "flip-selections")
 
 ;; ── Alternate buffer ──────────────────────────────────────────────────────────
-;; Portable form of vim's Ctrl+^; see README for legacy-terminal caveat.
+;; Portable form of vim's Ctrl-^; see README for legacy-terminal caveat.
 (bind-key! 'normal "ctrl-6" "goto-alternate-buffer")
 
 ;; ── C / D ─────────────────────────────────────────────────────────────────────

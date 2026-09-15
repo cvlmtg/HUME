@@ -17,8 +17,8 @@ pub enum PopupKind {
     /// `on-mode-change` Steel hook and the next `show-popup!`. Default —
     /// `#:kind` omitted, or `'sticky`.
     Sticky,
-    /// Ctrl+u/Ctrl+d scroll the content and are consumed *when it overflows
-    /// one screenful*; every other key or mouse event — and Ctrl+u/d with
+    /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
+    /// one screenful*; every other key or mouse event — and Ctrl-u/d with
     /// nothing to scroll — closes the popup and falls through to normal
     /// dispatch (`#:kind 'scrollable`). Covers both scrollable hover and the
     /// dismiss-on-any-key `gn`/`gp` diagnostic overlay: the two collapse to

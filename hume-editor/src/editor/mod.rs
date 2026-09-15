@@ -420,7 +420,7 @@ pub(crate) struct EditorState {
     /// Whether the user explicitly typed a count prefix before the current command.
     pub(super) explicit_count: bool,
     /// `true` when the current multi-key sequence began with a kitty one-shot
-    /// Ctrl+key that resolved to a prefix (Interior) node. Cleared on sequence
+    /// Ctrl-key that resolved to a prefix (Interior) node. Cleared on sequence
     /// completion or abort. At Leaf resolution, only applied if the command is
     /// extendable.
     pub(super) pending_ctrl_extend: bool,
@@ -789,7 +789,7 @@ impl EditorState {
         // Any exit from Insert dismisses an open completion session —
         // `handle_completion_key`'s own `Esc`/Enter paths never reach here
         // (they return before the trie's `exit-insert` runs), so this
-        // catches every *other* way Insert ends (Ctrl+C, a mouse click, a
+        // catches every *other* way Insert ends (Ctrl-c, a mouse click, a
         // Steel-triggered mode change) while a session happens to be open.
         // Deferred: the session lives on `LspState`, which `set_mode` (only
         // `&mut EditorState`) can't reach — `Editor::

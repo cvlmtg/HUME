@@ -43,7 +43,7 @@ impl Editor {
 
         // Popup dismissal/scroll, before mode dispatch — see `PopupKind`.
         // `Scrollable` (scrollable hover, `gn`/`gp`'s diagnostic overlay)
-        // consumes Ctrl+u/Ctrl+d to scroll when there's actually content past
+        // consumes Ctrl-u/Ctrl-d to scroll when there's actually content past
         // one screenful; otherwise (and for any other key) it closes the
         // popup and falls through to normal dispatch this same call, so a
         // short popup never blocks buffer half-page scroll. The close itself
@@ -61,7 +61,7 @@ impl Editor {
 
         // ── Confirm intercept ──────────────────────────────────────────────
         // First of the overlay intercepts below (after the popup dismissal/
-        // scroll block above, which can still consume Ctrl+u/Ctrl+d for a
+        // scroll block above, which can still consume Ctrl-u/Ctrl-d for a
         // scrollable popup before this ever runs). `Editor::can_open_confirm`
         // gates when one can open in the first place — never from Insert/
         // Search/Select, never over a live picker/menu/drawer, never mid

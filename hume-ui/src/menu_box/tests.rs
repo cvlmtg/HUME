@@ -156,7 +156,7 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
 
 /// Unlike a menu (which windows around `selected`), a plain popup
 /// (`selected: None`) windows from `scroll` directly — this is what makes
-/// `Ctrl+u`/`Ctrl+d` page a scrollable hover popup instead of the window
+/// `Ctrl-u`/`Ctrl-d` page a scrollable hover popup instead of the window
 /// always anchoring back to row 0.
 #[test]
 fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {

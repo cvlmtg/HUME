@@ -58,7 +58,7 @@ The `cmd` files use a continuous stream format:
 - Bare printable characters count as 1 keystroke each (space is literal).
 - `<name>` tokens count as 1 keystroke each:
   - Named keys: `<esc>`, `<ret>`, `<tab>`, `<backspace>`, `<up>`, `<down>`, `<left>`, `<right>`
-  - Modifier combinations: `<c-x>` (Ctrl+x), `<a-b>` (Alt+b), `<s-tab>` (Shift+Tab)
+  - Modifier combinations: `<c-x>` (Ctrl-x), `<a-b>` (Alt-b), `<s-tab>` (Shift-Tab)
   - Long forms also work: `<ctrl-x>`, `<alt-b>`
   - `<lt>` for a literal `<`
 

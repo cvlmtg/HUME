@@ -1957,7 +1957,7 @@ fn pane_focus_cycling_and_mouse_click_each_raise_exactly_one_on_buffer_enter() {
             .count()
     };
 
-    // `:e` left the right pane (B) focused. Ctrl+p p, with only two panes,
+    // `:e` left the right pane (B) focused. Ctrl-p p, with only two panes,
     // cycles focus onto the left pane (A) through `focus_pane`, never
     // touching `buffer_id`.
     let before = count(&ed);

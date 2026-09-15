@@ -516,7 +516,7 @@ fn translate_in_place_collapses_entries_that_land_on_the_same_line() {
 }
 
 /// `backward()` deliberately appends the save-current entry without dedup —
-/// two Ctrl+O stops that legitimately share a line (e.g. two search matches
+/// two Ctrl-o stops that legitimately share a line (e.g. two search matches
 /// on one line) must both survive a later edit that merely shifts lines
 /// uniformly. The merge pass must tell that pre-existing pair apart from one
 /// an edit just created (the case the previous test covers).

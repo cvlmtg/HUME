@@ -270,7 +270,7 @@ fn is_extendable_false_for_edits_and_non_extendable_editor_cmds() {
 
 #[test]
 fn is_extendable_steel_backed_always_true() {
-    // All Steel commands participate in Ctrl+key one-shot extend; the
+    // All Steel commands participate in Ctrl-key one-shot extend; the
     // body receives `extend` as a lambda arg and decides what to do.
     let cmd = MappableCommand::SteelBacked {
         name: "x".into(),
@@ -287,7 +287,7 @@ fn is_extendable_steel_backed_always_true() {
 fn is_extendable_lazy_stub_true() {
     use hume_scripting::attribution::PluginId;
     // Lazy stubs resolve to SteelBacked; the keymap must treat them as
-    // extendable on first Ctrl+key press so extend=true is forwarded even
+    // extendable on first Ctrl-key press so extend=true is forwarded even
     // before the plugin is activated.
     let cmd = MappableCommand::Lazy {
         name: "lazy-cmd".into(),

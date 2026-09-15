@@ -61,7 +61,7 @@ that ever changes.
 ### Subprocess
 
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`
-commands (process-group safety for Ctrl+C), `spawn-async!` for enumeration-scale output
+commands (process-group safety for Ctrl-c), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
 the TUI's raw mode still on. `core:plum` (`plum/run!`) builds its raise-on-failure policy on
 top of `stdlib/run`, and the git probes below build their `#f`-on-failure policy on it. stdin
@@ -113,7 +113,7 @@ the side effect rather than silently redirecting it. `with-pane-command` detects
 split from `call!`'s own return value — `#f` for a native command that refused, `#t` for one
 that ran — needing no bespoke predicate of its own.
 
-`buffer-actions` composes all three plus a bare `Ctrl-O` (the handler as-is, an `Enter`
+`buffer-actions` composes all three plus a bare `Ctrl-o` (the handler as-is, an `Enter`
 synonym) into one `#:actions` alist: `(picker! items handler #:actions (call!
 "stdlib/buffer-actions" handler))`. `core:pickers`' three built-in pickers all opt in this
 way. A picker whose payload isn't a placeable buffer target (a theme picker, a command
@@ -121,7 +121,7 @@ palette) simply doesn't pass `#:actions` — there's no flag to turn off, only a
 
 Reserved keys always win: `picker!`/`live-picker!` try `#:actions` only after every built-in
 picker key (movement, `Backspace`, `Enter`, `Escape`, query input), so `buffer-actions`'
-`Ctrl-O`/`T`/`V`/`S` are safe choices precisely because none of them collides with a
+`Ctrl-o`/`t`/`v`/`s` are safe choices precisely because none of them collides with a
 built-in — a plugin adding its own entries should pick keys the same way.
 
 ### Plugin config

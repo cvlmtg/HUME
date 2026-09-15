@@ -76,7 +76,7 @@ Use this for a `:` command that takes an optional language name — `arg` is wha
 
 | Call | Effect |
 |------|--------|
-| `(call! "stdlib/buffer-actions" handler)` | A `picker!`/`live-picker!` `#:actions` list binding `Ctrl-O`/`Ctrl-T`/`Ctrl-V`/`Ctrl-S` to `handler` placed in the current pane, a new tab, a vertical split, and a horizontal split respectively |
+| `(call! "stdlib/buffer-actions" handler)` | A `picker!`/`live-picker!` `#:actions` list binding `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` to `handler` placed in the current pane, a new tab, a vertical split, and a horizontal split respectively |
 | `(call! "stdlib/with-tab" handler)` | Wraps `handler`: opens a new tab, then calls `handler` with the picker's payload |
 | `(call! "stdlib/with-vsplit" handler)` | Wraps `handler`: splits the focused pane side by side, then calls `handler` with the picker's payload |
 | `(call! "stdlib/with-split" handler)` | Wraps `handler`: splits the focused pane stacked, then calls `handler` with the picker's payload |

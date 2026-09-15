@@ -141,7 +141,7 @@ impl Viewport {
 /// [`crate::display_lines::DisplayLineMap::max_scroll_top`] (the scroll-down
 /// bound) can never disagree on `margin`/`target` — both read them off the
 /// same `ViewGeometry`, rather than each computing its own. That agreement
-/// matters because a `Ctrl+D`/wheel scroll to EOF and the very next ordinary
+/// matters because a `Ctrl-d`/wheel scroll to EOF and the very next ordinary
 /// cursor motion share one viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {

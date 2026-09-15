@@ -323,7 +323,7 @@ fn enter_on_directory_candidate_restarts_completion() {
     );
 }
 
-// ── Ctrl-W delete-word in minibuf ─────────────────────────────────────────────
+// ── Ctrl-w delete-word in minibuf ─────────────────────────────────────────────
 
 #[test]
 fn ctrl_w_deletes_word_in_minibuf() {
@@ -354,10 +354,10 @@ fn ctrl_w_at_start_is_noop_and_keeps_minibuf_open() {
     ed.handle_key(key(':'));
     ed.handle_key(key_ctrl('w'));
     assert_eq!(minibuf_input(&ed), "");
-    // Unlike Backspace on empty input (which cancels), Ctrl-W is a no-op.
+    // Unlike Backspace on empty input (which cancels), Ctrl-w is a no-op.
     assert!(
         ed.state.minibuf.is_some(),
-        "Ctrl-W on empty input must not close the minibuf"
+        "Ctrl-w on empty input must not close the minibuf"
     );
 }
 
@@ -395,16 +395,16 @@ fn ctrl_w_dismisses_open_completion_popup() {
     );
 
     ed.handle_key(key_ctrl('w'));
-    // Edited event clears completion; Ctrl-W consumed the word ("w"-based candidate).
+    // Edited event clears completion; Ctrl-w consumed the word ("w"-based candidate).
     assert!(
         ed.state.minibuf_completion.is_none(),
-        "Ctrl-W must dismiss the popup"
+        "Ctrl-w must dismiss the popup"
     );
 }
 
 #[test]
 fn ctrl_w_works_in_search_minibuf() {
-    // Ctrl-W in a `/` search prompt deletes the last word without cancelling.
+    // Ctrl-w in a `/` search prompt deletes the last word without cancelling.
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
     assert_eq!(ed.state.mode, Mode::Search);
@@ -417,7 +417,7 @@ fn ctrl_w_works_in_search_minibuf() {
     // Search minibuf must still be open.
     assert!(
         ed.state.minibuf.is_some(),
-        "Ctrl-W must not close the search minibuf"
+        "Ctrl-w must not close the search minibuf"
     );
     assert_eq!(ed.state.mode, Mode::Search);
     ed.handle_key(key_esc());
@@ -427,11 +427,11 @@ fn ctrl_w_works_in_search_minibuf() {
 fn ctrl_w_at_start_of_search_minibuf_is_noop() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
-    // Nothing typed yet — Ctrl-W on empty input is a no-op.
+    // Nothing typed yet — Ctrl-w on empty input is a no-op.
     ed.handle_key(key_ctrl('w'));
     assert!(
         ed.state.minibuf.is_some(),
-        "Ctrl-W on empty search input must not close the minibuf"
+        "Ctrl-w on empty search input must not close the minibuf"
     );
     assert_eq!(ed.state.mode, Mode::Search);
     ed.handle_key(key_esc());

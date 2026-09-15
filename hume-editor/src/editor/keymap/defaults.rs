@@ -21,8 +21,8 @@ macro_rules! cmd {
 }
 
 /// Like `cmd!`, but marks the binding as always-extending (`force_extend =
-/// true`). Use for explicit Ctrl+letter bindings whose extend semantics are
-/// inherent regardless of kitty mode (e.g. `Ctrl+x` → `select-line`).
+/// true`). Use for explicit Ctrl-letter bindings whose extend semantics are
+/// inherent regardless of kitty mode (e.g. `Ctrl-x` → `select-line`).
 macro_rules! cmd_extend {
     ($name:expr) => {
         KeymapCommand {
@@ -51,7 +51,7 @@ macro_rules! wait_char {
 /// key!(Left)          // Left arrow, no modifiers
 /// ```
 macro_rules! key {
-    // Ctrl+char — must come first so `Ctrl + 'h'` is not mistakenly parsed
+    // Ctrl-char — must come first so `Ctrl + 'h'` is not mistakenly parsed
     // by a later arm.
     (Ctrl + $ch:literal) => {
         KeyEvent::new(KeyCode::Char($ch), Modifiers::CONTROL)
@@ -240,7 +240,7 @@ fn build_transform_trie() -> KeyTrie {
     t
 }
 
-// ── Pane (Ctrl+p) sub-trie ───────────────────────────────────────────────────
+// ── Pane (Ctrl-p) sub-trie ───────────────────────────────────────────────────
 
 fn build_pane_trie() -> KeyTrie {
     let mut t = KeyTrie::new();
@@ -295,19 +295,19 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('k'), cmd!("move-up"));
     t.bind_leaf(key!(Up), cmd!("move-up"));
 
-    // Extend mode itself is an `e` toggle, not a held modifier — Ctrl+motion was
+    // Extend mode itself is an `e` toggle, not a held modifier — Ctrl-motion was
     // rejected as the universal extend modifier (fatal legacy-terminal collisions
     // on 10 of 15 motion keys; Ctrl-i/Tab below is one instance), and Alt was
-    // rejected because it types accented characters on macOS. Kitty Ctrl+motion
+    // rejected because it types accented characters on macOS. Kitty Ctrl-motion
     // (below) is a graceful bonus on top of that model, not the model itself.
     //
-    // NOTE: Ctrl+h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
+    // NOTE: Ctrl-h/j/k/l/w/b (kitty one-shot extend) are NOT bound in the trie.
     // The dispatcher normalises them: strips CONTROL and passes extend=true to
     // execute_keymap_command when kitty_enabled is true. Commands without an
     // extend variant in the registry are suppressed (no-op). In legacy mode
     // these are a silent no-op.
     // See `handle_normal` in `mappings/normal.rs` for the normalisation logic.
-    // Ctrl+w is a kitty one-shot extend for `select-next-word`. The pane prefix is Ctrl+p.
+    // Ctrl-w is a kitty one-shot extend for `select-next-word`. The pane prefix is Ctrl-p.
 
     // ── Word motion ───────────────────────────────────────────────────────────
     t.bind_leaf(key!('w'), cmd!("select-next-word"));
@@ -326,7 +326,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     // ── Line selection ────────────────────────────────────────────────────────
     t.bind_leaf(key!('x'), cmd!("select-line"));
     t.bind_leaf(key!('X'), cmd!("select-line-backward"));
-    // Ctrl+x/X extend the selection to cover additional lines via force_extend,
+    // Ctrl-x/X extend the selection to cover additional lines via force_extend,
     // so they work in both kitty and legacy mode.
     t.bind_leaf(key!(Ctrl + 'x'), cmd_extend!("select-line"));
     t.bind_leaf(key!(Ctrl + 'X'), cmd_extend!("select-line-backward"));
@@ -374,7 +374,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 
     // ── Extend mode ───────────────────────────────────────────────────────────
     t.bind_leaf(key!('e'), cmd!("toggle-extend"));
-    // Ctrl+e flips anchor↔head, in both Normal and Extend mode. Unlike Ctrl+;,
+    // Ctrl-e flips anchor↔head, in both Normal and Extend mode. Unlike Ctrl-;,
     // this emits a real control byte (0x05), so it works on legacy terminals
     // that don't support the kitty keyboard protocol. In Extend mode it falls
     // through to here with extend=true; flip-selections ignores MotionMode.
@@ -396,7 +396,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!(']'), cmd!("paste-ring-newer"));
     t.bind_leaf(key!('u'), cmd!("undo"));
     t.bind_leaf(key!('U'), cmd!("redo"));
-    // `r` (no Ctrl) → wait for replacement char; `Ctrl+r` → redo.
+    // `r` (no Ctrl) → wait for replacement char; `Ctrl-r` → redo.
     t.bind(key!('r'), wait_char!("replace"));
     t.bind_leaf(key!(Ctrl + 'r'), cmd!("redo"));
 
@@ -425,15 +425,15 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
     t.bind_leaf(key!('N'), cmd!("search-prev"));
     t.bind_leaf(key!('s'), cmd!("sift-within"));
     t.bind_leaf(key!('*'), cmd!("search-word-under-cursor"));
-    // Select text, then Ctrl+/ turns it into the search pattern verbatim (Helix's
+    // Select text, then Ctrl-/ turns it into the search pattern verbatim (Helix's
     // `search_selection`), so `n`/`N` cycle its other occurrences. Kitty-only:
-    // legacy terminals encode Ctrl+/ as the control byte 0x1F, which decodes
-    // as `Ctrl+'7'` — left unbound, so the key silently no-ops there.
+    // legacy terminals encode Ctrl-/ as the control byte 0x1F, which decodes
+    // as `Ctrl-'7'` — left unbound, so the key silently no-ops there.
     t.bind_leaf(key!(Ctrl + '/'), cmd!("search-selection"));
 
-    // ── Pane prefix (Ctrl+p) ─────────────────────────────────────────────────
-    // `Ctrl+p` → second key (pane navigation). Works in both kitty and legacy.
-    // Ctrl+w is deliberately unbound here so that it falls through to the
+    // ── Pane prefix (Ctrl-p) ─────────────────────────────────────────────────
+    // `Ctrl-p` → second key (pane navigation). Works in both kitty and legacy.
+    // Ctrl-w is deliberately unbound here so that it falls through to the
     // kitty one-shot extend path (strip CONTROL → `w` → select-next-word).
     t.bind(key!(Ctrl + 'p'), KeyTrieNode::Node(build_pane_trie()));
 
@@ -480,7 +480,7 @@ pub(super) fn default_normal_keymap() -> KeyTrie {
 /// the normal trie with `extend = true` — the extend-variant resolution in
 /// `execute_keymap_command` then applies as usual.
 ///
-/// Empty by default: `Ctrl+e` already flips selections in both Normal and
+/// Empty by default: `Ctrl-e` already flips selections in both Normal and
 /// Extend mode (see `default_normal_keymap`), so no Extend-only override is
 /// needed. Plugins (e.g. `core:vim-keybind`'s vim-style `o`) may add entries.
 pub(super) fn default_extend_keymap() -> KeyTrie {
@@ -520,11 +520,11 @@ impl Keymap {
     /// protocol. Call this once after the kitty probe succeeds so the binds
     /// exist only when the terminal can actually produce them.
     pub(in crate::editor) fn apply_kitty_defaults(&mut self) {
-        // Ctrl+; mirrors `;` but collapses to the anchor (the word's first char for
+        // Ctrl-; mirrors `;` but collapses to the anchor (the word's first char for
         // forward selections).
         self.normal
             .bind_leaf(key!(Ctrl + ';'), cmd!("collapse-to-anchor-and-exit-extend"));
-        // Ctrl+, removes primary.
+        // Ctrl-, removes primary.
         self.normal
             .bind_leaf(key!(Ctrl + ','), cmd!("remove-primary-selection"));
         // Tab cycles panes. Disambiguating Ctrl-i from Tab (both 0x09 on

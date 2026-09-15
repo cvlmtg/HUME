@@ -316,7 +316,7 @@ pub(super) fn current_jump_entry(state: &EditorState, view: &EngineView) -> Jump
 /// forward history unconditionally, so a caller that pushes unconditionally
 /// (`:42` already on line 42, `goto-definition` invoked on the definition
 /// itself, a search confirmed on the match already under the cursor) can
-/// wipe Ctrl+I history for a keypress that moved nothing. Mirrors the
+/// wipe Ctrl-i history for a keypress that moved nothing. Mirrors the
 /// native command pipeline's own `moved` guard (`step_record_jump`) for the
 /// callers here that push directly instead of going through `CmdMeta`.
 pub(super) fn record_jump_if_moved(state: &mut EditorState, view: &EngineView, pre: JumpEntry) {

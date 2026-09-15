@@ -1162,7 +1162,7 @@ fn split_pane_gets_gutter_column() {
 // ── T5: `:q` pane-awareness + close-pane semantics ──────────────────────────
 //
 // `close_focused_pane` backs both `:q` (multi-pane branch, exercised here)
-// and the keymap-bound `pane-close` (`Ctrl+p c`, exercised in kitty.rs).
+// and the keymap-bound `pane-close` (`Ctrl-p c`, exercised in kitty.rs).
 
 /// With multiple panes open, `:q` closes the focused pane instead of the
 /// editor, and moves focus to the promoted sibling.
@@ -1802,7 +1802,7 @@ fn vsplit_dividers_off_tiles_edge_to_edge_and_still_dims() {
 }
 
 /// A same-buffer split inherits the source pane's jump history so the new
-/// pane can Ctrl+O back to positions visited before the split. The two lists
+/// pane can Ctrl-o back to positions visited before the split. The two lists
 /// then diverge: a new jump in either pane does not affect the other.
 #[test]
 fn split_same_buffer_clones_jump_list_then_diverges() {

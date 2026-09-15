@@ -66,7 +66,7 @@ pub mod tracked;
 ///
 /// Used for `#:inline-output` Steel commands — terminal raw mode is
 /// temporarily disabled there (`hume_platform::terminal::enter_inline_output`
-/// calls `disable_raw_mode()`), so a terminal-generated Ctrl+C (SIGINT)
+/// calls `disable_raw_mode()`), so a terminal-generated Ctrl-c (SIGINT)
 /// targets the whole foreground process group. Without `process_group(0)`
 /// that would kill HUME itself alongside the child. Steel's own
 /// `spawn-process` has no such capability (no `setpgid`/`pre_exec` anywhere
@@ -505,7 +505,7 @@ pub fn no_windows_compiler_found() -> bool {
 /// leader lets `tracked::kill_tracked_children` reach the child's own
 /// children with one `killpg` (rust-analyzer's `proc-macro-srv`, build
 /// scripts, ...) instead of leaving them orphaned. `NewProcessGroup`'s
-/// other use — Ctrl+C isolation for `run_inline_output`'s short-lived
+/// other use — Ctrl-c isolation for `run_inline_output`'s short-lived
 /// children — doesn't need this wrapper, just the trait: a plain `.status()`
 /// call has nothing to track.
 ///
@@ -581,7 +581,7 @@ impl Drop for ReapOnDrop {
 /// Extension trait to set the child as its own process group leader on Unix.
 ///
 /// On Unix: calls `setpgid(0, 0)` via `CommandExt::process_group(0)` so
-/// Ctrl+C (SIGINT to the terminal's foreground process group) reaches only
+/// Ctrl-c (SIGINT to the terminal's foreground process group) reaches only
 /// the child, not HUME. On other platforms this is a no-op. [`spawn_in_own_group`]
 /// builds on this for children that also need [`tracked`] force-exit reaping.
 trait NewProcessGroup {

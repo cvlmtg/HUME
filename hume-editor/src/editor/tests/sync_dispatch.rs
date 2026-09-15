@@ -533,7 +533,7 @@ fn steel_call_repeatable_cmd_sets_dot_repeat() {
 }
 
 /// **Finding 4 — jump list**: an explicit-jump EditorCmd (`goto-last-line`) invoked
-/// via Steel must push a `JumpEntry` so Ctrl+O can return.
+/// via Steel must push a `JumpEntry` so Ctrl-o can return.
 ///
 /// Fail oracle: comment out the `step_capture_pre_jump` call in `run_dispatch_pipeline`
 /// → jump list is empty after the call.

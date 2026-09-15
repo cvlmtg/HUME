@@ -347,7 +347,7 @@ impl LayoutTree {
     /// of its children's shares, since each becomes its own share of that
     /// axis. A split on the *other* axis (a stacked or side-by-side group)
     /// counts as a single share when measured across its own axis — matching
-    /// the `CTRL-W =` convention most terminal multiplexers use, where a
+    /// the `Ctrl-W =` convention most terminal multiplexers use, where a
     /// group of stacked panes shares one column's width rather than each
     /// stacked pane claiming its own.
     fn shares_along(&self, direction: Direction) -> u32 {

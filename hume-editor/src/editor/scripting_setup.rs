@@ -381,7 +381,7 @@ impl Editor {
     /// in the same pass coalesce into one event, and a handler that itself
     /// switches buffers is caught by the very next pass.
     ///
-    /// Also the MRU-promotion point behind `alternate_buffer()`/`Ctrl+6` —
+    /// Also the MRU-promotion point behind `alternate_buffer()`/`Ctrl-6` —
     /// "most-recently-focused" is the same derived join with the same absent
     /// chokepoint, so it rides this diff instead of a second one.
     fn detect_buffer_enter(&mut self) {

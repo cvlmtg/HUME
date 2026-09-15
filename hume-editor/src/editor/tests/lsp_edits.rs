@@ -497,7 +497,7 @@ fn goto_location_same_buffer_char_indexed_shape() {
     assert_ne!(state(&ed), before);
     assert_eq!(ed.current_selections().primary().head(), co(3));
 
-    // A jump entry was pushed — Ctrl+o must return to the origin.
+    // A jump entry was pushed — Ctrl-o must return to the origin.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
     let _ = bid;
@@ -690,7 +690,7 @@ fn goto_location_directory_target_errors_with_no_jump_entry() {
     type_cmd(&mut ed, ":go");
     assert_eq!(state(&ed), before, "a failed goto must not move the cursor");
 
-    // No jump entry means Ctrl+o has nothing to do — state stays put.
+    // No jump entry means Ctrl-o has nothing to do — state stays put.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(state(&ed), before);
 }

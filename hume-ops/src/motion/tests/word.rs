@@ -897,7 +897,7 @@ fn extend_select_next_word_multi_cursor() {
 
 // ── extend_select word motions: shrink-on-reversal scenario ──────────────
 //
-// Walks the exact sequence a user gets pressing Ctrl+w / Ctrl+b repeatedly
+// Walks the exact sequence a user gets pressing Ctrl-w / Ctrl-b repeatedly
 // on "a b c" with "b" selected: grow forward, shrink back to "b", cross the
 // anchor to grow backward (flipping direction), then cross back to shrink
 // forward to "b" again. "a b c\n": a=0,' '=1,b=2,' '=3,c=4,'\n'=5.
@@ -994,7 +994,7 @@ fn word_no_truncation_shrink_back_after_cross() {
 
 // ── extend_select word motions: flip redirects the extend ────────────────
 //
-// Flipping a selection (`Ctrl+e` / `o`) swaps anchor and head, and the
+// Flipping a selection (`Ctrl-e` / `o`) swaps anchor and head, and the
 // anchor's word is re-derived from the new anchor on the next press — so
 // flip genuinely hands the "fixed" end to the other side of the selection.
 

@@ -613,7 +613,7 @@ impl Editor {
             // picked up by *next* frame's drain — one frame later than when
             // this ran pre-drain, immaterial for any nonzero debounce interval.
             // The slot is part of the key, not just the line: a view-led
-            // scroll (mouse wheel, `Ctrl+D`) can move entirely within one
+            // scroll (mouse wheel, `Ctrl-d`) can move entirely within one
             // line's virtual block, which the line alone can't see. A
             // zero-height pane's `top` is never resolved (`scroll_into_view`
             // returns before any `top_at` read for one), so its key no

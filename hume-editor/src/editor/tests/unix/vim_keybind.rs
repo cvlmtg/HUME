@@ -63,7 +63,7 @@ fn setup_vim_keybind_editor_with_config(
 
 // ── Plugin rebinds ─────────────────────────────────────────────────────────────
 //
-// `$`/`^`/`0`/`Ctrl+6` each just `bind-key!` an already-tested native
+// `$`/`^`/`0`/`Ctrl-6` each just `bind-key!` an already-tested native
 // command (see `hume-ops/src/motion/tests/` and
 // `tests/alternate.rs`) to a new key — one test spot-checks that the real
 // plugin file's `bind-key!` lines are wired to the right command names,
@@ -96,7 +96,7 @@ fn plugin_rebinds_line_and_alternate_motions() {
     assert_eq!(
         ed.focused_buffer_id(),
         id_a,
-        "Ctrl+6 must switch to alternate"
+        "Ctrl-6 must switch to alternate"
     );
 }
 
@@ -135,7 +135,7 @@ fn vim_keybind_leaves_the_native_g_prefix_intact() {
 
 /// The plugin's `(bind-key! 'extend "o" "flip-selections")` restores vim
 /// visual-mode `o` — swap anchor and head — in Extend mode. Native HUME
-/// already covers this via `Ctrl+e` (see `tests/commands.rs`'s `ctrl_e_*`
+/// already covers this via `Ctrl-e` (see `tests/commands.rs`'s `ctrl_e_*`
 /// tests); this only checks the plugin's own binding wires up correctly.
 #[test]
 fn o_in_extend_mode_flips_selection() {

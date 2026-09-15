@@ -143,7 +143,7 @@ impl Drop for OrphanGuard {
 /// see the module-level comment for why this is the best available fallback
 /// under `signal_hook`'s no-`unsafe` API.
 ///
-/// In raw mode the kernel does not deliver SIGINT for Ctrl+C (ISIG is
+/// In raw mode the kernel does not deliver SIGINT for Ctrl-c (ISIG is
 /// cleared), so this primarily covers `kill <pid>` — SIGINT stays registered
 /// for the rare case something re-enables ISIG.
 pub(super) fn spawn_terminator(

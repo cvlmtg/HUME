@@ -193,7 +193,7 @@ pub fn insert_newline_indent(
 /// Clear a blank, auto-indented line's leading whitespace at every collapsed
 /// selection sitting on one — leaves the cursor on the line's structural `\n`.
 ///
-/// The Esc/Ctrl+C half of vim autoindent parity: [`insert_newline_indent`]
+/// The Esc/Ctrl-c half of vim autoindent parity: [`insert_newline_indent`]
 /// handles trimming on Enter, this handles trimming when Insert mode exits
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank

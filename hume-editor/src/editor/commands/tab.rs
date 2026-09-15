@@ -83,7 +83,7 @@ pub(super) enum TabStep {
 }
 
 /// The one place a display-order tab step is taken — shared by the mappable
-/// `goto-next-tab`/`goto-prev-tab` (`Ctrl+p t`/`Ctrl+p T`) and their typed
+/// `goto-next-tab`/`goto-prev-tab` (`Ctrl-p t`/`Ctrl-p T`) and their typed
 /// `:tabnext`/`:tabprev` spellings (`typed_misc::typed_tabnext`/`typed_tabprev`).
 /// Mirrors `jump::goto_buffer_in_order`'s shape.
 pub(super) fn goto_tab_in_order(state: &mut EditorState, view: &mut EngineView, step: TabStep) {

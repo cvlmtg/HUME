@@ -332,11 +332,11 @@ fn buffer_switch_pushes_jump() {
     // Switch back to scratch via :b *scratch*.
     ed.execute_typed("b", Some("*scratch*")).unwrap();
     assert!(ed.doc().path().is_none(), "must be on scratch now");
-    // Ctrl+O should bring us back to p1.
+    // Ctrl-o should bring us back to p1.
     ed.handle_key(key_ctrl('o'));
     assert_eq!(
         ed.doc().path(),
         Some(canonical.as_path()),
-        "Ctrl+O must restore the buffer we jumped from"
+        "Ctrl-o must restore the buffer we jumped from"
     );
 }

@@ -185,7 +185,7 @@ fn extend_select_line_multi_cursor_merges() {
 
 // ── extend_select_line: shrink-on-reversal scenario ───────────────────────
 //
-// Walks the exact sequence a user gets pressing Ctrl+x / Ctrl+X repeatedly
+// Walks the exact sequence a user gets pressing Ctrl-x / Ctrl-X repeatedly
 // on "a\nb\nc\n" with "b" selected: grow down, shrink back to "b", cross the
 // anchor to grow up (flipping direction), then cross back to shrink down to
 // "b" again. a=0,'\n'=1,b=2,'\n'=3,c=4,'\n'=5.
@@ -299,7 +299,7 @@ fn select_line_move_count_three_selects_three_lines() {
     // `3x` moves the same way three separate `x` presses would: the 1st
     // press selects the cursor's own line ("b"), the 2nd and 3rd each jump
     // to the next line, landing on "d" as a single-line selection — not
-    // growing a 3-line span (that's `Ctrl+3x`).
+    // growing a 3-line span (that's `Ctrl-3x`).
     assert_state!(
         "a\n-[b]>\nc\nd\ne\n",
         |(text, sels)| cmd_select_line(&text, sels, 3, MotionMode::Move),
@@ -311,7 +311,7 @@ fn select_line_move_count_three_selects_three_lines() {
 fn select_line_backward_move_count_three_selects_three_lines() {
     // `3X` moves the same way three separate `X` presses would, landing on
     // "b" as a single-line selection — not growing a 3-line span (that's
-    // `Ctrl+3X`). Cursor is mid-line ("dd"'s second char), not at line
+    // `Ctrl-3X`). Cursor is mid-line ("dd"'s second char), not at line
     // start — a selection starting exactly at line start instead hits the
     // jump-to-previous-line branch (see `select_line_backward_already_at_start_jumps_to_prev`).
     assert_state!(

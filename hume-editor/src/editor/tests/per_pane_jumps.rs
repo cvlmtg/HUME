@@ -3,7 +3,7 @@ use pretty_assertions::assert_eq;
 
 // ── Phase 7: per-pane pane_jumps ─────────────────────────────────────────────
 
-/// Ctrl+O navigates backward in the per-pane jump list (not a global list).
+/// Ctrl-o navigates backward in the per-pane jump list (not a global list).
 #[test]
 fn p7_pane_jumps_ctrl_o_backward() {
     let mut ed = jump_editor(10);
@@ -19,10 +19,10 @@ fn p7_pane_jumps_ctrl_o_backward() {
     );
 
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(state(&ed), before, "Ctrl+O returns to pre-jump position");
+    assert_eq!(state(&ed), before, "Ctrl-o returns to pre-jump position");
 }
 
-/// Ctrl+I navigates forward in the per-pane jump list.
+/// Ctrl-i navigates forward in the per-pane jump list.
 #[test]
 fn p7_pane_jumps_ctrl_i_forward() {
     let mut ed = jump_editor(10);
@@ -35,10 +35,10 @@ fn p7_pane_jumps_ctrl_i_forward() {
     assert_ne!(state(&ed), at_top);
 
     ed.handle_key(key_ctrl('i'));
-    assert_eq!(state(&ed), at_top, "Ctrl+I returns to top position");
+    assert_eq!(state(&ed), at_top, "Ctrl-i returns to top position");
 }
 
-/// Ctrl+O across buffers: `:e file2`, large motion in file2, Ctrl+O lands back in file1.
+/// Ctrl-o across buffers: `:e file2`, large motion in file2, Ctrl-o lands back in file1.
 #[test]
 fn p7_cross_buffer_ctrl_o() {
     let dir = safe_tempdir();
@@ -65,9 +65,9 @@ fn p7_cross_buffer_ctrl_o() {
     assert_ne!(buf1, buf2, "different buffers");
     // Now in file2, cursor at line 0. Jump list: [{scratch}, {file1}], cursor = 2.
 
-    // Ctrl+O: saves current (file2, line 0) then goes to entries[1] = {file1, line 0}.
+    // Ctrl-o: saves current (file2, line 0) then goes to entries[1] = {file1, line 0}.
     ed.handle_key(key_ctrl('o'));
-    assert_eq!(ed.focused_buffer_id(), buf1, "Ctrl+O crossed back to file1");
+    assert_eq!(ed.focused_buffer_id(), buf1, "Ctrl-o crossed back to file1");
     assert_eq!(state(&ed), line0_state_f1, "cursor restored in file1");
 }
 

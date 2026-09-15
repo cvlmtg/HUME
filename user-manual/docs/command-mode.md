@@ -60,7 +60,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:bd`, `:buffer-delete` | Close the buffer. Refuses if there are unsaved changes; closing the last one leaves a scratch buffer |
 | `:bd!` | Close the buffer, discarding unsaved changes |
 
-`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl+6` for you.
+`:b#` is the quickest way back to the previous buffer. The same jump is also an editor command, `goto-alternate-buffer`, for binding to a key — `core:vim-keybind` binds it to `Ctrl-6` for you.
 
 ## Panes
 
@@ -69,7 +69,7 @@ See [Files & Buffers](files-and-buffers.md#external-changes) for what happens wh
 | `:sp`, `:split` | Split the focused pane, stacking the new pane below |
 | `:vsp`, `:vsplit` | Split the focused pane side by side |
 
-Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl+p` prefix (`Ctrl+p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`) — see the [Default Keys](default-keys.md).
+Splitting is refused with a message when the pane is already too small. Focus and closing use the `Ctrl-p` prefix (`Ctrl-p` then `h`/`j`/`k`/`l`/`p`/`s`/`v`/`c`/`t`/`T`) — see the [Default Keys](default-keys.md).
 
 ## Tabs
 
@@ -82,7 +82,7 @@ A tab is a saved window layout — its own set of panes and splits — not a per
 | `:tabnext`, `:tabn` | Switch to the next tab in display order |
 | `:tabprev`, `:tabp` | Switch to the previous tab in display order |
 
-Cycling is also bound to `Ctrl+p t`/`Ctrl+p T` — see the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this — see [Configuration](configuration.md)).
+Cycling is also bound to `Ctrl-p t`/`Ctrl-p T` — see the [Default Keys](default-keys.md). By default the tab bar only appears once more than one tab is open (`:set global tabline=always`/`never`/`dynamic` changes this — see [Configuration](configuration.md)).
 
 ## Editing
 
@@ -143,7 +143,7 @@ See [Configuration](configuration.md) for every option.
 |---------|--------|
 | `:cd <path>`, `:change-directory <path>` | Change the working directory |
 | `:pwd`, `:print-working-directory` | Print the working directory |
-| `:goto <n>` | Jump to line `<n>`. `:42` is shorthand. Records a jump, so `Ctrl+o` comes back |
+| `:goto <n>` | Jump to line `<n>`. `:42` is shorthand. Records a jump, so `Ctrl-o` comes back |
 
 ## Config and plugins
 

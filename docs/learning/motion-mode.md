@@ -1,7 +1,7 @@
 # Move vs Extend: Separating Position from Anchor Semantics
 
 In most text editors, "move the cursor" and "extend the selection" are handled
-by separate key bindings — arrow keys move, Shift+arrow extends. In HUME, the
+by separate key bindings — arrow keys move, Shift-arrow extends. In HUME, the
 two behaviours are the same command with a different mode parameter. This is
 why `h` can both move the cursor (normal use) and grow or shrink a selection
 (in extend mode) without needing a separate `"extend-left"` command — since
@@ -48,7 +48,7 @@ walked in the other direction.
 | Mode | Anchor | Head | Typical use |
 |------|--------|------|-------------|
 | `Move`   | `new_head`   | `new_head` | Plain cursor move — `h`, `j`, `k`, `l` |
-| `Extend` | `old_anchor` | `new_head` | Grow or shrink selection — sticky extend mode (toggled by `e`), one-shot Ctrl+letter on kitty-capable terminals |
+| `Extend` | `old_anchor` | `new_head` | Grow or shrink selection — sticky extend mode (toggled by `e`), one-shot Ctrl-letter on kitty-capable terminals |
 
 `Move` always produces a collapsed single-character selection (anchor == head).
 `Extend` keeps the existing anchor, only moving the head.
@@ -74,10 +74,10 @@ Extend → anchor = old_anchor, head = new_head (anchor stays, head moves)
 
 A few anchor-manipulation commands sit beside this framework without being a
 new mode. Overshooting a target can be corrected by simply walking the head
-back — the same motion, reversed, shrinks it back down. `Ctrl+e` instead
+back — the same motion, reversed, shrinks it back down. `Ctrl-e` instead
 flips which end of the selection is the head and which is the anchor, which
 is what you want when you'd rather grow or shrink from the *other* end.
-`Ctrl+;` (on kitty-capable terminals) collapses the selection onto its
+`Ctrl-;` (on kitty-capable terminals) collapses the selection onto its
 anchor, discarding the head. None of
 these invent a separate command for the moved pair; all reuse the same
 positions the existing selection already carries.

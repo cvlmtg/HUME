@@ -71,13 +71,13 @@ whitespace-including variant swapped in per buffer while
 ### The extendable flag
 
 Commands declare at registration time whether they *have* extend semantics.
-The flag is a guard, not a trigger: the Ctrl+key one-shot mechanism
-(described below) only fires for commands that do — a Ctrl+key resolving to
+The flag is a guard, not a trigger: the Ctrl-key one-shot mechanism
+(described below) only fires for commands that do — a Ctrl-key resolving to
 a command without extend semantics (like undo) is suppressed as a no-op
 rather than run. Bindings that should *always* extend are a separate,
 per-binding declaration (see "Explicit force-extend bindings" below).
 
-All Steel-defined commands are extendable automatically. When Ctrl+key delivers
+All Steel-defined commands are extendable automatically. When Ctrl-key delivers
 extend to your command, the lambda receives `extend = #t` as its second argument
 (if the lambda declares a second parameter). The body can then forward it:
 
@@ -138,14 +138,14 @@ HUME maintains three separate tries:
 | Insert | Single-key bindings for Insert mode |
 
 The **extend trie** ships empty by default — flipping anchor and head (Vim's
-visual `o`) is already reachable via `Ctrl+e` in both Normal and
+visual `o`) is already reachable via `Ctrl-e` in both Normal and
 Extend mode, so no override is needed out of the box. Any key not found in the
 extend trie falls through to the normal trie with extend mode active, which
 applies extend semantics automatically.
 
 This lets Steel customise per-key extend-mode overrides: "when in extend mode
 and the user presses this key, run this specific command instead of the usual
-one." A keybinding plugin that prefers Vim's `o` over `Ctrl+e`, for example,
+one." A keybinding plugin that prefers Vim's `o` over `Ctrl-e`, for example,
 can bind `o` in the extend trie to the same flip command.
 
 ## Layer 4: Dispatch
@@ -172,13 +172,13 @@ extend trie is checked first for per-key overrides. Acting destructively on
 the selection (delete, paste, replace) also exits Extend mode automatically —
 mirroring Vim's visual-mode operators; yank and pure motions leave it active.
 
-**2. Ctrl+key one-shot extend (kitty keyboard protocol).** When kitty protocol
-is active, pressing `Ctrl+l` strips the Control modifier, looks up `l` in the
+**2. Ctrl-key one-shot extend (kitty keyboard protocol).** When kitty protocol
+is active, pressing `Ctrl-l` strips the Control modifier, looks up `l` in the
 normal trie (`"move-right"`), and dispatches with Extend mode. Works only on
 kitty-capable terminals; silently absent on legacy terminals.
 
 **3. Explicit force-extend bindings.** Some keybindings are declared to always
-extend — for example, `Ctrl+x` always accumulates line selections, even without
+extend — for example, `Ctrl-x` always accumulates line selections, even without
 sticky extend mode or kitty. This works on any terminal.
 
 To remap a command with its extend behaviour to a different key:
@@ -190,7 +190,7 @@ To remap a command with its extend behaviour to a different key:
 
 The user only writes the base command name — there is no extend-variant name
 to learn. Note that one-shot extend is automatic only for an *unbound*
-Ctrl+letter (on kitty terminals); binding the key explicitly takes over, so
+Ctrl-letter (on kitty terminals); binding the key explicitly takes over, so
 a binding that should always extend must say so via `bind-key-extend!`.
 
 ### Counts: distinguishing a bare keypress from an explicit count
