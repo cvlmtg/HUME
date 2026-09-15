@@ -10,7 +10,7 @@ pub use hume_grid::{Canvas, clamp_rect_to_grid};
 
 use crate::display_lines::RenderDisplayLine;
 use crate::layout::PaneGeometry;
-use crate::pane::ViewportState;
+use crate::pane::Viewport;
 use crate::providers::{GutterColumn, GutterCtx, ProviderId};
 use crate::theme::Theme;
 use crate::types::{CellContent, DisplayLineKind, EditorMode, ResolvedStyle, ScopeId};
@@ -29,7 +29,7 @@ pub(crate) const INDENT_GUIDE_GLYPH: &str = "╎";
 pub(crate) struct ComposeCtx<'a> {
     pub gutter_columns: &'a [(ProviderId, Box<dyn GutterColumn>)],
     pub visible: &'a PaneGeometry,
-    pub viewport: &'a ViewportState,
+    pub viewport: &'a Viewport,
     pub mode: EditorMode,
     pub primary_head_line: hume_rope::line::ContentLine,
     pub tab_width: u8,

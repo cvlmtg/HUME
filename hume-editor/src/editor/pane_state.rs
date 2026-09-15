@@ -116,6 +116,33 @@ pub(crate) struct PaneBufferState {
     /// session closes — refreshing its `seq` here is what keeps
     /// `c <text> <Esc> p` reading the kill ring instead of the clipboard.
     pub kill_opened_session: bool,
+    /// The primary head's position at the moment a `ViewScroll`
+    /// (`commands::scroll_view` — wheel/`Ctrl+D`/`Ctrl+U`/page scroll) parked
+    /// the viewport somewhere the cursor could not follow (a document edge,
+    /// or short of a virtual-line block's far side). `Some` only in that
+    /// exact case; `scroll_view` writes it unconditionally on every
+    /// `ViewScroll`, so a scroll that *did* carry the cursor clears it back
+    /// to `None`.
+    ///
+    /// Read every frame by `frame.rs`'s scroll step: while the primary head
+    /// still equals this value, the vertical `Viewport::reveal`
+    /// correction is skipped — re-running it on an unmoved cursor is exactly
+    /// what would snap a parked view straight back onto it, making a scroll
+    /// into a virtual-line block impossible. Any other head value means the
+    /// park is over (an ordinary motion moved the cursor, or an edit did);
+    /// the reader clears the field back to `None` on that mismatch rather
+    /// than only comparing, so a later coincidental revisit of the same
+    /// offset (a search, a goto) can't resurrect a stale park.
+    ///
+    /// Deliberately a bare `CharOffset`, not a geometry snapshot: a resize,
+    /// wrap-mode toggle, or `:vsplit` *while* parked (`Ctrl+D` to EOF, then
+    /// one of those with no cursor movement in between) leaves the pin
+    /// matching against the new geometry, so the view doesn't re-settle and
+    /// the caret hides until the next cursor motion clears the pin. Accepted
+    /// as an edge case rather than fixed: it takes a park immediately
+    /// followed by a geometry change with zero intervening cursor movement,
+    /// and self-heals on the very next keystroke.
+    pub scroll_pin: Option<CharOffset>,
 }
 
 // ── Construction helpers ──────────────────────────────────────────────────────
@@ -493,21 +520,20 @@ impl Editor {
     /// is guaranteed to end up wrapping, by the fallback above; on→off
     /// always ends at `WrapMode::None`), so horizontal scroll — meaningless
     /// once wrapped — is unconditionally zeroed. This is a real write, not
-    /// just belt-and-suspenders: `scroll::ensure_cursor_visible_horizontal`
+    /// just belt-and-suspenders: `Viewport::reveal_horizontal`
     /// also zeroes it for any wrapping pane on the next frame, but only a
     /// frame later, and code reading the viewport between this call and the
     /// next render (including several existing tests) expects it already
     /// zero.
     ///
-    /// `top_slot`, by contrast, is left alone here on purpose: it
-    /// addresses a display line inside `top_line`'s whole visual block
-    /// (`before` + content display lines + `after`) in *either* wrap mode
-    /// (`scroll::set_top` writes it unconditionally) — a mode change can
-    /// leave it past the new block's display-line count (off→on starts a
-    /// narrower block; on→on width/style changes can shrink it), and that
-    /// out-of-range case is exactly what `scroll::clamp_viewport_top`
-    /// repairs once per pane per frame, so there's no need to throw the
-    /// address away here. What clamping *cannot* catch: only a
+    /// The top's slot, by contrast, is left alone here on purpose: it
+    /// addresses a display line inside the top's line's whole visual block
+    /// (`before` + content display lines + `after`) in *either* wrap mode —
+    /// a mode change can leave it past the new block's display-line count
+    /// (off→on starts a narrower block; on→on width/style changes can
+    /// shrink it), and that out-of-range case is exactly what
+    /// `Viewport::heal` repairs once per pane per frame, so there's no need
+    /// to throw the address away here. What clamping *cannot* catch: only a
     /// `content`-side change (not this function) grows the block, so a slot
     /// that addressed an `after` display line in no-wrap can still be in
     /// range once wrapping grows `content` — landing on a wrap display line

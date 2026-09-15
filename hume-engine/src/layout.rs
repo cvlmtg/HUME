@@ -1,6 +1,6 @@
 use ropey::Rope;
 
-use crate::pane::ViewportState;
+use crate::pane::Viewport;
 use crate::providers::GutterColumn;
 
 // ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ pub fn gutter_width_for_line<'a>(
 /// This is purely arithmetic — no heap allocations.
 pub fn compute_viewport<'a>(
     rope: &Rope,
-    viewport: &ViewportState,
+    viewport: &Viewport,
     gutter_columns: impl Iterator<Item = &'a dyn GutterColumn> + 'a,
 ) -> PaneGeometry {
     // 0-based index of the last line — the single source of truth for

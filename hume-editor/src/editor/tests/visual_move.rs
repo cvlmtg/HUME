@@ -283,7 +283,7 @@ fn visual_move_up_with_explicit_count_moves_buffer_lines() {
 
 // ── Explicit-count (BufferLine) vertical motion ───────────────────────────
 //
-// `9j`/`9k` (`VerticalUnit::BufferLine`, `editor::visual_move::move_buffer_line`)
+// `9j`/`9k` (`VerticalMove::BufferLine`, `editor::visual_move::move_buffer_line`)
 // resolve their column through `DisplayLineMap::buffer_line_col`/
 // `char_at_buffer_line_col`, same as bare `j`/`k`'s `ContentRow`/`ScreenRow`
 // units, rather than a rope-only column blind to the decoration layer.
@@ -345,6 +345,38 @@ fn explicit_count_move_up_clamp_at_document_edge() {
     ed.handle_key(key('1'));
     ed.handle_key(key('k'));
     assert_eq!(ed.current_selections().primary().head(), co(0));
+}
+
+/// `j` at the document's last line must still collapse a non-empty selection
+/// onto its head, exactly as every other `MotionMode::Move` motion does at
+/// its own edge (`hume_ops::apply_motion` collapses unconditionally).
+/// `apply_visual_vertical` only ever backs motions now — the no-collapse
+/// guard a view scroll needs lives in `commands::scroll_view`'s own
+/// per-selection `carry` pass instead, so there is no shared guard here that
+/// could apply too broadly to plain `j`/`k`.
+#[test]
+fn move_down_at_document_edge_still_collapses_a_selection() {
+    let mut ed = editor_from("hello\n-[world]>\n");
+    pin_no_wrap(&mut ed);
+    ed.handle_key(key('j'));
+    assert_eq!(
+        state(&ed),
+        "hello\nworl-[d]>\n",
+        "already the last line: anchor collapses onto head, head stays put"
+    );
+}
+
+/// `k`'s mirror of the test above, at the document's first line.
+#[test]
+fn move_up_at_document_edge_still_collapses_a_selection() {
+    let mut ed = editor_from("-[hello]>\nworld\n");
+    pin_no_wrap(&mut ed);
+    ed.handle_key(key('k'));
+    assert_eq!(
+        state(&ed),
+        "hell-[o]>\nworld\n",
+        "already the first line: anchor collapses onto head, head stays put"
+    );
 }
 
 #[test]
@@ -706,16 +738,21 @@ fn wrapped_j_then_count_2_rederives_instead_of_reading_the_display_line_latch_as
     );
 }
 
-/// No-wrap `j` (`ContentDisplayLine`) and a screen-relative scroll of the
-/// same display-line count (`AnyDisplayLine`, what page/half-page/the mouse
-/// wheel use) must land on the *same* character — both preserve the sticky
-/// *display* column. Line 0 has a leading tab (tab width 4): 'f' sits at
-/// char index 1 but display column 4. Landing by char column would put both
-/// on line 1's char index 1 ('b'); landing by display column — the model
-/// every vertical path now shares — puts both on char index 4 ('e').
+/// No-wrap `j` (`apply_visual_vertical`'s `ContentDisplayLine`) and a
+/// screen-relative scroll of the same display-line count
+/// (`commands::scroll_view`, what page/half-page/the mouse wheel use) must
+/// land on the *same* character — both resolve through the same
+/// `DisplayLineMap` display-column authority, just via different call
+/// paths since `commands::scroll_view` carries its cursor with
+/// `hume_engine::display_lines::carry` rather than `apply_visual_vertical`.
+/// Line 0 has a leading tab (tab width 4): 'f' sits at char index 1 but
+/// display column 4. Landing by char column would put both on line 1's char
+/// index 1 ('b'); landing by display column — the model every vertical path
+/// shares — puts both on char index 4 ('e').
 #[test]
-fn no_wrap_bare_j_and_any_display_line_scroll_agree_on_display_column() {
-    use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
+fn no_wrap_bare_j_and_view_scroll_agree_on_display_column() {
+    use crate::editor::commands::scroll_view;
+    use crate::editor::visual_move::{VerticalMove, apply_visual_vertical};
     use hume_editing::selection::{Selection, SelectionSet};
     use hume_editing::text::BufferText;
     use hume_ops::MotionMode;
@@ -730,33 +767,36 @@ fn no_wrap_bare_j_and_any_display_line_scroll_agree_on_display_column() {
     };
 
     let mut bare_j = no_wrap_editor_at_f();
+    let bare_j_pid = bare_j.state.focus.id();
     apply_visual_vertical(
         &mut bare_j.state,
         &mut bare_j.view,
+        bare_j_pid,
         1,
         true,
         MotionMode::Move,
-        VerticalUnit::ContentDisplayLine,
+        VerticalMove::ContentDisplayLine,
     );
     let bare_j_head = bare_j.current_selections().primary().head();
 
-    let mut any_display_line = no_wrap_editor_at_f();
-    apply_visual_vertical(
-        &mut any_display_line.state,
-        &mut any_display_line.view,
+    let mut view_scroll = no_wrap_editor_at_f();
+    let view_scroll_pid = view_scroll.state.focus.id();
+    scroll_view(
+        &mut view_scroll.state,
+        &mut view_scroll.view,
+        view_scroll_pid,
         1,
         true,
         MotionMode::Move,
-        VerticalUnit::AnyDisplayLine,
     );
-    let any_display_line_head = any_display_line.current_selections().primary().head();
+    let view_scroll_head = view_scroll.current_selections().primary().head();
 
     assert_eq!(
-        bare_j_head, any_display_line_head,
-        "ContentDisplayLine and AnyDisplayLine must land on the same char"
+        bare_j_head, view_scroll_head,
+        "ContentDisplayLine and a view scroll must land on the same char"
     );
     assert_eq!(
-        any_display_line_head,
+        view_scroll_head,
         co(9),
         "display col 4 on line 1 (\"abcdefgh\") is char index 4 → 'e', absolute offset 9"
     );
@@ -769,23 +809,25 @@ fn no_wrap_bare_j_and_any_display_line_scroll_agree_on_display_column() {
 /// `state.explicit_count` itself instead of trusting its parameter.
 #[test]
 fn apply_visual_vertical_ignores_explicit_count_when_caller_forces_visual() {
-    use crate::editor::visual_move::{VerticalUnit, apply_visual_vertical};
+    use crate::editor::visual_move::{VerticalMove, apply_visual_vertical};
     use hume_ops::MotionMode;
 
     let mut ed = visual_test_editor(0);
     ed.state.explicit_count = true; // simulate "a count was typed"
+    let pid = ed.state.focus.id();
     apply_visual_vertical(
         &mut ed.state,
         &mut ed.view,
+        pid,
         1,
         true,
         MotionMode::Move,
-        VerticalUnit::ContentDisplayLine,
+        VerticalMove::ContentDisplayLine,
     );
     assert_eq!(
         ed.current_selections().primary().head(),
         co(76),
-        "VerticalUnit::ContentDisplayLine must move one display line even with explicit_count=true"
+        "VerticalMove::ContentDisplayLine must move one display line even with explicit_count=true"
     );
 }
 
@@ -1350,7 +1392,7 @@ fn steel_wrapper_bare_dispatch_moves_visual_display_line() {
 /// Buffer: wrapped 80-char line 0, then three short lines "b"/"c"/"d" (chars
 /// 81/83/85). From char 0, 3 buffer lines lands on 'd' (85); 3 *visual* display
 /// lines (display line 1, then "b", then "c") would land on 'c' (83) instead — the two
-/// outcomes are distinguishable, so this pins `VerticalUnit::BufferLine`,
+/// outcomes are distinguishable, so this pins `VerticalMove::BufferLine`,
 /// not just count.
 #[test]
 fn steel_wrapper_explicit_count_moves_buffer_lines() {

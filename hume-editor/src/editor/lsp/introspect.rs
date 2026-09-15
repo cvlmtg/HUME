@@ -635,7 +635,7 @@ pub(in crate::editor) fn pane_visible_range(
     pane: &Pane,
     content_lines: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let first_line = pane.viewport.top_line;
+    let first_line = pane.viewport.top().line;
     // Terminal-row count added to a buffer-line index: under wrap one buffer
     // line can span multiple display lines (and therefore fewer terminal
     // rows than buffer lines), so this over-estimates how many buffer lines

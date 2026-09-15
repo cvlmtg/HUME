@@ -20,6 +20,7 @@
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.
 - Scrolling all the way to the end of a file with `Ctrl+D`/`PageDown`/the mouse wheel, then moving the cursor, no longer jumps the view — the last line now settles `scrolloff` rows above the bottom from the scroll itself, instead of only once an unrelated cursor movement corrected it.
+- `j`/`k` at the top or bottom of a file no longer leave a selection uncollapsed — a non-empty selection already touching the document's edge now collapses onto its head like it does everywhere else, instead of being left untouched.
 
 ## [0.12.0] - 2026-09-08
 

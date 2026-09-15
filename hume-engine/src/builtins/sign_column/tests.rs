@@ -1,6 +1,6 @@
 use super::*;
 use crate::providers::ProviderId;
-use crate::test_support::{fg, theme_with};
+use crate::test_support::{fg, render_display_line, theme_with};
 use crate::theme::{ScopeRegistry, Theme};
 use crate::types::EditorMode;
 use crate::types::ResolvedStyle;
@@ -197,7 +197,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         gutter_width: 2,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::ViewportState::new(8, 1);
+    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -226,7 +226,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
+        &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
         0,
         &lane_widths,
@@ -287,7 +287,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         gutter_width: 2, // 0 (empty_lane) + 2 (content_lane)
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::ViewportState::new(8, 1);
+    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -316,7 +316,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
+        &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
         0,
         &lane_widths,
@@ -514,7 +514,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         gutter_width: 3,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = crate::pane::ViewportState::new(8, 1);
+    let viewport = crate::pane::Viewport::new(8, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -543,7 +543,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
     };
     let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
     crate::render::compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
+        &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
         0,
         &lane_widths,

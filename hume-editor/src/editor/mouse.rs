@@ -12,24 +12,24 @@
 //! before `screen_to_char_offset` (`hume-editor/src/editor/cursor.rs`) resolves it
 //! to a buffer char offset.
 //!
-//! Scroll wheel events move both the viewport and all cursors by the configured
-//! number of lines (Vim-style). Moving the cursor with the viewport prevents
-//! `ensure_cursor_visible` from snapping the viewport back on the next frame.
+//! Scroll wheel events are `commands::scroll_view` with `count =
+//! mouse-scroll-lines` — the same viewport-plus-cursor scroll `Ctrl+D`/`Ctrl+U`
+//! and `PageDown`/`PageUp` use, just with a smaller count. Unlike those
+//! keyboard commands (always the focused pane), the wheel hit-tests its own
+//! event coordinates through `pane_at_screen_pos` to scroll whichever pane
+//! the pointer is over, falling back to the focused pane on a miss — but,
+//! unlike a click, never moves focus there.
 //!
 //! Every mouse event dismisses an open `Scrollable` popup first — see
 //! [`Editor::handle_mouse`] — matching `handle_key`'s any-key dismissal
 //! (`editor/mappings/mod.rs`).
 
-use hume_engine::display_lines::DisplayLineMap;
-use hume_engine::pane::ViewportState;
 use hume_engine::pipeline::PaneId;
 use hume_grid::{Position, Rect};
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
-use super::commands::pane_display_lines;
+use super::commands::{self, pane_display_lines};
 use super::cursor;
-use super::scroll;
-use super::visual_move::{VerticalUnit, apply_visual_vertical};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 
@@ -58,8 +58,8 @@ impl Editor {
             MouseEventKind::Up(MouseButton::Left) => {
                 self.state.mouse_drag_anchor = None;
             }
-            MouseEventKind::ScrollUp => self.mouse_scroll(false),
-            MouseEventKind::ScrollDown => self.mouse_scroll(true),
+            MouseEventKind::ScrollUp => self.mouse_scroll(mouse.column, mouse.row, false),
+            MouseEventKind::ScrollDown => self.mouse_scroll(mouse.column, mouse.row, true),
             _ => {}
         }
         // A click can exit Insert (`mouse_left_down`'s pane path and
@@ -153,43 +153,24 @@ impl Editor {
 
     // ── Scroll ────────────────────────────────────────────────────────────────
 
-    fn mouse_scroll(&mut self, down: bool) {
+    fn mouse_scroll(&mut self, x: u16, y: u16, down: bool) {
+        // Unlike a click, a wheel notch never moves focus — `focus_pane`
+        // exits Insert mode, and a stray notch over another pane must not be
+        // able to do that. A miss (statusline, tabline, a divider seam) has
+        // no pane to prefer over the focused one, so it falls back there
+        // instead of being a no-op like a click's own miss.
+        let pid = self
+            .pane_at_screen_pos(x, y)
+            .map_or(self.state.focus.id(), |(pid, _, _)| pid);
         let scroll_lines = self.state.settings.mouse_scroll_lines;
-        let vp_before = {
-            let vp = &self.view.panes[self.state.focus.id()].viewport;
-            (vp.top_line, vp.top_slot)
-        };
-        {
-            let pid = self.state.focus.id();
-            let buf_id = self.focused_buffer_id();
-            let key = self.state.format_key(&self.view.panes[pid]);
-            let (mut dlm, viewport) = pane_display_lines(
-                self.state.buffers.get(buf_id),
-                &mut self.view.panes[pid],
-                key,
-            );
-            if down {
-                scroll_viewport_down(viewport, &mut dlm, scroll_lines);
-            } else {
-                scroll_viewport_up(viewport, &mut dlm, scroll_lines);
-            }
-        }
-        let vp_after = {
-            let vp = &self.view.panes[self.state.focus.id()].viewport;
-            (vp.top_line, vp.top_slot)
-        };
-        // Only move cursors if the viewport actually moved (file may already be
-        // at the top, or may fit entirely in the pane).
-        if vp_before != vp_after {
-            apply_visual_vertical(
-                &mut self.state,
-                &mut self.view,
-                scroll_lines,
-                down,
-                MotionMode::Move,
-                VerticalUnit::AnyDisplayLine,
-            );
-        }
+        commands::scroll_view(
+            &mut self.state,
+            &mut self.view,
+            pid,
+            scroll_lines,
+            down,
+            MotionMode::Move,
+        );
     }
 
     // ── Coordinate conversion ─────────────────────────────────────────────────
@@ -307,36 +288,3 @@ pub(super) fn content_pos_to_screen(
 ) -> (u16, u16) {
     (content_x + gutter_w + pane_rect.x, row + pane_rect.y)
 }
-
-// ---------------------------------------------------------------------------
-// Viewport scroll helpers (no cursor movement)
-// ---------------------------------------------------------------------------
-
-/// Scroll the viewport up by `count` display lines, saturating at the top of the
-/// document.
-fn scroll_viewport_up(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'_>, count: usize) {
-    let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, dlm.advance_saturating(top, -(count as isize)));
-}
-
-/// Scroll the viewport down by `count` display lines.
-///
-/// Saturates at the document's last display line rather than at "last line on
-/// the last screen row": scrolling past EOF is allowed (/// convention `scroll_cursor_to_display_line` already follows), and an
-/// `After(last_line)` virtual block would otherwise be permanently unreachable.
-fn scroll_viewport_down(viewport: &mut ViewportState, dlm: &mut DisplayLineMap<'_>, count: usize) {
-    // Nothing to scroll when the whole document — virtual display lines
-    // included — already fits on screen.
-    if dlm.fits_in(viewport.height) {
-        return;
-    }
-    let top = scroll::top_pos(viewport);
-    scroll::set_top(viewport, dlm.advance_saturating(top, count as isize));
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

@@ -276,7 +276,7 @@ fn line_background_reflects_the_post_scroll_viewport_not_the_pre_scroll_one() {
     frame(&mut ed, 20, 5); // rect height 5 → 4 content rows, forces the scroll
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top_line,
+        ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(6),
         "sanity: the cursor forced this frame's own scroll, landing top_line \
          where line 8 is visible but line 0's default viewport never was"

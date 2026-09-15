@@ -552,7 +552,7 @@ fn apply_startup_positions_centers_the_focused_buffers_viewport() {
     // `cmd_view_center` call, or ran it before `sync_viewport_dims` (which
     // would center against `Pane::new`'s 80x24 placeholder instead).
     assert_eq!(
-        ed.view.panes[ed.state.focus.id()].viewport.top_line,
+        ed.view.panes[ed.state.focus.id()].viewport.top().line,
         hume_rope::line::ContentLine::new(138)
     );
 }

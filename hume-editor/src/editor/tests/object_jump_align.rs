@@ -6,7 +6,7 @@ use super::*;
 
 /// `n` one-line paragraphs, each followed by a blank line — paragraph `i`
 /// starts at buffer line `2 * i`. Unwrapped, so a display line is a buffer
-/// line and `viewport.top_line` is directly comparable to it.
+/// line and `viewport.top().line` is directly comparable to it.
 fn paragraph_editor(n: usize) -> Editor {
     let content: String = (0..n).map(|i| format!("para{i}\n\n")).collect();
     unwrapped_editor(&content, 0)
@@ -40,10 +40,10 @@ fn goto_next_paragraph_centers_view_by_default() {
     );
     // height=24, target=height/2=12 → top_line = 30 - 12 = 18.
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(18)
     );
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(ed.viewport().top().slot, 0);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
     // head's line is 31 (paragraph 15's own gap line); height=24,
     // target=height/2=12 → top_line = 31 - 12 = 19.
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(19)
     );
 }
@@ -97,7 +97,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     );
     // height=24, target=height/2=12 → top_line = 38 - 12 = 26.
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(26)
     );
 }
@@ -106,7 +106,7 @@ fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
 fn goto_prev_paragraph_never_aligns_view() {
     let mut ed = paragraph_editor(20);
     seek_to_line(&mut ed, 30);
-    let top_before = ed.viewport().top_line;
+    let top_before = ed.viewport().top().line;
 
     ed.handle_key(key('{'));
 
@@ -114,7 +114,7 @@ fn goto_prev_paragraph_never_aligns_view() {
     // synchronous viewport write happens on this keypress (unlike `}`
     // above, which writes it directly without needing a frame).
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         top_before,
         "a backward paragraph jump must not touch the viewport synchronously"
     );
@@ -128,12 +128,12 @@ fn goto_next_paragraph_at_end_of_buffer_does_not_move_the_viewport() {
     // Push the viewport somewhere centering would visibly undo, so a missing
     // `moved` guard has something to disagree with.
     ed.execute_keymap_command("top-view-on-cursor".into(), None, false);
-    let top_before = ed.viewport().top_line;
+    let top_before = ed.viewport().top().line;
 
     ed.handle_key(key('}')); // no paragraph below — a true no-op
 
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         top_before,
         "a no-op `}}` press (already at the last paragraph) must not \
          yank the viewport around"
@@ -148,20 +148,19 @@ fn object_jump_align_top_setting() {
 
     key_count(&mut ed, 15, '}');
 
-    // target_row = 0 → top_line = the cursor's own line, no scrolloff
-    // applied yet (that only happens on the next frame — see below).
+    // target_row = 0 clamps up to scrolloff's own margin inside
+    // scroll_cursor_to_display_line, so top settles at cursor_line -
+    // scrolloff immediately — no separate per-frame correction needed.
     assert_eq!(
-        ed.viewport().top_line,
-        hume_rope::line::ContentLine::new(30)
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(30 - ed.state.settings.scrolloff)
     );
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(ed.viewport().top().slot, 0);
 
-    // The next frame's per-pane scroll (`scrolloff`) pulls the cursor back
-    // down from row 0 to row `scrolloff`, exactly as `z k` already settles
-    // — `Top` is not a stable resting point the way `Center` is.
+    // A frame afterwards must be a no-op: the settled value is already correct.
     frame(&mut ed, 80, 24);
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(30 - ed.state.settings.scrolloff)
     );
 }
@@ -176,7 +175,10 @@ fn object_jump_align_off_setting_restores_old_behavior() {
 
     // No synchronous viewport write at all — the dispatch pipeline's
     // `step_align_view` is a no-op under `Off`.
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(0)
+    );
 
     // The old (pre-feature) per-frame `scrolloff` scroll still runs and
     // still parks the cursor at `height - scrolloff - 1` rows from the top.
@@ -184,7 +186,7 @@ fn object_jump_align_off_setting_restores_old_behavior() {
     let scrolloff = ed.state.settings.scrolloff;
     let height = ed.viewport().height as usize;
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(30 - (height - scrolloff - 1))
     );
 }
@@ -214,8 +216,11 @@ fn goto_next_function_centers_view_by_default() {
         "sanity: head lands on the target function's first line"
     );
     // height=24, target=height/2=12 → top_line = 21 - 12 = 9.
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(9));
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(9)
+    );
+    assert_eq!(ed.viewport().top().slot, 0);
 }
 
 #[test]

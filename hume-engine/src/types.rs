@@ -71,7 +71,7 @@ pub struct Grapheme {
     /// With wrapping off a display line *is* the whole buffer line, so the
     /// same value is also the line's own display column and may run far past
     /// the viewport's width — which is why the render path subtracts
-    /// `ViewportState::horizontal_offset` from it rather than treating it as
+    /// `Viewport::horizontal_offset` from it rather than treating it as
     /// a screen cell.
     pub display_col: DisplayLineCol,
     /// Display width: 1 for ASCII/most Unicode, 2 for CJK, >1 for tabs.

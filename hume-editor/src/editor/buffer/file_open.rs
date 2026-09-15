@@ -338,7 +338,6 @@ impl Editor {
         // Targeted, not `fresh_from_buf`: selections are restored to the clamped
         // post-reload cursor; stale edit groups / paste sessions drop (an open
         // group against pre-reload text cannot compose against the new text).
-        let last_line = self.state.buffers.get(id).text().last_content_line();
         for &(pid, head) in &post_heads {
             crate::editor::pane_state::write_cursor(
                 &mut self.state.panes.state,
@@ -349,9 +348,17 @@ impl Editor {
             );
             self.state.panes.state[pid][id].edit_group = None;
             self.state.panes.state[pid][id].paste_group = None;
-            // Clamp scroll: a shrunken file must not leave top_line past last_line.
-            let top = self.view.panes[pid].viewport.top_line;
-            self.view.panes[pid].viewport.top_line = top.min(last_line);
+            // Heal scroll: a shrunken file must not leave the viewport's top
+            // past the buffer's new last line or block shape — `heal`
+            // subsumes the old line-only clamp with the full address check
+            // every other stale-top write already relies on.
+            let key = self.state.format_key(&self.view.panes[pid]);
+            let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
+                self.state.buffers.get(id),
+                &mut self.view.panes[pid],
+                key,
+            );
+            viewport.heal(&mut dlm);
         }
         // Drop stale saved scrolls for the reloaded buffer on every pane —
         // `recall_scroll` clamps `top_line` to the buffer's current last

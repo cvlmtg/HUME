@@ -10,11 +10,9 @@
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::layout::gutter_width_for_line;
-use hume_engine::pane::ViewportState;
+use hume_engine::pane::Viewport;
 use hume_engine::providers::GutterColumn;
 use hume_rope::column::DisplayLineCol;
-
-use super::scroll::top_pos;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -24,14 +22,21 @@ use super::scroll::top_pos;
 /// pane content area (i.e., after the gutter — not a terminal-absolute
 /// screen cell; callers add the gutter width and pane origin for that).
 ///
-/// Returns `None` if the position is outside the visible viewport (defensive;
-/// should not happen after `scroll::ensure_cursor_visible`).
+/// Returns `None` if the position is outside the visible viewport. This is a
+/// legitimate steady state, not just a defensive fallback: the cursor can
+/// only occupy content display lines, so a pure view scroll (mouse wheel,
+/// `Ctrl+D`/`Ctrl+U`, `PageDown`/`PageUp`) into a virtual-line block — an
+/// inline diff's ghost lines — can carry the viewport further than the
+/// cursor can follow, and the cursor-follow gate deliberately skips
+/// re-centering for that case (see `frame.rs`'s `scroll_into_view`). The
+/// terminal caret is simply hidden for as long as this returns `None`; it
+/// reappears once an ordinary cursor motion resyncs the view.
 ///
 /// The returned `x` accounts for `viewport.horizontal_offset` (0 while
 /// wrapping, since wrap mode has no horizontal scroll — see
 /// `scroll::ensure_cursor_visible_horizontal`).
 pub(in crate::editor) fn content_pos(
-    viewport: &ViewportState,
+    viewport: &Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor_char: hume_rope::offset::CharOffset,
 ) -> Option<(u16, u16)> {
@@ -53,12 +58,12 @@ pub(in crate::editor) fn content_pos(
         return None;
     }
     // Clamp the top the same way `pane_render.rs` does before its
-    // display-line walk: a write site that doesn't validate `top_slot`
+    // display-line walk: a write site that doesn't validate the top's slot
     // against the block it addresses (`recall_scroll`, an LSP jump — see
-    // `clamp_viewport_top`'s doc) can leave it stale for a frame, and
-    // walking from the raw address would disagree with the renderer about
-    // which display line is on screen.
-    let top = dlm.clamp(top_pos(viewport));
+    // `Viewport::heal`'s doc) can leave it stale for a frame, and walking
+    // from the raw address would disagree with the renderer about which
+    // display line is on screen.
+    let top = dlm.clamp(viewport.top());
     // Capping the walk one row short of the viewport's height makes an
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
@@ -74,7 +79,7 @@ pub(in crate::editor) fn content_pos(
 /// re-walking the display-line list. The two must not drift: this is the only place the
 /// horizontal-offset subtraction and the `u16` narrowing happen.
 pub(in crate::editor) fn place(
-    viewport: &ViewportState,
+    viewport: &Viewport,
     cursor_display_col: DisplayLineCol,
     screen_row: usize,
 ) -> (u16, u16) {
@@ -133,7 +138,7 @@ pub(in crate::editor) fn screen_to_char_offset(
     content_x: u16,
     content_y: u16,
     gutter_w: u16,
-    viewport: &ViewportState,
+    viewport: &Viewport,
     dlm: &mut DisplayLineMap<'_>,
 ) -> Option<hume_rope::offset::CharOffset> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
@@ -147,7 +152,7 @@ pub(in crate::editor) fn screen_to_char_offset(
         .horizontal_offset
         .advance_saturating((content_x - gutter_w) as u32);
 
-    let top = dlm.clamp(top_pos(viewport));
+    let top = dlm.clamp(viewport.top());
     let clicked = dlm.advance_saturating(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
     // the display line's last cell rather than its last *content* cell —

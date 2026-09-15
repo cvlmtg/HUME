@@ -322,15 +322,8 @@ impl Editor {
             }
             KeyCode::Enter => {
                 // No match (or nothing pushed yet) behaves like Esc — Enter
-                // is always a terminal action, never a silent no-op. Read
-                // the payload before closing: `close_picker` takes the
-                // session.
-                let payload = self
-                    .picker_mut()
-                    .selected_payload()
-                    .cloned()
-                    .unwrap_or(steel::rvals::SteelVal::BoolV(false));
-                super::super::picker::close_picker(&mut self.state, payload);
+                // is always a terminal action, never a silent no-op.
+                self.close_picker_with_selection(None);
             }
             KeyCode::Escape => {
                 super::super::picker::close_picker(
@@ -352,12 +345,7 @@ impl Editor {
                 // can never override movement/Backspace/Enter/Escape/query
                 // input (see `PickerSession::action_for`'s doc).
                 if let Some(proc) = self.picker_mut().action_for(key).cloned() {
-                    let payload = self
-                        .picker_mut()
-                        .selected_payload()
-                        .cloned()
-                        .unwrap_or(steel::rvals::SteelVal::BoolV(false));
-                    super::super::picker::close_picker_with(&mut self.state, Some(proc), payload);
+                    self.close_picker_with_selection(Some(proc));
                 }
             }
         }
@@ -406,5 +394,17 @@ impl Editor {
             .picker
             .as_mut()
             .expect("handle_picker_key is only called while state.config.picker.is_some()")
+    }
+
+    /// Close the picker, firing `callback` (or `on_select` when `None`) with
+    /// the selected payload — `#f` when nothing matches, so accepting is
+    /// always a terminal action rather than a silent no-op.
+    fn close_picker_with_selection(&mut self, callback: Option<steel::rvals::SteelVal>) {
+        let payload = self
+            .picker_mut()
+            .selected_payload()
+            .cloned()
+            .unwrap_or(steel::rvals::SteelVal::BoolV(false));
+        super::super::picker::close_picker_with(&mut self.state, callback, payload);
     }
 }

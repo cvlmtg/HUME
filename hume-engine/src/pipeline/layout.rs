@@ -337,7 +337,7 @@ impl LayoutTree {
     /// How many side-by-side shares this subtree occupies along `direction`'s
     /// axis — the unit [`Self::equalize`] balances a split's two children in.
     /// Named `share`, not `slot`: `slot` is this crate's viewport/scroll
-    /// vocabulary for `DisplayLinePos`/`ViewportState::top_slot`'s
+    /// vocabulary for `DisplayLinePos`.s
     /// display-line-within-a-block index (see `CLAUDE.md`'s "Buffer lines,
     /// display lines, and rows" invariant) — an unrelated concept that
     /// happens to live in the same crate, so the two must not share a name

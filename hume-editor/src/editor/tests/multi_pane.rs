@@ -1628,7 +1628,9 @@ fn split_inherits_focused_panes_selection_and_scroll() {
         .text()
         .line_to_char(hume_rope::line::RopeyLine::new(150));
     set_cursor(&mut ed, cursor_pos.index());
-    ed.view.panes[pid_a].viewport.top_line = hume_rope::line::ContentLine::new(140);
+    ed.view.panes[pid_a].viewport.seed_top_for_test(
+        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(140), 0),
+    );
 
     ed.execute_typed("vsplit", None).unwrap();
     let pid_b = ed.state.focus.id();
@@ -1639,7 +1641,7 @@ fn split_inherits_focused_panes_selection_and_scroll() {
         "new pane inherits the source pane's selection"
     );
     assert_eq!(
-        ed.view.panes[pid_b].viewport.top_line,
+        ed.view.panes[pid_b].viewport.top().line,
         hume_rope::line::ContentLine::new(140),
         "new pane inherits the source pane's scroll position"
     );
@@ -1671,8 +1673,10 @@ fn same_buffer_split_inherits_saved_scrolls() {
     ed.view.panes[pid_a].saved_scrolls.insert(
         bid2,
         ScrollPosition {
-            top_line: hume_rope::line::ContentLine::new(42),
-            top_slot: 0,
+            top: hume_engine::display_lines::DisplayLinePos::new(
+                hume_rope::line::ContentLine::new(42),
+                0,
+            ),
             horizontal_offset: hume_rope::column::DisplayLineCol::new(0),
         },
     );

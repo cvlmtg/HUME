@@ -65,6 +65,13 @@ fn unwrapped_editor(content: &str, head: usize) -> Editor {
     ed
 }
 
+/// `n` lines, each holding its own 0-based index — a buffer whose scroll
+/// tests need to reach a distant line by number without caring what the line
+/// contains.
+fn numbered_lines(n: usize) -> String {
+    (0..n).map(|i| format!("{i}\n")).collect()
+}
+
 /// Test-only shorthand for a char offset literal — every test in this tree
 /// constructs positions from bare integers, so this is the one place that
 /// wraps them into `CharOffset` rather than every call site doing it inline.
@@ -239,21 +246,28 @@ fn mouse_left_down(x: u16, y: u16) -> TerminalEvent {
     })
 }
 
-/// A wheel-scroll event at (0, 0) — every current caller scrolls the focused
-/// pane, which hit-testing never depends on, so the coordinates are fixed
-/// rather than parameterized. `down` picks the direction, matching
-/// `Editor::mouse_scroll`'s own `down: bool` (`editor/mouse.rs`).
-fn mouse_wheel(down: bool) -> TerminalEvent {
+/// A wheel-scroll event at terminal-absolute `(x, y)` — `Editor::mouse_scroll`
+/// hit-tests these against `pane_at_screen_pos` (`editor/mouse.rs`) to pick
+/// which pane to scroll. `down` picks the direction, matching
+/// `Editor::mouse_scroll`'s own `down: bool`.
+fn mouse_wheel_at(x: u16, y: u16, down: bool) -> TerminalEvent {
     TerminalEvent::Mouse(MouseEvent {
         kind: if down {
             MouseEventKind::ScrollDown
         } else {
             MouseEventKind::ScrollUp
         },
-        column: 0,
-        row: 0,
+        column: x,
+        row: y,
         modifiers: Modifiers::NONE,
     })
+}
+
+/// [`mouse_wheel_at`] at `(0, 0)` — every single-pane test's harness never
+/// populates `last_pane_area`, so `(0, 0)` misses every pane rect and takes
+/// `mouse_scroll`'s focused-pane fallback, same as before hit-testing existed.
+fn mouse_wheel(down: bool) -> TerminalEvent {
+    mouse_wheel_at(0, 0, down)
 }
 
 /// Type a colon command into the editor via `handle_key`, going through the
@@ -343,11 +357,15 @@ fn sign_column_width(ed: &Editor, pid: PaneId) -> u8 {
 /// write reaching its pane-side `Arc` (signs, highlights, virtual lines):
 /// `settle` runs any queued hook (e.g. `on-diagnostics-changed`) that writes
 /// the store, `prepare_frame` is what syncs it into the pane's own view.
-fn frame(ed: &mut Editor, width: u16, height: u16) {
+/// Returns the `RenderContext` `prepare_frame` filled — most callers drop it,
+/// but a test that needs `cursor_content_pos` back reads it off the result
+/// instead of re-driving the same three calls by hand.
+fn frame(ed: &mut Editor, width: u16, height: u16) -> hume_engine::pipeline::RenderContext {
     let mut ctx = hume_engine::pipeline::RenderContext::new();
     ed.sync_viewport_dims(width, height);
     ed.settle();
     ed.prepare_frame(&mut ctx);
+    ctx
 }
 
 /// `frame` at a fixed 80x25 default — every sign test's own frame-drive
@@ -1119,6 +1137,8 @@ pub(in crate::editor) mod doubles;
 mod events;
 mod file_io;
 mod find;
+mod geometry_replaces_caret;
+mod horizontal_scroll_follow;
 mod incremental_parse;
 mod injections_editor;
 mod inline_output;

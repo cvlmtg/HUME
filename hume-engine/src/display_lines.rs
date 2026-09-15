@@ -20,7 +20,7 @@
 //!
 //! Addresses are [`DisplayLinePos`]: a buffer line plus a slot index into
 //! that line's *visual block*, which runs `before`-virtuals, then
-//! content/wrap display lines, then `after`-virtuals. `ViewportState`'s
+//! content/wrap display lines, then `after`-virtuals. `Viewport`'s
 //! `top_line`/`top_slot` pair is the persisted form of exactly that
 //! address.
 
@@ -41,9 +41,11 @@ use line_store::{FormatKey, PaneLineStore};
 mod locate;
 mod pos;
 mod render;
+pub mod scroll;
 mod stepping;
 
 pub use pos::{BlockBreakdown, BlockSlot, DisplayColTarget, DisplayLinePos};
+pub use scroll::carry;
 
 // ---------------------------------------------------------------------------
 // Display-line map

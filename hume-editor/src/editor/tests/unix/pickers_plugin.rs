@@ -220,10 +220,7 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
     let source_bid = ed.focused_buffer_id();
     let panes_before = ed.view.panes.len();
 
-    let mut ctx = hume_engine::pipeline::RenderContext::new();
-    ed.sync_viewport_dims(20, 25); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 20, 25); // width 20 < 2*MIN_PANE_WIDTH(10)+1 = 21
 
     ed.feed_key(key('z'));
     ed.feed_key(key('f'));

@@ -65,6 +65,7 @@ fn editor_state_fields_are_classified() {
             force_full_redraw: _,               // preserved
             inline_output: _,                   // preserved
             visual_move_target_display_cols: _, // preserved
+            visual_move_target_heads: _,        // preserved
             last_repeatable_action: _,          // preserved
             selection_recipe: _,                // preserved
             selection_recipe_writes: _,         // preserved

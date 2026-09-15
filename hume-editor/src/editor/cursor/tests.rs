@@ -2,14 +2,18 @@ use super::*;
 use crate::editor::tests::co;
 use crate::editor::tests::doubles::{VirtualLineBlock, no_providers, providers_with_before_line};
 use hume_engine::display_lines::DisplayLineMap;
+use hume_engine::display_lines::DisplayLinePos;
 use hume_engine::display_lines::line_store::{FormatKey, PaneLineStore};
-use hume_engine::pane::{ViewportState, WhitespaceConfig, WrapMode};
+use hume_engine::pane::{Viewport, WhitespaceConfig, WrapMode};
 use hume_engine::providers::{ProviderSet, VirtualLineAnchor};
 use ropey::Rope;
 
-fn vp(top_line: usize, width: u16, height: u16) -> ViewportState {
-    let mut v = ViewportState::new(width, height);
-    v.top_line = hume_rope::line::ContentLine::new(top_line);
+fn vp(top_line: usize, width: u16, height: u16) -> Viewport {
+    let mut v = Viewport::new(width, height);
+    v.seed_top_for_test(DisplayLinePos::new(
+        hume_rope::line::ContentLine::new(top_line),
+        0,
+    ));
     v
 }
 
@@ -474,7 +478,7 @@ fn content_pos_unaffected_by_after_on_cursors_own_last_line() {
 fn content_pos_clamps_a_top_slot_past_the_lines_current_block() {
     let rope = Rope::from_str("a\nb\n");
     let mut v = vp(0, 80, 10);
-    v.top_slot = 2; // past line 0's 2-row block (before=1, content=1)
+    v.seed_top_for_test(DisplayLinePos::new(hume_rope::line::ContentLine::new(0), 2)); // past line 0's 2-row block (before=1, content=1)
     let cursor_char = co(0); // 'a' — line 0's own content row, address (0, 1)
     let providers = providers_with_before_line(0);
     let mut s = PaneLineStore::new();

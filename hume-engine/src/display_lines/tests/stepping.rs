@@ -1,6 +1,17 @@
-//! Display-line stepping tests (`next`/`prev`/`advance`/`distance`/`fits_in`).
+//! Display-line stepping tests (`next`/`prev`/`advance`/`distance`/`max_scroll_top`).
 
 use super::*;
+use crate::pane::ViewGeometry;
+
+/// [`ViewGeometry`] for a `height`-row viewport and `margin` scrolloff —
+/// `max_scroll_top` can no longer be called at `height == 0` (there is no
+/// `ViewGeometry` to construct one from), so every fixture here is implicitly
+/// nonzero-height.
+fn geo(height: u16, margin: usize) -> ViewGeometry {
+    crate::pane::Viewport::new(0, height)
+        .geometry(margin)
+        .expect("test fixtures use a nonzero height")
+}
 
 /// Walk the whole document forward from its first display line.
 fn walk_forward(dlm: &mut DisplayLineMap<'_>) -> Vec<DisplayLinePos> {
@@ -203,32 +214,76 @@ fn distance_counts_display_lines_forward_and_rejects_backward_or_distant() {
 }
 
 #[test]
-fn fits_in_counts_virtual_lines_toward_the_height() {
+fn max_scroll_top_counts_virtual_lines_toward_the_height() {
     // The hand-written list above is 6 display lines: 3 content + 3 virtual.
     let (rope, providers, expected) = three_line_doc();
     assert_eq!(expected.len(), 6);
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert!(dlm.fits_in(6), "6 display lines fit in 6");
-    assert!(!dlm.fits_in(5), "6 display lines do not fit in 5");
-    assert!(
-        !dlm.fits_in(3),
-        "counting content display lines alone would wrongly fit 3 lines in 3 display lines"
+    assert_eq!(
+        dlm.max_scroll_top(geo(6, 0)),
+        expected[0],
+        "6 display lines fit in a 6-line viewport — top can't move"
+    );
+    assert_eq!(
+        dlm.max_scroll_top(geo(5, 0)),
+        expected[1],
+        "one display line short: top may scroll past the first display line, no further"
+    );
+    assert_eq!(
+        dlm.max_scroll_top(geo(3, 0)),
+        expected[3],
+        "counting content display lines alone would wrongly stop 3 short of the end"
     );
 }
 
 #[test]
-fn fits_in_zero_height_never_fits() {
-    // Every document has at least one display line (even a single empty line), so a
-    // zero-height viewport can never fit it — regardless of how short the
-    // document is.
-    let rope = Rope::from_str("x\n");
-    let providers = ProviderSet::new();
+fn max_scroll_top_margin_reserves_lookahead_rows_past_the_last_display_line() {
+    // Same 6-display-line fixture. A margin > 0 pulls the bound back that
+    // many display lines from the last one — matching
+    // `Viewport::reveal`'s own bottom-margin arithmetic, so the two agree on
+    // where "all the way down" is.
+    let (rope, providers, expected) = three_line_doc();
     let mut s = PaneLineStore::new();
     let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
 
-    assert!(!dlm.fits_in(0));
+    assert_eq!(
+        dlm.max_scroll_top(geo(6, 1)),
+        expected[1],
+        "height=6, margin=1: last display line lands 1 row above the bottom"
+    );
+    assert_eq!(
+        dlm.max_scroll_top(geo(4, 1)),
+        expected[3],
+        "height=4, margin=1: same one-row reservation at a shorter viewport"
+    );
+}
+
+#[test]
+fn max_scroll_top_margin_is_capped_the_same_way_ensure_cursor_visible_caps_it() {
+    // A margin at or above half the viewport height must not swallow the
+    // whole viewport — clamped to `(height - 1) / 2`, identically to
+    // `Viewport::reveal`'s own margin. An uncapped margin=10 here behaves
+    // exactly like the clamped margin=1 case.
+    let (rope, providers, expected) = three_line_doc();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, &mut s);
+
+    assert_eq!(
+        dlm.max_scroll_top(geo(4, 10)),
+        dlm.max_scroll_top(geo(4, 1))
+    );
+    assert_eq!(dlm.max_scroll_top(geo(4, 10)), expected[3]);
+}
+
+#[test]
+fn zero_height_viewport_has_no_geometry_to_scroll_with() {
+    // A zero-height viewport has no room to scroll into at all — encoded as
+    // `Viewport::geometry` returning `None`, so `max_scroll_top` (and every
+    // other scroll verb) can never be called at `height == 0` in the first
+    // place; there is no `ViewGeometry` to construct one from.
+    assert!(crate::pane::Viewport::new(0, 0).geometry(0).is_none());
 }
 
 #[test]
@@ -246,11 +301,11 @@ fn degenerate_single_empty_line_document() {
         DisplayLinePos::new(ContentLine::new(0), 0),
         "the only display line in a one-line document is (0, 0)"
     );
-    assert!(
-        dlm.fits_in(1),
-        "the document's single display line fits a height of 1"
+    assert_eq!(
+        dlm.max_scroll_top(geo(1, 0)),
+        DisplayLinePos::default(),
+        "the document's single display line fits a height of 1 — top can't move"
     );
-    assert!(!dlm.fits_in(0));
 }
 
 #[test]

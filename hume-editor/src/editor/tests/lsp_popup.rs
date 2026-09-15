@@ -763,7 +763,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
     assert!(popup_view(&ed).is_some(), "sanity: showing");
-    let top_before = ed.viewport().top_line;
+    let top_before = ed.viewport().top().line;
 
     ed.handle_input(mouse_wheel(true));
 
@@ -772,7 +772,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
         "a mouse wheel tick must close a scrollable popup"
     );
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         top_before.advance(ed.state.settings.mouse_scroll_lines),
         "the wheel tick must still scroll the buffer in the same event"
     );

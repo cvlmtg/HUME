@@ -710,7 +710,7 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// `render_pane` a `&mut` on that same pane's line store alongside this —
     /// one `&mut Pane` split into disjoint field borrows, which only the loop
     /// that owns the pane can say is sound.
-    pub viewport: &'a crate::pane::ViewportState,
+    pub viewport: &'a crate::pane::Viewport,
     pub providers: &'a crate::providers::ProviderSet,
     /// Head-sorted, as `populate_sorted_sels` asserts.
     pub selections: &'a [crate::types::Selection],

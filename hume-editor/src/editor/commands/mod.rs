@@ -21,7 +21,7 @@ use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
-use hume_engine::pane::{Pane, ViewportState};
+use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{BufferId, EngineView};
 
 use super::buffer::Buffer;
@@ -214,7 +214,7 @@ pub(super) fn search_pattern<'a>(
 pub(super) fn viewport<'a>(
     state: &EditorState,
     view: &'a EngineView,
-) -> &'a hume_engine::pane::ViewportState {
+) -> &'a hume_engine::pane::Viewport {
     &view.panes[state.focus.id()].viewport
 }
 
@@ -293,7 +293,7 @@ pub(super) fn pane_display_lines<'a>(
     doc: &'a Buffer,
     pane: &'a mut Pane,
     key: FormatKey,
-) -> (DisplayLineMap<'a>, &'a mut ViewportState) {
+) -> (DisplayLineMap<'a>, &'a mut Viewport) {
     let content_width = pane.content_width(doc.text().last_ropey_line());
     let Pane {
         providers,

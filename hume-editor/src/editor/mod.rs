@@ -355,6 +355,14 @@ pub(crate) struct EditorState {
     /// three units `apply_visual_vertical` handles (row-domain `j`/`k`,
     /// scroll/wheel, and buffer-line `9j`/`9k`).
     pub(super) visual_move_target_display_cols: Vec<hume_editing::selection::StickyDisplayCol>,
+    /// Reusable resolved-head buffer, parallel to
+    /// `visual_move_target_display_cols` — `apply_visual_vertical` computes
+    /// every selection's new head into this before touching the selection
+    /// set at all, so a scroll (`ViewScroll`) that provably moves no
+    /// head can return the set unchanged instead of rebuilding it, which for
+    /// `MotionMode::Move` would otherwise collapse every selection's anchor
+    /// onto its (unmoved) head for no reason.
+    pub(super) visual_move_target_heads: Vec<hume_rope::offset::CharOffset>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
@@ -543,6 +551,7 @@ impl Default for EditorState {
             force_full_redraw: false,
             inline_output: InlineOutput::default(),
             visual_move_target_display_cols: Vec::new(),
+            visual_move_target_heads: Vec::new(),
             last_repeatable_action: None,
             selection_recipe: Vec::new(),
             selection_recipe_writes: 0,
@@ -813,22 +822,24 @@ pub(crate) struct Editor {
     /// This pane's currently-pending `OnViewportChange` debounce timer, if
     /// any — looked up to cancel-and-replace on the next change.
     viewport_debounce: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, timers::TimerId>,
-    /// `(buffer_id, top_line, height)` as of the last frame this pane was
-    /// *visible*, per pane — `prepare_frame`'s scroll step compares against
-    /// this to detect a real viewport change worth debouncing, rather than
-    /// firing every frame regardless. The buffer id is part of the key for
-    /// the same reason `virtual_lines_synced` below carries one: a pane
-    /// switching buffers at unchanged `(top_line, height)` — `:b#`, a tab
-    /// switch back onto identical geometry — must still count as a change,
-    /// or the newly-shown buffer's viewport-driven consumers (LSP inlay
-    /// hints) never re-fire. Entries for panes outside the active set are
-    /// dropped each frame rather than left to go stale (see `prepare_frame`
-    /// step 4): a background tab's pane isn't observed at all while hidden,
-    /// so its return must itself be treated as a change, never a match
-    /// against a snapshot from before it left.
+    /// `(buffer_id, top_line, top_slot, height)` as of the last frame this
+    /// pane was *visible*, per pane — `prepare_frame`'s scroll step compares
+    /// against this to detect a real viewport change worth debouncing, rather
+    /// than firing every frame regardless. The buffer id is part of the key
+    /// for the same reason `virtual_lines_synced` below carries one: a pane
+    /// switching buffers at unchanged `(top_line, top_slot, height)` — `:b#`,
+    /// a tab switch back onto identical geometry — must still count as a
+    /// change, or the newly-shown buffer's viewport-driven consumers (LSP
+    /// inlay hints) never re-fire. `top_slot` is in the key, not just
+    /// `top_line`, so a view-led scroll landing entirely within one line's
+    /// virtual block still counts as a change. Entries for panes outside the
+    /// active set are dropped each frame rather than left to go stale (see
+    /// `prepare_frame` step 4): a background tab's pane isn't observed at all
+    /// while hidden, so its return must itself be treated as a change, never
+    /// a match against a snapshot from before it left.
     last_viewport_key: rustc_hash::FxHashMap<
         hume_engine::pipeline::PaneId,
-        (BufferId, hume_rope::line::ContentLine, u16),
+        (BufferId, hume_rope::line::ContentLine, usize, u16),
     >,
     /// Hash of everything `sync_tabline_view`'s rebuild depends on, as of
     /// the last frame it actually ran the rebuild — `None` before the first

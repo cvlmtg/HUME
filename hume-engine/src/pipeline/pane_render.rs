@@ -1,7 +1,7 @@
 use hume_grid::Grid;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-use crate::display_lines::{DisplayLineMap, DisplayLinePos};
+use crate::display_lines::DisplayLineMap;
 use crate::render::{self, ComposeCtx};
 use crate::types::{DisplayLineKind, ResolvedStyle};
 
@@ -127,10 +127,7 @@ pub(crate) fn render_pane(
     // ── Display-line walk ────────────────────────────────────────────────
     let height = visible.content_height.min(pane_ctx.rect.height);
     let viewport = pane_ctx.viewport;
-    let mut pos = dlm.clamp(DisplayLinePos::new(
-        viewport.top_line,
-        viewport.top_slot as usize,
-    ));
+    let mut pos = dlm.clamp(viewport.top());
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.
     let mut line: Option<LineStyle> = None;

@@ -24,10 +24,10 @@ fn zz_centres_cursor_in_viewport() {
     ed.handle_key(key('z'));
     // height=24, target=12; cursor on line 25 → top_line = 25 - 12 = 13.
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(13)
     );
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(ed.viewport().top().slot, 0);
     // Cursor is unchanged.
     assert_eq!(
         ed.current_selections().primary().head(),
@@ -46,7 +46,10 @@ fn zz_clamps_at_top_of_buffer() {
     ed.handle_key(key('z'));
     ed.handle_key(key('z'));
     // saturating_sub: 2 - 12 = 0.
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(0));
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(0)
+    );
 }
 
 #[test]
@@ -58,7 +61,7 @@ fn zz_allows_scrolling_past_eof() {
     // 50 lines total, cursor on line 48, target=12 → top_line=36.
     // No bottom clamp: 36 + 24 = 60 > 50, trailing tildes are intentional.
     assert_eq!(
-        ed.viewport().top_line,
+        ed.viewport().top().line,
         hume_rope::line::ContentLine::new(36)
     );
 }
@@ -69,12 +72,15 @@ fn zk_puts_cursor_at_top() {
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
-    // target_row = 0 → top_line = cursor_line.
+    // target_row = 0 clamps up to scrolloff's own margin (3, default) —
+    // scroll_cursor_to_display_line applies that clamp itself, so top_line
+    // settles at cursor_line - margin = 25 - 3 = 22, not pinned to the
+    // cursor's own line.
     assert_eq!(
-        ed.viewport().top_line,
-        hume_rope::line::ContentLine::new(25)
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(22)
     );
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(ed.viewport().top().slot, 0);
 }
 
 #[test]
@@ -83,9 +89,13 @@ fn zj_puts_cursor_at_bottom() {
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
     ed.handle_key(key('j'));
-    // height=24, target=23; cursor on line 25 → top_line = 25 - 23 = 2.
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(2));
-    assert_eq!(ed.viewport().top_slot, 0);
+    // height=24, scrolloff=3: vertical_margins(24, 3).target = 20, and
+    // target_row=23 clamps down to it — top_line = 25 - 20 = 5.
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(5)
+    );
+    assert_eq!(ed.viewport().top().slot, 0);
 }
 
 // ── Wrap mode ─────────────────────────────────────────────────────────────────
@@ -123,8 +133,11 @@ fn zz_in_wrap_mode_walks_display_lines() {
     ed.handle_key(key('z'));
 
     // From (line=1, sub=2), walking backward 2 rows lands at (line=1, sub=0).
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
-    assert_eq!(ed.viewport().top_slot, 0);
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(1)
+    );
+    assert_eq!(ed.viewport().top().slot, 0);
 }
 
 #[test]
@@ -153,9 +166,14 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
 
-    // target_row = 0 → top_line = cursor_line, top_slot = cursor_sub.
-    assert_eq!(ed.viewport().top_line, hume_rope::line::ContentLine::new(1));
-    assert_eq!(ed.viewport().top_slot, 2);
+    // height=4, scrolloff=3: vertical_margins(4, 3).margin = min(3, (4-1)/2)
+    // = 1, so target_row=0 clamps up to 1 — one display line of look-ahead
+    // above the cursor even in this tiny viewport, not pinned to its own row.
+    assert_eq!(
+        ed.viewport().top().line,
+        hume_rope::line::ContentLine::new(1)
+    );
+    assert_eq!(ed.viewport().top().slot, 1);
 }
 
 // ── Keymap wiring ─────────────────────────────────────────────────────────────
@@ -164,8 +182,8 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
 fn z_alone_does_not_dispatch() {
     let mut ed = view_test_editor();
     seek_to_line(&mut ed, 25);
-    let top_before = ed.viewport().top_line;
+    let top_before = ed.viewport().top().line;
     ed.handle_key(key('z'));
     // After the first `z`, the trie is mid-walk — no command has fired yet.
-    assert_eq!(ed.viewport().top_line, top_before);
+    assert_eq!(ed.viewport().top().line, top_before);
 }

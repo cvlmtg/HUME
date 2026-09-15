@@ -130,7 +130,12 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     // behind, and the case that distinguishes "viewport moved" from
     // "cursor moved with it".
     let pid = ed.state.focus.id();
-    ed.view.panes[pid].viewport.top_line = hume_rope::line::ContentLine::new(10);
+    ed.view.panes[pid]
+        .viewport
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(10),
+            0,
+        ));
     let head = ed
         .doc()
         .text()
@@ -140,7 +145,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     ed.handle_input(mouse_wheel(false));
 
     assert_eq!(
-        ed.view.panes[pid].viewport.top_line,
+        ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(7),
         "viewport must scroll up by mouse_scroll_lines (3)"
     );
@@ -153,9 +158,10 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     );
 }
 
-/// At the top of the document, the viewport can't move — and per
-/// `mouse_scroll`'s own `vp_before != vp_after` guard, the cursor must
-/// stay put too, not silently drift up on every wheel tick.
+/// At the top of the document with the cursor already on line 0, neither the
+/// viewport nor the cursor has anywhere to go — `move_vertical` (like every
+/// `j`/`k`/motion) already leaves a document-start cursor untouched, the same
+/// as `commands::scroll_view`'s other callers (`Ctrl+U`, `PageUp`).
 #[test]
 fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -164,10 +170,80 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 
     let pid = ed.state.focus.id();
     assert_eq!(
-        ed.view.panes[pid].viewport.top_line,
+        ed.view.panes[pid].viewport.top().line,
         hume_rope::line::ContentLine::new(0)
     );
     assert_eq!(ed.current_selections().primary().head(), co(0));
+}
+
+/// Unlike the old wheel-only guard (`vp_before != vp_after`), `scroll_view` —
+/// shared with `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` — always carries the
+/// cursor, even when the viewport itself has nowhere to go because the whole
+/// document already fits on screen.
+#[test]
+fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() {
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+    ed.state.settings.mouse_scroll_lines = 1;
+
+    ed.handle_input(mouse_wheel(true));
+
+    let pid = ed.state.focus.id();
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line,
+        hume_rope::line::ContentLine::new(0),
+        "nothing to scroll — the 3-line document already fits"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(2), // "b"'s start
+        "the cursor still moves by mouse_scroll_lines, matching Ctrl+D/PageDown"
+    );
+}
+
+/// Deleting the old `vp_before != vp_after` guard (see the test above) means
+/// a wheel notch that provably cannot move anything must still not touch
+/// selections it has no reason to touch: `apply_visual_vertical` used to
+/// rebuild the selection set with `MotionMode::Move` unconditionally, which
+/// collapses `anchor` onto `head` even when `head` itself didn't move — a
+/// one-line document has nowhere for `move_vertical` to go in either
+/// direction.
+#[test]
+fn a_wheel_notch_that_can_move_nothing_keeps_the_selection() {
+    let mut ed = editor_from("-[abc]>\n");
+
+    ed.handle_input(mouse_wheel(true));
+
+    assert_eq!(
+        ed.current_selections().primary().anchor(),
+        co(0),
+        "the selection must survive a scroll notch that moves no head"
+    );
+    assert_eq!(ed.current_selections().primary().head(), co(2));
+}
+
+/// A collapsed split (0 rows) has no bottom row to bound a scroll against —
+/// `max_scroll_top`'s own zero-height guard, not `by_display_lines`'
+/// downward clamp, is what has to stop this. `mouse_wheel`'s `(0, 0)` never
+/// hits a real pane rect here (`last_pane_area` is never populated), so
+/// `mouse_scroll` takes its focused-pane fallback — the collapsed pane is
+/// reachable that way with several stacked splits in a short terminal, same
+/// as it would be by scrolling directly over it.
+#[test]
+fn a_wheel_notch_in_a_zero_height_pane_leaves_the_viewport_alone() {
+    let content: String = numbered_lines(30);
+    let mut ed = unwrapped_editor(&content, 0);
+    let pid = ed.state.focus.id();
+    ed.view.panes[pid].viewport.height = 0;
+
+    for _ in 0..20 {
+        ed.handle_input(mouse_wheel(true));
+    }
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line,
+        hume_rope::line::ContentLine::new(0)
+    );
+    assert_eq!(ed.view.panes[pid].viewport.top().slot, 0);
 }
 
 // ── Multi-pane hit-testing ────────────────────────────────────────────────
@@ -264,6 +340,120 @@ fn vsplit_click_focuses_and_resolves_against_the_clicked_pane() {
         head(&ed, pid_b),
         co(3),
         "statusline click must not move pane B"
+    );
+}
+
+/// A wheel notch over an *unfocused* pane scrolls that pane, not the focused
+/// one — the same hit-test `mouse_left_down` already does — and does so
+/// without moving focus there (unlike a click, a wheel notch shouldn't be
+/// able to exit Insert mode in the focused pane by accident).
+///
+/// Same `:vsplit` geometry as `vsplit_click_focuses_and_resolves_against_the_clicked_pane`:
+/// pane A (unfocused) is `x ∈ [0, 49)`, pane B (focused) is `x ∈ [50, 100)`,
+/// both `y ∈ [0, 24)`.
+#[test]
+fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
+    let mut ed = unwrapped_editor(&numbered_lines(30), 0);
+    let pid_a = ed.state.focus.id();
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focus.id(); // vsplit focuses the new (right) pane
+    assert_ne!(pid_a, pid_b);
+    let bid = ed.view.panes[pid_a].buffer_id; // vsplit shares the source buffer
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    // Scroll pane A's viewport to line 10 and park its own cursor there too —
+    // the same setup `scroll_up_moves_viewport_and_cursor_together` uses,
+    // reproduced per-pane since both panes view the same buffer but keep
+    // independent viewports/selections.
+    ed.view.panes[pid_a].viewport.seed_top_for_test(
+        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
+    );
+    let head_a = ed
+        .state
+        .buffers
+        .get(bid)
+        .text()
+        .line_to_char(hume_rope::line::RopeyLine::new(10));
+    ed.state.panes.state[pid_a][bid].selections =
+        SelectionSet::single(Selection::collapsed(head_a));
+
+    let head_b_before = ed.state.panes.state[pid_b][bid].selections.primary().head();
+
+    // Wheel at screen col 7 (inside pane A's rect, gutter width 0 — see
+    // `vsplit_click_...`'s doc for why pane A has no gutter).
+    ed.handle_input(mouse_wheel_at(7, 0, false));
+
+    assert_eq!(
+        ed.state.focus.id(),
+        pid_b,
+        "a wheel notch must never move focus, unlike a click"
+    );
+    assert_eq!(
+        ed.view.panes[pid_a].viewport.top().line,
+        hume_rope::line::ContentLine::new(7),
+        "pane A's viewport must scroll up by mouse_scroll_lines (3)"
+    );
+    assert_eq!(
+        ed.state.panes.state[pid_a][bid].selections.primary().head(),
+        ed.state
+            .buffers
+            .get(bid)
+            .text()
+            .line_to_char(hume_rope::line::RopeyLine::new(7)),
+        "pane A's own cursor must move with its viewport"
+    );
+    assert_eq!(
+        ed.view.panes[pid_b].viewport.top().line,
+        hume_rope::line::ContentLine::new(0),
+        "pane B's viewport must be untouched"
+    );
+    assert_eq!(
+        ed.state.panes.state[pid_b][bid].selections.primary().head(),
+        head_b_before,
+        "pane B's selection must be untouched"
+    );
+}
+
+/// A wheel notch landing outside every pane's rect (the statusline row here)
+/// has no pointed-at pane to scroll, unlike a click — which is a no-op off-
+/// pane — so it falls back to scrolling the *focused* pane.
+#[test]
+fn a_wheel_notch_outside_every_pane_scrolls_the_focused_pane() {
+    let mut ed = unwrapped_editor(&numbered_lines(30), 0);
+    ed.execute_typed("vsplit", None).unwrap();
+    let pid_b = ed.state.focus.id(); // vsplit focuses the new (right) pane
+    let bid = ed.view.panes[pid_b].buffer_id;
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    ed.view.panes[pid_b].viewport.seed_top_for_test(
+        hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
+    );
+    let head_b = ed
+        .state
+        .buffers
+        .get(bid)
+        .text()
+        .line_to_char(hume_rope::line::RopeyLine::new(10));
+    ed.state.panes.state[pid_b][bid].selections =
+        SelectionSet::single(Selection::collapsed(head_b));
+
+    // Row 24 is the statusline (usable pane height is 24 after its
+    // reservation) — outside every pane's rect, same row
+    // `vsplit_click_focuses_and_resolves_against_the_clicked_pane` uses.
+    ed.handle_input(mouse_wheel_at(10, 24, false));
+
+    assert_eq!(
+        ed.view.panes[pid_b].viewport.top().line,
+        hume_rope::line::ContentLine::new(7),
+        "an off-pane notch must fall back to scrolling the focused pane"
     );
 }
 

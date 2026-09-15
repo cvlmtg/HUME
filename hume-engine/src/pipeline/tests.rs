@@ -6,6 +6,7 @@ use crate::test_support::{fg, theme_with};
 use super::*;
 
 use super::layout::split_rect;
+use crate::display_lines::DisplayLinePos;
 use crate::pane::{WhitespaceConfig, WrapMode};
 use crate::providers::{
     Decoration, DecorationKinds, DecorationSource, VirtualLine, VirtualLineAnchor,
@@ -119,7 +120,7 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 5);
+    pane.viewport = crate::pane::Viewport::new(20, 5);
     pane.providers
         .add_decoration_source(Box::new(ScopedVirtualLine { scope: hint_scope }));
 
@@ -204,7 +205,7 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 5);
+    pane.viewport = crate::pane::Viewport::new(20, 5);
     pane.providers
         .add_decoration_source(Box::new(UnsortedScopedVirtualLine { scopes }));
 
@@ -268,8 +269,9 @@ fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAncho
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(10, 6);
-    pane.viewport.top_slot = top_slot;
+    pane.viewport = crate::pane::Viewport::new(10, 6);
+    pane.viewport
+        .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
         .add_decoration_source(Box::new(FixedVirtualLineSource { anchor }));
 
@@ -425,8 +427,9 @@ fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(10, height);
-    pane.viewport.top_slot = top_slot;
+    pane.viewport = crate::pane::Viewport::new(10, height);
+    pane.viewport
+        .seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), top_slot as usize));
     pane.providers
         .add_decoration_source(Box::new(MultiBeforeLine(n)));
 
@@ -524,7 +527,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     let mut bids: SlotMap<BufferId, ()> = SlotMap::with_key();
     let bid = bids.insert(());
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(10, 3);
+    pane.viewport = crate::pane::Viewport::new(10, 3);
     pane.providers
         .add_gutter_column(Box::new(ProviderIdReportingGutter));
     let real_id = pane
@@ -575,7 +578,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 4);
+    pane.viewport = crate::pane::Viewport::new(20, 4);
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 4);
@@ -609,8 +612,9 @@ fn scrolled_pane_renders_from_top_line_onward() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 5);
-    pane.viewport.top_line = ContentLine::new(1);
+    pane.viewport = crate::pane::Viewport::new(20, 5);
+    pane.viewport
+        .seed_top_for_test(DisplayLinePos::new(ContentLine::new(1), 0));
 
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 5);
@@ -667,7 +671,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     let bid = bids.insert(());
 
     let mut pane = Pane::new(bid);
-    pane.viewport = crate::pane::ViewportState::new(20, 3); // 1 real display line + 2 filler display lines
+    pane.viewport = crate::pane::Viewport::new(20, 3); // 1 real display line + 2 filler display lines
     pane.providers.add_gutter_column(Box::new(MarkerGutter));
 
     let mut registry = crate::theme::ScopeRegistry::new();

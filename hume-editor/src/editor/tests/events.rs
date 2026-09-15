@@ -79,7 +79,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     use termina::event::Event as TerminalEvent;
 
     let mut ed = editor_from("-[a]>b\n");
-    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::ViewportState::new(80, 24);
+    ed.view.panes[ed.state.focus.id()].viewport = hume_engine::pane::Viewport::new(80, 24);
     // The click below is hit-tested against pane rects, which only
     // `prepare_frame` normally populates — set it directly, matching the
     // viewport size above, since this test exercises hook dispatch, not a

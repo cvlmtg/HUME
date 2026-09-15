@@ -11,7 +11,7 @@ use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
 use hume_engine::display_lines::{BlockSlot, DisplayColTarget, DisplayLineMap};
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
 };
@@ -30,24 +30,24 @@ use crate::editor::error::CommandError;
 // Vertical movement
 // ---------------------------------------------------------------------------
 
-/// Move `head` by `count` display lines, landing on the last content display
-/// line reached (or staying put if the document's edge came first).
+/// Move `head` by `count` content display lines, landing on the last one
+/// reached (or staying put if the document's edge came first). Virtual
+/// display lines are walked through but count against neither the budget nor
+/// as a landing spot, so a virtual-line decoration source's display lines
+/// never swallow a `j`/`k` keystroke.
 ///
-/// `content_only`: when `true`, only content display lines count against
-/// `count` — virtual display lines are neither a cost nor a landing spot,
-/// so a virtual-line decoration source's display lines never swallow a
-/// `j`/`k` keystroke. When `false`, every display line counts, virtual
-/// ones included — for callers whose `count` is already a display-line
-/// measurement of something else (the mouse wheel's or page-scroll's own
-/// viewport delta), which it has to track 1:1 so the cursor stays at
-/// roughly the same relative screen row.
+/// The mouse wheel and page/half-page scroll carry their cursor through
+/// `hume_engine::display_lines::carry` instead — a different question (track
+/// the view's own display-line delta 1:1, virtual lines included) with a
+/// different contract (park rather than land, when nothing fits), so it lives
+/// in the engine next to `Viewport::scroll_by` rather than as a second mode
+/// of this function.
 fn move_vertical(
     dlm: &mut DisplayLineMap<'_>,
     head: CharOffset,
     down: bool,
     count: usize,
     target_display_col: DisplayLineCol,
-    content_only: bool,
 ) -> CharOffset {
     let start = dlm.locate_display_line(head);
     let mut pos = start;
@@ -56,21 +56,20 @@ fn move_vertical(
 
     while remaining > 0 {
         let Some(next) = (if down { dlm.next(pos) } else { dlm.prev(pos) }) else {
-            break; // document start/end — clamp to the last display line reached
+            break; // document start/end — clamp to the last content display line reached
         };
         pos = next;
-        let is_content = matches!(dlm.slot(pos), BlockSlot::Content(_));
-        if is_content {
+        if matches!(dlm.slot(pos), BlockSlot::Content(_)) {
             last_content = pos;
-        }
-        if !content_only || is_content {
             remaining -= 1;
         }
     }
 
     if last_content == start {
-        // Already on the document's first/last content display line: leave
-        // the head exactly where it was rather than snapping it to `target_display_col`.
+        // No content display line in this direction: the document's own
+        // start/end broke the walk above before one could be found. Leave
+        // the head exactly where it was rather than snapping it to
+        // `target_display_col`.
         return head;
     }
     dlm.char_at(
@@ -113,64 +112,55 @@ fn move_buffer_line(
 }
 
 /// How `apply_visual_vertical`'s `count` should be interpreted.
-///
-/// Every variant names a kind of *line* `count` moves by — the shared `Line`
-/// postfix is the point, not noise to strip: `clippy::enum_variant_names`
-/// would rather see `Buffer`/`ContentDisplay`/`AnyDisplay`, but that drops
-/// exactly the word that says what these three variants have in common.
-#[allow(clippy::enum_variant_names)]
-pub(super) enum VerticalUnit {
+pub(super) enum VerticalMove {
     /// `count` buffer lines — `j`/`k` with an explicit numeric prefix
     /// (matches relative-line-number gutters even while wrapping).
     BufferLine,
     /// `count` real content display lines; virtual display lines are free —
     /// plain `j`/`k` with no explicit count.
     ContentDisplayLine,
-    /// `count` display lines, virtual ones included — mouse wheel and
-    /// page/half-page scroll.
-    AnyDisplayLine,
 }
 
-/// Shared core for the visual-line movement EditorCmds and screen-relative
-/// scroll commands (page/half-page, mouse wheel).
+/// Shared core for the `j`/`k`-family visual-line movement `EditorCmd`s.
+/// Screen-relative scroll (page/half-page, mouse wheel) carries its cursor
+/// through `commands::scroll_view`'s own pass instead — a view command, not
+/// a motion, so it does not share this function (see `move_vertical`'s doc).
 pub(super) fn apply_visual_vertical(
     state: &mut EditorState,
     view: &mut EngineView,
+    pid: PaneId,
     count: usize,
     down: bool,
     mode: MotionMode,
-    unit: VerticalUnit,
+    unit: VerticalMove,
 ) {
-    let focused = state.focus.id();
-    // Every unit now resolves its column through `DisplayLineMap` — `ContentDisplayLine`/
-    // `AnyDisplayLine` via `move_vertical`'s display-line walk, `BufferLine` (`9j`/`9k`) via
-    // `move_buffer_line`'s direct line jump — so all three latch a column
-    // from the same authority. `StickyDisplayCol`'s two variants still
-    // distinguish what the column is measured *from*: a wrapped
-    // `DisplayLine` latch is display-line-relative and a `BufferLine` latch
-    // is buffer-line-relative, and the two coincide only when nothing wraps
-    // (see `StickyDisplayCol`'s own doc).
-    let content_only = !matches!(unit, VerticalUnit::AnyDisplayLine);
-    let is_buffer_line = matches!(unit, VerticalUnit::BufferLine);
+    // Every unit now resolves its column through `DisplayLineMap` —
+    // `ContentDisplayLine` via `move_vertical`'s display-line walk,
+    // `BufferLine` (`9j`/`9k`) via `move_buffer_line`'s direct line jump — so
+    // both latch a column from the same authority. `StickyDisplayCol`'s two
+    // variants still distinguish what the column is measured *from*: a
+    // wrapped `DisplayLine` latch is display-line-relative and a
+    // `BufferLine` latch is buffer-line-relative, and the two coincide only
+    // when nothing wraps (see `StickyDisplayCol`'s own doc).
+    let is_buffer_line = matches!(unit, VerticalMove::BufferLine);
 
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = view.panes[pid].buffer_id;
     // Whether this call's own latches are `BufferLine`-family — always true
-    // for `VerticalUnit::BufferLine`, and also true with wrapping off
+    // for `VerticalMove::BufferLine`, and also true with wrapping off
     // (display-line-relative and buffer-line-relative coincide there, so
     // standardizing on `BufferLine` lets a counted `9j` and a plain `j`
     // share one latch on an unwrapped buffer). Resolved once per call, and
     // before the display-line map takes the pane mutably.
-    let wrapping = effective_wrap_mode(
-        state.buffers.get(buf_id),
-        &state.settings,
-        &view.panes[focused],
-    )
-    .is_wrapping();
+    let wrapping =
+        effective_wrap_mode(state.buffers.get(buf_id), &state.settings, &view.panes[pid])
+            .is_wrapping();
     let treat_as_line = is_buffer_line || !wrapping;
-    let key = state.format_key(&view.panes[focused]);
+    let key = state.format_key(&view.panes[pid]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[focused], key);
+    let target_heads = &mut state.visual_move_target_heads;
+    target_heads.clear();
+    let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
 
     // Not `apply_focused_motion`: the closure also captures the display-line
     // map and the sticky-column buffer, disjoint fields of `state` that must
@@ -178,7 +168,7 @@ pub(super) fn apply_visual_vertical(
     doc_ops::apply_doc_motion(
         &state.buffers,
         &mut state.panes.state,
-        focused,
+        pid,
         buf_id,
         |text, sels| {
             // Pass 1: resolve each selection's sticky display column. A
@@ -212,12 +202,11 @@ pub(super) fn apply_visual_vertical(
                 },
             ));
 
-            // Pass 2: move each selection, preserving the sticky column so
-            // consecutive presses in the same family reuse it.
-            let mut target_iter = target_display_cols.iter();
-            sels.map(|sel| {
-                let &target = target_iter.next().expect("one column per selection");
-                let head = match target {
+            // Pass 2: resolve each selection's new head, before touching the
+            // selection set at all — see the `is_view_scroll` guard below for
+            // why.
+            target_heads.extend(sels.iter_sorted().zip(target_display_cols.iter()).map(
+                |(sel, &target)| match target {
                     StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
                         move_buffer_line(&mut dlm, text, sel.head(), down, count, display_col)
                     }
@@ -233,12 +222,19 @@ pub(super) fn apply_visual_vertical(
                         down,
                         count,
                         display_col.as_display_line_unwrapped(),
-                        content_only,
                     ),
                     StickyDisplayCol::DisplayLine { display_col, .. } => {
-                        move_vertical(&mut dlm, sel.head(), down, count, display_col, content_only)
+                        move_vertical(&mut dlm, sel.head(), down, count, display_col)
                     }
-                };
+                },
+            ));
+
+            // Pass 3: rebuild with the heads pass 2 already resolved,
+            // preserving the sticky column so consecutive presses in the
+            // same family reuse it.
+            let mut resolved = target_heads.iter().zip(target_display_cols.iter());
+            sels.map(|sel| {
+                let (&head, &target) = resolved.next().expect("one head and column per selection");
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {
@@ -412,11 +408,12 @@ fn visual_move_vertical(
     // A count typed by the user (e.g. `9j`) means "9 buffer lines" — matching
     // relative-line-number gutters — even when soft-wrap is on.
     let unit = if state.explicit_count {
-        VerticalUnit::BufferLine
+        VerticalMove::BufferLine
     } else {
-        VerticalUnit::ContentDisplayLine
+        VerticalMove::ContentDisplayLine
     };
-    apply_visual_vertical(state, view, count, down, mode, unit);
+    let pid = state.focus.id();
+    apply_visual_vertical(state, view, pid, count, down, mode, unit);
 }
 
 pub(super) fn cmd_visual_move_down(

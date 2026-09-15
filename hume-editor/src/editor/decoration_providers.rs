@@ -75,9 +75,9 @@ impl Editor {
                 let vp = &pane.viewport;
                 let text = self.state.buffers.get(bid).text();
                 let top_line =
-                    hume_rope::line::RopeyLine::from(vp.top_line).min(text.last_ropey_line());
+                    hume_rope::line::RopeyLine::from(vp.top().line).min(text.last_ropey_line());
                 let bottom_line =
-                    hume_rope::line::RopeyLine::from(vp.top_line).advance(vp.height as usize);
+                    hume_rope::line::RopeyLine::from(vp.top().line).advance(vp.height as usize);
                 let past_end = hume_rope::line::RopeyLine::new(text.ropey_line_count().get());
                 DecoratedPane {
                     pid,

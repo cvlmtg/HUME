@@ -187,7 +187,8 @@ impl Editor {
     /// reason to let it sit in the wheel until it fires).
     ///
     /// A pane's line store needs no entry here — it lives on the pane and
-    /// dies with it.
+    /// dies with it, as does `PaneBufferState::scroll_pin`, which goes with
+    /// the closed pane's `SecondaryMap` entries.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
         self.last_viewport_key
@@ -569,17 +570,26 @@ impl Editor {
         let scrolloff = self.state.settings.scrolloff;
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
-            let cursor_char = self.state.panes.state[pid][buf_id]
-                .selections
-                .primary()
-                .head();
             let format_key = self.state.format_key(&self.view.panes[pid]);
+            // `scroll_pin` lives on the current (pane, buffer)'s own
+            // `PaneBufferState` — a pane that switched buffers this frame
+            // reads a different, freshly-seeded state whose pin is `None`
+            // by construction, so no separate buffer-identity filter is
+            // needed here.
+            let pbs = &mut self.state.panes.state[pid][buf_id];
+            let cursor_char = pbs.selections.primary().head();
+            // Drop a stale/mismatched pin — see `scroll_pin`'s own doc on
+            // why a mismatch clears it instead of just failing the
+            // comparison.
+            pbs.scroll_pin = pbs.scroll_pin.filter(|&p| p == cursor_char);
+            let pinned = pbs.scroll_pin.is_some();
             let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],
                 cursor_char,
                 format_key,
                 scrolloff,
+                pinned,
             );
             if pid == self.state.focus.id() {
                 ctx.cursor_content_pos = cursor_screen;
@@ -595,8 +605,12 @@ impl Editor {
             // `settle()`'s drain) means a change detected this frame is
             // picked up by *next* frame's drain — one frame later than when
             // this ran pre-drain, immaterial for any nonzero debounce interval.
+            // The slot is part of the key, not just the line: a view-led
+            // scroll (mouse wheel, `Ctrl+D`) can move entirely within one
+            // line's virtual block, which the line alone can't see.
             let viewport = &self.view.panes[pid].viewport;
-            let key = (buf_id, viewport.top_line, viewport.height);
+            let top = viewport.top();
+            let key = (buf_id, top.line, top.slot, viewport.height);
             if self.last_viewport_key.insert(pid, key) != Some(key) {
                 self.debounce_viewport_change(pid);
             }
@@ -663,7 +677,7 @@ impl Editor {
     // ── Engine accessors ──────────────────────────────────────────────────────
 
     #[cfg(test)]
-    pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::ViewportState {
+    pub(in crate::editor) fn viewport(&self) -> &hume_engine::pane::Viewport {
         &self.view.panes[self.state.focus.id()].viewport
     }
 
@@ -678,45 +692,69 @@ impl Editor {
         self.state.inline_output.enter_count()
     }
 
-    pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::ViewportState {
+    pub(in crate::editor) fn viewport_mut(&mut self) -> &mut hume_engine::pane::Viewport {
         &mut self.view.panes[self.state.focus.id()].viewport
     }
 }
 
-/// Scroll the pane viewport so `cursor_char` stays within the visible area, and
-/// report where the cursor ended up on screen (pane-relative, before the
-/// gutter). `None` for a viewport with no display lines to place it in.
+/// Scroll the pane viewport so `cursor_char` stays within the visible area,
+/// and report where the cursor ended up on screen (pane-relative, before the
+/// gutter). `None` for a viewport with no display lines to place it in, or
+/// when the cursor has scrolled out of view (see below) — a legitimate
+/// state, not a bug: the cursor can only occupy content display lines, so a
+/// pure view scroll into a virtual-line block can carry the viewport
+/// further than the cursor can follow. The terminal caret is simply hidden
+/// until an ordinary cursor motion resyncs the view.
 ///
-/// Calls the clamp and both the vertical and horizontal `ensure_cursor_visible`
-/// helpers in one shot, over a single display-line map — so the three agree
-/// on the display-line list by construction, and a line's format is reused
-/// across them. The cursor is resolved exactly once here, for all three
-/// plus the terminal-cursor placement: scrolling only ever *writes* the
-/// viewport, and the display-line map holds no viewport, so no arm below
-/// can change what `locate` already answered.
+/// Calls `Viewport::heal` and both the vertical (`reveal`) and horizontal
+/// (`reveal_horizontal`) verbs in one shot, over a single display-line map —
+/// so the three agree on the display-line list by construction, and a
+/// line's format is reused across them. The cursor is resolved exactly once
+/// here, for all three plus the terminal-cursor placement: scrolling only
+/// ever *writes* the viewport, and the display-line map holds no viewport,
+/// so no arm below can change what `locate` already answered.
+///
+/// `pinned` is `PaneBufferState::scroll_pin`'s verdict for this frame,
+/// already resolved by the caller — see that field's own doc for why the
+/// vertical `reveal` correction is skipped in favour of `cursor::content_pos`'s
+/// plain re-lookup when `pinned`, and what gap that leaves.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
     cursor_char: hume_rope::offset::CharOffset,
     format_key: hume_engine::display_lines::line_store::FormatKey,
     scrolloff: usize,
+    pinned: bool,
 ) -> Option<(u16, u16)> {
-    use super::scroll;
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done — both work through this pane's one store.
     let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
     // Self-heal a viewport top left stale by a write site that doesn't
     // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
-    // logic below reads it — see `clamp_viewport_top`'s doc.
-    scroll::clamp_viewport_top(viewport, &mut dlm);
+    // logic below reads it — see `Viewport::heal`'s doc.
+    viewport.heal(&mut dlm);
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
-    // Checked before `locate`, which would otherwise scan the cursor's line
-    // for an answer no one can use.
-    if viewport.height == 0 {
-        return None;
-    }
+    // Checked before `locate`, which would otherwise format the cursor's
+    // line for an answer no one can use — and before `geometry`, which
+    // returns `None` for exactly this case.
+    let geo = viewport.geometry(scrolloff)?;
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
-    let screen_row = scroll::ensure_cursor_visible(viewport, &mut dlm, cursor_pos, scrolloff);
-    scroll::ensure_cursor_visible_horizontal(viewport, &mut dlm, cursor_display_col);
-    screen_row.map(|row| super::cursor::place(viewport, cursor_display_col, row))
+    // Horizontal scroll is its own axis (a fixed margin, no `scrolloff`, no
+    // document-edge special-casing — see `reveal_horizontal`'s own doc) and
+    // has no snap-back to guard against, so it always runs: a
+    // same-display-line cursor move (`l` on a long unwrapped line) changes
+    // the column without changing `cursor_pos`, and gating this on the same
+    // pin the vertical arm below reads would leave it stale for exactly
+    // that case.
+    viewport.reveal_horizontal(&mut dlm, cursor_display_col);
+    if pinned {
+        super::cursor::content_pos(viewport, &mut dlm, cursor_char)
+    } else {
+        let screen_row = viewport.reveal(&mut dlm, geo, cursor_pos);
+        Some(super::cursor::place(
+            viewport,
+            cursor_display_col,
+            screen_row,
+        ))
+    }
 }

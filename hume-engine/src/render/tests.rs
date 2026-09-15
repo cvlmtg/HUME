@@ -1,5 +1,6 @@
 use super::*;
-use crate::pane::ViewportState;
+use crate::pane::Viewport;
+use crate::test_support::render_display_line;
 use crate::theme::Theme;
 use crate::types::{
     CellContent, DisplayLine, DisplayLineKind, Grapheme, Modifiers, ResolvedStyle, ScopeId,
@@ -66,7 +67,7 @@ fn renders_simple_text() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -94,7 +95,7 @@ fn renders_simple_text() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "hi", ""),
+        &render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
         0,
         &lane_widths,
@@ -131,7 +132,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -159,7 +160,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "hi", ""),
+        &render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
         0,
         &lane_widths,
@@ -179,7 +180,7 @@ fn filler_rows_have_tilde() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -228,7 +229,7 @@ fn do_compose_display_line(
     graphemes: &[Grapheme],
     styles: &[ResolvedStyle],
     visible: PaneGeometry,
-    viewport: ViewportState,
+    viewport: Viewport,
     tab_width: u8,
     w: u16,
     h: u16,
@@ -260,7 +261,7 @@ fn do_compose_display_line(
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(display_line, graphemes, line_str, virtual_texts),
+        &render_display_line(display_line, graphemes, line_str, virtual_texts),
         styles,
         0,
         &lane_widths,
@@ -292,7 +293,7 @@ fn horizontal_scroll_clips_left_columns() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let mut viewport = ViewportState::new(20, 5);
+    let mut viewport = Viewport::new(20, 5);
     viewport.horizontal_offset = dc(2); // skip columns 0 and 1
     let buf = do_compose_display_line(
         "abcde", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
@@ -350,7 +351,7 @@ fn double_width_char_straddling_scroll_edge_renders_space_not_shifted_glyph() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let mut viewport = ViewportState::new(20, 5);
+    let mut viewport = Viewport::new(20, 5);
     viewport.horizontal_offset = dc(1);
     let buf = do_compose_display_line(
         "中X", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
@@ -391,7 +392,7 @@ fn wide_grapheme_at_the_right_edge_does_not_bleed_past_the_pane() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(5, 5);
+    let viewport = Viewport::new(5, 5);
     let buf = do_compose_display_line(
         "中", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 5, 5,
     );
@@ -444,7 +445,7 @@ fn virtual_width_continuation_cell_is_styled_not_left_blank() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "", arena, &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -483,7 +484,7 @@ fn indent_guide_drawn_at_inner_tab_stops() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "        foo", // 8 spaces + "foo"
         "",
@@ -541,7 +542,7 @@ fn indent_guide_accounts_for_a_leading_inline_insert() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "  foo",
         "abcdef",
@@ -598,7 +599,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -626,7 +627,7 @@ fn indent_guide_hidden_when_show_indent_guides_is_false() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "        foo", ""),
+        &render_display_line(&dls[0], &graphemes, "        foo", ""),
         &styles,
         0,
         &lane_widths,
@@ -677,7 +678,7 @@ fn indent_guide_not_drawn_on_wrap_display_lines() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "    text", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -705,7 +706,7 @@ fn indicator_content_fills_tab_width() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "\t", "→", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -738,7 +739,7 @@ fn tab_fill_blanks_its_whole_width() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "\t", "", &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -776,7 +777,7 @@ fn virtual_cell_wider_than_one_column_renders_from_the_arena() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(20, 5);
+    let viewport = Viewport::new(20, 5);
     let buf = do_compose_display_line(
         "c", arena, &dls[0], &graphemes, &styles, visible, viewport, 4, 20, 5,
     );
@@ -832,7 +833,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         gutter_width: 4,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(10, 1);
+    let viewport = Viewport::new(10, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -863,7 +864,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+        &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
         0,
         &lane_widths,
@@ -903,7 +904,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         gutter_width: 4,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(5, 1);
+    let viewport = Viewport::new(5, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -937,7 +938,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+        &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
         0,
         &lane_widths,
@@ -1033,7 +1034,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         gutter_width: 8, // 2 (ExactFillGutter) + 6 (LeftoverGutter)
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(10, 1);
+    let viewport = Viewport::new(10, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -1067,7 +1068,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+        &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
         0,
         &lane_widths,
@@ -1138,7 +1139,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         gutter_width: 20,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(6, 1);
+    let viewport = Viewport::new(6, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -1172,7 +1173,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+        &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
         0,
         &lane_widths,
@@ -1253,7 +1254,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             gutter_width: 3,
             last_line_idx: RopeyLine::new(0),
         };
-        let viewport = ViewportState::new(7, 1);
+        let viewport = Viewport::new(7, 1);
         let pane_rect = Rect {
             x: 0,
             y: 0,
@@ -1284,7 +1285,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
         };
         let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
         compose_display_line(
-            &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+            &render_display_line(&dls[0], &graphemes, "X", ""),
             &styles,
             0,
             &lane_widths,
@@ -1367,7 +1368,7 @@ fn gutter_column_reads_rope_via_ctx() {
         gutter_width: 2,
         last_line_idx: RopeyLine::new(1),
     };
-    let viewport = ViewportState::new(12, 2);
+    let viewport = Viewport::new(12, 2);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -1397,7 +1398,7 @@ fn gutter_column_reads_rope_via_ctx() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "X", ""),
+        &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
         0,
         &lane_widths,
@@ -1482,7 +1483,7 @@ fn compose_display_line_dims_cells_inline() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(2, 1);
+    let viewport = Viewport::new(2, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -1510,7 +1511,7 @@ fn compose_display_line_dims_cells_inline() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
+        &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
         0,
         &lane_widths,
@@ -1538,7 +1539,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         gutter_width: 0,
         last_line_idx: RopeyLine::new(0),
     };
-    let viewport = ViewportState::new(2, 1);
+    let viewport = Viewport::new(2, 1);
     let pane_rect = Rect {
         x: 0,
         y: 0,
@@ -1566,7 +1567,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
     };
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
-        &crate::test_support::render_display_line(&dls[0], &graphemes, "x", ""),
+        &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
         0,
         &lane_widths,

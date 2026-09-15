@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 use slotmap::SecondaryMap;
 
+use crate::display_lines::DisplayLinePos;
 use crate::layout::gutter_width_for_line;
 use crate::pipeline::BufferId;
 use crate::providers::ProviderSet;
@@ -12,21 +13,23 @@ use hume_rope::offset::CharOffset;
 use ropey::Rope;
 
 // ---------------------------------------------------------------------------
-// Viewport state  (per-pane scroll / size)
+// Viewport  (per-pane scroll / size)
 // ---------------------------------------------------------------------------
 
 /// The scrolling and sizing state of one pane's viewport.
+///
+/// `top` is `pub(crate)`, not `pub`: every write to it from outside this
+/// crate goes through one of the scroll verbs in
+/// [`crate::display_lines::scroll`] (`heal`/`scroll_by`/`reveal`/`align`) —
+/// the single write API that replaced a former `top_line`/`top_slot` field
+/// pair, its `u16` slot narrowing, and a second `(top_line, top_slot) ->
+/// DisplayLinePos` conversion `pane_render.rs` used to do independently of
+/// `hume-editor`'s own. `DisplayLinePos::slot` is a raw `usize`, so folding
+/// the pair into one field also drops the narrowing — nothing needs a slot
+/// past a display-line count no real terminal or document reaches.
 #[derive(Clone, Debug)]
-pub struct ViewportState {
-    /// First fully-visible buffer line.
-    pub top_line: ContentLine,
-    /// How many display lines of `top_line`'s visual block — virtual
-    /// `before` lines, the line's own wrap display lines, then virtual
-    /// `after` lines, in that order — have already scrolled past. The
-    /// `slot` half of the `DisplayLinePos { line: top_line, slot:
-    /// top_slot }` this pair encodes. Every display line in the block is an
-    /// equally skippable unit; nothing about `before`/`after` is special.
-    pub top_slot: u16,
+pub struct Viewport {
+    pub(crate) top: DisplayLinePos,
     /// Horizontal scroll in columns (0 when soft-wrap is on). A document
     /// column, not a terminal cell — widened past `u16` alongside
     /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
@@ -38,16 +41,95 @@ pub struct ViewportState {
     pub height: u16,
 }
 
-impl ViewportState {
+impl Viewport {
     pub fn new(width: u16, height: u16) -> Self {
         Self {
-            top_line: ContentLine::new(0),
-            top_slot: 0,
+            top: DisplayLinePos::default(),
             horizontal_offset: DisplayLineCol::new(0),
             width,
             height,
         }
     }
+
+    /// The viewport's top display-line address.
+    pub fn top(&self) -> DisplayLinePos {
+        self.top
+    }
+
+    /// This viewport's scrolloff geometry, or `None` at zero height — every
+    /// scroll verb takes a [`ViewGeometry`] rather than a raw height, so a
+    /// collapsed pane is one early return here instead of a `height == 0`
+    /// check repeated inside each verb.
+    pub fn geometry(&self, scrolloff: usize) -> Option<ViewGeometry> {
+        if self.height == 0 {
+            return None;
+        }
+        let VerticalMargins { margin, target } = vertical_margins(self.height, scrolloff);
+        Some(ViewGeometry {
+            height: self.height as usize,
+            margin,
+            target,
+        })
+    }
+
+    /// Seed an arbitrary top — for test fixtures that need a pane to start
+    /// scrolled without exercising the scroll verbs themselves. Not
+    /// `#[cfg(test)]`: `hume-editor`'s own integration tests need this too,
+    /// and cross-crate `cfg(test)` items are invisible to a dependent
+    /// crate's test build (a normal, non-test build of `hume-engine`
+    /// backs it).
+    ///
+    /// Production code never calls this — every real write goes through a
+    /// scroll verb or `Pane::recall_scroll`. An unvalidated address left
+    /// here self-heals on the next `heal` call, the same posture
+    /// `recall_scroll`'s own unvalidated slot write already has.
+    pub fn seed_top_for_test(&mut self, top: DisplayLinePos) {
+        self.top = top;
+    }
+}
+
+/// A viewport `height`'s scrolloff margin, and the display row the margin
+/// leaves for the far side of the viewport to settle at.
+///
+/// Shared by [`Viewport::reveal`](crate::display_lines::scroll) (vertical
+/// cursor-follow) and [`crate::display_lines::DisplayLineMap::max_scroll_top`]
+/// (the scroll-down bound) — the two must agree on both numbers, since a
+/// `Ctrl+D`/wheel scroll to EOF and the very next ordinary cursor motion
+/// share one viewport top.
+pub struct VerticalMargins {
+    /// Display lines of look-ahead kept above/below the cursor, clamped so
+    /// the two margins can never meet in the middle of an odd-or-even height.
+    pub margin: usize,
+    /// Display row (0-indexed from the top) the far edge settles at once
+    /// `margin` is reserved on both sides — always `>= margin`.
+    pub target: usize,
+}
+
+/// Compute [`VerticalMargins`] for a `height`-row viewport and a `scrolloff`
+/// setting.
+///
+/// `(height - 1) / 2`, not `height / 2`: at an even height, a margin of
+/// exactly `height / 2` leaves the stable middle window empty (its bounds
+/// `margin..height-margin` collapse to a single point), so the two correction
+/// arms that use this margin would fight over that one display line and
+/// rescroll every frame.
+pub fn vertical_margins(height: u16, scrolloff: usize) -> VerticalMargins {
+    let height = height as usize;
+    let margin = scrolloff.min(height.saturating_sub(1) / 2);
+    let target = height.saturating_sub(margin).saturating_sub(1);
+    VerticalMargins { margin, target }
+}
+
+/// A nonzero-height viewport's scrolloff geometry, resolved once per scroll
+/// operation and threaded through every verb in
+/// [`crate::display_lines::scroll`] — [`Viewport::geometry`] is the sole
+/// constructor, so a verb can never observe `height == 0` or a `target` with
+/// nothing to reach.
+#[derive(Copy, Clone, Debug)]
+pub struct ViewGeometry {
+    pub height: usize,
+    pub margin: usize,
+    pub target: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -60,8 +142,7 @@ impl ViewportState {
 /// buffer when it switches away. Restored by `recall_scroll` on switch-back.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ScrollPosition {
-    pub top_line: ContentLine,
-    pub top_slot: u16,
+    pub top: DisplayLinePos,
     pub horizontal_offset: DisplayLineCol,
 }
 
@@ -341,7 +422,7 @@ pub struct Pane {
     /// Which buffer this pane views.
     pub buffer_id: BufferId,
     /// Scroll and size state.
-    pub viewport: ViewportState,
+    pub viewport: Viewport,
     /// Per-buffer scroll memory: where this pane was when it last viewed each buffer.
     /// Populated by `remember_scroll` on buffer switch; restored by `recall_scroll`.
     pub saved_scrolls: SecondaryMap<BufferId, ScrollPosition>,
@@ -384,7 +465,7 @@ impl Pane {
     pub fn new(buffer_id: BufferId) -> Self {
         Self {
             buffer_id,
-            viewport: ViewportState::new(80, 24),
+            viewport: Viewport::new(80, 24),
             saved_scrolls: SecondaryMap::new(),
             selections: vec![Selection {
                 anchor: CharOffset::new(0),
@@ -446,8 +527,7 @@ impl Pane {
         self.saved_scrolls.insert(
             self.buffer_id,
             ScrollPosition {
-                top_line: self.viewport.top_line,
-                top_slot: self.viewport.top_slot,
+                top: self.viewport.top,
                 horizontal_offset: self.viewport.horizontal_offset,
             },
         );
@@ -457,13 +537,15 @@ impl Pane {
     ///
     /// `last_content_line` is `id`'s *current* last content line index — the
     /// buffer may have shrunk since this scroll was saved (edited elsewhere
-    /// while this pane viewed a different buffer), so `top_line` is clamped
-    /// to it, the same bound `reload_buffer_in_place` applies
-    /// (`hume-editor/src/editor/buffer/file_open.rs`).
+    /// while this pane viewed a different buffer), so `top`'s line is
+    /// clamped to it, the same bound `reload_buffer_in_place` applies
+    /// (`hume-editor/src/editor/buffer/file_open.rs`). `top`'s slot is
+    /// restored verbatim, unvalidated against the block it addresses — like
+    /// every other write outside `display_lines::scroll`'s verbs, it relies
+    /// on the next frame's `Viewport::heal` to self-heal a stale address.
     pub fn recall_scroll(&mut self, id: BufferId, last_content_line: ContentLine) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
-        self.viewport.top_line = sp.top_line.min(last_content_line);
-        self.viewport.top_slot = sp.top_slot;
+        self.viewport.top = DisplayLinePos::new(sp.top.line.min(last_content_line), sp.top.slot);
         self.viewport.horizontal_offset = sp.horizontal_offset;
     }
 
