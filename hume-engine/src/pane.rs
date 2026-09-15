@@ -137,12 +137,11 @@ impl Viewport {
 /// [`crate::display_lines::scroll`] — [`Viewport::geometry`] is the sole
 /// constructor, so a verb can never observe `height == 0` or a `target` with
 /// nothing to reach, and [`Viewport::reveal`](crate::display_lines::scroll)
-/// (vertical cursor-follow) and
-/// [`crate::display_lines::DisplayLineMap::max_scroll_top`] (the scroll-down
-/// bound) can never disagree on `margin`/`target` — both read them off the
-/// same `ViewGeometry`, rather than each computing its own. That agreement
-/// matters because a `Ctrl-d`/wheel scroll to EOF and the very next ordinary
-/// cursor motion share one viewport top.
+/// (vertical cursor-follow) and `DisplayLineMap::max_scroll_top` (the
+/// scroll-down bound) can never disagree on `margin`/`target` — both read
+/// them off the same `ViewGeometry`, rather than each computing its own.
+/// That agreement matters because a `Ctrl-d`/wheel scroll to EOF and the
+/// very next ordinary cursor motion share one viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {
     /// A terminal-cell count at its root (`Viewport::height`), but read in

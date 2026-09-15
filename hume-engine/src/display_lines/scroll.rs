@@ -79,7 +79,7 @@ impl Viewport {
     /// Resolves `top` first (see [`Viewport::top_at`]), so a caller need not
     /// heal it separately before scrolling.
     ///
-    /// A *downward* scroll is bounded by [`DisplayLineMap::max_scroll_top`]
+    /// A *downward* scroll is bounded by `DisplayLineMap::max_scroll_top`
     /// and additionally never moves `top` backwards past where it already
     /// sits: [`Viewport::align`] (`z z`/`z k`/`z j`) and an LSP
     /// goto-definition jump both deliberately leave `top` past
@@ -268,11 +268,11 @@ impl<'a> DisplayLineMap<'a> {
 /// *requested* `delta`, not the amount the view actually moved, and for what
 /// the band clamp adds on top of that.
 ///
-/// Two passes: [`walk_by_delta`] finds where a plain `delta`-display-line
+/// Two passes: `walk_by_delta` finds where a plain `delta`-display-line
 /// walk from `head` would land (`None` if it never reaches a content
 /// line — `head` already sat at the document's edge in the direction of
 /// travel, `delta == 0`, or a virtual-line block past the band swallowed the
-/// walk whole); [`place_in_band`] then clamps how many display lines below
+/// walk whole); `place_in_band` then clamps how many display lines below
 /// `top` that landing sits into `[geo.margin, geo.target]`, if it isn't
 /// there already. Either pass returning `None` is not an error: it is the same
 /// "cursor can't follow" state a pure view scroll into a trailing
