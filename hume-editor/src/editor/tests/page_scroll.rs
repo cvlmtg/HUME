@@ -61,11 +61,11 @@ fn half_page_down_moves_half_viewport() {
     );
 }
 
-/// Ctrl+u (half-page-up) moves cursor up by half the viewport height —
-/// except the document's own start saturates both the view and a plain
-/// 12-line-up walk at line 0, and landing exactly at the new top (row 0) is
-/// what `carry`'s band clamp exists to correct: it pushes the landing back
-/// down to row `margin` (3, default `scrolloff`) below the new top, line 3.
+/// Ctrl+u (half-page-up) moves cursor up by half the viewport height. The
+/// document's own start saturates both the view and a plain 12-line-up walk
+/// at line 0, and landing exactly at the new top (row 0) is in-band there:
+/// `top` has no room left to scroll back further, so `carry`'s band clamp
+/// leaves the landing alone rather than forcing it down to `scrolloff`.
 #[test]
 fn half_page_up_moves_half_viewport() {
     let mut ed = page_test_editor();
@@ -75,9 +75,8 @@ fn half_page_up_moves_half_viewport() {
     ed.handle_key(key_ctrl('u'));
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(6),
-        "half-page-up saturates at the document start, then the band clamp \
-         pushes it down to margin (3) below the new top (0), landing on line 3"
+        co(0),
+        "half-page-up returns to line 0"
     );
 }
 
@@ -95,9 +94,9 @@ fn page_down_moves_full_viewport() {
 }
 
 /// PageUp moves cursor up by a full viewport height — same saturation as
-/// `half_page_up_moves_half_viewport`: the document start caps both the
-/// view and the 24-line-up walk at line 0, and `carry`'s band clamp then
-/// pushes that off-band landing back down to margin (3) below the new top.
+/// `half_page_up_moves_half_viewport`: the document start caps both the view
+/// and the 24-line-up walk at line 0, landing in-band there since `top` has
+/// no room left to scroll back further.
 #[test]
 fn page_up_moves_full_viewport() {
     let mut ed = page_test_editor();
@@ -107,9 +106,8 @@ fn page_up_moves_full_viewport() {
     ed.handle_key(key_page_up());
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(6),
-        "page-up saturates at the document start, then the band clamp \
-         pushes it down to margin (3) below the new top (0), landing on line 3"
+        co(0),
+        "page-up returns to line 0"
     );
 }
 

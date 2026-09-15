@@ -126,13 +126,12 @@ pub(in crate::editor) fn switch_pane_to_buffer(
     ev.panes[pid].recall_scroll(target, buffers.get(target).text().last_content_line());
     // Seeds `pane_state[pid][target]` on this pane's first visit to
     // `target` — required regardless of reveal, since `frame.rs`'s scroll
-    // step indexes it directly. A different buffer's cursor/viewport
-    // pairing needing re-settling regardless of whether the recalled
-    // selection's head happens to equal the outgoing one is no longer
-    // handled here: `EditorState::layout_key`'s `buffer_tag` names the
-    // buffer, so a switch to a different one always differs from
-    // `PaneBufferState::last_layout_key` — the very first read for a
-    // `(pane, buffer)` pair is `None`, which differs from anything.
+    // step indexes it directly. A different buffer's cursor/viewport pairing
+    // always needs re-settling, whether or not the recalled selection's head
+    // happens to equal the outgoing one: `EditorState::layout_key`'s
+    // `buffer_tag` names the buffer, so a switch to a different one always
+    // differs from `PaneBufferState::last_layout_key` — the very first read
+    // for a `(pane, buffer)` pair is `None`, which differs from anything.
     pane_state::ensure(pane_state, buffers, pid, target);
 }
 

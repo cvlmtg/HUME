@@ -547,8 +547,7 @@ impl EngineView {
 
             // The one place that can say these are disjoint parts of one pane:
             // the render pass reads three of its fields while writing two —
-            // `line_store` as always, and now `viewport`'s own resolved top,
-            // via `Viewport::top_at`.
+            // `line_store`, and `viewport`'s own resolved top (`Viewport::top_at`).
             let Pane {
                 viewport,
                 providers,

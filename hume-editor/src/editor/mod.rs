@@ -615,6 +615,26 @@ pub(in crate::editor) struct LayoutKey {
     scrolloff: usize,
 }
 
+impl LayoutKey {
+    /// The subset of `self` a `DisplayLineMap` needs, as one
+    /// `hume_engine::display_lines::line_store::FormatKey` — see
+    /// [`EditorState::format_key`]'s own doc for which fields and why. A
+    /// caller that has already resolved a `LayoutKey` (`frame.rs`'s scroll
+    /// step, which needs both) derives its `FormatKey` from here instead of
+    /// a second, independent `EditorState::format_key` call that would
+    /// re-resolve every field from scratch.
+    pub(in crate::editor) fn format_key(
+        &self,
+    ) -> hume_engine::display_lines::line_store::FormatKey {
+        hume_engine::display_lines::line_store::FormatKey {
+            buffer_tag: self.buffer_tag,
+            wrap_mode: self.wrap_mode,
+            tab_width: self.tab_width,
+            whitespace: self.whitespace,
+        }
+    }
+}
+
 impl EditorState {
     // ── Mode ──────────────────────────────────────────────────────────────────
 
@@ -696,13 +716,7 @@ impl EditorState {
         &self,
         pane: &hume_engine::pane::Pane,
     ) -> hume_engine::display_lines::line_store::FormatKey {
-        let l = self.layout_key(pane);
-        hume_engine::display_lines::line_store::FormatKey {
-            buffer_tag: l.buffer_tag,
-            wrap_mode: l.wrap_mode,
-            tab_width: l.tab_width,
-            whitespace: l.whitespace,
-        }
+        self.layout_key(pane).format_key()
     }
 
     // ── Quit ──────────────────────────────────────────────────────────────────

@@ -183,13 +183,12 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
 
 /// `scroll_view` — shared with `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` — always
 /// carries the cursor, even when the viewport itself has nowhere to go
-/// because the whole document already fits on screen. The cursor doesn't
-/// stop at exactly
-/// `mouse_scroll_lines` (1) below the top, though: landing on "b" (row 1)
-/// would still be above the default scrolloff margin (3), so `carry`'s band
-/// clamp pushes it further — saturating at the document's own last line
-/// ("c", row 2) two rows short of the full margin, the same edge tolerance
-/// `Viewport::reveal`/`align` already have.
+/// because the whole document already fits on screen. The cursor stops
+/// exactly `mouse_scroll_lines` (1) below the top, on "b" (row 1) — short of
+/// the default scrolloff margin (3), but `top` is already at the document's
+/// own first line with no room to retreat any further to honor it, so
+/// `carry`'s band clamp leaves the landing alone rather than pushing it
+/// further down, the same edge tolerance `Viewport::reveal` already has.
 #[test]
 fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -205,8 +204,9 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(4), // "c"'s start
-        "the band clamp saturates at the document's own last line, short of the full margin"
+        co(2), // "b"'s start
+        "top has no room to retreat further, so the band clamp leaves the \
+         landing at row 1 rather than forcing it down to margin"
     );
 }
 

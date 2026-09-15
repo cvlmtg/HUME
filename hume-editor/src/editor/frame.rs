@@ -579,8 +579,8 @@ impl Editor {
         let scrolloff = self.state.settings.scrolloff;
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
-            let format_key = self.state.format_key(&self.view.panes[pid]);
             let layout_key = self.state.layout_key(&self.view.panes[pid]);
+            let format_key = layout_key.format_key();
             // `reveal_pending`/`last_layout_key` live on the current (pane,
             // buffer)'s own `PaneBufferState` — a pane that switched buffers
             // this frame reads a different, freshly-seeded state (`None`

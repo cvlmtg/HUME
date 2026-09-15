@@ -961,12 +961,42 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
 /// A landing above `geo.margin` (too close to `top`, or before it) must be
 /// pushed down to the band's near edge — the case that makes `Viewport::reveal`
 /// provably idle afterward instead of firing a second, undocumented
-/// correction next frame. `top` and `head` both start at the document's
-/// first line (the common "freshly opened file" state), height 10 with
-/// scrolloff 3 (`margin` 3, `target` 6): walking down 2 display lines lands
-/// on row 2, short of `margin`, so the clamp must walk it 1 further, to row 3.
+/// correction next frame. `top` here has genuine room to scroll back further
+/// (line 20 of a 40-line document, not the document's own start — see
+/// `carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further`
+/// for the edge that loosens this), height 10 with scrolloff 3 (`margin` 3,
+/// `target` 6): walking down 1 display line from `top` lands on row 1, short
+/// of `margin`, so the clamp must walk it 2 further, to row 3.
 #[test]
 fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
+    let r = Rope::from_str(&"a\n".repeat(40));
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let geo = viewport(0, 10, 80).geometry(3).unwrap();
+    let top = DisplayLinePos::new(ContentLine::new(20), 0);
+    let head = top;
+    let landed = carry(&mut dlm, geo, top, head, 1).expect("plenty of content lines below top");
+    assert_eq!(
+        landed,
+        DisplayLinePos::new(ContentLine::new(23), 0),
+        "clamped down to margin (3), not left at row 1"
+    );
+}
+
+/// The near-edge push above only applies when `top` itself still has room to
+/// scroll back — when `top` is already at the document's first display line,
+/// walking `candidate` back by `margin` can only re-land on that same `top`
+/// (saturating there), so `Viewport::reveal` would be idle on `candidate`
+/// exactly as it is. Forcing the landing down to `margin` anyway would fight
+/// that idle behavior instead of matching it, permanently overshooting
+/// scrolloff at the buffer's own start — the bug `page_scroll.rs`'s
+/// `half_page_up_moves_half_viewport`/`page_up_moves_full_viewport` cover
+/// end-to-end. Height 10, scrolloff 3 (`margin` 3): `top`/`head` both at the
+/// document start, walking down 2 lines lands on row 2, short of `margin` —
+/// but the clamp must leave it there rather than push it to row 3.
+#[test]
+fn carry_leaves_a_landing_short_of_margin_when_top_cannot_scroll_back_further() {
     let r = Rope::from_str(&"a\n".repeat(10));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
@@ -978,8 +1008,9 @@ fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
     let landed = carry(&mut dlm, geo, top, head, 2).expect("plenty of content lines below top");
     assert_eq!(
         landed,
-        DisplayLinePos::new(ContentLine::new(3), 0),
-        "clamped down to margin (3), not left at row 2"
+        DisplayLinePos::new(ContentLine::new(2), 0),
+        "top is already at the document start, so reveal would be idle on \
+         row 2 — the clamp must not force it down to margin (3)"
     );
 }
 

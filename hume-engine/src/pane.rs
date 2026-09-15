@@ -20,13 +20,11 @@ use ropey::Rope;
 ///
 /// `top` is `pub(crate)`, not `pub`: every write to it from outside this
 /// crate goes through one of the scroll verbs in
-/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`) —
-/// the single write API that replaced a former `top_line`/`top_slot` field
-/// pair, its `u16` slot narrowing, and a second `(top_line, top_slot) ->
-/// DisplayLinePos` conversion `pane_render.rs` used to do independently of
-/// `hume-editor`'s own. `DisplayLinePos::slot` is a raw `usize`, so folding
-/// the pair into one field also drops the narrowing — nothing needs a slot
-/// past a display-line count no real terminal or document reaches.
+/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`) — the
+/// single write API for a pane's scroll position, so no caller resolves a
+/// `DisplayLinePos` address independently of it. `DisplayLinePos::slot` is a
+/// raw `usize`, unnarrowed — nothing needs a slot past a display-line count
+/// no real terminal or document reaches.
 #[derive(Clone, Debug)]
 pub struct Viewport {
     pub(crate) top: DisplayLinePos,

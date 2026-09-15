@@ -4,13 +4,12 @@
 //! requested delta.
 //!
 //! Every verb here is the *only* way [`Viewport::top`](crate::pane::Viewport::top)
-//! changes from outside this crate — the single chokepoint for
-//! `(top_line, top_slot) -> DisplayLinePos` address resolution and scrolloff
-//! arithmetic. [`Viewport::top_at`] is the read counterpart to that write
-//! chokepoint: the only way to obtain a `top` that is safe to walk. A
-//! [`ViewGeometry`] is resolved once per call (`Viewport::geometry`) and
-//! threaded through, so no verb recomputes `margin`/`target` itself and no
-//! verb can observe a zero-height viewport.
+//! changes from outside this crate — the single chokepoint for scrolloff
+//! arithmetic against a `DisplayLinePos` address. [`Viewport::top_at`] is the
+//! read counterpart to that write chokepoint: the only way to obtain a `top`
+//! that is safe to walk. A [`ViewGeometry`] is resolved once per call
+//! (`Viewport::geometry`) and threaded through, so no verb recomputes
+//! `margin`/`target` itself and no verb can observe a zero-height viewport.
 //!
 //! `carry` deliberately walks the requested `delta` on its own, rather than
 //! being handed how far `scroll_by` actually moved: `scroll_by`'s bound
@@ -340,6 +339,16 @@ fn walk_by_delta(
 /// there already. A landing already in-band (the common case) passes
 /// through unchanged, so "the cursor keeps its screen row" still holds
 /// exactly for it.
+///
+/// A landing short of `margin` is also left unchanged when `top` itself has
+/// no room to retreat any further — walking `candidate` back by `margin`
+/// lands on `top` again either way (saturating there), so
+/// [`Viewport::reveal`] would be idle on `candidate` exactly as it is; only
+/// when `top` still has document above it to scroll into would `reveal`
+/// actually move it on the very next frame, which is what the clamp exists
+/// to preempt. Without this exception the clamp would permanently override
+/// `scrolloff` at the buffer's own start, since `top` can never retreat far
+/// enough there to satisfy a bare `< geo.margin` check.
 fn place_in_band(
     dlm: &mut DisplayLineMap<'_>,
     geo: ViewGeometry,
@@ -355,8 +364,12 @@ fn place_in_band(
         Some(display_lines_below_top) if display_lines_below_top > geo.target => {
             walk_from_top(dlm, geo, top, geo.target)
         }
-        // `display_lines_below_top < geo.margin`, or `candidate` sits before
-        // `top` (or too far past `geo.height` to tell) — either way, not in band.
+        Some(_) if dlm.advance_saturating(candidate, -(geo.margin as isize)) == top => {
+            Some(candidate)
+        }
+        // Short of `margin` with room for `top` to retreat further, or
+        // `candidate` sits before `top` (or too far past `geo.height` to
+        // tell) — either way, not in band.
         _ => walk_from_top(dlm, geo, top, geo.margin),
     }
 }
