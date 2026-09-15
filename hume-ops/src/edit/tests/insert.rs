@@ -586,6 +586,57 @@ fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
     );
 }
 
+// ── open_line_above (auto-indent on `O`) ──────────────────────────────────
+
+#[test]
+fn open_line_above_copies_tab_indent() {
+    // "\tfoo" cursor on 'f' → blank indented line inserted above it, cursor
+    // on that line's own '\n'.
+    assert_state!(
+        "\t-[f]>oo\n",
+        |(text, sels)| open_line_above(text, sels),
+        "\t-[\n]>\tfoo\n"
+    );
+}
+
+#[test]
+fn open_line_above_copies_space_indent() {
+    assert_state!(
+        "    -[b]>ar\n",
+        |(text, sels)| open_line_above(text, sels),
+        "    -[\n]>    bar\n"
+    );
+}
+
+#[test]
+fn open_line_above_no_indent_on_bare_line() {
+    assert_state!(
+        "fo-[o]>\n",
+        |(text, sels)| open_line_above(text, sels),
+        "-[\n]>foo\n"
+    );
+}
+
+#[test]
+fn open_line_above_second_line_leaves_first_untouched() {
+    // Indent comes from the selection's own line, not the buffer's first
+    // line — "foo" (no indent) stays untouched above the new blank line.
+    assert_state!(
+        "foo\n\t-[b]>ar\n",
+        |(text, sels)| open_line_above(text, sels),
+        "foo\n\t-[\n]>\tbar\n"
+    );
+}
+
+#[test]
+fn open_line_above_two_cursors_different_indents() {
+    assert_state!(
+        "\t-[a]>\n  -[b]>\n",
+        |(text, sels)| open_line_above(text, sels),
+        "\t-[\n]>\ta\n  -[\n]>  b\n"
+    );
+}
+
 // ── clear_blank_line_indent (vim autoindent parity on Insert-mode exit) ───
 
 #[test]

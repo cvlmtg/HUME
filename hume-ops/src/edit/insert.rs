@@ -1,4 +1,4 @@
-//! Character/string insertion, auto-indent on Enter, and Tab.
+//! Character/string insertion, auto-indent on Enter/`o`/`O`, and Tab.
 
 use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
 use hume_editing::grapheme::display_col_in_line;
@@ -96,6 +96,15 @@ pub fn blank_line_ws_range(
         .then_some(ExclusiveRange::new(line_start, ws_end))
 }
 
+/// `[line_start, ws_end)` — the leading-whitespace range of the line
+/// containing `pos`.
+fn line_indent_range(text: &BufferText, pos: CharOffset) -> ExclusiveRange<CharOffset> {
+    let line_idx = text.char_to_line(pos);
+    let line_start = text.line_to_char(line_idx.into());
+    let ws_end = leading_whitespace_end(text, line_idx);
+    ExclusiveRange::new(line_start, ws_end)
+}
+
 /// Shared per-selection prelude for [`insert_newline_indent`] and
 /// [`clear_blank_line_indent`]: `pos`'s line info as `[line_start, ws_end)`,
 /// or `None` if a prior selection's blank-line clear already consumed past
@@ -110,10 +119,7 @@ fn line_context_if_unconsumed(
     if pos < b.old_pos() {
         return None;
     }
-    let line_idx = text.char_to_line(pos);
-    let line_start = text.line_to_char(line_idx.into());
-    let ws_end = leading_whitespace_end(text, line_idx);
-    Some(ExclusiveRange::new(line_start, ws_end))
+    Some(line_indent_range(text, pos))
 }
 
 /// Attempts the blank-line whitespace-vacate trim for a collapsed selection.
@@ -187,6 +193,34 @@ pub fn insert_newline_indent(
             b.insert(&indent);
         }
         new_sels.push(Selection::collapsed(b.new_pos()));
+    })
+}
+
+/// Open a blank, auto-indented line above each selection's line.
+///
+/// The `O` counterpart of [`insert_newline_indent`]: both split a line and
+/// copy its leading whitespace, but `O` keeps the copy on the line *above*
+/// the break, so the indent is inserted before the `\n`, not after it. The
+/// cursor lands on that inserted `\n` — the new blank line.
+///
+/// Unlike `insert_newline_indent`, this never deletes: `apply_edit` visits
+/// selections in ascending-`start()` order, and each iteration only retains
+/// forward to its own line's start, so an earlier selection's edit can never
+/// advance `old_pos()` past a later selection's line start the way a delete
+/// could — no "already consumed" guard is needed.
+pub fn open_line_above(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
+    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+        let line = line_indent_range(text, sel.start());
+        b.retain(line.start.chars_since(b.old_pos()));
+        let indent = text.slice(line).to_string();
+        if !indent.is_empty() {
+            b.insert(&indent);
+        }
+        new_sels.push(Selection::collapsed(b.new_pos()));
+        b.insert_char('\n');
     })
 }
 

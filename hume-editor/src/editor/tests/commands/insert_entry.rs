@@ -57,6 +57,42 @@ fn o_on_empty_line_places_cursor_on_new_blank_line() {
     assert_eq!(state(&ed), "AAA\nBBB\n\n-[\n]>CCC\n");
 }
 
+/// `o` on an indented line carries that line's leading whitespace onto the
+/// new line — the same auto-indent rule Enter uses (`insert_newline_indent`).
+#[test]
+fn o_carries_indent_from_current_line() {
+    let mut ed = editor_from("\t-[f]>oo\n");
+    ed.handle_key(key('o'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "\tfoo\n\t\n");
+    assert_eq!(state(&ed), "\tfoo\n\t-[\n]>");
+}
+
+/// `o` then a bare Esc must leave a truly empty line, not one with trailing
+/// whitespace — vim autoindent parity via `autoindent_pending`, same as
+/// Enter's own Esc-trim.
+#[test]
+fn o_then_esc_trims_unused_indent() {
+    let mut ed = editor_from("\t-[f]>oo\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
+}
+
+/// `o` then Enter must keep the indent on the freshly typed-on line and trim
+/// it from the line `o` itself opened (now vacated), matching Enter's own
+/// repeated-Enter behavior.
+#[test]
+fn o_then_enter_keeps_indent_on_new_line_and_trims_first() {
+    let mut ed = editor_from("\t-[f]>oo\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n\t\n");
+}
+
 /// `O` must insert a blank line *above* the current line, position the cursor
 /// on it, and enter Insert mode.
 #[test]
@@ -68,6 +104,18 @@ fn capital_o_opens_line_above_and_enters_insert() {
     assert_eq!(ed.doc().text().to_string(), "foo\n\nbar\n");
     // Cursor on the new blank line between "foo" and "bar".
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
+}
+
+/// `O` on an indented line carries that line's leading whitespace onto the
+/// new line above it — the line above (unindented) stays untouched.
+#[test]
+fn capital_o_carries_indent_from_current_line() {
+    let mut ed = editor_from("    foo\n    -[b]>ar\n");
+    ed.handle_key(key('O'));
+
+    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.doc().text().to_string(), "    foo\n    \n    bar\n");
+    assert_eq!(state(&ed), "    foo\n    -[\n]>    bar\n");
 }
 
 // ── Insert-entry variants position the cursor correctly ────────────────────
