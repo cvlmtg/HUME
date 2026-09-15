@@ -16,8 +16,9 @@ import {
 // than a second hand-typed list: index 1 of any mode's secondary/primary
 // array is that ladder's own common root ("ui.cursor"/"ui.cursor.primary"),
 // index 0 is the mode-specific rung — cursor_ladder_ids' own stable return
-// shape.
-const CURSOR_CHAINS = ["normal", "insert", "select"];
+// shape. The chain keys themselves come from CURSOR_LADDERS too (in
+// CURSOR_MODES order) rather than a second hand-typed mode list.
+const CURSOR_CHAINS = Object.keys(CURSOR_LADDERS);
 
 export const SCOPES = [
   // `ui.cursorline` is threaded back in immediately before

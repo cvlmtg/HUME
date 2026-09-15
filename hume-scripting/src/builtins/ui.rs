@@ -188,6 +188,11 @@ fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelE
 /// `(%picker! items on-select prompt pending query truncate actions)` — the
 /// `picker!` Scheme wrapper supplies the keyword defaults. Returns the new
 /// session's token.
+// Each param is a positional/keyword arg the `builtins!` table maps 1:1 from
+// `picker!`'s own Steel signature — bundling them into a struct would break
+// that direct correspondence for no benefit, since every arg is already
+// decoded and validated independently right below.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn picker(
     ctx: &mut SteelCtx,
     items: SteelVal,

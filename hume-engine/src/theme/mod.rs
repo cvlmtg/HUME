@@ -144,16 +144,23 @@ pub fn cursor_ladder_ids(
     primary_mode_scope: &'static str,
 ) -> ([&'static str; 3], [&'static str; 5]) {
     (
-        [mode_scope, "ui.cursor", "ui.selection"],
+        [mode_scope, CURSOR, ui_scopes::SELECTION],
         [
             primary_mode_scope,
-            "ui.cursor.primary",
-            "ui.cursor",
+            CURSOR_PRIMARY,
+            CURSOR,
             "ui",
-            "ui.selection",
+            ui_scopes::SELECTION,
         ],
     )
 }
+
+/// The two ladder roots — not a ladder rung themselves (`cursor_ladder_ids`
+/// resolves them as fallback parents, never as a leading rung), but still a
+/// "Cursor"-category scope name, so they live beside `CURSOR_MODES` rather
+/// than in `ui_scopes`, whose own doc deliberately excludes Cursor names.
+pub const CURSOR: &str = "ui.cursor";
+pub const CURSOR_PRIMARY: &str = "ui.cursor.primary";
 
 /// The bracket/search-match highlight under the cursor — not a ladder rung
 /// (`cursor_ladder_ids` doesn't cover it, it's resolved directly wherever a

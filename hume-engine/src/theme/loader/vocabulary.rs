@@ -21,77 +21,44 @@ fn vocabulary_dir() -> std::path::PathBuf {
         .join("tools/theme-editor/src/lib")
 }
 
+/// One emitted name, quoted as a JS string literal — the single funnel every
+/// name in the generated file passes through, so the unescaped-`"`/`\` canary
+/// (a future vocabulary name that wouldn't embed cleanly) only needs writing
+/// once rather than once per table.
+fn js_str(name: &str) -> String {
+    assert!(
+        !name.contains(['"', '\\']),
+        "vocabulary name {name:?} cannot be embedded in a JS string literal \
+         unescaped — update render_vocabulary_js to escape it"
+    );
+    format!("\"{name}\"")
+}
+
 fn js_string_array(items: &[&str]) -> String {
-    let quoted: Vec<String> = items.iter().map(|s| format!("\"{s}\"")).collect();
+    let quoted: Vec<String> = items.iter().map(|s| js_str(s)).collect();
     format!("[{}]", quoted.join(", "))
 }
 
 /// Builds the whole generated file's text from the loader's own tables.
-///
-/// Asserts every emitted name is free of `"`/`\` and embeds cleanly in a JS
-/// string literal unescaped — a canary against a future vocabulary name that
-/// would otherwise emit malformed JS.
 fn render_vocabulary_js() -> String {
-    for (name, _) in MODIFIER_NAMES {
-        assert!(
-            !name.contains(['"', '\\']),
-            "modifier name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for (name, _) in UNDERLINE_NAMES {
-        assert!(
-            !name.contains(['"', '\\']),
-            "underline style name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for (name, _) in ANSI_COLORS {
-        assert!(
-            !name.contains(['"', '\\']),
-            "ANSI colour name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for name in ui_scopes::ALL {
-        assert!(
-            !name.contains(['"', '\\']),
-            "UI scope name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for name in ui_scopes::VIRTUAL {
-        assert!(
-            !name.contains(['"', '\\']),
-            "virtual scope name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for name in diagnostic_scopes::ALL {
-        assert!(
-            !name.contains(['"', '\\']),
-            "diagnostic scope name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-    for name in [CURSOR_MATCH, CURSOR_MATCH_SEARCH] {
-        assert!(
-            !name.contains(['"', '\\']),
-            "cursor scope name {name:?} cannot be embedded in a JS string literal \
-             unescaped — update render_vocabulary_js to escape it"
-        );
-    }
-
     let modifier_names: Vec<&str> = MODIFIER_NAMES.iter().map(|&(n, _)| n).collect();
     let underline_names: Vec<&str> = UNDERLINE_NAMES.iter().map(|&(n, _)| n).collect();
 
     let ansi_colors = ANSI_COLORS
         .iter()
-        .map(|(name, c)| format!("  \"{name}\": \"#{:02x}{:02x}{:02x}\",", c.0, c.1, c.2))
+        .map(|(name, c)| {
+            format!(
+                "  {}: \"#{:02x}{:02x}{:02x}\",",
+                js_str(name),
+                c.0,
+                c.1,
+                c.2
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let modifiers = js_string_array(&modifier_names);
-    let underline_modifier = UNDERLINE_MODIFIER;
+    let underline_modifier = js_str(UNDERLINE_MODIFIER);
     let underlines = js_string_array(&underline_names);
     let style_keys = js_string_array(&STYLE_KEYS);
     let ui_scopes_list = js_string_array(ui_scopes::ALL);
@@ -121,7 +88,8 @@ fn render_vocabulary_js() -> String {
             );
             let (secondary, primary) = cursor_ladder_ids(mode_scope, primary_mode_scope);
             format!(
-                "  \"{mode}\": {{\n    secondary: {},\n    primary: {},\n  }},",
+                "  {}: {{\n    secondary: {},\n    primary: {},\n  }},",
+                js_str(mode),
                 js_string_array(&secondary),
                 js_string_array(&primary),
             )
@@ -151,7 +119,7 @@ export const ANSI_COLORS = {{
 
 export const MODIFIER_NAMES = {modifiers};
 
-export const UNDERLINE_MODIFIER = \"{underline_modifier}\";
+export const UNDERLINE_MODIFIER = {underline_modifier};
 
 export const UNDERLINE_NAMES = {underlines};
 

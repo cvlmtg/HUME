@@ -105,7 +105,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                 let pos = line_start_offset(text, spec.line, "set-virtual-lines!")?;
                 let scope = match spec.scope.as_deref() {
                     Some(name) => self.view.registry.intern_runtime(name),
-                    None => self.view.registry.intern("ui.virtual"),
+                    None => self
+                        .view
+                        .registry
+                        .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
                 };
                 let segments = virtual_line_segments_to_bytes(&spec.text, spec.segments)?
                     .into_iter()

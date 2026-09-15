@@ -143,7 +143,7 @@ pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
         background: by(ui_scopes::BACKGROUND),
         text: by(ui_scopes::TEXT),
         selected: by(ui_scopes::TEXT_FOCUS),
-        cursor: by("ui.cursor.primary"),
+        cursor: by(hume_engine::theme::CURSOR_PRIMARY),
     }
 }
 

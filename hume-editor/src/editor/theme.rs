@@ -144,8 +144,8 @@ mod tests {
         // Scopes exercised by the renderer's hot paths: cursor, selection,
         // menu, statusline, pane background/seam.
         for scope in [
-            "ui.cursor.primary",
-            "ui.cursor",
+            hume_engine::theme::CURSOR_PRIMARY,
+            hume_engine::theme::CURSOR,
             ui_scopes::SELECTION,
             ui_scopes::MENU,
             ui_scopes::TEXT_FOCUS,
