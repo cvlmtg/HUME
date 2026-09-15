@@ -48,6 +48,10 @@ numbers directly.
 - **L17** — Narrowing an enum's own visibility does not fence its variants'
   payloads: variants inherit the enum's visibility and cannot be narrowed
   individually. Fence a payload with a newtype, not a visibility change.
+- **L18** — Cost is never a verdict on correctness. "One call site" / "not
+  worth the churn" never license a known-wrong design; either fix it or
+  measure the cost and report the number. N=1 is the template for N=2, not
+  an exemption.
 
 ---
 
@@ -807,3 +811,71 @@ open: no lint ever scanned it and no newtype fences it today.
 **Files:** `hume-editor/src/editor/commands/pipeline.rs` (`NativeBody`),
 `hume-editor/src/editor/registry/command.rs` (`MappableCommand`'s `fun`
 fields).
+
+---
+
+## L18 — A known-wrong design was accepted on an unmeasured cost argument (2026-09-15)
+
+**Root cause:** Adding `#:actions` to `picker!`/`live-picker!` needed the same
+invariant the keymap trie already had — "every stored key is canonical" — but
+instead of a newtype, `canonical()` was widened from module-private to
+`pub(in crate::editor)` so `picker.rs` could call it directly. That is
+precisely the substitution L17's own prevention rule names as wrong: a
+visibility change was used where a payload needed fencing with a private
+field. The resulting gap (nothing stopped a raw `KeyEvent` from landing in
+`PickerSession.actions` outside its one construction path) was correctly
+identified in review, then dismissed on a cost estimate — "a real but
+non-trivial API change for one call site that already gets it right; not
+worth it here" — that was never measured. Worse, nothing about the surrendered
+invariant reached the tree: the "not worth it" reasoning lived only in an
+ephemeral review transcript, and the doc comment that *did* ship on `actions`
+instead framed the weaker design as a deliberate win — canonicalizing on
+lookup "keeps the comparison in one place (`canonical`) rather than needing a
+`Hash`/`Eq` impl to agree with it separately." That framing was also false on
+the merits: a `CanonicalKey` newtype supplies exactly that agreeing
+`Hash`/`Eq`. A future reader had no signal anything had been given up — they
+had a comment telling them the weaker design was intended.
+
+**Concrete instance:** `3514a4b9` (`feat(picker): add #:actions key→proc
+bindings`) widens `canonical()` and ships the rationalizing comment. A review
+the next day flags the gap, proposes the newtype fix, and is told to do it —
+rejecting "one call site" and "not worth the churn" as reasons on their own:
+a small wrong pattern is still wrong, the one call site is what a future
+implementation copies from or grows into, and this is a learning project
+where the proper solution is the deliverable, not an acceptable-for-now one.
+`095d09e4` (`refactor(keymap): restore compiler-enforced canonicalization for
+binding keys`) is the fix, and it measures what the declined estimate never
+did: 5 files, +205/−159, of which 110 insertions are `canonical.rs` moved
+verbatim and 76 are its relocated tests — net new logic is one hand-written
+`PartialEq` and one new test. Churn at `PickerOpts`/`LivePickerOpts`'s ~15
+construction sites in `editor/tests/`: zero, because those types live in
+`hume-scripting` and the FFI seam already converts at the crate boundary. One
+grep would have settled the "non-trivial API change" claim before it was
+made.
+
+**Prevention rules:**
+
+1. **Cost is not a verdict on correctness.** Wrongness is not subject to a
+   cost/benefit vote. Either fix it, or measure the cost and report the
+   number — never assert it.
+2. **Measure before declining.** Count the call sites. Check whether the type
+   crosses a crate boundary (that decides whether an FFI seam absorbs the
+   change). Check whether the "API change" is a rename of an item with one
+   construction path. State findings, not adjectives.
+3. **N=1 is the template, not an exemption.** Read against L9: the smell of a
+   repeated pattern scales with N, but the converse is *not* "N=1 is fine."
+   The first site is what the second is copied from, and it may itself be
+   refactored into something larger later — fixing it is cheapest exactly
+   while N=1.
+4. **A deferral must leave a trace that names the invariant surrendered** —
+   never a comment that reframes the weaker design as the intended one. If
+   the trace being written is a rationalization, that is L4/the Constraint
+   Relaxation Check's lint-tell smell saying the fix was wrong; say so out
+   loud instead of writing the comment.
+5. **This is a learning project: the proper solution is the deliverable.**
+   "Small" and "works today" are not the acceptance criteria.
+
+**Files:** `hume-editor/src/editor/keymap/canonical.rs` (the newtype that
+should have shipped in `3514a4b9`), `hume-editor/src/editor/keymap/mod.rs`,
+`hume-editor/src/editor/picker.rs` (`actions` field and its formerly
+rationalizing doc comment).
