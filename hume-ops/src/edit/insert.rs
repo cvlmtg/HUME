@@ -77,32 +77,61 @@ fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: Cha
     ws_end > line_start && text.char_at(ws_end) == Some('\n')
 }
 
-/// `Some(range)` — `[line_start, ws_end)` — if `pos` sits on a blank,
-/// auto-indented line (whitespace only, no content) — `None` otherwise.
-///
-/// Single source of truth for "is this cursor on a blank indented line",
-/// shared by the editor's command-layer pre-flight check (gating
-/// `clear_blank_line_indent` so exiting Insert mode away from a blank line
-/// doesn't run an identity edit — which would still bump `text_gen` and
-/// record a spurious pending tree-sitter edit) and the edit ops below.
-pub fn blank_line_ws_range(
-    text: &BufferText,
-    pos: CharOffset,
-) -> Option<ExclusiveRange<CharOffset>> {
-    let line = text.char_to_line(pos);
-    let line_start = text.line_to_char(line.into());
-    let ws_end = leading_whitespace_end(text, line);
-    is_blank_indented_line(text, line_start, ws_end)
-        .then_some(ExclusiveRange::new(line_start, ws_end))
-}
-
 /// `[line_start, ws_end)` — the leading-whitespace range of the line
-/// containing `pos`.
+/// containing `pos`. Single source of truth for that computation: every
+/// caller below that needs a line's indent bounds — the blank-line ownership
+/// check, the "already consumed by a prior selection" guard, and `O`'s own
+/// indent copy — goes through this instead of re-deriving it.
 fn line_indent_range(text: &BufferText, pos: CharOffset) -> ExclusiveRange<CharOffset> {
     let line_idx = text.char_to_line(pos);
     let line_start = text.line_to_char(line_idx.into());
     let ws_end = leading_whitespace_end(text, line_idx);
     ExclusiveRange::new(line_start, ws_end)
+}
+
+/// `true` if `[line_start, ws_end)` is a blank, auto-indented line (see
+/// [`is_blank_indented_line`]) AND that whitespace lies entirely within
+/// `allowed` — the range some insert session recorded as its own
+/// auto-inserted indent, in `pos`'s coordinate space.
+///
+/// Containment, not equality of the whole range: `line_start == allowed.start`
+/// pins this to the *same* line the record was armed for — a cursor motion
+/// off that line leaves `allowed` pointing at a now-unrelated offset, so the
+/// check fails without anything having to invalidate the record — while
+/// `ws_end <= allowed.end` lets the whitespace *shrink* (a Backspace back
+/// toward `line_start`) without losing ownership, but never lets it exceed
+/// what the session itself inserted (typed content stays outside `allowed`
+/// once `ChangeSet::map_ranges`' `Assoc::Before` end-mapping pins the record
+/// short of it — see `apply_doc_edit_grouped`'s own comment).
+///
+/// Single source of truth for "is this whitespace the session's own to
+/// vacate" — [`owned_blank_indent`] (the editor's exit pre-flight check) and
+/// [`try_trim_blank_line`] (the trim itself) both read this, so gate and trim
+/// can never drift on what counts as owned.
+fn is_owned_blank_line(
+    text: &BufferText,
+    line_start: CharOffset,
+    ws_end: CharOffset,
+    allowed: Option<ExclusiveRange<CharOffset>>,
+) -> bool {
+    let Some(allowed) = allowed else {
+        return false;
+    };
+    is_blank_indented_line(text, line_start, ws_end)
+        && line_start == allowed.start
+        && ws_end <= allowed.end
+}
+
+/// `Some(range)` — `[line_start, ws_end)` — if `pos` sits on a blank line
+/// whose whitespace is owned by `allowed` (see `is_owned_blank_line`, this
+/// module) — `None` otherwise.
+pub fn owned_blank_indent(
+    text: &BufferText,
+    pos: CharOffset,
+    allowed: Option<ExclusiveRange<CharOffset>>,
+) -> Option<ExclusiveRange<CharOffset>> {
+    let range = line_indent_range(text, pos);
+    is_owned_blank_line(text, range.start, range.end, allowed).then_some(range)
 }
 
 /// Shared per-selection prelude for [`insert_newline_indent`] and
@@ -125,23 +154,25 @@ fn line_context_if_unconsumed(
 /// Attempts the blank-line whitespace-vacate trim for a collapsed selection.
 ///
 /// Returns `true` (and emits `retain` + `delete` into `b`) when `sel` is
-/// collapsed, its line is blank-indented, and `line_start` has not already
-/// been passed by a prior selection's edits in this pass (`line_start >=
-/// b.old_pos()`): two cursors can land on the *same* blank line (one
-/// mid-whitespace, one on the trailing `\n`), and the first cursor's delete
-/// can advance `old_pos()` past this cursor's `line_start`, which would
-/// otherwise underflow the `retain`. When that happens, the caller falls back
-/// to its non-blank arm instead (retaining forward to its own position, which
-/// is always safe since `pos >= b.old_pos()` per [`line_context_if_unconsumed`]).
+/// collapsed, its line's whitespace is owned by `allowed` (see
+/// [`is_owned_blank_line`]), and `line_start` has not already been passed by
+/// a prior selection's edits in this pass (`line_start >= b.old_pos()`): two
+/// cursors can land on the *same* blank line (one mid-whitespace, one on the
+/// trailing `\n`), and the first cursor's delete can advance `old_pos()` past
+/// this cursor's `line_start`, which would otherwise underflow the `retain`.
+/// When that happens, the caller falls back to its non-blank arm instead
+/// (retaining forward to its own position, which is always safe since `pos >=
+/// b.old_pos()` per [`line_context_if_unconsumed`]).
 fn try_trim_blank_line(
     b: &mut ChangeSetBuilder,
     text: &BufferText,
     sel: &Selection,
     line_start: CharOffset,
     ws_end: CharOffset,
+    allowed: Option<ExclusiveRange<CharOffset>>,
 ) -> bool {
     if !sel.is_collapsed()
-        || !is_blank_indented_line(text, line_start, ws_end)
+        || !is_owned_blank_line(text, line_start, ws_end, allowed)
         || line_start < b.old_pos()
     {
         return false;
@@ -164,24 +195,26 @@ fn try_trim_blank_line(
 /// original char to land on, so the cursor ends up on the structural `\n`
 /// left at the original position.
 ///
-/// `trim_blank`: if set and a collapsed cursor sits on a blank, auto-indented
-/// line, that whitespace is vacated instead of retained — matching vim's
-/// `:help autoindent` behavior on Enter. `false` for the first Enter on an
-/// already-blank line (nothing to vacate yet); `true` once auto-indent has
-/// landed there (threaded through from `EditorState::autoindent_pending`).
+/// `allowed`: per-selection (by sorted index) range of whitespace some
+/// earlier auto-indent recorded as its own — see `is_owned_blank_line` (this
+/// module). If a collapsed cursor's blank line is owned by its entry, that
+/// whitespace is vacated instead of retained, matching vim's `:help
+/// autoindent` behavior on Enter. Empty (or an index with no entry) for the
+/// first Enter on an already-blank line — nothing to vacate yet, since no
+/// earlier session inserted it.
 pub fn insert_newline_indent(
     text: BufferText,
     sels: SelectionSet,
-    trim_blank: bool,
+    allowed: &[ExclusiveRange<CharOffset>],
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let start = sel.start();
         let Some(line) = line_context_if_unconsumed(b, text, start) else {
             new_sels.push(Selection::collapsed(b.new_pos()));
             return;
         };
 
-        if !(trim_blank && try_trim_blank_line(b, text, sel, line.start, line.end)) {
+        if !try_trim_blank_line(b, text, sel, line.start, line.end, allowed.get(i).copied()) {
             b.retain(start.chars_since(b.old_pos()));
             if !sel.is_collapsed() {
                 b.delete(sel.content_end_exclusive(text).chars_since(start));
@@ -189,9 +222,7 @@ pub fn insert_newline_indent(
         }
         let indent = text.slice(line).to_string();
         b.insert_char('\n');
-        if !indent.is_empty() {
-            b.insert(&indent);
-        }
+        b.insert(&indent);
         new_sels.push(Selection::collapsed(b.new_pos()));
     })
 }
@@ -208,6 +239,17 @@ pub fn insert_newline_indent(
 /// forward to its own line's start, so an earlier selection's edit can never
 /// advance `old_pos()` past a later selection's line start the way a delete
 /// could — no "already consumed" guard is needed.
+///
+/// Two preconditions its only caller (`cmd_open_line_above`) satisfies but
+/// this function does not enforce: every selection must already be
+/// collapsed — unlike every sibling insertion op in this module, a
+/// non-collapsed selection here is neither deleted nor preserved, it is
+/// simply orphaned by the pushed `Selection::collapsed` — and at most one
+/// selection per line — two cursors on the same line each open their own
+/// blank line above it, rather than sharing one the way vim/Helix do. The
+/// caller supplies both: `cmd_goto_line_start` collapses every selection to
+/// its line start first, and `SelectionSet::map`'s overlap merge folds
+/// same-line cursors into one before this ever runs.
 pub fn open_line_above(
     text: BufferText,
     sels: SelectionSet,
@@ -216,9 +258,7 @@ pub fn open_line_above(
         let line = line_indent_range(text, sel.start());
         b.retain(line.start.chars_since(b.old_pos()));
         let indent = text.slice(line).to_string();
-        if !indent.is_empty() {
-            b.insert(&indent);
-        }
+        b.insert(&indent);
         new_sels.push(Selection::collapsed(b.new_pos()));
         b.insert_char('\n');
     })
@@ -232,18 +272,22 @@ pub fn open_line_above(
 /// with the cursor still on a blank auto-indented line (`:help autoindent`:
 /// "type `<Esc>` ... the indent is deleted again"). Selections not on a blank
 /// line are left untouched (identity edit).
+///
+/// `allowed`: see [`insert_newline_indent`]'s own doc — same per-selection
+/// ownership record, read here instead of armed.
 pub fn clear_blank_line_indent(
     text: BufferText,
     sels: SelectionSet,
+    allowed: &[ExclusiveRange<CharOffset>],
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, i, sel, new_sels| {
         if sel.is_collapsed() {
             let head = sel.head();
             let Some(line) = line_context_if_unconsumed(b, text, head) else {
                 new_sels.push(Selection::collapsed(b.new_pos()));
                 return;
             };
-            if !try_trim_blank_line(b, text, sel, line.start, line.end) {
+            if !try_trim_blank_line(b, text, sel, line.start, line.end, allowed.get(i).copied()) {
                 b.retain(head.chars_since(b.old_pos()));
             }
             new_sels.push(Selection::collapsed(b.new_pos()));

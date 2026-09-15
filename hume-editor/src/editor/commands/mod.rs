@@ -405,7 +405,7 @@ pub(super) use typed_misc::*;
 // directly by `dispatch.rs`, `replay.rs`, `mappings/insert.rs`, `host_impl.rs`,
 // `editor/mod.rs`, and the `editor::tests` tree — they need `pub(in editor)`
 // breadth.
-pub(in crate::editor) use insert_session::end_insert_session;
+pub(in crate::editor) use insert_session::{arm_autoindent, autoindent_owned, end_insert_session};
 use pane::{SPLIT_TOO_SMALL_MSG, close_focused_pane};
 pub(in crate::editor) use pane::{end_insert_session_if_active, fits_split, split_pane_onto};
 // `open_pane` itself (the raw, unspliced constructor) is private to

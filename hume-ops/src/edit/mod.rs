@@ -22,8 +22,8 @@ pub use delete::{
 };
 pub use indent::{indent_lines, unindent_lines};
 pub use insert::{
-    blank_line_ws_range, clear_blank_line_indent, insert_char, insert_newline_indent, insert_str,
-    insert_tab, open_line_above,
+    clear_blank_line_indent, insert_char, insert_newline_indent, insert_str, insert_tab,
+    open_line_above, owned_blank_indent,
 };
 pub use join::join_lines_select_spaces;
 pub use paste::{paste_after, paste_before};

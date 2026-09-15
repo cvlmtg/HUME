@@ -15,8 +15,8 @@ use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_sel
 use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer, Mode};
 use super::{
-    ExitCursor, apply_focused_edit_grouped, apply_focused_motion, begin_insert_session,
-    begin_typed_run, end_insert_session,
+    ExitCursor, apply_focused_edit_grouped, apply_focused_motion, arm_autoindent,
+    begin_insert_session, begin_typed_run, end_insert_session,
 };
 use crate::editor::error::CommandError;
 
@@ -148,10 +148,11 @@ pub(in crate::editor) fn cmd_insert_at_selection_end(
 /// `begin_insert_session` opens the edit group so the structural `\n` and
 /// everything typed before Esc form one undo step — the same pattern as
 /// `cmd_change`. Indent is copied verbatim from the current line, same
-/// fallback rule as Enter (`insert_newline_indent`'s own doc); `trim_blank:
-/// false` because a pre-existing blank line's whitespace isn't this
-/// session's to vacate. `autoindent_pending = true` afterward makes that
-/// copied indent get trimmed on a bare Esc, via the same path Enter uses.
+/// fallback rule as Enter (`insert_newline_indent`'s own doc); no ownership
+/// record yet at this call, so a pre-existing blank line's whitespace isn't
+/// vacated here. `arm_autoindent` afterward records the copied indent as
+/// this session's own, so it gets trimmed on a bare Esc via the same path
+/// Enter uses.
 pub(in crate::editor) fn cmd_open_line_below(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -162,11 +163,11 @@ pub(in crate::editor) fn cmd_open_line_below(
     apply_focused_motion(state, view, |b, s| {
         cmd_goto_line_newline(b, s, 1, MotionMode::Move)
     });
-    apply_focused_edit_grouped(state, view, |b, s| insert_newline_indent(b, s, false));
+    apply_focused_edit_grouped(state, view, |b, s| insert_newline_indent(b, s, &[]));
     // Pin after the structural newline, not before — the anchor must mark
     // the start of typed content, not the blank line's own `\n`.
     begin_typed_run(state, view, ExitCursor::StepBack);
-    state.autoindent_pending = true;
+    arm_autoindent(state, view);
     Ok(())
 }
 
@@ -187,7 +188,7 @@ pub(in crate::editor) fn cmd_open_line_above(
     // Pin after the indent + the structural newline `open_line_above` leaves
     // the cursor on — same reasoning as `cmd_open_line_below`.
     begin_typed_run(state, view, ExitCursor::StepBack);
-    state.autoindent_pending = true;
+    arm_autoindent(state, view);
     Ok(())
 }
 

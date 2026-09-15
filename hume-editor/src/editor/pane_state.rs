@@ -27,7 +27,7 @@ use crate::editor::buffer::store::BufferStore;
 use hume_editing::changeset::ChangeSet;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
-use hume_rope::offset::CharOffset;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 // ── EditGroup ────────────────────────────────────────────────────────────────
 
@@ -102,6 +102,22 @@ pub(crate) struct PaneBufferState {
     /// `end_insert_session` consumes it on exit, for every insert entry
     /// (`i`/`a`/`o`/`O`/`A`/`I`/`c`/…).
     pub typed_run: Option<TypedRun>,
+    /// Per-selection range of leading whitespace *this* insert session
+    /// auto-inserted (`o`/`O`/Enter's auto-indent), kept in post-edit
+    /// coordinates by `apply_doc_edit_grouped` the same way `typed_run` is.
+    /// `None` when nothing has armed a record yet this session (`i`/`I`/`c`
+    /// entry, or before the first Enter/`o`/`O`).
+    ///
+    /// Read on exit (`hume_ops::edit::owned_blank_indent`) to decide whether
+    /// the cursor's current blank line is whitespace *this session itself*
+    /// inserted, rather than pre-existing or hand-typed whitespace — the
+    /// vacate-on-exit trim must never touch the latter. A positional record
+    /// rather than a bool ("is some trim pending") so ownership is re-derived
+    /// from the buffer at exit instead of relying on every cursor-motion key
+    /// handler remembering to invalidate a flag: a motion off this line
+    /// leaves the record pointing at a line the cursor no longer occupies,
+    /// which the containment check rejects on its own.
+    pub autoindent: Option<Vec<ExclusiveRange<CharOffset>>>,
     /// Set by `begin_typed_run` from its `ExitCursor` parameter for `a`/`A`/
     /// `o`/`O` entry (never for `i`/`I`/`c`). Decides where an *empty* typed
     /// run's cursor lands on exit — step one grapheme back (so `a<Esc>` is a

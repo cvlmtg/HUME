@@ -70,15 +70,17 @@ fn o_carries_indent_from_current_line() {
 }
 
 /// `o` then a bare Esc must leave a truly empty line, not one with trailing
-/// whitespace — vim autoindent parity via `autoindent_pending`, same as
-/// Enter's own Esc-trim.
+/// whitespace — vim autoindent parity via the session's autoindent ownership
+/// record, same as Enter's own Esc-trim.
 #[test]
 fn o_then_esc_trims_unused_indent() {
     let mut ed = editor_from("\t-[f]>oo\n");
     ed.handle_key(key('o'));
     ed.handle_key(key_esc());
 
+    assert_eq!(ed.state.mode, Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
+    assert_eq!(state(&ed), "\tfoo\n-[\n]>");
 }
 
 /// `o` then Enter must keep the indent on the freshly typed-on line and trim
@@ -90,7 +92,58 @@ fn o_then_enter_keeps_indent_on_new_line_and_trims_first() {
     ed.handle_key(key('o'));
     ed.handle_key(key_enter());
 
+    assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n\t\n");
+    assert_eq!(state(&ed), "\tfoo\n\n\t-[\n]>");
+}
+
+/// Regression: `o` armed the session's autoindent record, but no
+/// cursor-motion key cleared it — a bare Esc after moving down onto an
+/// unrelated, *pre-existing* blank line silently deleted that line's own
+/// whitespace. The positional ownership record fixes this structurally: the
+/// record still names the line `o` opened, which the cursor is no longer on,
+/// so the containment check refuses it without any motion handler having to
+/// intervene.
+#[test]
+fn o_then_down_onto_pre_existing_blank_line_then_esc_preserves_it() {
+    let mut ed = editor_from("-[f]>oo\n    \nbar\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key_down());
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.doc().text().to_string(), "foo\n\n    \nbar\n");
+}
+
+/// A `Delete` keypress that deletes nothing (cursor already at the buffer's
+/// structural end) must not cancel the pending autoindent trim — the old
+/// bool-flag design cleared unconditionally on every `Delete`, regardless of
+/// whether it changed the buffer.
+#[test]
+fn o_then_noop_delete_then_esc_still_trims_indent() {
+    let mut ed = editor_from("\t-[f]>oo\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key_delete()); // cursor is on the buffer's last char — no-op
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
+}
+
+/// `o`, typing a char, then Backspacing it back off, then Esc: the session's
+/// own indent is still exactly what's left on the line, so it's the
+/// session's to vacate — matching vim's own `<BS>` carve-out (`:help
+/// autoindent`) and, as a side effect, resolving where the cursor lands
+/// (previously stranded mid-indent; the positional record now trims it away
+/// like any other bare Esc).
+#[test]
+fn o_type_then_backspace_then_esc_trims_indent() {
+    let mut ed = editor_from("\t-[f]>oo\n");
+    ed.handle_key(key('o'));
+    ed.handle_key(key('x'));
+    ed.handle_key(key_backspace());
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
 }
 
 /// `O` must insert a blank line *above* the current line, position the cursor
@@ -116,6 +169,22 @@ fn capital_o_carries_indent_from_current_line() {
     assert_eq!(ed.state.mode, Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "    foo\n    \n    bar\n");
     assert_eq!(state(&ed), "    foo\n    -[\n]>    bar\n");
+}
+
+/// `O` then a bare Esc must leave a truly empty line, not one with trailing
+/// whitespace — same vim autoindent parity `o`'s own Esc-trim test covers.
+/// `O` had zero coverage of this before: every prior `O` test used an
+/// unindented buffer, so its own `arm_autoindent` call never had anything to
+/// trim.
+#[test]
+fn capital_o_then_esc_trims_unused_indent() {
+    let mut ed = editor_from("    -[b]>ar\n");
+    ed.handle_key(key('O'));
+    ed.handle_key(key_esc());
+
+    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.doc().text().to_string(), "\n    bar\n");
+    assert_eq!(state(&ed), "-[\n]>    bar\n");
 }
 
 // ── Insert-entry variants position the cursor correctly ────────────────────

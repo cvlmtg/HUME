@@ -1,6 +1,43 @@
 use super::super::*;
+use hume_editing::changeset::ChangeSet;
+use hume_editing::lines::leading_whitespace_end;
+use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
+use hume_editing::text::BufferText;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use test_fixtures::assert_state;
+
+/// Test-only stand-in for `arm_autoindent`: treats every current selection's
+/// line as owned. Every `insert_newline_indent`/`clear_blank_line_indent`
+/// test below that predates per-selection ownership tracking assumed exactly
+/// this — a session that has copied indent onto every cursor's current line —
+/// via what was then a single unconditional bool.
+fn owns_every_line(text: &BufferText, sels: &SelectionSet) -> Vec<ExclusiveRange<CharOffset>> {
+    sels.iter_sorted()
+        .map(|sel| {
+            let line = text.char_to_line(sel.head());
+            let line_start = text.line_to_char(line.into());
+            let ws_end = leading_whitespace_end(text, line);
+            ExclusiveRange::new(line_start, ws_end)
+        })
+        .collect()
+}
+
+fn insert_newline_indent_owning(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
+    let allowed = owns_every_line(&text, &sels);
+    insert_newline_indent(text, sels, &allowed)
+}
+
+fn clear_blank_line_indent_owning(
+    text: BufferText,
+    sels: SelectionSet,
+) -> (BufferText, SelectionSet, ChangeSet) {
+    let allowed = owns_every_line(&text, &sels);
+    clear_blank_line_indent(text, sels, &allowed)
+}
 
 // ── insert_char ───────────────────────────────────────────────────────────
 
@@ -398,7 +435,7 @@ fn newline_indent_copies_tab_indent() {
     // "\tfoo" cursor on 'f' → new line gets "\t", cursor on 'f' (new line).
     assert_state!(
         "\t-[f]>oo\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\t\n\t-[f]>oo\n"
     );
 }
@@ -408,7 +445,7 @@ fn newline_indent_copies_space_indent() {
     // "    bar" cursor on 'b' → new line gets "    ".
     assert_state!(
         "    -[b]>ar\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "    \n    -[b]>ar\n"
     );
 }
@@ -418,7 +455,7 @@ fn newline_indent_no_indent_on_bare_line() {
     // "foo" cursor on 'o' (last char) → new line bare.
     assert_state!(
         "fo-[o]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "fo\n-[o]>\n"
     );
 }
@@ -429,7 +466,7 @@ fn newline_indent_at_line_start_no_indent_before_cursor() {
     // is bare, original 'f' moves to new line.
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\n-[f]>oo\n"
     );
 }
@@ -440,7 +477,7 @@ fn newline_indent_mid_line_preserves_content_before_cursor() {
     // old line; new line gets indent; cursor on 'o'.
     assert_state!(
         "\tfo-[o]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\tfo\n\t-[o]>\n"
     );
 }
@@ -450,7 +487,7 @@ fn newline_indent_mixed_indent() {
     // "\t  x" cursor on 'x' → new line gets "\t  ".
     assert_state!(
         "\t  -[x]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\t  \n\t  -[x]>\n"
     );
 }
@@ -461,7 +498,7 @@ fn newline_indent_replaces_selection() {
     // Cursor lands on the structural trailing '\n' (the retained original).
     assert_state!(
         "\t-[foo]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\t\n\t-[\n]>"
     );
 }
@@ -471,7 +508,7 @@ fn newline_indent_second_line() {
     // "a\n\tb\n" cursor on 'b' (line 1, indented) → new line gets "\t".
     assert_state!(
         "a\n\t-[b]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "a\n\t\n\t-[b]>\n"
     );
 }
@@ -482,7 +519,7 @@ fn newline_indent_two_cursors_different_indents() {
     // Line 0 "  a" (cursor on 'a'), line 1 "\tb" (cursor on 'b').
     assert_state!(
         "  -[a]>\n\t-[b]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "  \n  -[a]>\n\t\n\t-[b]>\n"
     );
 }
@@ -495,7 +532,7 @@ fn newline_indent_cursor_on_structural_newline() {
     // `insert_char` behaviour for a cursor on the structural newline.
     assert_state!(
         "  x-[\n]>",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "  x\n  -[\n]>"
     );
 }
@@ -510,7 +547,7 @@ fn newline_indent_replaces_multi_line_selection() {
     // single-line selection case.
     assert_state!(
         "\t-[ab\n\txy]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\t\n\t-[\n]>"
     );
 }
@@ -522,7 +559,7 @@ fn newline_indent_trims_blank_line_on_second_enter() {
     // forward) before opening a fresh indented line below it.
     assert_state!(
         "x\n  -[\n]>",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "x\n\n  -[\n]>"
     );
 }
@@ -534,20 +571,20 @@ fn newline_indent_trims_blank_line_cursor_mid_whitespace() {
     // not just the region before the cursor.
     assert_state!(
         "x\n -[ ]> \n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "x\n\n   -[\n]>"
     );
 }
 
 #[test]
 fn newline_indent_trim_blank_false_preserves_pre_existing_blank_line() {
-    // `trim_blank = false`: the first Enter on a line that was already blank
-    // before this insert session touched it leaves the pre-existing
-    // whitespace alone; only the *new* line gets a copied indent, same as
-    // the non-blank-line case.
+    // Empty `allowed`: the first Enter on a line that was already blank
+    // before this insert session touched it — nothing has armed a record for
+    // it yet — leaves the pre-existing whitespace alone; only the *new* line
+    // gets a copied indent, same as the non-blank-line case.
     assert_state!(
         "x\n  -[\n]>",
-        |(text, sels)| insert_newline_indent(text, sels, false),
+        |(text, sels)| insert_newline_indent(text, sels, &[]),
         "x\n  \n  -[\n]>"
     );
 }
@@ -561,7 +598,7 @@ fn newline_indent_two_cursors_same_blank_line_merge() {
     // panic, no duplicate newline.
     assert_state!(
         "-[ ]> -[ ]>\n",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\n   -[\n]>"
     );
 }
@@ -581,7 +618,7 @@ fn newline_indent_two_cursors_second_on_blank_line_newline_no_underflow() {
     // landing on its own freshly opened line — no crash.
     assert_state!(
         "-[ ]> -[\n]>",
-        |(text, sels)| insert_newline_indent(text, sels, true),
+        |(text, sels)| insert_newline_indent_owning(text, sels),
         "\n  -[\n]>  -[\n]>"
     );
 }
@@ -637,6 +674,53 @@ fn open_line_above_two_cursors_different_indents() {
     );
 }
 
+// ── owned_blank_indent (autoindent ownership containment) ────────────────
+//
+// `insert_newline_indent_owning`/`clear_blank_line_indent_owning` above cover
+// the case every pre-existing test needed: a session that owns exactly its
+// cursor's current line. These exercise the containment check itself — what
+// changes ownership once a session's record and the buffer diverge.
+
+#[test]
+fn owned_blank_indent_rejects_whitespace_typed_past_owned_end() {
+    // Buffer "x\n  \n": line 1 is "  " (chars 2..4) + '\n' at 4. `allowed`
+    // records an *empty* range at the line's start — as if nothing was
+    // copied there (an unindented `o`/`O`) — but the line now reads as blank
+    // because whitespace was typed past what the session actually owns.
+    let (text, sels) = test_fixtures::testing::parse_state("x\n-[ ]> \n");
+    let head = sels.primary().head();
+    let line_start = text.line_to_char(text.char_to_line(head).into());
+    let allowed = ExclusiveRange::new(line_start, line_start);
+    assert_eq!(owned_blank_indent(&text, head, Some(allowed)), None);
+}
+
+#[test]
+fn owned_blank_indent_accepts_backspaced_indent_within_owned_range() {
+    // Same buffer, but `allowed` records a range wider than the line's
+    // *current* whitespace — as if more was typed and then backspaced away.
+    // The remaining whitespace is a subset of what the session owns, so
+    // ownership still holds — vim's own `<BS>` carve-out, for free.
+    let (text, sels) = test_fixtures::testing::parse_state("x\n-[ ]> \n");
+    let head = sels.primary().head();
+    let line_start = text.line_to_char(text.char_to_line(head).into());
+    let allowed = ExclusiveRange::new(line_start, line_start.shift(10));
+    assert!(owned_blank_indent(&text, head, Some(allowed)).is_some());
+}
+
+#[test]
+fn owned_blank_indent_rejects_a_different_blank_line() {
+    // Buffer "  \n  \n": two identical blank lines. `allowed` records
+    // ownership of line 0's indent, but the cursor sits on line 1 — blank in
+    // its own right, but not the line this session armed. This is the
+    // arrow-key-onto-another-blank-line case: a cursor motion never has to
+    // clear the record explicitly, because the record's `line_start` simply
+    // no longer matches wherever the cursor now is.
+    let (text, sels) = test_fixtures::testing::parse_state("  \n-[ ]> \n");
+    let head = sels.primary().head();
+    let allowed = ExclusiveRange::new(CharOffset::new(0), CharOffset::new(2));
+    assert_eq!(owned_blank_indent(&text, head, Some(allowed)), None);
+}
+
 // ── clear_blank_line_indent (vim autoindent parity on Insert-mode exit) ───
 
 #[test]
@@ -645,7 +729,7 @@ fn clear_blank_line_indent_clears_whitespace_only_line() {
     // cursor lands on the resulting (now truly empty) line's '\n'.
     assert_state!(
         "-[ ]> \n",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[\n]>"
     );
 }
@@ -655,7 +739,7 @@ fn clear_blank_line_indent_no_op_on_content_line() {
     // Cursor on a line with real content: identity edit, nothing cleared.
     assert_state!(
         "-[f]>oo\n",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[f]>oo\n"
     );
 }
@@ -667,7 +751,7 @@ fn clear_blank_line_indent_multi_cursor_only_clears_blank_line() {
     // identity edit.
     assert_state!(
         "-[f]>oo\n -[ ]>\n",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[f]>oo\n-[\n]>"
     );
 }
@@ -679,7 +763,7 @@ fn clear_blank_line_indent_two_cursors_same_line_merge() {
     // merge into one, no panic.
     assert_state!(
         "-[ ]> -[ ]>\n",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[\n]>"
     );
 }
@@ -696,7 +780,7 @@ fn clear_blank_line_indent_second_cursor_on_blank_line_newline_no_underflow() {
     // final position and merge, same as the mid-whitespace case above.
     assert_state!(
         "-[ ]> -[\n]>",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "-[\n]>"
     );
 }
@@ -710,7 +794,7 @@ fn clear_blank_line_indent_preserves_non_collapsed_selection() {
     // selection B covers "ar" in "bar" on line2.
     assert_state!(
         "foo\n-[ ]>\nb-[ar]>\n",
-        |(text, sels)| clear_blank_line_indent(text, sels),
+        |(text, sels)| clear_blank_line_indent_owning(text, sels),
         "foo\n-[\n]>b-[ar]>\n"
     );
 }

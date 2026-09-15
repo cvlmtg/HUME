@@ -232,6 +232,13 @@ pub(in crate::editor) fn apply_doc_edit_grouped(
         cs.map_positions(&mut run.anchors, hume_editing::changeset::Assoc::Before);
         cs.map_positions(&mut run.ends, hume_editing::changeset::Assoc::After);
     }
+    // Shrinks each record around any edit landing exactly at its start/end —
+    // see `map_ranges`' own doc. That is what makes ownership self-revoking:
+    // text typed past a record's end, or a line split before its start, falls
+    // outside the mapped range without any key handler needing to clear it.
+    if let Some(ranges) = pbs.autoindent.as_mut() {
+        cs.map_ranges(ranges);
+    }
     finish_edit(
         buffers,
         decorations,
@@ -399,9 +406,10 @@ pub(in crate::editor) fn begin_edit_group(
     let doc = buffers.get(buf_id);
     let pbs = &mut pane_state[focused_pane_id][buf_id];
     doc.begin_edit_group(&mut pbs.edit_group, sels);
-    // A fresh group never inherits a typed run or exit flags from a previous
-    // session (interactive or replay-preopened).
+    // A fresh group never inherits a typed run, an autoindent record, or exit
+    // flags from a previous session (interactive or replay-preopened).
     pbs.typed_run = None;
+    pbs.autoindent = None;
     pbs.step_back_on_exit = false;
     pbs.kill_opened_session = false;
 }

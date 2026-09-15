@@ -105,10 +105,6 @@ impl Editor {
             |b, s| insert_str(b, s, text),
         );
         self.clear_completion_menu();
-        // Typing (pasting) real content cancels the "nothing typed since
-        // Enter" state — same rule the printable-char branch of
-        // `handle_insert` applies.
-        self.state.autoindent_pending = false;
     }
 
     /// Runs the same follow-up each mode performs on `MiniBufferEvent::Edited`

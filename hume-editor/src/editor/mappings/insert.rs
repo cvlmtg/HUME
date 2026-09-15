@@ -147,10 +147,6 @@ impl Editor {
         let buf = self.focused_buffer_id();
         match key.code {
             KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
-                // Typing real content cancels the "nothing typed since Enter"
-                // state that gates the blank-line indent trim on exit — see
-                // `EditorState::autoindent_pending`.
-                self.state.autoindent_pending = false;
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
                 // `OnTriggerChar` only fires when `ch` actually landed in
@@ -220,7 +216,6 @@ impl Editor {
             // Governed by the `tab-style` setting: Hard inserts a literal `\t`,
             // Soft inserts spaces to the next tab stop (width from `tab-width`).
             KeyCode::Tab => {
-                self.state.autoindent_pending = false;
                 let (style, tw) = commands::tab_format(self.doc(), &self.state.settings);
                 self.apply_insert_edit(move |b, s| insert_tab(b, s, style, tw));
             }
@@ -229,22 +224,25 @@ impl Editor {
             // Auto-indent: copy the current line's leading whitespace onto the
             // new line. No smart indent.
             //
-            // `trim_blank` (vim autoindent parity): only vacate a blank
-            // line's whitespace if it was auto-inserted by *this* session's
-            // own previous Enter — never on the first Enter that lands on a
-            // pre-existing blank line. After this Enter, the new line's
-            // indent (if any) is this session's own, so the next Enter/Esc
-            // on it should trim.
+            // `allowed` (vim autoindent parity): only vacate a blank line's
+            // whitespace if it's owned by an earlier auto-indent this session
+            // itself made — never on the first Enter that lands on a
+            // pre-existing blank line, since nothing has armed a record for
+            // it yet. `arm_autoindent` after the edit records the *new*
+            // line's own copied indent, so the next Enter/Esc on it trims.
             KeyCode::Enter => {
-                let trim_blank = self.state.autoindent_pending;
-                self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, trim_blank));
-                self.state.autoindent_pending = true;
+                let allowed = commands::autoindent_owned(&self.state, &self.view);
+                self.apply_insert_edit(move |b, s| insert_newline_indent(b, s, &allowed));
+                commands::arm_autoindent(&mut self.state, &self.view);
             }
 
             // ── Delete ────────────────────────────────────────────────────────
-            // Deliberately does NOT clear `autoindent_pending`: `:help
-            // autoindent` names `<BS>` (alongside Ctrl-D) as the one key that
-            // doesn't cancel the "nothing typed on this line" state.
+            // Backspace needs no special handling to preserve autoindent
+            // ownership: deleting *inside* the owned range only shrinks the
+            // line's current whitespace, which stays within the recorded
+            // `allowed.end` (see `is_owned_blank_line`'s containment check) —
+            // matching `:help autoindent`'s own carve-out naming `<BS>` as the
+            // one key that doesn't cancel a pending auto-indent trim.
             KeyCode::Backspace => {
                 let (ap_enabled, ap_pairs) =
                     self.doc().overrides.auto_pairs_ref(&self.state.settings);
@@ -261,7 +259,6 @@ impl Editor {
                 }
             }
             KeyCode::Delete => {
-                self.state.autoindent_pending = false;
                 self.apply_insert_edit(delete_char_forward);
             }
 

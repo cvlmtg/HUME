@@ -42,8 +42,8 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on *that* line's
     // trailing '\n' — a blank, auto-indented line (buffer is now
-    // "  x\n  \ncd\n", cursor at char 6). `autoindent_pending` is set, so
-    // exiting Insert now will trim that "  ".
+    // "  x\n  \ncd\n", cursor at char 6). The session's own autoindent record
+    // now names it, so exiting Insert now will trim that "  ".
     assert_eq!(state(&ed), "  x\n  -[\n]>cd\n");
 
     // Click on 'd' (line 2, column 1, no gutter in test harness) to exit
@@ -633,8 +633,8 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — `autoindent_pending` is set, so exiting Insert
-    // now will trim it.
+    // auto-indented line — the session's own autoindent record now names it,
+    // so exiting Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_a).text().to_string(),
         "  x\n  \ncd\n",

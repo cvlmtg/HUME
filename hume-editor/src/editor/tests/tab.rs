@@ -479,8 +479,8 @@ fn goto_next_tab_via_call_while_in_insert_exits_insert_and_commits_the_outgoing_
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — `autoindent_pending` is set, so exiting Insert
-    // now will trim it.
+    // auto-indented line — the session's own autoindent record now names it,
+    // so exiting Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_a).text().to_string(),
         "  x\n  \ncd\n",
@@ -683,8 +683,8 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
     ed.feed_key(key('i'));
     ed.feed_key(key_enter());
     // Enter copies "  " onto a new line and lands the cursor on that blank,
-    // auto-indented line — `autoindent_pending` is set, so leaving Insert
-    // now will trim it.
+    // auto-indented line — the session's own autoindent record now names it,
+    // so leaving Insert now will trim it.
     assert_eq!(
         ed.state.buffers.get(bid_closing).text().to_string(),
         "  x\n  \ncd\n",

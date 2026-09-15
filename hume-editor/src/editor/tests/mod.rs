@@ -231,6 +231,10 @@ fn key_backspace() -> KeyEvent {
     KeyEvent::new(KeyCode::Backspace, Modifiers::NONE)
 }
 
+fn key_delete() -> KeyEvent {
+    KeyEvent::new(KeyCode::Delete, Modifiers::NONE)
+}
+
 fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }

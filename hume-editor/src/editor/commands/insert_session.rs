@@ -4,7 +4,7 @@
 use hume_editing::selection::Selection;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
-use hume_rope::offset::{CharOffset, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
 use crate::editor::buffer::LastInsert;
 use crate::editor::pane_state::TypedRun;
@@ -25,20 +25,78 @@ fn is_group_open_current(state: &EditorState, view: &EngineView) -> bool {
         .is_some()
 }
 
-/// `true` if any current selection is a collapsed cursor sitting on a blank,
-/// auto-indented line — the condition under which [`clear_blank_line_indent`]
-/// would actually change the buffer. Checked before calling it so the common
-/// case (exiting Insert mode away from a blank line) skips the edit entirely
-/// instead of running an identity one (see
-/// [`hume_ops::edit::blank_line_ws_range`]'s doc comment).
+/// `true` if any current selection is a collapsed cursor sitting on a blank
+/// line whose whitespace this session itself auto-inserted — the condition
+/// under which [`clear_blank_line_indent`] would actually change the buffer.
+/// Checked before calling it so the common case (exiting Insert mode away
+/// from a blank line, or a blank line whose indent isn't this session's own)
+/// skips the edit entirely instead of running an identity one (see
+/// [`hume_ops::edit::owned_blank_indent`]'s doc comment).
 pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
     state: &EditorState,
     view: &EngineView,
 ) -> bool {
     let text = doc(state, view).text();
-    current_selections(state, view).iter_sorted().any(|sel| {
-        sel.is_collapsed() && hume_ops::edit::blank_line_ws_range(text, sel.head()).is_some()
-    })
+    let allowed = autoindent_owned(state, view);
+    current_selections(state, view)
+        .iter_sorted()
+        .enumerate()
+        .any(|(i, sel)| {
+            sel.is_collapsed()
+                && hume_ops::edit::owned_blank_indent(text, sel.head(), allowed.get(i).copied())
+                    .is_some()
+        })
+}
+
+/// The live session's per-selection autoindent ownership record — see
+/// `PaneBufferState::autoindent`'s doc — or empty if none was armed, or its
+/// length no longer matches the live selection count (a mid-session merge;
+/// same rule [`end_insert_session`] applies to `typed_run` via `valid_run`).
+/// An out-of-bounds index into the returned vec (via `.get(i)`) then reads as
+/// "no record for this selection", same as an empty vec would.
+///
+/// Owned rather than borrowed: every caller (`has_blank_line_cursor` here,
+/// `mappings/insert.rs`'s Enter handler) needs it cloned out of
+/// `PaneBufferState` before running the edit whose `ChangeSet` will remap —
+/// or, for Enter, replace — that same record.
+pub(in crate::editor) fn autoindent_owned(
+    state: &EditorState,
+    view: &EngineView,
+) -> Vec<ExclusiveRange<CharOffset>> {
+    let pid = state.focus.id();
+    let bid = focused_buffer_id(state, view);
+    let sel_count = current_selections(state, view).len();
+    match &state.panes.state[pid][bid].autoindent {
+        Some(ranges) if ranges.len() == sel_count => ranges.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// Record each current selection's freshly auto-inserted indent — `[line_start,
+/// head)` on the post-edit buffer — as this session's own, so a later Enter
+/// or exit knows that whitespace is its own to vacate (see
+/// `PaneBufferState::autoindent`'s doc). Called once, right after the
+/// structural newline + indent lands, by every entry point that copies one
+/// (`o`, `O`, Enter). No-op if no edit group is open (read-only refusal),
+/// same guard as [`begin_typed_run`] — a refused `o`/`O` leaves no record
+/// behind for a later, unrelated session to inherit.
+pub(in crate::editor) fn arm_autoindent(state: &mut EditorState, view: &EngineView) {
+    if !is_group_open_current(state, view) {
+        return;
+    }
+    let text = doc(state, view).text();
+    let ranges: Vec<ExclusiveRange<CharOffset>> = current_selections(state, view)
+        .iter_sorted()
+        .map(|sel| {
+            let head = sel.head();
+            let line_idx = text.char_to_line(head);
+            let line_start = text.line_to_char(line_idx.into());
+            ExclusiveRange::new(line_start, head)
+        })
+        .collect();
+    let pid = state.focus.id();
+    let bid = focused_buffer_id(state, view);
+    state.panes.state[pid][bid].autoindent = Some(ranges);
 }
 
 /// Where an *empty* typed run's cursor lands on exit — see
@@ -138,10 +196,6 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
             keystrokes: Vec::new(),
         });
     }
-    // Outside the guard above (unlike `insert_session`) so replay — which
-    // skips session creation — still starts each replayed session with no
-    // pending auto-indent to vacate, matching a fresh interactive session.
-    state.autoindent_pending = false;
     state.set_mode(Mode::Insert);
 }
 
@@ -150,14 +204,16 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
     // does in `insert_newline_indent`. Joins the still-open session group —
-    // not a separate undo step. Gated on two conditions: `autoindent_pending`
-    // (the line's indent was auto-inserted by *this* session and nothing has
-    // been typed on it since — vim only vacates indent it created, never
-    // pre-existing or hand-typed whitespace) and `has_blank_line_cursor` (the
-    // common case, cursor not on a blank line, skips the edit rather than
-    // running an identity one on every Insert-mode exit).
-    if state.autoindent_pending && has_blank_line_cursor(state, view) {
-        apply_focused_edit_grouped(state, view, clear_blank_line_indent);
+    // not a separate undo step. `has_blank_line_cursor` re-derives ownership
+    // from the buffer (via `autoindent_owned`) rather than trusting a flag,
+    // and also skips the edit in the common case — cursor not on a line this
+    // session owns — rather than running an identity one on every Insert-mode
+    // exit.
+    if has_blank_line_cursor(state, view) {
+        let allowed = autoindent_owned(state, view);
+        apply_focused_edit_grouped(state, view, move |b, s| {
+            clear_blank_line_indent(b, s, &allowed)
+        });
     }
     commit_edit_group_current(state, view);
     if let (Some(session), Some(action)) = (

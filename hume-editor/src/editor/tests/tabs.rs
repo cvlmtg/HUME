@@ -122,11 +122,11 @@ fn enter_repeated_preserves_indent() {
 // ── Vim autoindent parity: trim on Insert-mode exit ───────────────────────────
 //
 // `end_insert_session` vacates a blank line's leading whitespace on Esc, but
-// only when *this* insert session auto-inserted it via Enter and nothing has
-// been typed there since (`EditorState::autoindent_pending`). These tests
-// pin the three-way distinction vim makes: pre-existing
-// blank-line whitespace and hand-typed whitespace are both left alone; only
-// the session's own auto-indent gets vacated.
+// only when the cursor's current line is the one *this* insert session
+// auto-inserted it onto via Enter (`PaneBufferState::autoindent`). These
+// tests pin the three-way distinction vim makes: pre-existing blank-line
+// whitespace and hand-typed whitespace are both left alone; only the
+// session's own auto-indent gets vacated.
 
 /// Cursor lands on a blank, already-indented line that existed before this
 /// insert session touched it: `i` then immediate `Esc` must leave it as-is.
@@ -172,9 +172,11 @@ fn enter_esc_trims_auto_inserted_blank_line() {
 }
 
 /// Dot-repeat replays an Enter-then-Esc insert session as a unit: the
-/// replayed Enter must also be trimmed on the replayed Esc. `autoindent_
-/// pending` lives on `EditorState` (not `InsertSession`, which is absent
-/// during replay — see its doc comment) specifically so this holds.
+/// replayed Enter must also be trimmed on the replayed Esc. `autoindent`
+/// lives on `PaneBufferState` (not `InsertSession`, which is absent during
+/// replay — see its doc comment) specifically so this holds: the replayed
+/// Enter arms a fresh record the same way an interactive one would, and
+/// `end_insert_session`'s explicit post-replay call reads it back.
 #[test]
 fn dot_repeat_replays_enter_esc_trim() {
     // Cursor starts on line 0's own trailing '\n' ("  x\n"); line 1 ("  y\n")
