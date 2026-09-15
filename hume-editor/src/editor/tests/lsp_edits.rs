@@ -621,8 +621,9 @@ fn goto_location_char_indexed_target_past_eof_clamps_to_the_last_char() {
 /// line, via `scroll::scroll_cursor_to_display_line` — not by re-deriving a
 /// buffer-line-based centering of its own. The two only agree when nothing
 /// wraps; under wrap they diverge, and a hand-rolled line-based centering
-/// leaves `top()`'s slot untouched entirely (`Viewport::heal`'s own
-/// doc names this exact call site as why it has to self-heal).
+/// leaves `top()`'s slot untouched entirely (`Viewport::top_at`'s own
+/// doc names this exact call site as why a stale write must self-heal on
+/// the next read).
 #[test]
 fn goto_location_centers_by_display_line_not_buffer_line_under_wrap() {
     // Each line is 25 'x's, wrapped at width 10 into three display lines —

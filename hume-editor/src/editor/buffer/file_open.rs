@@ -351,17 +351,6 @@ impl Editor {
             );
             self.state.panes.state[pid][id].edit_group = None;
             self.state.panes.state[pid][id].paste_group = None;
-            // Heal scroll: a shrunken file must not leave the viewport's top
-            // past the buffer's new last line or block shape — `heal`
-            // subsumes the old line-only clamp with the full address check
-            // every other stale-top write already relies on.
-            let key = self.state.format_key(&self.view.panes[pid]);
-            let (mut dlm, viewport) = crate::editor::commands::pane_display_lines(
-                self.state.buffers.get(id),
-                &mut self.view.panes[pid],
-                key,
-            );
-            viewport.heal(&mut dlm);
         }
         // Drop stale saved scrolls for the reloaded buffer on every pane —
         // `recall_scroll` clamps the top's line to the buffer's current last

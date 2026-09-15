@@ -36,7 +36,7 @@ use hume_rope::column::DisplayLineCol;
 /// wrapping, since wrap mode has no horizontal scroll — see
 /// `Viewport::reveal_horizontal`).
 pub(in crate::editor) fn content_pos(
-    viewport: &Viewport,
+    viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor_char: hume_rope::offset::CharOffset,
 ) -> Option<(u16, u16)> {
@@ -57,13 +57,11 @@ pub(in crate::editor) fn content_pos(
         // through `content_pos` first.
         return None;
     }
-    // Clamp the top the same way `pane_render.rs` does before its
-    // display-line walk: a write site that doesn't validate the top's slot
-    // against the block it addresses (`recall_scroll`, an LSP jump — see
-    // `Viewport::heal`'s doc) can leave it stale for a frame, and walking
-    // from the raw address would disagree with the renderer about which
+    // Resolve the top the same way the render pass does before its
+    // display-line walk (see `Viewport::top_at`'s doc) — walking from an
+    // unresolved address would disagree with the renderer about which
     // display line is on screen.
-    let top = dlm.clamp(viewport.top());
+    let top = viewport.top_at(dlm);
     // Capping the walk one row short of the viewport's height makes an
     // off-screen cursor a `None` rather than a row past the last one; a cursor
     // scrolled off the *top* is likewise unreachable walking forward.
@@ -138,7 +136,7 @@ pub(in crate::editor) fn screen_to_char_offset(
     content_x: u16,
     content_y: u16,
     gutter_w: u16,
-    viewport: &Viewport,
+    viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
 ) -> Option<hume_rope::offset::CharOffset> {
     // Clicks inside the gutter (line numbers etc.) do not map to text.
@@ -152,12 +150,7 @@ pub(in crate::editor) fn screen_to_char_offset(
         .horizontal_offset()
         .advance_saturating((content_x - gutter_w) as u32);
 
-    // Unlike `content_pos`'s two production callers (both provably
-    // downstream of the same frame's `Viewport::heal`), a click is
-    // input-driven, not frame-driven — nothing here guarantees `heal` ran
-    // for this pane's viewport since whatever produced the coordinates being
-    // resolved. Self-heal rather than assume it did.
-    let top = dlm.clamp(viewport.top());
+    let top = viewport.top_at(dlm);
     let clicked = dlm.advance_saturating(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to
     // the display line's last cell rather than its last *content* cell —

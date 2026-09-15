@@ -45,7 +45,7 @@ const H_WINDOW_SLACK: u16 = 4;
 /// pathologically wide line (a minified-JS file's single line) from pinning
 /// that peak for the rest of the session: the frame boundary hands it back.
 pub(crate) fn render_pane(
-    pane_ctx: &PaneRenderCtx,
+    pane_ctx: &mut PaneRenderCtx,
     scratch: &mut FrameScratch,
     store: &mut crate::display_lines::line_store::PaneLineStore,
     grid: &mut Grid,
@@ -61,17 +61,53 @@ pub(crate) fn render_pane(
 
     // ── Pre-render: per-frame constant setup ──────────────────────────────
 
+    // Style and gutter-width scratch are disjoint fields the display-line
+    // map never touches; its own storage is the pane's line store, which
+    // already holds whatever the scroll step formatted for this pane this
+    // frame.
+    let FrameScratch {
+        style, lane_widths, ..
+    } = scratch;
+
     // Selections arrive pre-sorted from the editor; copy once, reuse every display line.
-    scratch
-        .style
-        .populate_sorted_sels(pane_ctx.selections, pane_ctx.primary_idx);
+    style.populate_sorted_sels(pane_ctx.selections, pane_ctx.primary_idx);
 
     // Gutter lane widths: constant for the entire frame.
-    scratch.lane_widths.clear();
-    scratch.lane_widths.extend(layout::lane_widths(
+    lane_widths.clear();
+    lane_widths.extend(layout::lane_widths(
         pane_ctx.providers.gutter_columns(),
         visible.last_line_idx,
     ));
+
+    // Clip `WrapMode::None` formatting to the visible horizontal window — a
+    // single unwrapped line can be arbitrarily long (a minified JS file is a
+    // real case), so scanning past the right edge would cost O(line_length)
+    // per frame. Wrapping modes are already bounded by `wrap_width`.
+    let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
+        let h_offset = pane_ctx.viewport.horizontal_offset;
+        let end = h_offset
+            .advance_saturating(visible.content_width as u32)
+            .advance_saturating(H_WINDOW_SLACK as u32);
+        h_offset..end
+    });
+
+    let mut dlm = DisplayLineMap::new(
+        pane_ctx.rope,
+        pane_ctx.providers,
+        visible.content_width,
+        pane_ctx.settings.format,
+        store,
+    )
+    .with_h_window(h_window);
+    let last_content_line = dlm.last_line();
+
+    // The render pass resolves the top it walks from — see `Viewport::top_at`
+    // — so a host with no per-frame healing discipline of its own (a
+    // different embedder, or this crate's own `pipeline/tests.rs`) can never
+    // desync the walk from a stale address. Must run before `compose_ctx`
+    // below takes its own (shared) reborrow of `pane_ctx.viewport` — this is
+    // the last `&mut` use of it in this function.
+    let mut pos = pane_ctx.viewport.top_at(&mut dlm);
 
     // Bundle per-frame constants so compose_display_line call sites stay concise.
     let compose_ctx = ComposeCtx {
@@ -95,45 +131,8 @@ pub(crate) fn render_pane(
     };
     let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
 
-    // Clip `WrapMode::None` formatting to the visible horizontal window — a
-    // single unwrapped line can be arbitrarily long (a minified JS file is a
-    // real case), so scanning past the right edge would cost O(line_length)
-    // per frame. Wrapping modes are already bounded by `wrap_width`.
-    let h_window = (!pane_ctx.settings.format.wrap_mode.is_wrapping()).then(|| {
-        let h_offset = pane_ctx.viewport.horizontal_offset;
-        let end = h_offset
-            .advance_saturating(visible.content_width as u32)
-            .advance_saturating(H_WINDOW_SLACK as u32);
-        h_offset..end
-    });
-
-    // Style and gutter-width scratch are disjoint fields the display-line
-    // map never touches; its own storage is the pane's line store, which
-    // already holds whatever the scroll step formatted for this pane this
-    // frame.
-    let FrameScratch {
-        style, lane_widths, ..
-    } = scratch;
-    let mut dlm = DisplayLineMap::new(
-        pane_ctx.rope,
-        pane_ctx.providers,
-        visible.content_width,
-        pane_ctx.settings.format,
-        store,
-    )
-    .with_h_window(h_window);
-    let last_content_line = dlm.last_line();
-
     // ── Display-line walk ────────────────────────────────────────────────
     let height = visible.content_height.min(pane_ctx.rect.height);
-    let viewport = pane_ctx.viewport;
-    // This crate has no dependency on, or guarantee about, a host's own
-    // per-frame healing discipline (`hume-editor`'s `Viewport::heal`, run
-    // once before every frame's render) — a different embedder, or this
-    // crate's own `pipeline/tests.rs`, can call `render` with a `top` no one
-    // has validated since the block it addresses last changed shape. Self-
-    // heal here rather than trust the caller.
-    let mut pos = dlm.clamp(viewport.top());
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.
     let mut line: Option<LineStyle> = None;

@@ -546,7 +546,9 @@ impl EngineView {
             scratch.clear();
 
             // The one place that can say these are disjoint parts of one pane:
-            // the render pass reads four of its fields while writing a fifth.
+            // the render pass reads three of its fields while writing two —
+            // `line_store` as always, and now `viewport`'s own resolved top,
+            // via `Viewport::top_at`.
             let Pane {
                 viewport,
                 providers,
@@ -556,7 +558,7 @@ impl EngineView {
                 ..
             } = pane;
 
-            let pane_ctx = PaneRenderCtx {
+            let mut pane_ctx = PaneRenderCtx {
                 viewport,
                 providers,
                 selections,
@@ -577,7 +579,7 @@ impl EngineView {
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
             };
-            render_pane(&pane_ctx, scratch, line_store, grid);
+            render_pane(&mut pane_ctx, scratch, line_store, grid);
         }
 
         // ── Render seam dividers between panes ────────────────────────────────
@@ -710,7 +712,12 @@ pub(crate) struct PaneRenderCtx<'a> {
     /// `render_pane` a `&mut` on that same pane's line store alongside this —
     /// one `&mut Pane` split into disjoint field borrows, which only the loop
     /// that owns the pane can say is sound.
-    pub viewport: &'a crate::pane::Viewport,
+    ///
+    /// `&'a mut`, not `&'a`: the display-line walk resolves `viewport.top()`
+    /// against its own `DisplayLineMap` via `Viewport::top_at` before
+    /// walking from it, and writes the resolved address back — see that
+    /// method's doc for why a stale top must never reach the walk.
+    pub viewport: &'a mut crate::pane::Viewport,
     pub providers: &'a crate::providers::ProviderSet,
     /// Head-sorted, as `populate_sorted_sels` asserts.
     pub selections: &'a [crate::types::Selection],

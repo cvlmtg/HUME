@@ -36,7 +36,7 @@ fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
 /// output depend on which ran first — the sharing itself is covered in
 /// `display_lines::tests`, against the store directly.
 fn render_test_pane(
-    pane: &Pane,
+    pane: &mut Pane,
     rope: &ropey::Rope,
     theme: &Theme,
     pane_rect: Rect,
@@ -54,8 +54,8 @@ fn render_test_pane(
         show_indent_guides: true,
         cursor_is_block: true,
     };
-    let pane_ctx = PaneRenderCtx {
-        viewport: &pane.viewport,
+    let mut pane_ctx = PaneRenderCtx {
+        viewport: &mut pane.viewport,
         providers: &pane.providers,
         selections: &pane.selections,
         primary_idx: pane.primary_idx,
@@ -69,7 +69,7 @@ fn render_test_pane(
     };
     let mut buf = Grid::new(pane_rect.width, pane_rect.height);
     render_pane(
-        &pane_ctx,
+        &mut pane_ctx,
         &mut FrameScratch::new(),
         &mut crate::display_lines::line_store::PaneLineStore::new(),
         &mut buf,
@@ -126,7 +126,7 @@ fn virtual_display_line_resolves_grapheme_scope_and_falls_back_to_virtual_text()
 
     let pane_rect = rect(0, 0, 20, 5);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -211,7 +211,7 @@ fn virtual_display_line_resolves_scopes_from_unsorted_segments() {
 
     let pane_rect = rect(0, 0, 20, 5);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -278,7 +278,7 @@ fn render_wrapped_pane_with_virtual_line(top_slot: u16, anchor: VirtualLineAncho
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, 6);
     render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -338,10 +338,10 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
     );
 
     // Offset 5 is past the end of a 5-display-line block: not an address in
-    // the document, so it clamps to the block's last display line — the same address
-    // `Viewport::heal` resolves to, which is the point (production
-    // never reaches this case directly, since the clamp runs every frame
-    // before render).
+    // the document, so it clamps to the block's last display line — the same
+    // address `Viewport::top_at` resolves to, which is the point (production
+    // never reaches this case directly, since the render pass resolves the
+    // top itself every frame).
     //
     // Fail oracle: treating an over-large offset as display-lines-to-skip
     // instead of clamping would carry over into line 1, disagreeing with the
@@ -436,7 +436,7 @@ fn render_pane_with_n_before_lines(top_slot: u16, n: usize, height: u16) -> Grid
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 10, height);
     render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -542,7 +542,7 @@ fn virtual_line_provider_id_is_stamped_by_pipeline_not_self_reported() {
     theme.bake(&registry);
     let pane_rect = rect(0, 0, 10, 3);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -583,7 +583,7 @@ fn cjk_heavy_viewport_fills_every_row_no_premature_filler() {
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 4);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -619,7 +619,7 @@ fn scrolled_pane_renders_from_top_line_onward() {
     let theme = Theme::default();
     let pane_rect = rect(0, 0, 20, 5);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,
@@ -680,7 +680,7 @@ fn filler_display_line_gutter_shows_gutter_content_not_stale_blank() {
     theme.bake(&registry);
     let pane_rect = rect(0, 0, 20, 3);
     let buf = render_test_pane(
-        &pane,
+        &mut pane,
         &rope,
         &theme,
         pane_rect,

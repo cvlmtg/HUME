@@ -1187,6 +1187,7 @@ mod plugins;
 mod registers;
 mod registers_steel;
 mod reload_config;
+mod reload_scroll;
 mod render_snapshot;
 mod scripting_effects;
 mod scripting_grammar;

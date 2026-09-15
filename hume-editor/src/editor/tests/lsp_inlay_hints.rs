@@ -107,7 +107,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    let vp = ed.view.panes[pid].viewport.clone();
+    let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
@@ -118,7 +118,7 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
         key,
     );
     assert_eq!(
-        crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char),
+        crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char),
         Some((0, 2)),
         "scroll must have already accounted for the hint's extra display \
          line, placing the cursor at the last visible row rather than \

@@ -6,9 +6,11 @@
 //! Every verb here is the *only* way [`Viewport::top`](crate::pane::Viewport::top)
 //! changes from outside this crate — the single chokepoint for
 //! `(top_line, top_slot) -> DisplayLinePos` address resolution and scrolloff
-//! arithmetic. A [`ViewGeometry`] is resolved once per call
-//! (`Viewport::geometry`) and threaded through, so no verb recomputes
-//! `margin`/`target` itself and no verb can observe a zero-height viewport.
+//! arithmetic. [`Viewport::top_at`] is the read counterpart to that write
+//! chokepoint: the only way to obtain a `top` that is safe to walk. A
+//! [`ViewGeometry`] is resolved once per call (`Viewport::geometry`) and
+//! threaded through, so no verb recomputes `margin`/`target` itself and no
+//! verb can observe a zero-height viewport.
 //!
 //! `carry` deliberately walks the requested `delta` on its own, rather than
 //! being handed how far `scroll_by` actually moved: `scroll_by`'s bound
@@ -49,18 +51,25 @@ use crate::pane::{ViewGeometry, Viewport};
 use hume_rope::column::DisplayLineCol;
 
 impl Viewport {
-    /// Pull `top` onto a display line that actually exists.
+    /// The viewport's top display-line address, resolved against `dlm`.
     ///
-    /// Single self-heal chokepoint for staleness: nothing else validates a
-    /// `top` write against the block it addresses (`Pane::recall_scroll`
-    /// restores a saved offset verbatim; an LSP goto-definition jump moves
-    /// `top` without re-deriving its slot) — and the block a stale address
-    /// was valid for can shrink or vanish (wrap-width change, a virtual-line
-    /// decoration source removed, a resize) between the write and the next
-    /// read. Call once per pane per frame, before any other verb, so every
-    /// other write site can stay unvalidated.
-    pub fn heal(&mut self, dlm: &mut DisplayLineMap<'_>) {
+    /// Single self-heal chokepoint for staleness, and the only way to obtain a
+    /// `top` that is safe to walk: nothing validates a `top` write against the
+    /// block it addresses (`Pane::recall_scroll` restores a saved offset
+    /// verbatim; an LSP goto-definition jump moves `top` without re-deriving its
+    /// slot; `Pane::inherit_view_state` clones one wholesale) — and the block a
+    /// stale address was valid for can shrink or vanish (wrap-width change, a
+    /// virtual-line decoration source removed, a resize) between the write and
+    /// the next read.
+    ///
+    /// Writes the resolved address back rather than returning a clamped copy, so
+    /// the stored field converges on every read and `Viewport::top`'s own value
+    /// is never a second, staler answer to the same question. Every read site
+    /// that holds a `DisplayLineMap` goes through here; the three that hold none
+    /// read [`Viewport::top`] and are documented there.
+    pub fn top_at(&mut self, dlm: &mut DisplayLineMap<'_>) -> DisplayLinePos {
         self.top = dlm.clamp(self.top);
+        self.top
     }
 
     /// Scroll `delta` display lines (positive = down, negative = up). `carry`
@@ -68,8 +77,8 @@ impl Viewport {
     /// rather than tracking how far the view actually got — see this
     /// module's doc for why.
     ///
-    /// Heals `top` first (see [`Viewport::heal`]), so a caller need not call
-    /// it separately before scrolling.
+    /// Resolves `top` first (see [`Viewport::top_at`]), so a caller need not
+    /// heal it separately before scrolling.
     ///
     /// A *downward* scroll is bounded by [`DisplayLineMap::max_scroll_top`]
     /// and additionally never moves `top` backwards past where it already
@@ -81,8 +90,7 @@ impl Viewport {
     /// snapping a downward notch backwards. An *upward* scroll only
     /// saturates at the document's first display line.
     pub fn scroll_by(&mut self, dlm: &mut DisplayLineMap<'_>, geo: ViewGeometry, delta: isize) {
-        self.heal(dlm);
-        let current = self.top;
+        let current = self.top_at(dlm);
         let next = dlm.advance_saturating(current, delta);
         if delta < 0 {
             self.top = next;
@@ -118,7 +126,7 @@ impl Viewport {
         geo: ViewGeometry,
         cursor_pos: DisplayLinePos,
     ) -> usize {
-        let top = self.top;
+        let top = self.top_at(dlm);
         if cursor_pos < top {
             return self.scroll_back_from(dlm, cursor_pos, geo.margin);
         }

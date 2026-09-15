@@ -621,8 +621,8 @@ impl Editor {
     /// (`before` + content display lines + `after`) in *either* wrap mode —
     /// a mode change can leave it past the new block's display-line count
     /// (off→on starts a narrower block; on→on width/style changes can
-    /// shrink it), and that out-of-range case is exactly what
-    /// `Viewport::heal` repairs once per pane per frame, so there's no need
+    /// shrink it), and that out-of-range case is exactly what the next
+    /// `Viewport::top_at` read repairs, so there's no need
     /// to throw the address away here. What clamping *cannot* catch: only a
     /// `content`-side change (not this function) grows the block, so a slot
     /// that addressed an `after` display line in no-wrap can still be in

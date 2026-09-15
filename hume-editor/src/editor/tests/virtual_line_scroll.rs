@@ -66,7 +66,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     // ask `content_pos` with that same settled state, exactly as production
     // code does after `prepare_frame`.
     let pid = ed.state.focus.id();
-    let vp = ed.view.panes[pid].viewport.clone();
+    let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
@@ -77,7 +77,7 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
         key,
     );
 
-    let pos = crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char);
+    let pos = crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -392,7 +392,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     );
     assert_eq!(cell(&rendered, 0, 2), "y", "line 1 follows at row 2");
 
-    let vp = ed.view.panes[pid].viewport.clone();
+    let mut vp = ed.view.panes[pid].viewport.clone();
     let cursor_char = ed.current_selections().primary().head();
     let bid = ed.view.panes[pid].buffer_id;
     let Editor { state, view, .. } = &mut ed;
@@ -403,7 +403,7 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
         key,
     );
     assert_eq!(
-        crate::editor::cursor::content_pos(&vp, &mut dlm, cursor_char).map(|(_, row)| row),
+        crate::editor::cursor::content_pos(&mut vp, &mut dlm, cursor_char).map(|(_, row)| row),
         Some(2),
         "content_pos must count the hint's extra display line, as the renderer does"
     );

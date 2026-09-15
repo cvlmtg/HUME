@@ -20,7 +20,7 @@ use ropey::Rope;
 ///
 /// `top` is `pub(crate)`, not `pub`: every write to it from outside this
 /// crate goes through one of the scroll verbs in
-/// [`crate::display_lines::scroll`] (`heal`/`scroll_by`/`reveal`/`align`) —
+/// [`crate::display_lines::scroll`] (`scroll_by`/`reveal`/`align`) —
 /// the single write API that replaced a former `top_line`/`top_slot` field
 /// pair, its `u16` slot narrowing, and a second `(top_line, top_slot) ->
 /// DisplayLinePos` conversion `pane_render.rs` used to do independently of
@@ -56,7 +56,18 @@ impl Viewport {
         }
     }
 
-    /// The viewport's top display-line address.
+    /// The viewport's top display-line address — the last one
+    /// [`Viewport::top_at`](crate::display_lines::scroll) resolved it to.
+    ///
+    /// A caller holding a `DisplayLineMap` must call `top_at` instead of this:
+    /// nothing here validates the address against the map's current block
+    /// shape, so a write site that ran since the last resolve (`recall_scroll`,
+    /// an LSP jump, `Pane::inherit_view_state`) can leave it stale. This
+    /// accessor exists for the three production readers that hold no map at
+    /// all — `hume-editor`'s `OnViewportChange` debounce key, and the
+    /// coarse visible-line supersets `decorated_panes`/`pane_visible_range`
+    /// build from `top.line` alone — plus every test assertion on the stored
+    /// value.
     pub fn top(&self) -> DisplayLinePos {
         self.top
     }
@@ -109,7 +120,7 @@ impl Viewport {
     ///
     /// Production code never calls this — every real write goes through a
     /// scroll verb or `Pane::recall_scroll`. An unvalidated address left
-    /// here self-heals on the next `heal` call, the same posture
+    /// here self-heals on the next `top_at` read, the same posture
     /// `recall_scroll`'s own unvalidated slot write already has.
     pub fn seed_top_for_test(&mut self, top: DisplayLinePos) {
         self.top = top;
@@ -562,7 +573,8 @@ impl Pane {
     /// (`hume-editor/src/editor/buffer/file_open.rs`). `top`'s slot is
     /// restored verbatim, unvalidated against the block it addresses — like
     /// every other write outside `display_lines::scroll`'s verbs, it relies
-    /// on the next frame's `Viewport::heal` to self-heal a stale address.
+    /// on the next `Viewport::top_at` read, whichever pass gets there first,
+    /// to self-heal a stale address.
     pub fn recall_scroll(&mut self, id: BufferId, last_content_line: ContentLine) {
         let sp = self.saved_scrolls.get(id).copied().unwrap_or_default();
         self.viewport.top = DisplayLinePos::new(sp.top.line.min(last_content_line), sp.top.slot);

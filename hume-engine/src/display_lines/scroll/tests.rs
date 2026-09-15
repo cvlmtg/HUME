@@ -1,4 +1,4 @@
-//! Tests for the viewport scroll verbs (`heal`/`scroll_by`/`reveal`/`align`/
+//! Tests for the viewport scroll verbs (`top_at`/`scroll_by`/`reveal`/`align`/
 //! `reveal_horizontal`) and [`carry`].
 //!
 //! Ported from `hume-editor`'s former `editor/scroll/tests.rs`, which tested
@@ -32,7 +32,7 @@ fn viewport(top: usize, height: u16, width: u16) -> Viewport {
 
 /// Mirror of `hume-editor`'s `cursor::content_pos` — see this module's doc.
 fn local_content_pos(
-    v: &Viewport,
+    v: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor_char: CharOffset,
 ) -> Option<(u16, u16)> {
@@ -43,7 +43,7 @@ fn local_content_pos(
     if cursor_display_col < v.horizontal_offset {
         return None;
     }
-    let top = dlm.clamp(v.top());
+    let top = v.top_at(dlm);
     let row = dlm.distance(top, cursor_pos, v.height as usize - 1)?;
     Some(local_place(v, cursor_display_col, row))
 }
@@ -294,7 +294,11 @@ fn reveal_accounts_for_a_stolen_virtual_display_line() {
     v.reveal(&mut dlm, geo, cursor_pos);
 
     let mut s = PaneLineStore::new();
-    let pos = local_content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
+    let pos = local_content_pos(
+        &mut v,
+        &mut map(&r, wrap, &providers, 80, &mut s),
+        cursor_char,
+    );
     let (_, row) = pos.expect("cursor must be visible after reveal");
     assert!(
         (row as usize) < v.height as usize,
@@ -319,7 +323,11 @@ fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     v.reveal(&mut dlm, geo, cursor_pos);
 
     let mut s = PaneLineStore::new();
-    let pos = local_content_pos(&v, &mut map(&r, wrap, &providers, 80, &mut s), cursor_char);
+    let pos = local_content_pos(
+        &mut v,
+        &mut map(&r, wrap, &providers, 80, &mut s),
+        cursor_char,
+    );
     let (_, row) = pos.expect("cursor must be visible after reveal");
     assert!(
         (row as usize) < v.height as usize,
@@ -354,11 +362,12 @@ fn scroll_backward_from_cursor_reaches_into_before_line_0() {
     }
 }
 
-/// [`Viewport::heal`] must shrink an out-of-range offset (as `recall_scroll`
+/// [`Viewport::top_at`] must shrink an out-of-range offset (as `recall_scroll`
 /// or an LSP jump could leave behind) down to the top line's actual current
-/// block size, in either wrap mode.
+/// block size, in either wrap mode — and write the resolved value back to
+/// `top()`, not just return it.
 #[test]
-fn heal_shrinks_stale_offset() {
+fn top_at_resolves_a_stale_offset() {
     let r = Rope::from_str("a\nb\n");
     let providers = providers_with_before_line(0); // Before(0): 1 display line + content: 1 = total 2
 
@@ -366,24 +375,69 @@ fn heal_shrinks_stale_offset() {
         let mut v = viewport(0, 5, 80);
         v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // wildly stale
         let mut s = PaneLineStore::new();
-        v.heal(&mut map(&r, wrap, &providers, 80, &mut s));
+        let resolved = v.top_at(&mut map(&r, wrap, &providers, 80, &mut s));
+        assert_eq!(
+            resolved.slot, 1,
+            "clamped to the block's last valid display line (total 2, so max offset 1) ({wrap:?})"
+        );
         assert_eq!(
             v.top().slot,
             1,
-            "clamped to the block's last valid display line (total 2, so max offset 1) ({wrap:?})"
+            "the resolved address must be written back, not just returned ({wrap:?})"
         );
     }
 }
 
 #[test]
-fn heal_is_a_noop_when_already_valid() {
+fn top_at_is_a_noop_when_already_valid() {
     let r = Rope::from_str("a\nb\n");
     let providers = providers_with_before_line(0);
     let mut v = viewport(0, 5, 80);
     v.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 1));
     let mut s = PaneLineStore::new();
-    v.heal(&mut map(&r, WrapMode::None, &providers, 80, &mut s));
+    let resolved = v.top_at(&mut map(&r, WrapMode::None, &providers, 80, &mut s));
+    assert_eq!(resolved.slot, 1);
     assert_eq!(v.top().slot, 1);
+}
+
+/// `reveal` must be safe to call directly on a stale top — as `scroll_by`
+/// already is via its own `top_at` call — rather than requiring a caller to
+/// resolve it first. Drives `reveal` from an identical wildly-stale seed
+/// twice: once handed to `reveal` untouched (relying on `reveal`'s own
+/// `top_at`), once pre-resolved via an explicit `top_at` call first. Both
+/// must report the same screen row and settle on the same final `top()`.
+#[test]
+fn reveal_is_safe_to_call_directly_on_a_stale_top() {
+    let r = Rope::from_str("a\nb\n");
+    let providers = ProviderSet::new(); // no virtual lines: every line's block is exactly 1 slot
+    let cursor_char = co(0); // line 0's own first char — the cursor never has to move
+
+    let mut stale = viewport(0, 5, 80);
+    stale.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // wildly stale
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let geo = stale.geometry(0).unwrap();
+    let stale_row = stale.reveal(&mut dlm, geo, cursor_pos);
+
+    let mut resolved = viewport(0, 5, 80);
+    resolved.seed_top_for_test(DisplayLinePos::new(ContentLine::new(0), 200)); // same stale seed
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    resolved.top_at(&mut dlm); // pre-resolve before reveal sees it
+    let cursor_pos = dlm.locate_display_line(cursor_char);
+    let geo = resolved.geometry(0).unwrap();
+    let resolved_row = resolved.reveal(&mut dlm, geo, cursor_pos);
+
+    assert_eq!(
+        stale_row, resolved_row,
+        "a stale seed and a pre-resolved one must report the same screen row"
+    );
+    assert_eq!(
+        stale.top(),
+        resolved.top(),
+        "a stale seed and a pre-resolved one must settle on the same top"
+    );
 }
 
 // ── reveal_horizontal ─────────────────────────────────────────────────────
@@ -474,14 +528,14 @@ fn reported_screen_row_agrees_with_a_forward_walk() {
 
                     let mut s = PaneLineStore::new();
                     let mut dlm = map(&r, wrap, &providers, 80, &mut s);
-                    v.heal(&mut dlm);
+                    v.top_at(&mut dlm);
                     let cursor_pos = dlm.locate_display_line(cursor_char);
                     let geo = v.geometry(2).unwrap();
                     let reported = v.reveal(&mut dlm, geo, cursor_pos);
 
                     let mut s = PaneLineStore::new();
                     let walked = local_content_pos(
-                        &v,
+                        &mut v,
                         &mut map(&r, wrap, &providers, 80, &mut s),
                         cursor_char,
                     );
@@ -508,7 +562,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
 
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
-    v.heal(&mut dlm);
+    v.top_at(&mut dlm);
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
     let geo = v.geometry(3).unwrap();
     let row = v.reveal(&mut dlm, geo, cursor_pos);
@@ -523,7 +577,7 @@ fn a_frame_formats_the_cursors_line_once_in_no_wrap() {
 
     let mut s = PaneLineStore::new();
     let walked = local_content_pos(
-        &v,
+        &mut v,
         &mut map(&r, WrapMode::None, &providers, 80, &mut s),
         cursor_char,
     );

@@ -614,7 +614,12 @@ impl Editor {
             // this ran pre-drain, immaterial for any nonzero debounce interval.
             // The slot is part of the key, not just the line: a view-led
             // scroll (mouse wheel, `Ctrl+D`) can move entirely within one
-            // line's virtual block, which the line alone can't see.
+            // line's virtual block, which the line alone can't see. A
+            // zero-height pane's `top` is never resolved (`scroll_into_view`
+            // returns before any `top_at` read for one), so its key no
+            // longer changes on its own the way it did while a heal ran
+            // unconditionally here — a collapsed pane draws nothing, so that
+            // fire was spurious.
             let viewport = &self.view.panes[pid].viewport;
             let top = viewport.top();
             let key = (buf_id, top.line, top.slot, viewport.height);
@@ -713,19 +718,19 @@ impl Editor {
 /// further than the cursor can follow. The terminal caret is simply hidden
 /// until an ordinary cursor motion resyncs the view.
 ///
-/// Calls `Viewport::heal` and both the vertical (`reveal`) and horizontal
-/// (`reveal_horizontal`) verbs in one shot, over a single display-line map —
-/// so the three agree on the display-line list by construction, and a
-/// line's format is reused across them. The cursor is resolved exactly once
-/// here, for all three plus the terminal-cursor placement: scrolling only
-/// ever *writes* the viewport, and the display-line map holds no viewport,
-/// so no arm below can change what `locate` already answered.
+/// Calls both the vertical (`reveal`) and horizontal (`reveal_horizontal`)
+/// verbs in one shot, over a single display-line map — so the two agree on
+/// the display-line list by construction, and a line's format is reused
+/// across them. The cursor is resolved exactly once here, for both plus the
+/// terminal-cursor placement: scrolling only ever *writes* the viewport, and
+/// the display-line map holds no viewport, so no arm below can change what
+/// `locate` already answered.
 ///
 /// `reveal_pending` is `PaneBufferState::reveal_pending`'s value for this
 /// frame, already taken by the caller — see that field's own doc for why the
 /// vertical `reveal` correction runs only when it's `true`, falling back to
-/// a plain forward walk from the already-healed `top` otherwise, and what
-/// that leaves hidden.
+/// a plain forward walk from `top` otherwise (resolved via `Viewport::top_at`
+/// either way — `reveal` resolves its own), and what that leaves hidden.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
@@ -737,10 +742,6 @@ fn scroll_into_view(
     // Whatever this pass formats deciding where to scroll, the render pass
     // finds already done — both work through this pane's one store.
     let (mut dlm, viewport) = super::commands::pane_display_lines(doc, pane, format_key);
-    // Self-heal a viewport top left stale by a write site that doesn't
-    // validate it (`recall_scroll`, an LSP jump) before the cursor-follow
-    // logic below reads it — see `Viewport::heal`'s doc.
-    viewport.heal(&mut dlm);
     // A collapsed split has nothing to scroll and nowhere to put a cursor.
     // Checked before `locate`, which would otherwise format the cursor's
     // line for an answer no one can use — and before `geometry`, which
@@ -763,12 +764,12 @@ fn scroll_into_view(
             screen_row,
         ))
     } else {
-        // `heal` above already clamped `top` and `reveal_horizontal` just
-        // guaranteed `cursor_display_col >= horizontal_offset`, so this is
-        // `cursor::content_pos` minus the two checks it exists to make for
-        // a caller that hasn't already done them — only its forward walk is
-        // left to redo.
-        let screen_row = dlm.distance(viewport.top(), cursor_pos, geo.height - 1)?;
+        // `reveal_horizontal` just guaranteed `cursor_display_col >=
+        // horizontal_offset`, so this is `cursor::content_pos` minus the two
+        // checks it exists to make for a caller that hasn't already done
+        // them — only its forward walk is left to redo.
+        let top = viewport.top_at(&mut dlm);
+        let screen_row = dlm.distance(top, cursor_pos, geo.height - 1)?;
         Some(super::cursor::place(
             viewport,
             cursor_display_col,

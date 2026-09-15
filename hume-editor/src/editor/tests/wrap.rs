@@ -438,7 +438,7 @@ fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged(
 /// Turning wrap *off* must not force-reset the top's slot: it addresses a
 /// row inside the top's line's block in either wrap mode. If the new
 /// (no-wrap) block is shorter than the old one, the offset is now stale —
-/// but `Viewport::heal` repairs that once per pane per frame, not
+/// but the next `Viewport::top_at` read repairs that, not
 /// `toggle_focused_wrap` itself, so the raw value must survive the `:set`
 /// call untouched.
 #[test]
@@ -464,20 +464,20 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
 
     // No-wrap: line 0's whole block is 1 row (content only, no providers
     // registered) — the only valid address is row 0, so the next frame's
-    // self-heal must pull the stale offset down to it.
+    // `top_at` read must pull the stale offset down to it.
     ed.render_to_buf(Rect::new(0, 0, 40, 8));
     assert_eq!(
         focused_pane(&ed).viewport.top().slot,
         0,
-        "Viewport::heal, not the wrap-mode change, is what repairs staleness"
+        "Viewport::top_at, not the wrap-mode change, is what repairs staleness"
     );
 }
 
 /// Changing the wrap style/width while already wrapping (`:set pane
 /// wrap-mode=` to a different variant) must likewise leave `top_slot`
-/// for `Viewport::heal` to repair, not reset it inline — the old offset
-/// was measured against the previous width and may no longer be a valid
-/// sub-row index once the width changes.
+/// for the next `Viewport::top_at` read to repair, not reset it inline — the
+/// old offset was measured against the previous width and may no longer be a
+/// valid sub-row index once the width changes.
 #[test]
 fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_to_clamp() {
     let mut ed = editor_from("-[a]>b\n");
@@ -513,7 +513,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
 /// already scrolled past, two still showing); `:set wrap-mode=none` must not
 /// jump the viewport back up to the top of that block — the address is
 /// still valid (a `Before` block occupies the same rows regardless of wrap
-/// mode) and `Viewport::heal` would find nothing to repair.
+/// mode) and `Viewport::top_at` would find nothing to repair.
 #[test]
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
     let mut ed = editor_from("-[a]>b\n");
