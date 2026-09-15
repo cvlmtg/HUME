@@ -45,7 +45,7 @@ pub(in crate::editor) fn content_pos(
         return None;
     }
     let (cursor_pos, cursor_display_col) = dlm.locate(cursor_char);
-    if cursor_display_col < viewport.horizontal_offset {
+    if cursor_display_col < viewport.horizontal_offset() {
         // Off the visible viewport on the horizontal axis — same contract as
         // a row below the bottom (checked below via `distance`). Every
         // caller but one is the live cursor, which `Viewport::reveal_horizontal`
@@ -92,7 +92,7 @@ pub(in crate::editor) fn place(
     // that case to `None`; this saturates too so a direct caller can't panic
     // either, without adding a second precondition this function would have
     // to document and enforce itself.
-    let content_x = cursor_display_col.cells_since_saturating(viewport.horizontal_offset);
+    let content_x = cursor_display_col.cells_since_saturating(viewport.horizontal_offset());
     // `Viewport::reveal_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
     // subtraction it's a small on-screen offset — safe to narrow to the
@@ -149,7 +149,7 @@ pub(in crate::editor) fn screen_to_char_offset(
     // wrapping — see `Viewport::reveal_horizontal`),
     // reconstructed back into a document display column.
     let display_col = viewport
-        .horizontal_offset
+        .horizontal_offset()
         .advance_saturating((content_x - gutter_w) as u32);
 
     // Unlike `content_pos`'s two production callers (both provably

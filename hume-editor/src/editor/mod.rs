@@ -60,7 +60,6 @@ mod popup_syntax;
 mod register_ops;
 mod registry;
 mod replay;
-pub(super) mod scroll;
 pub(crate) mod search;
 pub(crate) mod settings;
 mod syntax;
@@ -855,16 +854,16 @@ pub(crate) struct Editor {
     /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each pane's
-    /// last `update_inlay_hint_providers` pass — unlike `virtual_lines_synced`,
-    /// never used to skip that pass's own (cheap, viewport-filtered) resync,
-    /// only to detect when to raise `reveal_pending`: an inlay hint
-    /// appearing or changing shape can shift a line's wrap column, moving
-    /// the cursor's own display line without the selection itself moving.
-    inlay_hints_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
-    /// [`Self::inlay_hints_synced`]'s counterpart for
-    /// `update_eol_text_providers` — EOL text can push a line onto an extra
-    /// wrapped display line the same way an inlay hint can.
-    eol_text_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
+    /// last `update_inlay_hint_providers`/`update_eol_text_providers` pass —
+    /// unlike `virtual_lines_synced`, never used to skip either pass's own
+    /// (cheap, viewport-filtered) resync, only to detect when to raise
+    /// `reveal_pending`: an inlay hint appearing or changing shape can shift
+    /// a line's wrap column, and EOL text can push a line onto an extra
+    /// wrapped display line, either without the selection itself moving.
+    /// One tracker for both kinds: both read the same
+    /// `decorations.generation(bid)` clock, so two trackers would always
+    /// hold the same value.
+    decorations_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,

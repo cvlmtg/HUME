@@ -20,9 +20,8 @@
 //!
 //! Addresses are [`DisplayLinePos`]: a buffer line plus a slot index into
 //! that line's *visual block*, which runs `before`-virtuals, then
-//! content/wrap display lines, then `after`-virtuals. `Viewport`'s
-//! `top_line`/`top_slot` pair is the persisted form of exactly that
-//! address.
+//! content/wrap display lines, then `after`-virtuals. `Viewport::top` is
+//! that address directly.
 
 use std::ops::Range;
 

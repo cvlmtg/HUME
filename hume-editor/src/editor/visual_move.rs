@@ -10,7 +10,7 @@
 use hume_editing::selection::{Selection, SelectionSet, StickyDisplayCol};
 use hume_editing::text::BufferText;
 use hume_editing::word::WordChars;
-use hume_engine::display_lines::{BlockSlot, DisplayColTarget, DisplayLineMap};
+use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap};
 use hume_engine::pipeline::{EngineView, PaneId};
 use hume_ops::text_object::{
     apply_nearest_word_result, cmd_select_word_nearest_on_line, nearest_word_on_line,
@@ -59,7 +59,7 @@ fn move_vertical(
             break; // document start/end — clamp to the last content display line reached
         };
         pos = next;
-        if matches!(dlm.slot(pos), BlockSlot::Content(_)) {
+        if dlm.slot(pos).is_content() {
             last_content = pos;
             remaining -= 1;
         }

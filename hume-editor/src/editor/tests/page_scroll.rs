@@ -258,7 +258,7 @@ fn ctrl_d_to_eof() -> (Editor, hume_grid::Rect) {
 /// Scrolling all the way to EOF with `Ctrl+D`, then moving the cursor with
 /// an ordinary motion (`k`), must not jump the view: `Viewport::scroll_by`'s
 /// `max_scroll_top` bound and `Viewport::reveal`'s `geo.target` settle point
-/// both derive from the same `vertical_margins`, so the cursor motion's
+/// both derive from the same `Viewport::geometry`, so the cursor motion's
 /// reveal correction lands exactly where the EOF stall already parked the
 /// view.
 #[test]

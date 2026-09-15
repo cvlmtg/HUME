@@ -1,10 +1,9 @@
-//! Display-line stepping (`next`/`prev`/`advance_saturating`/`distance`/`max_scroll_top`).
+//! Display-line stepping (`next`/`prev`/`advance_saturating`/`distance`).
 //! Reaches the map only through its public `block`/`last_line`/`clamp`
 //! accessors.
 
 use super::DisplayLineMap;
 use super::pos::DisplayLinePos;
-use crate::pane::ViewGeometry;
 
 impl<'a> DisplayLineMap<'a> {
     /// The next display line, crossing into the next line's block as needed.
@@ -104,38 +103,5 @@ impl<'a> DisplayLineMap<'a> {
             cur = self.next(cur)?;
         }
         None
-    }
-
-    /// The furthest down the viewport top may scroll: `geo.target` display
-    /// lines of look-ahead past the document's last display line — a
-    /// trailing `After` virtual block included, exactly like any real buffer
-    /// line — then no further. `geo` is [`Viewport::geometry`](crate::pane::Viewport::geometry),
-    /// the same geometry [`Viewport::reveal`](crate::pane::Viewport::reveal) resolves,
-    /// so the two agree on `margin`/`target`.
-    ///
-    /// The two bounds' *anchors* deliberately do not agree: this one
-    /// measures back from the document's last display line, while `reveal`
-    /// measures from the cursor's own display line — which can never be a
-    /// virtual one, since the cursor only ever occupies content display
-    /// lines. That gap is what lets a scroll carry the viewport into a
-    /// trailing virtual block at all; without it, the cursor being unable to
-    /// follow would cap the scroll at the block's near edge. The two anchors
-    /// coincide, and so land on the same top, only when the cursor sits on
-    /// the document's last display line — the case a plain `Ctrl+D`/wheel
-    /// scroll to EOF followed by an ordinary cursor motion exercises.
-    /// Saturates at the document's first display line, so a document that
-    /// fits on screen (plus its margin) cannot be scrolled at all.
-    ///
-    /// Takes a [`ViewGeometry`] rather than a raw height precisely so a
-    /// zero-height viewport never reaches here at all — `Viewport::geometry`
-    /// returns `None` for one, so every caller already branched away before
-    /// constructing the `geo` this needs. `advance_saturating(last, -0)`
-    /// would otherwise return the document's *last* display line — the
-    /// opposite of "saturates at the first" — for the degenerate `target ==
-    /// 0` a zero height produces.
-    pub fn max_scroll_top(&mut self, geo: ViewGeometry) -> DisplayLinePos {
-        let last_line = self.last_line();
-        let last = DisplayLinePos::new(last_line, self.block(last_line).total().saturating_sub(1));
-        self.advance_saturating(last, -(geo.target as isize))
     }
 }

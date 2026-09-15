@@ -376,7 +376,8 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
             mode: Some(WrapMode::None),
             saved: None,
         });
-        pane.viewport.horizontal_offset = hume_rope::column::DisplayLineCol::new(12);
+        pane.viewport
+            .seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(12));
         pane.viewport
             .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
                 pane.viewport.top().line,
@@ -386,7 +387,7 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
     ed.execute_typed("wrap", None).unwrap(); // on
     let pane = focused_pane(&ed);
     assert_eq!(
-        pane.viewport.horizontal_offset,
+        pane.viewport.horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(0)
     );
     assert_eq!(
@@ -405,11 +406,12 @@ fn wrap_toggle_on_zeroes_horizontal_offset_only() {
 fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "global wrap-mode=none").expect("set global failed");
-    ed.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(12);
+    ed.viewport_mut()
+        .seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(12));
 
     run_set(&mut ed, "pane wrap-mode=soft").expect(":set pane wrap-mode=soft failed");
     assert_eq!(
-        focused_pane(&ed).viewport.horizontal_offset,
+        focused_pane(&ed).viewport.horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(0),
         "none → soft is an effective-mode change, so horizontal scroll is zeroed"
     );
@@ -422,11 +424,12 @@ fn set_pane_wrap_mode_zeroes_horizontal_offset_on_an_effective_change() {
 fn set_pane_wrap_mode_leaves_horizontal_offset_when_effective_mode_is_unchanged() {
     let mut ed = editor_from("-[a]>b\n");
     run_set(&mut ed, "global wrap-mode=none").expect("set global failed");
-    ed.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(12);
+    ed.viewport_mut()
+        .seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(12));
 
     run_set(&mut ed, "pane wrap-mode=none").expect(":set pane wrap-mode=none failed");
     assert_eq!(
-        focused_pane(&ed).viewport.horizontal_offset,
+        focused_pane(&ed).viewport.horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(12),
         "none → none is not an effective-mode change, so horizontal scroll survives"
     );

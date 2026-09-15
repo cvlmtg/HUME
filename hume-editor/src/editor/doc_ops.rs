@@ -451,16 +451,6 @@ pub(in crate::editor::doc_ops) fn propagate_cs_to_panes(
         })
         .collect();
     for pid in affected {
-        let pbs = &mut pane_state[pid][buf_id];
-        let old_head = pbs.selections().primary().head();
-        pbs.translate_selections_in_place(edits, cs, text_pre);
-        // A sibling pane can be visible in its own split with the shifted
-        // position now out of its own view — same reveal-on-head-move rule
-        // `set_selections`/`restore_selections` apply for the focused pane,
-        // spelled out by hand here since this mutates in place rather than
-        // going through either of those.
-        if pbs.selections().primary().head() != old_head {
-            pbs.reveal_pending = true;
-        }
+        pane_state[pid][buf_id].translate_selections_in_place(edits, cs, text_pre);
     }
 }

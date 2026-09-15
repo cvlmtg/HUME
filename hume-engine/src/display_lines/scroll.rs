@@ -8,8 +8,7 @@
 //! `(top_line, top_slot) -> DisplayLinePos` address resolution and scrolloff
 //! arithmetic. A [`ViewGeometry`] is resolved once per call
 //! (`Viewport::geometry`) and threaded through, so no verb recomputes
-//! [`vertical_margins`](crate::pane::vertical_margins) itself and no verb can
-//! observe a zero-height viewport.
+//! `margin`/`target` itself and no verb can observe a zero-height viewport.
 //!
 //! `carry` deliberately walks the requested `delta` on its own, rather than
 //! being handed how far `scroll_by` actually moved: `scroll_by`'s bound
@@ -45,7 +44,6 @@
 //! provably idle after every `scroll_view` call, since whatever `carry`
 //! returns already satisfies `reveal`'s own contract.
 
-use super::pos::BlockSlot;
 use super::{DisplayLineMap, DisplayLinePos};
 use crate::pane::{ViewGeometry, Viewport};
 use hume_rope::column::DisplayLineCol;
@@ -218,6 +216,41 @@ impl Viewport {
     }
 }
 
+impl<'a> DisplayLineMap<'a> {
+    /// The furthest down the viewport top may scroll: `geo.target` display
+    /// lines of look-ahead past the document's last display line — a
+    /// trailing `After` virtual block included, exactly like any real buffer
+    /// line — then no further. `geo` is [`Viewport::geometry`], the same
+    /// geometry [`Viewport::reveal`] resolves, so the two agree on
+    /// `margin`/`target`.
+    ///
+    /// The two bounds' *anchors* deliberately do not agree: this one
+    /// measures back from the document's last display line, while `reveal`
+    /// measures from the cursor's own display line — which can never be a
+    /// virtual one, since the cursor only ever occupies content display
+    /// lines. That gap is what lets a scroll carry the viewport into a
+    /// trailing virtual block at all; without it, the cursor being unable to
+    /// follow would cap the scroll at the block's near edge. The two anchors
+    /// coincide, and so land on the same top, only when the cursor sits on
+    /// the document's last display line — the case a plain `Ctrl+D`/wheel
+    /// scroll to EOF followed by an ordinary cursor motion exercises.
+    /// Saturates at the document's first display line, so a document that
+    /// fits on screen (plus its margin) cannot be scrolled at all.
+    ///
+    /// Takes a [`ViewGeometry`] rather than a raw height precisely so a
+    /// zero-height viewport never reaches here at all — `Viewport::geometry`
+    /// returns `None` for one, so every caller already branched away before
+    /// constructing the `geo` this needs. `advance_saturating(last, -0)`
+    /// would otherwise return the document's *last* display line — the
+    /// opposite of "saturates at the first" — for the degenerate `target ==
+    /// 0` a zero height produces.
+    pub(crate) fn max_scroll_top(&mut self, geo: ViewGeometry) -> DisplayLinePos {
+        let last_line = self.last_line();
+        let last = DisplayLinePos::new(last_line, self.block(last_line).total().saturating_sub(1));
+        self.advance_saturating(last, -(geo.target as isize))
+    }
+}
+
 /// Where a head's display line goes after a view scroll of `delta` display
 /// lines (the same signed delta passed to `Viewport::scroll_by`), band-
 /// clamped against `top` — the viewport's top *after* that `scroll_by` call
@@ -283,7 +316,7 @@ fn walk_by_delta(
             break;
         };
         pos = next;
-        if matches!(dlm.slot(pos), BlockSlot::Content(_)) {
+        if dlm.slot(pos).is_content() {
             last_content = Some(pos);
         }
         remaining = remaining.saturating_sub(1);
@@ -324,7 +357,7 @@ fn walk_from_top(
     rows: usize,
 ) -> Option<DisplayLinePos> {
     let mut pos = top;
-    let mut last_content = matches!(dlm.slot(top), BlockSlot::Content(_)).then_some(top);
+    let mut last_content = dlm.slot(top).is_content().then_some(top);
     let mut steps = 0usize;
     while steps < rows || last_content.is_none() {
         if steps >= geo.target {
@@ -333,7 +366,7 @@ fn walk_from_top(
         let Some(next) = dlm.next(pos) else { break };
         pos = next;
         steps += 1;
-        if matches!(dlm.slot(pos), BlockSlot::Content(_)) {
+        if dlm.slot(pos).is_content() {
             last_content = Some(pos);
         }
     }

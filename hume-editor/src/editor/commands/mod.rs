@@ -211,7 +211,7 @@ pub(super) fn search_pattern<'a>(
 }
 
 /// Viewport state of pane `pid`.
-pub(super) fn viewport<'a>(view: &'a EngineView, pid: PaneId) -> &'a hume_engine::pane::Viewport {
+pub(super) fn viewport(view: &EngineView, pid: PaneId) -> &hume_engine::pane::Viewport {
     &view.panes[pid].viewport
 }
 

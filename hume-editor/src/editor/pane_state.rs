@@ -196,19 +196,22 @@ impl PaneBufferState {
     }
 
     /// In-place remap for a sibling pane's selections after an edit another
-    /// pane made to the same buffer. Does not itself raise `reveal_pending`
-    /// — `doc_ops::propagate_cs_to_panes`, the sole caller, does that with
-    /// its own before/after head comparison, since it already needs the
-    /// "before" value for a different purpose (deciding whether to remap at
-    /// all is not the same question, but the head it reads to answer this
-    /// one is the same read).
+    /// pane made to the same buffer, raising [`PaneBufferState::reveal_pending`]
+    /// iff the primary head actually moved — same rule
+    /// `set_selections`/`restore_selections` apply, since a sibling pane can
+    /// be visible in its own split with the shifted position now out of its
+    /// own view.
     pub(in crate::editor) fn translate_selections_in_place(
         &mut self,
         edits: &[hume_rope::offset::ExclusiveRange<CharOffset>],
         cs: &hume_editing::changeset::ChangeSet,
         text_pre: &hume_editing::text::BufferText,
     ) {
+        let old_head = self.selections.primary().head();
         self.selections.translate_in_place_with(edits, cs, text_pre);
+        if self.selections.primary().head() != old_head {
+            self.reveal_pending = true;
+        }
     }
 }
 
@@ -555,7 +558,7 @@ impl Editor {
         }
         pane.set_wrap(wrap);
         if mode != before {
-            self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
+            self.viewport_mut().reset_horizontal();
             // A wrap-mode change can move the cursor's own display line
             // relative to the viewport without the selection itself
             // moving — one of `PaneBufferState::reveal_pending`'s explicit
@@ -642,7 +645,7 @@ impl Editor {
             }
             true
         };
-        self.viewport_mut().horizontal_offset = hume_rope::column::DisplayLineCol::new(0);
+        self.viewport_mut().reset_horizontal();
         // Toggling always flips whether the pane is actually wrapping (see
         // this function's own doc), which can move the cursor's own display
         // line relative to the viewport without the selection itself

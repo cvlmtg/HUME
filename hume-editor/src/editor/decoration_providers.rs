@@ -18,16 +18,14 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// Raises `reveal_pending` for `(pid, bid)` iff `current_gen` differs from
 /// what `tracker` last recorded for `pid`, then records `current_gen` —
 /// the funnel `update_inlay_hint_providers` and `update_eol_text_providers`
-/// each use for their own decoration kind, since either one can move the
-/// cursor's own display line (an inlay hint shifts a line's wrap column,
-/// EOL text can push a line onto a further wrapped display line) without
-/// the selection itself moving. `decorations.generation(bid)` is a shared
-/// clock — every `set_*` on `DecorationStores` bumps it, not just this
-/// kind's own — so this can occasionally raise `reveal_pending` on an
-/// unrelated decoration change too; `Viewport::reveal` is a no-op when
-/// nothing actually moved the cursor's row, so a spurious raise costs one
-/// cheap comparison next frame, not a visible effect. Same imprecision
-/// `update_virtual_line_providers` already accepts against the same clock.
+/// share (one `decorations_synced` tracker for both) for their decoration
+/// kinds, since either one can move the cursor's own display line (an
+/// inlay hint shifts a line's wrap column, EOL text can push a line onto a
+/// further wrapped display line) without the selection itself moving.
+/// `decorations.generation(bid)` is a shared clock — every `set_*` on
+/// `DecorationStores` bumps it, regardless of kind — so the two callers
+/// already can't disagree on when it changed, and share one tracker rather
+/// than two that would always hold the same value.
 ///
 /// Unlike `update_virtual_line_providers`'s own generation check, these two
 /// never skip their resync on an unchanged generation (see their own doc
@@ -38,18 +36,6 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 /// fields of `Editor`/`EditorState`, so taking them as separate parameters
 /// avoids the borrow conflict a `&mut self` method would hit against the
 /// caller's own `&mut self.state.panes.render[pid]` write.
-///
-/// The shared clock above cuts both ways: `update_virtual_line_providers`
-/// runs on the same pane in the same step and shares this exact clock, so
-/// its own raise already covers most inlay-hint/EOL-text changes as an
-/// accidental side effect — a pane with zero virtual lines registered still
-/// resyncs (to an empty map) and still raises `reveal_pending` the moment
-/// *any* decoration on that buffer changes. This call stays anyway: relying
-/// on virtual-lines' raise for a kind it has no knowledge of is an
-/// implementation detail one buffer-id key away from silently breaking (a
-/// future per-kind clock split there would reopen this gap with nothing to
-/// say why), where this raises the same signal for a reason that names its
-/// own two callers.
 fn raise_reveal_pending_on_generation_change(
     tracker: &mut rustc_hash::FxHashMap<PaneId, (BufferId, u64)>,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
@@ -442,7 +428,7 @@ impl Editor {
             }
             let current_gen = self.state.config.decorations.generation(bid);
             raise_reveal_pending_on_generation_change(
-                &mut self.inlay_hints_synced,
+                &mut self.decorations_synced,
                 &mut self.state.panes.state,
                 pid,
                 bid,
@@ -515,7 +501,7 @@ impl Editor {
             }
             let current_gen = self.state.config.decorations.generation(bid);
             raise_reveal_pending_on_generation_change(
-                &mut self.eol_text_synced,
+                &mut self.decorations_synced,
                 &mut self.state.panes.state,
                 pid,
                 bid,

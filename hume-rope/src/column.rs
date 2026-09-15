@@ -141,7 +141,7 @@ impl DisplayLineCol {
     /// session's token-start anchor, which is fixed while the live cursor
     /// (and the viewport's horizontal scroll it drives) keeps moving right —
     /// so the anchor can sit left of `viewport.horizontal_offset` in a way
-    /// the live cursor, kept on-screen by `ensure_cursor_visible_horizontal`,
+    /// the live cursor, kept on-screen by `Viewport::reveal_horizontal`,
     /// never does. Display-line-relative only (like `abs_diff` above): its
     /// one caller works in that domain, and `BufferLineCol` has none.
     pub fn cells_since_saturating(self, earlier: Self) -> u32 {

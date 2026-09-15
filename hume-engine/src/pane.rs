@@ -34,7 +34,12 @@ pub struct Viewport {
     /// column, not a terminal cell — widened past `u16` alongside
     /// `Grapheme::display_col` so scrolling isn't ceilinged at column 65535 on an
     /// unwrapped line.
-    pub horizontal_offset: DisplayLineCol,
+    ///
+    /// `pub(crate)`, not `pub`, for the same reason as `top`: the only write
+    /// from outside this crate is "reset to 0" (a wrap-mode change), which
+    /// [`Viewport::reset_horizontal`] covers — every other write is
+    /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll)'s own.
+    pub(crate) horizontal_offset: DisplayLineCol,
     /// Total width of the pane in terminal cells (gutter + content).
     pub width: u16,
     /// Total height of the pane in terminal cells.
@@ -56,17 +61,40 @@ impl Viewport {
         self.top
     }
 
+    /// The viewport's horizontal scroll offset in document columns.
+    pub fn horizontal_offset(&self) -> DisplayLineCol {
+        self.horizontal_offset
+    }
+
+    /// Zero the horizontal scroll offset — for a wrap-mode change, where
+    /// horizontal scroll is meaningless once wrapped and the caller needs
+    /// it zero immediately rather than waiting a frame for
+    /// [`Viewport::reveal_horizontal`](crate::display_lines::scroll) to
+    /// notice the pane is now wrapping.
+    pub fn reset_horizontal(&mut self) {
+        self.horizontal_offset = DisplayLineCol::new(0);
+    }
+
     /// This viewport's scrolloff geometry, or `None` at zero height — every
     /// scroll verb takes a [`ViewGeometry`] rather than a raw height, so a
     /// collapsed pane is one early return here instead of a `height == 0`
-    /// check repeated inside each verb.
+    /// check repeated inside each verb. The sole constructor, so
+    /// `margin`/`target` can never disagree between callers the way two
+    /// independent computations of them could.
     pub fn geometry(&self, scrolloff: usize) -> Option<ViewGeometry> {
         if self.height == 0 {
             return None;
         }
-        let VerticalMargins { margin, target } = vertical_margins(self.height, scrolloff);
+        let height = self.height as usize;
+        // `(height - 1) / 2`, not `height / 2`: at an even height, a margin
+        // of exactly `height / 2` leaves the stable middle window empty (its
+        // bounds `margin..height-margin` collapse to a single point), so the
+        // two correction arms that use this margin would fight over that one
+        // display line and rescroll every frame.
+        let margin = scrolloff.min(height.saturating_sub(1) / 2);
+        let target = height.saturating_sub(margin).saturating_sub(1);
         Some(ViewGeometry {
-            height: self.height as usize,
+            height,
             margin,
             target,
         })
@@ -86,49 +114,34 @@ impl Viewport {
     pub fn seed_top_for_test(&mut self, top: DisplayLinePos) {
         self.top = top;
     }
-}
 
-/// A viewport `height`'s scrolloff margin, and the display row the margin
-/// leaves for the far side of the viewport to settle at.
-///
-/// Shared by [`Viewport::reveal`](crate::display_lines::scroll) (vertical
-/// cursor-follow) and [`crate::display_lines::DisplayLineMap::max_scroll_top`]
-/// (the scroll-down bound) — the two must agree on both numbers, since a
-/// `Ctrl+D`/wheel scroll to EOF and the very next ordinary cursor motion
-/// share one viewport top.
-pub struct VerticalMargins {
-    /// Display lines of look-ahead kept above/below the cursor, clamped so
-    /// the two margins can never meet in the middle of an odd-or-even height.
-    pub margin: usize,
-    /// Display row (0-indexed from the top) the far edge settles at once
-    /// `margin` is reserved on both sides — always `>= margin`.
-    pub target: usize,
-}
-
-/// Compute [`VerticalMargins`] for a `height`-row viewport and a `scrolloff`
-/// setting.
-///
-/// `(height - 1) / 2`, not `height / 2`: at an even height, a margin of
-/// exactly `height / 2` leaves the stable middle window empty (its bounds
-/// `margin..height-margin` collapse to a single point), so the two correction
-/// arms that use this margin would fight over that one display line and
-/// rescroll every frame.
-pub fn vertical_margins(height: u16, scrolloff: usize) -> VerticalMargins {
-    let height = height as usize;
-    let margin = scrolloff.min(height.saturating_sub(1) / 2);
-    let target = height.saturating_sub(margin).saturating_sub(1);
-    VerticalMargins { margin, target }
+    /// [`Viewport::seed_top_for_test`]'s counterpart for `horizontal_offset`
+    /// — a test fixture that needs a pane pre-scrolled horizontally without
+    /// driving `reveal_horizontal` to get there.
+    pub fn seed_horizontal_offset_for_test(&mut self, horizontal_offset: DisplayLineCol) {
+        self.horizontal_offset = horizontal_offset;
+    }
 }
 
 /// A nonzero-height viewport's scrolloff geometry, resolved once per scroll
 /// operation and threaded through every verb in
 /// [`crate::display_lines::scroll`] — [`Viewport::geometry`] is the sole
 /// constructor, so a verb can never observe `height == 0` or a `target` with
-/// nothing to reach.
+/// nothing to reach, and [`Viewport::reveal`](crate::display_lines::scroll)
+/// (vertical cursor-follow) and
+/// [`crate::display_lines::DisplayLineMap::max_scroll_top`] (the scroll-down
+/// bound) can never disagree on `margin`/`target` — both read them off the
+/// same `ViewGeometry`, rather than each computing its own. That agreement
+/// matters because a `Ctrl+D`/wheel scroll to EOF and the very next ordinary
+/// cursor motion share one viewport top.
 #[derive(Copy, Clone, Debug)]
 pub struct ViewGeometry {
     pub height: usize,
+    /// Display lines of look-ahead kept above/below the cursor, clamped so
+    /// the two margins can never meet in the middle of an odd-or-even height.
     pub margin: usize,
+    /// Display row (0-indexed from the top) the far edge settles at once
+    /// `margin` is reserved on both sides — always `>= margin`.
     pub target: usize,
 }
 

@@ -181,9 +181,9 @@ impl Editor {
     }
 
     /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`/
-    /// `inlay_hints_synced`/`eol_text_synced` entries whose pane no longer
-    /// exists in `self.view.panes`. A pending debounce timer is cancelled
-    /// outright (its `TimerPayload` no-ops via `queue_viewport_change`'s own
+    /// `decorations_synced` entries whose pane no longer exists in
+    /// `self.view.panes`. A pending debounce timer is cancelled outright
+    /// (its `TimerPayload` no-ops via `queue_viewport_change`'s own
     /// liveness check anyway, but there is no reason to let it sit in the
     /// wheel until it fires).
     ///
@@ -196,9 +196,7 @@ impl Editor {
             .retain(|pid, _| panes.contains_key(*pid));
         self.virtual_lines_synced
             .retain(|pid, _| panes.contains_key(*pid));
-        self.inlay_hints_synced
-            .retain(|pid, _| panes.contains_key(*pid));
-        self.eol_text_synced
+        self.decorations_synced
             .retain(|pid, _| panes.contains_key(*pid));
         let wheel = &mut self.timer_wheel;
         let payloads = &mut self.timer_payloads;
@@ -277,26 +275,28 @@ impl Editor {
         // viewport (a shorter pane can push it out of view) without the
         // selection itself moving at all, so this is one of
         // `PaneBufferState::reveal_pending`'s explicit non-selection
-        // sources — snapshot every pane's size before the write below,
-        // and flag whichever ones it actually changed.
-        let before: Vec<(PaneId, u16, u16)> = self
+        // sources. `resync_viewport_dims` only ever writes panes in the
+        // active tab (`pane_rects()`), so that's what this checks against
+        // rather than every pane across every tab.
+        let resized: Vec<PaneId> = self
             .view
-            .panes
-            .every_pane_across_all_tabs()
-            .map(|(pid, pane)| (pid, pane.viewport.width, pane.viewport.height))
+            .pane_rects()
+            .into_iter()
+            .filter(|&(pid, rect)| {
+                let vp = &self.view.panes[pid].viewport;
+                vp.width != rect.width || vp.height != rect.height
+            })
+            .map(|(pid, _)| pid)
             .collect();
         self.view.resync_viewport_dims();
-        for (pid, w, h) in before {
-            let pane = &self.view.panes[pid];
-            if pane.viewport.width == w && pane.viewport.height == h {
-                continue;
-            }
+        for pid in resized {
+            let bid = self.view.panes[pid].buffer_id;
             if let Some(pbs) = self
                 .state
                 .panes
                 .state
                 .get_mut(pid)
-                .and_then(|by_buf| by_buf.get_mut(pane.buffer_id))
+                .and_then(|by_buf| by_buf.get_mut(bid))
             {
                 pbs.reveal_pending = true;
             }
@@ -745,8 +745,8 @@ impl Editor {
 /// `reveal_pending` is `PaneBufferState::reveal_pending`'s value for this
 /// frame, already taken by the caller — see that field's own doc for why the
 /// vertical `reveal` correction runs only when it's `true`, falling back to
-/// `cursor::content_pos`'s plain re-lookup otherwise, and what that leaves
-/// hidden.
+/// a plain forward walk from the already-healed `top` otherwise, and what
+/// that leaves hidden.
 fn scroll_into_view(
     doc: &Buffer,
     pane: &mut Pane,
@@ -784,6 +784,16 @@ fn scroll_into_view(
             screen_row,
         ))
     } else {
-        super::cursor::content_pos(viewport, &mut dlm, cursor_char)
+        // `heal` above already clamped `top` and `reveal_horizontal` just
+        // guaranteed `cursor_display_col >= horizontal_offset`, so this is
+        // `cursor::content_pos` minus the two checks it exists to make for
+        // a caller that hasn't already done them — only its forward walk is
+        // left to redo.
+        let screen_row = dlm.distance(viewport.top(), cursor_pos, geo.height - 1)?;
+        Some(super::cursor::place(
+            viewport,
+            cursor_display_col,
+            screen_row,
+        ))
     }
 }

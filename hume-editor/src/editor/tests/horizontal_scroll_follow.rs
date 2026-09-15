@@ -22,7 +22,7 @@ fn horizontal_scroll_follows_a_same_display_line_cursor_move() {
 
     ed.render_to_buf(rect);
     assert_eq!(
-        ed.viewport().horizontal_offset,
+        ed.viewport().horizontal_offset(),
         hume_rope::column::DisplayLineCol::new(0),
         "sanity: no horizontal scroll needed yet"
     );
@@ -34,7 +34,7 @@ fn horizontal_scroll_follows_a_same_display_line_cursor_move() {
     ed.render_to_buf(rect);
 
     assert!(
-        ed.viewport().horizontal_offset.get() > 0,
+        ed.viewport().horizontal_offset().get() > 0,
         "the view must scroll horizontally to keep column 150 visible, even though \
          the cursor's display line never changed"
     );

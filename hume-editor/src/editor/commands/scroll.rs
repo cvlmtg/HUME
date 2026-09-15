@@ -66,11 +66,10 @@ pub(in crate::editor) fn scroll_view(
         buf_id,
         |_text, sels| {
             sels.map(|sel| {
-                let head_pos = dlm.locate_display_line(sel.head());
+                let (head_pos, target_col) = dlm.locate(sel.head());
                 let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
                     return sel; // parked behind a virtual block or at a document edge
                 };
-                let target_col = dlm.locate(sel.head()).1;
                 let new_head = dlm.char_at(landed, target_col, DisplayColTarget::NearestContent);
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
@@ -161,13 +160,8 @@ fn cmd_view_scroll_to_display_line(
     let Some(geo) = viewport.geometry(scrolloff) else {
         return;
     };
-    super::super::scroll::scroll_cursor_to_display_line(
-        viewport,
-        &mut dlm,
-        geo,
-        cursor_char,
-        target_display_line,
-    );
+    let cursor_pos = dlm.locate_display_line(cursor_char);
+    viewport.align(&mut dlm, geo, cursor_pos, target_display_line);
 }
 
 /// Center the head in the viewport, like `z z`. Infallible core shared by

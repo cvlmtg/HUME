@@ -89,7 +89,7 @@ fn zj_puts_cursor_at_bottom() {
     seek_to_line(&mut ed, 25);
     ed.handle_key(key('z'));
     ed.handle_key(key('j'));
-    // height=24, scrolloff=3: vertical_margins(24, 3).target = 20, and
+    // height=24, scrolloff=3: Viewport::geometry(3).target = 20, and
     // target_row=23 clamps down to it — top_line = 25 - 20 = 5.
     assert_eq!(
         ed.viewport().top().line,
@@ -166,7 +166,7 @@ fn zk_in_wrap_mode_anchors_cursor_display_line_at_top() {
     ed.handle_key(key('z'));
     ed.handle_key(key('k'));
 
-    // height=4, scrolloff=3: vertical_margins(4, 3).margin = min(3, (4-1)/2)
+    // height=4, scrolloff=3: Viewport::geometry(3).margin = min(3, (4-1)/2)
     // = 1, so target_row=0 clamps up to 1 — one display line of look-ahead
     // above the cursor even in this tiny viewport, not pinned to its own row.
     assert_eq!(

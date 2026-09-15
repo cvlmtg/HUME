@@ -160,7 +160,7 @@ fn nowrap_horizontal_scroll() {
     // "abcde\n" with h_offset=2: screen_x 0 maps to content_x 2 = 'c' (char 2).
     let rope = Rope::from_str("abcde\n");
     let mut v = vp(0, 80, 10);
-    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(2);
+    v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(2));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let got = screen_to_char_offset(
@@ -543,7 +543,7 @@ fn content_pos_cursor_below_viewport_returns_none() {
 fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
     let rope = Rope::from_str("abcde\n");
     let mut v = vp(0, 80, 10);
-    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(5);
+    v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(5));
     let providers = no_providers();
     let mut s = PaneLineStore::new();
     let anchor_char = co(2); // display col 2 — left of horizontal_offset 5
@@ -564,7 +564,7 @@ fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
 #[test]
 fn place_saturates_when_column_is_left_of_horizontal_offset() {
     let mut v = vp(0, 80, 10);
-    v.horizontal_offset = hume_rope::column::DisplayLineCol::new(5);
+    v.seed_horizontal_offset_for_test(hume_rope::column::DisplayLineCol::new(5));
     let inverted_col = hume_rope::column::DisplayLineCol::new(2);
 
     let pos = place(&v, inverted_col, 0);

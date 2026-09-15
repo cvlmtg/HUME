@@ -39,6 +39,15 @@ pub enum BlockSlot {
     After(usize),
 }
 
+impl BlockSlot {
+    /// Whether this slot is a real content display line, as opposed to a
+    /// `Before`/`After` virtual one — the distinction every display-line
+    /// walk that skips or lands on virtual lines needs.
+    pub fn is_content(self) -> bool {
+        matches!(self, BlockSlot::Content(_))
+    }
+}
+
 /// Display-line breakdown of one buffer line's visual block: virtual
 /// display lines anchored `Before` it, its own wrap/content display lines,
 /// and virtual display lines anchored `After` it.
