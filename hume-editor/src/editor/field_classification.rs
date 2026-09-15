@@ -65,7 +65,6 @@ fn editor_state_fields_are_classified() {
             force_full_redraw: _,               // preserved
             inline_output: _,                   // preserved
             visual_move_target_display_cols: _, // preserved
-            visual_move_target_heads: _,        // preserved
             last_repeatable_action: _,          // preserved
             selection_recipe: _,                // preserved
             selection_recipe_writes: _,         // preserved
@@ -140,8 +139,10 @@ fn editor_fields_are_classified() {
             last_tabline_signature: _, // preserved
             // preserved: staleness after a reload is forced by
             // DecorationStores::reset bumping the generation
-            // counter, not by resetting this map directly
+            // counter, not by resetting these maps directly
             virtual_lines_synced: _,
+            inlay_hints_synced: _,
+            eol_text_synced: _,
             lsp: _, // config: LspState::reset_config()
             // preserved: Editor::run sets it On on entry and Off on
             // exit, and a :reload-config can only run from inside

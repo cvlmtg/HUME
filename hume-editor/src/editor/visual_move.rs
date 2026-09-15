@@ -158,8 +158,6 @@ pub(super) fn apply_visual_vertical(
     let key = state.format_key(&view.panes[pid]);
     let target_display_cols = &mut state.visual_move_target_display_cols;
     target_display_cols.clear();
-    let target_heads = &mut state.visual_move_target_heads;
-    target_heads.clear();
     let (mut dlm, _) = pane_display_lines(state.buffers.get(buf_id), &mut view.panes[pid], key);
 
     // Not `apply_focused_motion`: the closure also captures the display-line
@@ -202,11 +200,13 @@ pub(super) fn apply_visual_vertical(
                 },
             ));
 
-            // Pass 2: resolve each selection's new head, before touching the
-            // selection set at all — see the `is_view_scroll` guard below for
-            // why.
-            target_heads.extend(sels.iter_sorted().zip(target_display_cols.iter()).map(
-                |(sel, &target)| match target {
+            // Pass 2: rebuild each selection, resolving its new head from the
+            // sticky column pass 1 just latched and preserving that column so
+            // consecutive presses in the same family reuse it.
+            let mut targets = target_display_cols.iter();
+            sels.map(|sel| {
+                let &target = targets.next().expect("one column per selection");
+                let head = match target {
                     StickyDisplayCol::BufferLine { display_col } if is_buffer_line => {
                         move_buffer_line(&mut dlm, text, sel.head(), down, count, display_col)
                     }
@@ -226,15 +226,7 @@ pub(super) fn apply_visual_vertical(
                     StickyDisplayCol::DisplayLine { display_col, .. } => {
                         move_vertical(&mut dlm, sel.head(), down, count, display_col)
                     }
-                },
-            ));
-
-            // Pass 3: rebuild with the heads pass 2 already resolved,
-            // preserving the sticky column so consecutive presses in the
-            // same family reuse it.
-            let mut resolved = target_heads.iter().zip(target_display_cols.iter());
-            sels.map(|sel| {
-                let (&head, &target) = resolved.next().expect("one head and column per selection");
+                };
                 let anchor = if mode == MotionMode::Extend {
                     sel.anchor()
                 } else {

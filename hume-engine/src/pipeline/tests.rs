@@ -339,7 +339,7 @@ fn before_virtual_line_skipped_one_display_line_at_a_time() {
 
     // Offset 5 is past the end of a 5-display-line block: not an address in
     // the document, so it clamps to the block's last display line — the same address
-    // `scroll::clamp_viewport_top` resolves to, which is the point (production
+    // `Viewport::heal` resolves to, which is the point (production
     // never reaches this case directly, since the clamp runs every frame
     // before render).
     //

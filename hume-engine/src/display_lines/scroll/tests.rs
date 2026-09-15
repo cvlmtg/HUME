@@ -369,7 +369,7 @@ fn view_bottom_then_scrolloff_trims_cursor_inward() {
 // ── Virtual-line-aware scrolling (synthetic provider) ────────────────────
 
 #[test]
-fn ensure_cursor_visible_accounts_for_a_stolen_virtual_display_line() {
+fn reveal_accounts_for_a_stolen_virtual_display_line() {
     let r = rope("a\nb\nc\nd\n");
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::Soft { width: 80 };
@@ -394,7 +394,7 @@ fn ensure_cursor_visible_accounts_for_a_stolen_virtual_display_line() {
 }
 
 #[test]
-fn ensure_cursor_visible_accounts_for_a_stolen_virtual_display_line_no_wrap() {
+fn reveal_accounts_for_a_stolen_virtual_display_line_no_wrap() {
     let r = rope("a\nb\nc\nd\n");
     let mut v = viewport(0, 2, 80);
     let wrap = WrapMode::None;
@@ -917,6 +917,17 @@ fn down_with_margin_stops_short_of_the_bottom_row() {
 }
 
 // ── carry ─────────────────────────────────────────────────────────────────
+//
+// `top`/`geo` in most of these are a generously tall, zero-scrolloff
+// viewport (`margin == 0`, `target == height - 1`) seeded at the document
+// start — big enough that the band clamp never fires, so these still
+// exercise exactly the plain delta-walk they did before `carry` gained the
+// band clamp. The clamp itself gets its own tests below.
+
+fn generous_band() -> (ViewGeometry, DisplayLinePos) {
+    let v = viewport(0, 25, 80);
+    (v.geometry(0).unwrap(), v.top())
+}
 
 #[test]
 fn carry_moves_head_the_requested_display_lines_down() {
@@ -925,7 +936,8 @@ fn carry_moves_head_the_requested_display_lines_down() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let head = DisplayLinePos::new(ContentLine::new(2), 0);
-    let landed = carry(&mut dlm, head, 3).expect("content lines the whole way");
+    let (geo, top) = generous_band();
+    let landed = carry(&mut dlm, geo, top, head, 3).expect("content lines the whole way");
     assert_eq!(landed, DisplayLinePos::new(ContentLine::new(5), 0));
 }
 
@@ -936,8 +948,9 @@ fn carry_returns_none_when_head_is_already_at_the_document_edge() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let head = DisplayLinePos::new(ContentLine::new(0), 0);
+    let (geo, top) = generous_band();
     assert_eq!(
-        carry(&mut dlm, head, -1),
+        carry(&mut dlm, geo, top, head, -1),
         None,
         "no display line precedes the document start"
     );
@@ -950,14 +963,18 @@ fn carry_zero_rows_is_always_none() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let head = DisplayLinePos::new(ContentLine::new(0), 0);
-    assert_eq!(carry(&mut dlm, head, 0), None);
+    let (geo, top) = generous_band();
+    assert_eq!(carry(&mut dlm, geo, top, head, 0), None);
 }
 
 /// Line 0 content, then a 3-row `Before(1)` block whose slots 0..=2 precede
 /// line 1's own content at slot 3. Walking 2 display lines down from line 0
 /// lands inside the block (slot 1, still virtual); `carry` must keep walking
 /// past it to line 1's content (slot 3) rather than stranding the head at
-/// the block's near edge (see `carry`'s own doc).
+/// the block's near edge (see `carry`'s own doc) — as long as doing so still
+/// lands inside a generous band; the band-bounded version of this same setup
+/// is `carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it`
+/// below.
 #[test]
 fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
     let r = rope("a\nb\n");
@@ -969,6 +986,84 @@ fn carry_overshoots_a_virtual_block_that_swallows_the_whole_budget() {
     let mut s = PaneLineStore::new();
     let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
     let head = DisplayLinePos::new(ContentLine::new(0), 0);
-    let landed = carry(&mut dlm, head, 2).expect("line 1's content is reachable past the block");
+    let (geo, top) = generous_band();
+    let landed =
+        carry(&mut dlm, geo, top, head, 2).expect("line 1's content is reachable past the block");
     assert_eq!(landed, DisplayLinePos::new(ContentLine::new(1), 3));
+}
+
+// ── carry's band clamp ──────────────────────────────────────────────────────
+
+/// A landing above `geo.margin` (too close to `top`, or before it) must be
+/// pushed down to the band's near edge — the case that makes `Viewport::reveal`
+/// provably idle afterward instead of firing a second, undocumented
+/// correction next frame. `top` and `head` both start at the document's
+/// first line (the common "freshly opened file" state), height 10 with
+/// scrolloff 3 (`margin` 3, `target` 6): walking down 2 display lines lands
+/// on row 2, short of `margin`, so the clamp must walk it 1 further, to row 3.
+#[test]
+fn carry_pushes_a_landing_above_margin_down_to_the_bands_near_edge() {
+    let r = rope(&"a\n".repeat(10));
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let v = viewport(0, 10, 80);
+    let geo = v.geometry(3).unwrap();
+    let top = v.top();
+    let head = top;
+    let landed = carry(&mut dlm, geo, top, head, 2).expect("plenty of content lines below top");
+    assert_eq!(
+        landed,
+        DisplayLinePos::new(ContentLine::new(3), 0),
+        "clamped down to margin (3), not left at row 2"
+    );
+}
+
+/// A landing past `geo.target` (a big enough `delta`, no virtual lines
+/// involved) must be pulled back up to the band's far edge. Height 10,
+/// scrolloff 3 (`target` 6): walking down 8 real content lines from top
+/// lands on row 8, past `target`, so the clamp must pull it back to row 6.
+#[test]
+fn carry_pulls_a_landing_past_target_back_to_the_bands_far_edge() {
+    let r = rope(&"a\n".repeat(20));
+    let providers = no_providers();
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let v = viewport(0, 10, 80);
+    let geo = v.geometry(3).unwrap();
+    let top = v.top();
+    let head = top;
+    let landed = carry(&mut dlm, geo, top, head, 8).expect("plenty of content lines below top");
+    assert_eq!(
+        landed,
+        DisplayLinePos::new(ContentLine::new(6), 0),
+        "pulled back to target (6), not left at row 8"
+    );
+}
+
+/// A virtual-line block bigger than the band has no legal landing spot at
+/// all — `carry` must give up (leave the selection untouched) rather than
+/// land past `target`, the band-bounded counterpart to
+/// `carry_overshoots_a_virtual_block_that_swallows_the_whole_budget` above.
+/// Height 6, scrolloff 0 (`margin` 0, `target` 5): an 8-row `Before(1)`
+/// block swallows every display line through row 8, past `target`.
+#[test]
+fn carry_overshoot_past_the_band_gives_up_instead_of_landing_outside_it() {
+    let r = rope("a\nb\n");
+    let mut providers = ProviderSet::new();
+    providers.add_decoration_source(Box::new(VirtualLineBlock::numbered(
+        VirtualLineAnchor::Before(ContentLine::new(1)),
+        8,
+    )));
+    let mut s = PaneLineStore::new();
+    let mut dlm = map(&r, WrapMode::None, &providers, 80, &mut s);
+    let v = viewport(0, 6, 80);
+    let geo = v.geometry(0).unwrap();
+    let top = v.top();
+    let head = top;
+    assert_eq!(
+        carry(&mut dlm, geo, top, head, 1),
+        None,
+        "the block outlasts the band, so there is nowhere in it to land"
+    );
 }

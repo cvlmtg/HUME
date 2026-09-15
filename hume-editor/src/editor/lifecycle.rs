@@ -173,6 +173,8 @@ impl Editor {
             last_viewport_key: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
+            inlay_hints_synced: rustc_hash::FxHashMap::default(),
+            eol_text_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_threaded(std::sync::Arc::clone(&wake)),
             tui: Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
@@ -247,7 +249,7 @@ impl Editor {
             center_focused |= bid == focused_bid;
         }
         if center_focused {
-            super::commands::view_center(&mut self.state, &mut self.view);
+            super::commands::view_center(&mut self.state, &mut self.view, pid);
         }
     }
 

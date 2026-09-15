@@ -261,7 +261,7 @@ fn max_scroll_top_margin_reserves_lookahead_rows_past_the_last_display_line() {
 }
 
 #[test]
-fn max_scroll_top_margin_is_capped_the_same_way_ensure_cursor_visible_caps_it() {
+fn max_scroll_top_margin_is_capped_the_same_way_reveal_caps_it() {
     // A margin at or above half the viewport height must not swallow the
     // whole viewport — clamped to `(height - 1) / 2`, identically to
     // `Viewport::reveal`'s own margin. An uncapped margin=10 here behaves

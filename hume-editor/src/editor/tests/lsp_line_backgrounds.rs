@@ -237,7 +237,7 @@ fn line_background_shows_through_when_cursorline_has_no_bg() {
 /// `decorated_panes` doc). A ten-line buffer with the cursor on the last
 /// line, `scrolloff` 0, and a viewport four content rows tall forces a real
 /// scroll during this frame — cursor line 9 minus the scroll target's 3 rows
-/// of look-ahead (`scroll.rs::ensure_cursor_visible`) lands `top_line` at 6.
+/// of look-ahead (`Viewport::reveal`) lands `top().line` at 6.
 /// Line 8 sits inside that post-scroll viewport (lines 6..11) but well
 /// outside the pre-scroll one (0..5) — reachable only if this bridge reads
 /// the post-scroll snapshot.

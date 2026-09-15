@@ -114,9 +114,10 @@ fn drag_crossing_into_a_different_pane_is_ignored_not_underflowed() {
 // ── Scroll wheel ─────────────────────────────────────────────────────────
 
 /// The scroll wheel moves the viewport AND every cursor together, by the
-/// same `mouse_scroll_lines` amount — not just the viewport. Module doc:
-/// "Moving the cursor with the viewport prevents `ensure_cursor_visible`
-/// from snapping the viewport back on the next frame."
+/// same `mouse_scroll_lines` amount — not just the viewport: `carry`'s own
+/// walk is what lands each head inside the new viewport, so
+/// `PaneBufferState::reveal_pending` stays unset and `Viewport::reveal`
+/// never runs to snap the viewport back on the next frame.
 #[test]
 fn scroll_up_moves_viewport_and_cursor_together() {
     let mut lines = String::from("-[l]>ine0\n");
@@ -125,10 +126,14 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     }
     let mut ed = editor_from(&lines);
 
-    // Scroll the viewport down to line 10 first, then place the cursor at
-    // that same top line — the state a real scroll-then-click leaves
-    // behind, and the case that distinguishes "viewport moved" from
-    // "cursor moved with it".
+    // Scroll the viewport down to line 10, then place the cursor 5 rows into
+    // it (line 15) — in-band for the default scrolloff (margin 3, target
+    // 20), not pinned to the top itself: `carry`'s band clamp would
+    // otherwise treat a cursor sitting exactly at `top` (row 0, below
+    // margin) as needing correction, masking whether the cursor actually
+    // moved *with* the viewport. This is still the state a real
+    // scroll-then-click leaves behind, and the case that distinguishes
+    // "viewport moved" from "cursor moved with it".
     let pid = ed.state.focus.id();
     ed.view.panes[pid]
         .viewport
@@ -139,7 +144,7 @@ fn scroll_up_moves_viewport_and_cursor_together() {
     let head = ed
         .doc()
         .text()
-        .line_to_char(hume_rope::line::RopeyLine::new(10));
+        .line_to_char(hume_rope::line::RopeyLine::new(15));
     ed.set_current_selections(SelectionSet::single(Selection::collapsed(head)));
 
     ed.handle_input(mouse_wheel(false));
@@ -153,8 +158,8 @@ fn scroll_up_moves_viewport_and_cursor_together() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        hume_rope::line::ContentLine::new(7),
-        "cursor must move with the viewport so it stays at the same screen row"
+        hume_rope::line::ContentLine::new(12),
+        "cursor must move with the viewport so it stays at the same screen row (5)"
     );
 }
 
@@ -176,10 +181,15 @@ fn scroll_up_at_top_moves_neither_viewport_nor_cursor() {
     assert_eq!(ed.current_selections().primary().head(), co(0));
 }
 
-/// Unlike the old wheel-only guard (`vp_before != vp_after`), `scroll_view` —
-/// shared with `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` — always carries the
-/// cursor, even when the viewport itself has nowhere to go because the whole
-/// document already fits on screen.
+/// `scroll_view` — shared with `Ctrl+D`/`Ctrl+U`/`PageDown`/`PageUp` — always
+/// carries the cursor, even when the viewport itself has nowhere to go
+/// because the whole document already fits on screen. The cursor doesn't
+/// stop at exactly
+/// `mouse_scroll_lines` (1) below the top, though: landing on "b" (row 1)
+/// would still be above the default scrolloff margin (3), so `carry`'s band
+/// clamp pushes it further — saturating at the document's own last line
+/// ("c", row 2) two rows short of the full margin, the same edge tolerance
+/// `Viewport::reveal`/`align` already have.
 #[test]
 fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() {
     let mut ed = editor_from("-[a]>\nb\nc\n");
@@ -195,16 +205,15 @@ fn scroll_down_moves_the_cursor_even_when_the_document_already_fits_on_screen() 
     );
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(2), // "b"'s start
-        "the cursor still moves by mouse_scroll_lines, matching Ctrl+D/PageDown"
+        co(4), // "c"'s start
+        "the band clamp saturates at the document's own last line, short of the full margin"
     );
 }
 
-/// Deleting the old `vp_before != vp_after` guard (see the test above) means
-/// a wheel notch that provably cannot move anything must still not touch
-/// selections it has no reason to touch: `apply_visual_vertical` used to
-/// rebuild the selection set with `MotionMode::Move` unconditionally, which
-/// collapses `anchor` onto `head` even when `head` itself didn't move — a
+/// A wheel notch that provably cannot move anything must still not touch
+/// selections it has no reason to touch: `apply_visual_vertical` must not
+/// rebuild the selection set with `MotionMode::Move` when `head` itself
+/// doesn't move, since that collapses `anchor` onto `head` regardless — a
 /// one-line document has nowhere for `move_vertical` to go in either
 /// direction.
 #[test]
@@ -222,7 +231,7 @@ fn a_wheel_notch_that_can_move_nothing_keeps_the_selection() {
 }
 
 /// A collapsed split (0 rows) has no bottom row to bound a scroll against —
-/// `max_scroll_top`'s own zero-height guard, not `by_display_lines`'
+/// `Viewport::geometry`'s own zero-height guard, not `Viewport::scroll_by`'s
 /// downward clamp, is what has to stop this. `mouse_wheel`'s `(0, 0)` never
 /// hits a real pane rect here (`last_pane_area` is never populated), so
 /// `mouse_scroll` takes its focused-pane fallback — the collapsed pane is
@@ -365,10 +374,11 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
     ed.settle();
     ed.prepare_frame(&mut ctx);
 
-    // Scroll pane A's viewport to line 10 and park its own cursor there too —
-    // the same setup `scroll_up_moves_viewport_and_cursor_together` uses,
-    // reproduced per-pane since both panes view the same buffer but keep
-    // independent viewports/selections.
+    // Scroll pane A's viewport to line 10 and park its own cursor 5 rows
+    // into it (line 15, in-band for the default scrolloff — see
+    // `scroll_up_moves_viewport_and_cursor_together`'s doc for why not row 0)
+    // — the same setup that test uses, reproduced per-pane since both panes
+    // view the same buffer but keep independent viewports/selections.
     ed.view.panes[pid_a].viewport.seed_top_for_test(
         hume_engine::display_lines::DisplayLinePos::new(hume_rope::line::ContentLine::new(10), 0),
     );
@@ -377,7 +387,7 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
         .buffers
         .get(bid)
         .text()
-        .line_to_char(hume_rope::line::RopeyLine::new(10));
+        .line_to_char(hume_rope::line::RopeyLine::new(15));
     ed.state.panes.state[pid_a][bid]
         .set_selections(SelectionSet::single(Selection::collapsed(head_a)));
 
@@ -409,8 +419,8 @@ fn vsplit_wheel_scrolls_the_pane_under_the_pointer_without_moving_focus() {
             .buffers
             .get(bid)
             .text()
-            .line_to_char(hume_rope::line::RopeyLine::new(7)),
-        "pane A's own cursor must move with its viewport"
+            .line_to_char(hume_rope::line::RopeyLine::new(12)),
+        "pane A's own cursor must move with its viewport (screen row 5)"
     );
     assert_eq!(
         ed.view.panes[pid_b].viewport.top().line,

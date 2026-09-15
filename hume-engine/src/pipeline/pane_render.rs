@@ -127,6 +127,12 @@ pub(crate) fn render_pane(
     // ── Display-line walk ────────────────────────────────────────────────
     let height = visible.content_height.min(pane_ctx.rect.height);
     let viewport = pane_ctx.viewport;
+    // This crate has no dependency on, or guarantee about, a host's own
+    // per-frame healing discipline (`hume-editor`'s `Viewport::heal`, run
+    // once before every frame's render) — a different embedder, or this
+    // crate's own `pipeline/tests.rs`, can call `render` with a `top` no one
+    // has validated since the block it addresses last changed shape. Self-
+    // heal here rather than trust the caller.
     let mut pos = dlm.clamp(viewport.top());
     // Which line's highlight intervals and cursorline state `line` currently
     // holds, so crossing into a new line is the only thing that rebuilds them.

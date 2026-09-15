@@ -321,10 +321,11 @@ pub(in crate::editor::commands::pipeline) fn step_align_view(
     if !aligns_view || !moved {
         return;
     }
+    let pid = state.focus.id();
     match state.settings.object_jump_align {
         ObjectJumpAlign::Off => {}
-        ObjectJumpAlign::Top => super::view_top(state, view),
-        ObjectJumpAlign::Center => super::view_center(state, view),
+        ObjectJumpAlign::Top => super::view_top(state, view, pid),
+        ObjectJumpAlign::Center => super::view_center(state, view, pid),
     }
 }
 

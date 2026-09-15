@@ -5,7 +5,7 @@ use hume_ops::MotionMode;
 
 use super::super::EditorState;
 use super::super::doc_ops;
-use super::{current_selections, focused_buffer_id, pane_display_lines, viewport};
+use super::{pane_display_lines, viewport};
 use crate::editor::error::CommandError;
 
 // ── Page / half-page scroll ───────────────────────────────────────────────────
@@ -22,10 +22,11 @@ use crate::editor::error::CommandError;
 /// against `pane_at_screen_pos` — see `editor/mouse.rs`). `Viewport::scroll_by`
 /// is what makes a scroll move the view even while the cursor is still
 /// inside it (a `Ctrl+D` from the top of a file); `carry`, called per
-/// selection below with the same requested `delta` (not `scroll_by`'s
-/// return — see `hume_engine::display_lines::scroll`'s module doc for why
-/// the two walk independently), is what keeps the cursor at the same
-/// relative position instead of being snapped back into the margin next
+/// selection below with the same requested `delta` and the viewport's own
+/// post-scroll `top` — walking its own bound independently of `scroll_by`'s,
+/// see `hume_engine::display_lines::scroll`'s module doc for why — is what
+/// keeps the cursor at the same relative position (or, failing that, lands
+/// it back inside the scrolloff band) instead of being snapped back next
 /// frame — see `carry`'s own doc for why a selection it can't place stays
 /// untouched rather than collapsing.
 pub(in crate::editor) fn scroll_view(
@@ -50,6 +51,7 @@ pub(in crate::editor) fn scroll_view(
         -(count as isize)
     };
     viewport.scroll_by(&mut dlm, geo, delta);
+    let top = viewport.top();
 
     // `apply_doc_motion`'s own head-before/after comparison is what raises
     // `PaneBufferState::reveal_pending` here — no separate pin to track: a
@@ -65,7 +67,7 @@ pub(in crate::editor) fn scroll_view(
         |_text, sels| {
             sels.map(|sel| {
                 let head_pos = dlm.locate_display_line(sel.head());
-                let Some(landed) = carry(&mut dlm, head_pos, delta) else {
+                let Some(landed) = carry(&mut dlm, geo, top, head_pos, delta) else {
                     return sel; // parked behind a virtual block or at a document edge
                 };
                 let target_col = dlm.locate(sel.head()).1;
@@ -84,12 +86,12 @@ pub(in crate::editor) fn scroll_view(
 fn scroll_page(
     state: &mut EditorState,
     view: &mut EngineView,
+    pid: PaneId,
     mode: MotionMode,
     half: bool,
     down: bool,
 ) -> Result<(), CommandError> {
-    let pid = state.focus.id();
-    let height = viewport(state, view).height as usize;
+    let height = viewport(view, pid).height as usize;
     let count = if half { (height / 2).max(1) } else { height };
     scroll_view(state, view, pid, count, down, mode);
     Ok(())
@@ -101,7 +103,8 @@ pub(in crate::editor) fn cmd_page_down(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    scroll_page(state, view, mode, false, true)
+    let pid = state.focus.id();
+    scroll_page(state, view, pid, mode, false, true)
 }
 pub(in crate::editor) fn cmd_page_up(
     state: &mut EditorState,
@@ -109,7 +112,8 @@ pub(in crate::editor) fn cmd_page_up(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    scroll_page(state, view, mode, false, false)
+    let pid = state.focus.id();
+    scroll_page(state, view, pid, mode, false, false)
 }
 pub(in crate::editor) fn cmd_half_page_down(
     state: &mut EditorState,
@@ -117,7 +121,8 @@ pub(in crate::editor) fn cmd_half_page_down(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    scroll_page(state, view, mode, true, true)
+    let pid = state.focus.id();
+    scroll_page(state, view, pid, mode, true, true)
 }
 pub(in crate::editor) fn cmd_half_page_up(
     state: &mut EditorState,
@@ -125,7 +130,8 @@ pub(in crate::editor) fn cmd_half_page_up(
     _count: usize,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    scroll_page(state, view, mode, true, false)
+    let pid = state.focus.id();
+    scroll_page(state, view, pid, mode, true, false)
 }
 
 // ── View-trie scroll (z z / z k / z j) ────────────────────────────────────────
@@ -133,11 +139,20 @@ pub(in crate::editor) fn cmd_half_page_up(
 fn cmd_view_scroll_to_display_line(
     state: &mut EditorState,
     view: &mut EngineView,
+    pid: PaneId,
     target_display_line: usize,
 ) {
-    let cursor_char = current_selections(state, view).primary().head();
-    let pid = state.focus.id();
-    let buf_id = focused_buffer_id(state, view);
+    let buf_id = view.panes[pid].buffer_id;
+    let cursor_char = state
+        .panes
+        .buffer_state(pid, buf_id)
+        .expect(
+            "pane has no seeded state for the buffer it is showing — \
+             pane.buffer_id and panes.state are out of sync",
+        )
+        .selections()
+        .primary()
+        .head();
     let key = state.format_key(&view.panes[pid]);
     let scrolloff = state.settings.scrolloff;
     let (mut dlm, viewport) =
@@ -160,15 +175,19 @@ fn cmd_view_scroll_to_display_line(
 /// that wants the same effect without going through an `EditorCmdFn`'s
 /// `Result` — `lifecycle.rs`'s post-file-load placement, LSP goto-definition
 /// (`lsp/edits.rs`), and `step_align_view`'s `Center` arm.
-pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView) {
-    let target = (viewport(state, view).height as usize) / 2;
-    cmd_view_scroll_to_display_line(state, view, target);
+pub(in crate::editor) fn view_center(state: &mut EditorState, view: &mut EngineView, pid: PaneId) {
+    let target = (viewport(view, pid).height as usize) / 2;
+    cmd_view_scroll_to_display_line(state, view, pid, target);
 }
 
 /// Pin the head at the viewport's top display line, like `z k`. Infallible core
 /// shared by [`cmd_view_top`] and `step_align_view`'s `Top` arm.
-pub(in crate::editor::commands) fn view_top(state: &mut EditorState, view: &mut EngineView) {
-    cmd_view_scroll_to_display_line(state, view, 0);
+pub(in crate::editor::commands) fn view_top(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    pid: PaneId,
+) {
+    cmd_view_scroll_to_display_line(state, view, pid, 0);
 }
 
 pub(in crate::editor) fn cmd_view_center(
@@ -177,7 +196,8 @@ pub(in crate::editor) fn cmd_view_center(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    view_center(state, view);
+    let pid = state.focus.id();
+    view_center(state, view, pid);
     Ok(())
 }
 
@@ -187,7 +207,8 @@ pub(in crate::editor) fn cmd_view_top(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    view_top(state, view);
+    let pid = state.focus.id();
+    view_top(state, view, pid);
     Ok(())
 }
 
@@ -197,7 +218,8 @@ pub(in crate::editor) fn cmd_view_bottom(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = (viewport(state, view).height as usize).saturating_sub(1);
-    cmd_view_scroll_to_display_line(state, view, target);
+    let pid = state.focus.id();
+    let target = (viewport(view, pid).height as usize).saturating_sub(1);
+    cmd_view_scroll_to_display_line(state, view, pid, target);
     Ok(())
 }

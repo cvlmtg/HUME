@@ -22,7 +22,7 @@ use hume_editing::text::BufferText;
 use hume_engine::display_lines::DisplayLineMap;
 use hume_engine::display_lines::line_store::FormatKey;
 use hume_engine::pane::{Pane, Viewport};
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
 use super::buffer::Buffer;
 use super::doc_ops;
@@ -210,12 +210,9 @@ pub(super) fn search_pattern<'a>(
         .as_ref()
 }
 
-/// Viewport state of the focused pane.
-pub(super) fn viewport<'a>(
-    state: &EditorState,
-    view: &'a EngineView,
-) -> &'a hume_engine::pane::Viewport {
-    &view.panes[state.focus.id()].viewport
+/// Viewport state of pane `pid`.
+pub(super) fn viewport<'a>(view: &'a EngineView, pid: PaneId) -> &'a hume_engine::pane::Viewport {
+    &view.panes[pid].viewport
 }
 
 /// `doc`'s effective `tab-style`/`tab-width` pair: buffer override → global

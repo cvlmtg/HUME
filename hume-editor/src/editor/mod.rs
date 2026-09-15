@@ -351,18 +351,13 @@ pub(crate) struct EditorState {
     /// the real stdout, and so the screen is only entered lazily, on the
     /// first byte of actual output. See [`InlineOutput`].
     pub(in crate::editor) inline_output: InlineOutput,
-    /// Reusable sticky-column buffer for vertical motion — shared by all
-    /// three units `apply_visual_vertical` handles (row-domain `j`/`k`,
-    /// scroll/wheel, and buffer-line `9j`/`9k`).
+    /// Reusable sticky-column buffer for vertical motion — shared by both
+    /// units `apply_visual_vertical` handles (row-domain `j`/`k` and
+    /// buffer-line `9j`/`9k`). Screen-relative scroll (page/half-page, mouse
+    /// wheel) carries its cursor through `commands::scroll_view` + `carry`
+    /// instead — a view command, not a motion, so it does not go through
+    /// `apply_visual_vertical` at all (see `move_vertical`'s doc).
     pub(super) visual_move_target_display_cols: Vec<hume_editing::selection::StickyDisplayCol>,
-    /// Reusable resolved-head buffer, parallel to
-    /// `visual_move_target_display_cols` — `apply_visual_vertical` computes
-    /// every selection's new head into this before touching the selection
-    /// set at all, so a scroll (`ViewScroll`) that provably moves no
-    /// head can return the set unchanged instead of rebuilding it, which for
-    /// `MotionMode::Move` would otherwise collapse every selection's anchor
-    /// onto its (unmoved) head for no reason.
-    pub(super) visual_move_target_heads: Vec<hume_rope::offset::CharOffset>,
     /// The last repeatable editing action, available for replay via `.`.
     pub(super) last_repeatable_action: Option<RepeatableAction>,
     /// Accumulating selection-recipe buffer for the *next* edit's dot-repeat.
@@ -551,7 +546,6 @@ impl Default for EditorState {
             force_full_redraw: false,
             inline_output: InlineOutput::default(),
             visual_move_target_display_cols: Vec::new(),
-            visual_move_target_heads: Vec::new(),
             last_repeatable_action: None,
             selection_recipe: Vec::new(),
             selection_recipe_writes: 0,
@@ -860,6 +854,17 @@ pub(crate) struct Editor {
     /// whose stamp happens to match the old one — otherwise it would keep
     /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
+    /// `(buffer_id, decorations.generation(buffer_id))` as of each pane's
+    /// last `update_inlay_hint_providers` pass — unlike `virtual_lines_synced`,
+    /// never used to skip that pass's own (cheap, viewport-filtered) resync,
+    /// only to detect when to raise `reveal_pending`: an inlay hint
+    /// appearing or changing shape can shift a line's wrap column, moving
+    /// the cursor's own display line without the selection itself moving.
+    inlay_hints_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
+    /// [`Self::inlay_hints_synced`]'s counterpart for
+    /// `update_eol_text_providers` — EOL text can push a line onto an extra
+    /// wrapped display line the same way an inlay hint can.
+    eol_text_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,

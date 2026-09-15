@@ -3,15 +3,15 @@ use pretty_assertions::assert_eq;
 
 // ── Horizontal scroll tracks the cursor independently of the vertical gate ─
 //
-// `scroll_into_view` (`frame.rs`) skips the vertical `ensure_cursor_visible`
-// when the cursor's resolved `DisplayLinePos` (line + slot) hasn't changed
-// since the last frame — the fix that lets a view-led scroll (mouse wheel,
-// `Ctrl+D`) pass a virtual-line block without being snapped back. Horizontal
-// scroll has no such snap-back to guard against and no relationship to that
-// gate: a cursor move *within* one display line (`l` along a long unwrapped
-// line) changes the display column without changing the display line at
-// all, so `ensure_cursor_visible_horizontal` must still run on every such
-// move regardless of the vertical gate's verdict.
+// `scroll_into_view` (`frame.rs`) runs the vertical `Viewport::reveal`
+// correction only when `PaneBufferState::reveal_pending` is set — false for
+// a view-led scroll (mouse wheel, `Ctrl+D`) that carries the cursor past a
+// virtual-line block without being able to place it, so the block is passed
+// without being snapped back. `Viewport::reveal_horizontal` has no such gate:
+// it runs unconditionally, every frame, before that branch — so a cursor
+// move *within* one display line (`l` along a long unwrapped line), which
+// changes the display column without changing the display line at all, still
+// scrolls horizontally regardless of what the vertical branch does.
 
 #[test]
 fn horizontal_scroll_follows_a_same_display_line_cursor_move() {

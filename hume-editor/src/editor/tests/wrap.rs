@@ -472,7 +472,7 @@ fn wrap_toggle_off_leaves_top_slot_for_the_next_frame_to_clamp() {
 
 /// Changing the wrap style/width while already wrapping (`:set pane
 /// wrap-mode=` to a different variant) must likewise leave `top_slot`
-/// for `clamp_viewport_top` to repair, not reset it inline — the old offset
+/// for `Viewport::heal` to repair, not reset it inline — the old offset
 /// was measured against the previous width and may no longer be a valid
 /// sub-row index once the width changes.
 #[test]
@@ -510,7 +510,7 @@ fn set_pane_wrap_mode_change_while_wrapping_leaves_top_slot_for_the_next_frame_t
 /// already scrolled past, two still showing); `:set wrap-mode=none` must not
 /// jump the viewport back up to the top of that block — the address is
 /// still valid (a `Before` block occupies the same rows regardless of wrap
-/// mode) and clamp_viewport_top would find nothing to repair.
+/// mode) and `Viewport::heal` would find nothing to repair.
 #[test]
 fn wrap_toggle_off_does_not_discard_a_still_valid_offset_inside_a_before_block() {
     let mut ed = editor_from("-[a]>b\n");

@@ -4,24 +4,46 @@
 //! requested delta.
 //!
 //! Every verb here is the *only* way [`Viewport::top`](crate::pane::Viewport::top)
-//! changes from outside this crate. Replaces what used to be four
-//! independent read-modify-write sites in `hume-editor` (`clamp_viewport_top`,
-//! `by_display_lines`, `ensure_cursor_visible`, `scroll_cursor_to_display_line`),
-//! each re-deriving its own `(top_line, top_slot) -> DisplayLinePos` address
-//! and its own scrolloff arithmetic. A [`ViewGeometry`] is resolved once per
-//! call (`Viewport::geometry`) and threaded through, so no verb recomputes
+//! changes from outside this crate — the single chokepoint for
+//! `(top_line, top_slot) -> DisplayLinePos` address resolution and scrolloff
+//! arithmetic. A [`ViewGeometry`] is resolved once per call
+//! (`Viewport::geometry`) and threaded through, so no verb recomputes
 //! [`vertical_margins`](crate::pane::vertical_margins) itself and no verb can
 //! observe a zero-height viewport.
 //!
-//! `carry` deliberately does **not** take the value `scroll_by` returns:
-//! `scroll_by`'s bound (`max_scroll_top`, a scrolloff-margin bound near EOF)
-//! can be tighter than the document's true edge, so a large scroll request
-//! can move the viewport less than `carry`'s own document/virtual-block-
-//! bounded walk would move the cursor — the cursor is still fully visible
-//! (well inside the viewport's own margin), it just didn't need to travel as
-//! far as the view did. Coupling the two would under-move the cursor in
-//! exactly that case (a `Ctrl+D` well before the document's real end). Each
-//! walks its own bound against the same requested delta instead.
+//! `carry` deliberately walks the requested `delta` on its own, rather than
+//! being handed how far `scroll_by` actually moved: `scroll_by`'s bound
+//! (`max_scroll_top`, a scrolloff-margin bound near EOF) can be tighter than
+//! `carry`'s own document/virtual-block-bounded one, so within
+//! `geo.height` buffer lines of EOF a large scroll request can move the
+//! viewport less than it moves the cursor — the cursor is still fully
+//! visible (well inside the viewport's own margin), it just didn't need to
+//! travel as far as the view did. Coupling the two would under-move the
+//! cursor in exactly that case — worse, tying `carry` to `scroll_by`'s
+//! *actual* movement stalls it permanently once the viewport saturates at
+//! that bound (every later call would see zero further movement and repeat
+//! the same landing forever), never reaching the document's true last line
+//! even though it's already on screen. Farther from EOF the two bounds
+//! can't diverge at all (`scroll_by`'s own `lines_to_end` skip proves it —
+//! see that check's own comment), so each walking its own bound against the
+//! same requested delta costs nothing there and is what keeps the cursor
+//! correct near EOF.
+//!
+//! `commands::scroll_view` (`hume-editor`) must leave every carried
+//! selection's head inside the scrolloff band, or the selection untouched —
+//! and nothing enforces that on its own: `max_scroll_top`'s bound and
+//! [`Viewport::reveal`]'s own settle point merely happen to share a
+//! `geo.target` number. `carry` closes that gap itself instead, in a second
+//! pass over whatever the delta-walk above already landed on: it clamps
+//! that landing's row, measured from the viewport's *new* top (the caller
+//! reads `Viewport::top` after its own `scroll_by` call), into `[geo.margin,
+//! geo.target]` — walking forward from the new top to the band's near or
+//! far edge if the raw landing fell outside it. A landing already in-band
+//! (the common case — most scrolls have somewhere to land within it) passes
+//! through unchanged, so "the cursor keeps its screen row" still holds
+//! exactly there. The corollary this restores: [`Viewport::reveal`] is
+//! provably idle after every `scroll_view` call, since whatever `carry`
+//! returns already satisfies `reveal`'s own contract.
 
 use super::pos::BlockSlot;
 use super::{DisplayLineMap, DisplayLinePos};
@@ -43,11 +65,10 @@ impl Viewport {
         self.top = dlm.clamp(self.top);
     }
 
-    /// Scroll `delta` display lines (positive = down, negative = up),
-    /// returning how many it actually moved, signed the same way. `carry`
-    /// does *not* consume this return value — see this module's doc for why
-    /// the cursor walks the same requested `delta` independently, with its
-    /// own bound, rather than tracking how far the view actually got.
+    /// Scroll `delta` display lines (positive = down, negative = up). `carry`
+    /// walks the same requested `delta` independently, with its own bound,
+    /// rather than tracking how far the view actually got — see this
+    /// module's doc for why.
     ///
     /// Heals `top` first (see [`Viewport::heal`]), so a caller need not call
     /// it separately before scrolling.
@@ -61,18 +82,13 @@ impl Viewport {
     /// *earlier* of the two (`DisplayLinePos: Ord` is document order),
     /// snapping a downward notch backwards. An *upward* scroll only
     /// saturates at the document's first display line.
-    pub fn scroll_by(
-        &mut self,
-        dlm: &mut DisplayLineMap<'_>,
-        geo: ViewGeometry,
-        delta: isize,
-    ) -> isize {
+    pub fn scroll_by(&mut self, dlm: &mut DisplayLineMap<'_>, geo: ViewGeometry, delta: isize) {
         self.heal(dlm);
         let current = self.top;
-        let (next, taken) = dlm.advance_counted_saturating(current, delta);
+        let next = dlm.advance_saturating(current, delta);
         if delta < 0 {
             self.top = next;
-            return -(taken as isize);
+            return;
         }
         // `max_scroll_top` walks back from the document's very last display
         // line, formatting every line it crosses under wrap — worth skipping
@@ -84,16 +100,14 @@ impl Viewport {
         let lines_to_end = dlm.last_line().index().saturating_sub(next.line.index());
         if lines_to_end > geo.height {
             self.top = next;
-            return taken as isize;
+            return;
         }
         let bound = dlm.max_scroll_top(geo);
-        if next <= bound {
-            self.top = next;
-            return taken as isize;
-        }
-        let bounded = bound.max(current);
-        self.top = bounded;
-        dlm.distance(current, bounded, geo.height).unwrap_or(0) as isize
+        self.top = if next <= bound {
+            next
+        } else {
+            bound.max(current)
+        };
     }
 
     /// Adjust `top` so `cursor_pos` is visible with `geo.margin` display
@@ -205,26 +219,49 @@ impl Viewport {
 }
 
 /// Where a head's display line goes after a view scroll of `delta` display
-/// lines (the same signed delta passed to `Viewport::scroll_by` — see this
-/// module's doc for why `carry` uses the *requested* delta, not the amount
-/// the view actually moved).
+/// lines (the same signed delta passed to `Viewport::scroll_by`), band-
+/// clamped against `top` — the viewport's top *after* that `scroll_by` call
+/// — so a `Some` result always already satisfies [`Viewport::reveal`]'s own
+/// contract. See this module's doc for why the walk itself still uses the
+/// *requested* `delta`, not the amount the view actually moved, and for what
+/// the band clamp adds on top of that.
 ///
-/// Walks `delta` display lines from `head` in that direction, landing on the
-/// last content display line reached. Overshoots `delta` when a virtual-line
-/// block swallows the whole budget: a cursor stranded at a block's near edge
-/// would make the next ordinary motion jump the view backwards across the
-/// whole block to reach it, so this keeps walking past the block to the
-/// first content display line beyond it. The document's own edge still
-/// breaks the walk before either bound is satisfied.
-///
-/// Returns `None` when the walk crossed no content display line at all —
-/// `head` already sat at the document's edge in the direction of travel, or
-/// `delta == 0` — the exact case that leaves the selection untouched rather
-/// than collapsing it. A `None` result is not an error: it is the same
+/// Two passes: [`walk_by_delta`] finds where a plain `delta`-display-line
+/// walk from `head` would land (`None` if it never reaches a content
+/// line — `head` already sat at the document's edge in the direction of
+/// travel, `delta == 0`, or a virtual-line block past the band swallowed the
+/// walk whole); [`place_in_band`] then clamps that landing's row into
+/// `[geo.margin, geo.target]`, measured from `top`, if it isn't there
+/// already. Either pass returning `None` is not an error: it is the same
 /// "cursor can't follow" state a pure view scroll into a trailing
-/// virtual-line block always could produce.
+/// virtual-line block always could produce, and it leaves the selection
+/// untouched rather than collapsing it.
 pub fn carry(
     dlm: &mut DisplayLineMap<'_>,
+    geo: ViewGeometry,
+    top: DisplayLinePos,
+    head: DisplayLinePos,
+    delta: isize,
+) -> Option<DisplayLinePos> {
+    let candidate = walk_by_delta(dlm, geo, top, head, delta)?;
+    place_in_band(dlm, geo, top, candidate)
+}
+
+/// `carry`'s first pass: walk `delta` display lines from `head` in the
+/// requested direction, landing on the last content display line reached.
+/// Overshoots `delta` when a virtual-line block swallows the whole budget: a
+/// cursor stranded at a block's near edge would make the next ordinary
+/// motion jump the view backwards across the whole block to reach it, so
+/// this keeps walking past the block to the first content display line
+/// beyond it — but only while doing so could still land inside the
+/// scrolloff band (`geo.target` display lines past `top`); a block bigger
+/// than that has no legal landing spot at all, so the walk gives up instead
+/// of continuing arbitrarily far through it. The document's own edge still
+/// breaks the walk before either bound is satisfied.
+fn walk_by_delta(
+    dlm: &mut DisplayLineMap<'_>,
+    geo: ViewGeometry,
+    top: DisplayLinePos,
     head: DisplayLinePos,
     delta: isize,
 ) -> Option<DisplayLinePos> {
@@ -236,6 +273,12 @@ pub fn carry(
     let mut last_content = None;
     let mut remaining = delta.unsigned_abs();
     while remaining > 0 || last_content.is_none() {
+        if remaining == 0 {
+            match dlm.distance(top, pos, geo.target) {
+                Some(row) if row < geo.target => {}
+                _ => break,
+            }
+        }
         let Some(next) = (if down { dlm.next(pos) } else { dlm.prev(pos) }) else {
             break;
         };
@@ -244,6 +287,55 @@ pub fn carry(
             last_content = Some(pos);
         }
         remaining = remaining.saturating_sub(1);
+    }
+    last_content
+}
+
+/// `carry`'s second pass: clamp `candidate`'s row, measured from `top`, into
+/// `[geo.margin, geo.target]` — walking forward from `top` to the band's
+/// near or far edge via [`walk_from_top`] if it isn't there already. A
+/// landing already in-band (the common case) passes through unchanged, so
+/// "the cursor keeps its screen row" still holds exactly for it.
+fn place_in_band(
+    dlm: &mut DisplayLineMap<'_>,
+    geo: ViewGeometry,
+    top: DisplayLinePos,
+    candidate: DisplayLinePos,
+) -> Option<DisplayLinePos> {
+    match dlm.distance(top, candidate, geo.height) {
+        Some(row) if (geo.margin..=geo.target).contains(&row) => Some(candidate),
+        Some(row) if row > geo.target => walk_from_top(dlm, geo, top, geo.target),
+        // `row < geo.margin`, or `candidate` sits before `top` (or too far
+        // past `geo.height` to tell) — either way, not in band.
+        _ => walk_from_top(dlm, geo, top, geo.margin),
+    }
+}
+
+/// Walk forward (`next`) from `top` by `rows` display lines, landing on the
+/// last content display line reached — continuing past a virtual landing
+/// exactly like [`walk_by_delta`]'s own overshoot, capped at `geo.target`
+/// total steps so this can never itself land past the band. `top` counts as
+/// a landing in its own right when it's already content and `rows == 0`
+/// (the `geo.margin == 0` case a very short viewport clamps to).
+fn walk_from_top(
+    dlm: &mut DisplayLineMap<'_>,
+    geo: ViewGeometry,
+    top: DisplayLinePos,
+    rows: usize,
+) -> Option<DisplayLinePos> {
+    let mut pos = top;
+    let mut last_content = matches!(dlm.slot(top), BlockSlot::Content(_)).then_some(top);
+    let mut steps = 0usize;
+    while steps < rows || last_content.is_none() {
+        if steps >= geo.target {
+            break;
+        }
+        let Some(next) = dlm.next(pos) else { break };
+        pos = next;
+        steps += 1;
+        if matches!(dlm.slot(pos), BlockSlot::Content(_)) {
+            last_content = Some(pos);
+        }
     }
     last_content
 }

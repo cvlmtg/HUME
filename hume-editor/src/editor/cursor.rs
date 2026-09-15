@@ -34,7 +34,7 @@ use hume_rope::column::DisplayLineCol;
 ///
 /// The returned `x` accounts for `viewport.horizontal_offset` (0 while
 /// wrapping, since wrap mode has no horizontal scroll — see
-/// `scroll::ensure_cursor_visible_horizontal`).
+/// `Viewport::reveal_horizontal`).
 pub(in crate::editor) fn content_pos(
     viewport: &Viewport,
     dlm: &mut DisplayLineMap<'_>,
@@ -48,7 +48,7 @@ pub(in crate::editor) fn content_pos(
     if cursor_display_col < viewport.horizontal_offset {
         // Off the visible viewport on the horizontal axis — same contract as
         // a row below the bottom (checked below via `distance`). Every
-        // caller but one is the live cursor, which `ensure_cursor_visible_horizontal`
+        // caller but one is the live cursor, which `Viewport::reveal_horizontal`
         // keeps `>= horizontal_offset`; the exception is the completion-menu
         // anchor (`overlay_sync.rs`'s `session.anchor()`), fixed at the
         // token's start while the cursor — and the scroll it drives — moves
@@ -85,7 +85,7 @@ pub(in crate::editor) fn place(
 ) -> (u16, u16) {
     // Saturating, not `cells_since`: `frame.rs::scroll_into_view` — the only
     // caller that bypasses `content_pos` — always satisfies `cursor_display_col
-    // >= horizontal_offset` (it calls `ensure_cursor_visible_horizontal` just
+    // >= horizontal_offset` (it calls `Viewport::reveal_horizontal` just
     // above), but `content_pos`'s own caller can pass a completion session's
     // fixed anchor column, which falls behind as the cursor — and the
     // horizontal scroll it drives — moves on. `content_pos` already screens
@@ -93,7 +93,7 @@ pub(in crate::editor) fn place(
     // either, without adding a second precondition this function would have
     // to document and enforce itself.
     let content_x = cursor_display_col.cells_since_saturating(viewport.horizontal_offset);
-    // `ensure_cursor_visible_horizontal` keeps the cursor's document column
+    // `Viewport::reveal_horizontal` keeps the cursor's document column
     // within one viewport width of `horizontal_offset`, so once past that
     // subtraction it's a small on-screen offset — safe to narrow to the
     // terminal-cell (`u16`) domain this function returns.
@@ -146,12 +146,17 @@ pub(in crate::editor) fn screen_to_char_offset(
         return None;
     }
     // Pane-content column past the gutter, plus horizontal scroll (0 while
-    // wrapping — see `scroll::ensure_cursor_visible_horizontal`),
+    // wrapping — see `Viewport::reveal_horizontal`),
     // reconstructed back into a document display column.
     let display_col = viewport
         .horizontal_offset
         .advance_saturating((content_x - gutter_w) as u32);
 
+    // Unlike `content_pos`'s two production callers (both provably
+    // downstream of the same frame's `Viewport::heal`), a click is
+    // input-driven, not frame-driven — nothing here guarantees `heal` ran
+    // for this pane's viewport since whatever produced the coordinates being
+    // resolved. Self-heal rather than assume it did.
     let top = dlm.clamp(viewport.top());
     let clicked = dlm.advance_saturating(top, content_y as isize);
     // A click asks which cell it hit, so a column past the text resolves to

@@ -513,7 +513,7 @@ fn content_pos_zero_height_returns_none() {
 }
 
 /// A cursor more rows below the viewport's top than the viewport is tall —
-/// the case `ensure_cursor_visible` is supposed to prevent, but `content_pos`
+/// the case `Viewport::reveal` is supposed to prevent, but `content_pos`
 /// must still answer `None` rather than a row past the visible window.
 #[test]
 fn content_pos_cursor_below_viewport_returns_none() {

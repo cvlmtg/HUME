@@ -35,7 +35,7 @@ use cells::grapheme_display;
 /// themselves by target position through `bound` instead — the window is a
 /// *viewport* clip, and their targets are routinely outside it (secondary
 /// selection heads are never tracked horizontally; the primary's own target
-/// is off-window until `ensure_cursor_visible_horizontal` scrolls to it
+/// is off-window until `Viewport::reveal_horizontal` scrolls to it
 /// afterwards). Reusing `h_window` for these queries was tried and reverted:
 /// a clipped-out target silently resolves to the wrong column instead of
 /// erroring.

@@ -536,7 +536,7 @@ pub(in crate::editor) fn goto_location(
 
     // Center by display line, the same way `zz` does — not by buffer line,
     // which only agrees with it when nothing wraps.
-    crate::editor::commands::view_center(state, view);
+    crate::editor::commands::view_center(state, view, pid);
 
     Ok(())
 }

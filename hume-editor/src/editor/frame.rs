@@ -180,11 +180,12 @@ impl Editor {
         buf
     }
 
-    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
-    /// entries whose pane no longer exists in `self.view.panes`. A pending
-    /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
-    /// `queue_viewport_change`'s own liveness check anyway, but there is no
-    /// reason to let it sit in the wheel until it fires).
+    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`/
+    /// `inlay_hints_synced`/`eol_text_synced` entries whose pane no longer
+    /// exists in `self.view.panes`. A pending debounce timer is cancelled
+    /// outright (its `TimerPayload` no-ops via `queue_viewport_change`'s own
+    /// liveness check anyway, but there is no reason to let it sit in the
+    /// wheel until it fires).
     ///
     /// A pane's line store needs no entry here — it lives on the pane and
     /// dies with it, as does `PaneBufferState::reveal_pending`, which goes with
@@ -194,6 +195,10 @@ impl Editor {
         self.last_viewport_key
             .retain(|pid, _| panes.contains_key(*pid));
         self.virtual_lines_synced
+            .retain(|pid, _| panes.contains_key(*pid));
+        self.inlay_hints_synced
+            .retain(|pid, _| panes.contains_key(*pid));
+        self.eol_text_synced
             .retain(|pid, _| panes.contains_key(*pid));
         let wheel = &mut self.timer_wheel;
         let payloads = &mut self.timer_payloads;

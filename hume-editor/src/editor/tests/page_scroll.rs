@@ -61,7 +61,11 @@ fn half_page_down_moves_half_viewport() {
     );
 }
 
-/// Ctrl+u (half-page-up) moves cursor up by half the viewport height.
+/// Ctrl+u (half-page-up) moves cursor up by half the viewport height —
+/// except the document's own start saturates both the view and a plain
+/// 12-line-up walk at line 0, and landing exactly at the new top (row 0) is
+/// what `carry`'s band clamp exists to correct: it pushes the landing back
+/// down to row `margin` (3, default `scrolloff`) below the new top, line 3.
 #[test]
 fn half_page_up_moves_half_viewport() {
     let mut ed = page_test_editor();
@@ -71,8 +75,9 @@ fn half_page_up_moves_half_viewport() {
     ed.handle_key(key_ctrl('u'));
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(0),
-        "half-page-up returns to line 0"
+        co(6),
+        "half-page-up saturates at the document start, then the band clamp \
+         pushes it down to margin (3) below the new top (0), landing on line 3"
     );
 }
 
@@ -89,7 +94,10 @@ fn page_down_moves_full_viewport() {
     );
 }
 
-/// PageUp moves cursor up by a full viewport height.
+/// PageUp moves cursor up by a full viewport height — same saturation as
+/// `half_page_up_moves_half_viewport`: the document start caps both the
+/// view and the 24-line-up walk at line 0, and `carry`'s band clamp then
+/// pushes that off-band landing back down to margin (3) below the new top.
 #[test]
 fn page_up_moves_full_viewport() {
     let mut ed = page_test_editor();
@@ -99,8 +107,9 @@ fn page_up_moves_full_viewport() {
     ed.handle_key(key_page_up());
     assert_eq!(
         ed.current_selections().primary().head(),
-        co(0),
-        "page-up returns to line 0"
+        co(6),
+        "page-up saturates at the document start, then the band clamp \
+         pushes it down to margin (3) below the new top (0), landing on line 3"
     );
 }
 
@@ -114,6 +123,13 @@ fn page_up_moves_full_viewport() {
 /// Half-page-down from the top of a file moves the *view* by `height / 2`
 /// display lines, not just the cursor. Previously the viewport stayed at 0
 /// (the cursor at line 12 was still comfortably inside the first screen).
+///
+/// The cursor itself lands at line 15, not 12: landing exactly at the new
+/// top (row 0) is `carry`'s band clamp's job to catch, not something a fresh
+/// file's degenerate "cursor already at row 0" starting state should be
+/// allowed to skip — see `carry`'s own doc. `scrolloff` defaults to 3, so
+/// the clamp pushes the landing down to row `margin` (3) below the new top
+/// (12), landing on line 15.
 #[test]
 fn half_page_down_moves_the_view() {
     let mut ed = long_page_test_editor();
@@ -127,8 +143,31 @@ fn half_page_down_moves_the_view() {
         ed.doc()
             .text()
             .char_to_line(ed.current_selections().primary().head()),
-        hume_rope::line::ContentLine::new(12),
-        "cursor keeps its screen row"
+        hume_rope::line::ContentLine::new(15),
+        "cursor lands scrolloff (3) rows below the new top, not pinned to row 0"
+    );
+}
+
+/// The band clamp's whole point: `frame.rs`'s `Viewport::reveal` correction
+/// runs on the next settled frame regardless (the cursor move above raises
+/// `PaneBufferState::reveal_pending` unconditionally), but it must find
+/// nothing left to do — the viewport must already sit exactly where `carry`
+/// landed it in `half_page_down_moves_the_view` above, not move a second
+/// time once a real frame settles.
+#[test]
+fn scroll_view_leaves_nothing_for_reveal_to_correct() {
+    let mut ed = long_page_test_editor();
+    ed.handle_key(key_ctrl('d'));
+    let top_after_scroll = ed.viewport().top();
+
+    let rect = hume_grid::Rect::new(0, 0, 80, 25);
+    ed.render_to_buf(rect); // settles, running Viewport::reveal if it has anything to do
+
+    assert_eq!(
+        ed.viewport().top(),
+        top_after_scroll,
+        "reveal must find nothing to correct — carry already left the \
+         cursor inside the scrolloff band"
     );
 }
 
@@ -216,13 +255,12 @@ fn ctrl_d_to_eof() -> (Editor, hume_grid::Rect) {
     (ed, rect)
 }
 
-/// Reported regression: scrolling all the way to EOF with `Ctrl+D`, then
-/// moving the cursor with an ordinary motion (`k`), used to jump the view —
-/// `by_display_lines`' bound (pinning the last line to the bottom row) and
-/// `ensure_cursor_visible`'s own settle point (the last line `scrolloff`
-/// rows above the bottom) disagreed, so the first cursor motion after
-/// reaching EOF snapped the view from one to the other. They now share the
-/// same bound, so nothing moves.
+/// Scrolling all the way to EOF with `Ctrl+D`, then moving the cursor with
+/// an ordinary motion (`k`), must not jump the view: `Viewport::scroll_by`'s
+/// `max_scroll_top` bound and `Viewport::reveal`'s `geo.target` settle point
+/// both derive from the same `vertical_margins`, so the cursor motion's
+/// reveal correction lands exactly where the EOF stall already parked the
+/// view.
 #[test]
 fn ctrl_d_to_eof_then_an_ordinary_motion_does_not_jump_the_view() {
     let (mut ed, rect) = ctrl_d_to_eof();
@@ -293,12 +331,13 @@ fn view_top_lands_the_cursor_at_scrolloff_through_the_real_frame() {
 
 // ── The cursor must make progress through a virtual-line block ─────────────
 //
-// `move_vertical`'s `ViewScroll` budget (mouse wheel, Ctrl+D/Ctrl+U,
-// PageDown/PageUp) charges virtual display lines against its count. A block
-// taller than the budget used to swallow it whole and leave the cursor
-// exactly where it started — which, once the wheel and Ctrl+D also write the
-// viewport directly, would let the view scroll on every notch while the
-// cursor (and the caret it drives) stayed frozen on the block's near edge.
+// `carry` (mouse wheel, Ctrl+D/Ctrl+U, PageDown/PageUp) walks display lines,
+// virtual ones included, against its `delta` budget. A block taller than the
+// budget would otherwise swallow it whole and leave the cursor exactly where
+// it started — which, since the wheel and Ctrl+D also write the viewport
+// directly, would let the view scroll on every notch while the cursor (and
+// the caret it drives) stayed frozen on the block's near edge. `carry`'s own
+// doc explains the overshoot this section tests for.
 
 /// A 4-line `After(1)` virtual block, `Ctrl+D` with a budget of 3 (height 6,
 /// half 3) — one shy of the block. The cursor must overshoot the block to

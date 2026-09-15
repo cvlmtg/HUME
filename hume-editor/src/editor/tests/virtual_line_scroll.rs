@@ -140,13 +140,15 @@ fn mouse_wheel_moves_one_display_line_at_a_time_through_a_before_block() {
 //
 // Interleaving `render_to_buf` between notches is the point: it runs the
 // real per-frame scroll pass (`prepare_frame` → `scroll_into_view`), which
-// is exactly what the wheel's own `handle_input` does *not* run, and exactly
-// where the old snap-back happened (`ensure_cursor_visible` undoing the wheel
-// notch when the cursor couldn't follow it into the virtual block).
+// the wheel's own `handle_input` does not run on its own. That pass's
+// vertical cursor-follow correction, `Viewport::reveal`, is gated on
+// `PaneBufferState::reveal_pending`, which stays unset when `carry` can't
+// fully follow a scroll into a virtual block — so the pass must not undo
+// the wheel notch just because the cursor couldn't follow it in.
 
 /// 20 content lines, a 4-line `After(8)` block, `mouse-scroll-lines` = 3 (one
 /// short of the block). Cursor starts mid-buffer (line 5), away from the
-/// document's own top edge — `ensure_cursor_visible`'s `scrolloff` margin
+/// document's own top edge — `Viewport::reveal`'s `scrolloff` margin
 /// otherwise tempers the *first* scroll away from a document boundary
 /// regardless of virtual lines, a separate and expected interaction this
 /// test isn't about. Three notches, each followed by a render, must each
@@ -198,13 +200,14 @@ fn wheel_passes_a_mid_buffer_ghost_block() {
 // ── A trailing ghost block is fully reachable ─────────────────────────────
 //
 // Reachable by *no* keyboard command: `Ctrl+D`/`PageDown` cap the view at
-// `scrolloff` rows below the last content line (`ensure_cursor_visible`'s
-// bottom arm always leaves the cursor `margin` rows above the bottom row).
-// Only a view-led scroll can go further — once the cursor reaches the
-// document's last content line it can advance no further (`move_vertical`'s
-// overshoot can't escape a document edge), so the cursor-follow gate in
-// `scroll_into_view` stops re-running `ensure_cursor_visible`, and the wheel's
-// direct viewport write is free to keep advancing up to `max_scroll_top`.
+// `scrolloff` rows below the last content line (`Viewport::scroll_by`'s own
+// `max_scroll_top` bound). Only a view-led scroll can go further — once the
+// cursor reaches the document's last content line it can advance no further
+// (`carry`'s overshoot can't escape a document edge), so the selection it
+// returns is unchanged and `PaneBufferState::reveal_pending` is never raised
+// — the cursor-follow gate in `scroll_into_view` stops re-running
+// `Viewport::reveal`, and the wheel's direct viewport write is free to keep
+// advancing up to `max_scroll_top`.
 //
 // `max_scroll_top` itself leaves `scrolloff` rows of look-ahead past the
 // block's last virtual line, exactly like a real buffer line — matching

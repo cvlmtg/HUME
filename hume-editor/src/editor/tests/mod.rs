@@ -603,6 +603,8 @@ impl Editor {
             last_viewport_key: rustc_hash::FxHashMap::default(),
             last_tabline_signature: None,
             virtual_lines_synced: rustc_hash::FxHashMap::default(),
+            inlay_hints_synced: rustc_hash::FxHashMap::default(),
+            eol_text_synced: rustc_hash::FxHashMap::default(),
             lsp: super::lsp::LspState::new_inline(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: initial_mouse_mode,
