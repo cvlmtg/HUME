@@ -572,6 +572,49 @@ impl Default for EditorState {
     }
 }
 
+/// Every input a pane's *layout* depends on — everything
+/// [`EditorState::format_key`] carries (buffer identity, decoration
+/// generation, effective wrap mode, tab width, whitespace) plus the three
+/// geometry facts that decide where the cursor's own display line falls:
+/// content width, viewport height, and scrolloff (the band `Viewport::reveal`
+/// settles the cursor against). `FormatKey` excludes content width on
+/// purpose — under a resolved (non-zero) `wrap_mode`, formatting doesn't
+/// read it at all, and under the `width: 0` sentinel it's already folded
+/// into the resolved `wrap_mode` `format_key` stores, so a bare `content_width`
+/// field there would only rewind a store whose entries stayed valid (see
+/// `hume_engine::display_lines::line_store::FormatKey`'s own doc). This key
+/// carries it anyway — a growing gutter narrows the wrap column exactly as
+/// a resize does, and that's a fact reveal cares about even when formatting
+/// doesn't need a second copy of it. `scrolloff` FormatKey has no use for at
+/// all: it names no line's shape, only where `Viewport::reveal` settles the
+/// cursor already-formatted lines expose.
+///
+/// Deliberately excludes the buffer's own content generation (`text_gen`,
+/// part of `format_key`'s `buffer_tag` but not this key): an edit reaches
+/// `PaneBufferState::reveal_pending` through the selection funnel
+/// (`restore_selections`/`translate_selections_in_place`) when it actually
+/// moves this pane's own head, and folding `text_gen` in here as well would
+/// re-settle a pane parked away from an edit that never touched its head —
+/// an edit below a parked cursor, another pane's own edit to the same
+/// buffer, an LSP-applied edit off-screen.
+///
+/// `frame.rs`'s scroll step is the one comparison site: it snapshots this on
+/// `PaneBufferState::last_layout_key` every frame and reveals whenever it
+/// differs from what it read last, replacing six scattered raise sites (a
+/// resize, a wrap-mode pin/toggle, a buffer switch, and the inlay-hint/
+/// EOL-text/virtual-line decoration-generation checks) that each
+/// rediscovered a subset of this same fact independently.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(in crate::editor) struct LayoutKey {
+    buffer_tag: hume_engine::display_lines::line_store::BufferTag,
+    wrap_mode: hume_engine::pane::WrapMode,
+    tab_width: u8,
+    whitespace: hume_engine::pane::WhitespaceConfig,
+    content_width: u16,
+    height: u16,
+    scrolloff: usize,
+}
+
 impl EditorState {
     // ── Mode ──────────────────────────────────────────────────────────────────
 
@@ -603,49 +646,44 @@ impl EditorState {
         }
     }
 
-    /// Everything about a buffer that changes how its lines format, in the
-    /// form `hume_engine::display_lines::line_store`'s scope key carries it: which
-    /// buffer, at which content generation, with which decorations.
-    ///
-    /// The three travel side by side rather than hashed together — the key
-    /// compares them and nothing more, so an exact comparison is available
-    /// for free and a fold would only introduce collisions.
-    ///
-    /// `text_gen`, not `revision_id()`: a grouped edit (an open insert or
-    /// paste session) mutates the rope through `set_text` on every keystroke
-    /// without recording a revision — `commit_edit_group` is what moves
-    /// `history.current_id()`, and that only runs at session end. And
-    /// `set_view_content` (the `:messages`/`:ls` refresh path) rebuilds
-    /// `History` wholesale, so `revision_id()` returns to its root value on
-    /// every refresh regardless of how the content changed. `text_gen` bumps
-    /// on every actual rope mutation and nothing else, which is the property
-    /// this tag needs.
-    ///
-    /// The engine cannot derive this — it depends on neither `hume-editing`
-    /// (for the generation) nor this crate (for the decoration store), which
-    /// is exactly why that key takes a caller-supplied tag.
-    pub(in crate::editor) fn buffer_tag(
-        &self,
-        bid: hume_engine::pipeline::BufferId,
-    ) -> hume_engine::display_lines::line_store::BufferTag {
-        [
-            // Not `{:?}`-formatted: this is a value to compare, not one to
-            // show, and `as_ffi` folds the key's index and version — the two
-            // things that distinguish a reused slot from the buffer that held
-            // it before — into exactly that.
-            slotmap::Key::data(&bid).as_ffi(),
-            self.buffers.get(bid).text_gen,
-            self.config.decorations.generation(bid),
-        ]
+    /// The composition every `LayoutKey` and `FormatKey` in this crate is
+    /// built from. `format_key` and `layout_key` each resolve this on
+    /// `pane`'s current state, and their sharing that pane's line store
+    /// (`format_key`) or its reveal signal (`layout_key`) depends entirely
+    /// on every caller resolving a bit-identical value — one function
+    /// rather than several independently-maintained call sites is what
+    /// makes that true by construction instead of by convention.
+    pub(in crate::editor) fn layout_key(&self, pane: &hume_engine::pane::Pane) -> LayoutKey {
+        let doc = self.buffers.get(pane.buffer_id);
+        LayoutKey {
+            buffer_tag: [
+                // Not `{:?}`-formatted: this is a value to compare, not one
+                // to show, and `as_ffi` folds the key's index and version —
+                // the two things that distinguish a reused slot from the
+                // buffer that held it before — into exactly that.
+                slotmap::Key::data(&pane.buffer_id).as_ffi(),
+                doc.text_gen,
+                self.config.decorations.generation(pane.buffer_id),
+            ],
+            wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
+            tab_width: doc.overrides.tab_width(&self.settings),
+            whitespace: doc.overrides.whitespace(&self.settings),
+            content_width: pane.content_width(doc.text().last_ropey_line()),
+            height: pane.viewport.height,
+            scrolloff: self.settings.scrolloff,
+        }
     }
 
     /// Every input `pane`'s line formats depend on, as one
-    /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::buffer_tag`] for
-    /// the buffer it currently views, plus that buffer's effective wrap
-    /// mode, tab width and whitespace config — each resolved through the
-    /// same override chain (`commands::effective_wrap_mode`,
-    /// `BufferOverrides::tab_width`/`whitespace`) every other reader of
-    /// these settings goes through.
+    /// `hume_engine::display_lines::line_store::FormatKey`: [`Self::layout_key`]'s
+    /// `buffer_tag`, wrap mode, tab width and whitespace config — the
+    /// subset of [`LayoutKey`] the line store's scope actually needs.
+    /// `content_width` reaches formatting only through `wrap_mode`'s own
+    /// resolved width (see `hume_engine::display_lines::line_store::FormatKey`'s
+    /// own doc), and `height`/`scrolloff` don't reach formatting at all —
+    /// neither names a line's shape, only where the viewport settles
+    /// against one already formatted — so none of the three earns a place
+    /// in this narrower key.
     ///
     /// The single composition every `DisplayLineMap` in this crate is built from.
     /// The frame's scroll pass (`commands::pane_display_lines`) and its render
@@ -658,12 +696,12 @@ impl EditorState {
         &self,
         pane: &hume_engine::pane::Pane,
     ) -> hume_engine::display_lines::line_store::FormatKey {
-        let doc = self.buffers.get(pane.buffer_id);
+        let l = self.layout_key(pane);
         hume_engine::display_lines::line_store::FormatKey {
-            buffer_tag: self.buffer_tag(pane.buffer_id),
-            wrap_mode: commands::effective_wrap_mode(doc, &self.settings, pane),
-            tab_width: doc.overrides.tab_width(&self.settings),
-            whitespace: doc.overrides.whitespace(&self.settings),
+            buffer_tag: l.buffer_tag,
+            wrap_mode: l.wrap_mode,
+            tab_width: l.tab_width,
+            whitespace: l.whitespace,
         }
     }
 
@@ -853,17 +891,6 @@ pub(crate) struct Editor {
     /// whose stamp happens to match the old one — otherwise it would keep
     /// mirroring the previous buffer's virtual lines.
     virtual_lines_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
-    /// `(buffer_id, decorations.generation(buffer_id))` as of each pane's
-    /// last `update_inlay_hint_providers`/`update_eol_text_providers` pass —
-    /// unlike `virtual_lines_synced`, never used to skip either pass's own
-    /// (cheap, viewport-filtered) resync, only to detect when to raise
-    /// `reveal_pending`: an inlay hint appearing or changing shape can shift
-    /// a line's wrap column, and EOL text can push a line onto an extra
-    /// wrapped display line, either without the selection itself moving.
-    /// One tracker for both kinds: both read the same
-    /// `decorations.generation(bid)` clock, so two trackers would always
-    /// hold the same value.
-    decorations_synced: rustc_hash::FxHashMap<hume_engine::pipeline::PaneId, (BufferId, u64)>,
     /// LSP backend + client state: threaded in production,
     /// synchronous-inline in tests, mirroring `parse_worker` above.
     lsp: lsp::LspState,

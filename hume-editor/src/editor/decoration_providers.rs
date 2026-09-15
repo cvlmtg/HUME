@@ -6,47 +6,12 @@
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, ui_scopes};
 use hume_engine::types::EditorMode;
-use slotmap::SecondaryMap;
 
 use super::Editor;
-use super::pane_state::PaneBufferState;
 use hume_editing::lines::{char_to_line_byte, line_break_char, line_segments};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-
-/// Raises `reveal_pending` for `(pid, bid)` iff `current_gen` differs from
-/// what `tracker` last recorded for `pid`, then records `current_gen` —
-/// the funnel `update_inlay_hint_providers` and `update_eol_text_providers`
-/// share (one `decorations_synced` tracker for both) for their decoration
-/// kinds, since either one can move the cursor's own display line (an
-/// inlay hint shifts a line's wrap column, EOL text can push a line onto a
-/// further wrapped display line) without the selection itself moving.
-/// `decorations.generation(bid)` is a shared clock — every `set_*` on
-/// `DecorationStores` bumps it, regardless of kind — so the two callers
-/// already can't disagree on when it changed, and share one tracker rather
-/// than two that would always hold the same value.
-///
-/// Unlike `update_virtual_line_providers`'s own generation check, these two
-/// never skip their resync on an unchanged generation (see their own doc
-/// for why), so the comparison has to be explicit here rather than falling
-/// out of a skip branch.
-///
-/// A free function, not a method: `tracker` and `pane_state` are disjoint
-/// fields of `Editor`/`EditorState`, so taking them as separate parameters
-/// avoids the borrow conflict a `&mut self` method would hit against the
-/// caller's own `&mut self.state.panes.render[pid]` write.
-fn raise_reveal_pending_on_generation_change(
-    tracker: &mut rustc_hash::FxHashMap<PaneId, (BufferId, u64)>,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pid: PaneId,
-    bid: BufferId,
-    current_gen: u64,
-) {
-    if tracker.insert(pid, (bid, current_gen)) != Some((bid, current_gen)) {
-        pane_state[pid][bid].reveal_pending = true;
-    }
-}
 
 /// One pane's identity plus its on-screen slice, as of the moment
 /// [`Editor::decorated_panes`] was called — every render bridge below reads
@@ -410,11 +375,12 @@ impl Editor {
     /// plugins can coexist), and `lsp.inlay-hints` is the LSP inlay-hints
     /// plugin's own setting — it owns clearing *its* source on toggle-off,
     /// via the `on-option-change` hook (`inlay.scm`), rather than this
-    /// bridge wiping every source wholesale on a setting it doesn't own. A
-    /// generation change also raises `reveal_pending`
-    /// (`raise_reveal_pending_on_generation_change`) — an inlay hint
-    /// appearing or changing shape can shift a line's wrap column, moving
-    /// the cursor's own display line without the selection itself moving.
+    /// bridge wiping every source wholesale on a setting it doesn't own. An
+    /// inlay hint appearing or changing shape can shift a line's wrap
+    /// column, moving the cursor's own display line without the selection
+    /// itself moving — `EditorState::layout_key`'s `buffer_tag` carries
+    /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
+    /// the reveal from that rather than this function raising it.
     pub(super) fn update_inlay_hint_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
 
@@ -426,14 +392,6 @@ impl Editor {
             if !self.state.panes.render.contains_key(pid) {
                 continue;
             }
-            let current_gen = self.state.config.decorations.generation(bid);
-            raise_reveal_pending_on_generation_change(
-                &mut self.decorations_synced,
-                &mut self.state.panes.state,
-                pid,
-                bid,
-                current_gen,
-            );
             let visible = p.chars;
             let text = self.state.buffers.get(bid).text();
 
@@ -486,11 +444,12 @@ impl Editor {
     /// inline-decoration providers, which `DisplayLineMap::ensure_formatted`
     /// reads, so this feeds wrap display-line counts and columns exactly
     /// like inlay hints do — called from `prepare_frame`'s step 3, against
-    /// the pre-scroll snapshot (see [`Self::decorated_panes`]). A generation
-    /// change still raises `reveal_pending`
-    /// (`raise_reveal_pending_on_generation_change`) even though it doesn't
-    /// gate the resync — EOL text appearing can push a line onto a further
-    /// wrapped display line, moving the cursor's own row.
+    /// the pre-scroll snapshot (see [`Self::decorated_panes`]). EOL text
+    /// appearing can push a line onto a further wrapped display line,
+    /// moving the cursor's own row without the selection itself moving —
+    /// `EditorState::layout_key`'s `buffer_tag` carries
+    /// `decorations.generation(bid)`, so `frame.rs`'s scroll step derives
+    /// the reveal from that rather than this function raising it.
     pub(super) fn update_eol_text_providers(&mut self, panes: &[DecoratedPane]) {
         use hume_engine::providers::InlineInsert;
 
@@ -499,15 +458,6 @@ impl Editor {
             if !self.state.panes.render.contains_key(pid) {
                 continue;
             }
-            let current_gen = self.state.config.decorations.generation(bid);
-            raise_reveal_pending_on_generation_change(
-                &mut self.decorations_synced,
-                &mut self.state.panes.state,
-                pid,
-                bid,
-                current_gen,
-            );
-
             // Each entry's `pos` is its line's line-start char offset
             // (`EolTextEntry::pos`); resolved to its *current* line here.
             let visible_lines = p.lines;
@@ -630,10 +580,11 @@ impl Editor {
             self.virtual_lines_synced.insert(pid, (bid, current_gen));
             // A virtual-line block appearing or changing shape above the
             // cursor can move its own display line relative to the
-            // viewport without the selection itself moving — one of
-            // `PaneBufferState::reveal_pending`'s explicit non-selection
-            // sources.
-            self.state.panes.state[pid][bid].reveal_pending = true;
+            // viewport without the selection itself moving —
+            // `EditorState::layout_key`'s `buffer_tag` carries
+            // `decorations.generation(bid)`, so `frame.rs`'s scroll step
+            // derives the reveal from that rather than this function
+            // raising it directly.
         }
     }
 

@@ -20,6 +20,7 @@ use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use slotmap::SecondaryMap;
 
 use super::Editor;
+use super::LayoutKey;
 use super::search::SearchCursor;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
@@ -123,28 +124,47 @@ pub(crate) struct PaneBufferState {
     /// A fact worth re-settling the viewport for happened since the last
     /// frame handled one — raised at the source, not inferred from state.
     ///
-    /// Set by [`PaneBufferState::set_selections`]/`restore_selections`
-    /// whenever a write actually moves the primary head (not on a write that
-    /// leaves it where it was — a `commands::scroll_view` that couldn't
-    /// carry a selection past a virtual block, say, leaves this `false` for
-    /// that write); by a resize or wrap-mode change that alters this pane's
-    /// geometry; by a buffer switch; and by a virtual-line/inlay-hint
-    /// provider sync that changes a pane's decoration generation, since any
-    /// of these can change where the cursor's own display line sits without
-    /// the selection itself moving at all.
+    /// The selection funnel — [`PaneBufferState::set_selections`]/
+    /// `restore_selections`/`translate_selections_in_place` — is this
+    /// field's only writer: set whenever a write actually moves the primary
+    /// head (not on a write that leaves it where it was — a
+    /// `commands::scroll_view` that couldn't carry a selection past a
+    /// virtual block, say, leaves this `false` for that write). Every
+    /// non-selection source (a resize, a wrap-mode change, a buffer switch,
+    /// a decoration-generation change) is folded into `frame.rs`'s scroll
+    /// step instead, as a comparison against [`PaneBufferState::last_layout_key`]
+    /// — see that field's own doc for why a derived comparison replaced
+    /// what used to be six more raise sites here.
     ///
-    /// Read and cleared every frame by `frame.rs`'s scroll step: `true`
-    /// means the vertical `Viewport::reveal` correction runs this frame;
-    /// `false` means `cursor::content_pos` re-derives the caret's current
-    /// position without moving the viewport — the same "hidden caret until
-    /// an ordinary motion resyncs the view" behavior a scroll that parks a
-    /// selection behind a virtual block always could produce. Unlike the
-    /// `CharOffset`-pin design this replaced, there is nothing here to go
-    /// stale against a later geometry change: a resize/wrap-toggle that
-    /// happens while parked is itself one of the sources that sets this
-    /// flag, so it re-settles the same frame instead of waiting for the
-    /// next cursor motion.
+    /// Read and cleared every frame by `frame.rs`'s scroll step, alongside
+    /// that comparison: either one being true means the vertical
+    /// `Viewport::reveal` correction runs this frame; both false means
+    /// `cursor::content_pos` re-derives the caret's current position
+    /// without moving the viewport — the same "hidden caret until an
+    /// ordinary motion resyncs the view" behavior a scroll that parks a
+    /// selection behind a virtual block always could produce.
     pub reveal_pending: bool,
+    /// This pane's [`LayoutKey`] as of the last frame that read one —
+    /// `frame.rs`'s scroll step's own memo, compared against a fresh
+    /// `EditorState::layout_key(pane)` every frame to derive reveals for
+    /// every non-selection source at once: a resize, a wrap-mode pin or
+    /// toggle, a buffer switch (the very first read for a `(pane, buffer)`
+    /// pair is `None`, so it always differs), and a decoration-generation
+    /// change (inlay hints, EOL text, virtual lines) all show up as *some*
+    /// `LayoutKey` field changing, rather than needing their own raise site
+    /// each. `pub(in crate::editor)`, matching `reveal_pending`'s own
+    /// visibility: `frame.rs` is its only reader, and it is a pure memo
+    /// with no invariant to funnel through a narrower API.
+    ///
+    /// Deliberately not reset on a buffer switch: a pane revisiting a
+    /// buffer it showed before, with every layout input still identical to
+    /// what it read last time, finds a matching key and stays quiet —
+    /// coherent with the parked-view model this whole mechanism serves
+    /// (switching away and back is not itself a change), and the
+    /// counterpart to `reveal_pending` needing no reset either (see
+    /// `frame.rs`'s prune-cache doc: both die with the pane's own
+    /// `SecondaryMap` entry, same as everything else on this struct).
+    pub(in crate::editor) last_layout_key: Option<LayoutKey>,
 }
 
 impl PaneBufferState {
@@ -559,12 +579,6 @@ impl Editor {
         pane.set_wrap(wrap);
         if mode != before {
             self.viewport_mut().reset_horizontal();
-            // A wrap-mode change can move the cursor's own display line
-            // relative to the viewport without the selection itself
-            // moving — one of `PaneBufferState::reveal_pending`'s explicit
-            // non-selection sources.
-            let bid = self.view.panes[pid].buffer_id;
-            self.state.panes.state[pid][bid].reveal_pending = true;
         }
     }
 
@@ -646,13 +660,6 @@ impl Editor {
             true
         };
         self.viewport_mut().reset_horizontal();
-        // Toggling always flips whether the pane is actually wrapping (see
-        // this function's own doc), which can move the cursor's own display
-        // line relative to the viewport without the selection itself
-        // moving — one of `PaneBufferState::reveal_pending`'s explicit
-        // non-selection sources.
-        let bid = self.view.panes[pid].buffer_id;
-        self.state.panes.state[pid][bid].reveal_pending = true;
         now_wrapping
     }
 }

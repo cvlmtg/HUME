@@ -180,23 +180,21 @@ impl Editor {
         buf
     }
 
-    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`/
-    /// `decorations_synced` entries whose pane no longer exists in
-    /// `self.view.panes`. A pending debounce timer is cancelled outright
-    /// (its `TimerPayload` no-ops via `queue_viewport_change`'s own
-    /// liveness check anyway, but there is no reason to let it sit in the
-    /// wheel until it fires).
+    /// Drop `viewport_debounce`/`last_viewport_key`/`virtual_lines_synced`
+    /// entries whose pane no longer exists in `self.view.panes`. A pending
+    /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
+    /// `queue_viewport_change`'s own liveness check anyway, but there is no
+    /// reason to let it sit in the wheel until it fires).
     ///
     /// A pane's line store needs no entry here — it lives on the pane and
-    /// dies with it, as does `PaneBufferState::reveal_pending`, which goes with
-    /// the closed pane's `SecondaryMap` entries.
+    /// dies with it, as do `PaneBufferState::reveal_pending` and
+    /// `PaneBufferState::last_layout_key`, which go with the closed pane's
+    /// `SecondaryMap` entries.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
         self.last_viewport_key
             .retain(|pid, _| panes.contains_key(*pid));
         self.virtual_lines_synced
-            .retain(|pid, _| panes.contains_key(*pid));
-        self.decorations_synced
             .retain(|pid, _| panes.contains_key(*pid));
         let wheel = &mut self.timer_wheel;
         let payloads = &mut self.timer_payloads;
@@ -272,35 +270,13 @@ impl Editor {
         self.view.reserve_seam = reserve_seam;
 
         // A resize can move the cursor's own display line relative to the
-        // viewport (a shorter pane can push it out of view) without the
-        // selection itself moving at all, so this is one of
-        // `PaneBufferState::reveal_pending`'s explicit non-selection
-        // sources. `resync_viewport_dims` only ever writes panes in the
-        // active tab (`pane_rects()`), so that's what this checks against
-        // rather than every pane across every tab.
-        let resized: Vec<PaneId> = self
-            .view
-            .pane_rects()
-            .into_iter()
-            .filter(|&(pid, rect)| {
-                let vp = &self.view.panes[pid].viewport;
-                vp.width != rect.width || vp.height != rect.height
-            })
-            .map(|(pid, _)| pid)
-            .collect();
+        // viewport (a shorter pane can push it out of view, a narrower one
+        // can rewrap it) without the selection itself moving at all — both
+        // `height` and (through the wrap column) `content_width` are
+        // geometry facts `EditorState::layout_key` carries, so `frame.rs`'s
+        // scroll step derives the reveal from the pane's new dimensions
+        // directly rather than this function raising it.
         self.view.resync_viewport_dims();
-        for pid in resized {
-            let bid = self.view.panes[pid].buffer_id;
-            if let Some(pbs) = self
-                .state
-                .panes
-                .state
-                .get_mut(pid)
-                .and_then(|by_buf| by_buf.get_mut(bid))
-            {
-                pbs.reveal_pending = true;
-            }
-        }
     }
 
     /// Hash of everything [`Self::sync_tabline_view`]'s rebuild depends on:
@@ -604,13 +580,16 @@ impl Editor {
         for &pid in &active {
             let buf_id = self.view.panes[pid].buffer_id;
             let format_key = self.state.format_key(&self.view.panes[pid]);
-            // `reveal_pending` lives on the current (pane, buffer)'s own
-            // `PaneBufferState` — a pane that switched buffers this frame
-            // reads a different, freshly-seeded state, so no separate
-            // buffer-identity filter is needed here.
+            let layout_key = self.state.layout_key(&self.view.panes[pid]);
+            // `reveal_pending`/`last_layout_key` live on the current (pane,
+            // buffer)'s own `PaneBufferState` — a pane that switched buffers
+            // this frame reads a different, freshly-seeded state (`None`
+            // for `last_layout_key`, always differing from a fresh key), so
+            // no separate buffer-identity filter is needed here.
             let pbs = &mut self.state.panes.state[pid][buf_id];
             let cursor_char = pbs.selections().primary().head();
-            let reveal_pending = std::mem::take(&mut pbs.reveal_pending);
+            let layout_changed = pbs.last_layout_key.replace(layout_key) != Some(layout_key);
+            let reveal_pending = std::mem::take(&mut pbs.reveal_pending) || layout_changed;
             let cursor_screen = scroll_into_view(
                 self.state.buffers.get(buf_id),
                 &mut self.view.panes[pid],

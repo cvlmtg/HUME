@@ -139,9 +139,8 @@ fn editor_fields_are_classified() {
             last_tabline_signature: _, // preserved
             // preserved: staleness after a reload is forced by
             // DecorationStores::reset bumping the generation
-            // counter, not by resetting these maps directly
+            // counter, not by resetting this map directly
             virtual_lines_synced: _,
-            decorations_synced: _,
             lsp: _, // config: LspState::reset_config()
             // preserved: Editor::run sets it On on entry and Off on
             // exit, and a :reload-config can only run from inside

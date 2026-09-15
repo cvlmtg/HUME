@@ -42,13 +42,13 @@ fn many_lines_editor() -> Editor {
 #[test]
 fn buffer_tag_changes_within_an_open_insert_session() {
     let mut ed = editor_from("-[h]>ello\n");
-    let bid = ed.focused_buffer_id();
-    let before = ed.state.buffer_tag(bid);
+    let pid = ed.state.focus.id();
+    let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
 
-    let after = ed.state.buffer_tag(bid);
+    let after = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
     assert_ne!(
         before, after,
         "buffer_tag must move with every keystroke of an open insert session, \
@@ -66,15 +66,16 @@ fn buffer_tag_changes_within_an_open_insert_session() {
 #[test]
 fn buffer_tag_changes_across_a_set_view_content_refresh() {
     let mut ed = editor_from("-[s]>cratch\n");
+    let pid = ed.state.focus.id();
     let bid = ed.focused_buffer_id();
-    let before = ed.state.buffer_tag(bid);
+    let before = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
 
     ed.state
         .buffers
         .get_mut(bid)
         .set_view_content(BufferText::from("refreshed\n"));
 
-    let after = ed.state.buffer_tag(bid);
+    let after = ed.state.format_key(&ed.view.panes[pid]).buffer_tag;
     assert_ne!(
         before, after,
         "a set_view_content refresh resets history to the root revision, so a \
