@@ -2,7 +2,11 @@
 
 React app for building Helix-format theme TOML files, previewed live against a mock HUME editor pane. The format is Helix's, so a theme built here loads in Helix too; the preview is HUME's, down to scopes Helix has no equivalent for.
 
-`index.html` at the top of this directory is **generated output** — edit files under `src/` instead, then rebuild. It's committed as a single self-contained file because the user manual links to it directly as a standalone download.
+`index.html` at the top of this directory is **generated output** — edit files under `src/` instead, then rebuild. It's committed as a single self-contained file because the user manual links to it directly as a standalone download. CI's `theme-editor-bundle` job (node 22, matching the build below) fails if it falls out of sync with `src/`; regenerate it with:
+
+```sh
+HUME_WRITE_THEME_EDITOR=1 scripts/check-theme-editor-bundle.sh
+```
 
 `src/lib/vocabulary.generated.js` is also **generated output** — HUME's theme loader's own modifier/underline/ANSI-colour/style-key/cursor-ladder vocabulary, UI chrome and virtual-text scope names, cursor-match scope names, and diagnostic scope names, rendered by a Rust test from `hume-engine/src/theme/loader/`, `hume-engine/src/theme/ui_scopes.rs`, `hume-engine/src/theme/mod.rs`, and `hume-engine/src/theme/diagnostic_scopes.rs`. Regenerate it after any change to that vocabulary with:
 

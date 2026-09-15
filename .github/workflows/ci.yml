@@ -67,6 +67,25 @@ jobs:
 
       - run: cargo doc --workspace --no-deps
 
+  # The committed tools/theme-editor/index.html is generated from src/ by
+  # vite and shipped as a direct download (the user manual links to it), so a
+  # stale bundle reaches users. Ubuntu-only and node pinned, like `fmt`,
+  # `clippy`, and `doc` above: the check is a byte-diff against a rebuild, so
+  # every input to that build has to be fixed.
+  theme-editor-bundle:
+    name: Theme editor bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/theme-editor/package-lock.json
+
+      - run: bash scripts/check-theme-editor-bundle.sh
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

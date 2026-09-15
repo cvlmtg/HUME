@@ -14,6 +14,10 @@ bash scripts/fetch-test-grammars.sh
 # JSX under test) with its own test runner. Run before the Rust suite: it takes
 # under a second, and a missing Node shouldn't surface only after the slow half
 # of the run has already passed.
+#
+# CI additionally runs scripts/check-theme-editor-bundle.sh (a Linux-only
+# job), deliberately not repeated here: it needs vite/react installed, a
+# ~39MB dev dependency the rest of this local loop has no other use for.
 (cd tools/theme-editor && npm test)
 
 # Denies only `disallowed_methods` — the workspace-wide bans `clippy.toml`

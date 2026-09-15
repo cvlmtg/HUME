@@ -42,7 +42,7 @@ Maintenance branches for older release lines (`0.10.x`) are cut from a tag on de
 
 - One logical change per pull request. A refactor bundled with a behaviour change is two pull requests.
 - Rebase on `main` rather than merging it in. Pull requests are squash-merged, so the final history stays linear and a later cherry-pick is one commit.
-- CI runs `cargo fmt --all -- --check` once, then build, the full test suite, doctests, and the theme editor's npm tests on Linux, macOS, and Windows. All of it must be green.
+- CI runs `cargo fmt --all -- --check` once, then build, the full test suite, doctests, and the theme editor's npm tests on Linux, macOS, and Windows, plus a Linux-only check that the theme editor's committed bundle matches a fresh build. All of it must be green.
 - Draft pull requests are fine for work in progress; mark them ready when CI is green.
 
 ### Verification before you push
