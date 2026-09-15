@@ -843,7 +843,7 @@ rejecting "one call site" and "not worth the churn" as reasons on their own:
 a small wrong pattern is still wrong, the one call site is what a future
 implementation copies from or grows into, and this is a learning project
 where the proper solution is the deliverable, not an acceptable-for-now one.
-`095d09e4` (`refactor(keymap): restore compiler-enforced canonicalization for
+`a26dadf7` (`refactor(keymap): restore compiler-enforced canonicalization for
 binding keys`) is the fix, and it measures what the declined estimate never
 did: 5 files, +205/−159, of which 110 insertions are `canonical.rs` moved
 verbatim and 76 are its relocated tests — net new logic is one hand-written
