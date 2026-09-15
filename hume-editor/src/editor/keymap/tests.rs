@@ -1,5 +1,5 @@
 use super::*;
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{KeyCode, KeyEvent, KeyEventKind, Modifiers};
 
 // ── bind_sequence / remove_sequence / bind_user_with_extend / unbind_user ─
 
@@ -209,59 +209,6 @@ fn all_command_names_covers_all_three_modes() {
         names.contains(&"insert-sentinel".to_string()),
         "insert mode must be swept"
     );
-}
-
-// ── canonical() ────────────────────────────────────────────────────────────
-
-#[test]
-fn canonical_uppercase_char_gains_shift() {
-    let k = canonical(KeyEvent::new(KeyCode::Char('G'), Modifiers::NONE));
-    assert_eq!(k, KeyEvent::new(KeyCode::Char('G'), Modifiers::SHIFT));
-}
-
-#[test]
-fn canonical_shift_lowercase_char_becomes_uppercase() {
-    let k = canonical(KeyEvent::new(KeyCode::Char('g'), Modifiers::SHIFT));
-    assert_eq!(k, KeyEvent::new(KeyCode::Char('G'), Modifiers::SHIFT));
-}
-
-#[test]
-fn canonical_shift_punctuation_is_unchanged() {
-    // Punctuation has no case to normalize — SHIFT+':' stays distinct from
-    // plain ':'. (The lone-SHIFT strip in `handle_normal` handles the
-    // partially-compliant-terminal gap for punctuation; that's a separate
-    // mechanism from this trie-identity normalization.)
-    let k = canonical(KeyEvent::new(KeyCode::Char(':'), Modifiers::SHIFT));
-    assert_eq!(k, KeyEvent::new(KeyCode::Char(':'), Modifiers::SHIFT));
-}
-
-#[test]
-fn canonical_scrubs_lock_bits() {
-    let k = canonical(KeyEvent::new(
-        KeyCode::Char('h'),
-        Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK,
-    ));
-    assert_eq!(k, KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE));
-}
-
-#[test]
-fn canonical_scrubs_protocol_state() {
-    let mut k = KeyEvent::new(KeyCode::Char('h'), Modifiers::NONE);
-    k.state = KeyEventState::KEYPAD | KeyEventState::CAPS_LOCK;
-    assert_eq!(canonical(k).state, KeyEventState::NONE);
-}
-
-#[test]
-fn canonical_repeat_becomes_press() {
-    let mut k = KeyEvent::new(KeyCode::Char('j'), Modifiers::NONE);
-    k.kind = KeyEventKind::Repeat;
-    assert_eq!(canonical(k).kind, KeyEventKind::Press);
-}
-
-#[test]
-fn canonical_is_idempotent() {
-    let k = KeyEvent::new(KeyCode::Char('g'), Modifiers::SHIFT);
-    assert_eq!(canonical(canonical(k)), canonical(k));
 }
 
 // ── Trie resolution equivalence ───────────────────────────────────────────

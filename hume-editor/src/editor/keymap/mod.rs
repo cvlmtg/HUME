@@ -32,15 +32,17 @@
 //! in `Editor.pending_char` and dispatches the named command. Extend-mode
 //! resolution happens at char-consumption time via the `ctrl_extend` flag.
 
+mod canonical;
 #[macro_use]
 mod defaults;
 use defaults::{default_extend_keymap, default_insert_keymap, default_normal_keymap};
 
+pub(in crate::editor) use canonical::CanonicalKey;
+
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
-use std::hash::{Hash, Hasher};
 
-use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
+use termina::event::KeyEvent;
 
 // ── WaitCharPending ───────────────────────────────────────────────────────────
 
@@ -94,95 +96,6 @@ pub(super) enum WalkResult {
     NoMatch,
 }
 
-// ── Key binding identity ─────────────────────────────────────────────────────
-
-/// Canonical binding identity for a key event.
-///
-/// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
-/// the trie normalizes uppercase char ⇔ `SHIFT` explicitly at the binding
-/// boundary. Also scrubs fields that never participate in binding identity:
-/// `kind` (a kitty autorepeat is a `Repeat` event, not `Press` — held keys
-/// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
-/// `state`, and the Caps/Num Lock modifier bits.
-pub(in crate::editor) fn canonical(mut key: KeyEvent) -> KeyEvent {
-    key.kind = KeyEventKind::Press;
-    key.state = KeyEventState::NONE;
-    key.modifiers -= Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK;
-    if let KeyCode::Char(c) = key.code {
-        if c.is_ascii_uppercase() {
-            key.modifiers |= Modifiers::SHIFT;
-        } else if key.modifiers.contains(Modifiers::SHIFT) {
-            // No-op for punctuation and other non-alphabetic chars: shifted
-            // punctuation (e.g. `:`) stays distinct from its unshifted form,
-            // matching what terminals actually deliver.
-            key.code = KeyCode::Char(c.to_ascii_uppercase());
-        }
-    }
-    key
-}
-
-/// Tags each [`KeyCode`] variant with a small integer plus payload so
-/// [`encode`] can pack it into a `u64`. `Media`/`Modifier` are fieldless enums,
-/// so casting to `u32` is a plain discriminant read.
-fn encode_key_code(code: KeyCode) -> (u8, u32) {
-    match code {
-        KeyCode::Char(c) => (0, c as u32),
-        KeyCode::Function(n) => (1, n as u32),
-        KeyCode::Media(m) => (2, m as u32),
-        KeyCode::Modifier(m) => (3, m as u32),
-        KeyCode::Enter => (4, 0),
-        KeyCode::Backspace => (5, 0),
-        KeyCode::Tab => (6, 0),
-        KeyCode::Escape => (7, 0),
-        KeyCode::Left => (8, 0),
-        KeyCode::Right => (9, 0),
-        KeyCode::Up => (10, 0),
-        KeyCode::Down => (11, 0),
-        KeyCode::Home => (12, 0),
-        KeyCode::End => (13, 0),
-        KeyCode::BackTab => (14, 0),
-        KeyCode::PageUp => (15, 0),
-        KeyCode::PageDown => (16, 0),
-        KeyCode::Insert => (17, 0),
-        KeyCode::Delete => (18, 0),
-        KeyCode::KeypadBegin => (19, 0),
-        KeyCode::CapsLock => (20, 0),
-        KeyCode::ScrollLock => (21, 0),
-        KeyCode::NumLock => (22, 0),
-        KeyCode::PrintScreen => (23, 0),
-        KeyCode::Pause => (24, 0),
-        KeyCode::Menu => (25, 0),
-        KeyCode::Null => (26, 0),
-    }
-}
-
-/// Injective encoding of a canonical key event's `(code, modifiers)` pair,
-/// used as the trie's hash. `kind`/`state` are excluded because [`canonical`]
-/// already collapses them to fixed values.
-fn encode(key: &KeyEvent) -> u64 {
-    let (tag, payload) = encode_key_code(key.code);
-    ((tag as u64) << 40) | ((payload as u64) << 8) | key.modifiers.bits() as u64
-}
-
-/// Hashable, case-normalized wrapper around [`KeyEvent`] used as the trie's
-/// map key. termina's `KeyEvent` derives `PartialEq` but not `Hash`, and its
-/// equality has no case-normalization — both are needed for binding lookup,
-/// so this type is the only place a raw `KeyEvent` becomes a map key.
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct TrieKey(KeyEvent);
-
-impl From<KeyEvent> for TrieKey {
-    fn from(key: KeyEvent) -> Self {
-        Self(canonical(key))
-    }
-}
-
-impl Hash for TrieKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(encode(&self.0));
-    }
-}
-
 // ── KeyTrie ───────────────────────────────────────────────────────────────────
 
 /// A single level of the keymap trie.
@@ -192,7 +105,7 @@ impl Hash for TrieKey {
 /// (the Steel config layer will support user overrides).
 #[derive(Clone)]
 pub(super) struct KeyTrie {
-    map: FxHashMap<TrieKey, KeyTrieNode>,
+    map: FxHashMap<CanonicalKey, KeyTrieNode>,
 }
 
 #[derive(Clone)]
@@ -213,7 +126,7 @@ impl KeyTrie {
     }
 
     fn bind(&mut self, key: KeyEvent, node: KeyTrieNode) {
-        self.map.insert(TrieKey::from(key), node);
+        self.map.insert(CanonicalKey::from(key), node);
     }
 
     /// True when nothing is bound — every [`Self::walk`] would return
@@ -245,7 +158,7 @@ impl KeyTrie {
         }
         let entry = self
             .map
-            .entry(TrieKey::from(keys[0]))
+            .entry(CanonicalKey::from(keys[0]))
             .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new()));
         if !matches!(entry, KeyTrieNode::Node(_)) {
             *entry = KeyTrieNode::Node(KeyTrie::new());
@@ -271,7 +184,7 @@ impl KeyTrie {
         }
         let entry = self
             .map
-            .entry(TrieKey::from(keys[0]))
+            .entry(CanonicalKey::from(keys[0]))
             .or_insert_with(|| KeyTrieNode::Node(KeyTrie::new()));
         // If the slot already holds a Leaf or WaitChar, replace with a Node
         // so the prefix can be extended. This may shadow an existing binding.
@@ -290,10 +203,11 @@ impl KeyTrie {
         match keys {
             [] => {}
             [only] => {
-                self.map.remove(&TrieKey::from(*only));
+                self.map.remove(&CanonicalKey::from(*only));
             }
             [first, rest @ ..] => {
-                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(&TrieKey::from(*first)) {
+                if let Some(KeyTrieNode::Node(sub)) = self.map.get_mut(&CanonicalKey::from(*first))
+                {
                     sub.remove_sequence(rest);
                 }
             }
@@ -310,7 +224,7 @@ impl KeyTrie {
         let last = keys.len() - 1;
 
         for (i, key) in keys.iter().enumerate() {
-            match current.map.get(&TrieKey::from(*key)) {
+            match current.map.get(&CanonicalKey::from(*key)) {
                 None => return WalkResult::NoMatch,
                 Some(KeyTrieNode::Leaf(cmd)) if i == last => {
                     return WalkResult::Leaf(cmd.clone());

@@ -23,7 +23,7 @@ use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
-use super::keymap::canonical;
+use super::keymap::CanonicalKey;
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -169,10 +169,9 @@ pub(in crate::editor) struct PickerSession {
     requery_armed: bool,
     /// `#:actions` — extra key→proc bindings tried, in order, after every
     /// built-in picker key. A linear scan, not a map: real sessions carry a
-    /// handful of entries at most, and canonicalizing each on lookup instead
-    /// of hashing keeps the comparison in one place ([`canonical`]) rather
-    /// than needing a `Hash`/`Eq` impl to agree with it separately.
-    actions: Vec<(KeyEvent, SteelVal)>,
+    /// handful of entries at most, so scanning a `Vec` beats hashing into a
+    /// map.
+    actions: Vec<(CanonicalKey, SteelVal)>,
 }
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
@@ -245,7 +244,7 @@ impl PickerSession {
             requery_armed: false,
             actions: actions
                 .into_iter()
-                .map(|(k, p)| (canonical(k), p))
+                .map(|(k, p)| (CanonicalKey::from(k), p))
                 .collect(),
         }
     }
@@ -585,7 +584,7 @@ impl PickerSession {
     /// already matches (movement, `Backspace`, `Enter`, `Escape`, query
     /// input) can never be reached from here.
     pub(in crate::editor) fn action_for(&self, key: KeyEvent) -> Option<&SteelVal> {
-        let key = canonical(key);
+        let key = CanonicalKey::from(key);
         self.actions
             .iter()
             .find_map(|(bound, proc)| (*bound == key).then_some(proc))
