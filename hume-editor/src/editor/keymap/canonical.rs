@@ -6,8 +6,6 @@
 //! canonical" a compiler-enforced invariant rather than a convention each new
 //! consumer (the trie, `PickerSession::actions`, …) has to uphold by hand.
 
-use std::hash::{Hash, Hasher};
-
 use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 
 /// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
@@ -68,41 +66,41 @@ fn encode_key_code(code: KeyCode) -> (u8, u32) {
     }
 }
 
-/// Injective encoding of a canonical key event's `(code, modifiers)` pair.
-/// `kind`/`state` are excluded because [`canonical`] already collapses them
-/// to fixed values. [`CanonicalKey`]'s `Hash` and `Eq` both read this, rather
-/// than `Eq` comparing the wrapped `KeyEvent`'s fields directly, so binding
-/// identity has one definition instead of two that agree only because
-/// `canonical` happens to pin the fields `Eq` would otherwise also compare.
+/// Injective encoding of a canonical key event's `(code, modifiers)` pair
+/// into a `u64`. `kind`/`state` are excluded because [`canonical`] already
+/// collapses them to fixed values. Injectivity rests on two facts checked
+/// below rather than asserted here: [`encode_key_code`]'s 27 tags are
+/// pairwise distinct (checked by the
+/// `encoding_is_injective_across_key_code_variants` test, since nothing about
+/// a hand-numbered match arm list is compiler-checked), and `modifiers.bits()`
+/// fits in the low 8 bits the tag/payload shift leaves for it (checked by the
+/// `const` assertion below) — termina 0.4.0's `Modifiers` is a `u8` bitflags
+/// using every bit, so this is exact, not a margin.
 fn encode(key: &KeyEvent) -> u64 {
     let (tag, payload) = encode_key_code(key.code);
     ((tag as u64) << 40) | ((payload as u64) << 8) | key.modifiers.bits() as u64
 }
 
-/// Hashable, case-normalized wrapper around [`KeyEvent`] used as a binding
-/// map's key. termina's `KeyEvent` derives `PartialEq` but not `Hash`, and its
-/// equality has no case-normalization — both are needed for binding lookup,
-/// so this type is the only place a raw `KeyEvent` becomes one.
-#[derive(Debug, Clone, Copy)]
-pub(in crate::editor) struct CanonicalKey(KeyEvent);
+// A version bump widening `Modifiers` for a new modifier bit would spill
+// `bits()` past the 8 bits `encode` reserves for it into the payload shift,
+// silently making `Ctrl-Alt-<char>` (say) collide with some other key —
+// caught here at compile time instead of via a runtime collision.
+const _: () = assert!(Modifiers::all().bits() as u64 <= 0xFF);
+
+/// [`encode`]'s output, wrapped so `Eq`/`Hash` agreement is a derive instead
+/// of two hand-written impls that agree only by construction. Case-normalized
+/// via [`canonical`] on the only path into one (`From<KeyEvent>`) — termina's
+/// `KeyEvent` has no case-normalized equality of its own, which binding
+/// lookup needs, so this type is the sole place a raw `KeyEvent` becomes a
+/// binding identity. The wrapped `u64` is never read back — every consumer
+/// (`KeyTrie`'s map, `PickerSession::actions`) only ever compares or hashes
+/// one — so nothing is lost by not keeping the original `KeyEvent` around.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::editor) struct CanonicalKey(u64);
 
 impl From<KeyEvent> for CanonicalKey {
     fn from(key: KeyEvent) -> Self {
-        Self(canonical(key))
-    }
-}
-
-impl PartialEq for CanonicalKey {
-    fn eq(&self, other: &Self) -> bool {
-        encode(&self.0) == encode(&other.0)
-    }
-}
-
-impl Eq for CanonicalKey {}
-
-impl Hash for CanonicalKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(encode(&self.0));
+        Self(encode(&canonical(key)))
     }
 }
 
