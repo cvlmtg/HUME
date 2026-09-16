@@ -13,7 +13,8 @@ use hume_ops::search::{
 use hume_ops::text_object::inner_word_impl;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
-use super::super::{EditorState, MiniBuffer, Mode};
+use super::super::input_stack::InputLayer;
+use super::super::{EditorState, MiniBuffer};
 use super::{
     current_selections, doc, effective_word_chars, focused_buffer_id, search_pattern,
     set_current_selections, set_primary_selection,
@@ -39,12 +40,16 @@ pub(in crate::editor) fn cmd_search_forward(
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    state.set_mode(Mode::Search);
-    state.minibuf = Some(MiniBuffer {
-        prompt: "/".to_string(),
-        input: String::new(),
-        cursor: 0,
-    });
+    state.push_mode_layer(
+        view,
+        InputLayer::Search {
+            minibuf: MiniBuffer {
+                prompt: "/".to_string(),
+                input: String::new(),
+                cursor: 0,
+            },
+        },
+    );
     Ok(())
 }
 
@@ -62,12 +67,16 @@ pub(in crate::editor) fn cmd_search_backward(
     state.panes.transient[pid].pre_search_sels = Some(pre_sels);
     state.panes.transient[pid].search_extend = extend;
     state.history.begin_session_all();
-    state.set_mode(Mode::Search);
-    state.minibuf = Some(MiniBuffer {
-        prompt: "?".to_string(),
-        input: String::new(),
-        cursor: 0,
-    });
+    state.push_mode_layer(
+        view,
+        InputLayer::Search {
+            minibuf: MiniBuffer {
+                prompt: "?".to_string(),
+                input: String::new(),
+                cursor: 0,
+            },
+        },
+    );
     Ok(())
 }
 
@@ -296,12 +305,16 @@ pub(in crate::editor) fn cmd_sift_within(
     let pre_sels = current_selections(state, view).clone();
     let pid = state.focus.id();
     state.panes.transient[pid].pre_sift_sels = Some(pre_sels);
-    state.set_mode(Mode::Sift);
-    state.minibuf = Some(MiniBuffer {
-        prompt: "⫽".to_string(),
-        input: String::new(),
-        cursor: 0,
-    });
+    state.push_mode_layer(
+        view,
+        InputLayer::Sift {
+            minibuf: MiniBuffer {
+                prompt: "⫽".to_string(),
+                input: String::new(),
+                cursor: 0,
+            },
+        },
+    );
     Ok(())
 }
 

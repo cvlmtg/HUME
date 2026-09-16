@@ -106,7 +106,7 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
 
     run_rename(&mut ed);
 
-    let mb = ed.state.minibuf.as_ref().expect("prompt must be open");
+    let mb = ed.state.minibuf().expect("prompt must be open");
     assert_eq!(
         mb.input, "helper",
         "prefill must be the word under the cursor"

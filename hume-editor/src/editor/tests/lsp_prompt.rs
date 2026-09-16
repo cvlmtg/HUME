@@ -25,7 +25,7 @@ fn prompt_confirm_calls_callback_with_typed_text() {
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "hi");
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn prompt_esc_calls_callback_with_false_exactly_once() {
     ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.minibuf.is_none());
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn prompt_prefill_is_visible_and_editable() {
     );
     type_cmd(&mut ed, ":go");
 
-    let mb = ed.state.minibuf.as_ref().unwrap();
+    let mb = ed.state.minibuf().unwrap();
     assert_eq!(mb.input, "old");
     assert_eq!(
         mb.cursor,
@@ -91,7 +91,7 @@ fn second_prompt_while_one_is_open_errors() {
 
     // The first prompt! already took effect (Steel errors don't roll back
     // prior host mutations within the same command body).
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, "a");
+    assert_eq!(ed.state.minibuf().unwrap().prompt, "a");
     // The command's overall failure (from the second prompt!'s error) is
     // reported rather than silently swallowed.
     let msg = ed.state.status_msg.clone().unwrap_or_default();
@@ -134,6 +134,94 @@ fn prompt_mode_round_trips_and_fires_on_mode_change() {
         state(&ed),
         after_enter,
         "on-mode-change must fire again leaving the prompt"
+    );
+}
+
+/// `push_mode_layer` truncates the outgoing mode layer before pushing —
+/// entering `Prompt` from `Insert` (a queued `(after 0 …)` thunk firing
+/// while the user is mid-insert) must end the insert session cleanly
+/// (edit group committed, `insert_session` cleared) rather than leaving it
+/// dangling underneath a `Prompt` layer with no way back to it.
+#[test]
+fn prompt_from_insert_ends_the_insert_session_cleanly() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "arm" "" (lambda ()
+             (after 0 (lambda () (prompt! "x: " (lambda (s) (void)))))))"#,
+    );
+    type_cmd(&mut ed, ":arm");
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
+    assert!(
+        ed.state.insert_session.is_some(),
+        "sanity: an insert session is open"
+    );
+    assert_eq!(ed.doc().text().to_string(), "Xabc\n");
+
+    ed.settle(); // drains the due timer, which calls prompt! mid-insert
+    assert_eq!(
+        ed.state.mode(),
+        hume_engine::types::EditorMode::Command,
+        "prompt! must have taken over the mode layer"
+    );
+    assert!(
+        ed.state.insert_session.is_none(),
+        "the insert session must be finalized, not left dangling under Prompt"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "Xabc\n",
+        "the typed char must have committed, not been lost"
+    );
+}
+
+/// Same truncate-then-push as the Insert case above, for `Search`: a
+/// `Prompt` landing mid-search (before the pattern is confirmed) must run
+/// `Search`'s own teardown — restoring the pre-search selection and
+/// clearing the live pattern — exactly as `Esc` would, leaving nothing
+/// stale behind once `Prompt` takes over.
+#[test]
+fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello world\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "arm" "" (lambda ()
+             (after 0 (lambda () (prompt! "x: " (lambda (s) (void)))))))"#,
+    );
+    type_cmd(&mut ed, ":arm");
+
+    ed.feed_key(key('/'));
+    for ch in "world".chars() {
+        ed.feed_key(key(ch));
+    }
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Search);
+    assert_eq!(
+        state(&ed),
+        "hello -[world]>\n",
+        "sanity: live search has already moved the selection"
+    );
+
+    ed.settle(); // drains the due timer, which calls prompt! mid-search
+    assert_eq!(
+        ed.state.mode(),
+        hume_engine::types::EditorMode::Command,
+        "prompt! must have taken over the mode layer"
+    );
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello world\n",
+        "the selection must be restored to its pre-search position"
+    );
+    assert!(
+        ed.search_pattern().is_none(),
+        "the in-progress (unconfirmed) pattern must be cleared, not left stale"
     );
 }
 

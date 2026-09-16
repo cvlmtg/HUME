@@ -28,7 +28,7 @@ fn insert_at_selection_start_forward() {
     let mut ed = editor_from("foo -[bar]> baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 }
 
 /// `i` with a backward selection also collapses to the start (lower index).
@@ -37,7 +37,7 @@ fn insert_at_selection_start_backward() {
     let mut ed = editor_from("foo <[bar]- baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 }
 
 /// `i` with a collapsed cursor just enters insert at the same position.
@@ -46,7 +46,7 @@ fn insert_at_selection_start_collapsed() {
     let mut ed = editor_from("foo -[b]>ar baz\n");
     ed.handle_key(key('i'));
     assert_eq!(state(&ed), "foo -[b]>ar baz\n");
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 }
 
 // ── :e on already-open buffers ────────────────────────────────────────────────

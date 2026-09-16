@@ -157,8 +157,14 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     );
 }
 
+/// D7's "mode-layer race": `show-menu!` from Insert is a benign timing
+/// issue (a `codeAction` response landing after the user left Normal), not
+/// a plugin bug — it drops silently (`Ok`, a `Trace` log entry) rather than
+/// erroring, so it never aborts the `run_call_batch` a real async callback
+/// is batched into.
 #[test]
-fn show_menu_rejected_outside_normal_extend_mode() {
+fn show_menu_from_insert_drops_silently_as_a_mode_layer_race() {
+    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -166,15 +172,31 @@ fn show_menu_rejected_outside_normal_extend_mode() {
     ed.feed_key(key('i')); // enter Insert mode
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
 
+    let traces_before = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
+
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
-        result.is_err(),
-        "show-menu! must reject Insert mode — a menu that can't be driven is worse than none"
+        result.is_ok(),
+        "a mode-layer race must never error — it would abort the whole call batch"
     );
     assert!(
         ed.state.input.menu().is_none(),
-        "must not have opened despite the error"
+        "must not have opened while the mode layer isn't Base"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        traces_before + 1,
+        "must log a Trace entry noting the drop"
     );
 }
 

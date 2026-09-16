@@ -949,12 +949,12 @@ fn steel_call_delete_in_extend_exits_extend_mode() {
         &mut ed,
         r#"(define-command! "wrap-delete" "" (lambda () (call! "delete")))"#,
     );
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.execute_keymap_command("wrap-delete".into(), Some(1), false);
 
     assert_eq!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Normal,
         "Steel wrapping (call! \"delete\") must exit Extend via inner command's clears_extend"
     );
@@ -1169,13 +1169,13 @@ fn parity_steel_branch_cluster_vs_native() {
 fn parity_extend_exit_keypress_vs_steel() {
     // Path A — keypress.
     let mut ed_key = editor_from("-[f]>oo\n");
-    ed_key.state.mode = Mode::Extend;
+    ed_key.state.input.set_extend(true);
     ed_key.execute_keymap_command("delete".into(), Some(1), false);
     let snap_key = snapshot_bookkeeping(&ed_key);
 
     // Path B — Steel (call! "delete").
     let mut ed_steel = editor_from("-[f]>oo\n");
-    ed_steel.state.mode = Mode::Extend;
+    ed_steel.state.input.set_extend(true);
     attach_steel(
         &mut ed_steel,
         r#"(define-command! "steel-delete" "" (lambda () (call! "delete")))"#,

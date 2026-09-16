@@ -2,8 +2,8 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_scripting::host::PopupKind;
 
+use super::Editor;
 use super::input_stack::{InputEvent, LayerKind, LayerRef};
-use super::{Editor, Mode};
 
 mod bracketed_paste;
 pub(super) mod command_mode;
@@ -29,7 +29,7 @@ impl Editor {
         // at zero. The countdown only runs when the minibuffer is closed so
         // typing a long `:` command doesn't burn the budget invisibly.
         let had_status = self.state.status_msg.take().is_some();
-        if self.state.minibuf.is_none() {
+        if self.state.input.minibuf().is_none() {
             if had_status {
                 if self.state.message_log.has_unseen() {
                     self.state.summary_ttl = SUMMARY_TTL;
@@ -79,7 +79,7 @@ impl Editor {
             self.replay_dot(pending.count);
         }
 
-        // Any mode change this dispatch made (`set_mode`'s Insert-exit arm)
+        // Any mode change this dispatch made (`tear_down`'s `Insert` arm)
         // dismisses a completion session synchronously, before this
         // function returns — same timing tests already assert on.
         self.take_pending_lsp_completion_dismiss();
@@ -104,6 +104,11 @@ impl Editor {
             .expect("dispatch target is live: top(), or below(r) under the index invariant");
         match kind {
             LayerKind::Base => self.base_input(r, ev),
+            LayerKind::Insert => self.insert_input(r, ev),
+            LayerKind::Command => self.command_input(r, ev),
+            LayerKind::Search => self.search_input(r, ev),
+            LayerKind::Sift => self.sift_input(r, ev),
+            LayerKind::Prompt => self.prompt_input(r, ev),
             LayerKind::Drawer => self.drawer_input(r, ev),
             LayerKind::Menu => self.menu_input(r, ev),
             LayerKind::Picker => self.picker_input(r, ev),
@@ -127,18 +132,40 @@ impl Editor {
         self.dispatch_at(below, ev);
     }
 
-    /// The base layer's own policy — today's per-mode dispatch, unchanged.
-    /// `r` is unused: `Base` never falls through further (there is nothing
-    /// below it) and never truncates itself (it is never removed).
+    /// The base layer's own policy. `r` is unused: `Base` never falls
+    /// through further (there is nothing below it) and never truncates
+    /// itself (it is never removed). Only ever runs for Normal/Extend —
+    /// every other mode is its own `LayerKind` now, routed directly by
+    /// `dispatch_at`; `handle_normal` still reads `state.mode()` internally
+    /// to tell the two apart.
     fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {
         let InputEvent::Key(key) = ev;
-        match self.state.mode() {
-            Mode::Normal | Mode::Extend => self.handle_normal(key),
-            Mode::Insert => self.handle_insert(key),
-            Mode::Command => self.handle_command(key),
-            Mode::Search => self.handle_search(key),
-            Mode::Sift => self.handle_sift(key),
-        }
+        self.handle_normal(key);
+    }
+
+    fn insert_input(&mut self, _r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        self.handle_insert(key);
+    }
+
+    fn command_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        self.handle_command(r, key);
+    }
+
+    fn search_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        self.handle_search(r, key);
+    }
+
+    fn sift_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        self.handle_sift(r, key);
+    }
+
+    fn prompt_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        self.handle_steel_prompt_key(r, key);
     }
 }
 

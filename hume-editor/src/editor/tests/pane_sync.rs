@@ -21,7 +21,7 @@ fn pane_selections_synced_after_change_command() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('c'));
     // `c` enters Insert; buffer is now "o\n" with cursor at char 0.
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 
     // Simulate the per-frame sync that happens in the run loop.
     ed.sync_all_pane_mirrors(&ed.view.active_pane_ids());

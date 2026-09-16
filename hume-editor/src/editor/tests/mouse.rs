@@ -50,7 +50,7 @@ fn click_after_blank_line_trim_lands_on_correct_char() {
     // Insert mode via the mouse.
     ed.handle_input(mouse_left_down(1, 2));
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     // The blank line's "  " is trimmed on exit (buffer shrinks to
     // "  x\n\ncd\n"), and the click must land on 'd' in the *new* buffer —
     // not at the stale pre-trim offset, which would land 2 chars past 'd'

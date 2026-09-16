@@ -33,9 +33,11 @@ fn editor_state_fields_are_classified() {
             // everything else survive
             buffers: _,
             config: _, // exempt — see ConfigState's own doc
-            // config: reset_config_state → input.truncate_to_base()
+            // config: reset_config_state → input.truncate_to_base() (drops
+            // every mode layer's minibuf/completion/prompt-callback payload
+            // along with the four overlay widgets, and resets Base's
+            // extend flag)
             input: _,
-            mode: _,                // preserved
             pending_keys: _,        // preserved
             count: _,               // preserved
             wait_char: _,           // preserved
@@ -47,8 +49,6 @@ fn editor_state_fields_are_classified() {
             paste_stamp: _,         // preserved
             should_quit: _,         // preserved
             terminate_exit_code: _, // preserved
-            minibuf: _,             // preserved
-            minibuf_completion: _,  // preserved
             status_msg: _,          // preserved
             summary_ttl: _,         // preserved
             // accounting: typed_reload_config diffs this before/after
@@ -79,13 +79,17 @@ fn editor_state_fields_are_classified() {
             macro_pending: _,                   // preserved
             replay_queue: _,                    // preserved
             skip_macro_record: _,               // preserved
-            dispatching_typed_command: _,       // preserved
             is_replaying: _,                    // preserved
             message_logged_this_input: _,       // preserved
             // config: resync_config_state clears this so
             // detect_buffer_enter's diff re-raises OnBufferEnter for
             // the focused buffer
             last_entered_buffer: _,
+            // config: reset_config_state re-baselines this to mode() right
+            // after input.truncate_to_base(), so detect_mode_change's diff
+            // doesn't fire a phantom OnModeChange for a mode the fresh
+            // hooks never observed
+            last_observed_mode: _,
             mouse_drag_anchor: _,              // preserved
             cwd: _,                            // preserved
             lsp_completion_dismiss_pending: _, // preserved

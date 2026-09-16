@@ -413,15 +413,17 @@ pub(in crate::editor::commands::pipeline) fn step_update_recipe(
 /// Exit sticky Extend mode after a selection-consuming edit.
 ///
 /// Mirrors the "done selecting" signal of `;` (collapse) and Vim's visual-mode
-/// operator exit. No-op unless the editor is currently in Extend — a `change`
-/// command (which already entered Insert) will not be affected because
-/// `state.mode()` is `Insert` by the time the AFTER block runs.
+/// operator exit. `set_extend(false)` only ever writes `Base`'s own flag — a
+/// `change` command (which already entered Insert by the time the AFTER
+/// block runs) is unaffected either way, visibly or otherwise: `Base` isn't
+/// the current mode layer while Insert is open, and `push_mode_layer`
+/// already cleared the flag on the way in (D1).
 pub(in crate::editor::commands::pipeline) fn step_clear_extend(
     state: &mut EditorState,
     clears_extend: bool,
 ) {
-    if clears_extend && state.mode() == Mode::Extend {
-        state.set_mode(Mode::Normal);
+    if clears_extend {
+        state.input.set_extend(false);
     }
 }
 

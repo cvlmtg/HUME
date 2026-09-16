@@ -7,6 +7,7 @@ use hume_grid::Rect;
 use std::sync::Arc;
 
 use super::*;
+use crate::editor::input_stack::InputLayer;
 use hume_engine::pipeline::RenderContext;
 
 /// Independent width oracle for the code under test — see `clippy.toml`'s
@@ -369,14 +370,15 @@ fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next
         r#"(register-hook! 'on-mode-change (lambda (old new) (close-popup!)))"#,
     );
 
-    // `EditorState::set_mode` only queues `OnModeChange` (the same funnel a
-    // programmatic mode change — LSP callback, plugin command — goes
-    // through); unlike a keypress it never runs through `handle_key`'s
+    // `push_mode_layer` doesn't itself queue `OnModeChange` — `settle()`'s
+    // `detect_mode_change` diff does, the next time it runs (the same
+    // funnel a programmatic mode change — LSP callback, plugin command —
+    // goes through). Unlike a keypress it never runs through `handle_key`'s
     // any-key-closes-a-docked-popup intercept, so the popup is still open
     // here. The `on-mode-change` hook (mirroring `lib.scm`'s real one) only
     // runs when `render_to_buf`'s `settle()` drains the queued event —
     // reproducing the settle-time close window a real hook uses.
-    ed.state.set_mode(Mode::Insert);
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
     assert!(
         ed.state.config.popup.is_some(),
         "sanity: popup still open before settle drains the queued hook"

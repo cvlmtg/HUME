@@ -297,8 +297,9 @@ impl Editor {
             // visibly shown, so nothing here should intercept a key.
             // Notably this covers Esc (falls through to the trie's
             // exit-insert leaf, which dismisses the session as a side
-            // effect of leaving Insert — see `EditorState::set_mode` —
-            // rather than needing a second Esc to actually leave Insert)
+            // effect of leaving Insert — see `EditorState::tear_down`'s
+            // `Insert` arm — rather than needing a second Esc to actually
+            // leave Insert)
             // and Enter (inserts a newline instead of erroring on an
             // out-of-range `accept(0)`).
             return false;

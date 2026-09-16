@@ -2,6 +2,7 @@
 //! drawer, minibuffer prompt, and the fuzzy-finder picker.
 
 use super::EditorHostImpl;
+use crate::editor::Severity;
 use crate::editor::input_stack::{InputLayer, LayerKind};
 use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use hume_scripting::host::{
@@ -38,23 +39,28 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         prefill: String,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Not `self.state.minibuf.is_some()` — a `prompt!` called from a
-        // `:command`'s body runs while that command line's own minibuffer
-        // session is still open (it closes only after the command
-        // returns). `steel_prompt_callback` is only `Some` once a *prior*
-        // `prompt!` call has actually taken over the session.
-        if self.state.config.steel_prompt_callback.is_some() {
+        // Not "a Command-mode minibuffer is open" — a `prompt!` called from
+        // a `:command`'s body runs while that command line's own `Command`
+        // layer is still on the stack (it's truncated only after the
+        // command returns, per truncate-before-execute). Only a `Prompt`
+        // layer already on top means a *prior* `prompt!` call has taken
+        // over the session.
+        if self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Prompt) {
             return Err("prompt!: a minibuffer session is already open".to_string());
         }
         let cursor = prefill.len();
-        self.state.minibuf = Some(crate::editor::MiniBuffer {
-            prompt: label,
-            input: prefill,
-            cursor,
-        });
-        self.state.config.steel_prompt_callback = Some(callback);
         self.state.history.begin_session_all();
-        self.state.set_mode(crate::editor::Mode::Command);
+        self.state.push_mode_layer(
+            self.view,
+            InputLayer::Prompt {
+                minibuf: crate::editor::MiniBuffer {
+                    prompt: label,
+                    input: prefill,
+                    cursor,
+                },
+                callback,
+            },
+        );
         Ok(())
     }
 
@@ -94,13 +100,19 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Excludes Insert specifically, not an allowlist of Normal/Extend —
-        // a command triggered via `:name` runs while `mode()` still reports
-        // `Command` (mode reverts to Normal only after the command body
-        // returns), so an allowlist would reject the common `:`-triggered
-        // case too.
-        if self.state.mode() == hume_engine::types::EditorMode::Insert {
-            return Err("show-menu!: not available in Insert mode".to_string());
+        // Mode-layer race (D7): the request that led here (a `codeAction`
+        // response callback) can land after the user left Normal for
+        // Insert/Command/Search/Sift/Prompt — timing, not a plugin bug, so
+        // this drops silently (`Trace`, `Ok`) rather than erroring, which
+        // would abort the whole `run_call_batch` this `Call` was batched
+        // into. A structural refusal (another overlay already open) is the
+        // separate `accepts_above` check below, and *does* error.
+        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base) {
+            self.state.report(
+                Severity::Trace,
+                "show-menu!: mode changed before the menu could open — ignored".to_string(),
+            );
+            return Ok(());
         }
         if !self.state.input.accepts_above(LayerKind::Menu) {
             return Err("show-menu!: another overlay is open".to_string());
@@ -130,6 +142,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
+        // Same mode-layer race as `show_menu` above (a references response
+        // landing after the user left Normal) — see its comment.
+        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base) {
+            self.state.report(
+                Severity::Trace,
+                "show-drawer-list!: mode changed before the drawer could open — ignored"
+                    .to_string(),
+            );
+            return Ok(());
+        }
         if !self.state.input.accepts_above(LayerKind::Drawer) {
             return Err("show-drawer-list!: another overlay is open".to_string());
         }

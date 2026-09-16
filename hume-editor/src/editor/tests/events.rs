@@ -47,7 +47,7 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     // Normal→Insert hook before we capture the before count.
     ed.handle_input(TerminalEvent::Key(key('i')));
     ed.settle();
-    assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
+    assert_eq!(ed.state.mode(), Mode::Insert, "must be in Insert after `i`");
 
     let before = mode_changed_count(&ed);
 
@@ -55,7 +55,7 @@ fn exit_insert_via_esc_fires_on_mode_change() {
     ed.handle_input(TerminalEvent::Key(key_esc()));
     ed.settle();
 
-    assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after Esc");
+    assert_eq!(ed.state.mode(), Mode::Normal, "must be Normal after Esc");
     assert_eq!(
         mode_changed_count(&ed),
         before + 1,
@@ -65,9 +65,12 @@ fn exit_insert_via_esc_fires_on_mode_change() {
 
 /// A left mouse click while in Insert mode must fire `OnModeChange` exactly
 /// once for the Insert→Normal transition. The click path calls
-/// `end_insert_session`, which goes through the funnel on its own — a
-/// separate `set_mode(Normal)` after it would double-fire the hook.
-/// `handle_input` does not drain itself — the `settle()` below is what
+/// `end_insert_session`, which truncates the `Insert` layer on its own —
+/// `detect_mode_change`'s diff only ever compares the final mode against
+/// the last-observed baseline once per drain pass, so nothing here can
+/// double-fire the hook regardless of how many mode-layer operations ran
+/// synchronously before the first `settle()`. `handle_input` does not
+/// drain itself — the `settle()` below is what
 /// fires the queued hook. The click itself also repositions the cursor, so
 /// the `state()` diff alone doesn't distinguish "hook fired" from "click
 /// moved the cursor" — the mode assertion just above it is the load-bearing
@@ -97,7 +100,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
 
     // Enter Insert mode.
     ed.handle_key(key('i'));
-    assert_eq!(ed.state.mode, Mode::Insert, "must be in Insert after `i`");
+    assert_eq!(ed.state.mode(), Mode::Insert, "must be in Insert after `i`");
 
     let before = state(&ed);
 
@@ -111,7 +114,7 @@ fn mouse_click_in_insert_fires_on_mode_change() {
     ed.handle_input(TerminalEvent::Mouse(click));
     ed.settle();
 
-    assert_eq!(ed.state.mode, Mode::Normal, "must be Normal after click");
+    assert_eq!(ed.state.mode(), Mode::Normal, "must be Normal after click");
     assert_ne!(
         state(&ed),
         before,
@@ -770,9 +773,13 @@ fn wq_fires_on_buffer_save_before_quitting() {
 /// **Headless path.** `Editor::step` dispatches a key but does not itself
 /// settle — `hume_editor::run_keys`' loop calls `settle()` once per key,
 /// separately (see `Editor::step`'s doc for why dispatch and settle stay two
-/// calls). Pins that split: a `step()`-queued event must not
-/// have fired yet, and only fires once `settle()` runs, mirroring exactly
-/// what `run_keys` does after every `step()`.
+/// calls). Pins that split: `on-mode-change` must not have fired yet right
+/// after `step()`, and only fires once `settle()` runs, mirroring exactly
+/// what `run_keys` does after every `step()`. `OnModeChange` itself isn't
+/// even queued until then — `detect_mode_change`'s diff runs inside
+/// `drain_pending_work`'s loop (D3), which only `settle()` calls, so there
+/// is no "queued but undrained" state to observe in between the way there
+/// is for `OnBufferEnter`; the oracle here is the hook's own side effect.
 ///
 /// Fail oracle: fold `settle()` into `step()` itself → the first assertion
 /// (still pending right after `step`) fails.
@@ -793,13 +800,19 @@ fn headless_step_then_settle_fires_a_queued_hook() {
 
     let before = state(&ed);
 
-    // Entering Insert queues OnModeChange; `step` dispatches the key but
-    // never drains.
+    // Entering Insert changes `mode()`, but `step` dispatches the key
+    // without settling — nothing observes the change until `settle()`'s
+    // own `detect_mode_change` diff runs.
     ed.step(key('i'));
-    assert_eq!(ed.state.mode, Mode::Insert, "sanity: `i` must enter Insert");
-    assert!(
-        !ed.state.config.pending_work.is_empty(),
-        "step() must not drain — the OnModeChange hook must still be queued"
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "sanity: `i` must enter Insert"
+    );
+    assert_eq!(
+        state(&ed),
+        before,
+        "step() must not settle — the on-mode-change hook must not have fired yet"
     );
 
     // Mirrors what run_keys' loop does after every step().

@@ -65,7 +65,6 @@ fn goto_matching_pair_records_jump() {
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(3))); // on '('
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
     let before = state(&ed);
 
     ed.handle_key(key('#'));
@@ -127,7 +126,7 @@ fn search_confirm_records_jump() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(
         ed.doc()
             .text()
@@ -152,7 +151,6 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
     let sels = SelectionSet::single(hume_editing::selection::Selection::new(co(0), co(2)));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
 
     // `%` — jump-flagged, moves elsewhere, records a jump.
     ed.handle_key(key('%'));
@@ -170,7 +168,7 @@ fn search_confirm_noop_does_not_clobber_forward_history() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(
         state(&ed),
         back_at_start,
@@ -315,7 +313,6 @@ fn select_all_from_last_char_still_records_jump() {
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(last));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
 
     ed.handle_key(key('%'));
     let after = ed.current_selections().primary();
@@ -378,7 +375,6 @@ fn goto_next_paragraph_records_jump_even_for_a_short_hop() {
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(0)));
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
     let before = state(&ed);
 
     ed.handle_key(key('}'));
@@ -401,7 +397,6 @@ fn goto_prev_paragraph_records_jump_even_for_a_short_hop() {
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(co(7))); // on 'w'
     let doc = Buffer::new(text, sels);
     let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
     let before = state(&ed);
 
     ed.handle_key(key('{'));

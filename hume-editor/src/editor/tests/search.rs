@@ -10,7 +10,7 @@ fn search_forward_enter_confirms() {
     let mut ed = editor_from("-[h]>ello world\n");
 
     ed.handle_key(key('/'));
-    assert_eq!(ed.state.mode, Mode::Search);
+    assert_eq!(ed.state.mode(), Mode::Search);
 
     for ch in "world".chars() {
         ed.handle_key(key(ch));
@@ -19,7 +19,7 @@ fn search_forward_enter_confirms() {
     assert_eq!(state(&ed), "hello -[world]>\n");
 
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello -[world]>\n");
     // Pattern written to the 's' register for n/N repeat.
     assert_eq!(reg(&ed, 's'), vec!["world"]);
@@ -37,7 +37,7 @@ fn search_esc_restores_position() {
     assert_eq!(state(&ed), "hello -[world]>\n");
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }
 
@@ -106,13 +106,13 @@ fn search_backward_confirms() {
     let mut ed = editor_from("ab ab -[a]>b\n");
 
     ed.handle_key(key('?'));
-    assert_eq!(ed.state.mode, Mode::Search);
+    assert_eq!(ed.state.mode(), Mode::Search);
 
     ed.handle_key(key('a'));
     ed.handle_key(key('b'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "ab -[ab]> ab\n");
 }
 
@@ -129,7 +129,7 @@ fn search_no_match_behaviour() {
     ed.handle_key(key('z'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     // Position restored to pre-search (live search restores on each no-match keystroke).
     assert_eq!(state(&ed), "-[h]>ello\n");
 
@@ -147,7 +147,7 @@ fn search_no_match_behaviour() {
 fn extend_search_next_extends_selection() {
     // Cursor on 'h'; search forward for "world" with extend active.
     let mut ed = editor_from("-[h]>ello world\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key('/'));
     for ch in "world".chars() {
@@ -157,10 +157,9 @@ fn extend_search_next_extends_selection() {
     assert_eq!(state(&ed), "-[hello world]>\n");
 
     ed.handle_key(key_enter());
-    ed.state.mode = Mode::Normal;
 
     // n in extend mode: anchor stays at 0, head jumps to next match.
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     // Only one "world" — wraps back to the same match.
     ed.handle_key(key('n'));
     // Selection should still cover from anchor=0 to the match end.
@@ -212,7 +211,7 @@ fn clear_search_command_clears_search() {
     ed.execute_keymap_command("clear-search".into(), Some(1), false);
     ed.sync_search_cache();
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
         ed.search_pattern().is_none(),
         "search pattern should be cleared by clear-search"
@@ -234,8 +233,8 @@ fn clear_search_command_clears_search() {
 fn sift_within_noop_when_collapsed() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('s'));
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
 }
 
 /// `s` enters Sift mode, sets up minibuffer, and snapshots selections.
@@ -243,14 +242,14 @@ fn sift_within_noop_when_collapsed() {
 fn sift_within_enters_sift_mode() {
     let mut ed = editor_from("-[hello world]>\n");
     ed.handle_key(key('s'));
-    assert_eq!(ed.state.mode, Mode::Sift);
+    assert_eq!(ed.state.mode(), Mode::Sift);
     assert!(
         ed.state.panes.transient[ed.state.focus.id()]
             .pre_sift_sels
             .is_some()
     );
-    assert!(ed.state.minibuf.is_some());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, "⫽");
+    assert!(ed.state.minibuf().is_some());
+    assert_eq!(ed.state.minibuf().unwrap().prompt, "⫽");
 }
 
 /// `s` + pattern + Enter confirms: selections become matches, mode returns to Normal.
@@ -262,7 +261,7 @@ fn sift_within_confirm_replaces_selections() {
     ed.handle_key(key('b'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
         ed.state.panes.transient[ed.state.focus.id()]
             .pre_sift_sels
@@ -285,7 +284,7 @@ fn sift_within_esc_restores() {
     // Live preview should have changed selections.
     assert_ne!(state(&ed), original);
     ed.handle_key(key_esc());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), original);
 }
 
@@ -296,7 +295,7 @@ fn sift_within_empty_confirm_cancels() {
     let original = state(&ed);
     ed.handle_key(key('s'));
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), original);
 }
 
@@ -703,7 +702,7 @@ fn search_up_recalls_previous_forward_pattern() {
     // Open forward search and press Up.
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
     ed.handle_key(key_esc());
 }
 
@@ -719,7 +718,7 @@ fn search_history_is_separate_from_command_history() {
     // Open forward search and press Up — history should be empty.
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
     ed.handle_key(key_esc());
 }
 
@@ -731,12 +730,12 @@ fn forward_and_backward_search_histories_are_separate() {
     // Forward ring only has "alpha".
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpha");
+    assert_eq!(ed.state.minibuf().unwrap().input, "alpha");
     ed.handle_key(key_esc());
     // Backward ring only has "beta".
     ed.handle_key(key('?'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "beta");
+    assert_eq!(ed.state.minibuf().unwrap().input, "beta");
     ed.handle_key(key_esc());
 }
 
@@ -756,7 +755,7 @@ fn search_recall_updates_live_preview() {
     assert_eq!(state(&ed), "-[h]>ello world\n");
     // Up recalls "hello" and updates live search to the full match.
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hello");
+    assert_eq!(ed.state.minibuf().unwrap().input, "hello");
     assert_eq!(state(&ed), "-[hello]> world\n");
     ed.handle_key(key_esc());
 }
@@ -773,25 +772,25 @@ fn search_down_walks_forward_and_restores_scratch() {
     for ch in "al".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().input, "al");
 
     // Up walks back: "alpine", then "alphabet".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpine");
+    assert_eq!(ed.state.minibuf().unwrap().input, "alpine");
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alphabet");
+    assert_eq!(ed.state.minibuf().unwrap().input, "alphabet");
 
     // Down walks forward: "alpine".
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "alpine");
+    assert_eq!(ed.state.minibuf().unwrap().input, "alpine");
 
     // Down past newest restores original scratch text.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().input, "al");
 
     // Another Down when not navigating is a no-op.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().input, "al");
 
     ed.handle_key(key_esc());
 }
@@ -808,20 +807,20 @@ fn search_edit_after_recall_demotes_to_scratch() {
     // Open search, recall "hello" via Up (empty prefix matches newest).
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hello");
+    assert_eq!(ed.state.minibuf().unwrap().input, "hello");
 
     // Edit the recalled entry — demotes nav state so the next Up re-stashes
     // the current (now-edited) text as fresh scratch.
     ed.handle_key(key('x')); // input is now "hellox"
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hellox");
+    assert_eq!(ed.state.minibuf().unwrap().input, "hellox");
 
     // Up: stashes "hellox" as scratch, recalls the only match: "helloxyz".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "helloxyz");
+    assert_eq!(ed.state.minibuf().unwrap().input, "helloxyz");
 
     // Down past newest match: restores "hellox" (the edited scratch).
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "hellox");
+    assert_eq!(ed.state.minibuf().unwrap().input, "hellox");
 
     ed.handle_key(key_esc());
 }
@@ -840,17 +839,21 @@ fn search_backspace_on_empty_dismisses() {
     ed.handle_key(key('f'));
     ed.handle_key(key_backspace());
     assert_eq!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Search,
         "first Backspace must keep Search open"
     );
-    assert!(ed.state.minibuf.is_some());
+    assert!(ed.state.minibuf().is_some());
     assert_eq!(state(&ed), "-[h]>ello world\n"); // snapshot restored
 
     // Second Backspace: BackspaceOnEmpty — dismiss.
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.mode, Mode::Normal, "second Backspace must dismiss");
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "second Backspace must dismiss"
+    );
+    assert!(ed.state.minibuf().is_none());
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }
 
@@ -862,7 +865,7 @@ fn search_backspace_on_empty_from_start_dismisses() {
 
     ed.handle_key(key('/'));
     ed.handle_key(key_backspace()); // BackspaceOnEmpty right away
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }

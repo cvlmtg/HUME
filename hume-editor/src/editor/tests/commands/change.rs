@@ -18,7 +18,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 
     // `c` — delete "hell", enter Insert.
     ed.handle_key(key('c'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 
     // Type the replacement.
     ed.handle_key(key('h'));
@@ -26,7 +26,7 @@ fn c_groups_delete_and_insert_into_one_undo_step() {
 
     // Exit Insert — commits the group.
     ed.handle_key(key_esc());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "hio\n");
 
     // One undo should restore the original word entirely.
@@ -332,7 +332,7 @@ fn mii_extend_mode_keeps_adjacent_current_selection_as_separate() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), "hi-[h]>ello\n"); // setting off — plain collapsed cursor
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hi]>-[h]>ello\n");
 }
@@ -350,7 +350,7 @@ fn mii_extend_mode_default_setting_merges_identical_current_selection() {
     ed.handle_key(key('i'));
     ed.handle_key(key_esc());
     assert_eq!(state(&ed), "-[hi]>hello\n"); // setting on — Esc already selects "hi"
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hi]>hello\n");
 }
@@ -372,7 +372,7 @@ fn mii_extend_mode_merges_overlapping_current_selection() {
     ed.set_current_selections(SelectionSet::single(Selection::new(co(1), co(3))));
     assert_eq!(state(&ed), "h-[ihe]>llo\n");
 
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     mii(&mut ed);
     assert_eq!(state(&ed), "-[hihe]>llo\n");
 }
@@ -397,7 +397,7 @@ fn mii_extend_mode_adds_disjoint_selection_and_keeps_current_primary() {
     ed.set_current_selections(SelectionSet::single(Selection::new(co(8), co(12))));
     assert_eq!(state(&ed), "hXYello -[world]>\n");
 
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     mii(&mut ed);
     assert_eq!(state(&ed), "h-[XY]>ello -[world]>\n");
 
@@ -477,7 +477,7 @@ fn mii_reports_info_on_read_only_buffer() {
     ed.doc_mut().read_only = true;
     ed.handle_key(key('i'));
     assert_eq!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Normal,
         "read-only buffer refuses Insert"
     );

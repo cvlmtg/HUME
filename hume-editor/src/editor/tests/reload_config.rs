@@ -557,18 +557,18 @@ fn reset_tears_down_an_open_prompt_session_completely() {
         "sanity: prompt! must open Command mode"
     );
     assert!(
-        ed.state.minibuf.is_some(),
+        ed.state.minibuf().is_some(),
         "sanity: the minibuf must be open"
     );
     assert!(
-        ed.state.config.steel_prompt_callback.is_some(),
+        ed.state.input.prompt_callback().is_some(),
         "sanity: the callback must be armed"
     );
 
     ed.reset_config_state();
 
     assert!(
-        ed.state.config.steel_prompt_callback.is_none(),
+        ed.state.input.prompt_callback().is_none(),
         "the callback (rooted in the outgoing engine) must be dropped"
     );
     assert_eq!(
@@ -578,9 +578,66 @@ fn reset_tears_down_an_open_prompt_session_completely() {
          Command mode behind with no callback wired up"
     );
     assert!(
-        ed.state.minibuf.is_none(),
+        ed.state.minibuf().is_none(),
         "an open prompt session's minibuf must close, or its half-typed \
          answer would be misread as an ordinary : command on the next Enter"
+    );
+}
+
+/// `truncate_to_base` resets `Base`'s `extend` flag — Extend must not
+/// survive a reload the way it did before this refactor (nothing reset it).
+/// Also pins the `last_observed_mode` re-baseline (`reset_config_state`,
+/// right after `truncate_to_base`): the *old*, still-attached hook must
+/// never see a phantom `Extend→Normal` transition it didn't itself observe
+/// happening — checked by settling with the pre-reload host still in place
+/// (`reset_config_state` alone doesn't touch `ed.scripting`; only
+/// `typed_reload_config`'s caller does) and confirming its hook never fires.
+#[test]
+fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(register-hook! 'on-mode-change (lambda (old new) (log! 'trace "mode-changed")))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    ed.state.input.set_extend(true);
+    assert_eq!(
+        ed.state.mode(),
+        hume_engine::types::EditorMode::Extend,
+        "sanity: Extend is active"
+    );
+
+    let mode_changed_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "mode-changed")
+            .count()
+    };
+    let before = mode_changed_count(&ed);
+
+    ed.reset_config_state();
+    assert_eq!(
+        ed.state.mode(),
+        hume_engine::types::EditorMode::Normal,
+        "reset_config_state must clear Extend, not let it survive the reload"
+    );
+
+    // The pre-reload host (and its hook) is still attached — if
+    // `last_observed_mode` weren't re-baselined here, this settle() would
+    // wrongly queue and fire `on-mode-change` against it for a transition
+    // it never watched happen.
+    ed.settle();
+    assert_eq!(
+        mode_changed_count(&ed),
+        before,
+        "must not fire a phantom on-mode-change to a hook that never \
+         observed the transition"
     );
 }
 

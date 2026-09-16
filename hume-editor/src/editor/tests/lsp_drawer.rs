@@ -63,6 +63,89 @@ fn show_drawer_list_rejected_when_a_picker_is_open() {
     assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }
 
+/// `push_mode_layer` pushes a new mode layer *above* whatever overlay
+/// already sits on `Base` — so `i` while a drawer is open lands `Insert`
+/// on top of it (dispatch reaches `Insert`, not the drawer, for every key
+/// typed), and `Esc` ending Insert truncates only its own layer, leaving
+/// the drawer exactly where it was: still open, still driving `j`/`k` and
+/// the rest of its own keys.
+#[test]
+fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_three_items(&mut ed, tmp.path());
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    ed.feed_key(key('i'));
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "i must enter Insert above the drawer"
+    );
+    ed.feed_key(key('X'));
+    assert_eq!(ed.doc().text().to_string(), "Xxabcdefgh\n");
+
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "the drawer must have survived the Insert round trip untouched"
+    );
+
+    // The drawer must still be driving its own keys, not just present.
+    ed.feed_key(key_down());
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        1,
+        "j/Down must still move the drawer's selection"
+    );
+}
+
+/// D7's "mode-layer race": `show-drawer-list!` from Insert is a benign
+/// timing issue (a references response landing after the user left
+/// Normal), not a plugin bug — it drops silently (`Ok`, a `Trace` log
+/// entry) rather than erroring, so it never aborts the `run_call_batch` a
+/// real async callback is batched into. Unlike the picker case above
+/// (structural refusal — `accepts_above` false), this is the opener's own
+/// mode-layer-is-`Base` requirement.
+#[test]
+fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
+    use crate::editor::Severity;
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    ed.feed_key(key('i')); // enter Insert mode
+    assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Insert);
+
+    let traces_before = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    assert!(
+        result.is_ok(),
+        "a mode-layer race must never error — it would abort the whole call batch"
+    );
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "must not have opened while the mode layer isn't Base"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        traces_before + 1,
+        "must log a Trace entry noting the drop"
+    );
+}
+
 /// `sync_drawer_view` runs unconditionally every frame while the drawer is
 /// open (the self-healing backstop this module's header comment describes),
 /// so its row list must be shared (`Arc::clone`) rather than deep-copied —

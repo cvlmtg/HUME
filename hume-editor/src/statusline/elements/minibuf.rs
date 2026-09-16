@@ -14,8 +14,7 @@ impl StatuslineElement for MiniBufElement {
     fn read(editor: &HumeStatusline<'_>) -> Self::Data {
         editor
             .state
-            .minibuf
-            .as_ref()
+            .minibuf()
             .map(|mb| (mb.prompt.clone(), mb.input.clone()))
     }
 

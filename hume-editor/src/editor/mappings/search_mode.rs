@@ -3,29 +3,32 @@ use std::sync::Arc;
 use termina::event::KeyEvent;
 
 use super::super::commands::search_sel;
+use super::super::input_stack::LayerRef;
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::search::SearchPattern;
-use super::super::{Editor, Mode, search};
+use super::super::{Editor, search};
 use hume_ops::search::{SearchDirection, compile_search_regex, find_next_match};
 
 impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────
 
-    pub(super) fn handle_search(&mut self, key: KeyEvent) {
-        let event = match self.state.minibuf.as_mut() {
+    pub(super) fn handle_search(&mut self, r: LayerRef, key: KeyEvent) {
+        let event = match self.state.input.minibuf_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
         match event {
-            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_search(),
+            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
+                self.state.truncate_layers(&self.view, r);
+            }
             MiniBufferEvent::Confirm(pattern) => {
-                // Record into the correct search ring before closing the minibuf.
+                // Record into the correct search ring before truncating.
                 let kind = self
                     .state
-                    .minibuf
-                    .as_ref()
+                    .input
+                    .minibuf()
                     .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt));
                 if let Some(k) = kind {
                     self.state.history.get_mut(k).push(pattern.clone());
@@ -34,7 +37,11 @@ impl Editor {
                 self.state.registers.set_search_register(pattern);
                 // Record the pre-search position in the jump list before
                 // discarding it, unless the match confirmed is the position
-                // search started from (record_jump_if_moved).
+                // search started from (record_jump_if_moved). D9: the
+                // `Confirm` arm does its own accept work — taking the
+                // stash — before truncating; teardown's `Search` arm
+                // restores it on every *other* removal, so it's already
+                // gone here and would be a no-op if left to teardown.
                 let pid = self.state.focus.id();
                 if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();
@@ -45,10 +52,11 @@ impl Editor {
                         entry,
                     );
                 }
-                // search_pattern stays alive on the buffer for immediate n/N without recompile.
-                // set_mode does not touch search state, so it is safe to call here.
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
+                // search_pattern stays alive on the buffer for immediate n/N
+                // without recompile — the stash is already taken above, so
+                // teardown's `Search` arm (gated on the same stash) won't
+                // clear it.
+                self.state.truncate_layers(&self.view, r);
             }
             MiniBufferEvent::EmptiedByBackspace => {
                 // First Backspace cleared the last character — restore position but
@@ -62,14 +70,17 @@ impl Editor {
                 );
             }
             MiniBufferEvent::BackspaceOnEmpty => {
-                // Input already empty — user pressed Backspace a second time to dismiss.
-                self.cancel_search();
+                // Input already empty — user pressed Backspace a second time to
+                // dismiss. Teardown restores the snapshot, clears the search, and
+                // begins a fresh history session — the same as this arm's own
+                // body used to.
+                self.state.truncate_layers(&self.view, r);
             }
             MiniBufferEvent::Edited => {
                 if let Some(k) = self
                     .state
-                    .minibuf
-                    .as_ref()
+                    .input
+                    .minibuf()
                     .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
                 {
                     self.state.history.get_mut(k).demote_to_scratch();
@@ -77,7 +88,7 @@ impl Editor {
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryPrev => {
-                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt.clone()) else {
+                let Some(prompt) = self.state.input.minibuf().map(|m| m.prompt.clone()) else {
                     return;
                 };
                 let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
@@ -87,7 +98,7 @@ impl Editor {
                 self.update_live_search();
             }
             MiniBufferEvent::HistoryNext => {
-                let Some(prompt) = self.state.minibuf.as_ref().map(|m| m.prompt.clone()) else {
+                let Some(prompt) = self.state.input.minibuf().map(|m| m.prompt.clone()) else {
                     return;
                 };
                 let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
@@ -102,24 +113,12 @@ impl Editor {
         }
     }
 
-    /// Cancel search: restore pre-search position, clear all search state, return to Normal.
-    fn cancel_search(&mut self) {
-        let pid = self.state.focus.id();
-        if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
-            self.set_current_selections(sels);
-        }
-        let bid = self.focused_buffer_id();
-        search::ops::clear_buffer_search(&mut self.state.buffers, &mut self.state.panes.state, bid);
-        self.set_mode(Mode::Normal);
-        self.close_minibuf();
-    }
-
     /// Recompile the regex from the current mini-buffer input and jump to the
     /// first match from the pre-search position.
     ///
     /// Called on every keystroke while in Search mode.
     pub(super) fn update_live_search(&mut self) {
-        let pattern = match self.state.minibuf.as_ref() {
+        let pattern = match self.state.input.minibuf() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,
         };

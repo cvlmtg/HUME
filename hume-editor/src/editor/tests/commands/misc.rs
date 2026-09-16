@@ -12,18 +12,18 @@ use pretty_assertions::assert_eq;
 #[test]
 fn extend_exits_after_delete() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.handle_key(key('d'));
-    assert_eq!(ed.state.mode, Mode::Normal, "delete exits Extend");
+    assert_eq!(ed.state.mode(), Mode::Normal, "delete exits Extend");
 }
 
 #[test]
 fn extend_exits_after_replace() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.handle_key(key('r'));
     ed.handle_key(key('x')); // replacement char completes replace
-    assert_eq!(ed.state.mode, Mode::Normal, "replace exits Extend");
+    assert_eq!(ed.state.mode(), Mode::Normal, "replace exits Extend");
 }
 
 #[test]
@@ -31,18 +31,18 @@ fn extend_exits_after_paste() {
     // Pre-populate a register so paste does real work.
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('y')); // yank "h" into ring
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.handle_key(key('p')); // smart-paste-after
-    assert_eq!(ed.state.mode, Mode::Normal, "paste exits Extend");
+    assert_eq!(ed.state.mode(), Mode::Normal, "paste exits Extend");
 }
 
 #[test]
 fn extend_preserved_after_yank() {
     // Yank must NOT exit Extend — it is non-destructive and the selection stays live.
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.handle_key(key('y'));
-    assert_eq!(ed.state.mode, Mode::Extend, "yank preserves Extend");
+    assert_eq!(ed.state.mode(), Mode::Extend, "yank preserves Extend");
 }
 
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ fn o_groups_newline_and_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('o'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 
     ed.handle_key(key('w'));
     ed.handle_key(key('o'));
@@ -78,7 +78,7 @@ fn capital_o_groups_newline_and_insert_session_into_one_undo_step() {
     let mut ed = editor_from("foo\n-[b]>ar\n");
 
     ed.handle_key(key('O'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 
     ed.handle_key(key('n'));
     ed.handle_key(key('e'));
@@ -101,7 +101,7 @@ fn i_collapses_selection_to_start() {
     let mut ed = editor_from("-[hell]>o\n");
     ed.handle_key(key('i'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // Cursor collapsed to 'h' — nothing deleted.
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert_eq!(ed.doc().text().to_string(), "hello\n");
@@ -114,13 +114,13 @@ fn i_groups_insert_session_into_one_undo_step() {
     let mut ed = editor_from("-[h]>ello\n");
 
     ed.handle_key(key('i'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 
     ed.handle_key(key('X'));
     ed.handle_key(key('Y'));
 
     ed.handle_key(key_esc());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "XYhello\n");
 
     // One undo restores the original state completely.
@@ -334,7 +334,7 @@ fn extend_trie_wait_char_sequence_clears_pending_keys() {
     use crate::editor::keymap::{BindMode, WaitCharPending};
 
     let mut ed = editor_from("-[h]>ello\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     // Two-key wait-char sequence: `g` (prefix) then `r` (wait-char leaf).
     ed.state.config.keymap.extend.bind_wait_char_sequence(

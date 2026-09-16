@@ -4,6 +4,7 @@
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::paste`, which are an unrelated feature.
 
+use super::super::input_stack::LayerKind;
 use super::super::minibuf::history::{HistoryKind, HistoryStore};
 use super::super::replay::InsertInput;
 use super::super::{Editor, Mode, doc_ops};
@@ -74,8 +75,8 @@ impl Editor {
                 }
                 let mb = self
                     .state
-                    .minibuf
-                    .as_mut()
+                    .input
+                    .minibuf_mut()
                     .expect("minibuf present in Command/Search/Sift mode");
                 self.state.status_msg.take();
                 mb.insert_str(&flattened);
@@ -113,10 +114,15 @@ impl Editor {
     fn on_minibuf_paste_edited(&mut self) {
         match self.state.mode() {
             Mode::Command => {
-                // A `(prompt! …)` session applies plain edits with no further
-                // follow-up — mirrors `handle_steel_prompt_event`'s Edited arm.
-                if self.state.config.steel_prompt_callback.is_none() {
-                    self.state.minibuf_completion = None;
+                // A `(prompt! …)` session (its own `Prompt` layer, though
+                // `mode()` reads it as `Command` — see `InputStack::mode`)
+                // applies plain edits with no further follow-up — mirrors
+                // `handle_steel_prompt_key`'s Edited arm.
+                if self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Command)
+                {
+                    if let Some(slot) = self.state.input.minibuf_completion_mut() {
+                        *slot = None;
+                    }
                     self.state
                         .history
                         .get_mut(HistoryKind::Command)
@@ -126,8 +132,8 @@ impl Editor {
             Mode::Search => {
                 if let Some(k) = self
                     .state
-                    .minibuf
-                    .as_ref()
+                    .input
+                    .minibuf()
                     .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
                 {
                     self.state.history.get_mut(k).demote_to_scratch();

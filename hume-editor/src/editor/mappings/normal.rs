@@ -100,9 +100,7 @@ impl Editor {
             self.state.macro_pending = None; // cancel any pending q/Q register-name prompt
             self.state.register_prefix = None; // cancel any pending "<reg> state
             // Esc exits Extend mode; Normal is the reset state.
-            if self.state.mode() == EditorMode::Extend {
-                self.set_mode(EditorMode::Normal);
-            }
+            self.state.input.set_extend(false);
             let _ = cmd_clear_search(&mut self.state, &mut self.view, 0, MotionMode::Move);
             return;
         }

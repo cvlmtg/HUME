@@ -26,10 +26,10 @@ fn key_shift(ch: char) -> KeyEvent {
 fn colon_enters_command_mode_when_shift_set() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key_shift(':'));
-    assert_eq!(ed.state.mode, Mode::Command);
-    assert!(ed.state.minibuf.is_some());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, ":");
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.mode(), Mode::Command);
+    assert!(ed.state.minibuf().is_some());
+    assert_eq!(ed.state.minibuf().unwrap().prompt, ":");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
 }
 
 /// Broadening the SHIFT strip to all chars must not break the alphabetic
@@ -39,7 +39,7 @@ fn colon_enters_command_mode_when_shift_set() {
 fn shift_a_still_inserts_at_line_end() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key_shift('A'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // Mirrors `capital_a_enters_insert_after_end_of_line` in commands.rs: `A`
     // lands on the newline at end of line.
     assert_eq!(state(&ed), "hello world-[\n]>");
@@ -59,12 +59,12 @@ fn close_brace_goto_next_paragraph_when_shift_set() {
 fn question_enters_search_when_shift_set() {
     let mut ed = editor_from("ab ab -[a]>b\n");
     ed.handle_key(key_shift('?'));
-    assert_eq!(ed.state.mode, Mode::Search);
+    assert_eq!(ed.state.mode(), Mode::Search);
     for ch in "ab".chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "ab -[ab]> ab\n");
 }
 
@@ -81,6 +81,6 @@ fn shift_tab_still_backtab() {
     ed.handle_key(KeyEvent::new(KeyCode::Tab, Modifiers::NONE));
     // Shift-Tab back to candidate 0.
     ed.handle_key(KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT));
-    let state = ed.state.minibuf_completion.as_ref().unwrap();
+    let state = ed.state.input.minibuf_completion().unwrap();
     assert_eq!(state.selected, 0);
 }

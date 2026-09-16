@@ -12,7 +12,7 @@ fn o_opens_line_below_and_enters_insert() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
     // Cursor should be on the new blank line (the second '\n').
     assert_eq!(state(&ed), "hello\n-[\n]>");
@@ -52,7 +52,7 @@ fn o_on_empty_line_places_cursor_on_new_blank_line() {
     let mut ed = editor_from("AAA\nBBB\n-[\n]>CCC\n");
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "AAA\nBBB\n\n\nCCC\n");
     assert_eq!(state(&ed), "AAA\nBBB\n\n-[\n]>CCC\n");
 }
@@ -64,7 +64,7 @@ fn o_carries_indent_from_current_line() {
     let mut ed = editor_from("\t-[f]>oo\n");
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\t\n");
     assert_eq!(state(&ed), "\tfoo\n\t-[\n]>");
 }
@@ -78,7 +78,7 @@ fn o_then_esc_trims_unused_indent() {
     ed.handle_key(key('o'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n");
     assert_eq!(state(&ed), "\tfoo\n-[\n]>");
 }
@@ -92,7 +92,7 @@ fn o_then_enter_keeps_indent_on_new_line_and_trims_first() {
     ed.handle_key(key('o'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "\tfoo\n\n\t\n");
     assert_eq!(state(&ed), "\tfoo\n\n\t-[\n]>");
 }
@@ -111,7 +111,7 @@ fn o_then_down_onto_pre_existing_blank_line_then_esc_preserves_it() {
     ed.handle_key(key_down());
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "foo\n\n    \nbar\n");
 }
 
@@ -153,7 +153,7 @@ fn capital_o_opens_line_above_and_enters_insert() {
     let mut ed = editor_from("foo\n-[b]>ar\n");
     ed.handle_key(key('O'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "foo\n\nbar\n");
     // Cursor on the new blank line between "foo" and "bar".
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
@@ -166,7 +166,7 @@ fn capital_o_carries_indent_from_current_line() {
     let mut ed = editor_from("    foo\n    -[b]>ar\n");
     ed.handle_key(key('O'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "    foo\n    \n    bar\n");
     assert_eq!(state(&ed), "    foo\n    -[\n]>    bar\n");
 }
@@ -182,7 +182,7 @@ fn capital_o_then_esc_trims_unused_indent() {
     ed.handle_key(key('O'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.doc().text().to_string(), "\n    bar\n");
     assert_eq!(state(&ed), "-[\n]>    bar\n");
 }
@@ -196,7 +196,7 @@ fn a_enters_insert_after_selection_end() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "h-[e]>llo\n");
 }
 
@@ -207,7 +207,7 @@ fn capital_a_enters_insert_after_end_of_line() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('A'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "hello-[\n]>");
 }
 
@@ -217,7 +217,7 @@ fn capital_i_enters_insert_at_line_start() {
     let mut ed = editor_from("  -[hello]>\n");
     ed.handle_key(key('I'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "  -[h]>ello\n");
 }
 
@@ -229,7 +229,7 @@ fn i_on_wide_selection_collapses_to_start() {
     let mut ed = editor_from("<[hell]-o\n");
     ed.handle_key(key('i'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "-[h]>ello\n");
 }
 
@@ -241,7 +241,7 @@ fn a_on_wide_selection_collapses_after_end() {
     let mut ed = editor_from("-[hel]>lo\n");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
 
@@ -266,7 +266,7 @@ fn a_esc_steps_cursor_back_to_last_typed_char() {
     ed.handle_key(key_esc());
 
     // Cursor must be on 'X', not on 'e' (one past where X was inserted).
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "h-[X]>ello\n");
 }
 
@@ -291,7 +291,7 @@ fn a_esc_at_end_of_line_does_not_advance_to_next_line() {
 
     // A second `a` must re-enter Insert on the same line, not on 'w'.
     ed.handle_key(key('a'));
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "helloX-[\n]>world\n");
 }
 
@@ -305,7 +305,7 @@ fn i_esc_selects_the_typed_run() {
     ed.handle_key(key('X'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "-[X]>hello\n");
 }
 
@@ -323,7 +323,7 @@ fn i_esc_does_not_step_cursor_back_setting_off() {
 
     // No step-back: cursor stays one past 'X', on 'h' — not stepped back
     // onto 'X' itself the way `a`/`A`/`o`/`O` would.
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "X-[h]>ello\n");
 }
 
@@ -408,7 +408,7 @@ fn o_esc_selects_the_typed_run() {
     ed.handle_key(key('c'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
 }
 
@@ -426,7 +426,7 @@ fn o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
     ed.handle_key(key_esc());
 
     // Cursor on 'c', not on the new line's trailing '\n'.
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\nab-[c]>\nworld\n");
 }
 
@@ -441,7 +441,7 @@ fn capital_o_esc_selects_the_typed_run() {
     ed.handle_key(key('c'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\n-[abc]>\nworld\n");
 }
 
@@ -459,7 +459,7 @@ fn capital_o_esc_steps_cursor_back_to_last_typed_char_setting_off() {
     ed.handle_key(key_esc());
 
     // Cursor on 'c', not on the new line's trailing '\n'.
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\nab-[c]>\nworld\n");
 }
 
@@ -474,7 +474,7 @@ fn o_esc_on_empty_line_does_not_step_to_previous_line() {
 
     // New blank line inserted; cursor on its '\n' (head == line_start so no
     // step-back occurs — the empty-line guard in end_insert_session applies).
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "hello\n-[\n]>world\n");
 }
 
@@ -495,7 +495,7 @@ fn a_multi_cursor_clamp_collision_merges_to_one() {
     let mut ed = editor_from("ab-[c]>-[\n]>");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "abc-[\n]>");
 }
 
@@ -512,6 +512,6 @@ fn a_esc_newline_cursor_stays_on_its_line() {
     ed.handle_key(key('a'));
     ed.handle_key(key_esc());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), "a-[b]>\n-[c]>d\n");
 }

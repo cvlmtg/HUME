@@ -12,8 +12,9 @@ use hume_ops::motion::{
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
+use super::super::input_stack::InputLayer;
 use super::super::replay::PendingRepeat;
-use super::super::{EditorState, MiniBuffer, Mode};
+use super::super::{EditorState, MiniBuffer};
 use super::{
     ExitCursor, apply_focused_edit_grouped, apply_focused_motion, arm_autoindent,
     begin_insert_session, begin_typed_run, end_insert_session,
@@ -194,17 +195,22 @@ pub(in crate::editor) fn cmd_open_line_above(
 
 pub(in crate::editor) fn cmd_command_mode(
     state: &mut EditorState,
-    _view: &mut EngineView,
+    view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     state.history.begin_session_all();
-    state.minibuf = Some(MiniBuffer {
-        prompt: ":".to_string(),
-        input: String::new(),
-        cursor: 0,
-    });
-    state.set_mode(Mode::Command);
+    state.push_mode_layer(
+        view,
+        InputLayer::Command {
+            minibuf: MiniBuffer {
+                prompt: ":".to_string(),
+                input: String::new(),
+                cursor: 0,
+            },
+            completion: None,
+        },
+    );
     Ok(())
 }
 
@@ -226,12 +232,7 @@ pub(in crate::editor) fn cmd_toggle_extend(
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    let target = if state.mode() == EditorMode::Extend {
-        EditorMode::Normal
-    } else {
-        EditorMode::Extend
-    };
-    state.set_mode(target);
+    state.input.set_extend(state.mode() != EditorMode::Extend);
     Ok(())
 }
 
@@ -244,7 +245,7 @@ fn do_collapse_and_exit_extend(
     view: &mut EngineView,
     collapse: impl FnOnce(&BufferText, SelectionSet) -> SelectionSet,
 ) {
-    state.set_mode(EditorMode::Normal);
+    state.input.set_extend(false);
     apply_focused_motion(state, view, collapse);
 }
 

@@ -18,16 +18,16 @@ impl Editor {
     pub(super) fn sync_minibuf_completion_view(&self) {
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
-        if self.state.minibuf_completion.is_none()
+        if self.state.input.minibuf_completion().is_none()
             && self.state.views.minibuf_completion.read().is_none()
         {
             return;
         }
-        let view = self.state.minibuf_completion.as_ref().map(|state| {
+        let view = self.state.input.minibuf_completion().map(|state| {
             let anchor_x = self
                 .state
-                .minibuf
-                .as_ref()
+                .input
+                .minibuf()
                 .map(|mb| mb.cursor_x_at(state.span_start))
                 .unwrap_or(0);
             hume_ui::completion_overlay::MinibufCompletionView {

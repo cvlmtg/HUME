@@ -15,7 +15,7 @@ fn a_on_empty_line_stays_on_same_line() {
     let mut ed = editor_from("foo\n-[\n]>bar\n");
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // Cursor must remain on the \n at position 4, not jump to 'b'.
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
@@ -30,7 +30,7 @@ fn a_after_select_line_stays_on_same_line() {
     ed.handle_key(key('x')); // select "bar\n" — head on '\n'
     ed.handle_key(key('a'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // Cursor on the trailing '\n' of the line — same line, not on 'b' of next line.
     assert_eq!(state(&ed), "foo\nbar-[\n]>baz\n");
 }
@@ -43,7 +43,7 @@ fn capital_a_on_empty_line_stays_on_same_line() {
     let mut ed = editor_from("foo\n-[\n]>bar\n");
     ed.handle_key(key('A'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(state(&ed), "foo\n-[\n]>bar\n");
 }
 
@@ -54,7 +54,7 @@ fn capital_a_on_nonempty_line_is_unchanged() {
     let mut ed = editor_from("-[h]>ello\nworld\n");
     ed.handle_key(key('A'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // Cursor on the \n at position 5 (between "hello" and "world").
     assert_eq!(state(&ed), "hello-[\n]>world\n");
 }
@@ -68,7 +68,7 @@ fn change_on_empty_line_is_noop() {
     let mut ed = editor_from("foo\n-[\n]>bar\n");
     ed.handle_key(key('c'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(
         ed.doc().text().to_string(),
         "foo\n\nbar\n",
@@ -86,7 +86,7 @@ fn change_after_select_line_keeps_line() {
     ed.handle_key(key('x')); // selects "bar\n" (head on \n)
     ed.handle_key(key('c'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     // "bar" deleted, \n kept → line 1 is now empty; cursor at line start.
     assert_eq!(
         ed.doc().text().to_string(),
@@ -106,7 +106,7 @@ fn change_multi_line_collapses_to_one_empty_line() {
     let mut ed = editor_from("foo\n-[bar\nbaz\n]>");
     ed.handle_key(key('c'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(
         ed.doc().text().to_string(),
         "foo\n\n",
@@ -121,7 +121,7 @@ fn change_on_content_char_still_deletes() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('c'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "ello\n");
     assert_eq!(state(&ed), "-[e]>llo\n");
 }
@@ -261,11 +261,11 @@ fn plain_comma_still_keeps_primary_selection() {
 #[test]
 fn o_in_extend_mode_falls_through_to_open_line_below() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
@@ -276,7 +276,7 @@ fn o_in_normal_mode_still_opens_line_below() {
 
     ed.handle_key(key('o'));
 
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
     assert_eq!(ed.doc().text().to_string(), "hello\n\n");
 }
 
@@ -294,7 +294,7 @@ fn ctrl_e_in_normal_mode_flips_selection() {
     // anchor and head are swapped; selection is now backward.
     assert_eq!(state(&ed), "<[hell]-o\n");
     // Normal mode stays; flip does not enter or exit Extend.
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
 /// `Ctrl-e` in Extend mode also flips (it falls through to the Normal trie with
@@ -303,12 +303,12 @@ fn ctrl_e_in_normal_mode_flips_selection() {
 #[test]
 fn ctrl_e_in_extend_mode_flips_selection() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key_ctrl('e'));
 
     assert_eq!(state(&ed), "<[hell]-o\n");
-    assert_eq!(ed.state.mode, Mode::Extend);
+    assert_eq!(ed.state.mode(), Mode::Extend);
 }
 
 // ── `;` collapses selection AND clears extend mode ─────────────────────────
@@ -319,11 +319,11 @@ fn ctrl_e_in_extend_mode_flips_selection() {
 #[test]
 fn semicolon_collapses_selection_and_resets_extend() {
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key(';'));
 
-    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by ';'");
+    assert_eq!(ed.state.mode(), Mode::Normal, "extend cleared by ';'");
     // head of the original selection was 'l' (last char of "hell").
     assert_eq!(state(&ed), "hel-[l]>o\n");
 }
@@ -335,11 +335,11 @@ fn semicolon_collapses_selection_and_resets_extend() {
 #[test]
 fn ctrl_semicolon_collapses_to_anchor_and_resets_extend() {
     let mut ed = editor_from_kitty("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key_ctrl(';'));
 
-    assert_eq!(ed.state.mode, Mode::Normal, "extend cleared by 'Ctrl-;'");
+    assert_eq!(ed.state.mode(), Mode::Normal, "extend cleared by 'Ctrl-;'");
     // anchor of the original selection was 'h' (offset 0).
     assert_eq!(state(&ed), "-[h]>ello\n");
 }

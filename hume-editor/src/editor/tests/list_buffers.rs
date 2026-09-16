@@ -247,7 +247,7 @@ fn view_buffer_blocks_insert_mode() {
 
     ed.handle_key(key('i'));
     assert_ne!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Insert,
         "i must not enter Insert mode on a read-only buffer"
     );
@@ -475,7 +475,7 @@ fn read_only_buffer_blocks_change_kill() {
         "c must report 'Buffer is read-only'"
     );
     assert_eq!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Normal,
         "a refused c must not enter Insert mode"
     );

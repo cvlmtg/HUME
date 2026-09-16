@@ -121,33 +121,26 @@ impl Editor {
         // ── Steel values rooted in the outgoing engine ──
         //
         // `pending_work` and `popup` drop below when `self.state.config =
-        // ConfigState::new(…)` runs; the other three overlay widgets
-        // (menu/drawer/picker) plus the disk-change confirm live on
-        // `state.input` instead and are dropped by the explicit
-        // `input.truncate_to_base()` call further down — nothing here reads
-        // any of them in between, so there's nothing to clear early.
-        // `PickerSession::source` (if a picker was open) kills any streaming
-        // child process on drop, same as any other overlay drop; the
-        // overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
+        // ConfigState::new(…)` runs; every mode layer (`Insert`/`Command`/
+        // `Search`/`Sift`/`Prompt`, each carrying its own minibuf and, for
+        // `Command`, an in-progress completion session and, for `Prompt`,
+        // the callback itself) and the four overlay widgets (menu/drawer/
+        // picker/confirm) live on `state.input` instead and are dropped by
+        // the explicit `input.truncate_to_base()` call further down —
+        // nothing here reads any of them in between, so there's nothing to
+        // clear early. `truncate_layers`' own teardown (`EditorState::
+        // tear_down`) never fires a Steel callback (D9), so a `Prompt`
+        // session's callback is discarded exactly like the overlay
+        // widgets' — and `truncate_to_base` resets `Base`'s `extend` flag
+        // to `false` in the same call, so Extend never survives a reload
+        // either. `PickerSession::source` (if a picker was open) kills any
+        // streaming child process on drop, same as any other overlay drop;
+        // the overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
         // `picker_view`) self-heal from `prepare_frame` every frame
         // regardless, so nothing here needs to touch them directly either.
         // `confirm` has no view/Steel callback of its own (its action is a
         // plain Rust enum, not a rooted `SteelVal`), so it needs even less
         // than the others — dropping it is the entire teardown.
-        if self.state.config.steel_prompt_callback.is_some() {
-            // A `(prompt! …)` session was open. Its callback belongs to the
-            // outgoing engine and is discarded (not fired) by the
-            // `ConfigState` rebuild and `state.input.truncate_to_base()`
-            // calls below, same policy as the popup/menu/drawer/picker
-            // overlays — but unlike those, a prompt also parks the editor in
-            // `Mode::Command` with an open minibuf and an in-progress
-            // history session (`host_impl.rs`'s `%prompt!` sets all three
-            // together). Leaving those live would route the next `:`/Enter
-            // through the *ordinary* command-line path, misreading the
-            // abandoned prompt's half-typed answer as a `:` command.
-            self.close_minibuf();
-            self.state.set_mode(super::Mode::Normal);
-        }
         self.lsp.reset_config();
         // Only the Steel `after` thunks — native `ViewportDebounce` timers
         // keep their wheel entries and their `viewport_debounce` back-index
@@ -199,10 +192,17 @@ impl Editor {
         self.state.buffers.clear_overrides_all();
         let prior_clock = self.state.config.decorations.clock();
         self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
-        // Drops any still-open confirm/picker/menu/drawer layer without
-        // firing its callback — same "outgoing engine, nothing left to
-        // observe the fire" reasoning as the comment above.
+        // Drops any still-open mode layer or confirm/picker/menu/drawer
+        // overlay without firing its callback — same "outgoing engine,
+        // nothing left to observe the fire" reasoning as the comment above.
         self.state.input.truncate_to_base();
+        // Re-baseline immediately after: the fresh hooks `init_scripting`
+        // is about to register must never see a phantom transition for a
+        // mode change they didn't observe (e.g. an Insert session the
+        // reload itself just discarded above) — matches `detect_buffer_enter`'s
+        // own re-baseline shape for `OnBufferEnter` (`resync_config_state`,
+        // further down).
+        self.state.last_observed_mode = self.state.mode();
         super::settings::ops::reset_globals(&mut self.state, &mut self.view);
 
         ReloadSnapshot {

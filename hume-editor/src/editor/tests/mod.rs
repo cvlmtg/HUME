@@ -455,9 +455,7 @@ fn jump_editor(cursor_line: usize) -> Editor {
     let pos = text.line_to_char(hume_rope::line::RopeyLine::new(cursor_line));
     let sels = SelectionSet::single(hume_editing::selection::Selection::collapsed(pos));
     let doc = Buffer::new(text, sels);
-    let mut ed = Editor::for_testing(doc);
-    ed.state.mode = Mode::Normal;
-    ed
+    Editor::for_testing(doc)
 }
 
 /// Write `file_content` to a temp file, return an editor pointing at it.
@@ -1112,7 +1110,7 @@ pub(super) fn snapshot_bookkeeping(ed: &Editor) -> BookkeepingSnapshot {
         // JumpList::len() is cfg(test)-only; safe to call here.
         jump_len: ed.state.panes.jumps[pane_id].len(),
         paste_session_open: any_pbs(|pbs| pbs.paste_group.is_some()),
-        mode: ed.state.mode,
+        mode: ed.state.mode(),
         typed_run_open: any_pbs(|pbs| pbs.typed_run.is_some()),
     }
 }

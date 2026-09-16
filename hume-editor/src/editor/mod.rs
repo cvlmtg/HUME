@@ -101,9 +101,11 @@ use self::tui::Tui;
 /// default on `:reload-config` — the keymap, the registry of dynamic/lazy
 /// commands, language identities, decorations, trigger chars, and the
 /// cursor-anchored/docked popup, plus every deferred-call queue rooted in
-/// the outgoing Steel engine. The menu, drawer, picker, and disk-change
-/// confirm overlays live on `EditorState.input` instead (an `InputStack`) —
-/// `Editor::reset_config_state` resets them with its own explicit
+/// the outgoing Steel engine. Every editing-mode layer (Insert/Command/
+/// Search/Sift/Prompt, each carrying its own minibuf and any Steel-rooted
+/// payload) and the menu, drawer, picker, and disk-change confirm overlays
+/// live on `EditorState.input` instead (an `InputStack`) — `Editor::
+/// reset_config_state` resets them with its own explicit
 /// `input.truncate_to_base()` call rather than by this struct's wholesale
 /// rebuild.
 ///
@@ -176,12 +178,6 @@ pub(crate) struct ConfigState {
     /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
     /// than reusing either) since a job id is neither.
     pub(in crate::editor) next_async_job_id: u64,
-    /// The `(prompt! …)` callback — persists for as long as `minibuf` holds
-    /// the prompt session (unlike a queued `PendingWork::Call`, which drains
-    /// the same `settle()` it's pushed to). `handle_command`'s Confirm/Cancel
-    /// arms take this and queue exactly one `(callback text-or-#f)` call via
-    /// `queue_steel_call`.
-    pub(in crate::editor) steel_prompt_callback: Option<steel::rvals::SteelVal>,
     /// `(show-popup! text)`'s raw content — resolved into a positioned
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
@@ -212,7 +208,6 @@ impl ConfigState {
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
             next_async_job_id: 0,
-            steel_prompt_callback: None,
             popup: None,
         }
     }
@@ -263,22 +258,20 @@ pub(crate) struct EditorState {
     /// separate struct.
     pub(crate) config: ConfigState,
     /// The stack of active input-handling layers above the base editing
-    /// surface — today the four overlay widgets (disk-change confirm, fuzzy
-    /// picker, selection menu, bottom drawer). Editing modes, LSP
-    /// completion, and the hover/signature-help popup still live on their
-    /// own fields and join this stack in later work.
+    /// surface: `Base` (carrying the sticky Extend flag) or one of the four
+    /// other editing-mode layers (Insert/Command/Search/Sift/Prompt), plus
+    /// whatever overlay widgets (disk-change confirm, fuzzy picker,
+    /// selection menu, bottom drawer) are pushed above that. LSP completion
+    /// and the hover/signature-help popup still live on their own fields
+    /// and join this stack in later work.
     ///
     /// Not reset by `ConfigState`'s wholesale rebuild — `Base` must survive
-    /// a `:reload-config`, and a still-open overlay's Steel callback must be
-    /// dropped, not fired, the same as everything `ConfigState::new` resets
-    /// by construction. `Editor::reset_config_state` calls
-    /// `input.truncate_to_base()` explicitly, right where `ConfigState`
-    /// itself is rebuilt.
+    /// a `:reload-config`, and a still-open mode layer or overlay's Steel
+    /// callback must be dropped, not fired, the same as everything
+    /// `ConfigState::new` resets by construction. `Editor::
+    /// reset_config_state` calls `input.truncate_to_base()` explicitly,
+    /// right where `ConfigState` itself is rebuilt.
     pub(in crate::editor) input: input_stack::InputStack,
-    /// Current editing mode. `EditorMode::Extend` represents the sticky extend
-    /// state. Mode is the single source of truth for whether extend is active.
-    /// Private: all transitions go through [`EditorState::set_mode`].
-    mode: Mode,
     /// Keys consumed so far in the current multi-key sequence (max depth 3).
     pub(super) pending_keys: Vec<KeyEvent>,
     /// Accumulated numeric prefix for the next command (e.g. `3` in `3w`).
@@ -306,10 +299,6 @@ pub(crate) struct EditorState {
     /// the single-threaded, in-editor quit path (dirty-buffer prompts, `:q`
     /// semantics) — a signal bypasses all of that.
     pub(super) terminate_exit_code: Arc<AtomicI32>,
-    /// Active when the user is typing a command (`:`) or a search (`/`).
-    pub(crate) minibuf: Option<MiniBuffer>,
-    /// Active completion session while a popup is showing.
-    pub(in crate::editor) minibuf_completion: Option<completion::MinibufCompletionState>,
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
@@ -417,17 +406,6 @@ pub(crate) struct EditorState {
     pub(super) replay_queue: VecDeque<KeyEvent>,
     /// Single-frame flag: skip recording the current key.
     pub(super) skip_macro_record: bool,
-    /// `true` for the duration of a typed (`:`) command's synchronous
-    /// dispatch. `execute_command` runs while `mode` still reads
-    /// `Mode::Command` — it only flips back to `Normal` afterward — so this
-    /// is the one signal that tells "a fully-submitted command is running"
-    /// apart from "the user is still typing an unsubmitted command line".
-    /// `check_buffer_disk_state`'s confirm gate is the only reader: a
-    /// disk-change confirm may open mid-dispatch (`:e`/`:b`/`:bn`/`:bp`/
-    /// `:checktime` all rely on this), but never while the user is simply
-    /// sitting in Command mode with the next keystroke still meant for the
-    /// minibuffer.
-    pub(super) dispatching_typed_command: bool,
     /// `true` while draining the replay queue.
     pub(super) is_replaying: bool,
     /// Set by `Editor::handle_input` right after dispatch whenever that
@@ -445,19 +423,27 @@ pub(crate) struct EditorState {
     /// `BufEnter`). The single observation baseline for the focus diff; see
     /// `Editor::detect_buffer_enter`.
     pub(super) last_entered_buffer: Option<BufferId>,
+    /// The mode observed as of the last `drain_pending_work` pass — the
+    /// baseline `Editor::detect_mode_change` diffs `mode()` against to raise
+    /// `OnModeChange`, the same observation-point shape `last_entered_buffer`
+    /// uses for `OnBufferEnter`. Re-baselined by `reset_config_state` right
+    /// after `input.truncate_to_base()` so a reload never fires a phantom
+    /// transition for a mode the fresh hooks never observed.
+    pub(super) last_observed_mode: Mode,
     /// Anchor char offset set on mouse-left-down when `mouse_select` is enabled.
     pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
-    /// Set by `set_mode` on any exit from Insert — `set_mode` only has
-    /// `&mut EditorState` (many callers are free functions that never touch
-    /// `Editor`/`LspState`), but the LSP completion session it must dismiss
-    /// lives on `LspState`. Consumed (session + ui + view all cleared)
-    /// by `Editor::take_pending_lsp_completion_dismiss`, called
-    /// unconditionally from `handle_key`, `handle_mouse`, and (top and tail)
-    /// `Editor::settle` — the latter is called every frame by every settle
-    /// site, so no separate render-time call is needed. Same deferral
-    /// channel philosophy as `pending_work`.
+    /// Set by `EditorState::tear_down`'s `Insert` arm on every Insert exit —
+    /// `tear_down` only has `&mut EditorState` (many callers are free
+    /// functions that never touch `Editor`/`LspState`), but the LSP
+    /// completion session it must dismiss lives on `LspState`. Consumed
+    /// (session + ui + view all cleared) by `Editor::
+    /// take_pending_lsp_completion_dismiss`, called unconditionally from
+    /// `handle_key`, `handle_mouse`, and (top and tail) `Editor::settle` —
+    /// the latter is called every frame by every settle site, so no
+    /// separate render-time call is needed. Same deferral channel
+    /// philosophy as `pending_work`.
     pub(super) lsp_completion_dismiss_pending: bool,
     /// Every overlay view shared between the per-frame write side below
     /// (`overlay_sync.rs`) and the engine's render side — minibuf-completion,
@@ -501,7 +487,6 @@ impl Default for EditorState {
             // until `set_kitty_support` runs, after `Editor::open`.
             config: ConfigState::new(false, 0),
             input: input_stack::InputStack::new(),
-            mode: Mode::Normal,
             pending_keys: Vec::new(),
             count: None,
             wait_char: None,
@@ -513,8 +498,6 @@ impl Default for EditorState {
             paste_stamp: None,
             should_quit: false,
             terminate_exit_code: Arc::new(AtomicI32::new(0)),
-            minibuf: None,
-            minibuf_completion: None,
             status_msg: None,
             summary_ttl: 0,
             message_log: MessageLog::new(),
@@ -543,10 +526,10 @@ impl Default for EditorState {
             macro_pending: None,
             replay_queue: VecDeque::new(),
             skip_macro_record: false,
-            dispatching_typed_command: false,
             is_replaying: false,
             message_logged_this_input: false,
             last_entered_buffer: None,
+            last_observed_mode: Mode::Normal,
             mouse_drag_anchor: None,
             cwd: PathBuf::new(),
             lsp_completion_dismiss_pending: false,
@@ -624,18 +607,27 @@ impl EditorState {
     // ── Mode ──────────────────────────────────────────────────────────────────
 
     pub(crate) fn mode(&self) -> Mode {
-        self.mode
+        self.input.mode()
     }
 
-    /// The open disk-change confirm, if any — `crate::statusline`'s one
-    /// reader. A plain wrapper rather than exposing `input` itself at
-    /// `pub(crate)`: `InputStack`'s own API stays `pub(in crate::editor)`
-    /// (see its own doc for why), and the statusline is a sibling of
-    /// `crate::editor`, not a descendant of it, so it needs a seam drawn
-    /// somewhere — this is the narrowest one, mirroring `ConfirmModel`'s own
-    /// `pub(crate)` carve-out for the same reader.
+    /// The open disk-change confirm, if any — `crate::statusline`'s reader.
+    /// A plain wrapper rather than exposing `input` itself at `pub(crate)`:
+    /// `InputStack`'s own API stays `pub(in crate::editor)` (see its own
+    /// doc for why), and the statusline is a sibling of `crate::editor`,
+    /// not a descendant of it, so it needs a seam drawn somewhere — this is
+    /// the narrowest one, mirroring `ConfirmModel`'s own `pub(crate)`
+    /// carve-out for the same reader. [`Self::minibuf`] below is the same
+    /// carve-out for the field that was `pub(crate)` directly on
+    /// `EditorState` before it moved into a mode layer's payload.
     pub(crate) fn confirm(&self) -> Option<&ConfirmModel> {
         self.input.confirm()
+    }
+
+    /// The active minibuffer, if any — `crate::statusline`'s reader. See
+    /// [`Self::confirm`]'s doc for why this wrapper exists instead of
+    /// exposing `input` itself.
+    pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
+        self.input.minibuf()
     }
 
     /// The document-mode cursor shape for the live mode — how the document's
@@ -655,7 +647,7 @@ impl EditorState {
     /// terminal cursor and the grid's painted heads can never disagree about
     /// which shape is in effect outside a prompt.
     pub(in crate::editor) fn cursor_shape(&self) -> crate::editor::settings::CursorShape {
-        if self.mode == Mode::Insert {
+        if self.mode() == Mode::Insert {
             self.settings.cursor_shape_insert
         } else {
             crate::editor::settings::CursorShape::Block
@@ -768,39 +760,111 @@ impl EditorState {
             .collect()
     }
 
-    /// Single write path for all mode transitions.
+    /// Pushes a mode layer — the single write path for all mode transitions
+    /// (`OnModeChange` itself no longer fires from here; it's raised by
+    /// `Editor::detect_mode_change`'s observation-point diff at the next
+    /// `settle()`, D3).
     ///
-    /// Captures the old mode, writes the new one, and enqueues `OnModeChange`
-    /// for firing by `Editor::settle` at the next drain. The no-op guard
-    /// prevents spurious hook fires when mode is already correct.
+    /// No-op if the current mode layer is already the same kind (Insert
+    /// re-entry — matches today's same-mode guard and
+    /// `begin_insert_session`'s open-group guard). Otherwise tears down the
+    /// current mode layer first, unless it's `Base` (teardown *is* cancel —
+    /// D9; a `prompt!` from Insert ends the insert session before the
+    /// prompt lands), clears Extend (D1), then pushes `layer` on top of
+    /// whatever is left — any overlay that sits *below* the outgoing mode
+    /// layer (a drawer opened while still in Normal) is untouched, since
+    /// `truncate_layers` only removes the mode layer's own ref and
+    /// whatever was pushed above it.
     ///
-    /// The `mode` field is private so the compiler enforces that every
-    /// transition goes through here.
-    pub(in crate::editor) fn set_mode(&mut self, new: Mode) {
-        let old = self.mode;
-        if old == new {
+    /// Doesn't consult `InputStack::accepts_above`: a mode key only ever
+    /// reaches `Base` after every overlay above it has fallen through, so
+    /// ordering is already settled by the key path; a Steel-initiated push
+    /// (a timer's `prompt!` while a picker is open) simply lands on top,
+    /// where the picker's own key policy governs what happens next.
+    pub(in crate::editor) fn push_mode_layer(
+        &mut self,
+        view: &EngineView,
+        layer: input_stack::InputLayer,
+    ) {
+        let mode_layer = self.input.mode_layer();
+        let current_kind = self
+            .input
+            .kind(mode_layer)
+            .expect("mode_layer() always names a live layer");
+        if current_kind == layer.kind() {
             return;
         }
-        // Any exit from Insert dismisses an open completion session —
-        // `handle_completion_key`'s own `Esc`/Enter paths never reach here
-        // (they return before the trie's `exit-insert` runs), so this
-        // catches every *other* way Insert ends (Ctrl-c, a mouse click, a
-        // Steel-triggered mode change) while a session happens to be open.
-        // Deferred: the session lives on `LspState`, which `set_mode` (only
-        // `&mut EditorState`) can't reach — `Editor::
-        // take_pending_lsp_completion_dismiss` consumes this at every
-        // chokepoint before the next render.
-        if old == Mode::Insert {
-            self.lsp_completion_dismiss_pending = true;
+        if current_kind != input_stack::LayerKind::Base {
+            self.truncate_layers(view, mode_layer);
         }
-        self.mode = new;
-        self.queue_event(event::EditorEvent::OnModeChange { from: old, to: new });
+        self.input.set_extend(false);
+        self.input.push(layer);
+    }
+
+    /// Removes `r` and everything above it, running [`Self::tear_down`] on
+    /// each removed layer top-first — the single teardown path for both a
+    /// mode-layer exit and a `close-*!`/Rust-internal overlay retirement.
+    pub(in crate::editor) fn truncate_layers(
+        &mut self,
+        view: &EngineView,
+        r: input_stack::LayerRef,
+    ) {
+        for layer in self.input.truncate(r) {
+            self.tear_down(view, layer);
+        }
+    }
+
+    /// What happens when `layer` leaves the stack, for any reason —
+    /// D9: teardown of a mode layer *is* its cancel. A `Confirm` arm does
+    /// its own accept work (recording history, restoring/clearing a stash)
+    /// *before* truncating, so by the time this runs, every removal is
+    /// already the "cancel" case; there is no separate "cancel-specific
+    /// work" split to make here. Never fires a Steel callback — those are
+    /// queued only from explicit accept/cancel arms, before the truncate
+    /// that reaches here.
+    fn tear_down(&mut self, view: &EngineView, layer: input_stack::InputLayer) {
+        match layer {
+            input_stack::InputLayer::Insert => {
+                commands::tear_down_insert(self, view);
+            }
+            input_stack::InputLayer::Command { .. } | input_stack::InputLayer::Prompt { .. } => {
+                self.history.begin_session_all();
+            }
+            input_stack::InputLayer::Search { .. } => {
+                let pid = self.focus.id();
+                if let Some(sels) = self.panes.transient[pid].pre_search_sels.take() {
+                    commands::set_current_selections(self, view, sels);
+                    let bid = commands::focused_buffer_id(self, view);
+                    search::ops::clear_buffer_search(&mut self.buffers, &mut self.panes.state, bid);
+                }
+                self.history.begin_session_all();
+            }
+            input_stack::InputLayer::Sift { .. } => {
+                let pid = self.focus.id();
+                if let Some(sels) = self.panes.transient[pid].pre_sift_sels.take() {
+                    commands::set_current_selections(self, view, sels);
+                }
+                // Sift has no history ring of its own — `begin_session_all`
+                // only touches the command/search rings, so this is a no-op
+                // for Sift — but every other minibuf-backed mode's teardown
+                // calls it unconditionally, and Sift stays uniform with
+                // them rather than being special-cased as the one mode that
+                // skips it.
+                self.history.begin_session_all();
+            }
+            input_stack::InputLayer::Base { .. }
+            | input_stack::InputLayer::Drawer(_)
+            | input_stack::InputLayer::Menu(_)
+            | input_stack::InputLayer::Picker(_)
+            | input_stack::InputLayer::Confirm(_) => {}
+        }
     }
 
     /// Enqueue `event` to fire after the current command returns — the
     /// single raise path every event goes through, reached as
     /// `self.state.queue_event(…)` from `Editor` methods and directly, like
-    /// `set_mode` above, from methods that only hold `&mut EditorState`.
+    /// `settings::ops::apply_global`, from free functions that only hold
+    /// `&mut EditorState`.
     pub(in crate::editor) fn queue_event(&mut self, event: event::EditorEvent) {
         self.config
             .pending_work
@@ -976,20 +1040,6 @@ impl Editor {
 
     pub(in crate::editor) fn end_insert_session(&mut self) {
         commands::end_insert_session(&mut self.state, &self.view);
-    }
-
-    /// Set the editing mode. The cursor shape reflecting the new mode will be
-    /// emitted after the current frame's draw call.
-    ///
-    /// Enqueues `OnModeChange` through the unified `pending_work` channel
-    /// (same path as the `EditorCmd` handlers); `settle` fires it at the
-    /// next drain.
-    ///
-    /// For Insert mode entry and exit use `begin_insert_session` and
-    /// [`crate::editor::commands::end_insert_session`] instead — they manage
-    /// the undo group and dot-repeat recording alongside the mode change.
-    pub(in crate::editor) fn set_mode(&mut self, mode: Mode) {
-        self.state.set_mode(mode);
     }
 }
 

@@ -84,7 +84,7 @@ pub enum StatusElement {
     SearchMatches,
     /// The mini-buffer input field: prompt character followed by typed text.
     ///
-    /// Rendered only when `editor.state.minibuf` is `Some`; empty otherwise.
+    /// Rendered only when `editor.state.minibuf()` is `Some`; empty otherwise.
     MiniBuf,
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
@@ -415,7 +415,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
             return;
         }
 
-        if editor.state.minibuf.is_none() {
+        if editor.state.minibuf().is_none() {
             // A fresh status_msg (set this frame) takes priority. Falling back
             // to the log summary keeps unseen-message context visible between
             // keypresses, without adding a separate status row.
@@ -458,7 +458,7 @@ fn render_statusline(
         &[StatusElement],
         &[StatusElement],
         &[StatusElement],
-    ) = if editor.state.minibuf.is_some() {
+    ) = if editor.state.minibuf().is_some() {
         (MINIBUF_LEFT, &[], &config.right)
     } else {
         (&config.left, &config.center, &config.right)

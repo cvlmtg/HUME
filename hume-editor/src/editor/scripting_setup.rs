@@ -276,7 +276,7 @@ impl Editor {
             // Insert, setting the flag the top-of-function consumption
             // already passed. Consume it again so `prepare_frame`'s later
             // `sync_completion_menu_view` never repaints a session
-            // `set_mode` asked to close mid-drain.
+            // `truncate_layers`'s `Insert` teardown asked to close mid-drain.
             self.take_pending_lsp_completion_dismiss();
             // The span `Editor::handle_input` opened ("this input's own
             // dispatch just logged a message") closes here, now that this
@@ -320,6 +320,7 @@ impl Editor {
         let mut total_processed = 0usize;
         loop {
             self.detect_buffer_enter();
+            self.detect_mode_change();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
             // (auto-format, trim-on-change) is a feedback loop, and only
@@ -391,6 +392,27 @@ impl Editor {
             self.state.buffers.touch_mru(now);
             self.state
                 .queue_event(EditorEvent::OnBufferEnter { buffer: now });
+        }
+    }
+
+    /// Observation point for `on-mode-change` (D3) — `mode()` is a derived
+    /// read of `EditorState.input` (`InputStack::mode`), with no write-site
+    /// chokepoint of its own (a mode-layer push/truncate or an `Extend`
+    /// flag flip can each change it), so this diffs it the same shape
+    /// `detect_buffer_enter` uses above. Run every pass of
+    /// `drain_pending_work`'s loop, not just once before it, so a
+    /// handler-driven mode change (a picker `on_select` that enters Insert)
+    /// is caught by the very next pass, and a transition that nets out
+    /// within one pass (a `:cmd` body that enters and leaves Insert) is
+    /// invisible — same as a dot-repeat replay, which never calls
+    /// `settle()` between keys.
+    fn detect_mode_change(&mut self) {
+        let now = self.state.mode();
+        if self.state.last_observed_mode != now {
+            let from = self.state.last_observed_mode;
+            self.state.last_observed_mode = now;
+            self.state
+                .queue_event(EditorEvent::OnModeChange { from, to: now });
         }
     }
 

@@ -1105,3 +1105,45 @@ fn picker_source_stop_bang_matches_the_real_token_and_rejects_a_stale_one() {
         "picker-source-stop! must not close the picker, only detach its source"
     );
 }
+
+// ── Regression: on_select-driven mode change is observed the same pass ────
+
+/// `on_select` fires as a queued `PendingWork::Call`, not inline — if it
+/// enters Insert, `detect_mode_change`'s diff (run at the top of every
+/// `drain_pending_work` pass, not just once before the loop) must catch
+/// the change on the very next pass and fire `on-mode-change` within the
+/// same `settle()`, not a frame later.
+#[test]
+fn picker_on_select_entering_insert_fires_on_mode_change_within_the_same_settle() {
+    let (mut ed, _tmp) = editor_with(
+        r#"(define-typed-command! "go" "" (lambda ()
+             (picker! (list (cons "one" "p1")) (lambda (p) (call! "insert-before")))))
+           (register-hook! 'on-mode-change (lambda (old new) (log! 'trace "mode-changed")))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+
+    ed.feed_key(key_enter()); // accept — queues on_select, does not run it
+
+    let mode_changed_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace && e.text == "mode-changed")
+            .count()
+    };
+    let before = mode_changed_count(&ed);
+
+    ed.settle(); // drains on_select (enters Insert) and the resulting hook, in one call
+
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "sanity: on_select's insert-before must have run"
+    );
+    assert_eq!(
+        mode_changed_count(&ed),
+        before + 1,
+        "on-mode-change must fire within the same settle() that ran on_select, not a frame later"
+    );
+}

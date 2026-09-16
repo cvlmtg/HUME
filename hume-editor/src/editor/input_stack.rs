@@ -18,6 +18,11 @@
 
 use termina::event::KeyEvent;
 
+use hume_engine::types::EditorMode;
+use steel::rvals::SteelVal;
+
+use super::completion::MinibufCompletionState;
+use super::minibuf::MiniBuffer;
 use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel};
 use super::picker::PickerSession;
 
@@ -38,22 +43,48 @@ pub(in crate::editor) struct LayerRef {
 pub(in crate::editor) enum LayerKind {
     /// The always-present layer at index 0. Never removed.
     Base,
+    Insert,
+    Command,
+    Search,
+    Sift,
+    Prompt,
     Drawer,
     Menu,
     Picker,
     Confirm,
 }
 
-/// One entry on the stack. `Base` carries no payload today — sticky-popup
-/// and extend-mode state land here once modes join the stack.
+/// One entry on the stack.
+///
+/// `Base` carries `extend` (D1: Extend is a flag on `Base`, never its own
+/// layer) — the sticky-popup slot lands here once popups move by ownership
+/// (step 6). `Insert` carries no payload yet for the same reason: its own
+/// sticky-popup slot is step 6's addition too.
 ///
 /// `Picker` is boxed: `PickerSession` alone is several times the size of
 /// every other variant's payload (its own fuzzy-match scoring buffers,
 /// picked items, `#:actions` table, …), so leaving it unboxed would size
-/// the whole enum — every `Base`/`Drawer`/`Menu`/`Confirm` layer included —
-/// to the picker's own footprint.
+/// the whole enum — every other layer included — to the picker's own
+/// footprint.
 pub(in crate::editor) enum InputLayer {
-    Base,
+    Base {
+        extend: bool,
+    },
+    Insert,
+    Command {
+        minibuf: MiniBuffer,
+        completion: Option<MinibufCompletionState>,
+    },
+    Search {
+        minibuf: MiniBuffer,
+    },
+    Sift {
+        minibuf: MiniBuffer,
+    },
+    Prompt {
+        minibuf: MiniBuffer,
+        callback: SteelVal,
+    },
     Drawer(DrawerModel),
     Menu(MenuModel),
     Picker(Box<PickerSession>),
@@ -61,14 +92,36 @@ pub(in crate::editor) enum InputLayer {
 }
 
 impl InputLayer {
-    fn kind(&self) -> LayerKind {
+    pub(in crate::editor) fn kind(&self) -> LayerKind {
         match self {
-            InputLayer::Base => LayerKind::Base,
+            InputLayer::Base { .. } => LayerKind::Base,
+            InputLayer::Insert => LayerKind::Insert,
+            InputLayer::Command { .. } => LayerKind::Command,
+            InputLayer::Search { .. } => LayerKind::Search,
+            InputLayer::Sift { .. } => LayerKind::Sift,
+            InputLayer::Prompt { .. } => LayerKind::Prompt,
             InputLayer::Drawer(_) => LayerKind::Drawer,
             InputLayer::Menu(_) => LayerKind::Menu,
             InputLayer::Picker(_) => LayerKind::Picker,
             InputLayer::Confirm(_) => LayerKind::Confirm,
         }
+    }
+
+    /// Whether this kind is a mode layer — the always-present `Base` plus
+    /// the five editing modes, as opposed to a transient overlay
+    /// (`Drawer`/`Menu`/`Picker`/`Confirm`). Exactly one mode layer is ever
+    /// on the stack, and it is always either the top layer or has only
+    /// overlays above it — see [`InputStack::mode_layer`].
+    fn is_mode_layer(&self) -> bool {
+        matches!(
+            self.kind(),
+            LayerKind::Base
+                | LayerKind::Insert
+                | LayerKind::Command
+                | LayerKind::Search
+                | LayerKind::Sift
+                | LayerKind::Prompt
+        )
     }
 }
 
@@ -101,7 +154,7 @@ pub(in crate::editor) struct InputStack {
 impl InputStack {
     pub(in crate::editor) fn new() -> Self {
         Self {
-            layers: vec![(0, InputLayer::Base)],
+            layers: vec![(0, InputLayer::Base { extend: false })],
             next_id: 1,
         }
     }
@@ -163,13 +216,14 @@ impl InputStack {
     }
 
     /// Whether the current top layer allows anything to be pushed above it.
-    /// `Base`/`Drawer` accept any overlay; `Picker`/`Confirm`/`Menu` accept
-    /// none — each of those three is a modal owner for as long as it's
-    /// open. `kind` is unused today (every current layer's policy depends
-    /// only on what's already on top, not on what wants to land above it);
-    /// kept in the signature since a future layer (a scrollable popup dying
-    /// on any push regardless of policy, a Completion session accepting
-    /// everything) may need to consult it directly.
+    /// `Base`/`Insert`/`Drawer` accept any overlay; `Command`/`Search`/
+    /// `Sift`/`Prompt`/`Picker`/`Confirm`/`Menu` accept none — each of those
+    /// is a modal owner for as long as it's open. `kind` is unused today
+    /// (every current layer's policy depends only on what's already on top,
+    /// not on what wants to land above it); kept in the signature since a
+    /// future layer (a scrollable popup dying on any push regardless of
+    /// policy, a Completion session accepting everything) may need to
+    /// consult it directly.
     pub(in crate::editor) fn accepts_above(&self, _kind: LayerKind) -> bool {
         match self
             .layers
@@ -178,8 +232,14 @@ impl InputStack {
             .1
             .kind()
         {
-            LayerKind::Base | LayerKind::Drawer => true,
-            LayerKind::Picker | LayerKind::Confirm | LayerKind::Menu => false,
+            LayerKind::Base | LayerKind::Insert | LayerKind::Drawer => true,
+            LayerKind::Command
+            | LayerKind::Search
+            | LayerKind::Sift
+            | LayerKind::Prompt
+            | LayerKind::Picker
+            | LayerKind::Confirm
+            | LayerKind::Menu => false,
         }
     }
 
@@ -215,16 +275,128 @@ impl InputStack {
     }
 
     /// Removes every layer above `Base`, top-first, same return contract as
-    /// [`Self::truncate`]. `Base` itself carries no payload today, so there
-    /// is nothing on it to reset yet — that arrives once extend-mode and
-    /// the sticky popup slot move onto it.
+    /// [`Self::truncate`], and resets `Base` itself to `extend: false` — a
+    /// reload must not leave Extend on for hooks that never saw it turned
+    /// on (today's reload drops `ConfigState.popup` outright; the sticky
+    /// slot arriving on `Base` in step 6 resets here the same way).
     pub(in crate::editor) fn truncate_to_base(&mut self) -> Vec<InputLayer> {
-        self.layers
+        let removed = self
+            .layers
             .split_off(1)
             .into_iter()
             .rev()
             .map(|(_, layer)| layer)
-            .collect()
+            .collect();
+        self.layers[0].1 = InputLayer::Base { extend: false };
+        removed
+    }
+
+    /// The layer that determines `EditorMode` — the first mode layer found
+    /// walking down from the top. Exactly one mode layer is ever on the
+    /// stack (`Base`, or the one mode layer a `push_mode_layer` call
+    /// replaced it with), and an overlay never changes what mode is
+    /// underneath it, so this always terminates at either the top itself or
+    /// `Base`.
+    pub(in crate::editor) fn mode_layer(&self) -> LayerRef {
+        self.layers
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, (_, layer))| layer.is_mode_layer())
+            .map(|(depth, (id, _))| LayerRef { depth, id: *id })
+            .expect("Base is always a mode layer and always on the stack")
+    }
+
+    /// The `EditorMode` the current mode layer maps to. `Prompt` reads as
+    /// `Command` — the engine has no `Prompt` variant, and today's Steel
+    /// `(prompt! …)` session already runs as `Command` for every consumer
+    /// outside this crate.
+    pub(in crate::editor) fn mode(&self) -> EditorMode {
+        match &self.layers[self.mode_layer().depth].1 {
+            InputLayer::Base { extend: false } => EditorMode::Normal,
+            InputLayer::Base { extend: true } => EditorMode::Extend,
+            InputLayer::Insert => EditorMode::Insert,
+            InputLayer::Command { .. } => EditorMode::Command,
+            InputLayer::Search { .. } => EditorMode::Search,
+            InputLayer::Sift { .. } => EditorMode::Sift,
+            InputLayer::Prompt { .. } => EditorMode::Command,
+            _ => unreachable!("mode_layer() only ever returns a mode layer"),
+        }
+    }
+
+    /// Sets `Base`'s `extend` flag directly — `Base` is always at index 0,
+    /// so this never needs a lookup. Does not gate on the current mode
+    /// layer or clear it on push; `push_mode_layer` does that separately
+    /// (D1) and a toggle reads `mode()` first to decide the target value.
+    pub(in crate::editor) fn set_extend(&mut self, extend: bool) {
+        let InputLayer::Base { extend: slot } = &mut self.layers[0].1 else {
+            unreachable!("index 0 is always Base");
+        };
+        *slot = extend;
+    }
+
+    /// The active minibuffer, topmost-wins across the four minibuf-backed
+    /// mode layers (`Command`/`Search`/`Sift`/`Prompt`) — at most one of
+    /// them is ever on the stack, so "topmost" and "only" coincide.
+    pub(in crate::editor) fn minibuf(&self) -> Option<&MiniBuffer> {
+        self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Command { minibuf, .. }
+            | InputLayer::Search { minibuf }
+            | InputLayer::Sift { minibuf }
+            | InputLayer::Prompt { minibuf, .. } => Some(minibuf),
+            _ => None,
+        })
+    }
+
+    pub(in crate::editor) fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
+        self.layers
+            .iter_mut()
+            .rev()
+            .find_map(|(_, layer)| match layer {
+                InputLayer::Command { minibuf, .. }
+                | InputLayer::Search { minibuf }
+                | InputLayer::Sift { minibuf }
+                | InputLayer::Prompt { minibuf, .. } => Some(minibuf),
+                _ => None,
+            })
+    }
+
+    /// The active completion session, flattened — `None` both when no
+    /// `Command` layer is open and when one is open with no session. Reads
+    /// only; see [`Self::minibuf_completion_mut`] to replace or clear it.
+    pub(in crate::editor) fn minibuf_completion(&self) -> Option<&MinibufCompletionState> {
+        self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Command { completion, .. } => completion.as_ref(),
+            _ => None,
+        })
+    }
+
+    /// The `Command` layer's completion slot itself (not its content) —
+    /// `Some(&mut Option<..>)` whenever a `Command` layer is open, letting a
+    /// caller assign a fresh session or clear one (`*slot = None`), as
+    /// opposed to [`Self::minibuf_completion`]'s flattened read.
+    pub(in crate::editor) fn minibuf_completion_mut(
+        &mut self,
+    ) -> Option<&mut Option<MinibufCompletionState>> {
+        self.layers
+            .iter_mut()
+            .rev()
+            .find_map(|(_, layer)| match layer {
+                InputLayer::Command { completion, .. } => Some(completion),
+                _ => None,
+            })
+    }
+
+    /// The open `(prompt! …)` session's callback, if `Prompt` is on the
+    /// stack. Read-only — a caller finishing the prompt clones this out
+    /// (cheap: `SteelVal` is reference-counted) before truncating the
+    /// `Prompt` layer away, rather than taking ownership through this
+    /// lookup.
+    pub(in crate::editor) fn prompt_callback(&self) -> Option<&SteelVal> {
+        self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Prompt { callback, .. } => Some(callback),
+            _ => None,
+        })
     }
 
     pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {

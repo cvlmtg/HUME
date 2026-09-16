@@ -65,7 +65,7 @@ fn select_all_matches_via_m_slash_keybind() {
 fn star_on_cursor_expands_to_word() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('*'));
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     // Selection expanded to cover "hello".
     assert_eq!(state(&ed), "-[hello]> world\n");
     // Pattern in search register is the word with whole-word boundaries.
@@ -119,7 +119,7 @@ fn star_on_trailing_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
     let before = state(&ed);
     ed.handle_key(key('*'));
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), before);
     // The cursor/selection check above already catches a regressed guard (it would
     // move the selection), but pin the register too: a noop must not set a search regex.
@@ -137,7 +137,7 @@ fn star_on_whitespace_is_noop() {
     let mut ed = editor_from("a-[ ]>b c\n");
     let before = state(&ed);
     ed.handle_key(key('*'));
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), before);
     assert!(reg(&ed, 's').is_empty());
 }
@@ -276,7 +276,7 @@ fn search_selection_on_newline_is_noop() {
     let mut ed = editor_from("hello\n-[\n]>");
     let before = state(&ed);
     ed.handle_key(key_ctrl('/'));
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(state(&ed), before);
     assert!(reg(&ed, 's').is_empty());
 }

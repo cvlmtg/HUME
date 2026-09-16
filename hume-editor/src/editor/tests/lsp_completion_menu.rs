@@ -289,10 +289,11 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
     );
 
     // Esc must not intercept-and-swallow while nothing is visibly shown —
-    // it falls through to the trie's exit-insert leaf, which reaches
-    // `set_mode` and dismisses the session as a side effect. A *single* Esc
-    // reaching Normal is the regression this guards: the bug was a second,
-    // invisible session trapping the first Esc.
+    // it falls through to the trie's exit-insert leaf, which ends the
+    // insert session and dismisses the completion session as a side
+    // effect. A *single* Esc reaching Normal is the regression this
+    // guards: the bug was a second, invisible session trapping the first
+    // Esc.
     ed.feed_key(key_esc());
     assert_eq!(ed.state.mode(), hume_engine::types::EditorMode::Normal);
     assert!(ed.lsp.completion.is_none());
@@ -401,11 +402,12 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
     assert!(ed.state.views.completion_menu.read().is_none());
 }
 
-/// `set_mode` only has `&mut EditorState` — it can't reach `LspState`
-/// directly, so a mode change from outside the normal key/mouse dispatch
-/// path (e.g. a Steel builtin) can only set the deferred-dismiss flag. Pins
-/// that the session survives until the flag is actually consumed, and that
-/// `prepare_frame` (the render-time safety net) does consume it.
+/// `EditorState::tear_down` only has `&mut EditorState`/`&EngineView` — it
+/// can't reach `LspState` directly, so a mode change from outside the
+/// normal key/mouse dispatch path (e.g. a Steel builtin ending Insert) can
+/// only set the deferred-dismiss flag. Pins that the session survives until
+/// the flag is actually consumed, and that `prepare_frame` (the
+/// render-time safety net) does consume it.
 #[test]
 fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -413,10 +415,11 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_by_the_next_frame() {
     begin_session(&mut ed, &[("foo", None)]);
     assert!(ed.lsp.completion.is_some(), "sanity: session open");
 
-    ed.state.set_mode(hume_engine::types::EditorMode::Normal);
+    let r = ed.state.input.mode_layer();
+    ed.state.truncate_layers(&ed.view, r);
     assert!(
         ed.lsp.completion.is_some(),
-        "the session must survive until the flag is consumed, not disappear on set_mode itself"
+        "the session must survive until the flag is consumed, not disappear on truncate itself"
     );
     assert!(ed.state.lsp_completion_dismiss_pending);
 

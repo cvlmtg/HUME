@@ -311,11 +311,11 @@ fn m_a_unknown_char_falls_through_cleanly() {
 #[test]
 fn e_toggles_extend_mode_and_motions_extend_selection() {
     let mut ed = editor_from("-[h]>ello\n");
-    assert_eq!(ed.state.mode, Mode::Normal, "Normal mode initially");
+    assert_eq!(ed.state.mode(), Mode::Normal, "Normal mode initially");
 
     // Toggle extend on.
     ed.handle_key(key('e'));
-    assert_eq!(ed.state.mode, Mode::Extend, "Extend mode after 'e'");
+    assert_eq!(ed.state.mode(), Mode::Extend, "Extend mode after 'e'");
 
     // A motion in extend mode should grow the selection, not move a cursor.
     ed.handle_key(key('l'));
@@ -323,7 +323,11 @@ fn e_toggles_extend_mode_and_motions_extend_selection() {
 
     // Toggle extend off.
     ed.handle_key(key('e'));
-    assert_eq!(ed.state.mode, Mode::Normal, "Normal mode after second 'e'");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "Normal mode after second 'e'"
+    );
 }
 
 // ── `x` select-line ────────────────────────────────────────────────────────

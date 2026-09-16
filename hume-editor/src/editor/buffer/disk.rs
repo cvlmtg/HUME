@@ -12,7 +12,7 @@ use hume_engine::pipeline::BufferId;
 
 use crate::editor::input_stack::{InputLayer, LayerKind};
 use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice, ConfirmModel};
-use crate::editor::{Editor, Mode, Severity};
+use crate::editor::{Editor, Severity};
 
 use super::Buffer;
 
@@ -230,26 +230,25 @@ impl Editor {
     /// `true` if opening a confirm right now would be safe, i.e. it can't
     /// steal a keystroke from something else already mid-interaction.
     ///
-    /// Mode: `Normal`/`Extend` unconditionally; `Command` only while
-    /// `dispatching_typed_command` is set — that is the difference between
-    /// `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as their own direct
-    /// result (safe: the command line was already submitted) and an ambient
-    /// check landing while the user is still typing an unsubmitted `:`/`/`
-    /// line (unsafe: would steal the next keystroke and hide the in-progress
-    /// line). `Insert`/`Search`/`Select` never allow one — nothing dispatches
-    /// a command under those modes, so there's no legitimate case to carve
-    /// out, only live typing to protect.
-    ///
-    /// Overlays: the picker is mode-agnostic (opens from Normal, same as a
+    /// Top-is-`Base`: `Insert`/`Command`/`Search`/`Sift`/`Prompt` are each
+    /// their own `LayerKind` now, so "top of the stack is `Base`" already
+    /// means "Normal or Extend, no mode layer, no overlay" in one check —
+    /// it's both the mode gate and the overlay gate at once. That is the
+    /// difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as
+    /// their own direct result (safe: `execute_command` truncates the
+    /// `Command` layer *before* running the command body — §2.7 — so top is
+    /// already `Base` again by the time a native command like `:e` could
+    /// open a confirm) and an ambient check landing while the user is still
+    /// typing an unsubmitted `:`/`/` line (unsafe: top is still `Command`/
+    /// `Search`, would steal the next keystroke and hide the in-progress
+    /// line). The picker is mode-agnostic (opens from Normal, same as a
     /// confirm) and the menu/drawer only open from Normal/Extend too — so
-    /// mode alone doesn't rule out a live overlay underneath. The confirm
-    /// intercept sits above all three (`mappings/mod.rs`), so without this
-    /// check an ambient trigger could silently steal every key from a picker
-    /// still on screen — one modal owner at a time. A confirm already open is
-    /// one of those owners itself: opening a second would replace the
-    /// first's model outright, retiring an unanswered question and
-    /// re-pointing the next keystroke at a different action than the one on
-    /// screen when the user started reaching for it. `Editor::enter_buffer_disk_check`
+    /// without this check an ambient trigger could silently steal every key
+    /// from a picker still on screen — one modal owner at a time. A confirm
+    /// already open is one of those owners itself: opening a second would
+    /// replace the first's model outright, retiring an unanswered question
+    /// and re-pointing the next keystroke at a different action than the one
+    /// on screen when the user started reaching for it. `Editor::enter_buffer_disk_check`
     /// retires a confirm that no longer targets the buffer focus just landed
     /// on before it ever reaches this check — for *every* switch, interactive
     /// or not (a Steel/LSP `switch-to-buffer!` included, now that both run
@@ -291,13 +290,7 @@ impl Editor {
     /// `handle_input` even assigns the flag, so the trigger never observes
     /// it either way.
     fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
-        let mode_ok = match self.state.mode() {
-            Mode::Normal | Mode::Extend => true,
-            Mode::Command => self.state.dispatching_typed_command,
-            Mode::Insert | Mode::Search | Mode::Sift => false,
-        };
-        mode_ok
-            && self.state.input.kind(self.state.input.top()) == Some(LayerKind::Base)
+        self.state.input.kind(self.state.input.top()) == Some(LayerKind::Base)
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying

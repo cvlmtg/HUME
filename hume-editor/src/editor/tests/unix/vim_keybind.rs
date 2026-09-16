@@ -140,14 +140,14 @@ fn vim_keybind_leaves_the_native_g_prefix_intact() {
 #[test]
 fn o_in_extend_mode_flips_selection() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
 
     ed.handle_key(key('o'));
 
     // anchor and head are swapped — selection is now backward.
     assert_eq!(state(&ed), "<[hell]-o\n");
     // extend mode is still active (flip doesn't exit it).
-    assert_eq!(ed.state.mode, Mode::Extend);
+    assert_eq!(ed.state.mode(), Mode::Extend);
 }
 
 // ── C / D / G ─────────────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ fn shift_d_deletes_to_eol() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("he-[l]>lo world\n");
     ed.handle_key(key('D'));
     assert_eq!(state(&ed), "he-[\n]>");
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn shift_c_changes_to_eol_and_enters_insert() {
     let (mut ed, _guard, _dir) = setup_vim_keybind_editor("he-[l]>lo world\n");
     ed.handle_key(key('C'));
     assert_eq!(ed.doc().text().to_string(), "he\n");
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 }
 
 /// With a real (multi-char) selection already in place, `C` falls back to the
@@ -190,7 +190,7 @@ fn shift_c_with_selection_copies_to_next_line() {
         "buffer must be unchanged — C must not edit text when the selection spans more than one char"
     );
     assert_eq!(state(&ed), "-[hello]>\n-[world]>\n");
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
 /// A count prefix always wins over the collapsed-cursor vim gesture, even on
@@ -217,7 +217,7 @@ fn shift_c_with_count_1_copies_instead_of_changing() {
         "original cursor stays at col 0 line 0"
     );
     assert!(heads.contains(&co(6)), "new cursor lands at col 0 line 1");
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
 }
 
 /// `3C` on a bare cursor forwards the count to `copy-selection-on-next-line`,
@@ -349,7 +349,7 @@ fn shift_c_with_change_to_eol_off_restores_copy_selection() {
         "hello\nworld\n",
         "buffer must be unchanged — C must not edit text when change-to-eol 'off drops the vim override"
     );
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
 
     let heads: Vec<_> = ed
         .current_selections()
@@ -400,7 +400,7 @@ fn shift_c_with_change_to_eol_on_ignores_selection_width() {
         "\nworld\n",
         "change-to-eol 'on must change to EOL even with a real selection active"
     );
-    assert_eq!(ed.state.mode, Mode::Insert);
+    assert_eq!(ed.state.mode(), Mode::Insert);
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────────

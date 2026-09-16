@@ -305,9 +305,10 @@ impl Editor {
         clear_completion_menu(&mut self.state, Some(&mut self.lsp));
     }
 
-    /// Consumes `set_mode`'s deferred dismissal, if one is pending — called
-    /// at every chokepoint between "a mode change could have happened" and
-    /// "the next render" (see the flag's own doc comment on `EditorState`).
+    /// Consumes `EditorState::tear_down`'s deferred dismissal, if one is
+    /// pending — called at every chokepoint between "a mode change could
+    /// have happened" and "the next render" (see the flag's own doc
+    /// comment on `EditorState`).
     pub(in crate::editor) fn take_pending_lsp_completion_dismiss(&mut self) {
         if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
             self.clear_completion_menu();

@@ -47,8 +47,8 @@ fn tab_completes_set_global_theme_value() {
 
     let state = ed
         .state
-        .minibuf_completion
-        .as_ref()
+        .input
+        .minibuf_completion()
         .expect("theme value should open a popup (>=2 candidates)");
     let names: Vec<&str> = state
         .candidates

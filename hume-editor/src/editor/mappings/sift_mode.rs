@@ -1,30 +1,35 @@
 use termina::event::KeyEvent;
 
+use super::super::Editor;
+use super::super::input_stack::LayerRef;
 use super::super::minibuf::MiniBufferEvent;
-use super::super::{Editor, Mode};
 use hume_ops::search::compile_search_regex;
 use hume_ops::selection_cmd::sift_matches_within;
 
 impl Editor {
     // ── Sift mode (s) ─────────────────────────────────────────────────────────
 
-    pub(super) fn handle_sift(&mut self, key: KeyEvent) {
-        let event = match self.state.minibuf.as_mut() {
+    pub(super) fn handle_sift(&mut self, r: LayerRef, key: KeyEvent) {
+        let event = match self.state.input.minibuf_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
         match event {
-            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => self.cancel_sift(),
+            MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
+                self.state.truncate_layers(&self.view, r);
+            }
             MiniBufferEvent::Confirm(_) => {
-                // Keep the selections that live preview already set.
+                // Keep the selections that live preview already set. D9: the
+                // `Confirm` arm clears its own stash before truncating, so
+                // teardown's `Sift` arm (which would otherwise restore it)
+                // finds nothing to do.
                 let pid = self.state.focus.id();
                 self.state.panes.transient[pid].pre_sift_sels = None;
                 // Do NOT write to the search register or clear search state —
                 // sift-within is a selection op, not a search. The previous
                 // search pattern and its highlights should be preserved so that
                 // n/N continues to navigate the original search.
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
+                self.state.truncate_layers(&self.view, r);
             }
             MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
                 // Restore original selections when pattern is fully erased.
@@ -40,22 +45,10 @@ impl Editor {
         }
     }
 
-    /// Cancel sift mode: restore original selections, return to Normal.
-    fn cancel_sift(&mut self) {
-        let pid = self.state.focus.id();
-        if let Some(sels) = self.state.panes.transient[pid].pre_sift_sels.take() {
-            self.set_current_selections(sels);
-        }
-        // Do not clear search state — the previous search should survive a
-        // cancelled sift-within.
-        self.set_mode(Mode::Normal);
-        self.close_minibuf();
-    }
-
     /// Recompile the regex and replace selections with matches within the
     /// original selections. Called on every keystroke in Sift mode.
     pub(super) fn update_live_sift(&mut self) {
-        let pattern = match self.state.minibuf.as_ref() {
+        let pattern = match self.state.input.minibuf() {
             Some(mb) if !mb.input.is_empty() => mb.input.clone(),
             _ => return,
         };

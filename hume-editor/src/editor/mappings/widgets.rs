@@ -5,9 +5,9 @@
 
 use termina::event::{KeyCode, Modifiers};
 
+use super::super::Editor;
 use super::super::input_stack::{InputEvent, InputLayer, LayerRef};
 use super::super::overlay_models::ConfirmAction;
-use super::super::{Editor, Mode};
 
 impl Editor {
     /// Handles one key while a native confirm overlay
@@ -68,16 +68,13 @@ impl Editor {
     /// closes the menu (with a `#f` callback) *and* falls through to normal
     /// dispatch this same call.
     ///
-    /// Keeps its own `Normal | Extend` mode gate rather than relying on an
-    /// opener-side check: a non-matching mode falls straight through,
-    /// leaving the menu open and inert underneath whatever mode-layer
-    /// handling runs instead.
+    /// No mode gate of its own: `show-menu!` only pushes with the mode
+    /// layer at `Base` (D7's mode-layer-race check, `host_impl/ui.rs`), and
+    /// `push_mode_layer` always pushes a new mode layer *above* whatever
+    /// overlay sits on `Base` — so a `Menu` layer is dispatch's top only
+    /// while the mode layer beneath it is still `Base`.
     pub(super) fn menu_input(&mut self, r: LayerRef, ev: InputEvent) {
         let InputEvent::Key(key) = ev;
-        if !matches!(self.state.mode(), Mode::Normal | Mode::Extend) {
-            self.fall_through(r, InputEvent::Key(key));
-            return;
-        }
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 let menu = self
@@ -133,14 +130,9 @@ impl Editor {
     /// leaving the drawer open while focus moves to whatever the fallen-
     /// through key does (Helix-style browse-while-editing).
     ///
-    /// Same `Normal | Extend` mode gate as [`Self::menu_input`], for the
-    /// same reason.
+    /// No mode gate of its own — same reasoning as [`Self::menu_input`].
     pub(super) fn drawer_input(&mut self, r: LayerRef, ev: InputEvent) {
         let InputEvent::Key(key) = ev;
-        if !matches!(self.state.mode(), Mode::Normal | Mode::Extend) {
-            self.fall_through(r, InputEvent::Key(key));
-            return;
-        }
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 let drawer = self

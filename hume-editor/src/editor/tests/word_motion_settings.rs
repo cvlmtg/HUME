@@ -161,12 +161,12 @@ fn MM_with_setting_off_matches_miW() {
 #[test]
 fn mm_extend_mode_matches_maw_extend() {
     let mut ed = editor_from("one -[t]>wo three\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.feed_keys([key('m'), key('m')]);
     let mm_state = state(&ed);
 
     let mut ed2 = editor_from("one -[t]>wo three\n");
-    ed2.state.mode = Mode::Extend;
+    ed2.state.input.set_extend(true);
     ed2.feed_keys([key('m'), key('a'), key('w')]);
     assert_eq!(
         mm_state,
@@ -179,12 +179,12 @@ fn mm_extend_mode_matches_maw_extend() {
 #[allow(non_snake_case)]
 fn MM_extend_mode_matches_maW_extend() {
     let mut ed = editor_from("one.zero -[t]>wo.zero three\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     ed.feed_keys([key('M'), key('M')]);
     let mm_state = state(&ed);
 
     let mut ed2 = editor_from("one.zero -[t]>wo.zero three\n");
-    ed2.state.mode = Mode::Extend;
+    ed2.state.input.set_extend(true);
     ed2.feed_keys([key('m'), key('a'), key('W')]);
     assert_eq!(
         mm_state,

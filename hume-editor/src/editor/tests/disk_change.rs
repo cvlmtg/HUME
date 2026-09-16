@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
+use crate::editor::input_stack::InputLayer;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
@@ -244,7 +245,12 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 #[test]
 fn change_detected_mid_insert_warns_instead_of_prompting() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    ed.state.mode = Mode::Insert;
+    // Bare `push`, not `begin_insert_session` — this test only needs
+    // `mode()` to read `Insert` for the gate check below, not a real
+    // insert session (which would need a matching `end_insert_session` to
+    // avoid `commit_edit_group_current` panicking on a group that was
+    // never opened).
+    ed.state.input.push(InputLayer::Insert);
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -262,7 +268,10 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     // Back in Normal, only a buffer-enter check reopens the deferred prompt
     // — same deferral rule as a non-focused buffer's warning (see
     // `deferred_change_on_non_focused_buffer_prompts_on_buffer_enter`).
-    ed.state.mode = Mode::Normal;
+    // Bare `truncate`, matching the bare `push` above — no teardown to run
+    // for a layer that was never really "entered".
+    let insert_layer = ed.state.input.top();
+    ed.state.input.truncate(insert_layer);
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     assert!(
         ed.state.input.confirm().is_some(),
@@ -379,7 +388,7 @@ fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.doc().is_disk_stale());
     assert_eq!(
-        ed.state.mode,
+        ed.state.mode(),
         Mode::Search,
         "the '/' must still open search"
     );

@@ -1,33 +1,26 @@
 use termina::event::KeyEvent;
 
+use super::super::Editor;
 use super::super::commands::typed_goto_line;
+use super::super::input_stack::LayerRef;
 use super::super::minibuf::MiniBufferEvent;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::registry::TypedBody;
-use super::super::{Editor, Mode};
 use crate::editor::error::CommandError;
 
 impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────
 
-    pub(super) fn handle_command(&mut self, key: KeyEvent) {
-        let event = match self.state.minibuf.as_mut() {
+    pub(super) fn handle_command(&mut self, r: LayerRef, key: KeyEvent) {
+        let event = match self.state.input.minibuf_mut() {
             Some(mb) => mb.handle_key(key),
             None => return,
         };
-        if self.state.config.steel_prompt_callback.is_some() {
-            self.handle_steel_prompt_event(event);
-            return;
-        }
         match event {
-            MiniBufferEvent::Cancel => {
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
-            }
-            // Empty Enter: dismiss silently without dispatching.
-            MiniBufferEvent::ConfirmEmpty => {
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
+            MiniBufferEvent::Cancel
+            | MiniBufferEvent::ConfirmEmpty
+            | MiniBufferEvent::BackspaceOnEmpty => {
+                self.state.truncate_layers(&self.view, r);
             }
             MiniBufferEvent::Confirm(_) => {
                 // If the selected completion candidate is a directory
@@ -37,38 +30,39 @@ impl Editor {
                 // directory's children.
                 if self
                     .state
-                    .minibuf_completion
-                    .as_ref()
+                    .input
+                    .minibuf_completion()
                     .and_then(|s| s.candidates.get(s.selected))
                     .is_some_and(|c| c.replacement.ends_with('/'))
                 {
-                    self.state.minibuf_completion = None;
+                    if let Some(slot) = self.state.input.minibuf_completion_mut() {
+                        *slot = None;
+                    }
                     self.complete_minibuf(false);
                     return;
                 }
-                // Record before dispatch so failed/unknown commands are recallable.
-                if let Some(mb) = self.state.minibuf.as_ref() {
-                    let raw = mb.input.clone();
-                    self.state.history.get_mut(HistoryKind::Command).push(raw);
-                }
-                // Marks this dispatch as a fully-submitted command rather
-                // than the user still typing — see the field doc. Cleared
-                // immediately after; `execute_command` doesn't leave early.
-                self.state.dispatching_typed_command = true;
-                self.execute_command();
-                self.state.dispatching_typed_command = false;
-                // A `:command` whose body calls `(prompt! …)` leaves a
-                // new minibuffer session open — closing it here would stomp
-                // that session before the user ever sees it.
-                if self.state.config.steel_prompt_callback.is_none() {
-                    self.set_mode(Mode::Normal);
-                    self.close_minibuf();
-                }
-            }
-            // Backspace on already-empty input: dismiss.
-            MiniBufferEvent::BackspaceOnEmpty => {
-                self.set_mode(Mode::Normal);
-                self.close_minibuf();
+                // Record into history and extract the input before
+                // truncating — the `Command` layer (and the minibuf it
+                // owns) is gone by the time `execute_command` runs, so the
+                // string has to be taken out first, per truncate-before-
+                // execute (§2.7): the body below runs with the mode layer
+                // already back at `Base`, so a `:cmd` that enters Insert
+                // stays in Insert instead of being stomped back to Normal,
+                // and a body calling `(prompt! …)` pushes `Prompt` on a
+                // clean stack with no special case needed.
+                let raw = self
+                    .state
+                    .input
+                    .minibuf()
+                    .map(|mb| mb.input.clone())
+                    .unwrap_or_default();
+                self.state
+                    .history
+                    .get_mut(HistoryKind::Command)
+                    .push(raw.clone());
+                let input = raw.trim().to_owned();
+                self.state.truncate_layers(&self.view, r);
+                self.execute_command(&input);
             }
             // Any edit, cursor move, or Backspace that clears to empty dismisses the
             // completion popup and demotes any active history recall back to scratch.
@@ -78,7 +72,9 @@ impl Editor {
             MiniBufferEvent::EmptiedByBackspace
             | MiniBufferEvent::Edited
             | MiniBufferEvent::CursorMoved => {
-                self.state.minibuf_completion = None;
+                if let Some(slot) = self.state.input.minibuf_completion_mut() {
+                    *slot = None;
+                }
                 self.state
                     .history
                     .get_mut(HistoryKind::Command)
@@ -88,27 +84,35 @@ impl Editor {
                 self.complete_minibuf(reverse);
             }
             MiniBufferEvent::HistoryPrev => {
-                self.state.minibuf_completion = None;
+                if let Some(slot) = self.state.input.minibuf_completion_mut() {
+                    *slot = None;
+                }
                 self.recall_history(HistoryKind::Command, HistoryDir::Prev);
             }
             MiniBufferEvent::HistoryNext => {
-                self.state.minibuf_completion = None;
+                if let Some(slot) = self.state.input.minibuf_completion_mut() {
+                    *slot = None;
+                }
                 self.recall_history(HistoryKind::Command, HistoryDir::Next);
             }
             MiniBufferEvent::Ignored => {}
         }
     }
 
-    /// Routes a Command-mode minibuffer event for a Steel `(prompt! …)`
-    /// session rather than a `:` command line — no history, no completion,
-    /// no directory-descend special case. Exactly one `(callback
-    /// text-or-#f)` call fires, on Confirm or on any of the cancel paths.
-    fn handle_steel_prompt_event(&mut self, event: MiniBufferEvent) {
+    /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session
+    /// rather than a `:` command line — no history, no completion, no
+    /// directory-descend special case. Exactly one `(callback text-or-#f)`
+    /// call fires, on Confirm or on any of the cancel paths.
+    pub(super) fn handle_steel_prompt_key(&mut self, r: LayerRef, key: KeyEvent) {
+        let event = match self.state.input.minibuf_mut() {
+            Some(mb) => mb.handle_key(key),
+            None => return,
+        };
         match event {
             MiniBufferEvent::Cancel
             | MiniBufferEvent::ConfirmEmpty
-            | MiniBufferEvent::BackspaceOnEmpty => self.finish_steel_prompt(None),
-            MiniBufferEvent::Confirm(text) => self.finish_steel_prompt(Some(text)),
+            | MiniBufferEvent::BackspaceOnEmpty => self.finish_steel_prompt(r, None),
+            MiniBufferEvent::Confirm(text) => self.finish_steel_prompt(r, Some(text)),
             // Plain editing (char typed/deleted, cursor moved) is already
             // applied by `MiniBuffer::handle_key` — nothing further to do.
             // Tab/Up/Down are no-ops here (no completion, no history for a
@@ -123,9 +127,12 @@ impl Editor {
         }
     }
 
-    /// Queues exactly one `(callback text-or-#f)` call and closes the prompt.
-    fn finish_steel_prompt(&mut self, text: Option<String>) {
-        let Some(callback) = self.state.config.steel_prompt_callback.take() else {
+    /// Queues exactly one `(callback text-or-#f)` call and truncates the
+    /// `Prompt` layer (`r`) — the callback is cloned out (cheap: `SteelVal`
+    /// is reference-counted) before truncating, since teardown never fires
+    /// a Steel callback itself (D9).
+    fn finish_steel_prompt(&mut self, r: LayerRef, text: Option<String>) {
+        let Some(callback) = self.state.input.prompt_callback().cloned() else {
             return;
         };
         let arg = match text {
@@ -133,19 +140,7 @@ impl Editor {
             None => steel::rvals::SteelVal::BoolV(false),
         };
         self.state.queue_steel_call(callback, vec![arg]);
-        self.set_mode(Mode::Normal);
-        self.close_minibuf();
-    }
-
-    /// Close the minibuffer and clear any active completion session.
-    ///
-    /// Visible crate-editor-wide (not just `mappings`): `Editor::
-    /// reset_config_state` calls this directly when a `(prompt! …)` session
-    /// is open at reload time, reusing this instead of duplicating its body.
-    pub(in crate::editor) fn close_minibuf(&mut self) {
-        self.state.minibuf = None;
-        self.state.minibuf_completion = None;
-        self.state.history.begin_session_all();
+        self.state.truncate_layers(&self.view, r);
     }
 
     /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
@@ -154,8 +149,8 @@ impl Editor {
     pub(super) fn recall_history(&mut self, kind: HistoryKind, dir: HistoryDir) {
         let current = self
             .state
-            .minibuf
-            .as_ref()
+            .input
+            .minibuf()
             .map(|m| m.input.as_str())
             .unwrap_or("");
         let text = match dir {
@@ -163,7 +158,7 @@ impl Editor {
             HistoryDir::Next => self.state.history.get_mut(kind).next(),
         };
         if let Some(text) = text
-            && let Some(mb) = self.state.minibuf.as_mut()
+            && let Some(mb) = self.state.input.minibuf_mut()
         {
             mb.input = text;
             mb.cursor = mb.input.len();
@@ -181,19 +176,23 @@ impl Editor {
     /// forward (or backward when `reverse`) and apply the new candidate.
     fn complete_minibuf(&mut self, reverse: bool) {
         // If completion is already open, cycle to the next candidate.
-        if let Some(ref mut state) = self.state.minibuf_completion {
-            let n = state.candidates.len();
+        if let Some(slot) = self.state.input.minibuf_completion_mut()
+            && let Some(completion) = slot.as_mut()
+        {
+            let n = completion.candidates.len();
             // current_span() reflects what's currently in the input (based on the
             // previously-selected candidate), so it must be read before advancing
-            // state.selected — after the update, candidates[selected] is the new one.
-            let span = state.current_span();
-            state.selected = if reverse {
-                state.selected.checked_sub(1).unwrap_or(n - 1)
+            // completion.selected — after the update, candidates[selected] is the new one.
+            let span = completion.current_span();
+            completion.selected = if reverse {
+                completion.selected.checked_sub(1).unwrap_or(n - 1)
             } else {
-                (state.selected + 1) % n
+                (completion.selected + 1) % n
             };
-            let replacement = state.candidates[state.selected].replacement.clone();
-            if let Some(mb) = &mut self.state.minibuf {
+            let replacement = completion.candidates[completion.selected]
+                .replacement
+                .clone();
+            if let Some(mb) = self.state.input.minibuf_mut() {
                 mb.input.replace_range(span.clone(), &replacement);
                 mb.cursor = span.start + replacement.len();
             }
@@ -205,14 +204,14 @@ impl Editor {
             return;
         }
 
-        // First Tab: extract input context without holding &mut self.state.minibuf.
-        let (input, cursor) = match &self.state.minibuf {
+        // First Tab: extract input context without holding &mut self.state.input.
+        let (input, cursor) = match self.state.input.minibuf() {
             Some(mb) => (mb.input.clone(), mb.cursor),
             None => return,
         };
 
         // Only complete command-mode minibuffers.
-        if self.state.minibuf.as_ref().map(|mb| mb.prompt.as_str()) != Some(":") {
+        if self.state.input.minibuf().map(|mb| mb.prompt.as_str()) != Some(":") {
             return;
         }
 
@@ -280,7 +279,7 @@ impl Editor {
         if candidates.len() == 1 {
             // Single match: apply silently without opening a popup.
             let replacement = candidates.remove(0).replacement;
-            if let Some(mb) = &mut self.state.minibuf {
+            if let Some(mb) = self.state.input.minibuf_mut() {
                 mb.input.replace_range(span_start..cursor, &replacement);
                 mb.cursor = span_start + replacement.len();
             }
@@ -289,33 +288,29 @@ impl Editor {
 
         // Two or more: open popup with the first candidate selected.
         let replacement = candidates[0].replacement.clone();
-        if let Some(mb) = &mut self.state.minibuf {
+        if let Some(mb) = self.state.input.minibuf_mut() {
             mb.input.replace_range(span_start..cursor, &replacement);
             mb.cursor = span_start + replacement.len();
         }
         let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
             candidates.iter().map(|c| c.display.clone()).collect(),
         ));
-        self.state.minibuf_completion = Some(MinibufCompletionState {
-            candidates,
-            selected: 0,
-            span_start,
-            rows,
-        });
+        if let Some(slot) = self.state.input.minibuf_completion_mut() {
+            *slot = Some(MinibufCompletionState {
+                candidates,
+                selected: 0,
+                span_start,
+                rows,
+            });
+        }
     }
 
-    /// Execute the command currently in the mini-buffer.
-    ///
-    /// Called just before the mini-buffer is cleared and mode returns to Normal.
-    fn execute_command(&mut self) {
-        let input = self
-            .state
-            .minibuf
-            .as_ref()
-            .map(|m| m.input.trim().to_owned())
-            .unwrap_or_default();
-
-        let (cmd, force, arg) = parse_typed_command(&input);
+    /// Execute a typed command line. `input` is the already-trimmed text
+    /// the `Command` layer's minibuf held at Confirm — the layer (and its
+    /// minibuf) is already gone by the time this runs, per truncate-
+    /// before-execute (§2.7).
+    fn execute_command(&mut self, input: &str) {
+        let (cmd, force, arg) = parse_typed_command(input);
 
         // Bare line number `:42` — shorthand for `:goto 42`.
         // The parser leaves `cmd = ""` for digit-only input (digits are excluded

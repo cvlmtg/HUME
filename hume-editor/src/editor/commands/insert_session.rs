@@ -6,10 +6,10 @@ use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
 
+use crate::editor::EditorState;
 use crate::editor::buffer::LastInsert;
 use crate::editor::pane_state::TypedRun;
 use crate::editor::replay::InsertSession;
-use crate::editor::{EditorState, Mode};
 use hume_ops::edit::clear_blank_line_indent;
 
 use super::{
@@ -199,11 +199,32 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
             keystrokes: Vec::new(),
         });
     }
-    state.set_mode(Mode::Insert);
+    state.push_mode_layer(view, crate::editor::input_stack::InputLayer::Insert);
 }
 
-/// Exit Insert mode and finalise the undo/repeat state.
+/// Exit Insert mode: truncates the `Insert` layer, running
+/// [`tear_down_insert`] via `EditorState::tear_down`.
 pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
+    let r = state.input.mode_layer();
+    state.truncate_layers(view, r);
+}
+
+/// The bookkeeping that runs when the `Insert` layer leaves the stack, for
+/// any reason (Esc, Ctrl-c, a mouse click, a Steel-triggered mode change) —
+/// called from `EditorState::tear_down`'s `Insert` arm, never directly.
+/// Finalises the undo/repeat state; does not itself touch the stack (the
+/// truncate that got here already removed the layer).
+pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &EngineView) {
+    // Any exit from Insert dismisses an open completion session —
+    // `handle_completion_key`'s own `Esc`/Enter paths never reach here
+    // (they return before the trie's `exit-insert` runs), so this catches
+    // every *other* way Insert ends (Ctrl-c, a mouse click, a
+    // Steel-triggered mode change) while a session happens to be open.
+    // Deferred: the session lives on `LspState`, which `tear_down` (only
+    // `&mut EditorState`) can't reach — `Editor::
+    // take_pending_lsp_completion_dismiss` consumes this at every
+    // chokepoint before the next render.
+    state.lsp_completion_dismiss_pending = true;
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
     // does in `insert_newline_indent`. Joins the still-open session group —
@@ -288,7 +309,6 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
             })
         });
     }
-    state.set_mode(Mode::Normal);
 }
 
 /// The selected typed span `(anchor, end]` — inclusive of `end` — for one

@@ -45,9 +45,9 @@ fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     // empty-after-flatten guard must catch that.
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    assert_eq!(ed.state.mode, Mode::Command);
+    assert_eq!(ed.state.mode(), Mode::Command);
     paste(&mut ed, "\n\n");
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
 }
 
 // ── Insert mode ───────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ fn insert_mode_paste_with_embedded_escape_sequence_inserts_literally() {
 #[test]
 fn normal_mode_paste_replaces_selection_in_one_undo_step() {
     let mut ed = editor_from("-[hell]>o\n");
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     paste(&mut ed, "xyz");
     assert_eq!(ed.doc().text().to_string(), "xyzo\n");
 
@@ -140,7 +140,7 @@ fn extend_mode_paste_replaces_selection() {
     // The paste dispatcher only branches on `self.state.mode()`, not on how
     // Extend was entered — set it directly.
     let mut ed = editor_from("-[hell]>o\n");
-    ed.state.mode = Mode::Extend;
+    ed.state.input.set_extend(true);
     paste(&mut ed, "xyz");
     assert_eq!(ed.doc().text().to_string(), "xyzo\n");
 }
@@ -168,16 +168,16 @@ fn normal_mode_paste_replaces_every_selection_in_a_multi_cursor_selection() {
 fn command_mode_paste_flattens_trailing_and_interior_newlines() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    assert_eq!(ed.state.mode, Mode::Command);
+    assert_eq!(ed.state.mode(), Mode::Command);
     paste(&mut ed, "foo\nbar\n");
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo bar");
+    assert_eq!(ed.state.minibuf().unwrap().input, "foo bar");
 }
 
 #[test]
 fn search_mode_paste_triggers_live_search() {
     let mut ed = editor_from("-[h]>ello world\n");
     ed.handle_key(key('/'));
-    assert_eq!(ed.state.mode, Mode::Search);
+    assert_eq!(ed.state.mode(), Mode::Search);
     paste(&mut ed, "world");
     // Live search already moved the selection onto the match.
     assert_eq!(state(&ed), "hello -[world]>\n");
@@ -187,13 +187,13 @@ fn search_mode_paste_triggers_live_search() {
 fn sift_mode_paste_triggers_live_sift() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     ed.handle_key(key('s'));
-    assert_eq!(ed.state.mode, Mode::Sift);
+    assert_eq!(ed.state.mode(), Mode::Sift);
     paste(&mut ed, "ab");
     // Live sift-within already narrowed to the two "ab" matches within the
     // original selection — same `on_minibuf_paste_edited` follow-up a typed
     // pattern would trigger.
     assert_eq!(ed.current_selections().len(), 2);
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "ab");
+    assert_eq!(ed.state.minibuf().unwrap().input, "ab");
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────

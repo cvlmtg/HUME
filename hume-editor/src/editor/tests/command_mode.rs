@@ -15,10 +15,48 @@ fn open_second_file_buffer(ed: &mut Editor) -> BufferId {
 fn colon_enters_command_mode() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    assert_eq!(ed.state.mode, Mode::Command);
-    assert!(ed.state.minibuf.is_some());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().prompt, ":");
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.mode(), Mode::Command);
+    assert!(ed.state.minibuf().is_some());
+    assert_eq!(ed.state.minibuf().unwrap().prompt, ":");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
+}
+
+/// Truncate-before-execute (§2.7): a `:cmd` body runs with the `Command`
+/// layer already gone (truncated back to `Base` before `execute_command`
+/// is called), so a body that itself pushes `Insert` lands on a clean
+/// stack and stays there — Enter no longer stomps it back to Normal the
+/// way the old execute-then-close order did.
+#[test]
+fn typed_command_body_entering_insert_stays_in_insert() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda () (call! "insert-before")))"#,
+    );
+
+    type_cmd(&mut ed, ":go");
+
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "the command body's own insert-before must stick, not get stomped \
+         back to Normal by the command line's own close"
+    );
+    assert!(
+        ed.state.minibuf().is_none(),
+        "the Command layer must be gone"
+    );
+
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc());
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "Esc must still end Insert cleanly"
+    );
+    assert_eq!(ed.doc().text().to_string(), "Xabc\n");
 }
 
 #[test]
@@ -27,8 +65,8 @@ fn esc_cancels_command_mode() {
     ed.handle_key(key(':'));
     ed.handle_key(key('q'));
     ed.handle_key(key_esc());
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
     assert!(!ed.state.should_quit);
 }
 
@@ -37,8 +75,8 @@ fn backspace_on_empty_input_cancels() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]
@@ -48,15 +86,12 @@ fn backspace_clearing_last_char_keeps_minibuf_open() {
     ed.handle_key(key('l'));
     ed.handle_key(key_backspace());
     // First Backspace clears the single char but leaves the minibuffer open.
-    assert_eq!(ed.state.mode, Mode::Command);
-    assert_eq!(
-        ed.state.minibuf.as_ref().expect("minibuf still open").input,
-        ""
-    );
+    assert_eq!(ed.state.mode(), Mode::Command);
+    assert_eq!(ed.state.minibuf().expect("minibuf still open").input, "");
     // Second Backspace (cursor already at 0) dismisses.
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]
@@ -70,15 +105,11 @@ fn backspace_at_cursor_start_with_nonempty_input_is_noop() {
     for _ in 0..5 {
         ed.handle_key(key_left());
     }
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().cursor, 0);
+    assert_eq!(ed.state.minibuf().unwrap().cursor, 0);
     // Backspace at start of non-empty input must be a no-op.
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.mode, Mode::Command, "minibuf must stay open");
-    let mb = ed
-        .state
-        .minibuf
-        .as_ref()
-        .expect("minibuf must still be present");
+    assert_eq!(ed.state.mode(), Mode::Command, "minibuf must stay open");
+    let mb = ed.state.minibuf().expect("minibuf must still be present");
     assert_eq!(mb.input, "hello", "input must be unchanged");
     assert_eq!(mb.cursor, 0, "cursor must remain at start");
 }
@@ -90,7 +121,7 @@ fn backspace_removes_last_char() {
     ed.handle_key(key('w'));
     ed.handle_key(key('q'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "w");
+    assert_eq!(ed.state.minibuf().unwrap().input, "w");
 }
 
 #[test]
@@ -100,8 +131,8 @@ fn colon_q_enter_quits() {
     ed.handle_key(key('q'));
     ed.handle_key(key_enter());
     assert!(ed.state.should_quit);
-    assert_eq!(ed.state.mode, Mode::Normal);
-    assert!(ed.state.minibuf.is_none());
+    assert_eq!(ed.state.mode(), Mode::Normal);
+    assert!(ed.state.minibuf().is_none());
 }
 
 #[test]
@@ -122,7 +153,7 @@ fn colon_w_no_path_sets_error() {
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
     assert!(!ed.state.should_quit);
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(ed.state.status_msg.as_deref(), Some("no file name"));
 }
 
@@ -134,7 +165,7 @@ fn colon_w_writes_file() {
     ed.handle_key(key('w'));
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
         ed.state
             .status_msg
@@ -837,8 +868,7 @@ fn open_and_up(ed: &mut Editor) -> String {
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
     ed.state
-        .minibuf
-        .as_ref()
+        .minibuf()
         .map(|m| m.input.clone())
         .unwrap_or_default()
 }
@@ -857,9 +887,9 @@ fn second_up_recalls_older() {
     submit(&mut ed, "q");
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf().unwrap().input, "q");
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     // Cancel to leave normal mode.
     ed.handle_key(key_esc());
 }
@@ -873,7 +903,7 @@ fn down_walks_forward() {
     ed.handle_key(key_up()); // "q"
     ed.handle_key(key_up()); // "messages"
     ed.handle_key(key_down()); // back to "q"
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf().unwrap().input, "q");
     ed.handle_key(key_esc());
 }
 
@@ -887,8 +917,8 @@ fn down_past_newest_restores_scratch() {
     } // in-progress "foo"
     ed.handle_key(key_up()); // stash "foo", show "messages"
     ed.handle_key(key_down()); // past newest → restore "foo"
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo");
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().cursor, 3);
+    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf().unwrap().cursor, 3);
     ed.handle_key(key_esc());
 }
 
@@ -901,7 +931,7 @@ fn down_without_prior_up_is_noop() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_down()); // not navigating — no-op
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
     ed.handle_key(key_esc());
 }
 
@@ -910,7 +940,7 @@ fn empty_history_up_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // empty history — input unchanged
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
     ed.handle_key(key_esc());
 }
 
@@ -921,7 +951,7 @@ fn at_oldest_up_is_noop() {
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // lands on "messages"
     ed.handle_key(key_up()); // already at oldest — no change
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
 
@@ -932,9 +962,9 @@ fn consecutive_duplicate_not_recorded() {
     submit(&mut ed, "messages"); // duplicate — should be skipped
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // should land on "messages"
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     ed.handle_key(key_up()); // at oldest — no older entry
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     ed.handle_key(key_esc());
 }
 
@@ -954,7 +984,7 @@ fn empty_confirm_not_recorded() {
     ed.handle_key(key_enter()); // ConfirmEmpty
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // no entry to recall — input stays empty
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().input, "");
     ed.handle_key(key_esc());
 }
 
@@ -968,17 +998,17 @@ fn edit_after_up_demotes_scratch() {
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // empty prefix — recall newest: "messages"
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
     // Type a char — demotes history navigation back to scratch.
     ed.handle_key(key('x'));
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesx");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messagesx");
     // Up should now re-stash "messagesx" and jump to the only entry that
     // starts with it: "messagesxtra".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesxtra");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messagesxtra");
     // Down should restore the stashed "messagesx".
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf.as_ref().unwrap().input, "messagesx");
+    assert_eq!(ed.state.minibuf().unwrap().input, "messagesx");
     ed.handle_key(key_esc());
 }
 
@@ -1004,7 +1034,7 @@ fn history_up_clears_completion_popup() {
     // Completion may or may not be Some depending on candidates, but pressing
     // Up must clear it regardless.
     ed.handle_key(key_up());
-    assert!(ed.state.minibuf_completion.is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
     ed.handle_key(key_esc());
 }
 
@@ -1014,7 +1044,7 @@ fn cursor_is_at_end_after_recall() {
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    let mb = ed.state.minibuf.as_ref().unwrap();
+    let mb = ed.state.minibuf().unwrap();
     assert_eq!(mb.cursor, mb.input.len());
     ed.handle_key(key_esc());
 }
@@ -1045,8 +1075,8 @@ fn colon_enter_empty_silently_dismisses() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_enter());
-    assert_eq!(ed.state.mode, Mode::Normal, "must return to Normal mode");
-    assert!(ed.state.minibuf.is_none(), "minibuf must be closed");
+    assert_eq!(ed.state.mode(), Mode::Normal, "must return to Normal mode");
+    assert!(ed.state.minibuf().is_none(), "minibuf must be closed");
     assert!(
         ed.state.status_msg.is_none(),
         "must not show 'Unknown command', got: {:?}",
@@ -1085,7 +1115,7 @@ fn colon_capital_w_writes_file() {
     }
     ed.handle_key(key_enter());
 
-    assert_eq!(ed.state.mode, Mode::Normal);
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
         ed.state
             .status_msg
