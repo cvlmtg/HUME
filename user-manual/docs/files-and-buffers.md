@@ -19,7 +19,7 @@ Tab completion is available for file paths.
 
 ### External changes
 
-If something else changes a file you have open — another program, a formatter, `git checkout` — HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it.
+If something else changes a file you have open — another program, a formatter, `git checkout` — HUME notices the next time you switch back to its window, switch to that buffer, or run `:checktime`, and asks whether to reload. Answering yes replaces the buffer's content but keeps it undoable (`u` brings back what you had). Answering no leaves the buffer as-is; the file stays flagged as changed until you reload it or explicitly overwrite it. Any other key dismisses the prompt the same way and still does its usual job, so a keystroke aimed at the editor is never lost just because you didn't notice the prompt.
 
 The prompt only appears when it can't interrupt something else you're doing — while you're typing a command or search, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
 

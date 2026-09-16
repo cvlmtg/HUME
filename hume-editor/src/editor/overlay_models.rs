@@ -134,10 +134,13 @@ pub(in crate::editor) enum ConfirmAction {
 /// yes/no questions — disk-change reload is the first one.
 ///
 /// `choices[0]` is the accept choice — pressing its key runs `action`.
-/// Every other key, including `Esc` and every other listed choice, dismisses
-/// without running `action`. There is currently never more than one
-/// non-accept outcome ("keep" for the disk-change prompt), so this
-/// intentionally doesn't model per-choice actions beyond the first. No
+/// Every other listed choice dismisses without running `action`, doing
+/// whatever else its own key implies (`decline_disk_change` for "keep").
+/// There is currently never more than one non-accept outcome, so this
+/// intentionally doesn't model per-choice actions beyond the first. `Esc`
+/// and any listed choice's key are *consumed*; any other stray key also
+/// dismisses without answering but is left to fall through to normal
+/// dispatch (`Editor::handle_confirm_key`) rather than being swallowed. No
 /// separate view type: [`ConfirmModel::render_line`] is painted directly by
 /// `hume-editor`'s statusline — `pub(crate)`, not `pub(in crate::editor)`
 /// like every other type in this module, since the statusline lives at

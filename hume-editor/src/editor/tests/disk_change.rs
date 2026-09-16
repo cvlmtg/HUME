@@ -343,10 +343,9 @@ fn confirm_keep_choice_leaves_buffer_untouched_and_still_stale() {
     assert!(ed.doc().is_disk_stale());
 }
 
-/// Any key other than the accept key — not just the listed `k` — dismisses
-/// without reloading. This is the documented safe default.
+/// `Esc` dismisses without answering — neither reload nor decline.
 #[test]
-fn confirm_any_other_key_dismisses_without_reloading() {
+fn confirm_esc_dismisses_without_answering() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     rewrite_externally(&tmp, "HELLO!!\n");
     let bid = ed.focused_buffer_id();
@@ -357,6 +356,55 @@ fn confirm_any_other_key_dismisses_without_reloading() {
     assert!(ed.state.config.confirm.is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.doc().is_disk_stale());
+}
+
+/// A stray key that isn't `r`/`k`/`Esc` dismisses the confirm the same way,
+/// but — unlike `Esc` — is not swallowed: it still runs its own binding in
+/// the same dispatch. `/` opens the search line; a bug that ate the
+/// keystroke would leave the mode at `Normal` with the search line unopened.
+///
+/// Fail oracle: before the fall-through fix, `handle_confirm_key` consumed
+/// every key unconditionally, so the second assertion (`Mode::Search`) would
+/// fail — the `/` never reached `handle_normal`.
+#[test]
+fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    rewrite_externally(&tmp, "HELLO!!\n");
+    let bid = ed.focused_buffer_id();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    ed.handle_key(key('/'));
+
+    assert!(ed.state.config.confirm.is_none());
+    assert_eq!(ed.doc().text().to_string(), "hello\n");
+    assert!(ed.doc().is_disk_stale());
+    assert_eq!(
+        ed.state.mode,
+        Mode::Search,
+        "the '/' must still open search"
+    );
+}
+
+/// A choice key held with a modifier (`Ctrl-k`, the kitty one-shot extend
+/// for `move-up`) must not answer the prompt — only a bare `r`/`k` does.
+///
+/// Fail oracle: before the modifier gate, `key.code == KeyCode::Char('k')`
+/// matched regardless of `key.modifiers`, so `Ctrl-k` silently declined
+/// (`DiskState::Declined`) instead of falling through to `move-up`.
+#[test]
+fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    rewrite_externally(&tmp, "HELLO!!\n");
+    let bid = ed.focused_buffer_id();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+
+    ed.handle_key(key_ctrl('k'));
+
+    assert!(ed.state.config.confirm.is_none());
+    assert!(
+        matches!(ed.state.buffers.get(bid).disk_state, DiskState::Changed(_)),
+        "Ctrl-k must not decline — the choice match requires no modifiers"
+    );
 }
 
 /// Accepting the confirm after focus moved away from the target buffer
@@ -1055,9 +1103,10 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
 /// B's, and the first assertion below would fail.
 #[test]
 fn a_second_confirm_never_replaces_a_live_one() {
-    // Both buffers opened up front: once A's confirm is live, every key
-    // (including a typed `:e`) would be swallowed by the confirm intercept,
-    // so B has to already exist before that point.
+    // Both buffers opened up front: once A's confirm is live, the very
+    // first key of a typed `:e` would dismiss it (a stray key, not `r`/`k`)
+    // rather than opening B through the command line, so B has to already
+    // exist before that point.
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid_a = ed.focused_buffer_id();
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");

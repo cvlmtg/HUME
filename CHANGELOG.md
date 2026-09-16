@@ -22,6 +22,7 @@
 - Scrolling all the way to the end of a file with `Ctrl-d`/`PageDown`/the mouse wheel, then moving the cursor, no longer jumps the view — the last line now settles `scrolloff` rows above the bottom from the scroll itself, instead of only once an unrelated cursor movement corrected it.
 - `j`/`k` at the top or bottom of a file no longer leave a selection uncollapsed — a non-empty selection already touching the document's edge now collapses onto its head like it does everywhere else, instead of being left untouched.
 - `o`/`O` now carry the current line's indent onto the new line, matching Enter's auto-indent — previously they always opened at column 0.
+- The "file changed on disk" prompt no longer swallows a key that isn't `[r]eload`/`[k]eep`/`Esc` — it still dismisses the prompt, but the keystroke now also runs its own binding instead of vanishing (e.g. `/` now still opens search).
 
 ## [0.12.0] - 2026-09-08
 

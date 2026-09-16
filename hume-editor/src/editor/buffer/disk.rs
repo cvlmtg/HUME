@@ -364,9 +364,10 @@ impl Editor {
 
     /// Record that the user declined to reload `bid` for the disk change
     /// currently pending on it — the confirm's `[k]eep` choice specifically
-    /// (`handle_confirm_key` calls this only for that choice; `Esc` or any
-    /// other key dismisses the confirm without answering it, leaving the
-    /// question open for the next `BufferEnter`). Only meaningful while
+    /// (`handle_confirm_key` calls this only for that choice; `Esc` dismisses
+    /// the confirm without answering it, and so does any other stray key —
+    /// which then also runs its own binding — leaving the question open for
+    /// the next `BufferEnter`). Only meaningful while
     /// `disk_state` is still `Changed`; a state that moved on before the user
     /// answered (reload happened another way, the file reverted) has nothing
     /// to decline. `try_get`, not `get_mut`: same belt-and-braces as

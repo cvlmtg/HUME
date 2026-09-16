@@ -10,17 +10,25 @@ use super::super::overlay_models::ConfirmAction;
 
 impl Editor {
     /// Handles one key while a native confirm overlay
-    /// ([`crate::editor::overlay_models::ConfirmModel`]) is open. Always consumes —
-    /// full-modal, like the picker. `choices[0]`'s key runs `action`;
-    /// `choices[1]`'s key (currently always "keep", set by
-    /// `open_disk_change_confirm`) records an explicit decline
+    /// ([`crate::editor::overlay_models::ConfirmModel`]) is open. Returns `true` if
+    /// the key was consumed — `false` if it should still fall through to normal
+    /// dispatch this same call, mirroring [`Self::handle_menu_key`]'s stray-key
+    /// shape rather than the picker's full-modal one.
+    ///
+    /// `choices[0]`'s key runs `action`; `choices[1]`'s key (currently always
+    /// "keep", set by `open_disk_change_confirm`) records an explicit decline
     /// (`Editor::decline_disk_change`) so `check_buffer_disk_state` doesn't
-    /// reopen the same question for the same on-disk signature. Every other
-    /// key — `Esc`, or a stray keystroke that happens to land here — is a
-    /// plain dismissal: it answers neither choice, leaving the question open
-    /// for the next `BufferEnter`, exactly as if the confirm had never
-    /// opened.
-    pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) {
+    /// reopen the same question for the same on-disk signature. Both require
+    /// no modifiers — a modified key (`Ctrl-k`, the kitty one-shot extend for
+    /// `move-up`) was aimed at its own binding, not at this prompt, so it must
+    /// not be mistaken for a bare `k`. Every other key — `Esc`, or a stray
+    /// keystroke that happens to land here — is a plain dismissal: it answers
+    /// neither choice, leaving the question open for the next `BufferEnter`,
+    /// exactly as if the confirm had never opened. `Esc` is still consumed
+    /// (returns `true`); any other unmatched key falls through instead, so a
+    /// prompt the user didn't notice never eats a keystroke meant for the
+    /// editor (e.g. `/` opening search).
+    pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) -> bool {
         let confirm = self
             .state
             .config
@@ -28,10 +36,14 @@ impl Editor {
             .take()
             .expect("checked by the caller above");
 
-        let matched = confirm
-            .choices
-            .iter()
-            .position(|c| key.code == KeyCode::Char(c.key));
+        let matched = (key.modifiers == Modifiers::NONE)
+            .then(|| {
+                confirm
+                    .choices
+                    .iter()
+                    .position(|c| key.code == KeyCode::Char(c.key))
+            })
+            .flatten();
 
         match confirm.action {
             ConfirmAction::ReloadBuffer(bid) => match matched {
@@ -40,6 +52,8 @@ impl Editor {
                 _ => {}
             },
         }
+
+        matched.is_some() || key.code == KeyCode::Escape
     }
 
     /// Handles one key while a selection menu is open. Returns `true`

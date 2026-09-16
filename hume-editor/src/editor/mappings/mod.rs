@@ -71,12 +71,15 @@ impl Editor {
         // Insert session, a half-typed command/search line, or another
         // overlay's own key. No mode check is needed here regardless: once a
         // confirm is open, every key routes here first, so nothing can
-        // change mode out from under it before it's answered. Always fully
-        // consumes, like the picker.
-        let confirm_consumed = self.state.config.confirm.is_some();
-        if confirm_consumed {
-            self.handle_confirm_key(key);
-        }
+        // change mode out from under it before it's answered. Unlike the
+        // picker, not always fully consumed: `handle_confirm_key` answers
+        // `r`/`k` and dismisses on `Esc`, but any other stray key both
+        // dismisses the confirm *and* falls through to normal dispatch this
+        // same call (mirroring the menu's stray-key shape below) — a prompt
+        // the user didn't notice must never eat a keystroke meant for the
+        // editor. The fallen-through key is then macro-recorded and
+        // dot-repeat-eligible like any other key, same as the menu's.
+        let confirm_consumed = self.state.config.confirm.is_some() && self.handle_confirm_key(key);
 
         // ── Picker intercept ──────────────────────────────────────────────
         // Sits above the menu/drawer intercepts and is mode-agnostic (the
