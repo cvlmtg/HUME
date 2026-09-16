@@ -28,7 +28,7 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
+    picker::open_picker(&mut ed.state, &ed.view, session);
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -500,14 +500,16 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
     );
 }
 
-// ── Overlay exclusivity ──────────────────────────────────────────────────────
+// ── Overlay stacking ──────────────────────────────────────────────────────────
 
-/// A picker and a menu can no longer coexist: each refuses anything pushed
-/// above it, so opening a picker while a menu is already up is a structural
-/// refusal (`open_picker` returns `Err`), not a silent stack-and-race the way
-/// the old independent per-widget `is_some()` checks allowed.
+/// A picker opening while a menu is already up lands above it, not over a
+/// refusal: `picker!` is key-triggered like every synchronous opener, so
+/// dispatch order already proves the stack is exactly where the key path
+/// left it. The menu survives underneath, swallowed by the picker's own
+/// full-modal input policy, and resumes driving its own keys once the
+/// picker retires.
 #[test]
-fn picker_refuses_to_open_over_a_live_menu() {
+fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.state
         .input
@@ -527,11 +529,29 @@ fn picker_refuses_to_open_over_a_live_menu() {
         display: "a".to_string(),
         payload: SteelVal::StringV("a".into()),
     }]);
-    let result = picker::open_picker(&mut ed.state, &ed.view, session);
+    picker::open_picker(&mut ed.state, &ed.view, session);
 
-    assert!(result.is_err(), "a picker must not open over a live menu");
-    assert!(ed.state.input.menu().is_some(), "the menu stays open");
-    assert!(ed.state.input.picker().is_none(), "the picker never opened");
+    assert!(ed.state.input.picker().is_some(), "the picker opened");
+    assert!(
+        ed.state.input.menu().is_some(),
+        "the menu survives beneath it"
+    );
+    assert_eq!(
+        ed.state.input.kind(ed.state.input.top()),
+        Some(crate::editor::input_stack::LayerKind::Picker),
+        "the picker, not the menu, drives input while it's open"
+    );
+
+    ed.feed_key(key_esc());
+
+    assert!(ed.state.input.picker().is_none(), "Esc closed the picker");
+    assert!(ed.state.input.menu().is_some(), "the menu is still there");
+    ed.feed_key(key('j'));
+    assert_eq!(
+        ed.state.input.menu().unwrap().selected,
+        1,
+        "the menu must drive its own keys again once the picker is gone"
+    );
 }
 
 // ── Re-rank resets selection/scroll end-to-end ──────────────────────────────

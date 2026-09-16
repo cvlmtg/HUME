@@ -751,24 +751,24 @@ impl EditorState {
     /// Pushes a mode layer — the single write path for all mode transitions
     /// (`OnModeChange` itself no longer fires from here; it's raised by
     /// `Editor::detect_mode_change`'s observation-point diff at the next
-    /// `settle()`, D3).
+    /// `settle()`).
     ///
     /// No-op if the current mode layer is already the same kind (Insert
     /// re-entry — matches today's same-mode guard and
     /// `begin_insert_session`'s open-group guard). Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
-    /// D9; a `prompt!` from Insert ends the insert session before the
-    /// prompt lands), clears Extend (D1), then pushes `layer` on top of
-    /// whatever is left — any overlay that sits *below* the outgoing mode
-    /// layer (a drawer opened while still in Normal) is untouched, since
+    /// a `prompt!` from Insert ends the insert session before the prompt
+    /// lands), clears Extend, then pushes `layer` on top of whatever is
+    /// left — any overlay that sits *below* the outgoing mode layer (a
+    /// drawer opened while still in Normal) is untouched, since
     /// `truncate_layers` only removes the mode layer's own ref and
     /// whatever was pushed above it.
     ///
-    /// Doesn't consult `InputStack::accepts_above`: a mode key only ever
-    /// reaches `Base` after every overlay above it has fallen through, so
-    /// ordering is already settled by the key path; a Steel-initiated push
-    /// (a timer's `prompt!` while a picker is open) simply lands on top,
-    /// where the picker's own key policy governs what happens next.
+    /// Never gated: a mode key only ever reaches `Base` after every overlay
+    /// above it has fallen through, so ordering is already settled by the
+    /// key path; a Steel-initiated push (a timer's `prompt!` while a picker
+    /// is open) simply lands on top, where the picker's own key policy
+    /// governs what happens next.
     pub(in crate::editor) fn push_mode_layer(
         &mut self,
         view: &EngineView,
@@ -803,8 +803,8 @@ impl EditorState {
     }
 
     /// What happens when `layer` leaves the stack, for any reason —
-    /// D9: teardown of a mode layer *is* its cancel. A `Confirm` arm does
-    /// its own accept work (recording history, restoring/clearing a stash)
+    /// teardown of a mode layer *is* its cancel. A `Confirm` arm does its
+    /// own accept work (recording history, restoring/clearing a stash)
     /// *before* truncating, so by the time this runs, every removal is
     /// already the "cancel" case; there is no separate "cancel-specific
     /// work" split to make here. Never fires a Steel callback — those are

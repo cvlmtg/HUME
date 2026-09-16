@@ -93,8 +93,8 @@ impl Editor {
     /// dispatch this same call.
     ///
     /// No mode gate of its own: `show-menu!` only pushes with the mode
-    /// layer at `Base` (D7's mode-layer-race check, `host_impl/ui.rs`), and
-    /// `push_mode_layer` always pushes a new mode layer *above* whatever
+    /// layer at `Base` (its own async-staleness check, `host_impl/ui.rs`),
+    /// and `push_mode_layer` always pushes a new mode layer *above* whatever
     /// overlay sits on `Base` — so a `Menu` layer is dispatch's top only
     /// while the mode layer beneath it is still `Base`.
     ///

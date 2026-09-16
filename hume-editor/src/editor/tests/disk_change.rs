@@ -795,8 +795,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("nothing else is open");
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
@@ -827,10 +826,13 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
 }
 
 /// The flip side of the test above: a picker opening while a confirm is
-/// already up is refused outright, rather than opening a second modal
-/// surface a confirm's own key intercept would never let a keystroke reach.
+/// already up lands above it, same as over a menu — `picker!` is
+/// key-triggered, so dispatch order already proves the stack is where the
+/// key path left it. The confirm survives beneath, swallowed by the
+/// picker's own full-modal input policy, and resumes driving input the
+/// moment the picker retires.
 #[test]
-fn picker_refuses_to_open_over_a_live_confirm() {
+fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
@@ -841,14 +843,32 @@ fn picker_refuses_to_open_over_a_live_confirm() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    let result = crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
 
+    assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(
-        result.is_err(),
-        "a picker must not open over a live confirm"
+        ed.state.input.confirm().is_some(),
+        "the confirm survives beneath it"
     );
-    assert!(ed.state.input.confirm().is_some(), "the confirm stays open");
-    assert!(ed.state.input.picker().is_none(), "the picker never opened");
+    assert_eq!(
+        ed.state.input.kind(ed.state.input.top()),
+        Some(crate::editor::input_stack::LayerKind::Picker),
+        "the picker, not the confirm, drives input while it's open"
+    );
+
+    let picker_ref = ed
+        .state
+        .input
+        .ref_of(crate::editor::input_stack::LayerKind::Picker)
+        .expect("sanity: the picker must still be open");
+    ed.state.input.truncate(picker_ref);
+
+    assert!(ed.state.input.picker().is_none(), "the picker closed");
+    assert_eq!(
+        ed.state.input.kind(ed.state.input.top()),
+        Some(crate::editor::input_stack::LayerKind::Confirm),
+        "the confirm must drive input again once the picker is gone"
+    );
 }
 
 /// A confirm must never open while `pending_keys` is non-empty — a live

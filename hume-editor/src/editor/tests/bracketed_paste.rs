@@ -217,7 +217,7 @@ fn open_filter_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
+    picker::open_picker(&mut ed.state, &ed.view, session);
 }
 
 fn open_live_test_picker(ed: &mut Editor) {
@@ -231,7 +231,7 @@ fn open_live_test_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
+    picker::open_picker(&mut ed.state, &ed.view, session);
 }
 
 #[test]

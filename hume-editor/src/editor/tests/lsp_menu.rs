@@ -157,11 +157,10 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     );
 }
 
-/// D7's "mode-layer race": `show-menu!` from Insert is a benign timing
-/// issue (a `codeAction` response landing after the user left Normal), not
-/// a plugin bug — it drops silently (`Ok`, a `Trace` log entry) rather than
-/// erroring, so it never aborts the `run_call_batch` a real async callback
-/// is batched into.
+/// `show-menu!` from Insert is a benign timing issue (a `codeAction`
+/// response landing after the user left Normal), not a plugin bug — it
+/// drops silently (`Ok`, a `Trace` log entry) rather than erroring, so it
+/// never aborts the `run_call_batch` a real async callback is batched into.
 #[test]
 fn show_menu_from_insert_drops_silently_as_a_mode_layer_race() {
     use crate::editor::Severity;
@@ -212,11 +211,14 @@ fn show_menu_accepted_in_normal_mode() {
     assert!(ed.state.input.menu().is_some());
 }
 
-/// A picker is full-modal: it refuses anything pushed above it, so
-/// `show-menu!` while one is open errors instead of opening a menu that
-/// paints under a picker no key path can ever reach.
+/// Same async-staleness rule as `show_menu_from_insert_…` above, triggered
+/// the other way: the mode layer is still `Base`, but a picker landed on
+/// top of it while the `codeAction` response was in flight. `show-menu!`
+/// must not bury a picker under a menu it never asked for — it drops
+/// silently, same as the mode-changed case.
 #[test]
-fn show_menu_rejected_when_a_picker_is_open() {
+fn show_menu_drops_silently_when_a_picker_is_open() {
+    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::{PickerOpts, UiHost};
 
@@ -225,18 +227,33 @@ fn show_menu_rejected_when_a_picker_is_open() {
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("nothing else is open");
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+
+    let traces_before = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
-        result.is_err(),
-        "show-menu! must reject a live picker — it's full-modal"
+        result.is_ok(),
+        "a stale async response must never error — it would abort the whole call batch"
     );
     assert!(
         ed.state.input.menu().is_none(),
-        "must not have opened despite the error"
+        "must not have opened above the picker"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        traces_before + 1,
+        "must log a Trace entry noting the drop"
     );
     assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }

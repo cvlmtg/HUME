@@ -7,10 +7,13 @@
 //! any property of the widgets themselves, decided which one saw a key when
 //! more than one happened to be open. A stack makes precedence a fact about
 //! the data (whichever layer is on top runs first) rather than a fact about
-//! the dispatcher's source order, and makes "can two of these ever be open
-//! at once" a question [`InputStack::accepts_above`] answers once instead of
-//! a property every opener has to re-derive from every other opener's own
-//! guard.
+//! the dispatcher's source order — and it is the *only* precedence
+//! mechanism: which layer sees a key, and whether the next one below ever
+//! does, is entirely decided by each layer's own handler (handle / fall
+//! through / discard). There is no separate rule for which layer may open
+//! above which; `push` never refuses. The one gate that exists,
+//! [`InputStack::is_stack_settled`], answers a different question — whether
+//! an *async* opener's request has gone stale — not who outranks whom.
 //!
 //! A layer is a *purpose*, not a widget: today each of the four kinds below
 //! wraps exactly one widget, but nothing in the stack's own API assumes
@@ -39,7 +42,8 @@ pub(in crate::editor) struct LayerRef {
 }
 
 /// Which kind of layer occupies a slot, without its payload — what
-/// [`InputStack::accepts_above`] and every opener's own gate switches on.
+/// [`InputStack::kind`]/[`InputStack::mode_layer`] hand back, and what every
+/// opener's own mode-layer gate switches on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum LayerKind {
     /// The always-present layer at index 0. Never removed.
@@ -61,7 +65,7 @@ pub(in crate::editor) enum LayerKind {
 
 /// One entry on the stack.
 ///
-/// `Base` carries `extend` (D1: Extend is a flag on `Base`, never its own
+/// `Base` carries `extend` (Extend is a flag on `Base`, never its own
 /// layer) — the sticky-popup slot lands here once popups move by ownership
 /// (step 6). `Insert` carries no payload yet for the same reason: its own
 /// sticky-popup slot is step 6's addition too.
@@ -200,10 +204,13 @@ impl InputStack {
 
     /// The topmost layer of kind `kind`, if one is open — the ref a
     /// `close-*!` builtin or a Rust-internal retirement needs to name a
-    /// widget it didn't itself just push (D4's "present but not top is an
-    /// error", every `confirm`-retirement site on buffer close/focus
-    /// change). Every kind but `Base` occurs at most once on the stack
-    /// today, so "topmost" and "only" coincide in practice.
+    /// widget it didn't itself just push. `truncate` is the only removal
+    /// op, so closing a widget that isn't on top would take everything
+    /// above it with it — every `close-*!` builtin instead errors when
+    /// `ref_of` finds the widget present but not `top()` (every
+    /// `confirm`-retirement site on buffer close/focus change reads this
+    /// the same way). Every kind but `Base` occurs at most once on the
+    /// stack today, so "topmost" and "only" coincide in practice.
     pub(in crate::editor) fn ref_of(&self, kind: LayerKind) -> Option<LayerRef> {
         self.layers
             .iter()
@@ -230,37 +237,33 @@ impl InputStack {
         }
     }
 
-    /// Whether the current top layer allows anything to be pushed above it.
-    /// `Base`/`Insert`/`Drawer`/`Completion` accept any overlay; `Command`/
-    /// `Search`/`Sift`/`Prompt`/`Picker`/`Confirm`/`Menu` accept none — each
-    /// of those is a modal owner for as long as it's open. `kind` is unused
-    /// today (every current layer's policy depends only on what's already on
-    /// top, not on what wants to land above it); kept in the signature since
-    /// a future layer (a scrollable popup dying on any push regardless of
-    /// policy) may need to consult it directly.
-    pub(in crate::editor) fn accepts_above(&self, _kind: LayerKind) -> bool {
-        match self
-            .layers
-            .last()
-            .expect("Base always occupies index 0")
-            .1
-            .kind()
-        {
-            LayerKind::Base | LayerKind::Insert | LayerKind::Drawer | LayerKind::Completion => true,
-            LayerKind::Command
-            | LayerKind::Search
-            | LayerKind::Sift
-            | LayerKind::Prompt
-            | LayerKind::Picker
-            | LayerKind::Confirm
-            | LayerKind::Menu => false,
-        }
+    /// Whether nothing sits above the current mode layer — the staleness
+    /// check an *async* opener (a Steel callback answering a request fired
+    /// earlier: `show-menu!`, `show-drawer-list!`, `completion-begin!`)
+    /// makes before landing, alongside its own mode-layer requirement. It
+    /// is not a precedence rule: a synchronous, key- or command-triggered
+    /// opener (`picker!`, `prompt!`) never calls this, because dispatch
+    /// order already proves the stack is exactly where the key path left
+    /// it — there is nothing left to check. An async response has no such
+    /// guarantee: the user may have opened a picker, a menu, or moved to a
+    /// different mode between the request going out and the response
+    /// landing, and this is what tells the two apart. `top() ==
+    /// mode_layer()` — an overlay already open (of any kind, including one
+    /// this same opener is mid-refreshing) makes this `false`; a caller
+    /// replacing its own prior instance checks for that case separately
+    /// rather than through this.
+    pub(in crate::editor) fn is_stack_settled(&self) -> bool {
+        self.top() == self.mode_layer()
     }
 
-    /// Pushes `layer` on top, unconditionally — callers consult
-    /// [`Self::accepts_above`] (or a kind-specific replace rule, e.g. the
-    /// picker's own "cancel and replace a live picker") *before* calling
-    /// this; `push` itself enforces nothing about what's already open.
+    /// Pushes `layer` on top, unconditionally — nothing is refused, since
+    /// precedence is push order and push order is only ever decided by
+    /// whoever's calling this. An async opener consults
+    /// [`Self::is_stack_settled`] itself before calling this (a staleness
+    /// check, not a permission check); a kind-specific replace rule (the
+    /// picker's own "cancel and replace a live picker") runs first for the
+    /// same reason. `push` itself enforces nothing about what's already
+    /// open.
     pub(in crate::editor) fn push(&mut self, layer: InputLayer) -> LayerRef {
         let id = self.next_id;
         self.next_id += 1;
@@ -340,8 +343,9 @@ impl InputStack {
 
     /// Sets `Base`'s `extend` flag directly — `Base` is always at index 0,
     /// so this never needs a lookup. Does not gate on the current mode
-    /// layer or clear it on push; `push_mode_layer` does that separately
-    /// (D1) and a toggle reads `mode()` first to decide the target value.
+    /// layer or clear it on push; `push_mode_layer` clears it on every push
+    /// separately, and a toggle reads `mode()` first to decide the target
+    /// value.
     pub(in crate::editor) fn set_extend(&mut self, extend: bool) {
         let InputLayer::Base { extend: slot } = &mut self.layers[0].1 else {
             unreachable!("index 0 is always Base");
@@ -596,11 +600,31 @@ mod tests {
     }
 
     #[test]
-    fn accepts_above_per_kind() {
+    fn is_stack_settled_true_on_a_fresh_stack() {
+        let stack = InputStack::new();
+        assert!(stack.is_stack_settled());
+    }
+
+    #[test]
+    fn is_stack_settled_false_with_an_overlay_above_the_mode_layer() {
         let mut stack = InputStack::new();
-        assert!(stack.accepts_above(LayerKind::Menu));
         stack.push(menu("m"));
-        assert!(!stack.accepts_above(LayerKind::Confirm));
+        assert!(!stack.is_stack_settled());
+    }
+
+    #[test]
+    fn is_stack_settled_true_again_once_the_overlay_is_truncated() {
+        let mut stack = InputStack::new();
+        let r = stack.push(menu("m"));
+        stack.truncate(r);
+        assert!(stack.is_stack_settled());
+    }
+
+    #[test]
+    fn is_stack_settled_true_with_a_mode_layer_alone_on_top() {
+        let mut stack = InputStack::new();
+        stack.push(InputLayer::Insert);
+        assert!(stack.is_stack_settled());
     }
 
     #[test]

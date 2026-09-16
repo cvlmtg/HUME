@@ -42,27 +42,28 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 .report(Severity::Info, "no completions".to_string());
             return Ok(());
         }
-        // Mode-layer race (D7, same principle as `show-menu!`/
-        // `show-drawer-list!`): the request that led here can land after the
-        // user left Insert, or after some *other* overlay (a picker opened
-        // mid-session — nothing about opening a picker requires Insert)
-        // landed on top of it. Either way this is timing, not a plugin bug,
-        // so every failure of this gate drops silently rather than erroring
-        // — an error here would abort the whole `run_call_batch` this `Call`
-        // was batched into. `top Completion` is the *normal* path, not an
-        // edge: `on-completion-refilter` re-calls this while a session is
+        // Async staleness, same principle as `show-menu!`/`show-drawer-list!`
+        // (`input_stack.rs`'s `is_stack_settled` doc): the request that led
+        // here can land after the user left Insert, or after some *other*
+        // overlay (a picker opened mid-session — nothing about opening a
+        // picker requires Insert) landed on top of it. Either way this is
+        // timing, not a plugin bug, so every failure of this gate drops
+        // silently rather than erroring — an error here would abort the
+        // whole `run_call_batch` this `Call` was batched into. A `top`
+        // `Completion` is the one exception, not covered by
+        // `is_stack_settled` (a `Completion` layer is itself the overlay
+        // sitting above `Insert`): it's the *normal* refresh path, not an
+        // edge — `on-completion-refilter` re-calls this while a session is
         // already open, and so does a trigger char typed with the menu up.
         let mode_ok =
             self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Insert);
         let top_kind = self.state.input.kind(self.state.input.top());
-        let top_ok = matches!(
-            top_kind,
-            Some(LayerKind::Insert) | Some(LayerKind::Completion)
-        );
-        if !mode_ok || !top_ok {
+        let stack_ok =
+            self.state.input.is_stack_settled() || top_kind == Some(LayerKind::Completion);
+        if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
-                "completion-begin!: mode changed before the session could open — ignored"
+                "completion-begin!: the stack moved before the session could open — ignored"
                     .to_string(),
             );
             return Ok(());

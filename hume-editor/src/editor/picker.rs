@@ -714,14 +714,16 @@ pub(in crate::editor) fn session_for_token(
 
 /// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
 /// builtin (`ui::picker`) calls this via `EditorHostImpl`. Allowed from any
-/// mode, but one modal owner at a time: replacing an already-open picker
-/// fires *its* `on_select` with `#f` before installing the new one, via
-/// [`close_picker`] — the exactly-once callback contract must never have a
-/// window where a session can be silently dropped without firing. Opening
-/// over any *other* live overlay (a menu, drawer, or confirm) is refused —
-/// each of those already claims the whole keyboard for itself, and a picker
-/// landing on top of one would open a modal surface no key path could ever
-/// reach through it.
+/// mode and over any other open layer, key-triggered like every synchronous
+/// opener: dispatch order already proves the stack is wherever the key path
+/// left it, so there is nothing to gate. Landing above a menu or drawer
+/// simply suspends it — its own stray-input policy (`mappings/widgets.rs`)
+/// hands control back to it once the picker retires, same as `Insert`
+/// suspending one today. The one identity rule that *does* apply: replacing
+/// an already-open picker fires *its* `on_select` with `#f` before
+/// installing the new one, via [`close_picker`] — the exactly-once callback
+/// contract must never have a window where a session can be silently
+/// dropped without firing.
 ///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -730,15 +732,10 @@ pub(in crate::editor) fn open_picker(
     state: &mut super::EditorState,
     view: &EngineView,
     session: PickerSession,
-) -> Result<(), String> {
+) {
     state.dismiss_completion(view);
-    let picker_already_open = state.input.kind(state.input.top()) == Some(LayerKind::Picker);
-    if !picker_already_open && !state.input.accepts_above(LayerKind::Picker) {
-        return Err("picker!: another overlay is open".to_string());
-    }
     close_picker(state, SteelVal::BoolV(false));
     state.input.push(InputLayer::Picker(Box::new(session)));
-    Ok(())
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is

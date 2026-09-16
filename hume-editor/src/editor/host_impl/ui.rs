@@ -100,22 +100,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Mode-layer race (D7): the request that led here (a `codeAction`
-        // response callback) can land after the user left Normal for
-        // Insert/Command/Search/Sift/Prompt — timing, not a plugin bug, so
-        // this drops silently (`Trace`, `Ok`) rather than erroring, which
-        // would abort the whole `run_call_batch` this `Call` was batched
-        // into. A structural refusal (another overlay already open) is the
-        // separate `accepts_above` check below, and *does* error.
-        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base) {
+        // Async staleness: the request that led here (a `codeAction`
+        // response callback) fired against an earlier stack state, and
+        // either the mode layer or the stack above it may have moved since
+        // — the user left Normal, or opened a picker/drawer/another menu
+        // while the response was in flight. Both are timing, not a plugin
+        // bug, so this drops silently (`Trace`, `Ok`) rather than erroring,
+        // which would abort the whole `run_call_batch` this `Call` was
+        // batched into.
+        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base)
+            || !self.state.input.is_stack_settled()
+        {
             self.state.report(
                 Severity::Trace,
-                "show-menu!: mode changed before the menu could open — ignored".to_string(),
+                "show-menu!: the stack moved before the menu could open — ignored".to_string(),
             );
             return Ok(());
-        }
-        if !self.state.input.accepts_above(LayerKind::Menu) {
-            return Err("show-menu!: another overlay is open".to_string());
         }
         self.state.input.push(InputLayer::Menu(MenuModel {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
@@ -142,18 +142,31 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Same mode-layer race as `show_menu` above (a references response
-        // landing after the user left Normal) — see its comment.
-        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base) {
+        // Same async staleness as `show_menu` above (a references response
+        // landing after the user left Normal, or after some other overlay
+        // opened while it was in flight) — see its comment. `top`
+        // `Drawer` is the exception, same shape as `completion-begin!`'s
+        // own `top` `Completion` case below: a second `show-drawer-list!`
+        // call while the first is still open (a `:refresh`-style re-run,
+        // or a references response the user re-triggered before the first
+        // one closed) replaces it rather than being read as stale — closed
+        // the same way `close-drawer!` already closes one, without firing
+        // its callback, since the new call is what Steel considers "done"
+        // with the old drawer.
+        let mode_ok = self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Base);
+        let top_kind = self.state.input.kind(self.state.input.top());
+        let stack_ok = self.state.input.is_stack_settled() || top_kind == Some(LayerKind::Drawer);
+        if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
-                "show-drawer-list!: mode changed before the drawer could open — ignored"
+                "show-drawer-list!: the stack moved before the drawer could open — ignored"
                     .to_string(),
             );
             return Ok(());
         }
-        if !self.state.input.accepts_above(LayerKind::Drawer) {
-            return Err("show-drawer-list!: another overlay is open".to_string());
+        if top_kind == Some(LayerKind::Drawer) {
+            let r = self.state.input.top();
+            self.state.input.truncate(r);
         }
         self.state.input.push(InputLayer::Drawer(DrawerModel {
             items: std::sync::Arc::new(items),
@@ -187,7 +200,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(crate::editor::picker::picker_items(items));
-        crate::editor::picker::open_picker(self.state, self.view, session)?;
+        crate::editor::picker::open_picker(self.state, self.view, session);
         Ok(token)
     }
 
@@ -198,7 +211,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<u64, String> {
         let session = crate::editor::picker::PickerSession::new_live(on_select, opts);
         let token = session.token();
-        crate::editor::picker::open_picker(self.state, self.view, session)?;
+        crate::editor::picker::open_picker(self.state, self.view, session);
         Ok(token)
     }
 

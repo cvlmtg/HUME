@@ -48,7 +48,7 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
             })
             .collect(),
     );
-    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
+    picker::open_picker(&mut ed.state, &ed.view, session);
 }
 
 fn begin_completion_session(ed: &mut Editor, items: &[&str]) {

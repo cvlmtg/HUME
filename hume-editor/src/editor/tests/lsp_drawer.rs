@@ -35,11 +35,14 @@ fn show_drawer_list_populates_model_and_view() {
     assert_eq!(view.selected, 0);
 }
 
-/// A picker is full-modal: it refuses anything pushed above it, so
-/// `show-drawer-list!` while one is open errors instead of opening a drawer
-/// that paints under a picker no key path can ever reach.
+/// Same async-staleness rule as `show_drawer_list_from_insert_…` below,
+/// triggered the other way: the mode layer is still `Base`, but a picker
+/// landed on top of it while the references response was in flight.
+/// `show-drawer-list!` must not bury a picker under a drawer it never asked
+/// for — it drops silently, same as the mode-changed case.
 #[test]
-fn show_drawer_list_rejected_when_a_picker_is_open() {
+fn show_drawer_list_drops_silently_when_a_picker_is_open() {
+    use crate::editor::Severity;
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::{PickerOpts, UiHost};
 
@@ -48,18 +51,33 @@ fn show_drawer_list_rejected_when_a_picker_is_open() {
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
-        .expect("nothing else is open");
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+
+    let traces_before = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == Severity::Trace)
+        .count();
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(
-        result.is_err(),
-        "show-drawer-list! must reject a live picker — it's full-modal"
+        result.is_ok(),
+        "a stale async response must never error — it would abort the whole call batch"
     );
     assert!(
         ed.state.input.drawer().is_none(),
-        "must not have opened despite the error"
+        "must not have opened above the picker"
+    );
+    assert_eq!(
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.severity == Severity::Trace)
+            .count(),
+        traces_before + 1,
+        "must log a Trace entry noting the drop"
     );
     assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }
@@ -102,13 +120,12 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
     );
 }
 
-/// D7's "mode-layer race": `show-drawer-list!` from Insert is a benign
-/// timing issue (a references response landing after the user left
-/// Normal), not a plugin bug — it drops silently (`Ok`, a `Trace` log
-/// entry) rather than erroring, so it never aborts the `run_call_batch` a
-/// real async callback is batched into. Unlike the picker case above
-/// (structural refusal — `accepts_above` false), this is the opener's own
-/// mode-layer-is-`Base` requirement.
+/// `show-drawer-list!` from Insert is a benign timing issue (a references
+/// response landing after the user left Normal), not a plugin bug — it
+/// drops silently (`Ok`, a `Trace` log entry) rather than erroring, so it
+/// never aborts the `run_call_batch` a real async callback is batched into.
+/// Same async-staleness rule as the picker case above, checked the other
+/// way: the mode layer itself has moved, rather than the stack above it.
 #[test]
 fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
     use crate::editor::Severity;
