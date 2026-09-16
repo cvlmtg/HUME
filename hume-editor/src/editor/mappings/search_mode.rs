@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use termina::event::KeyEvent;
-
 use super::super::commands::search_sel;
 use super::super::input_stack::LayerRef;
 use super::super::jump_list::JumpEntry;
@@ -14,11 +12,7 @@ use hume_ops::search::{SearchDirection, compile_search_regex, find_next_match};
 impl Editor {
     // ── Search mode ───────────────────────────────────────────────────────────
 
-    pub(super) fn handle_search(&mut self, r: LayerRef, key: KeyEvent) {
-        let event = match self.state.input.minibuf_mut() {
-            Some(mb) => mb.handle_key(key),
-            None => return,
-        };
+    pub(super) fn handle_search_event(&mut self, r: LayerRef, event: MiniBufferEvent) {
         match event {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
                 self.state.truncate_layers(&self.view, r);

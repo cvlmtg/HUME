@@ -32,7 +32,13 @@ impl Editor {
     /// didn't notice never eats a keystroke meant for the editor (e.g. `/`
     /// opening search).
     pub(super) fn confirm_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
+        // A paste is not one of the choice keys and is never a stray
+        // keystroke meant for whatever lies underneath — swallowed outright,
+        // the confirm left open, matching this layer's full-modal choice-key
+        // policy for anything else unmatched.
+        let InputEvent::Key(key) = ev else {
+            return;
+        };
         let mut removed = self.state.input.truncate(r);
         let Some(InputLayer::Confirm(confirm)) = removed.pop() else {
             unreachable!("dispatch_at already checked kind(r) == LayerKind::Confirm");
@@ -74,7 +80,13 @@ impl Editor {
     /// overlay sits on `Base` — so a `Menu` layer is dispatch's top only
     /// while the mode layer beneath it is still `Base`.
     pub(super) fn menu_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
+        // A paste is swallowed without closing the menu — same "consumes
+        // stray input" treatment the menu gives any other key it doesn't
+        // recognize as a choice, minus the `#f` callback that arm fires: a
+        // paste was never a choice attempt.
+        let InputEvent::Key(key) = ev else {
+            return;
+        };
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 let menu = self
@@ -132,7 +144,13 @@ impl Editor {
     ///
     /// No mode gate of its own — same reasoning as [`Self::menu_input`].
     pub(super) fn drawer_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
+        // Swallowed like every other key the drawer doesn't bind to
+        // movement/scroll/Enter/Esc — stays open, same as today's `Paste`
+        // handling under a drawer (`bracketed_paste.rs`'s old menu/drawer
+        // guard).
+        let InputEvent::Key(key) = ev else {
+            return;
+        };
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 let drawer = self
@@ -316,7 +334,20 @@ impl Editor {
     /// are visible (before the first frame, geometry is `None` and paging is
     /// a documented no-op on the store).
     pub(super) fn picker_input(&mut self, _r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            // Flattened to one line, same as a minibuffer paste, then
+            // appended to the query in one bulk mutation — one rerank, at
+            // most one `on_query_change` callback, instead of one per
+            // pasted char.
+            InputEvent::Paste(text) => {
+                let cb = self
+                    .picker_mut()
+                    .insert_str(&super::bracketed_paste::flatten_single_line(&text));
+                self.queue_query_change(cb);
+                return;
+            }
+        };
         let visible_rows = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
             .map_or(0, |geo| geo.list_rows);
 

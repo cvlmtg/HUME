@@ -1043,6 +1043,13 @@ impl Editor {
         self.handle_input(TerminalEvent::Key(key));
         self.settle();
     }
+
+    /// Feed a whole pasted string through `handle_input`, the same terminal
+    /// boundary a real bracketed paste arrives at — no `settle()`, mirroring
+    /// `feed_key`/`step`'s own choice not to settle after every input.
+    fn feed_paste(&mut self, text: &str) {
+        self.handle_input(TerminalEvent::Paste(text.to_string()));
+    }
 }
 
 // ── Bookkeeping snapshot ──────────────────────────────────────────────────────

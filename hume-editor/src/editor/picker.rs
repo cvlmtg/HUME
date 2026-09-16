@@ -475,6 +475,17 @@ impl PickerSession {
         self.notify_query_change()
     }
 
+    /// Bulk counterpart of [`insert_char`](Self::insert_char) — a terminal
+    /// paste appends its whole (already flattened to one line) text in a
+    /// single mutation, one `rerank`, and at most one `on_query_change`
+    /// callback, rather than one of each per pasted character.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is silently skipped"]
+    pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<SteelVal> {
+        self.query.push_str(s);
+        self.rerank();
+        self.notify_query_change()
+    }
+
     /// Removes the trailing grapheme cluster (not merely the last `char`) so
     /// that precomposed accents and ZWJ/modifier emoji sequences are deleted
     /// as one unit, then requeries. Returns `None` without effect when the
@@ -506,8 +517,9 @@ impl PickerSession {
     }
 
     /// Replaces the query wholesale and reranks — test-only: production code
-    /// only ever changes the query one grapheme at a time, through
-    /// `insert_char`/`pop_grapheme`.
+    /// only ever changes the query one grapheme at a time (`insert_char`/
+    /// `pop_grapheme`) or one paste at a time (`insert_str`), never
+    /// wholesale.
     #[cfg(test)]
     fn set_query(&mut self, query: String) {
         self.query = query;

@@ -24,7 +24,18 @@ impl Editor {
     /// dismisses the session outright; anything else falls through and is
     /// resynced against the buffer's new state once the edit lands.
     pub(super) fn completion_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            // A paste bypasses per-char refiltering the same way an
+            // Insert-mode paste bypasses trigger-char hooks (see
+            // `Editor::apply_insert_mode_paste`'s doc) — dismiss the stale
+            // session, then let `Insert` insert the text.
+            InputEvent::Paste(text) => {
+                self.state.dismiss_completion(&self.view);
+                self.fall_through(r, InputEvent::Paste(text));
+                return;
+            }
+        };
         let non_empty = self
             .state
             .input

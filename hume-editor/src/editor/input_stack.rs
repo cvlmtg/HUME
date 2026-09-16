@@ -138,13 +138,14 @@ impl InputLayer {
     }
 }
 
-/// One input event working its way down the stack. `Key` is the only
-/// variant for now; a paste or a mouse event still takes its own dedicated
-/// path outside this walk. Adding those variants later forces every layer's
-/// handler to state its policy for them at compile time, the same way this
-/// one variant already forces an exhaustive match today.
+/// One input event working its way down the stack. A mouse event still
+/// takes its own dedicated path outside this walk (step 5). Adding a variant
+/// forces every layer's handler to state its policy for it at compile time —
+/// `Paste` broke all eleven handlers' irrefutable `let InputEvent::Key(key)
+/// = ev;` when it arrived, the same way a future `Mouse` variant will.
 pub(in crate::editor) enum InputEvent {
     Key(KeyEvent),
+    Paste(String),
 }
 
 /// The stack itself: `Base` at index 0, always, plus whatever overlay

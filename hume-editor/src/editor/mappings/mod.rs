@@ -4,6 +4,8 @@ use hume_scripting::host::PopupKind;
 
 use super::Editor;
 use super::input_stack::{InputEvent, LayerKind, LayerRef};
+use super::minibuf::MiniBufferEvent;
+use super::replay::InsertInput;
 
 mod bracketed_paste;
 pub(super) mod command_mode;
@@ -136,33 +138,62 @@ impl Editor {
     /// `dispatch_at`; `handle_normal` still reads `state.mode()` internally
     /// to tell the two apart.
     fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_normal(key);
+        match ev {
+            InputEvent::Key(key) => self.handle_normal(key),
+            InputEvent::Paste(text) => self.apply_normal_mode_paste(&text),
+        }
     }
 
     fn insert_input(&mut self, _r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_insert(key);
+        match ev {
+            InputEvent::Key(key) => self.handle_insert(key),
+            InputEvent::Paste(text) => {
+                self.apply_insert_mode_paste(&text);
+                if let Some(session) = self.state.insert_session.as_mut() {
+                    session.keystrokes.push(InsertInput::Paste(text));
+                }
+            }
+        }
+    }
+
+    /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
+    /// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching
+    /// — the single place a key or a paste becomes an edit to the
+    /// minibuffer, shared by all four so a paste runs the same `Edited`
+    /// follow-up a typed character would (see each mode's own event match).
+    /// `None` when no minibuffer is live (dispatch reached this layer kind
+    /// but its payload was already torn down mid-call — matches every other
+    /// handler's own liveness discipline).
+    fn minibuf_input(&mut self, ev: InputEvent) -> Option<MiniBufferEvent> {
+        let mb = self.state.input.minibuf_mut()?;
+        Some(match ev {
+            InputEvent::Key(key) => mb.handle_key(key),
+            InputEvent::Paste(text) => mb.insert_str(&bracketed_paste::flatten_single_line(&text)),
+        })
     }
 
     fn command_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_command(r, key);
+        if let Some(event) = self.minibuf_input(ev) {
+            self.handle_command_event(r, event);
+        }
     }
 
     fn search_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_search(r, key);
+        if let Some(event) = self.minibuf_input(ev) {
+            self.handle_search_event(r, event);
+        }
     }
 
     fn sift_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_sift(r, key);
+        if let Some(event) = self.minibuf_input(ev) {
+            self.handle_sift_event(r, event);
+        }
     }
 
     fn prompt_input(&mut self, r: LayerRef, ev: InputEvent) {
-        let InputEvent::Key(key) = ev;
-        self.handle_steel_prompt_key(r, key);
+        if let Some(event) = self.minibuf_input(ev) {
+            self.handle_steel_prompt_event(r, event);
+        }
     }
 }
 

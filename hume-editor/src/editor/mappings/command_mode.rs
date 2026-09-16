@@ -1,5 +1,3 @@
-use termina::event::KeyEvent;
-
 use super::super::Editor;
 use super::super::commands::typed_goto_line;
 use super::super::input_stack::LayerRef;
@@ -11,11 +9,7 @@ use crate::editor::error::CommandError;
 impl Editor {
     // ── Command mode ──────────────────────────────────────────────────────────
 
-    pub(super) fn handle_command(&mut self, r: LayerRef, key: KeyEvent) {
-        let event = match self.state.input.minibuf_mut() {
-            Some(mb) => mb.handle_key(key),
-            None => return,
-        };
+    pub(super) fn handle_command_event(&mut self, r: LayerRef, event: MiniBufferEvent) {
         match event {
             MiniBufferEvent::Cancel
             | MiniBufferEvent::ConfirmEmpty
@@ -103,11 +97,7 @@ impl Editor {
     /// rather than a `:` command line — no history, no completion, no
     /// directory-descend special case. Exactly one `(callback text-or-#f)`
     /// call fires, on Confirm or on any of the cancel paths.
-    pub(super) fn handle_steel_prompt_key(&mut self, r: LayerRef, key: KeyEvent) {
-        let event = match self.state.input.minibuf_mut() {
-            Some(mb) => mb.handle_key(key),
-            None => return,
-        };
+    pub(super) fn handle_steel_prompt_event(&mut self, r: LayerRef, event: MiniBufferEvent) {
         match event {
             MiniBufferEvent::Cancel
             | MiniBufferEvent::ConfirmEmpty

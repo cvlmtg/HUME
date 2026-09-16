@@ -153,14 +153,17 @@ impl MiniBuffer {
     }
 
     /// Insert a whole string at the edit cursor — the terminal-paste
-    /// counterpart of the single-char branch in [`handle_key`](Self::handle_key).
-    /// No-op on an empty string.
-    pub(super) fn insert_str(&mut self, s: &str) {
+    /// counterpart of the single-char branch in [`handle_key`](Self::handle_key),
+    /// returning the same `Edited` event so a paste runs each mode's real
+    /// `Edited` follow-up instead of a hand-mirrored copy of it. `Ignored`
+    /// on an empty string, matching `handle_key`'s own unbound-key result.
+    pub(super) fn insert_str(&mut self, s: &str) -> MiniBufferEvent {
         if s.is_empty() {
-            return;
+            return MiniBufferEvent::Ignored;
         }
         self.input.insert_str(self.cursor, s);
         self.cursor += s.len();
+        MiniBufferEvent::Edited
     }
 }
 

@@ -1,5 +1,3 @@
-use termina::event::KeyEvent;
-
 use super::super::Editor;
 use super::super::input_stack::LayerRef;
 use super::super::minibuf::MiniBufferEvent;
@@ -9,11 +7,7 @@ use hume_ops::selection_cmd::sift_matches_within;
 impl Editor {
     // ── Sift mode (s) ─────────────────────────────────────────────────────────
 
-    pub(super) fn handle_sift(&mut self, r: LayerRef, key: KeyEvent) {
-        let event = match self.state.input.minibuf_mut() {
-            Some(mb) => mb.handle_key(key),
-            None => return,
-        };
+    pub(super) fn handle_sift_event(&mut self, r: LayerRef, event: MiniBufferEvent) {
         match event {
             MiniBufferEvent::Cancel | MiniBufferEvent::ConfirmEmpty => {
                 self.state.truncate_layers(&self.view, r);
