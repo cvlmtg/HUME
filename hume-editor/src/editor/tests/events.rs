@@ -777,7 +777,7 @@ fn wq_fires_on_buffer_save_before_quitting() {
 /// after `step()`, and only fires once `settle()` runs, mirroring exactly
 /// what `run_keys` does after every `step()`. `OnModeChange` itself isn't
 /// even queued until then — `detect_mode_change`'s diff runs inside
-/// `drain_pending_work`'s loop (D3), which only `settle()` calls, so there
+/// `drain_pending_work`'s loop, which only `settle()` calls, so there
 /// is no "queued but undrained" state to observe in between the way there
 /// is for `OnBufferEnter`; the oracle here is the hook's own side effect.
 ///

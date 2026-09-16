@@ -13,7 +13,7 @@ impl Editor {
                 self.state.truncate_layers(&self.view, r);
             }
             MiniBufferEvent::Confirm(_) => {
-                // Keep the selections that live preview already set. D9: the
+                // Keep the selections that live preview already set. This
                 // `Confirm` arm clears its own stash before truncating, so
                 // teardown's `Sift` arm (which would otherwise restore it)
                 // finds nothing to do.

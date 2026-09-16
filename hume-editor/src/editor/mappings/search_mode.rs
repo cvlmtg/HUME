@@ -31,11 +31,11 @@ impl Editor {
                 self.state.registers.set_search_register(pattern);
                 // Record the pre-search position in the jump list before
                 // discarding it, unless the match confirmed is the position
-                // search started from (record_jump_if_moved). D9: the
-                // `Confirm` arm does its own accept work — taking the
-                // stash — before truncating; teardown's `Search` arm
-                // restores it on every *other* removal, so it's already
-                // gone here and would be a no-op if left to teardown.
+                // search started from (record_jump_if_moved). The `Confirm`
+                // arm does its own accept work — taking the stash — before
+                // truncating; teardown's `Search` arm restores it on every
+                // *other* removal, so it's already gone here and would be a
+                // no-op if left to teardown.
                 let pid = self.state.focus.id();
                 if let Some(sels) = self.state.panes.transient[pid].pre_search_sels.take() {
                     let bid = self.focused_buffer_id();

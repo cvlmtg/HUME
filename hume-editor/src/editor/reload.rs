@@ -129,7 +129,7 @@ impl Editor {
         // the explicit `input.truncate_to_base()` call further down —
         // nothing here reads any of them in between, so there's nothing to
         // clear early. `truncate_layers`' own teardown (`EditorState::
-        // tear_down`) never fires a Steel callback (D9), so a `Prompt`
+        // tear_down`) never fires a Steel callback, so a `Prompt`
         // session's callback is discarded exactly like the overlay
         // widgets' — and `truncate_to_base` resets `Base`'s `extend` flag
         // to `false` in the same call, so Extend never survives a reload

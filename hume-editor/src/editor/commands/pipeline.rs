@@ -417,7 +417,7 @@ pub(in crate::editor::commands::pipeline) fn step_update_recipe(
 /// `change` command (which already entered Insert by the time the AFTER
 /// block runs) is unaffected either way, visibly or otherwise: `Base` isn't
 /// the current mode layer while Insert is open, and `push_mode_layer`
-/// already cleared the flag on the way in (D1).
+/// already cleared the flag on the way in.
 pub(in crate::editor::commands::pipeline) fn step_clear_extend(
     state: &mut EditorState,
     clears_extend: bool,

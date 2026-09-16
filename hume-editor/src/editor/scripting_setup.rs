@@ -378,7 +378,7 @@ impl Editor {
         }
     }
 
-    /// Observation point for `on-mode-change` (D3) — `mode()` is a derived
+    /// Observation point for `on-mode-change` — `mode()` is a derived
     /// read of `EditorState.input` (`InputStack::mode`), with no write-site
     /// chokepoint of its own (a mode-layer push/truncate or an `Extend`
     /// flag flip can each change it), so this diffs it the same shape

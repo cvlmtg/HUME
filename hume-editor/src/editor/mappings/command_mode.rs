@@ -120,7 +120,7 @@ impl Editor {
     /// Queues exactly one `(callback text-or-#f)` call and truncates the
     /// `Prompt` layer (`r`) — the callback is cloned out (cheap: `SteelVal`
     /// is reference-counted) before truncating, since teardown never fires
-    /// a Steel callback itself (D9).
+    /// a Steel callback itself.
     fn finish_steel_prompt(&mut self, r: LayerRef, text: Option<String>) {
         let Some(callback) = self.state.input.prompt_callback().cloned() else {
             return;
