@@ -282,7 +282,7 @@ fn close_paren_closes_the_popup_without_a_request() {
 }
 
 #[test]
-fn esc_closes_via_the_shared_mode_change_handler() {
+fn esc_ending_insert_closes_the_sticky_popup() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = write_fixture_file(file_dir.path());

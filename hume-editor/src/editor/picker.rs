@@ -460,7 +460,7 @@ impl PickerSession {
     ///
     /// Returns the mode's `on_query_change` callback to fire (`None` for a
     /// non-live session) — the caller, not this method, queues it via
-    /// `queue_steel_call` (see `handle_picker_key`), since firing a Steel
+    /// `queue_steel_call` (see `Editor::picker_input`), since firing a Steel
     /// callback needs `&mut EditorState`, which a pure data store
     /// deliberately has no access to. Bundling the mutation with the
     /// callback it produces, rather than a caller calling a separate
@@ -594,7 +594,7 @@ impl PickerSession {
     }
 
     /// The `#:actions` proc bound to `key`, if any — tried only after every
-    /// built-in picker key, so an entry for a key `handle_picker_key`
+    /// built-in picker key, so an entry for a key `Editor::picker_input`
     /// already matches (movement, `Backspace`, `Enter`, `Escape`, query
     /// input) can never be reached from here.
     pub(in crate::editor) fn action_for(&self, key: KeyEvent) -> Option<&SteelVal> {

@@ -530,12 +530,11 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
     );
 }
 
-/// Regression test: `reset_config_state` used to `take()`
-/// `steel_prompt_callback` without the rest of the prompt session's
-/// teardown (mode + minibuf + history session) — leaving the editor parked
-/// in `Mode::Command` with an open minibuf and no callback wired up, so an
-/// abandoned prompt's half-typed answer would be misread as an ordinary `:`
-/// command on the very next Enter.
+/// Regression test: an abandoned `Prompt` layer (minibuf + callback) must
+/// not survive a reload — `reset_config_state`'s `input.truncate_to_base()`
+/// call is what drops it, discarding the callback the same way every other
+/// overlay widget's teardown does. Left open, its half-typed answer would
+/// be misread as an ordinary `:` command on the very next Enter.
 #[test]
 fn reset_tears_down_an_open_prompt_session_completely() {
     let tmp = safe_tempdir();

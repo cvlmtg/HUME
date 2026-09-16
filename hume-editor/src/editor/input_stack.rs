@@ -15,9 +15,9 @@
 //! [`InputStack::is_stack_settled`], answers a different question — whether
 //! an *async* opener's request has gone stale — not who outranks whom.
 //!
-//! A layer is a *purpose*, not a widget: today each of the four kinds below
-//! wraps exactly one widget, but nothing in the stack's own API assumes
-//! that stays true.
+//! A layer is a *purpose*, not a widget: today each kind below wraps at
+//! most one widget, but nothing in the stack's own API assumes that stays
+//! true.
 
 use termina::event::{KeyEvent, MouseEvent};
 

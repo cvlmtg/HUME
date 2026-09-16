@@ -39,11 +39,11 @@ impl Editor {
                 // truncating — the `Command` layer (and the minibuf it
                 // owns) is gone by the time `execute_command` runs, so the
                 // string has to be taken out first, per truncate-before-
-                // execute (§2.7): the body below runs with the mode layer
-                // already back at `Base`, so a `:cmd` that enters Insert
-                // stays in Insert instead of being stomped back to Normal,
-                // and a body calling `(prompt! …)` pushes `Prompt` on a
-                // clean stack with no special case needed.
+                // execute: the body below runs with the mode layer already
+                // back at `Base`, so a `:cmd` that enters Insert stays in
+                // Insert instead of being stomped back to Normal, and a
+                // body calling `(prompt! …)` pushes `Prompt` on a clean
+                // stack with no special case needed.
                 let raw = self
                     .state
                     .input
@@ -298,7 +298,7 @@ impl Editor {
     /// Execute a typed command line. `input` is the already-trimmed text
     /// the `Command` layer's minibuf held at Confirm — the layer (and its
     /// minibuf) is already gone by the time this runs, per truncate-
-    /// before-execute (§2.7).
+    /// before-execute.
     fn execute_command(&mut self, input: &str) {
         let (cmd, force, arg) = parse_typed_command(input);
 

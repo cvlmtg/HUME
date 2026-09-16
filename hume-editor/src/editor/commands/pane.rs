@@ -257,15 +257,8 @@ pub(in crate::editor) fn split_pane_onto(
     }
 
     // `open_pane` already seeded every per-pane map for `new_pid`, so
-    // `focus_pane` is complete here. Not `switch_focused_pane` — that
-    // test-only choke-point's Normal-mode debug_assert would fire when
-    // called from the typed `:split`/`:vsplit` path, which dispatches while
-    // still in `Mode::Command` (mode flips to Normal only after
-    // `execute_command` returns). `focus_pane` has no such assertion: its
-    // Insert-exit check is a no-op outside Insert mode, which is always true
-    // on this path today, but routes the same as every other pane-focus
-    // writer rather than special-casing this one for a mode that can't
-    // reach it yet.
+    // `focus_pane` is complete here — the single pane-focus writer, used
+    // for every focus change rather than special-cased per caller.
     focus_pane(state, view, new_pid);
     Ok(())
 }

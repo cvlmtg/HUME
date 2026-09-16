@@ -628,8 +628,10 @@ impl Editor {
 
     /// Switch focus to `target`, seeding its per-pane maps if not yet present.
     ///
-    /// Precondition: editor must be in Normal mode. Focus switches are only
-    /// bound in Normal mode; mode-changing commands must not switch panes.
+    /// Precondition: editor must be in Normal mode. Test-only shortcut, not
+    /// `focus_pane` — this writes `focus` directly for tests that only need
+    /// `mode()` to read Normal at the call site, skipping the production
+    /// focus-change side effects (`focus_pane`'s own Insert-exit handling).
     pub(in crate::editor) fn switch_focused_pane(&mut self, target: PaneId) {
         debug_assert!(
             self.state.mode() == Mode::Normal,
@@ -1015,12 +1017,13 @@ impl Drop for EnvVarGuard {
 // ── Event-loop faithful helpers ───────────────────────────────────────────────
 
 impl Editor {
-    /// Feed one key exactly as the event loop does (lifecycle.rs:354-402):
-    /// dispatch it, refresh the search cache, drain any macro-replay keys it
-    /// enqueued, then refresh again. Prefer this over `handle_key` in tests
-    /// whose correctness depends on the per-key ordering — e.g. smart-paste
-    /// tests, where the idle replay drain runs between two keys and must not
-    /// disturb the `PasteStamp` freshness check.
+    /// Feed one key through `Editor::step` — dispatch it, refresh the search
+    /// cache, drain any macro-replay keys it enqueued, then refresh again.
+    /// Prefer this over `handle_key` in tests whose correctness depends on
+    /// the per-key ordering — e.g. smart-paste tests, where the idle replay
+    /// drain runs between two keys and must not disturb the `PasteStamp`
+    /// freshness check. `feed_paste` below is the paste-event sibling;
+    /// `feed_event` is the one that also runs `settle()`.
     fn feed_key(&mut self, key: KeyEvent) {
         self.step(key);
     }
@@ -1083,7 +1086,8 @@ pub(super) struct BookkeepingSnapshot {
     pub jump_len: usize,
     /// Whether any (pane, buffer) pair has an open paste session (`paste_group.is_some()`).
     pub paste_session_open: bool,
-    /// `ed.state.mode` — set by `step_clear_extend` for selection-consuming edits.
+    /// `ed.state.mode()` — derived from the input stack; `step_clear_extend`
+    /// clears `Base`'s Extend flag for selection-consuming edits.
     pub mode: Mode,
     /// Whether any (pane, buffer) pair has a pinned Insert-mode typed run
     /// (`typed_run.is_some()`) — cleared by `step_clear_typed_run` for any

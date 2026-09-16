@@ -6,10 +6,10 @@
 // the builtins themselves end to end through real Steel source, mirroring
 // `lsp_drawer.rs`'s `run`/`arm_*` pattern.
 //
-// The picker is full-modal: once one is
-// open, `handle_picker_key` intercepts every key ahead of mode dispatch, so
-// a raw `:command` typed via `type_cmd` never reaches the minibuffer — it's
-// swallowed as picker query input instead. Tests that need to invoke a
+// The picker is full-modal: once one is open, the `Picker` layer sits above
+// every mode layer and handles every event itself, so a raw `:command`
+// typed via `type_cmd` never reaches the minibuffer — it's swallowed as
+// picker query input instead. Tests that need to invoke a
 // *second* named command while a picker is already open (pushing into it,
 // closing it, replacing it) go through `execute_keymap_command` instead,
 // bypassing key routing entirely — the same tool `sync_dispatch.rs` uses to

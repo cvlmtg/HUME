@@ -223,10 +223,9 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
 // ── Refilter to zero matches: doesn't trap Esc/Enter/Tab ─────────────────────
 
 /// Regression: an open-but-empty session (narrowed to zero matches by
-/// continued typing) must not intercept Enter. Before the
-/// `handle_completion_key` empty-session guard, this hit `accept(0)` on an
-/// empty `filtered` list, reported an "index out of range" error, and
-/// swallowed the newline.
+/// continued typing) must not intercept Enter. Before `completion_input`'s
+/// empty-session guard, this hit `accept(0)` on an empty `filtered` list,
+/// reported an "index out of range" error, and swallowed the newline.
 #[test]
 fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -299,8 +298,9 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
         "a transient zero-match refilter must not kill the session outright"
     );
 
-    // Esc must not intercept-and-swallow while nothing is visibly shown —
-    // it falls through to the trie's exit-insert leaf, which ends the
+    // Esc must not be handled-and-swallowed by `completion_input` while
+    // nothing is visibly shown — it falls through to the trie's exit-insert
+    // leaf, which ends the
     // insert session and dismisses the completion session as a side
     // effect. A *single* Esc reaching Normal is the regression this
     // guards: the bug was a second, invisible session trapping the first
@@ -485,7 +485,7 @@ fn left_arrow_dismisses_the_session_immediately() {
     }
     begin_session(&mut ed, &[("abc", None)]);
 
-    // Left isn't intercepted by `handle_completion_key` (only Tab/BackTab/
+    // Left isn't handled by `completion_input` (only Tab/BackTab/
     // Up/Down/Enter/Esc/Backspace are) — it resolves through the insert
     // trie's `WalkResult::Leaf` arm instead, which now dismisses any open
     // completion session unconditionally before running the motion. Before

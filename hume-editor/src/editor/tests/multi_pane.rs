@@ -645,11 +645,10 @@ fn vsplit_places_pane_side_by_side() {
 }
 
 /// End-to-end regression guard: `:split` typed through the real command-mode
-/// dispatch path (`Mode::Command`, not `Mode::Normal`) must still move focus
-/// to the new pane. `execute_typed`-based tests above run with the editor
-/// already in Normal mode and would not catch a regression that routed focus
-/// through `switch_focused_pane` (whose Normal-mode debug_assert would panic
-/// here, since mode flips back to Normal only after dispatch completes).
+/// dispatch path (`type_cmd`, not `execute_typed`'s shortcut) must still
+/// move focus to the new pane. `execute_typed`-based tests above skip the
+/// minibuffer entirely, so they wouldn't catch a regression specific to
+/// dispatch through an open `Command` layer.
 #[test]
 fn split_via_command_mode_moves_focus() {
     use hume_engine::pipeline::LayoutTree;

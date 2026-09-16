@@ -241,7 +241,7 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 /// silent for the same already-reported state.
 ///
 /// Fail oracle: if the confirm ignored mode entirely, the first assertion
-/// below would find a confirm open while `ed.state.mode` is `Insert`.
+/// below would find a confirm open while `ed.state.mode()` reads `Insert`.
 #[test]
 fn change_detected_mid_insert_warns_instead_of_prompting() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
@@ -374,8 +374,8 @@ fn confirm_esc_dismisses_without_answering() {
 /// the same dispatch. `/` opens the search line; a bug that ate the
 /// keystroke would leave the mode at `Normal` with the search line unopened.
 ///
-/// Fail oracle: before the fall-through fix, `handle_confirm_key` consumed
-/// every key unconditionally, so the second assertion (`Mode::Search`) would
+/// Fail oracle: before the fall-through fix, `confirm_input` consumed every
+/// key unconditionally, so the second assertion (`Mode::Search`) would
 /// fail — the `/` never reached `handle_normal`.
 #[test]
 fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
@@ -420,8 +420,8 @@ fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
 
 /// Accepting the confirm after focus moved away from the target buffer
 /// (an async Steel/LSP callback calling `switch-to-buffer!` between frames —
-/// not through key dispatch, since the confirm intercept consumes every key
-/// while open) must not reload, and must not panic.
+/// not through input dispatch, which the `Confirm` layer would otherwise see
+/// first) must not reload, and must not panic.
 ///
 /// Fail oracle: without the focus guard, `reload_buffer_from_disk` would
 /// call `reload_buffer_in_place(bid_a, ..)` while focus is on B, and its
@@ -778,9 +778,10 @@ fn vanished_file_recreated_with_different_content_rereports() {
 
 // ── Confirm can't open over another overlay or a pending key sequence ────────────
 
-/// A confirm must never open while a picker is on screen — the confirm
-/// intercept sits above the picker (`mappings/mod.rs`), so it would eat
-/// every key the picker needs. The blocked change only warns, and the
+/// A confirm must never open while a picker is on screen — `can_open_confirm`
+/// requires the stack to be at `Base`, so a picker on top blocks it outright
+/// rather than letting it push above the picker and eat every key it needs.
+/// The blocked change only warns, and the
 /// deferred prompt still arrives on the next buffer-enter after the picker
 /// closes, same deferral rule as a mode-blocked or non-focused change.
 ///
@@ -1137,7 +1138,8 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
 /// otherwise the prompt outlives its subject and answering `[r]eload` would
 /// silently no-op via `reload_buffer_from_disk`'s `try_get` bail. Mirrors a
 /// non-interactive close (Steel's `close-buffer!`), which never routes
-/// through a key, so the confirm intercept can't dismiss it for us.
+/// through input dispatch, so the `Confirm` layer never gets a chance to
+/// dismiss it for us.
 ///
 /// Fail oracle: without `close_buffer_and_notify` retiring a confirm that
 /// `targets_buffer(id)`, the assertion below would find the stale confirm
@@ -1197,8 +1199,8 @@ fn a_second_confirm_never_replaces_a_live_one() {
         "setup: A's confirm must be open"
     );
 
-    // Switch focus to B directly, bypassing key dispatch (and so the live
-    // confirm's intercept), the same way a Steel `switch-to-buffer!` would.
+    // Switch focus to B directly, bypassing input dispatch (and so the live
+    // `Confirm` layer), the same way a Steel `switch-to-buffer!` would.
     ed.switch_to_buffer_without_jump(bid_b);
     rewrite_externally(&tmp_b, "world, externally changed!\n");
 
@@ -1220,16 +1222,16 @@ fn a_second_confirm_never_replaces_a_live_one() {
     );
 }
 
-/// A change hit mid macro-replay must never open a confirm — its intercept
-/// would consume the next replayed key, silently truncating the macro.
-/// Mirrors `change_detected_mid_insert_warns_instead_of_prompting`'s shape:
-/// blocked during replay, deferred prompt still honoured afterward.
+/// A change hit mid macro-replay must never open a confirm — a `Confirm`
+/// layer on top would consume the next replayed key, silently truncating
+/// the macro. Mirrors `change_detected_mid_insert_warns_instead_of_prompting`'s
+/// shape: blocked during replay, deferred prompt still honoured afterward.
 ///
 /// Fail oracle: without `!self.state.is_replaying` in `can_open_confirm`,
 /// the confirm would open partway through `drain_replay_queue`, and the
 /// first assertion below (confirm still `None`) would fail; the second
-/// (focus actually reached B) would also fail if the intercept had eaten the
-/// macro's remaining keys.
+/// (focus actually reached B) would also fail if the open confirm had eaten
+/// the macro's remaining keys.
 #[test]
 fn confirm_does_not_open_during_macro_replay() {
     let (mut ed, _tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");

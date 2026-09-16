@@ -72,9 +72,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// Ctrl-u/Ctrl-d, so it never conflicts with whatever else is open.
     /// `Sticky` instead writes into the *current* mode layer's own slot —
     /// `Base`/`Insert` are the only kinds with one (`sticky_popup_slot_mut`
-    /// is the SSOT for that), so a `Sticky` `show-popup!` from `:`-typing or
-    /// while a menu/drawer/picker is open drops silently (`Trace`, `Ok`),
-    /// same shape as `show_menu`'s own staleness drop. Either kind first
+    /// is the SSOT for that), so a `Sticky` `show-popup!` with any other
+    /// layer on top drops silently (`Trace`, `Ok`), same shape as
+    /// `show_menu`'s own staleness drop. Either kind first
     /// clears every home a popup could already occupy
     /// (`InputStack::clear_popups`), which is what makes `(show-popup! …)`
     /// replace rather than stack regardless of which of the two kinds was
@@ -127,7 +127,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     /// Idempotent — clears whichever home currently holds a popup, or does
     /// nothing if neither does. There is no present-but-not-top error path
-    /// (unlike `close_menu`/D4): a `Popup` layer is never buried (see
+    /// (unlike `close_menu`'s): a `Popup` layer is never buried (see
     /// `LayerKind::Popup`'s doc) and a `Sticky` popup's slot never occupies
     /// `top()` at all, so this can never observe one it isn't allowed to
     /// close.

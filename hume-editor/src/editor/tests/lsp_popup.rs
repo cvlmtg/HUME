@@ -360,8 +360,8 @@ fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very
     // `Popup` layer's own dispatch policy (any of those would fall under
     // the sibling `dismiss_key_repaints…` test's coverage instead, and
     // `push_mode_layer`'s own `clear_popups()` call — the mechanism that
-    // now replaces `lib.scm`'s old `on-mode-change` hook, see D2 — closes
-    // one just as synchronously). `close-popup!`'s Rust body
+    // replaces the old Scheme `on-mode-change` hook — closes one just as
+    // synchronously). `close-popup!`'s Rust body
     // (`InputStack::clear_popups`) is what a Steel callback drained at
     // `settle()` — an LSP response, a fired timer — ultimately reaches
     // regardless of what queued it, so calling it directly here reproduces

@@ -152,7 +152,7 @@ pub(in crate::editor) enum ConfirmAction {
 /// intentionally doesn't model per-choice actions beyond the first. `Esc`
 /// and any listed choice's key are *consumed*; any other stray key also
 /// dismisses without answering but is left to fall through to normal
-/// dispatch (`Editor::handle_confirm_key`) rather than being swallowed. No
+/// dispatch (`Editor::confirm_input`) rather than being swallowed. No
 /// separate view type: [`ConfirmModel::render_line`] is painted directly by
 /// `hume-editor`'s statusline — `pub(crate)`, not `pub(in crate::editor)`
 /// like every other type in this module, since the statusline lives at

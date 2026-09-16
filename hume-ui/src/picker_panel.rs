@@ -91,10 +91,10 @@ pub struct PickerViewState {
 }
 
 /// Resolved panel geometry — the single source of truth shared by the write
-/// side (`sync_picker_view`, sizing the paint) and the key-interception side
-/// (`handle_picker_key`, sizing `move_selection`'s `visible_rows`). Both call
-/// this against the same `EditorState.view.last_pane_area`, so a keystroke
-/// and the next paint always agree on how many rows are visible.
+/// side (`sync_picker_view`, sizing the paint) and the input-handling side
+/// (`Editor::picker_input`, sizing `move_selection`'s `visible_rows`). Both
+/// call this against the same `EditorState.view.last_pane_area`, so a
+/// keystroke and the next paint always agree on how many rows are visible.
 pub struct PanelGeometry {
     pub rect: Rect,
     /// Inner list capacity: outer height minus `CHROME_ROWS`.

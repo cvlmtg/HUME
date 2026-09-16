@@ -1,6 +1,6 @@
 // Selection menu widget: (show-menu! items
-// on-select) / (close-menu!), and the Normal/Extend-only key intercept in
-// `Editor::handle_key` (`handle_menu_key`).
+// on-select) / (close-menu!), and the Normal/Extend-only input handling in
+// `Editor::menu_input`.
 
 use hume_grid::Rect;
 use std::path::Path;
@@ -110,7 +110,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    // 'l' (move-right) is not one of the menu's intercepted keys.
+    // 'l' (move-right) is not one of the keys `menu_input` handles.
     let head_before = ed.current_selections().primary().head();
     ed.feed_key(key('l'));
     ed.settle();
@@ -134,7 +134,8 @@ fn close_menu_drops_the_callback_without_invoking_it() {
     // Driven directly through the host, not `type_cmd`: typing the `:` to
     // invoke a `:close`-style command is itself a "stray key" that would
     // dismiss the menu (with `#f`) before the command even runs — this
-    // test wants to isolate `close_menu`'s own behavior from that intercept.
+    // test wants to isolate `close_menu`'s own behavior from `menu_input`'s
+    // stray-key handling.
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 

@@ -1,5 +1,12 @@
 //! Cursor-anchored popup, selection menu, bottom drawer, minibuffer
 //! prompt, and the fuzzy-finder picker.
+//!
+//! Each of these is a layer pushed onto the editor's input stack: opening
+//! one is a stack push, precedence between whatever is open is push order
+//! (topmost wins), and a synchronous opener (a key or `:` command running
+//! right now) can push above anything, while an async opener (a Steel
+//! callback answering a request fired earlier) checks whether the stack
+//! has moved since — see each method below for its own gate.
 
 use termina::event::KeyEvent;
 
@@ -15,9 +22,9 @@ use hume_engine::types::TruncateEnd;
 pub enum PopupKind {
     /// Untouched by keys and mouse input alike; lives in the current editing
     /// mode's own slot (`Base`/`Insert` only — anything else has none, so
-    /// `#:kind 'sticky` from `:`-typing or with a menu/drawer/picker open is
-    /// a no-op), and closes when that mode ends, via `close-popup!`, or on
-    /// the next `show-popup!`. Default — `#:kind` omitted, or `'sticky`.
+    /// `#:kind 'sticky` with any other layer on top is a no-op), and closes
+    /// when that mode ends, via `close-popup!`, or on the next
+    /// `show-popup!`. Default — `#:kind` omitted, or `'sticky`.
     Sticky,
     /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
     /// one screenful*; every other key or mouse event — and Ctrl-u/d with
@@ -156,12 +163,14 @@ pub trait UiHost {
 
     /// `(show-menu! items on-select)` — opens a selection menu near the
     /// cursor. `on-select` fires exactly once: the chosen index, or `#f` on
-    /// dismissal — queued, never invoked inline. Replaces any menu already
-    /// open (no stacking). Hosts should reject this from Insert mode — a
-    /// menu that can't be driven is worse than no menu (note: a command
-    /// triggered via `:name` still runs with the *previous* mode active, so
-    /// this must be an Insert-specific rejection, not a Normal/Extend-only
-    /// allowlist).
+    /// dismissal — queued, never invoked inline. A menu that can't be
+    /// driven is worse than no menu, so this requires the mode layer to be
+    /// `Base` (Normal/Extend — a menu open under Insert or a minibuf mode
+    /// has no way to route its own keys) *and* the stack to be otherwise
+    /// unmoved since the request that produced this call was fired (this is
+    /// an async opener answering an earlier request, not a direct key/`:`
+    /// response) — either failing drops the call silently rather than
+    /// erroring, since the mismatch is timing, not a plugin bug.
     fn show_menu(
         &mut self,
         items: Vec<String>,

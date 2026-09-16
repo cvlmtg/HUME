@@ -21,11 +21,11 @@ fn colon_enters_command_mode() {
     assert_eq!(ed.state.minibuf().unwrap().input, "");
 }
 
-/// Truncate-before-execute (§2.7): a `:cmd` body runs with the `Command`
-/// layer already gone (truncated back to `Base` before `execute_command`
-/// is called), so a body that itself pushes `Insert` lands on a clean
-/// stack and stays there — Enter no longer stomps it back to Normal the
-/// way the old execute-then-close order did.
+/// Truncate-before-execute: a `:cmd` body runs with the `Command` layer
+/// already gone (truncated back to `Base` before `execute_command` is
+/// called), so a body that itself pushes `Insert` lands on a clean stack
+/// and stays there — Enter no longer stomps it back to Normal the way the
+/// old execute-then-close order did.
 #[test]
 fn typed_command_body_entering_insert_stays_in_insert() {
     let tmp = safe_tempdir();

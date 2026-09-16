@@ -1,10 +1,10 @@
-//! Key handling for transient chrome — the selection menu, bottom drawer, a
-//! `Scrollable` popup (hover, `gn`/`gp`'s diagnostic overlay), and the
-//! picker — plus the scroll/geometry helpers they share. `dispatch_at` (in
-//! `mod.rs`) routes into these by layer kind. A `Sticky` popup (signature
-//! help) has no handler here: it lives in a mode layer's slot, never its
-//! own layer, so it's never a dispatch target — see `input_stack.rs`'s
-//! `LayerKind::Popup` doc.
+//! Input handling for transient chrome — the confirm overlay, selection
+//! menu, bottom drawer, a `Scrollable` popup (hover, `gn`/`gp`'s diagnostic
+//! overlay), and the picker — plus the scroll/geometry helpers they share.
+//! `dispatch_at` (in `mod.rs`) routes into these by layer kind. A `Sticky`
+//! popup (signature help) has no handler here: it lives in a mode layer's
+//! slot, never its own layer, so it's never a dispatch target — see
+//! `input_stack.rs`'s `LayerKind::Popup` doc.
 
 use termina::event::{KeyCode, Modifiers};
 

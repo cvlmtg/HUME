@@ -1,8 +1,7 @@
-//! End-to-end proof that `run_keys` (headless `--keys` mode) actually loads
-//! config now — through the public API `hume::run_keys` a real
-//! `hume --keys …` invocation goes through, unlike
-//! `editor/tests/unix/reload_config.rs`'s `init_scripting()`-level coverage
-//! of the same wiring.
+//! End-to-end proof that `run_keys` (headless `--keys` mode) loads config —
+//! through the public API `hume::run_keys` a real `hume --keys …`
+//! invocation goes through, unlike `editor/tests/unix/reload_config.rs`'s
+//! `init_scripting()`-level coverage of the same wiring.
 
 extern crate hume_editor as hume;
 
@@ -15,10 +14,11 @@ fn config_binding_takes_effect_in_headless_replay() {
     let output = dir.path().join("out.txt");
     std::fs::write(&input, "hello\n").unwrap();
 
-    // "Z" is unbound by default and, unlike "Q"/"q"/"\"", isn't intercepted
-    // ahead of the keymap trie either (see `handle_normal`'s macro-record/
-    // -replay and register-prefix intercepts) — this init.scm is the only
-    // thing that can make it do anything.
+    // "Z" is unbound by default and, unlike "Q"/"q"/"\"", isn't handled
+    // ahead of the keymap trie walk either (see `handle_normal`'s own
+    // macro-record/-replay and register-prefix intercepts, run inside the
+    // `Base` layer's handler before it reaches the trie) — this init.scm is
+    // the only thing that can make it do anything.
     let config = dir.path().join("init.scm");
     std::fs::write(&config, r#"(bind-key! 'normal "Z" "delete-char-forward")"#).unwrap();
 

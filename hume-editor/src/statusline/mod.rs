@@ -400,9 +400,10 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let y = area.y;
 
         // An open confirm overlay (disk-change reload, …) owns the whole
-        // row unconditionally — it's the intercept chain's top entry (see
-        // `handle_key`), so it must also be the top-priority render, ahead
-        // of even the minibuffer.
+        // row unconditionally — `can_open_confirm` only ever opens one when
+        // the input stack is at `Base`, so a live confirm is always the
+        // topmost layer, and must also be the top-priority render, ahead of
+        // even the minibuffer.
         if let Some(confirm) = editor.state.confirm() {
             fill_row_colors(canvas, &colors, area, y);
             canvas.write_text_run(

@@ -5,8 +5,10 @@ use hume_grid::Rect;
 // ── OnModeChange: Insert → Normal ─────────────────────────────────────────────
 
 /// `cmd_exit_insert` (Esc) must fire `OnModeChange` for the Insert→Normal
-/// transition.  Before the fix, `end_insert_session` wrote `state.mode`
-/// directly, bypassing the funnel, so the hook never reached script handlers.
+/// transition — `end_insert_session` truncates the `Insert` layer, and
+/// `detect_mode_change`'s observation-point diff at the next `settle()` is
+/// what turns that into the fired hook, not any write at the truncate site
+/// itself.
 ///
 /// Verification: install an `on-mode-change` handler that logs a message;
 /// a new log entry proves the hook fired. Deliberately not a cursor motion

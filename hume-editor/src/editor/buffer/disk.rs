@@ -236,7 +236,7 @@ impl Editor {
     /// it's both the mode gate and the overlay gate at once. That is the
     /// difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as
     /// their own direct result (safe: `execute_command` truncates the
-    /// `Command` layer *before* running the command body — §2.7 — so top is
+    /// `Command` layer *before* running the command body, so top is
     /// already `Base` again by the time a native command like `:e` could
     /// open a confirm) and an ambient check landing while the user is still
     /// typing an unsubmitted `:`/`/` line (unsafe: top is still `Command`/
@@ -331,9 +331,11 @@ impl Editor {
     /// you're already viewing. See its doc for the accepted cost.
     ///
     /// Also retires a confirm that no longer targets `entered`: nothing
-    /// guarantees the buffer a still-open confirm targets stays focused (a
-    /// mouse click has no confirm intercept at all; a handler-driven switch
-    /// runs mid-`settle`). Left alone, that confirm would be unanswerable —
+    /// guarantees the buffer a still-open confirm targets stays focused — a
+    /// handler-driven switch (an async Steel/LSP callback calling
+    /// `switch-to-buffer!`) runs mid-`settle`, with no input event for the
+    /// `Confirm` layer's own dismiss arm to catch. Left alone, that confirm
+    /// would be unanswerable —
     /// `reload_buffer_from_disk`'s focused-buffer guard would refuse it —
     /// and would block `entered`'s own prompt via `can_open_confirm`'s
     /// stack-is-`Base` check. Retiring it (not declining it) leaves the
@@ -355,10 +357,11 @@ impl Editor {
 
     /// Record that the user declined to reload `bid` for the disk change
     /// currently pending on it — the confirm's `[k]eep` choice specifically
-    /// (`handle_confirm_key` calls this only for that choice; `Esc` dismisses
-    /// the confirm without answering it, and so does any other stray key —
-    /// which then also runs its own binding — leaving the question open for
-    /// the next `BufferEnter`). Only meaningful while
+    /// (`Editor::confirm_input` calls this only for that choice; `Esc`
+    /// dismisses the confirm without answering it, and so does any other
+    /// stray key or mouse gesture — which then also runs its own binding or
+    /// falls through — leaving the question open for the next
+    /// `BufferEnter`). Only meaningful while
     /// `disk_state` is still `Changed`; a state that moved on before the user
     /// answered (reload happened another way, the file reverted) has nothing
     /// to decline. `try_get`, not `get_mut`: same belt-and-braces as
@@ -403,13 +406,13 @@ impl Editor {
     /// confirm overlay's `[r]eload` choice.
     ///
     /// `check_buffer_disk_state` only ever opens a confirm for the focused
-    /// buffer, but focus can still move before the user answers: a confirm
-    /// is only checked against incoming *keys* (`handle_confirm_key`), while
-    /// `prepare_frame` drains async Steel sources and pending Steel calls
-    /// every frame regardless — either can call the host's
-    /// `switch-to-buffer!` and move focus without ever going through key
-    /// dispatch. `reload_buffer_in_place`'s focused-pane assumption
-    /// (`.expect("focused pane must view the reloaded buffer")`) would panic
+    /// buffer, but focus can still move before the user answers: `Confirm`'s
+    /// own dismiss logic only ever runs in response to an incoming input
+    /// event (`Editor::confirm_input`), while `prepare_frame` drains async
+    /// Steel sources and pending Steel calls every frame regardless — either
+    /// can call the host's `switch-to-buffer!` and move focus without ever
+    /// going through input dispatch. `reload_buffer_in_place`'s focused-pane
+    /// assumption (`.expect("focused pane must view the reloaded buffer")`) would panic
     /// if that happened, so this bails with a warning instead of reloading a
     /// buffer that quietly isn't focused anymore. `try_get` is belt-and-
     /// braces against a non-interactive *close* of `bid` racing the confirm:

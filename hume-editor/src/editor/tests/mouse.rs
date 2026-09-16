@@ -801,14 +801,14 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     assert!(ed.state.mouse_drag_anchor.is_none());
 }
 
-// ── Layer gating (input-layer stack, SPEC.md step 5) ────────────────────────
+// ── Layer gating (input-layer stack) ────────────────────────────────────────
 //
-// Before step 5, every mouse event bypassed the layer stack entirely and ran
-// straight through to `Base`'s own click/wheel/tabline behavior, regardless
-// of what overlay sat on top — a click under a picker moved the cursor in
-// the buffer underneath it, a wheel notch scrolled through a confirm prompt,
-// a tabline click switched tabs under a full-modal picker. These tests pin
-// each layer's own mouse policy (§2.6).
+// Before the input-layer stack, every mouse event bypassed layer routing
+// entirely and ran straight through to `Base`'s own click/wheel/tabline
+// behavior, regardless of what overlay sat on top — a click under a picker
+// moved the cursor in the buffer underneath it, a wheel notch scrolled
+// through a confirm prompt, a tabline click switched tabs under a
+// full-modal picker. These tests pin each layer's own mouse policy.
 
 #[test]
 fn click_with_picker_open_leaves_cursor_and_focus_untouched() {

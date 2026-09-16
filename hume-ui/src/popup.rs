@@ -69,11 +69,11 @@ pub enum PopupLayout {
 /// builds a fresh `PopupContent`; text/highlights never change during a
 /// popup's lifetime), so `width` is the only invalidation key the cache
 /// needs; a `:theme` switch does not need to invalidate it either: a
-/// `Scrollable` popup closes on any key (`Editor::handle_key`'s top-of-loop
-/// check) and a `Sticky` one closes on `on-mode-change`
-/// (`register-hook! 'on-mode-change close-popup!` in `core:lsp/lib.scm`)
-/// before Command-mode input like `:theme` can run — no popup survives to
-/// see a stale highlight.
+/// `Scrollable` popup closes on any non-scroll key (`Editor::popup_input`)
+/// and a `Sticky` one dies with its mode layer as soon as Insert ends
+/// (`EditorState::push_mode_layer`'s `clear_popups()` call) before
+/// Command-mode input like `:theme` can run — no popup survives to see a
+/// stale highlight.
 ///
 /// [`Self::plain`]/[`Self::styled`] both resolve through the same
 /// `wrap_styled` call internally — there is one wrap algorithm, not two;

@@ -1,4 +1,4 @@
-// Fuzzy-picker panel: key interception (`handle_picker_key`), the open
+// Fuzzy-picker panel: input handling (`Editor::picker_input`), the open
 // chokepoint (`picker::open_picker`), and the per-frame write side
 // (`sync_picker_view`). Sessions are still constructed directly rather than
 // through the `picker!` Steel builtin — see `tests/picker_steel.rs` for
@@ -242,7 +242,7 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
         &["one", "two"],
         marker("cb"),
         PickerOpts {
-            // Enter and Ctrl-n are already handled by handle_picker_key
+            // Enter and Ctrl-n are already handled by `Editor::picker_input`
             // before the action-lookup arm ever runs.
             actions: vec![
                 (key_enter(), marker("hijacked-enter")),
@@ -380,8 +380,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
         "opening a picker must clear a live completion session"
     );
 
-    // Still in Insert mode (picker is chrome, not a mode) — but the picker
-    // intercept sits above `handle_insert`, so a printable edits the query.
+    // Still in Insert mode (picker is chrome, not a mode) — but the `Picker`
+    // layer sits above `Insert` on the stack, so a printable edits the query.
     assert_eq!(ed.state.mode(), Mode::Insert);
     ed.feed_key(key('o'));
     assert_eq!(ed.state.input.picker().unwrap().query(), "o");

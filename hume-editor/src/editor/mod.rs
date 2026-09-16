@@ -281,7 +281,10 @@ pub(crate) struct EditorState {
     /// Transient one-line message shown in the statusline after an action.
     pub(crate) status_msg: Option<String>,
     /// Keystrokes the message-log summary stays visible before auto-dismissing.
-    /// Armed when `status_msg` clears with unseen entries; ticked down in `handle_key`.
+    /// Armed when `status_msg` clears with unseen entries; ticked down in
+    /// `handle_key`, but only while no minibuf-mode layer is on the stack
+    /// (`input.minibuf().is_none()`) — a long `:` command shouldn't burn the
+    /// budget invisibly while it's being typed.
     pub(in crate::editor) summary_ttl: u8,
     /// Persistent log of warnings, errors, and trace entries.
     pub(crate) message_log: MessageLog,
@@ -733,8 +736,8 @@ impl EditorState {
     /// `settle()`).
     ///
     /// No-op if the current mode layer is already the same kind (Insert
-    /// re-entry — matches today's same-mode guard and
-    /// `begin_insert_session`'s open-group guard). Otherwise tears down the
+    /// re-entry — matches `begin_insert_session`'s own open-group guard).
+    /// Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
     /// a `prompt!` from Insert ends the insert session before the prompt
     /// lands), clears Extend and every popup (`InputStack::clear_popups`),

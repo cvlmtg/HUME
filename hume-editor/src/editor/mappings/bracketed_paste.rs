@@ -16,9 +16,8 @@ impl Editor {
     ///
     /// Normalizes and empty-checks at the terminal boundary, then hands off
     /// to the same stack walk keys use — each layer states its own paste
-    /// policy (§2.6 in `SPEC.md`'s input-layer-stack design). See
-    /// [`Editor::apply_insert_mode_paste`] for the Insert-mode path, shared
-    /// with dot-repeat replay.
+    /// policy. See [`Editor::apply_insert_mode_paste`] for the Insert-mode
+    /// path, shared with dot-repeat replay.
     pub(in crate::editor) fn handle_terminal_paste(&mut self, text: String) {
         // Normalized here, at the terminal boundary, rather than left to the
         // changeset builder: this text also reaches the minibuffer (via

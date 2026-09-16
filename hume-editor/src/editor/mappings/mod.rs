@@ -17,7 +17,7 @@ mod sift_mode;
 mod widgets;
 
 impl Editor {
-    // ── Key dispatch ──────────────────────────────────────────────────────────
+    // ── Input dispatch ────────────────────────────────────────────────────────
 
     pub(in crate::editor) fn handle_key(&mut self, key: KeyEvent) {
         // How many keystrokes the message-log summary stays visible after
@@ -46,8 +46,10 @@ impl Editor {
         self.dispatch_input(InputEvent::Key(key));
 
         // ── Macro recording ───────────────────────────────────────────────────
-        // Runs after all mode handlers so Insert, Command, and Search keys
-        // are captured. `skip_macro_record` excludes the stop `Q` itself.
+        // Runs after the whole `dispatch_input` stack walk, so a key captured
+        // into the macro is whatever the topmost layer actually consumed —
+        // Insert, Command, Search, or any overlay layer above them.
+        // `skip_macro_record` excludes the stop `Q` itself.
         if let Some((_, ref mut keys)) = self.state.macro_recording
             && !self.state.skip_macro_record
         {
@@ -63,12 +65,16 @@ impl Editor {
         }
     }
 
-    /// Bare stack walk, no cross-cutting bookkeeping — `handle_key` wraps it
-    /// with the status/summary bookkeeping, macro recording, and dot-repeat
-    /// replay above and below. `replay_dot` calls this
-    /// directly instead of going through `handle_key`, since a replayed key
-    /// must skip all of that (recording it again, re-arming the summary
-    /// countdown).
+    /// Bare stack walk, no cross-cutting bookkeeping — the single entry
+    /// point every input event reaches the stack through, whatever its
+    /// source. `handle_key` wraps it with the status/summary bookkeeping,
+    /// macro recording, and dot-repeat replay above and below, for a key
+    /// from the terminal; `handle_input`'s mouse arm and
+    /// `handle_terminal_paste` call it directly for those two event kinds,
+    /// which carry none of that key-only bookkeeping. `replay_dot` also
+    /// calls it directly for a replayed key instead of going through
+    /// `handle_key`, since a replay must skip all of that (recording it
+    /// again, re-arming the summary countdown).
     pub(in crate::editor) fn dispatch_input(&mut self, ev: InputEvent) {
         let top = self.state.input.top();
         self.dispatch_at(top, ev);
@@ -115,7 +121,7 @@ impl Editor {
     /// The base layer's own policy. `r` is unused: `Base` never falls
     /// through further (there is nothing below it) and never truncates
     /// itself (it is never removed). Only ever runs for Normal/Extend —
-    /// every other mode is its own `LayerKind` now, routed directly by
+    /// every other mode is its own `LayerKind`, routed directly by
     /// `dispatch_at`; `handle_normal` still reads `state.mode()` internally
     /// to tell the two apart.
     fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {
@@ -148,8 +154,8 @@ impl Editor {
     /// minibuffer, shared by all four so a paste runs the same `Edited`
     /// follow-up a typed character would (see each mode's own event match).
     /// A mouse event has no minibuffer edit to become — it falls through
-    /// (the cursor still moves under an open `:`/`/`/`s` prompt, as before
-    /// the stack existed) and returns `None` either way. `None` also covers
+    /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
+    /// returns `None` either way. `None` also covers
     /// the case where no minibuffer is live (dispatch reached this layer
     /// kind but its payload was already torn down mid-call — matches every
     /// other handler's own liveness discipline).
