@@ -65,9 +65,6 @@ Every feature file shares these:
 
 ## Shared helpers (`lib.scm`)
 
-- **Popup dismissal** — one `on-mode-change` registration closes whatever popup is
-  open, shared by every feature that uses one (hover, signature help) rather than each
-  registering its own.
 - **Trigger-char lifecycle** — `lsp/setup-trigger-chars!` wires `on-lsp-attach`/
   `on-lsp-detach`/`on-trigger-char` for a feature (completion, signature help). It's
   keyed `(source, language)` on the Rust side, so a second language attaching under

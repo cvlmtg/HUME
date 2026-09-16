@@ -23,11 +23,16 @@ of markdown highlighting — a bare `MarkedString` is always markdown per the LS
 The popup docks at the bottom instead of floating near the cursor once its line count
 exceeds ⅓ of the last-known viewport height (falling back to a flat 15 lines before
 the first `on-viewport-change` event) — either way it's still `show-popup!`, just with
-a different `#:anchor`. Dismissal (any key, mouse input, or mode change, except
-Ctrl-u/d scrolling) is shared with signature help via `lib.scm`'s registration, not
-duplicated here.
+a different `#:anchor`. Hover's popup passes `#:kind 'scrollable` — a response can run long, and unlike
+signature help it has no natural end-of-session to tie its lifetime to. Any key,
+paste, or mouse input other than a scrolling Ctrl-u/d closes it and still does its
+own job — no dismiss code needed here.
 
 ## Signature help
+
+The popup uses `#:kind 'sticky`, the default: it lives in the editor's current-mode
+slot and closes on its own once Insert ends, with no dismiss code needed in this
+plugin.
 
 A parameter label is either a plain string or a `[start, end)` offset pair into the
 signature's own label — the offset form is what a server sends because HUME declares

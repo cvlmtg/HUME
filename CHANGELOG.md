@@ -13,9 +13,21 @@
 - New mappable `tab-new` command — the bindable equivalent of bare `:tabnew`.
 - `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` now scroll the view itself, not just the cursor — matching mouse-wheel scrolling and most other editors.
 - The file, buffer, and modified-files pickers (`z f`/`z b`/`z m`) now accept `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` to open a selection in the current pane, a new tab, a side-by-side split, or a stacked split, alongside `Enter`.
+- Pasting while a picker is open now goes to its query instead of the buffer underneath.
+- Clicking, dragging, or scrolling while a picker is open no longer moves the cursor or the view beneath it.
+- A stray click or wheel notch now dismisses the "file changed on disk" prompt the same way a stray key does, without answering it — the click that opened the prompt by switching panes still leaves it up.
+- Clicking or scrolling while a code-action menu is open now dismisses it, running its callback with no selection, instead of leaving it open over a cursor that has moved.
+- A `:` command that enters Insert mode now stays in Insert.
+- `:reload-config` returns to Normal mode — Extend mode no longer survives it.
+
+### Language servers
+- The signature-help popup now closes as soon as Insert mode ends, rather than waiting on a plugin hook.
 
 ### Plugins & scripting
 - `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
+- A code-action menu or references list whose response arrives after you've moved on — left Normal mode, or opened something else — is discarded instead of opening.
+- `close-menu!`, `close-drawer!`, `picker-close!` and `completion-dismiss!` now error when the widget they name isn't the active one; `close-popup!` stays idempotent.
+- `on-mode-change` no longer fires for the mode transitions a `.` repeat replays internally.
 
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.
@@ -23,6 +35,7 @@
 - `j`/`k` at the top or bottom of a file no longer leave a selection uncollapsed — a non-empty selection already touching the document's edge now collapses onto its head like it does everywhere else, instead of being left untouched.
 - `o`/`O` now carry the current line's indent onto the new line, matching Enter's auto-indent — previously they always opened at column 0.
 - The "file changed on disk" prompt no longer swallows a key that isn't `[r]eload`/`[k]eep`/`Esc` — it still dismisses the prompt, but the keystroke now also runs its own binding instead of vanishing (e.g. `/` now still opens search).
+- Pasting while the "file changed on disk" prompt is open no longer edits the buffer underneath.
 
 ## [0.12.0] - 2026-09-08
 

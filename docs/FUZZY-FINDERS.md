@@ -38,7 +38,7 @@ remaining work below ships.
   caller-supplied function instead: `(row budget) -> string`, run once per
   visible row. Stacks above `#:truncate` rather than superseding it — it must
   run on the write side (`Editor::sync_picker_view`, `hume-editor/src/editor/
-  overlay_sync.rs`, the only picker layer that can reach Steel; the paint
+  overlay_sync.rs`, the only picker stage that can reach Steel; the paint
   side holds a read guard and has `&self`), and the paint-side clip stays as
   the backstop for a formatter that returns something wider than the budget
   it was handed, so it still needs a direction. Main cost: `sync_picker_view`

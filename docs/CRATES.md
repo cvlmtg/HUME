@@ -150,7 +150,7 @@ Steel-writable decoration stores (the write half `set-signs!`/`set-inlay-hints!`
 ### Used by
 - *(nothing — builds the `hume` binary)*
 ## Description
-Editor state, scripting glue, keymaps, and the `hume` binary itself — the crate that ties every other crate together into a running editor. Owns `EditorState`, the command dispatcher, keymap tries (Normal/Extend/Insert), the statusline, and the `EditorHost` implementation that `hume-scripting`'s builtins call into. UI widgets live in `hume-ui`, the decoration stores they render from in `hume-decorations`; `pane_state::build_pane` is the one place that wires both into a pane's `ProviderSet`.
+Editor state, scripting glue, keymaps, and the `hume` binary itself — the crate that ties every other crate together into a running editor. Owns `EditorState`, its `InputStack` (the stack of active input layers — modes and overlays alike — that decides which one handles a key, paste, or mouse event), the command dispatcher, keymap tries (Normal/Extend/Insert), the statusline, and the `EditorHost` implementation that `hume-scripting`'s builtins call into. UI widgets live in `hume-ui`, the decoration stores they render from in `hume-decorations`; `pane_state::build_pane` is the one place that wires both into a pane's `ProviderSet`.
 
 # arch-lints
 ## Description

@@ -36,7 +36,8 @@ produce selections.
 
 ### Architecture
 
-How rendering, dispatch, and the engine/editor boundary are structured.
+How rendering, input dispatch, command dispatch, and the engine/editor
+boundary are structured.
 
 | Topic | File |
 |-------|------|

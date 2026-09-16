@@ -1,8 +1,10 @@
 # The Command/Keymap/Dispatch Architecture
 
-HUME's key handling is split across four layers, each owning one
-responsibility. Understanding the split — and what each layer does *not* know —
-is the key to extending the editor safely.
+Once a key reaches the main editing surface, HUME's key handling is split
+across four layers, each owning one responsibility. Understanding the split
+— and what each layer does *not* know — is the key to extending the editor
+safely. ("Reaches the main editing surface" matters: a key doesn't always
+get this far — see "Before dispatch", below.)
 
 ## The four layers
 
@@ -148,13 +150,33 @@ and the user presses this key, run this specific command instead of the usual
 one." A keybinding plugin that prefers Vim's `o` over `Ctrl-e`, for example,
 can bind `o` in the extend trie to the same flip command.
 
+## Before dispatch: who owns the keyboard
+
+The four layers above describe what happens once a key reaches the main
+editing surface — but a key doesn't always get that far. HUME keeps a
+stack of input handlers, topmost first: the editing surface itself sits at
+the bottom, and above it sit whatever is currently open — a command-line
+prompt, a search field, a selection menu, a fuzzy-finder panel, a
+confirmation question. Each entry on the stack gets first look at every
+key, paste, and mouse event, and chooses one of three things to do with it:
+handle it itself, pass it down to whatever is below, or swallow it outright
+(answer nothing, do nothing, just absorb the event).
+
+Precedence follows the order things were opened in, not a fixed ranking —
+whatever is topmost decides, and it's the only thing that decides. This is
+why a stray key typed while an unrelated question is on screen still runs
+its own binding: the question passes the key down once it's done with it.
+It's also why a fuzzy-finder panel owns the keyboard outright the moment
+it's open — it's full-modal, so it never passes anything down at all, no
+matter what else happens to be open underneath it.
+
 ## Layer 4: Dispatch
 
 The dispatcher is the glue. It receives a command name and an extend flag,
 converts those to the appropriate mode parameter, looks up the command in the
 registry, and calls it.
 
-The flow on any keypress:
+The flow on any keypress that reaches the editing surface:
 
 ```
 keypress
@@ -224,9 +246,9 @@ character arrives — not at the moment the trigger key is pressed.
 
 Commands in the registry have no mode affinity. If Steel binds `"flip-selections"`
 to a key in the insert keymap, and the insert handler resolves a leaf, it calls
-the same dispatch path — the selection flips, the editor stays in Insert mode.
-Whether that binding is useful is the user's responsibility. The editor doesn't
-second-guess it.
+the same dispatch path — the selection flips, and the editor stays in Insert
+mode simply because nothing asked to leave it. Whether that binding is
+useful is the user's responsibility. The editor doesn't second-guess it.
 
 ## Insert mode limitations
 

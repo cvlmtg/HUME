@@ -218,12 +218,12 @@ Full walkthroughs — batch vs. streaming population, truncation direction, exit
 | Call | Effect |
 |------|--------|
 | `(prompt! label on-confirm #:prefill)` | Open a minibuffer text prompt; `on-confirm` fires once, later, with the confirmed text or `#f` on cancel |
-| `(show-popup! text #:anchor #:kind #:lang)` | Show a text popup — `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:kind` `'sticky` (default) or `'scrollable`; `#:lang` for syntax highlighting |
-| `(close-popup!)` | Close the open popup |
+| `(show-popup! text #:anchor #:kind #:lang)` | Show a text popup — `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:lang` for syntax highlighting. `#:kind` also sets how long it lives: `'sticky` (default) closes on its own as soon as you leave whatever mode you opened it in; `'scrollable` stays open — Ctrl-u/Ctrl-d scroll it — until any other key, paste, or mouse input closes it |
+| `(close-popup!)` | Close the open popup; idempotent — a no-op if none is open |
 | `(show-menu! items on-select)` | Show a selection menu over `items`, a list of strings |
-| `(close-menu!)` | Close the open menu |
+| `(close-menu!)` | Close the open menu; a no-op if none is open, an error if a different widget is currently active |
 | `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a list of strings |
-| `(close-drawer!)` | Close the open drawer |
+| `(close-drawer!)` | Close the open drawer; a no-op if none is open, an error if a different widget is currently active |
 
 ## Timers
 
