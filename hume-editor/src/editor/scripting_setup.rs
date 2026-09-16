@@ -264,20 +264,7 @@ impl Editor {
     /// only `drain_pending_work` for exactly this reason — see its doc.
     pub(crate) fn settle(&mut self) {
         self.drain_async_sources();
-        // Any mode change queued between the last consumption point and now
-        // (a handler earlier this same batch, or something that ran before
-        // `settle` was even called) must not survive into the handler calls
-        // below. Unconditional, at the top, so no early-return branch below
-        // can skip it.
-        self.take_pending_lsp_completion_dismiss();
         if self.drain_pending_work() {
-            // A call/handler just run above (an LSP-request callback, a
-            // timer thunk, a hook) can itself dispatch a command that exits
-            // Insert, setting the flag the top-of-function consumption
-            // already passed. Consume it again so `prepare_frame`'s later
-            // `sync_completion_menu_view` never repaints a session
-            // `truncate_layers`'s `Insert` teardown asked to close mid-drain.
-            self.take_pending_lsp_completion_dismiss();
             // The span `Editor::handle_input` opened ("this input's own
             // dispatch just logged a message") closes here, now that this
             // settle() has run the buffer-enter disk check that span exists
@@ -285,10 +272,6 @@ impl Editor {
             // doc.
             self.state.message_logged_this_input = false;
         }
-        // On abort, both consumes above are skipped: a mode change or
-        // message mid-drain defers one frame to the next `settle()`'s
-        // top-of-fn consume rather than being lost — see
-        // `drain_pending_work`'s abort branch.
     }
 
     /// Fixpoint over `state.config.pending_work` only — no async sources.

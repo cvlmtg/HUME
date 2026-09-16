@@ -22,6 +22,7 @@ use hume_engine::types::EditorMode;
 use steel::rvals::SteelVal;
 
 use super::completion::MinibufCompletionState;
+use super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::minibuf::MiniBuffer;
 use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel};
 use super::picker::PickerSession;
@@ -52,6 +53,10 @@ pub(in crate::editor) enum LayerKind {
     Menu,
     Picker,
     Confirm,
+    /// An LSP completion session — an overlay, not a mode layer (only ever
+    /// pushed above `Insert`; `mode()` skips it, reading `Insert` from the
+    /// layer beneath).
+    Completion,
 }
 
 /// One entry on the stack.
@@ -89,6 +94,13 @@ pub(in crate::editor) enum InputLayer {
     Menu(MenuModel),
     Picker(Box<PickerSession>),
     Confirm(ConfirmModel),
+    /// An open LSP completion session, pushed above `Insert` — see
+    /// `LayerKind::Completion`'s own doc. `ui` is `None` until the first
+    /// Tab/Down/BackTab/Up moves the selection off its implicit default of 0.
+    Completion {
+        session: CompletionSession,
+        ui: Option<CompletionMenuUi>,
+    },
 }
 
 impl InputLayer {
@@ -104,6 +116,7 @@ impl InputLayer {
             InputLayer::Menu(_) => LayerKind::Menu,
             InputLayer::Picker(_) => LayerKind::Picker,
             InputLayer::Confirm(_) => LayerKind::Confirm,
+            InputLayer::Completion { .. } => LayerKind::Completion,
         }
     }
 
@@ -216,14 +229,13 @@ impl InputStack {
     }
 
     /// Whether the current top layer allows anything to be pushed above it.
-    /// `Base`/`Insert`/`Drawer` accept any overlay; `Command`/`Search`/
-    /// `Sift`/`Prompt`/`Picker`/`Confirm`/`Menu` accept none — each of those
-    /// is a modal owner for as long as it's open. `kind` is unused today
-    /// (every current layer's policy depends only on what's already on top,
-    /// not on what wants to land above it); kept in the signature since a
-    /// future layer (a scrollable popup dying on any push regardless of
-    /// policy, a Completion session accepting everything) may need to
-    /// consult it directly.
+    /// `Base`/`Insert`/`Drawer`/`Completion` accept any overlay; `Command`/
+    /// `Search`/`Sift`/`Prompt`/`Picker`/`Confirm`/`Menu` accept none — each
+    /// of those is a modal owner for as long as it's open. `kind` is unused
+    /// today (every current layer's policy depends only on what's already on
+    /// top, not on what wants to land above it); kept in the signature since
+    /// a future layer (a scrollable popup dying on any push regardless of
+    /// policy) may need to consult it directly.
     pub(in crate::editor) fn accepts_above(&self, _kind: LayerKind) -> bool {
         match self
             .layers
@@ -232,7 +244,7 @@ impl InputStack {
             .1
             .kind()
         {
-            LayerKind::Base | LayerKind::Insert | LayerKind::Drawer => true,
+            LayerKind::Base | LayerKind::Insert | LayerKind::Drawer | LayerKind::Completion => true,
             LayerKind::Command
             | LayerKind::Search
             | LayerKind::Sift
@@ -453,6 +465,46 @@ impl InputStack {
             .rev()
             .find_map(|(_, layer)| match layer {
                 InputLayer::Drawer(model) => Some(model),
+                _ => None,
+            })
+    }
+
+    pub(in crate::editor) fn completion(&self) -> Option<&CompletionSession> {
+        self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Completion { session, .. } => Some(session),
+            _ => None,
+        })
+    }
+
+    pub(in crate::editor) fn completion_mut(&mut self) -> Option<&mut CompletionSession> {
+        self.layers
+            .iter_mut()
+            .rev()
+            .find_map(|(_, layer)| match layer {
+                InputLayer::Completion { session, .. } => Some(session),
+                _ => None,
+            })
+    }
+
+    /// The completion session's UI selection, flattened — same shape as
+    /// [`Self::minibuf_completion`]. Reads only; see
+    /// [`Self::completion_ui_mut`] to assign or clear it.
+    pub(in crate::editor) fn completion_ui(&self) -> Option<&CompletionMenuUi> {
+        self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Completion { ui, .. } => ui.as_ref(),
+            _ => None,
+        })
+    }
+
+    /// The `Completion` layer's UI slot itself (not its content) — same
+    /// shape as [`Self::minibuf_completion_mut`], for
+    /// `move_completion_selection`'s `get_or_insert`.
+    pub(in crate::editor) fn completion_ui_mut(&mut self) -> Option<&mut Option<CompletionMenuUi>> {
+        self.layers
+            .iter_mut()
+            .rev()
+            .find_map(|(_, layer)| match layer {
+                InputLayer::Completion { ui, .. } => Some(ui),
                 _ => None,
             })
     }

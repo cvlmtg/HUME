@@ -16,6 +16,7 @@
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
@@ -710,15 +711,15 @@ pub(in crate::editor) fn session_for_token(
 /// landing on top of one would open a modal surface no key path could ever
 /// reach through it.
 ///
-/// Takes `state`/`lsp` rather than `&mut Editor` because its production
+/// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
 /// not a whole `Editor` — it can never reach an `&mut Editor`.
 pub(in crate::editor) fn open_picker(
     state: &mut super::EditorState,
-    lsp: Option<&mut super::lsp::LspState>,
+    view: &EngineView,
     session: PickerSession,
 ) -> Result<(), String> {
-    super::lsp::completion::clear_completion_menu(state, lsp);
+    state.dismiss_completion(view);
     let picker_already_open = state.input.kind(state.input.top()) == Some(LayerKind::Picker);
     if !picker_already_open && !state.input.accepts_above(LayerKind::Picker) {
         return Err("picker!: another overlay is open".to_string());

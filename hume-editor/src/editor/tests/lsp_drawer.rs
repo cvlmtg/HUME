@@ -48,7 +48,8 @@ fn show_drawer_list_rejected_when_a_picker_is_open() {
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, None, session).expect("nothing else is open");
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
+        .expect("nothing else is open");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void);

@@ -5,6 +5,7 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
+use crate::editor::input_stack::InputLayer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_engine::pipeline::RenderContext;
@@ -27,7 +28,7 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session).expect("nothing else is open");
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -369,11 +370,13 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     let items =
         vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.lsp.completion = Some(session);
+    ed.state
+        .input
+        .push(InputLayer::Completion { session, ui: None });
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(
-        ed.lsp.completion.is_none(),
+        ed.state.input.completion().is_none(),
         "opening a picker must clear a live completion session"
     );
 
@@ -524,7 +527,7 @@ fn picker_refuses_to_open_over_a_live_menu() {
         display: "a".to_string(),
         payload: SteelVal::StringV("a".into()),
     }]);
-    let result = picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    let result = picker::open_picker(&mut ed.state, &ed.view, session);
 
     assert!(result.is_err(), "a picker must not open over a live menu");
     assert!(ed.state.input.menu().is_some(), "the menu stays open");

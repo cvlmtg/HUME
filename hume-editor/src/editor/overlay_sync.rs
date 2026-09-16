@@ -236,7 +236,9 @@ impl Editor {
     /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
     /// after step 9 runs.
     pub(super) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
-        if self.lsp.completion.is_none() && self.state.views.completion_menu.read().is_none() {
+        if self.state.input.completion().is_none()
+            && self.state.views.completion_menu.read().is_none()
+        {
             return;
         }
 
@@ -249,11 +251,11 @@ impl Editor {
         // one, so check both here.
         //
         // Sequential borrows rather than one closure over
-        // `self.lsp.completion`: the session's shared borrow has to end
+        // `self.state.input`: the session's shared borrow has to end
         // before `popup_placement` and `menu_rows` each take `&mut self`.
         let border = self.state.settings.popup_border;
         let resolved = (|| -> Option<hume_ui::popup::PopupState> {
-            let session = self.lsp.completion.as_ref()?;
+            let session = self.state.input.completion()?;
             if session.bid() != self.focused_buffer_id() {
                 return None;
             }
@@ -264,8 +266,8 @@ impl Editor {
             }
             let placement = self.popup_placement(ctx, anchor_char)?;
 
-            let selected_idx = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
-            let session = self.lsp.completion.as_mut()?;
+            let selected_idx = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
+            let session = self.state.input.completion_mut()?;
             let rows = session.menu_rows();
             Some(hume_ui::popup::resolve_menu(
                 rows,

@@ -187,7 +187,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(crate::editor::picker::picker_items(items));
-        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session)?;
+        crate::editor::picker::open_picker(self.state, self.view, session)?;
         Ok(token)
     }
 
@@ -198,7 +198,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<u64, String> {
         let session = crate::editor::picker::PickerSession::new_live(on_select, opts);
         let token = session.token();
-        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session)?;
+        crate::editor::picker::open_picker(self.state, self.view, session)?;
         Ok(token)
     }
 

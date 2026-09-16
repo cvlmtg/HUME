@@ -86,8 +86,8 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
 
 /// `(completion-dismiss!)`.
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
-    if let Some(completions) = ctx.host.completions() {
-        completions.completion_dismiss();
-    }
-    Ok(SteelVal::Void)
+    require_cap(ctx.host.completions(), "completion-dismiss!")?
+        .completion_dismiss()
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
 }

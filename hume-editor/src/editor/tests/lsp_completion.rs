@@ -1,8 +1,20 @@
 // Completion orchestration: completion-begin!,
 // completion-update-filter!, completion-top, completion-accept!,
 // completion-dismiss!.
+//
+// Every test drives its command through `execute_keymap_command` rather
+// than `type_cmd`'s `:`-typed path: `completion-begin!` gates on the mode
+// layer being `Insert`, and typing `:` itself tears that layer down before
+// a typed command's body ever runs. A raw
+// `push_mode_layer(Insert)` (not a real `i` keypress) satisfies the gate
+// without `begin_insert_session`'s side effects — no edit group opened, no
+// selection collapsed — which several of these tests depend on staying
+// untouched (their whole point is pinning `accept`'s *own*
+// group-opening/collapsed-selection logic, the path a real Steel-triggered
+// accept outside Insert mode takes).
 
 use super::*;
+use crate::editor::input_stack::InputLayer;
 
 #[test]
 fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
@@ -11,14 +23,15 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "second" "sortText" "b")
                      (hash "label" "first" "sortText" "a")
                      (hash "label" "third" "sortText" "c")))
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "first,second,third",
@@ -33,7 +46,7 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "orange")                  ; "rn" scattered from offset 1 (r@1, n@3)
                      ; "rn" is a scattered subsequence of "random" (r@0, n@2) —
@@ -51,7 +64,8 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
              (completion-update-filter! "rn")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "rnorm,random,orange",
@@ -71,13 +85,14 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "Vec") (hash "label" "vec_deque")))
              (completion-update-filter! "Vec")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "Vec",
@@ -100,13 +115,14 @@ fn update_filter_with_trailing_space_matches_nothing() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar")))
              (completion-update-filter! "foo ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "",
@@ -127,13 +143,14 @@ fn update_filter_with_only_a_space_matches_nothing() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar") (hash "label" "foo")))
              (completion-update-filter! " ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "",
@@ -149,13 +166,14 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     // anchor = 0 (cursor was on 'a' at begin time), filter "fo" = 2 chars,
     // so the fallback replaces chars [0, 2) ("ab") with "hello".
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
@@ -171,13 +189,14 @@ fn accept_normalizes_crlf_in_insert_text() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hel\r\nlo")))
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "hel\nlocdef\n");
 }
 
@@ -193,12 +212,13 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "foobar")))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "foobar bar\n");
 }
 
@@ -214,12 +234,13 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foo-bar" "insertText" "foo-bar")))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
 }
 
@@ -234,7 +255,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "format!" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -243,7 +264,8 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
              (completion-update-filter! "for")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     // Without the fix, only [0, 2) ("fo") is replaced, leaving the "r"
     // typed after begin sitting untouched next to the insert: "format!r".
     assert_eq!(ed.doc().text().to_string(), "format!\n");
@@ -263,7 +285,7 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
@@ -271,7 +293,8 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
                                        "newText" "XYZ"))))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     // A delete region that doesn't reach the cursor errors instead of
     // silently clamping to some other span the server never asked for — no
     // data loss, no guessing at a malformed server's intent.
@@ -294,15 +317,21 @@ fn accept_is_one_undo_step() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    // A real Insert entry, not the raw `push_mode_layer` this file uses
+    // elsewhere — this test presses Esc below, and only `begin_insert_
+    // session`'s own bookkeeping (an open edit group) makes that safe.
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
 
+    // Back to Normal — 'u' is Insert-mode's own literal char otherwise.
+    ed.feed_key(key_esc());
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
@@ -318,13 +347,14 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
              (completion-dismiss!)
              (completion-accept! 0)))"#,
     );
     let before = ed.doc().text().to_string();
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         before,
@@ -344,24 +374,24 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-typed-command! "finish" "" (lambda ()
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
+             ; An edit that never goes through completion-update-filter! —
+             ; a raw text-edit builtin, not Insert-mode typing (which is
+             ; wired to call completion-update-filter! automatically
+             ; whenever a session is open, so it's no longer a valid
+             ; example of a bypassing edit). Appended past "bcdef" so it
+             ; doesn't overlap the session's own anchor..cursor span.
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 6) (cons 0 6) "Q")))))
+           (define-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":begin");
-
-    // An edit that never goes through completion-update-filter! — a
-    // Normal-mode edit (select-line, delete), not Insert-mode typing:
-    // Insert-mode typing is wired to call `completion-update-filter!`
-    // automatically whenever a session is open, so raw typing is no longer
-    // a valid example of a bypassing edit. Normal mode never touches
-    // either of the Insert-mode hooks.
-    ed.handle_key(key('x'));
-    ed.handle_key(key('d'));
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("begin".into(), None, false);
 
     let before_accept = ed.doc().text().to_string();
-    type_cmd(&mut ed, ":finish");
+    ed.execute_keymap_command("finish".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         before_accept,
@@ -395,23 +425,32 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "begin" "" (lambda ()
+        r#"(define-command! "begin" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-typed-command! "finish" "" (lambda ()
+           (define-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":begin");
-    assert!(ed.lsp.completion.is_some(), "sanity: session began");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("begin".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: session began"
+    );
 
     // Nothing dismisses a session on a focused-pane change — focus moves to
     // the pane the session did *not* begin in. `pane_state::ensure` would
     // otherwise fabricate a fresh cursor at char 0 for pane B (it has never
     // shown this buffer's selections before), landing the completion at the
-    // top of the file instead of erroring.
-    ed.switch_focused_pane(pid_b);
+    // top of the file instead of erroring. A raw `set_for_test` rather than
+    // `switch_focused_pane` — that helper's Normal-mode precondition doesn't
+    // hold here on purpose (`open_pane_in_layout` already seeded `pid_b`'s
+    // pane state through the real pane-creation path, same as its own
+    // "a fresh test editor has no session open yet" carve-out just assumes
+    // for its own callers).
+    ed.state.focus.set_for_test(pid_b);
 
     let before = ed.doc().text().to_string();
-    type_cmd(&mut ed, ":finish");
+    ed.execute_keymap_command("finish".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         before,
@@ -435,7 +474,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -447,7 +486,8 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
                                      "newText" "QQ")))))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -470,11 +510,12 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -507,7 +548,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
@@ -519,7 +560,8 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
                                      "newText" "ZZ")))))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         "abcdef\n",
@@ -555,7 +597,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "wxyz" "insertText" "X"
                            "additionalTextEdits"
@@ -565,7 +607,8 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
              (completion-update-filter! "wxyz")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
         "// X\n",
@@ -584,12 +627,13 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     assert!(
-        ed.lsp.completion.is_none(),
+        ed.state.input.completion().is_none(),
         "an empty items response must not open a session"
     );
     assert_eq!(
@@ -607,17 +651,21 @@ fn begin_with_empty_items_clears_an_already_open_session() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "open" "" (lambda ()
+        r#"(define-command! "open" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
-           (define-typed-command! "reopen-empty" "" (lambda ()
+           (define-command! "reopen-empty" "" (lambda ()
              (completion-begin! (current-buffer) (list))))"#,
     );
-    type_cmd(&mut ed, ":open");
-    assert!(ed.lsp.completion.is_some(), "sanity: session opened");
-
-    type_cmd(&mut ed, ":reopen-empty");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("open".into(), None, false);
     assert!(
-        ed.lsp.completion.is_none(),
+        ed.state.input.completion().is_some(),
+        "sanity: session opened"
+    );
+
+    ed.execute_keymap_command("reopen-empty".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_none(),
         "an isIncomplete re-request that comes back empty must close the open \
          session, not leave the previous items live"
     );
@@ -632,7 +680,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")))
              (completion-update-filter! "fo")
@@ -640,7 +688,8 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
            (register-hook! 'on-completion-accept (lambda (bid item)
              (log! 'info (hash-ref item "extra"))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     ed.settle();
     assert_eq!(
         ed.doc().text().to_string(),
@@ -665,13 +714,14 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
 }
@@ -683,15 +733,19 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello"))
                #:incomplete #t)))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info (string-append "refilter:" text))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    // A real Insert entry: this test types 'f' for real below, and Insert-
+    // mode typing's own edit path (`apply_insert_edit`) requires the edit
+    // group `begin_insert_session` opens, unlike a Steel-triggered accept
+    // (which opens its own on demand).
     ed.feed_key(key('i'));
+    ed.execute_keymap_command("go".into(), None, false);
     ed.feed_key(key('f'));
     ed.settle();
     assert_eq!(
@@ -709,14 +763,15 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello")))))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info "should-not-fire")))"#,
     );
-    type_cmd(&mut ed, ":go");
+    // Real Insert entry — see the sibling test above for why.
     ed.feed_key(key('i'));
+    ed.execute_keymap_command("go".into(), None, false);
     ed.feed_key(key('f'));
     ed.settle();
     assert_ne!(
@@ -743,7 +798,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(define-typed-command! "go" "" (lambda ()
+            r#"(define-command! "go" "" (lambda ()
                  (completion-begin! (current-buffer) (list {items}))
                  (completion-update-filter! "item5")
                  (completion-top 64)
@@ -751,7 +806,8 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         ),
     );
     let start = std::time::Instant::now();
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     let elapsed = start.elapsed();
     assert!(
         elapsed.as_millis() < 5,
@@ -795,6 +851,10 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     let bid_b = ed.focused_buffer_id();
     assert_ne!(bid_a, bid_b, "must be genuinely different buffers");
     ed.switch_focused_pane(pid_a);
+    // The mode/top gate requires Insert to even reach the pane-mismatch
+    // check this test is actually pinning — without it, a
+    // call from Normal would Trace-drop on the mode check first instead.
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
 
     let mut impl_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
@@ -804,7 +864,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     );
 
     assert!(
-        ed.lsp.completion.is_none(),
+        ed.state.input.completion().is_none(),
         "no session must be created for a buffer not shown in the focused pane"
     );
     assert!(
@@ -826,12 +886,13 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "good") (hash "kind" 1)))
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
 
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -857,13 +918,14 @@ fn all_items_malformed_behaves_like_an_empty_response() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)))))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
 
     assert!(
-        ed.lsp.completion.is_none(),
+        ed.state.input.completion().is_none(),
         "an all-malformed items response must not open a session"
     );
     assert_eq!(
@@ -887,7 +949,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
+        r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "x"
                            "textEdit" (hash "insert" (hash "start" (hash "line" 0 "character" 1)
@@ -897,7 +959,8 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
                                             "newText" "XYZ"))))
              (completion-accept! 0)))"#,
     );
-    type_cmd(&mut ed, ":go");
+    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
+    ed.execute_keymap_command("go".into(), None, false);
     // insert = [1,3) ("bc"), replace = [1,6) ("bcdef") — using replace would
     // leave "aXYZ\n"; the narrower insert range must leave "def" behind.
     assert_eq!(ed.doc().text().to_string(), "aXYZdef\n");

@@ -105,7 +105,7 @@ impl Editor {
             buf,
             |b, s| insert_str(b, s, text),
         );
-        self.clear_completion_menu();
+        self.state.dismiss_completion(&self.view);
     }
 
     /// Runs the same follow-up each mode performs on `MiniBufferEvent::Edited`

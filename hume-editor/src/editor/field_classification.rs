@@ -35,8 +35,8 @@ fn editor_state_fields_are_classified() {
             config: _, // exempt — see ConfigState's own doc
             // config: reset_config_state → input.truncate_to_base() (drops
             // every mode layer's minibuf/completion/prompt-callback payload
-            // along with the four overlay widgets, and resets Base's
-            // extend flag)
+            // along with the five overlay widgets — confirm/picker/menu/
+            // drawer/completion — and resets Base's extend flag)
             input: _,
             pending_keys: _,        // preserved
             count: _,               // preserved
@@ -90,9 +90,8 @@ fn editor_state_fields_are_classified() {
             // doesn't fire a phantom OnModeChange for a mode the fresh
             // hooks never observed
             last_observed_mode: _,
-            mouse_drag_anchor: _,              // preserved
-            cwd: _,                            // preserved
-            lsp_completion_dismiss_pending: _, // preserved
+            mouse_drag_anchor: _, // preserved
+            cwd: _,               // preserved
             views: _, // preserved: Arc views, self-healing per-frame regardless of config
             tabline_view: _, // preserved: self-healing per-frame regardless of config
             wake: _,  // preserved: cross-thread waker infra, not config

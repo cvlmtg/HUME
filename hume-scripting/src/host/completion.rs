@@ -29,5 +29,7 @@ pub trait CompletionHost {
     fn completion_accept(&mut self, idx: usize) -> Result<(), String>;
 
     /// `(completion-dismiss!)` — clears any open session; no-op if none.
-    fn completion_dismiss(&mut self);
+    /// `Err` if a session is open but something else has taken over the
+    /// keyboard since (same contract every other `close-*!` builtin has).
+    fn completion_dismiss(&mut self) -> Result<(), String>;
 }

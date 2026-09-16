@@ -2,14 +2,13 @@ use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
-use hume_rope::offset::ExclusiveRange;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
-use super::super::{Editor, Severity, commands, doc_ops};
+use super::super::{Editor, commands, doc_ops};
 use hume_ops::MotionMode;
 use hume_ops::auto_pairs::{delete_pair, insert_pair_close};
 use hume_ops::edit::{
@@ -27,11 +26,11 @@ impl Editor {
     /// that edits the focused buffer directly goes through, so no such call
     /// site needs its own record-or-not decision. (A cursor-motion or
     /// edit-command key that instead resolves through the insert trie is a
-    /// separate case — `handle_insert`'s `WalkResult::Leaf` arm dismisses
-    /// the session outright before reaching any of those, since none of them
-    /// route back through here.) See `CompletionSession::observe_edit` for
-    /// why every keystroke reaching this function needs recording, not just
-    /// ones at the primary cursor.
+    /// separate case — `completion_input`'s own trie peek dismisses the
+    /// session outright before falling through to any of those, since none
+    /// of them route back through here.) See `CompletionSession::observe_edit`
+    /// for why every keystroke reaching this function needs recording, not
+    /// just ones at the primary cursor.
     fn apply_insert_edit(
         &mut self,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -55,28 +54,16 @@ impl Editor {
         // `ChangeSet` anyway, but checking `bid` up front documents why,
         // rather than relying on that as a coincidence.
         let stale = self
-            .lsp
-            .completion
-            .as_mut()
+            .state
+            .input
+            .completion_mut()
             .is_some_and(|session| session.bid() == buf && !session.observe_edit(&cs));
         if stale {
-            self.clear_completion_menu();
+            self.state.dismiss_completion(&self.view);
         }
     }
 
     pub(in super::super) fn handle_insert(&mut self, key: KeyEvent) {
-        // ── LSP completion menu intercept ────────────────────────────────
-        // Guarded early-return before the trie walk (not after) — Esc must
-        // never reach the trie's exit-insert binding while a session is
-        // open; Esc dismisses the *session*, staying in
-        // Insert. Printable chars and Backspace-within-the-token are
-        // deliberately NOT fully handled here — they fall through to the
-        // normal body below, then get refiltered by the post-edit hook at
-        // the end of this function.
-        if self.lsp.completion.is_some() && self.handle_completion_key(key) {
-            return;
-        }
-
         // Walk the insert trie first: handles Esc, Ctrl-c, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
@@ -91,12 +78,11 @@ impl Editor {
                 // `run_native_body`, or — like Ctrl-w's `EditorCmd` — through
                 // the ordinary `execute_keymap_command` dispatch further
                 // down; neither hands its `ChangeSet` back here), so an open
-                // completion session can't stay correctly anchored past one:
-                // a motion moves the cursor off the token, and an edit
-                // command mutates outside the one chokepoint that keeps the
-                // session's anchor in sync. Dismiss unconditionally rather
-                // than let either corrupt the session silently.
-                self.clear_completion_menu();
+                // completion session can't stay correctly anchored past one.
+                // Dismissing it is `completion_input`'s job, not this
+                // function's: it peeks this same trie walk before falling
+                // through here, and retires the layer once this call
+                // returns — see its own doc.
                 let Some(reg_cmd) = self
                     .state
                     .config
@@ -264,170 +250,6 @@ impl Editor {
 
             _ => {}
         }
-
-        // Only reached for keys the completion pre-guard let fall through
-        // (printable chars, Backspace within the token) — refilter using
-        // the buffer's new anchor..cursor text now that the edit landed.
-        if self.lsp.completion.is_some() {
-            self.refilter_lsp_completion_after_edit(key);
-        }
-    }
-
-    // ── LSP completion menu ─────────────────────────────────────────────
-
-    /// The open completion session — every call site sits behind
-    /// `handle_insert`'s `lsp.completion.is_some()` guard, so the session
-    /// is always present here.
-    fn open_completion_session(&self) -> &crate::editor::lsp::completion::CompletionSession {
-        self.lsp
-            .completion
-            .as_ref()
-            .expect("checked by handle_insert above")
-    }
-
-    /// Intercepts a key while an LSP completion session is open.
-    /// Returns `true` if fully handled (skip the rest of `handle_insert`
-    /// this call) — `false` if it should still fall through to normal
-    /// Insert-mode dispatch (printable chars always do; Backspace always
-    /// does, after this decides whether the session survives the deletion).
-    fn handle_completion_key(&mut self, key: KeyEvent) -> bool {
-        if self.open_completion_session().is_empty() {
-            // Filtered to nothing by continued typing, or an `isIncomplete`
-            // list awaiting an async re-request — either way no menu is
-            // visibly shown, so nothing here should intercept a key.
-            // Notably this covers Esc (falls through to the trie's
-            // exit-insert leaf, which dismisses the session as a side
-            // effect of leaving Insert — see `EditorState::tear_down`'s
-            // `Insert` arm — rather than needing a second Esc to actually
-            // leave Insert)
-            // and Enter (inserts a newline instead of erroring on an
-            // out-of-range `accept(0)`).
-            return false;
-        }
-        match key.code {
-            KeyCode::Tab | KeyCode::Down => {
-                self.move_completion_selection(true);
-                true
-            }
-            KeyCode::BackTab | KeyCode::Up => {
-                self.move_completion_selection(false);
-                true
-            }
-            KeyCode::Enter => {
-                self.accept_completion_selection();
-                true
-            }
-            KeyCode::Escape => {
-                self.clear_completion_menu();
-                true
-            }
-            KeyCode::Backspace => {
-                // The char Backspace is about to delete is the one right
-                // before `head`. If `head` is already at (or before) the
-                // anchor, that char lies *outside* the completed token —
-                // crossing it, not just narrowing the filter.
-                let head = self.current_selections().primary().head();
-                if head <= self.open_completion_session().anchor() {
-                    self.clear_completion_menu();
-                }
-                false
-            }
-            _ => false,
-        }
-    }
-
-    /// Moves the completion menu's selection by one row. The popup scrolls
-    /// to keep the selection visible, so the bound is the full ranked
-    /// candidate list, not just the visible window.
-    fn move_completion_selection(&mut self, forward: bool) {
-        let Some(session) = self.lsp.completion.as_ref() else {
-            return;
-        };
-        // `handle_completion_key`'s empty-session guard already returned
-        // before dispatching here, so `n` is always positive.
-        let n = session.len();
-        let ui = self
-            .lsp
-            .completion_ui
-            .get_or_insert(crate::editor::lsp::completion::CompletionMenuUi { selected: 0 });
-        if forward {
-            ui.selected = (ui.selected + 1) % n;
-        } else {
-            ui.selected = ui.selected.checked_sub(1).unwrap_or(n - 1);
-        }
-    }
-
-    /// Accepts the currently-selected completion item through the same
-    /// gen-checked edit path as `completion-accept!` — the session ends
-    /// either way (success or failure), matching `EditorHostImpl`'s own
-    /// completion_accept.
-    fn accept_completion_selection(&mut self) {
-        let selected = self.lsp.completion_ui.as_ref().map_or(0, |ui| ui.selected);
-        let Some(session) = self.lsp.completion.take() else {
-            return;
-        };
-        self.clear_completion_menu();
-        if let Err(msg) = session.accept(&mut self.state, &mut self.lsp, selected) {
-            self.report(Severity::Error, msg);
-        }
-    }
-
-    /// Re-ranks the open completion session against the token text between
-    /// its anchor and the current cursor — called after a printable char or
-    /// Backspace has already landed in the buffer.
-    fn refilter_lsp_completion_after_edit(&mut self, key: KeyEvent) {
-        let is_char =
-            matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(Modifiers::CONTROL);
-        if !is_char && key.code != KeyCode::Backspace {
-            return;
-        }
-        // Phase 1 — shared reads only: peek the anchor without taking the
-        // session, so no put-back is ever needed.
-        let Some(session) = self.lsp.completion.as_ref() else {
-            return;
-        };
-        let anchor = session.anchor();
-        let head = self.current_selections().primary().head();
-        // Backspace crossing the anchor already dismissed the session in
-        // `handle_completion_key`, before the edit ran. But `head` can still
-        // land before `anchor` here — e.g. a Steel hook mutating selections
-        // mid-session, or any other out-of-band cursor move that doesn't
-        // route through `handle_insert`'s trie-leaf dismissal. Dismiss
-        // rather than slice with an inverted or out-of-range span.
-        let len = self.doc().text().end();
-        if head < anchor || head > len {
-            self.clear_completion_menu();
-            return;
-        }
-        let text = self
-            .doc()
-            .text()
-            .slice(ExclusiveRange::new(anchor, head))
-            .to_string();
-
-        // Phase 2 — disjoint-field destructure (the `client_and_backend`/
-        // `LspState` pattern): `update_filter` needs `&mut lsp.completion`
-        // and `&state` at once, which a whole-`self` method call can't do,
-        // but plain field access can.
-        let Editor { state, lsp, .. } = &mut *self;
-        let Some(session) = lsp.completion.as_mut() else {
-            return; // can't happen (checked above), but never assume it
-        };
-        session.update_filter(state, text.clone());
-        let incomplete = session.incomplete();
-        let bid = session.bid();
-
-        // Phase 3 — borrows from phase 2 have ended; back to whole-`self`.
-        // `on-completion-refilter` fires only while the server said
-        // `isIncomplete` — a complete list needs no re-request, so a normal
-        // session stays hook-silent on every keystroke.
-        if incomplete {
-            self.state.queue_event(EditorEvent::OnCompletionRefilter {
-                buffer: bid,
-                filter_text: text,
-            });
-        }
-        self.lsp.completion_ui = None;
     }
 
     // ── Auto-pair helpers ─────────────────────────────────────────────────────

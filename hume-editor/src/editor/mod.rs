@@ -261,9 +261,9 @@ pub(crate) struct EditorState {
     /// surface: `Base` (carrying the sticky Extend flag) or one of the four
     /// other editing-mode layers (Insert/Command/Search/Sift/Prompt), plus
     /// whatever overlay widgets (disk-change confirm, fuzzy picker,
-    /// selection menu, bottom drawer) are pushed above that. LSP completion
-    /// and the hover/signature-help popup still live on their own fields
-    /// and join this stack in later work.
+    /// selection menu, bottom drawer, an open LSP completion session) are
+    /// pushed above that. The hover/signature-help popup still lives on its
+    /// own field and joins this stack in later work.
     ///
     /// Not reset by `ConfigState`'s wholesale rebuild — `Base` must survive
     /// a `:reload-config`, and a still-open mode layer or overlay's Steel
@@ -434,17 +434,6 @@ pub(crate) struct EditorState {
     pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
-    /// Set by `EditorState::tear_down`'s `Insert` arm on every Insert exit —
-    /// `tear_down` only has `&mut EditorState` (many callers are free
-    /// functions that never touch `Editor`/`LspState`), but the LSP
-    /// completion session it must dismiss lives on `LspState`. Consumed
-    /// (session + ui + view all cleared) by `Editor::
-    /// take_pending_lsp_completion_dismiss`, called unconditionally from
-    /// `handle_key`, `handle_mouse`, and (top and tail) `Editor::settle` —
-    /// the latter is called every frame by every settle site, so no
-    /// separate render-time call is needed. Same deferral channel
-    /// philosophy as `pending_work`.
-    pub(super) lsp_completion_dismiss_pending: bool,
     /// Every overlay view shared between the per-frame write side below
     /// (`overlay_sync.rs`) and the engine's render side — minibuf-completion,
     /// popup (cursor + docked), menu, completion menu, drawer, picker. One
@@ -532,7 +521,6 @@ impl Default for EditorState {
             last_observed_mode: Mode::Normal,
             mouse_drag_anchor: None,
             cwd: PathBuf::new(),
-            lsp_completion_dismiss_pending: false,
             views: hume_ui::OverlayViews::default(),
             tabline_view: hume_engine::lock::SharedSlot::default(),
             wake: Arc::new(|| {}),
@@ -852,12 +840,49 @@ impl EditorState {
                 // skips it.
                 self.history.begin_session_all();
             }
+            input_stack::InputLayer::Completion { .. } => {
+                self.views.completion_menu.set(None);
+            }
             input_stack::InputLayer::Base { .. }
             | input_stack::InputLayer::Drawer(_)
             | input_stack::InputLayer::Menu(_)
             | input_stack::InputLayer::Picker(_)
             | input_stack::InputLayer::Confirm(_) => {}
         }
+    }
+
+    /// Retires the completion layer wherever it is on the stack — truncates
+    /// at its own ref rather than only if it's on top, since a `Completion`
+    /// layer can sit under a scrollable `Popup` once popups get their own
+    /// layer, and a pop-if-top rule would leave a stale session behind one.
+    /// A no-op when no session is open.
+    pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
+        if let Some(r) = self.input.ref_of(input_stack::LayerKind::Completion) {
+            self.truncate_layers(view, r);
+        }
+    }
+
+    /// [`Self::dismiss_completion`]'s variant for the two accept paths,
+    /// which need the session *by value* rather than merely retired —
+    /// truncates the same way (top-first — anything pushed above
+    /// `Completion` gets ordinary [`Self::tear_down`]), but pulls the
+    /// session itself out of the batch instead of dropping it, clearing the
+    /// menu view directly rather than through `tear_down`'s `Completion` arm.
+    /// `None` when no session is open.
+    pub(in crate::editor) fn take_completion_session(
+        &mut self,
+        view: &EngineView,
+    ) -> Option<lsp::completion::CompletionSession> {
+        let r = self.input.ref_of(input_stack::LayerKind::Completion)?;
+        let mut removed = self.input.truncate(r);
+        let Some(input_stack::InputLayer::Completion { session, .. }) = removed.pop() else {
+            unreachable!("ref_of(Completion) guarantees the last removed layer is Completion");
+        };
+        self.views.completion_menu.set(None);
+        for layer in removed {
+            self.tear_down(view, layer);
+        }
+        Some(session)
     }
 
     /// Enqueue `event` to fire after the current command returns — the

@@ -10,9 +10,8 @@ use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::CharOffset;
 
-use super::LspState;
+use crate::editor::EditorState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
-use crate::editor::{Editor, EditorState};
 
 pub(in crate::editor) use item::StoredCompletionItem;
 
@@ -193,18 +192,22 @@ impl CompletionSession {
             generation_at_begin: 0,
             menu_cache: None,
         };
-        session.update_filter(state, String::new());
+        session.update_filter(state.buffers.get(bid).text_gen, String::new());
         Some(session)
     }
 
-    /// Re-ranks `items` against `text`, re-stamping `generation_at_begin` —
-    /// the expected flow is "user types a char into the buffer (bumping
-    /// text_gen), then this is called with the new filter text," so a
-    /// legitimate keystroke must not itself look like the buffer-changed-
-    /// out-from-under-us case `accept!` guards against.
-    pub(in crate::editor) fn update_filter(&mut self, state: &EditorState, text: String) {
+    /// Re-ranks `items` against `text`, re-stamping `generation_at_begin` to
+    /// `text_gen` — the expected flow is "user types a char into the buffer
+    /// (bumping its `text_gen`), then this is called with that new value and
+    /// the new filter text," so a legitimate keystroke must not itself look
+    /// like the buffer-changed-out-from-under-us case `accept!` guards
+    /// against. Takes `text_gen` rather than `&EditorState`: every caller
+    /// now reaches this method through a mutable borrow of the session that
+    /// is itself nested inside `EditorState.input`, so a second, immutable
+    /// borrow of the whole struct alongside it would alias.
+    pub(in crate::editor) fn update_filter(&mut self, text_gen: u64, text: String) {
         self.filter = text;
-        self.generation_at_begin = state.buffers.get(self.bid).text_gen;
+        self.generation_at_begin = text_gen;
         self.menu_cache = None;
         self.rank_scratch.clear();
         let pattern = self.matcher.parse(&self.filter);
@@ -262,56 +265,5 @@ impl CompletionSession {
         self.menu_cache
             .clone()
             .expect("populated by the check above")
-    }
-}
-
-/// Clears `lsp`'s completion session + menu UI (not the shared view Arc —
-/// callers hold that separately: `Editor` via `state.completion_menu_view`,
-/// `EditorHostImpl` via its own disjoint `state` borrow). Single definition
-/// of "what constitutes an open completion session", shared by
-/// `clear_completion_menu` and `completion_accept`.
-pub(in crate::editor) fn clear_completion_state(lsp: &mut LspState) {
-    lsp.completion = None;
-    lsp.completion_ui = None;
-}
-
-/// Ends any open completion session and clears its menu view — the single
-/// chokepoint for "close the completion menu", shared by `Editor` (via
-/// `Editor::clear_completion_menu`), `EditorHostImpl`, and `picker::open_picker`
-/// (opening a picker closes any live completion session first — one modal
-/// owner at a time). `lsp`
-/// is `None` at call sites that hold no `LspState` borrow — a no-op there,
-/// same as when `lsp` is `Some` but no session is open. Always clears the
-/// shared completion-menu view regardless of `lsp`.
-pub(in crate::editor) fn clear_completion_menu(
-    state: &mut EditorState,
-    lsp: Option<&mut LspState>,
-) {
-    if let Some(lsp) = lsp {
-        clear_completion_state(lsp);
-    }
-    state.views.completion_menu.set(None);
-}
-
-impl Editor {
-    // ── LSP completion menu ─────────────────────────────────────────────
-
-    /// Ends any open completion session and clears its menu view — shared
-    /// by every completion-key handler in `mappings/insert.rs` (`Esc`, a
-    /// Backspace crossing the anchor, a successful/failed accept) and by
-    /// `take_pending_lsp_completion_dismiss`. A no-op when no session is
-    /// open.
-    pub(in crate::editor) fn clear_completion_menu(&mut self) {
-        clear_completion_menu(&mut self.state, Some(&mut self.lsp));
-    }
-
-    /// Consumes `EditorState::tear_down`'s deferred dismissal, if one is
-    /// pending — called at every chokepoint between "a mode change could
-    /// have happened" and "the next render" (see the flag's own doc
-    /// comment on `EditorState`).
-    pub(in crate::editor) fn take_pending_lsp_completion_dismiss(&mut self) {
-        if std::mem::take(&mut self.state.lsp_completion_dismiss_pending) {
-            self.clear_completion_menu();
-        }
     }
 }

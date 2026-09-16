@@ -795,7 +795,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session)
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("nothing else is open");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -841,7 +841,7 @@ fn picker_refuses_to_open_over_a_live_confirm() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    let result = crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    let result = crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
 
     assert!(
         result.is_err(),

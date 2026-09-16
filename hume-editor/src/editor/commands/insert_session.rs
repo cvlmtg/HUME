@@ -215,16 +215,13 @@ pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &Engi
 /// Finalises the undo/repeat state; does not itself touch the stack (the
 /// truncate that got here already removed the layer).
 pub(in crate::editor) fn tear_down_insert(state: &mut EditorState, view: &EngineView) {
-    // Any exit from Insert dismisses an open completion session —
-    // `handle_completion_key`'s own `Esc`/Enter paths never reach here
-    // (they return before the trie's `exit-insert` runs), so this catches
-    // every *other* way Insert ends (Ctrl-c, a mouse click, a
-    // Steel-triggered mode change) while a session happens to be open.
-    // Deferred: the session lives on `LspState`, which `tear_down` (only
-    // `&mut EditorState`) can't reach — `Editor::
-    // take_pending_lsp_completion_dismiss` consumes this at every
-    // chokepoint before the next render.
-    state.lsp_completion_dismiss_pending = true;
+    // An open completion session lives in its own `Completion` layer, pushed
+    // above `Insert` — the top-first `truncate_layers` call that reaches
+    // this function always removes `Completion` (running its own `tear_down`
+    // arm) before it removes `Insert`, regardless of which of Insert's many
+    // exit paths (Esc/Enter inside the session's own handler, Ctrl-c, a
+    // mouse click, a Steel-triggered mode change) triggered it. Nothing
+    // completion-related belongs in this function.
     // Vim autoindent parity: trim a blank auto-indented line's whitespace
     // before committing, so leaving Insert mode on one behaves like Enter
     // does in `insert_newline_indent`. Joins the still-open session group —

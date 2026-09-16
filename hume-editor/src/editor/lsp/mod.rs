@@ -103,14 +103,6 @@ pub(crate) struct LspState {
     /// (at most) once per `drain_lsp` call, gated on its own interval so
     /// the animation speed doesn't depend on the event loop's wake cadence.
     spinner: SpinnerClock,
-    /// The LSP completion session — a singleton, starting a new one
-    /// replaces the old. Lives here (not `EditorState`) so it dies with the
-    /// LSP subsystem (`:lsp-stop` clears it via `lsp_stop_one`) rather than
-    /// needing a second owner to reach across for that.
-    pub(in crate::editor) completion: Option<completion::CompletionSession>,
-    /// Insert-mode selection state for `completion` — separate from the
-    /// session itself, cleared whenever the session ends.
-    pub(in crate::editor) completion_ui: Option<completion::CompletionMenuUi>,
     /// `(server, supersede-key) -> the in-flight request id filed under that
     /// key` — for `lsp-request`'s `#:supersede` option: a new request under
     /// the same key cancels the previous one first. Entries are removed in
@@ -131,8 +123,6 @@ impl LspState {
             configs: FxHashMap::default(),
             diagnostics: DiagnosticsStore::default(),
             spinner: SpinnerClock::default(),
-            completion: None,
-            completion_ui: None,
             supersede: FxHashMap::default(),
         }
     }
@@ -156,14 +146,16 @@ impl LspState {
     /// tolerates a missing callback entry (early-returns, logging only for
     /// the internal fire-and-forget `shutdown` request), so dropping them
     /// here is safe. `configs` is the `register-lsp-server!` registration
-    /// store the new `init.scm` re-populates. `completion`/`completion_ui`
-    /// hold a session whose `on-completion-refilter` handler dies with the
-    /// outgoing engine — leaving them would strand a menu that silently
-    /// stops refetching; `supersede` is that session's in-flight-request
-    /// index, meaningless once the session is gone. Deliberately *not*
-    /// touching `servers`/`diagnostics`: an already-spawned process keeps
-    /// running on its old config until `:lsp-restart`, and its last-known
-    /// diagnostics are what `resync_config_state` replays.
+    /// store the new `init.scm` re-populates. `supersede` indexes in-flight
+    /// `#:supersede`-tagged requests (an open completion session's
+    /// `on-completion-refilter` re-request among them) filed by an engine
+    /// that no longer exists — meaningless once it's gone; the completion
+    /// session itself lives on `EditorState.input` now and is dropped by
+    /// `input.truncate_to_base()` alongside every other layer, not here.
+    /// Deliberately *not* touching `servers`/`diagnostics`: an
+    /// already-spawned process keeps running on its old config until
+    /// `:lsp-restart`, and its last-known diagnostics are what
+    /// `resync_config_state` replays.
     ///
     /// Every field above is named explicitly, not `..Self::with_backend(..)`
     /// struct-update syntax: `backend` is `Box<dyn LspBackend>`, which has no
@@ -175,8 +167,6 @@ impl LspState {
     pub(in crate::editor) fn reset_config(&mut self) {
         self.callbacks.clear();
         self.configs.clear();
-        self.completion = None;
-        self.completion_ui = None;
         self.supersede.clear();
     }
 

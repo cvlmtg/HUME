@@ -3,19 +3,10 @@
 use hume_engine::pipeline::BufferId;
 
 use crate::editor::Severity;
+use crate::editor::input_stack::{InputLayer, LayerKind};
 
 use super::EditorHostImpl;
 use hume_scripting::host::CompletionHost;
-
-impl<'a> EditorHostImpl<'a> {
-    /// Delegates to the shared `clear_completion_menu(state, lsp)` free fn
-    /// (`lsp/completion.rs`) — this struct holds disjoint `state`/`lsp`
-    /// borrows, not a full `Editor`, so it can't call `Editor`'s method of
-    /// the same name, but both now share one body.
-    fn clear_completion_menu(&mut self) {
-        crate::editor::lsp::completion::clear_completion_menu(self.state, self.lsp.as_deref_mut());
-    }
-}
 
 impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_begin(
@@ -43,48 +34,92 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if parsed.is_empty() {
             // Replaces any open session too — an isIncomplete re-request
             // that comes back empty (or entirely malformed) must close the
-            // menu, not leave the old one live.
-            self.clear_completion_menu();
+            // menu, not leave the old one live. Unconditional: this path
+            // never consults the LSP-availability or mode/top gates below,
+            // same as before the session moved onto the stack.
+            self.state.dismiss_completion(self.view);
             self.state
                 .report(Severity::Info, "no completions".to_string());
+            return Ok(());
+        }
+        // Mode-layer race (D7, same principle as `show-menu!`/
+        // `show-drawer-list!`): the request that led here can land after the
+        // user left Insert, or after some *other* overlay (a picker opened
+        // mid-session — nothing about opening a picker requires Insert)
+        // landed on top of it. Either way this is timing, not a plugin bug,
+        // so every failure of this gate drops silently rather than erroring
+        // — an error here would abort the whole `run_call_batch` this `Call`
+        // was batched into. `top Completion` is the *normal* path, not an
+        // edge: `on-completion-refilter` re-calls this while a session is
+        // already open, and so does a trigger char typed with the menu up.
+        let mode_ok =
+            self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Insert);
+        let top_kind = self.state.input.kind(self.state.input.top());
+        let top_ok = matches!(
+            top_kind,
+            Some(LayerKind::Insert) | Some(LayerKind::Completion)
+        );
+        if !mode_ok || !top_ok {
+            self.state.report(
+                Severity::Trace,
+                "completion-begin!: mode changed before the session could open — ignored"
+                    .to_string(),
+            );
             return Ok(());
         }
         let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
             self.state, bid, parsed, incomplete,
         ) else {
             // Benign race: the async completion response landed after the
-            // user switched away from `bid`'s pane. Not an error — raising
-            // here would abort the whole `run_call_batch` this `Call` was
-            // batched into and drop every other queued LSP callback/timer
-            // batched alongside it.
+            // user switched away from `bid`'s pane.
             self.state.report(
                 Severity::Trace,
                 "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
             );
             return Ok(());
         };
-        let Some(lsp) = self.lsp.as_deref_mut() else {
+        // The session itself no longer lives on `LspState`, but this
+        // builtin has no `require_cmd_ctx!` gate of its own (unlike most
+        // command-mode builtins) — `self.lsp` being `None` is the only
+        // signal that this call reached an init/lazy-activation eval, which
+        // must not push an input layer at all. Checked last, same as
+        // before the session moved onto the stack: a benign race (the
+        // pane-mismatch `None` case just above) must still win over this,
+        // not get masked by it.
+        if self.lsp.is_none() {
             return Err("completion-begin!: no LSP state available".to_string());
-        };
-        lsp.completion = Some(session);
+        }
+        if top_kind == Some(LayerKind::Completion) {
+            let r = self.state.input.top();
+            self.state.truncate_layers(self.view, r);
+        }
+        self.state
+            .input
+            .push(InputLayer::Completion { session, ui: None });
         Ok(())
     }
 
     fn completion_update_filter(&mut self, text: String) -> Result<(), String> {
-        let Some(lsp) = self.lsp.as_deref_mut() else {
+        if self.lsp.is_none() {
             return Err("completion-update-filter!: no LSP state available".to_string());
-        };
-        let Some(session) = lsp.completion.as_mut() else {
+        }
+        let Some(bid) = self.state.input.completion().map(|s| s.bid()) else {
             return Err("completion-update-filter!: no active completion session".to_string());
         };
-        session.update_filter(self.state, text);
+        // Read from `state.buffers` before re-borrowing the session
+        // mutably out of `state.input` — the two now live inside the same
+        // top-level struct, so a `&EditorState` passed alongside a `&mut
+        // CompletionSession` borrowed from it would alias.
+        let text_gen = self.state.buffers.get(bid).text_gen;
+        let session = self.state.input.completion_mut().expect("checked above");
+        session.update_filter(text_gen, text);
         Ok(())
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
-        self.lsp
-            .as_deref()
-            .and_then(|lsp| lsp.completion.as_ref())
+        self.state
+            .input
+            .completion()
             .map(|s| s.top(n))
             .unwrap_or_default()
     }
@@ -93,19 +128,20 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };
-        let Some(session) = lsp.completion.take() else {
+        let Some(session) = self.state.take_completion_session(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
-        // Ends the session either way — success or failure — so a rejected
-        // accept never leaves a stale session lingering; the ui/view clear
-        // matches `clear_completion_menu`'s scope even though `completion`
-        // itself is already `None` here (via `take` above).
-        crate::editor::lsp::completion::clear_completion_state(lsp);
-        self.state.views.completion_menu.set(None);
         session.accept(self.state, lsp, idx)
     }
 
-    fn completion_dismiss(&mut self) {
-        self.clear_completion_menu();
+    fn completion_dismiss(&mut self) -> Result<(), String> {
+        match self.state.input.ref_of(LayerKind::Completion) {
+            None => Ok(()),
+            Some(r) if r == self.state.input.top() => {
+                self.state.truncate_layers(self.view, r);
+                Ok(())
+            }
+            Some(_) => Err("completion-dismiss!: completion is not the active overlay".to_string()),
+        }
     }
 }

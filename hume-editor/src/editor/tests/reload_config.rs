@@ -660,7 +660,7 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         display: "one".to_string(),
         payload: steel::rvals::SteelVal::StringV("one".into()),
     }]);
-    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session)
+    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session)
         .expect("nothing else is open");
     assert!(
         ed.state.input.picker().is_some(),

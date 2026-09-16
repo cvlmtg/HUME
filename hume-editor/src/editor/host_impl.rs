@@ -52,8 +52,10 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     /// builtin (command dispatch, hook fire, queued-call drain) — `None`
     /// everywhere else (init evals, which `require_cmd_ctx!` already blocks
     /// LSP builtins from anyway), so those sites don't need to thread it in.
-    /// `&mut` (not `&`) because the LSP completion session lives on
-    /// `LspState` — the completion builtins need to write it.
+    /// `&mut` (not `&`) because most `LspHost`/`CompletionHost` methods
+    /// mutate it directly (server registry, callbacks, diagnostics) or need
+    /// it mutable to pass along (`completion-accept!`'s `completionItem/
+    /// resolve` round trip).
     lsp: Option<&'a mut LspState>,
     /// Same `Some`-at-three-sites shape as `lsp`, for the `(after …)` /
     /// `(cancel-timer! …)` — these mutate (schedule/cancel), so `&LspState`'s

@@ -62,11 +62,6 @@ impl Editor {
             MouseEventKind::ScrollDown => self.mouse_scroll(mouse.column, mouse.row, true),
             _ => {}
         }
-        // A click can exit Insert (`mouse_left_down`'s pane path and
-        // `tabline_click` both move focus through `focus_pane`, which ends
-        // one if active) — dismiss a completion session synchronously, same
-        // as `handle_key`.
-        self.take_pending_lsp_completion_dismiss();
     }
 
     // ── Click ─────────────────────────────────────────────────────────────────

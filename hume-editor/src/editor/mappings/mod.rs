@@ -7,6 +7,7 @@ use super::input_stack::{InputEvent, LayerKind, LayerRef};
 
 mod bracketed_paste;
 pub(super) mod command_mode;
+mod completion_menu;
 mod execute;
 mod insert;
 mod lazy;
@@ -78,11 +79,6 @@ impl Editor {
         if let Some(pending) = self.state.pending_repeat.take() {
             self.replay_dot(pending.count);
         }
-
-        // Any mode change this dispatch made (`tear_down`'s `Insert` arm)
-        // dismisses a completion session synchronously, before this
-        // function returns — same timing tests already assert on.
-        self.take_pending_lsp_completion_dismiss();
     }
 
     /// Bare stack walk, no cross-cutting bookkeeping — `handle_key` wraps it
@@ -113,6 +109,7 @@ impl Editor {
             LayerKind::Menu => self.menu_input(r, ev),
             LayerKind::Picker => self.picker_input(r, ev),
             LayerKind::Confirm => self.confirm_input(r, ev),
+            LayerKind::Completion => self.completion_input(r, ev),
         }
     }
 

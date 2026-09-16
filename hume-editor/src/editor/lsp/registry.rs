@@ -361,12 +361,12 @@ impl Editor {
         // would keep showing (and let the user accept) suggestions from a
         // server that's no longer running for this buffer.
         if self
-            .lsp
-            .completion
-            .as_ref()
+            .state
+            .input
+            .completion()
             .is_some_and(|session| bids.contains(&session.bid()))
         {
-            self.clear_completion_menu();
+            self.state.dismiss_completion(&self.view);
         }
         for bid in diag_touched {
             self.queue_diagnostics_changed(bid);

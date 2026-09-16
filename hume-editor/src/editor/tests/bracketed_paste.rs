@@ -3,6 +3,7 @@
 // `p`/`P` paste commands covered in `commands/paste.rs`.
 
 use super::*;
+use crate::editor::input_stack::InputLayer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use pretty_assertions::assert_eq;
 use termina::event::Event as TerminalEvent;
@@ -21,7 +22,9 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
         })
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.lsp.completion = Some(session);
+    ed.state
+        .input
+        .push(InputLayer::Completion { session, ui: None });
 }
 
 // ── No-op guards ──────────────────────────────────────────────────────────
@@ -95,10 +98,10 @@ fn insert_mode_paste_dismisses_open_completion_session() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
     begin_completion_session(&mut ed, &["foo", "bar"]);
-    assert!(ed.lsp.completion.is_some());
+    assert!(ed.state.input.completion().is_some());
 
     paste(&mut ed, "xyz");
-    assert!(ed.lsp.completion.is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
