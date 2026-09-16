@@ -7,7 +7,8 @@ use termina::event::{KeyCode, Modifiers};
 
 use super::super::Editor;
 use super::super::input_stack::{InputEvent, InputLayer, LayerRef};
-use super::super::overlay_models::ConfirmAction;
+use super::super::mouse::is_fresh_gesture;
+use super::super::overlay_models::{ConfirmAction, MenuModel};
 
 impl Editor {
     /// Handles one key while a native confirm overlay
@@ -31,13 +32,30 @@ impl Editor {
     /// any other unmatched key falls through instead, so a prompt the user
     /// didn't notice never eats a keystroke meant for the editor (e.g. `/`
     /// opening search).
+    ///
+    /// A mouse event gets the same "stray input dismisses, then falls
+    /// through" treatment — but only a fresh press or wheel notch counts as
+    /// stray; a release, drag, or move is the tail of a gesture already in
+    /// flight (see [`is_fresh_gesture`]'s doc) and falls through untouched,
+    /// leaving the confirm open. Without that split the confirm would be
+    /// unreachable by its own most common trigger: clicking into another
+    /// pane opens it at the next `settle()`, and the click's matching `Up`
+    /// arrives one loop iteration later.
     pub(super) fn confirm_input(&mut self, r: LayerRef, ev: InputEvent) {
-        // A paste is not one of the choice keys and is never a stray
-        // keystroke meant for whatever lies underneath — swallowed outright,
-        // the confirm left open, matching this layer's full-modal choice-key
-        // policy for anything else unmatched.
-        let InputEvent::Key(key) = ev else {
-            return;
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            // A paste is not one of the choice keys and is never a stray
+            // keystroke meant for whatever lies underneath — swallowed
+            // outright, the confirm left open, matching this layer's
+            // full-modal choice-key policy for anything else unmatched.
+            InputEvent::Paste(_) => return,
+            InputEvent::Mouse(mouse) => {
+                if is_fresh_gesture(mouse.kind) {
+                    self.state.input.truncate(r);
+                }
+                self.fall_through(r, InputEvent::Mouse(mouse));
+                return;
+            }
         };
         let mut removed = self.state.input.truncate(r);
         let Some(InputLayer::Confirm(confirm)) = removed.pop() else {
@@ -79,13 +97,31 @@ impl Editor {
     /// `push_mode_layer` always pushes a new mode layer *above* whatever
     /// overlay sits on `Base` — so a `Menu` layer is dispatch's top only
     /// while the mode layer beneath it is still `Base`.
+    ///
+    /// A fresh mouse press or wheel notch gets the same treatment as a
+    /// stray key (close with `#f`, then fall through); a release, drag, or
+    /// move is the tail of a gesture already in flight (see
+    /// [`is_fresh_gesture`]'s doc) and falls through untouched, leaving the
+    /// menu open.
     pub(super) fn menu_input(&mut self, r: LayerRef, ev: InputEvent) {
-        // A paste is swallowed without closing the menu — same "consumes
-        // stray input" treatment the menu gives any other key it doesn't
-        // recognize as a choice, minus the `#f` callback that arm fires: a
-        // paste was never a choice attempt.
-        let InputEvent::Key(key) = ev else {
-            return;
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            // A paste is swallowed without closing the menu — same
+            // "consumes stray input" treatment the menu gives any other key
+            // it doesn't recognize as a choice, minus the `#f` callback
+            // that arm fires: a paste was never a choice attempt.
+            InputEvent::Paste(_) => return,
+            InputEvent::Mouse(mouse) => {
+                if !is_fresh_gesture(mouse.kind) {
+                    self.fall_through(r, InputEvent::Mouse(mouse));
+                    return;
+                }
+                let menu = self.take_menu(r);
+                self.state
+                    .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+                self.fall_through(r, InputEvent::Mouse(mouse));
+                return;
+            }
         };
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
@@ -107,31 +143,35 @@ impl Editor {
                 menu.selected = menu.selected.saturating_sub(1);
             }
             KeyCode::Enter => {
-                let mut removed = self.state.input.truncate(r);
-                let Some(InputLayer::Menu(menu)) = removed.pop() else {
-                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
-                };
+                let menu = self.take_menu(r);
                 let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
                 self.state.queue_steel_call(menu.callback, vec![idx]);
             }
             KeyCode::Escape => {
-                let mut removed = self.state.input.truncate(r);
-                let Some(InputLayer::Menu(menu)) = removed.pop() else {
-                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
-                };
+                let menu = self.take_menu(r);
                 self.state
                     .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
             }
             _ => {
-                let mut removed = self.state.input.truncate(r);
-                let Some(InputLayer::Menu(menu)) = removed.pop() else {
-                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
-                };
+                let menu = self.take_menu(r);
                 self.state
                     .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 self.fall_through(r, InputEvent::Key(key));
             }
         }
+    }
+
+    /// Take the menu at `r` off the stack, handing back its model so the
+    /// caller can fire the one callback this layer owes
+    /// (`.take()`-equivalent one-shot discipline via `truncate`) — shared by
+    /// every `menu_input` retirement path (Enter, Escape, a stray key, a
+    /// fresh mouse gesture).
+    fn take_menu(&mut self, r: LayerRef) -> MenuModel {
+        let mut removed = self.state.input.truncate(r);
+        let Some(InputLayer::Menu(menu)) = removed.pop() else {
+            unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
+        };
+        menu
     }
 
     /// Handles one key while the bottom drawer is open. Movement, half-page
@@ -142,14 +182,21 @@ impl Editor {
     /// leaving the drawer open while focus moves to whatever the fallen-
     /// through key does (Helix-style browse-while-editing).
     ///
-    /// No mode gate of its own — same reasoning as [`Self::menu_input`].
+    /// No mode gate of its own — same reasoning as [`Self::menu_input`]. A
+    /// mouse event falls through untouched, same as any other key the
+    /// drawer doesn't bind — browsing never blocks the cursor from moving.
     pub(super) fn drawer_input(&mut self, r: LayerRef, ev: InputEvent) {
-        // Swallowed like every other key the drawer doesn't bind to
-        // movement/scroll/Enter/Esc — stays open, same as today's `Paste`
-        // handling under a drawer (`bracketed_paste.rs`'s old menu/drawer
-        // guard).
-        let InputEvent::Key(key) = ev else {
-            return;
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            // Swallowed like every other key the drawer doesn't bind to
+            // movement/scroll/Enter/Esc — stays open, same as today's
+            // `Paste` handling under a drawer (`bracketed_paste.rs`'s old
+            // menu/drawer guard).
+            InputEvent::Paste(_) => return,
+            InputEvent::Mouse(mouse) => {
+                self.fall_through(r, InputEvent::Mouse(mouse));
+                return;
+            }
         };
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
@@ -332,7 +379,10 @@ impl Editor {
     /// same `last_pane_area` the next frame's `sync_picker_view` will use,
     /// so a keystroke and the following paint always agree on how many rows
     /// are visible (before the first frame, geometry is `None` and paging is
-    /// a documented no-op on the store).
+    /// a documented no-op on the store). A mouse event — click, drag, or
+    /// wheel — is swallowed the same way: full-modal means the picker owns
+    /// the pointer too, not just the keyboard, so a click can't move the
+    /// cursor in the buffer underneath it.
     pub(super) fn picker_input(&mut self, _r: LayerRef, ev: InputEvent) {
         let key = match ev {
             InputEvent::Key(key) => key,
@@ -347,6 +397,7 @@ impl Editor {
                 self.queue_query_change(cb);
                 return;
             }
+            InputEvent::Mouse(_) => return,
         };
         let visible_rows = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
             .map_or(0, |geo| geo.list_rows);

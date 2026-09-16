@@ -35,6 +35,16 @@ impl Editor {
                 self.fall_through(r, InputEvent::Paste(text));
                 return;
             }
+            // A mouse event has no token position to refilter against — it
+            // falls straight through to `Insert`, which either moves the
+            // cursor within the buffer (no post-step to run: unlike a key,
+            // there's nothing here to re-check the session's anchor against)
+            // or, via `focus_pane`, ends Insert outright and takes this
+            // layer with it.
+            InputEvent::Mouse(mouse) => {
+                self.fall_through(r, InputEvent::Mouse(mouse));
+                return;
+            }
         };
         let non_empty = self
             .state

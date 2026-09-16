@@ -141,10 +141,11 @@ impl Editor {
         match ev {
             InputEvent::Key(key) => self.handle_normal(key),
             InputEvent::Paste(text) => self.apply_normal_mode_paste(&text),
+            InputEvent::Mouse(mouse) => self.base_mouse(mouse),
         }
     }
 
-    fn insert_input(&mut self, _r: LayerRef, ev: InputEvent) {
+    fn insert_input(&mut self, r: LayerRef, ev: InputEvent) {
         match ev {
             InputEvent::Key(key) => self.handle_insert(key),
             InputEvent::Paste(text) => {
@@ -153,6 +154,10 @@ impl Editor {
                     session.keystrokes.push(InsertInput::Paste(text));
                 }
             }
+            // A click or a wheel notch is Base's own action to run — most
+            // visibly, a click's `focus_pane` ends this very Insert session
+            // before resolving the click (see `focus::focus_pane`'s doc).
+            InputEvent::Mouse(mouse) => self.fall_through(r, InputEvent::Mouse(mouse)),
         }
     }
 
@@ -161,37 +166,48 @@ impl Editor {
     /// — the single place a key or a paste becomes an edit to the
     /// minibuffer, shared by all four so a paste runs the same `Edited`
     /// follow-up a typed character would (see each mode's own event match).
-    /// `None` when no minibuffer is live (dispatch reached this layer kind
-    /// but its payload was already torn down mid-call — matches every other
-    /// handler's own liveness discipline).
-    fn minibuf_input(&mut self, ev: InputEvent) -> Option<MiniBufferEvent> {
-        let mb = self.state.input.minibuf_mut()?;
-        Some(match ev {
-            InputEvent::Key(key) => mb.handle_key(key),
-            InputEvent::Paste(text) => mb.insert_str(&bracketed_paste::flatten_single_line(&text)),
-        })
+    /// A mouse event has no minibuffer edit to become — it falls through
+    /// (the cursor still moves under an open `:`/`/`/`s` prompt, as before
+    /// the stack existed) and returns `None` either way. `None` also covers
+    /// the case where no minibuffer is live (dispatch reached this layer
+    /// kind but its payload was already torn down mid-call — matches every
+    /// other handler's own liveness discipline).
+    fn minibuf_input(&mut self, r: LayerRef, ev: InputEvent) -> Option<MiniBufferEvent> {
+        match ev {
+            InputEvent::Mouse(mouse) => {
+                self.fall_through(r, InputEvent::Mouse(mouse));
+                None
+            }
+            InputEvent::Key(key) => Some(self.state.input.minibuf_mut()?.handle_key(key)),
+            InputEvent::Paste(text) => Some(
+                self.state
+                    .input
+                    .minibuf_mut()?
+                    .insert_str(&bracketed_paste::flatten_single_line(&text)),
+            ),
+        }
     }
 
     fn command_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(ev) {
+        if let Some(event) = self.minibuf_input(r, ev) {
             self.handle_command_event(r, event);
         }
     }
 
     fn search_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(ev) {
+        if let Some(event) = self.minibuf_input(r, ev) {
             self.handle_search_event(r, event);
         }
     }
 
     fn sift_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(ev) {
+        if let Some(event) = self.minibuf_input(r, ev) {
             self.handle_sift_event(r, event);
         }
     }
 
     fn prompt_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(ev) {
+        if let Some(event) = self.minibuf_input(r, ev) {
             self.handle_steel_prompt_event(r, event);
         }
     }

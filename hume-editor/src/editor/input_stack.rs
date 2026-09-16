@@ -16,7 +16,7 @@
 //! wraps exactly one widget, but nothing in the stack's own API assumes
 //! that stays true.
 
-use termina::event::KeyEvent;
+use termina::event::{KeyEvent, MouseEvent};
 
 use hume_engine::types::EditorMode;
 use steel::rvals::SteelVal;
@@ -138,14 +138,15 @@ impl InputLayer {
     }
 }
 
-/// One input event working its way down the stack. A mouse event still
-/// takes its own dedicated path outside this walk (step 5). Adding a variant
-/// forces every layer's handler to state its policy for it at compile time —
+/// One input event working its way down the stack. Adding a variant forces
+/// every layer's handler to state its policy for it at compile time —
 /// `Paste` broke all eleven handlers' irrefutable `let InputEvent::Key(key)
-/// = ev;` when it arrived, the same way a future `Mouse` variant will.
+/// = ev;` when it arrived, and `Mouse` broke every resulting `Key`/`Paste`
+/// match the same way.
 pub(in crate::editor) enum InputEvent {
     Key(KeyEvent),
     Paste(String),
+    Mouse(MouseEvent),
 }
 
 /// The stack itself: `Base` at index 0, always, plus whatever overlay

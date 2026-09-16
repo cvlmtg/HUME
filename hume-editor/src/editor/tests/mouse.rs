@@ -1,7 +1,14 @@
 use super::*;
+use crate::editor::buffer::{DiskCheckTrigger, DiskState};
+use crate::editor::input_stack::InputLayer;
+use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use crate::editor::overlay_models::{DrawerModel, MenuModel};
+use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_editing::selection::Selection;
 use hume_grid::Rect;
+use hume_scripting::host::PickerOpts;
 use pretty_assertions::assert_eq;
+use steel::rvals::SteelVal;
 use termina::event::{Event as TerminalEvent, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
@@ -11,6 +18,52 @@ fn mouse_drag(x: u16, y: u16) -> TerminalEvent {
         row: y,
         modifiers: Modifiers::NONE,
     })
+}
+
+/// A left-button-release mouse event — the tail of a gesture that began
+/// before whatever's on top of the stack right now, unlike `mouse_left_down`
+/// (used by the layer-gating tests below to distinguish a fresh press from a
+/// release the layer must not treat as stray input).
+fn mouse_left_up(x: u16, y: u16) -> TerminalEvent {
+    TerminalEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: x,
+        row: y,
+        modifiers: Modifiers::NONE,
+    })
+}
+
+fn marker(name: &str) -> SteelVal {
+    SteelVal::StringV(name.into())
+}
+
+fn open_test_picker(ed: &mut Editor, items: &[&str]) {
+    let mut session = PickerSession::new(marker("on-select"), PickerOpts::default());
+    session.push(
+        items
+            .iter()
+            .map(|s| PickerItem {
+                display: s.to_string(),
+                payload: SteelVal::StringV((*s).into()),
+            })
+            .collect(),
+    );
+    picker::open_picker(&mut ed.state, &ed.view, session).expect("nothing else is open");
+}
+
+fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
+    let bid = ed.focused_buffer_id();
+    let items: Vec<StoredCompletionItem> = items
+        .iter()
+        .map(|label| {
+            StoredCompletionItem::from_json(&serde_json::json!({"label": label}))
+                .expect("test item")
+        })
+        .collect();
+    let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
+    ed.state
+        .input
+        .push(InputLayer::Completion { session, ui: None });
 }
 
 /// `tab`'s start column in the synced tabline view — computed the same way
@@ -746,4 +799,230 @@ fn drag_right_after_a_tab_click_does_not_extend_from_the_stale_anchor() {
     // With no anchor, the drag is a no-op — the selection must stay
     // whatever the tab switch left it at, not extend from A's old anchor.
     assert!(ed.state.mouse_drag_anchor.is_none());
+}
+
+// ── Layer gating (input-layer stack, SPEC.md step 5) ────────────────────────
+//
+// Before step 5, every mouse event bypassed the layer stack entirely and ran
+// straight through to `Base`'s own click/wheel/tabline behavior, regardless
+// of what overlay sat on top — a click under a picker moved the cursor in
+// the buffer underneath it, a wheel notch scrolled through a confirm prompt,
+// a tabline click switched tabs under a full-modal picker. These tests pin
+// each layer's own mouse policy (§2.6).
+
+#[test]
+fn click_with_picker_open_leaves_cursor_and_focus_untouched() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    let before = state(&ed);
+    open_test_picker(&mut ed, &["a", "b"]);
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert_eq!(state(&ed), before, "picker must swallow the click");
+    assert!(ed.state.input.picker().is_some(), "picker must stay open");
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
+}
+
+#[test]
+fn wheel_with_picker_open_does_not_scroll() {
+    let mut ed = editor_from("-[l]>ine0\nline1\nline2\nline3\nline4\n");
+    let pid = ed.state.focus.id();
+    ed.view.panes[pid]
+        .viewport
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(2),
+            0,
+        ));
+    open_test_picker(&mut ed, &["a", "b"]);
+
+    ed.handle_input(mouse_wheel(false));
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line,
+        hume_rope::line::ContentLine::new(2),
+        "picker must swallow the wheel notch"
+    );
+    assert!(ed.state.input.picker().is_some());
+}
+
+#[test]
+fn tabline_click_with_picker_open_does_not_switch_tabs() {
+    let mut ed = editor_from("-[a]>bc\n");
+    let tab_a = ed.state.tabs.current();
+    ed.execute_typed("tabnew", None).unwrap();
+    let tab_b = ed.state.tabs.current();
+    assert_ne!(tab_a, tab_b, "setup: tabnew must have opened a second tab");
+
+    frame(&mut ed, 40, 10);
+    open_test_picker(&mut ed, &["a", "b"]);
+
+    let start_a = tab_start_x(&ed, tab_a);
+    ed.handle_input(mouse_left_down(start_a, 0));
+
+    assert_eq!(
+        ed.state.tabs.current(),
+        tab_b,
+        "picker must swallow the tabline click"
+    );
+    assert!(ed.state.input.picker().is_some());
+}
+
+/// A press with the disk-change confirm open is stray input — it dismisses
+/// the confirm without answering (`disk_state` stays `Changed`, matching
+/// `Esc`'s own effect on a modifier-free key it doesn't recognize) and, like
+/// a stray key, still performs its own action underneath.
+#[test]
+fn click_with_confirm_open_dismisses_it_without_answering() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    std::fs::write(&tmp, "hello, world!\n").unwrap();
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    let bid = ed.focused_buffer_id();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert!(
+        ed.state.input.confirm().is_none(),
+        "a fresh press must dismiss the confirm"
+    );
+    assert!(
+        matches!(ed.state.buffers.get(bid).disk_state, DiskState::Changed(_)),
+        "declining wasn't recorded — the click never answered the prompt"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(3),
+        "the click's own action still runs, same as a stray key falling through"
+    );
+}
+
+/// The release half of the click that *opens* the confirm (click-to-focus
+/// → `OnBufferEnter` → the disk check at the next `settle()`) must not
+/// dismiss it — only a fresh press or wheel notch counts as stray input.
+/// Without this split the confirm would be unreachable by its most common
+/// trigger: the press that focuses the other pane arrives before the
+/// confirm exists, and the matching release lands one loop iteration after
+/// `settle()` has already opened it.
+#[test]
+fn mouse_release_with_confirm_open_leaves_it_open() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    std::fs::write(&tmp, "hello, world!\n").unwrap();
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    let bid = ed.focused_buffer_id();
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    assert!(ed.state.input.confirm().is_some(), "setup: confirm open");
+
+    ed.handle_input(mouse_left_up(3, 0));
+
+    assert!(
+        ed.state.input.confirm().is_some(),
+        "a release is the tail of a gesture that began before the confirm existed"
+    );
+}
+
+/// A press with the selection menu open is stray input — same "cancel with
+/// `#f`, then fall through" treatment a stray key gets from `menu_input`.
+#[test]
+fn click_with_menu_open_cancels_it_and_falls_through() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.state.input.push(InputLayer::Menu(MenuModel {
+        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
+        selected: 0,
+        callback: marker("menu-cb"),
+    }));
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert!(
+        ed.state.input.menu().is_none(),
+        "the click must close the menu"
+    );
+    assert_eq!(
+        pending_calls(&ed),
+        vec![(&marker("menu-cb"), &vec![SteelVal::BoolV(false)])]
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(3),
+        "the click still falls through to move the cursor"
+    );
+}
+
+/// A click under the bottom drawer falls through untouched — same
+/// Helix-style "browse while editing" treatment `drawer_input` gives any key
+/// it doesn't bind to movement/scroll/Enter/Esc. Passes against the
+/// pre-step-5 tree too: mouse dispatch bypassed every overlay outright, so
+/// this is a characterization test, not a red one — it pins the behavior
+/// step 5 must preserve rather than change.
+#[test]
+fn click_under_drawer_falls_through_leaving_it_open() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.state.input.push(InputLayer::Drawer(DrawerModel {
+        items: std::sync::Arc::new(vec!["d0".to_string()]),
+        selected: 0,
+        scroll: 0,
+        callback: marker("drawer-cb"),
+    }));
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert_eq!(ed.current_selections().primary().head(), co(3));
+    assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
+    assert!(pending_calls(&ed).is_empty());
+}
+
+/// A wheel notch under the drawer scrolls the pane, same as under nothing —
+/// characterization, like the click test above.
+#[test]
+fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
+    let mut ed = editor_from("-[l]>ine0\nline1\nline2\nline3\nline4\n");
+    let pid = ed.state.focus.id();
+    ed.view.panes[pid]
+        .viewport
+        .seed_top_for_test(hume_engine::display_lines::DisplayLinePos::new(
+            hume_rope::line::ContentLine::new(2),
+            0,
+        ));
+    ed.state.input.push(InputLayer::Drawer(DrawerModel {
+        items: std::sync::Arc::new(vec!["d0".to_string()]),
+        selected: 0,
+        scroll: 0,
+        callback: marker("drawer-cb"),
+    }));
+
+    ed.handle_input(mouse_wheel(false));
+
+    assert_eq!(
+        ed.view.panes[pid].viewport.top().line,
+        hume_rope::line::ContentLine::new(0),
+        "the wheel notch must still scroll the pane"
+    );
+    assert!(ed.state.input.drawer().is_some(), "the drawer stays open");
+}
+
+/// A click in Insert mode with an LSP completion session open ends Insert
+/// (via `focus_pane`'s own teardown, which every click already runs) and
+/// takes the completion layer above it with it — characterization: this
+/// already held before step 5, since `mouse_left_down` unconditionally calls
+/// `focus_pane` regardless of what's on the input stack.
+#[test]
+fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
+    ed.feed_key(key('i'));
+    begin_completion_session(&mut ed, &["hello", "help"]);
+    assert!(ed.state.input.completion().is_some(), "setup: session open");
+
+    ed.handle_input(mouse_left_down(3, 0));
+
+    assert_eq!(ed.state.mode(), Mode::Normal, "the click must end Insert");
+    assert!(
+        ed.state.input.completion().is_none(),
+        "the completion session must not survive Insert ending"
+    );
+    assert_eq!(ed.current_selections().primary().head(), co(3));
 }

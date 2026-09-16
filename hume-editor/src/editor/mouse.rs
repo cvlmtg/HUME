@@ -20,9 +20,13 @@
 //! the pointer is over, falling back to the focused pane on a miss — but,
 //! unlike a click, never moves focus there.
 //!
-//! Every mouse event dismisses an open `Scrollable` popup first — see
-//! [`Editor::handle_mouse`] — matching `handle_key`'s any-key dismissal
-//! (`editor/mappings/mod.rs`).
+//! Every mouse event dismisses an open `Scrollable` popup first — matching
+//! `handle_key`'s any-key dismissal (`editor/mappings/mod.rs`). Past that
+//! pre-step, [`Editor::handle_mouse`] walks the input-layer stack exactly
+//! like a key or a paste (`InputEvent::Mouse` — `input_stack.rs`);
+//! [`Editor::base_mouse`] is `Base`'s own policy, the `match mouse.kind`
+//! this module used to dispatch unconditionally before the stack could gate
+//! it.
 
 use hume_engine::pipeline::PaneId;
 use hume_grid::{Position, Rect};
@@ -30,13 +34,29 @@ use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::{self, pane_display_lines};
 use super::cursor;
+use super::input_stack::InputEvent;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 
 use super::Editor;
 
+/// Whether `kind` is a *fresh* user action rather than the tail of a gesture
+/// that began before the current layer existed — a press or a wheel notch is
+/// the user acting now; a release, a drag, or a pointer move belongs to a
+/// gesture already in flight. A layer that retires on stray input (`Confirm`,
+/// `Menu`) must not retire on the latter: the click that opens the
+/// disk-change confirm (click-to-focus → `OnBufferEnter` → the disk check at
+/// the next `settle()`) sends its own `Up` one loop iteration afterwards,
+/// which would dismiss the prompt before it was ever answered.
+pub(super) fn is_fresh_gesture(kind: MouseEventKind) -> bool {
+    matches!(
+        kind,
+        MouseEventKind::Down(_) | MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+    )
+}
+
 impl Editor {
-    /// Dispatch a [`MouseEvent`] to the appropriate handler.
+    /// Dispatch a [`MouseEvent`] into the input-layer stack.
     ///
     /// Hook draining happens in the caller (`handle_input`) — this method only
     /// performs the dispatch.
@@ -44,8 +64,17 @@ impl Editor {
         // Any mouse event dismisses a scrollable popup, same as any key —
         // see `ConfigState::dismiss_scrollable_popup`. Before the dispatch
         // below, so the event still performs its own action (a wheel notch
-        // still scrolls, a click still moves the cursor).
+        // still scrolls, a click still moves the cursor). Stays a pre-step
+        // here (mirroring `handle_key`'s own) until step 6 folds the popup
+        // into the stack.
         self.state.config.dismiss_scrollable_popup();
+        self.dispatch_input(InputEvent::Mouse(mouse));
+    }
+
+    /// The `Base` layer's own mouse policy — routed here by `dispatch_at`
+    /// once every overlay above it has had a chance to swallow or fall
+    /// through the event.
+    pub(super) fn base_mouse(&mut self, mouse: MouseEvent) {
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 // termina's MouseEvent::column is a terminal-absolute x
