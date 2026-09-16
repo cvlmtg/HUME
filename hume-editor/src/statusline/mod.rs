@@ -403,7 +403,7 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         // row unconditionally — it's the intercept chain's top entry (see
         // `handle_key`), so it must also be the top-priority render, ahead
         // of even the minibuffer.
-        if let Some(confirm) = editor.state.config.confirm.as_ref() {
+        if let Some(confirm) = editor.state.confirm() {
             fill_row_colors(canvas, &colors, area, y);
             canvas.write_text_run(
                 area.x + 1,

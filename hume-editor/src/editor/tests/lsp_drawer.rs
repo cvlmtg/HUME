@@ -28,11 +28,39 @@ fn show_drawer_list_populates_model_and_view() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    assert!(ed.state.config.drawer.is_some());
+    assert!(ed.state.input.drawer().is_some());
     let guard = ed.state.views.drawer.read();
     let view = guard.as_ref().expect("view must be populated on open");
     assert_eq!(*view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
     assert_eq!(view.selected, 0);
+}
+
+/// A picker is full-modal: it refuses anything pushed above it, so
+/// `show-drawer-list!` while one is open errors instead of opening a drawer
+/// that paints under a picker no key path can ever reach.
+#[test]
+fn show_drawer_list_rejected_when_a_picker_is_open() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PickerOpts, UiHost};
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let session = crate::editor::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        PickerOpts::default(),
+    );
+    crate::editor::picker::open_picker(&mut ed.state, None, session).expect("nothing else is open");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    assert!(
+        result.is_err(),
+        "show-drawer-list! must reject a live picker — it's full-modal"
+    );
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "must not have opened despite the error"
+    );
+    assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }
 
 /// `sync_drawer_view` runs unconditionally every frame while the drawer is
@@ -52,7 +80,7 @@ fn drawer_view_shares_the_model_s_row_list_instead_of_cloning_it() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    let model_items = std::sync::Arc::clone(&ed.state.config.drawer.as_ref().unwrap().items);
+    let model_items = std::sync::Arc::clone(&ed.state.input.drawer().unwrap().items);
     let view_rows = {
         let guard = ed.state.views.drawer.read();
         std::sync::Arc::clone(&guard.as_ref().unwrap().rows)
@@ -97,12 +125,12 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
         steel::rvals::SteelVal::Void,
     )
     .unwrap();
-    assert!(ed.state.config.drawer.is_some());
+    assert!(ed.state.input.drawer().is_some());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.close_drawer().unwrap();
 
-    assert!(ed.state.config.drawer.is_none());
+    assert!(ed.state.input.drawer().is_none());
     assert!(ed.state.views.drawer.read().is_none());
     assert!(
         ed.state.config.pending_work.is_empty(),
@@ -122,7 +150,7 @@ fn esc_calls_back_with_false_and_closes() {
     ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.config.drawer.is_none());
+    assert!(ed.state.input.drawer().is_none());
     assert!(ed.state.views.drawer.read().is_none());
 }
 
@@ -138,7 +166,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
     assert!(
-        ed.state.config.drawer.is_some(),
+        ed.state.input.drawer().is_some(),
         "must stay open after Enter"
     );
 
@@ -148,7 +176,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
-    assert!(ed.state.config.drawer.is_some());
+    assert!(ed.state.input.drawer().is_some());
 }
 
 // ── Selection clamps at both ends ─────────────────────────────────────────────
@@ -197,7 +225,7 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     ed.settle();
 
     assert!(
-        ed.state.config.drawer.is_some(),
+        ed.state.input.drawer().is_some(),
         "stray key must not close the drawer"
     );
     assert!(
@@ -242,7 +270,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
         ed.feed_key(key_down());
     }
 
-    let drawer = ed.state.config.drawer.as_ref().unwrap();
+    let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 6);
     assert!(
         drawer.scroll > 0,
@@ -292,7 +320,7 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
 
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
-        ed.state.config.drawer.as_ref().unwrap().selected,
+        ed.state.input.drawer().unwrap().selected,
         2,
         "half of the 4 visible rows"
     );
@@ -300,7 +328,7 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
     // A second half-page crosses the visible window (0..4), so scroll must
     // advance to keep the new selection in view.
     ed.feed_key(key_ctrl('d'));
-    let drawer = ed.state.config.drawer.as_ref().unwrap();
+    let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 4);
     assert!(
         drawer.scroll > 0,
@@ -318,7 +346,7 @@ fn ctrl_d_clamps_at_the_last_item() {
         ed.feed_key(key_ctrl('d'));
     }
     assert_eq!(
-        ed.state.config.drawer.as_ref().unwrap().selected,
+        ed.state.input.drawer().unwrap().selected,
         19,
         "clamped to the last of 20 items, not wrapped or overshot"
     );
@@ -334,7 +362,7 @@ fn ctrl_u_pages_up_by_half_the_visible_window() {
     ed.feed_key(key_ctrl('d')); // selected = 4, scroll > 0 (see above)
     ed.feed_key(key_ctrl('u'));
     assert_eq!(
-        ed.state.config.drawer.as_ref().unwrap().selected,
+        ed.state.input.drawer().unwrap().selected,
         2,
         "half of the 4 visible rows, back down from 4"
     );
@@ -347,7 +375,7 @@ fn ctrl_u_clamps_at_the_first_item() {
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('u'));
-    let drawer = ed.state.config.drawer.as_ref().unwrap();
+    let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 0, "clamped, never underflows");
     assert_eq!(drawer.scroll, 0);
 }
@@ -381,7 +409,7 @@ fn enter_jump_lands_via_goto_location_and_drawer_stays_open() {
         "cursor landed at the jump target"
     );
     assert!(
-        ed.state.config.drawer.is_some(),
+        ed.state.input.drawer().is_some(),
         "drawer stays open after the jump"
     );
 }

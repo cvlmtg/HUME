@@ -27,7 +27,7 @@ fn open_test_session(ed: &mut Editor, items: &[&str], callback: SteelVal, opts: 
         })
         .collect();
     session.push(picker_items);
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session).expect("nothing else is open");
 }
 
 fn open_test_picker(ed: &mut Editor, items: &[&str]) {
@@ -69,7 +69,7 @@ fn printables_edit_query_not_the_buffer() {
     open_test_picker(&mut ed, &["one", "two"]);
     ed.feed_key(key('z'));
 
-    let picker = ed.state.config.picker.as_ref().expect("picker still open");
+    let picker = ed.state.input.picker().expect("picker still open");
     assert_eq!(picker.query(), "z");
     assert_eq!(
         ed.doc().text().to_string(),
@@ -87,13 +87,13 @@ fn up_down_and_ctrl_p_n_move_selection() {
     frame(&mut ed, 60, 16);
 
     ed.feed_key(key_down());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 1);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 1);
     ed.feed_key(key_ctrl('n'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 2);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 2);
     ed.feed_key(key_up());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 1);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 1);
     ed.feed_key(key_ctrl('p'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
 #[test]
@@ -106,12 +106,9 @@ fn page_keys_move_by_panel_list_rows() {
 
     let geo = panel_geometry(ed.view.last_pane_area).expect("viable geometry at 60x16");
     ed.feed_key(key_pagedown());
-    assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().selected(),
-        geo.list_rows
-    );
+    assert_eq!(ed.state.input.picker().unwrap().selected(), geo.list_rows);
     ed.feed_key(key_pageup());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
 #[test]
@@ -120,9 +117,9 @@ fn page_keys_before_first_frame_are_safe_noops() {
     open_test_picker(&mut ed, &["a", "b", "c"]);
     // No `frame()` call: `last_pane_area` is still `Rect::default()`.
     ed.feed_key(key_pagedown());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
     ed.feed_key(key_pageup());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
 #[test]
@@ -136,11 +133,11 @@ fn half_page_keys_move_by_half_the_list_rows() {
     let geo = panel_geometry(ed.view.last_pane_area).expect("viable geometry at 60x16");
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().selected(),
+        ed.state.input.picker().unwrap().selected(),
         geo.list_rows.div_ceil(2)
     );
     ed.feed_key(key_ctrl('u'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
 #[test]
@@ -149,9 +146,9 @@ fn half_page_keys_before_first_frame_are_safe_noops() {
     open_test_picker(&mut ed, &["a", "b", "c"]);
     // No `frame()` call: `last_pane_area` is still `Rect::default()`.
     ed.feed_key(key_ctrl('d'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
     ed.feed_key(key_ctrl('u'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
 }
 
 #[test]
@@ -163,7 +160,7 @@ fn half_page_down_saturates_at_last_item_without_wrapping() {
     ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_ctrl('d'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 2);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 2);
 }
 
 // ── Backspace ────────────────────────────────────────────────────────────────
@@ -175,7 +172,7 @@ fn backspace_pops_full_grapheme() {
     ed.feed_key(key('o'));
     ed.feed_key(key('n'));
     ed.feed_key(key_backspace());
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().query(), "o");
+    assert_eq!(ed.state.input.picker().unwrap().query(), "o");
 }
 
 #[test]
@@ -184,10 +181,10 @@ fn backspace_on_empty_keeps_picker_open() {
     open_test_picker(&mut ed, &["one"]);
     ed.feed_key(key_backspace());
     assert!(
-        ed.state.config.picker.is_some(),
+        ed.state.input.picker().is_some(),
         "backspace on an empty query must not close the picker"
     );
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().query(), "");
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
 }
 
 // ── #:actions ────────────────────────────────────────────────────────────────
@@ -208,7 +205,7 @@ fn bound_action_key_closes_picker_and_fires_its_own_callback_not_on_select() {
     ed.feed_key(key_ctrl('t'));
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "a bound action key must close the picker"
     );
     assert_eq!(pending_calls(&ed).len(), 1);
@@ -230,7 +227,7 @@ fn unbound_ctrl_key_stays_consumed_and_ignored_when_no_actions_declared() {
     ed.feed_key(key_ctrl('t'));
 
     assert!(
-        ed.state.config.picker.is_some(),
+        ed.state.input.picker().is_some(),
         "an unbound action key must not close the picker"
     );
     assert_eq!(pending_calls(&ed).len(), 0);
@@ -256,7 +253,7 @@ fn actions_entry_for_a_reserved_key_never_overrides_the_built_in_behavior() {
 
     ed.feed_key(key_ctrl('n'));
     assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().selected(),
+        ed.state.input.picker().unwrap().selected(),
         1,
         "Ctrl-n must still move the selection, not fire the actions entry"
     );
@@ -284,10 +281,10 @@ fn stray_keys_are_consumed_and_ignored() {
         ed.feed_key(stray);
     }
     assert!(
-        ed.state.config.picker.is_some(),
+        ed.state.input.picker().is_some(),
         "stray keys must not close the picker"
     );
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().query(), "");
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
     assert_eq!(
         ed.doc().text().to_string(),
         "abc\n",
@@ -304,7 +301,7 @@ fn enter_fires_on_select_with_payload_and_closes() {
     ed.feed_key(key_enter());
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "picker must close on Enter"
     );
     assert_eq!(pending_calls(&ed).len(), 1);
@@ -332,7 +329,7 @@ fn esc_fires_false_and_closes() {
     open_test_picker(&mut ed, &["one"]);
     ed.feed_key(key_esc());
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     assert_eq!(pending_calls(&ed).len(), 1);
     let (proc, args) = pending_calls(&ed)[0];
     assert_eq!(callback_name(proc), "cb");
@@ -352,10 +349,10 @@ fn enter_with_no_match_dismisses_with_false() {
     for ch in "zzz".chars() {
         ed.feed_key(key(ch));
     }
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().matched_len(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().matched_len(), 0);
 
     ed.feed_key(key_enter());
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let (_, args) = pending_calls(&ed)[0];
     assert_eq!(args, &vec![SteelVal::BoolV(false)]);
 }
@@ -384,7 +381,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     // intercept sits above `handle_insert`, so a printable edits the query.
     assert_eq!(ed.state.mode(), Mode::Insert);
     ed.feed_key(key('o'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().query(), "o");
+    assert_eq!(ed.state.input.picker().unwrap().query(), "o");
     assert_eq!(
         ed.doc().text().to_string(),
         "abc\n",
@@ -418,7 +415,7 @@ fn open_over_open_picker_fires_old_callback_with_false() {
 fn session_for_token_finds_the_open_session_by_matching_token() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a"]);
-    let token = ed.state.config.picker.as_ref().unwrap().token();
+    let token = ed.state.input.picker().unwrap().token();
     assert!(picker::session_for_token(&mut ed.state, token).is_some());
 }
 
@@ -426,7 +423,7 @@ fn session_for_token_finds_the_open_session_by_matching_token() {
 fn session_for_token_rejects_a_stale_token() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &["a"]);
-    let token = ed.state.config.picker.as_ref().unwrap().token();
+    let token = ed.state.input.picker().unwrap().token();
     assert!(picker::session_for_token(&mut ed.state, token + 1).is_none());
 }
 
@@ -460,7 +457,7 @@ fn picker_feed_rejects_a_stale_token_and_leaves_items_and_pending_untouched() {
         vec![("x".to_string(), SteelVal::StringV("p".into()))],
         PickerFeedMode::Append,
     ));
-    let session = ed.state.config.picker.as_ref().unwrap();
+    let session = ed.state.input.picker().unwrap();
     assert_eq!(
         session.total_len(),
         0,
@@ -494,38 +491,44 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
         PickerFeedMode::Replace,
     ));
     assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().total_len(),
+        ed.state.input.picker().unwrap().total_len(),
         1,
         "a stale-token replace must leave the existing items untouched"
     );
 }
 
-// ── Intercept ordering ───────────────────────────────────────────────────────
+// ── Overlay exclusivity ──────────────────────────────────────────────────────
 
+/// A picker and a menu can no longer coexist: each refuses anything pushed
+/// above it, so opening a picker while a menu is already up is a structural
+/// refusal (`open_picker` returns `Err`), not a silent stack-and-race the way
+/// the old independent per-widget `is_some()` checks allowed.
 #[test]
-fn picker_intercepts_ahead_of_menu() {
+fn picker_refuses_to_open_over_a_live_menu() {
     let mut ed = editor_from("-[a]>bc\n");
-    ed.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
-        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
-            "m0".into(),
-            "m1".into(),
-        ])),
-        selected: 0,
-        callback: marker("menu-cb"),
-    });
-    open_test_picker(&mut ed, &["a", "b"]);
+    ed.state
+        .input
+        .push(crate::editor::input_stack::InputLayer::Menu(
+            crate::editor::overlay_models::MenuModel {
+                rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
+                    "m0".into(),
+                    "m1".into(),
+                ])),
+                selected: 0,
+                callback: marker("menu-cb"),
+            },
+        ));
 
-    ed.feed_key(key_down());
-    assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().selected(),
-        1,
-        "picker must consume the key"
-    );
-    assert_eq!(
-        ed.state.config.menu.as_ref().unwrap().selected,
-        0,
-        "menu must not see it"
-    );
+    let mut session = PickerSession::new(marker("cb"), PickerOpts::default());
+    session.push(vec![PickerItem {
+        display: "a".to_string(),
+        payload: SteelVal::StringV("a".into()),
+    }]);
+    let result = picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+
+    assert!(result.is_err(), "a picker must not open over a live menu");
+    assert!(ed.state.input.menu().is_some(), "the menu stays open");
+    assert!(ed.state.input.picker().is_none(), "the picker never opened");
 }
 
 // ── Re-rank resets selection/scroll end-to-end ──────────────────────────────
@@ -541,11 +544,11 @@ fn typing_rerank_resets_selection_and_scroll_end_to_end() {
     for _ in 0..10 {
         ed.feed_key(key_down());
     }
-    assert_ne!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
+    assert_ne!(ed.state.input.picker().unwrap().selected(), 0);
 
     ed.feed_key(key('i'));
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 0);
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().scroll(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 0);
+    assert_eq!(ed.state.input.picker().unwrap().scroll(), 0);
 }
 
 // ── View lifecycle ───────────────────────────────────────────────────────────

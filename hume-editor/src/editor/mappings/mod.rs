@@ -2,6 +2,7 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use hume_scripting::host::PopupKind;
 
+use super::input_stack::{InputEvent, LayerKind, LayerRef};
 use super::{Editor, Mode};
 
 mod bracketed_paste;
@@ -41,7 +42,7 @@ impl Editor {
             }
         }
 
-        // Popup dismissal/scroll, before mode dispatch — see `PopupKind`.
+        // Popup dismissal/scroll, before the stack walk — see `PopupKind`.
         // `Scrollable` (scrollable hover, `gn`/`gp`'s diagnostic overlay)
         // consumes Ctrl-u/Ctrl-d to scroll when there's actually content past
         // one screenful; otherwise (and for any other key) it closes the
@@ -59,72 +60,7 @@ impl Editor {
         }
         self.state.config.dismiss_scrollable_popup();
 
-        // ── Confirm intercept ──────────────────────────────────────────────
-        // First of the overlay intercepts below (after the popup dismissal/
-        // scroll block above, which can still consume Ctrl-u/Ctrl-d for a
-        // scrollable popup before this ever runs). `Editor::can_open_confirm`
-        // gates when one can open in the first place — never from Insert/
-        // Search/Select, never over a live picker/menu/drawer, never mid
-        // pending-key sequence, and from Command only as the direct result
-        // of a fully-submitted `:` command (`:e`/`:b`/`:bn`/`:bp`/
-        // `:checktime`) — so a confirm never steals a keystroke from an
-        // Insert session, a half-typed command/search line, or another
-        // overlay's own key. No mode check is needed here regardless: once a
-        // confirm is open, every key routes here first, so nothing can
-        // change mode out from under it before it's answered. Unlike the
-        // picker, not always fully consumed: `handle_confirm_key` answers
-        // `r`/`k` and dismisses on `Esc`, but any other stray key both
-        // dismisses the confirm *and* falls through to normal dispatch this
-        // same call (mirroring the menu's stray-key shape below) — a prompt
-        // the user didn't notice must never eat a keystroke meant for the
-        // editor. The fallen-through key is then macro-recorded and
-        // dot-repeat-eligible like any other key, same as the menu's.
-        let confirm_consumed = self.state.config.confirm.is_some() && self.handle_confirm_key(key);
-
-        // ── Picker intercept ──────────────────────────────────────────────
-        // Sits above the menu/drawer intercepts and is mode-agnostic (the
-        // picker opens from any mode, unlike the menu/drawer's
-        // Normal/Extend-only gate) — key ownership mirrors
-        // the picker's top z-order registration (`pane_state.rs`'s `build_pane`),
-        // the most action-relevant surface when more than one could be
-        // visible. Full-modal: `handle_picker_key` always consumes, so while
-        // a picker is open `handle_insert`'s own completion intercept never
-        // runs — no conflict between the two.
-        let picker_consumed =
-            !confirm_consumed && self.state.config.picker.is_some() && self.handle_picker_key(key);
-
-        // ── Selection menu intercept ─────────────────────────────────────
-        // Guarded early-return before mode dispatch, not a new `Mode` — a
-        // menu is transient chrome, not an editing mode (no `on-mode-change`,
-        // no statusline/cursor-shape changes). Normal/Extend only: menus
-        // don't open from Insert in v1.
-        let menu_consumed = !confirm_consumed
-            && !picker_consumed
-            && self.state.config.menu.is_some()
-            && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
-            && self.handle_menu_key(key);
-
-        // ── Bottom drawer intercept ──────────────────────────────────────
-        // Same guarded-early-return shape as the menu's, but unlike the menu
-        // a stray key neither closes the drawer nor invokes its callback —
-        // it falls through untouched, leaving the drawer open while focus
-        // stays on the pane (Helix-style browse-while-editing).
-        let drawer_consumed = !confirm_consumed
-            && !picker_consumed
-            && !menu_consumed
-            && self.state.config.drawer.is_some()
-            && matches!(self.state.mode(), Mode::Normal | Mode::Extend)
-            && self.handle_drawer_key(key);
-
-        if !confirm_consumed && !picker_consumed && !menu_consumed && !drawer_consumed {
-            match self.state.mode() {
-                Mode::Normal | Mode::Extend => self.handle_normal(key),
-                Mode::Insert => self.handle_insert(key),
-                Mode::Command => self.handle_command(key),
-                Mode::Search => self.handle_search(key),
-                Mode::Sift => self.handle_sift(key),
-            }
-        }
+        self.dispatch_input(InputEvent::Key(key));
 
         // ── Macro recording ───────────────────────────────────────────────────
         // Runs after all mode handlers so Insert, Command, and Search keys
@@ -147,6 +83,62 @@ impl Editor {
         // dismisses a completion session synchronously, before this
         // function returns — same timing tests already assert on.
         self.take_pending_lsp_completion_dismiss();
+    }
+
+    /// Bare stack walk, no cross-cutting bookkeeping — `handle_key` wraps it
+    /// with the status/summary bookkeeping, popup pre-step, macro recording,
+    /// and dot-repeat replay above and below. `replay_dot` calls this
+    /// directly instead of going through `handle_key`, since a replayed key
+    /// must skip all of that (recording it again, re-arming the summary
+    /// countdown).
+    pub(in crate::editor) fn dispatch_input(&mut self, ev: InputEvent) {
+        let top = self.state.input.top();
+        self.dispatch_at(top, ev);
+    }
+
+    fn dispatch_at(&mut self, r: LayerRef, ev: InputEvent) {
+        let kind = self
+            .state
+            .input
+            .kind(r)
+            .expect("dispatch target is live: top(), or below(r) under the index invariant");
+        match kind {
+            LayerKind::Base => self.base_input(r, ev),
+            LayerKind::Drawer => self.drawer_input(r, ev),
+            LayerKind::Menu => self.menu_input(r, ev),
+            LayerKind::Picker => self.picker_input(r, ev),
+            LayerKind::Confirm => self.confirm_input(r, ev),
+        }
+    }
+
+    /// Hand `ev` to the layer directly below `r`. The caller never inspects
+    /// what is there — every index below `r.depth` is stable for the whole
+    /// duration of the handler running at `r` (the index invariant), so the
+    /// target is live by construction whether `r` itself is still on the
+    /// stack or was just truncated by the caller (self-removal is always
+    /// `truncate(r)`, never "pop the top", so `below(r)` works either way).
+    /// `LayerRef`'s fields are private to `InputStack`'s own module, so the
+    /// "never fall through from `Base`" invariant is enforced there instead
+    /// — `InputStack::below` panics unconditionally (not just in debug
+    /// builds) if `r` is already `Base`, which is strictly louder than a
+    /// `debug_assert!` here could be.
+    pub(in crate::editor) fn fall_through(&mut self, r: LayerRef, ev: InputEvent) {
+        let below = self.state.input.below(r);
+        self.dispatch_at(below, ev);
+    }
+
+    /// The base layer's own policy — today's per-mode dispatch, unchanged.
+    /// `r` is unused: `Base` never falls through further (there is nothing
+    /// below it) and never truncates itself (it is never removed).
+    fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        match self.state.mode() {
+            Mode::Normal | Mode::Extend => self.handle_normal(key),
+            Mode::Insert => self.handle_insert(key),
+            Mode::Command => self.handle_command(key),
+            Mode::Search => self.handle_search(key),
+            Mode::Sift => self.handle_sift(key),
+        }
     }
 }
 

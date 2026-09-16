@@ -7,7 +7,7 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
-use self::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
+use self::overlay_models::{ConfirmModel, PopupModel};
 use self::registry::CommandRegistry;
 use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
@@ -30,6 +30,7 @@ mod focus;
 mod frame;
 mod host_impl;
 mod inline_output;
+mod input_stack;
 mod lifecycle;
 mod overlay_models;
 mod overlay_sync;
@@ -98,9 +99,13 @@ use self::tui::Tui;
 /// Every field a `config`/`open`/`cmd`-kind Steel builtin, `set-option!`, or
 /// `init.scm` itself can write and that must go back to its compiled-in
 /// default on `:reload-config` — the keymap, the registry of dynamic/lazy
-/// commands, language identities, decorations, trigger chars, and the four
-/// overlay models (popup/menu/drawer/picker), plus every deferred-call queue
-/// rooted in the outgoing Steel engine.
+/// commands, language identities, decorations, trigger chars, and the
+/// cursor-anchored/docked popup, plus every deferred-call queue rooted in
+/// the outgoing Steel engine. The menu, drawer, picker, and disk-change
+/// confirm overlays live on `EditorState.input` instead (an `InputStack`) —
+/// `Editor::reset_config_state` resets them with its own explicit
+/// `input.truncate_to_base()` call rather than by this struct's wholesale
+/// rebuild.
 ///
 /// Grouped into its own struct, rather than left as individual `EditorState`
 /// fields, so `Editor::reset_config_state` resets by *construction*
@@ -181,23 +186,6 @@ pub(crate) struct ConfigState {
     /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
     /// the focused pane's *current* rect, so it can't be pre-computed here).
     pub(in crate::editor) popup: Option<PopupModel>,
-    /// `(show-menu! items on-select)`'s raw content, including the
-    /// not-yet-fired Steel callback — cleared by the key intercept in
-    /// `handle_key`, not by `sync_menu_view`.
-    pub(in crate::editor) menu: Option<MenuModel>,
-    /// `(show-drawer-list! items on-select)`'s raw content, including the
-    /// callback — cleared by `Esc` or `close-drawer!`, *not* by `Enter` (the
-    /// drawer stays open across selections, unlike the popup/menu).
-    pub(in crate::editor) drawer: Option<DrawerModel>,
-    /// The open picker session — driven by the key intercept in `handle_key`;
-    /// opened via `editor::picker::open_picker` (Steel's `picker!` builtin,
-    /// or directly in tests).
-    pub(in crate::editor) picker: Option<crate::editor::picker::PickerSession>,
-    /// The open native yes/no confirmation, if any — see
-    /// [`overlay_models`]. Mode-agnostic: unlike `menu`/`drawer`, this
-    /// intercepts before mode dispatch regardless of `Mode`, since a
-    /// disk-change check can fire while the user is mid-Insert.
-    pub(crate) confirm: Option<ConfirmModel>,
 }
 
 impl ConfigState {
@@ -226,10 +214,6 @@ impl ConfigState {
             next_async_job_id: 0,
             steel_prompt_callback: None,
             popup: None,
-            menu: None,
-            drawer: None,
-            picker: None,
-            confirm: None,
         }
     }
 
@@ -278,6 +262,19 @@ pub(crate) struct EditorState {
     /// [`ConfigState`]'s doc for exactly what that means and why it's a
     /// separate struct.
     pub(crate) config: ConfigState,
+    /// The stack of active input-handling layers above the base editing
+    /// surface — today the four overlay widgets (disk-change confirm, fuzzy
+    /// picker, selection menu, bottom drawer). Editing modes, LSP
+    /// completion, and the hover/signature-help popup still live on their
+    /// own fields and join this stack in later work.
+    ///
+    /// Not reset by `ConfigState`'s wholesale rebuild — `Base` must survive
+    /// a `:reload-config`, and a still-open overlay's Steel callback must be
+    /// dropped, not fired, the same as everything `ConfigState::new` resets
+    /// by construction. `Editor::reset_config_state` calls
+    /// `input.truncate_to_base()` explicitly, right where `ConfigState`
+    /// itself is rebuilt.
+    pub(in crate::editor) input: input_stack::InputStack,
     /// Current editing mode. `EditorMode::Extend` represents the sticky extend
     /// state. Mode is the single source of truth for whether extend is active.
     /// Private: all transitions go through [`EditorState::set_mode`].
@@ -503,6 +500,7 @@ impl Default for EditorState {
             // `kitty_enabled: false` matches: the real probe result isn't known
             // until `set_kitty_support` runs, after `Editor::open`.
             config: ConfigState::new(false, 0),
+            input: input_stack::InputStack::new(),
             mode: Mode::Normal,
             pending_keys: Vec::new(),
             count: None,
@@ -629,6 +627,17 @@ impl EditorState {
         self.mode
     }
 
+    /// The open disk-change confirm, if any — `crate::statusline`'s one
+    /// reader. A plain wrapper rather than exposing `input` itself at
+    /// `pub(crate)`: `InputStack`'s own API stays `pub(in crate::editor)`
+    /// (see its own doc for why), and the statusline is a sibling of
+    /// `crate::editor`, not a descendant of it, so it needs a seam drawn
+    /// somewhere — this is the narrowest one, mirroring `ConfirmModel`'s own
+    /// `pub(crate)` carve-out for the same reader.
+    pub(crate) fn confirm(&self) -> Option<&ConfirmModel> {
+        self.input.confirm()
+    }
+
     /// The document-mode cursor shape for the live mode — how the document's
     /// selection heads are painted, and (outside a prompt) the real terminal
     /// cursor's shape.
@@ -716,20 +725,19 @@ impl EditorState {
 
     // ── Drawer ──────────────────────────────────────────────────────────
 
-    /// Mirror `self.config.drawer` into `self.views`' drawer slot for `DrawerWidget`
-    /// to read. Called directly at every drawer mutation site (open,
-    /// selection move, scroll, close) for immediacy, *and* unconditionally
-    /// every frame from `Editor::prepare_frame` (like the popup/menu/picker
-    /// `sync_*_view`s) so the view can never drift from the model — in
-    /// particular, so a direct `self.state.config.drawer = None` (as
-    /// `reset_config_state`'s wholesale `ConfigState` rebuild does,
-    /// bypassing `close-drawer!`'s callback queueing) can't leave a stale
-    /// view painting a closed drawer.
+    /// Mirror the open drawer layer into `self.views`' drawer slot for
+    /// `DrawerWidget` to read. Called directly at every drawer mutation site
+    /// (open, selection move, scroll, close) for immediacy, *and*
+    /// unconditionally every frame from `Editor::prepare_frame` (like the
+    /// popup/menu/picker `sync_*_view`s) so the view can never drift from
+    /// the model — in particular, so `reset_config_state`'s
+    /// `input.truncate_to_base()` call (which bypasses `close-drawer!`'s
+    /// callback queueing) can't leave a stale view painting a closed
+    /// drawer.
     pub(in crate::editor) fn sync_drawer_view(&self) {
         let resolved = self
-            .config
-            .drawer
-            .as_ref()
+            .input
+            .drawer()
             .map(|d| hume_ui::drawer::DrawerViewState {
                 rows: Arc::clone(&d.items),
                 selected: d.selected,

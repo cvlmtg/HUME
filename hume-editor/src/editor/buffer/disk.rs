@@ -10,6 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
+use crate::editor::input_stack::{InputLayer, LayerKind};
 use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice, ConfirmModel};
 use crate::editor::{Editor, Mode, Severity};
 
@@ -296,10 +297,7 @@ impl Editor {
             Mode::Insert | Mode::Search | Mode::Sift => false,
         };
         mode_ok
-            && self.state.config.confirm.is_none()
-            && self.state.config.picker.is_none()
-            && self.state.config.menu.is_none()
-            && self.state.config.drawer.is_none()
+            && self.state.input.kind(self.state.input.top()) == Some(LayerKind::Base)
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
@@ -345,19 +343,19 @@ impl Editor {
     /// runs mid-`settle`). Left alone, that confirm would be unanswerable —
     /// `reload_buffer_from_disk`'s focused-buffer guard would refuse it —
     /// and would block `entered`'s own prompt via `can_open_confirm`'s
-    /// `confirm.is_none()` check. Retiring it (not declining it) leaves the
+    /// stack-is-`Base` check. Retiring it (not declining it) leaves the
     /// old buffer's `disk_state` exactly as `Changed` as it was, so the
     /// "asked about on its own next buffer-enter" promise still holds next
     /// time focus actually returns there.
     pub(in crate::editor) fn enter_buffer_disk_check(&mut self, entered: BufferId) {
         if self
             .state
-            .config
-            .confirm
-            .as_ref()
+            .input
+            .confirm()
             .is_some_and(|c| !c.targets_buffer(entered))
+            && let Some(r) = self.state.input.ref_of(LayerKind::Confirm)
         {
-            self.state.config.confirm = None;
+            self.state.input.truncate(r);
         }
         self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
     }
@@ -392,7 +390,7 @@ impl Editor {
         } else {
             format!("{name} has changed on disk.")
         };
-        self.state.config.confirm = Some(ConfirmModel {
+        self.state.input.push(InputLayer::Confirm(ConfirmModel {
             prompt,
             choices: vec![
                 ConfirmChoice {
@@ -405,7 +403,7 @@ impl Editor {
                 },
             ],
             action: ConfirmAction::ReloadBuffer(bid),
-        });
+        }));
     }
 
     /// Re-read `bid` from disk and reload it in place. Called by the

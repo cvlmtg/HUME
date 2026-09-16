@@ -14,7 +14,7 @@ use steel::rvals::SteelVal;
 
 fn open_bare_picker(ed: &mut Editor) {
     let session = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session).expect("nothing else is open");
 }
 
 fn open_live_picker(ed: &mut Editor) {
@@ -28,7 +28,7 @@ fn open_live_picker(ed: &mut Editor) {
             actions: Vec::new(),
         },
     );
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session).expect("nothing else is open");
 }
 
 fn no_op_wake() -> Arc<dyn Fn() + Send + Sync> {
@@ -42,9 +42,8 @@ fn attach_sh(ed: &mut Editor, script: &str, ok_exit_codes: Vec<i32>) {
     let args = vec!["-c".to_string(), script.to_string()];
     let source = spawn_line_source("sh", &args, None, b'\n', no_op_wake()).expect("spawn sh");
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .attach_source(source, ok_exit_codes);
 }
@@ -59,17 +58,11 @@ fn end_to_end_drain_streams_lines_into_the_store() {
     attach_sh(&mut ed, "printf 'a\\nb\\nc\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        let total_len = ed
-            .state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0);
+        let total_len = ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0);
         total_len == 3 && source_detached(ed)
     });
 
-    let picker = ed.state.config.picker.as_ref().expect("picker still open");
+    let picker = ed.state.input.picker().expect("picker still open");
     assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a", "b", "c"]);
     assert!(
         !picker.has_source(),
@@ -91,16 +84,10 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
     attach_sh(&mut ed, "printf 'a\\000b\\nc\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
 
-    let picker = ed.state.config.picker.as_ref().expect("picker still open");
+    let picker = ed.state.input.picker().expect("picker still open");
     assert_eq!(
         picker.window(10).collect::<Vec<_>>(),
         vec!["a:b", "c"],
@@ -119,21 +106,15 @@ fn coalesced_push_reranks_against_the_live_query() {
     let _lock = TEST_GLOBALS.claim(Global::Env);
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
-    let _ = ed.state.config.picker.as_mut().unwrap().insert_char('z');
+    let _ = ed.state.input.picker_mut().unwrap().insert_char('z');
 
     attach_sh(&mut ed, "printf 'abc\\nxyz\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
 
-    let picker = ed.state.config.picker.as_ref().unwrap();
+    let picker = ed.state.input.picker().unwrap();
     assert_eq!(
         picker.matched_len(),
         1,
@@ -240,9 +221,8 @@ fn close_picker_kills_the_source_child() {
     let source = spawn_line_source("sleep", &args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let pid = source.pid();
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .attach_source(source, vec![0]);
 
@@ -265,16 +245,16 @@ fn replacing_the_session_kills_the_previous_source_child() {
     let source = spawn_line_source("sleep", &args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let pid = source.pid();
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .attach_source(source, vec![0]);
 
     // A fresh `open_picker` call replaces (and — via `close_picker` — drops)
     // whatever session was open, same as a second `picker!` from Steel.
     let replacement = PickerSession::new(SteelVal::BoolV(false), PickerOpts::default());
-    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), replacement);
+    picker::open_picker(&mut ed.state, Some(&mut ed.lsp), replacement)
+        .expect("replacing an open picker always succeeds");
 
     assert!(
         !process_is_alive(pid),
@@ -294,9 +274,8 @@ fn a_second_attach_source_kills_the_first_source_child() {
         spawn_line_source("sleep", &first_args, None, b'\n', no_op_wake()).expect("spawn sleep");
     let first_pid = first.pid();
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .attach_source(first, vec![0]);
 
@@ -304,9 +283,8 @@ fn a_second_attach_source_kills_the_first_source_child() {
     let second =
         spawn_line_source("sleep", &second_args, None, b'\n', no_op_wake()).expect("spawn sleep");
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .attach_source(second, vec![0]);
 
@@ -327,25 +305,19 @@ fn live_session_first_batch_after_attach_replaces_the_previous_rows() {
     let mut ed = editor_from("-[a]>bc\n");
     open_live_picker(&mut ed);
     {
-        let session = ed.state.config.picker.as_mut().unwrap();
+        let session = ed.state.input.picker_mut().unwrap();
         session.push(vec![item("stale-a"), item("stale-b")]);
         session.move_selection(1, 10);
     }
-    assert_eq!(ed.state.config.picker.as_ref().unwrap().selected(), 1);
+    assert_eq!(ed.state.input.picker().unwrap().selected(), 1);
 
     attach_sh(&mut ed, "printf 'fresh\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 1
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 1
     });
 
-    let picker = ed.state.config.picker.as_ref().unwrap();
+    let picker = ed.state.input.picker().unwrap();
     assert_eq!(
         picker.window(10).collect::<Vec<_>>(),
         vec!["fresh"],
@@ -373,19 +345,12 @@ fn live_session_second_batch_from_the_same_source_appends() {
     );
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            >= 1
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) >= 1
     });
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -394,19 +359,12 @@ fn live_session_second_batch_from_the_same_source_appends() {
     );
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -422,28 +380,20 @@ fn filter_session_attach_source_still_appends_not_replaces() {
     let mut ed = editor_from("-[a]>bc\n");
     open_bare_picker(&mut ed);
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .push(vec![item("seeded")]);
 
     attach_sh(&mut ed, "printf 'fresh\\n'", vec![0]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -467,26 +417,18 @@ fn explicit_replace_while_a_source_is_attached_consumes_supersede_so_the_next_ba
     // so the source's own later batch doesn't wholesale-replace this list
     // right back out.
     ed.state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .unwrap()
         .replace(vec![item("explicit")]);
 
     drain_sources_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == 2
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == 2
     });
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),

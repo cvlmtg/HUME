@@ -50,7 +50,7 @@ fn happy_path_streams_lines_and_accept_returns_the_raw_line() {
         "a",
         "on-select must receive the raw streamed line as payload (display == payload)"
     );
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn nul_delimited_source_splits_on_nul() {
 
     drain_until_picker_total(&mut ed, 2);
 
-    let picker = ed.state.config.picker.as_ref().unwrap();
+    let picker = ed.state.input.picker().unwrap();
     assert_eq!(picker.window(10).collect::<Vec<_>>(), vec!["a", "b"]);
 }
 
@@ -116,11 +116,7 @@ fn ok_exit_codes_silences_the_allowlisted_code_but_not_others() {
     type_cmd(&mut ed, ":go");
     call(&mut ed, "spawn-no-matches");
     assert!(
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .is_some_and(|p| p.has_source()),
+        ed.state.input.picker().is_some_and(|p| p.has_source()),
         "spawn must have attached a source — otherwise the drain_until below \
          would pass vacuously on the very first poll"
     );
@@ -159,24 +155,19 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
     call(&mut ed, "spawn-it");
 
     drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .is_some_and(|p| p.total_len() >= 1)
+        ed.state.input.picker().is_some_and(|p| p.total_len() >= 1)
     });
 
     let pid = ed
         .state
-        .config
-        .picker
-        .as_ref()
+        .input
+        .picker()
         .unwrap()
         .source_pid_for_test()
         .expect("source attached");
 
     call(&mut ed, "stop-it");
-    let stopped_total = ed.state.config.picker.as_ref().unwrap().total_len();
+    let stopped_total = ed.state.input.picker().unwrap().total_len();
 
     // Give the (now-dead) child's would-be remaining output a real window to
     // land, then confirm nothing did.
@@ -184,11 +175,11 @@ fn picker_source_stop_kills_the_child_and_no_further_rows_land() {
     ed.settle();
 
     assert!(
-        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        !ed.state.input.picker().unwrap().has_source(),
         "picker-source-stop! must detach the source"
     );
     assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().total_len(),
+        ed.state.input.picker().unwrap().total_len(),
         stopped_total,
         "no further rows may land once the source is stopped"
     );
@@ -224,9 +215,8 @@ fn respawn_reports_an_already_exited_outgoing_source() {
     let deadline = Instant::now() + Duration::from_secs(2);
     while !ed
         .state
-        .config
-        .picker
-        .as_ref()
+        .input
+        .picker()
         .unwrap()
         .source_has_exited_for_test()
     {
@@ -289,9 +279,8 @@ fn picker_close_kills_the_source_child() {
 
     let pid = ed
         .state
-        .config
-        .picker
-        .as_ref()
+        .input
+        .picker()
         .unwrap()
         .source_pid_for_test()
         .expect("source attached");
@@ -310,7 +299,7 @@ fn picker_close_kills_the_source_child() {
         started.elapsed()
     );
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
         "#false",
@@ -356,9 +345,8 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     drain_until_picker_total(&mut ed, 1);
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -376,9 +364,8 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     ed.settle();
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -386,16 +373,15 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
         "the previous pattern's row must survive the keystroke, not clear immediately"
     );
     assert!(
-        ed.state.config.picker.as_ref().unwrap().is_pending(),
+        ed.state.input.picker().unwrap().is_pending(),
         "a live query change must mark the session pending even before the \
          debounced respawn fires"
     );
 
     drain_until(&mut ed, |ed| {
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .is_some_and(|p| p.window(10).collect::<Vec<_>>() == vec!["row-ab"])
     });
 
@@ -410,11 +396,11 @@ fn live_picker_seed_spawns_keystroke_respawns_and_backspace_to_empty_clears() {
     ed.settle();
     ed.settle();
     assert!(
-        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        !ed.state.input.picker().unwrap().has_source(),
         "backspacing to empty must leave no source attached"
     );
     assert_eq!(
-        ed.state.config.picker.as_ref().unwrap().total_len(),
+        ed.state.input.picker().unwrap().total_len(),
         0,
         "backspacing to empty must clear rows and spawn nothing new"
     );
@@ -443,9 +429,8 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
     drain_until_picker_total(&mut ed, 1);
     assert_eq!(
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .unwrap()
             .window(10)
             .collect::<Vec<_>>(),
@@ -463,18 +448,14 @@ fn live_picker_requery_with_no_output_clears_the_previous_rows() {
     ed.settle();
 
     drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .is_some_and(|p| p.total_len() == 0)
+        ed.state.input.picker().is_some_and(|p| p.total_len() == 0)
     });
     assert!(
-        !ed.state.config.picker.as_ref().unwrap().has_source(),
+        !ed.state.input.picker().unwrap().has_source(),
         "a requery source that delivers nothing must leave no source attached once it exits"
     );
     assert!(
-        !ed.state.config.picker.as_ref().unwrap().is_pending(),
+        !ed.state.input.picker().unwrap().is_pending(),
         "the disconnect-clear must also end the pending window, not just empty the rows"
     );
 }

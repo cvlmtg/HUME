@@ -1,19 +1,22 @@
 //! Key handling for transient chrome — the selection menu, bottom drawer,
 //! popup (hover/signature-help), and picker — plus the scroll/geometry
-//! helpers they share. `handle_key` (in `mod.rs`) intercepts into these
-//! before per-mode dispatch.
+//! helpers they share. `dispatch_at` (in `mod.rs`) routes into these by
+//! layer kind.
 
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{KeyCode, Modifiers};
 
-use super::super::Editor;
+use super::super::input_stack::{InputEvent, InputLayer, LayerRef};
 use super::super::overlay_models::ConfirmAction;
+use super::super::{Editor, Mode};
 
 impl Editor {
     /// Handles one key while a native confirm overlay
-    /// ([`crate::editor::overlay_models::ConfirmModel`]) is open. Returns `true` if
-    /// the key was consumed — `false` if it should still fall through to normal
-    /// dispatch this same call, mirroring [`Self::handle_menu_key`]'s stray-key
-    /// shape rather than the picker's full-modal one.
+    /// ([`crate::editor::overlay_models::ConfirmModel`]) is open. Always
+    /// truncates itself first (there is exactly one way for this layer to
+    /// leave the stack — every key retires it, matched or not — so
+    /// "answer, then act" and "dismiss, then fall through" both start from
+    /// the same truncate), then answers the matched choice or falls through
+    /// for any other key.
     ///
     /// `choices[0]`'s key runs `action`; `choices[1]`'s key (currently always
     /// "keep", set by `open_disk_change_confirm`) records an explicit decline
@@ -24,17 +27,16 @@ impl Editor {
     /// not be mistaken for a bare `k`. Every other key — `Esc`, or a stray
     /// keystroke that happens to land here — is a plain dismissal: it answers
     /// neither choice, leaving the question open for the next `BufferEnter`,
-    /// exactly as if the confirm had never opened. `Esc` is still consumed
-    /// (returns `true`); any other unmatched key falls through instead, so a
-    /// prompt the user didn't notice never eats a keystroke meant for the
-    /// editor (e.g. `/` opening search).
-    pub(super) fn handle_confirm_key(&mut self, key: KeyEvent) -> bool {
-        let confirm = self
-            .state
-            .config
-            .confirm
-            .take()
-            .expect("checked by the caller above");
+    /// exactly as if the confirm had never opened. `Esc` is fully consumed;
+    /// any other unmatched key falls through instead, so a prompt the user
+    /// didn't notice never eats a keystroke meant for the editor (e.g. `/`
+    /// opening search).
+    pub(super) fn confirm_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        let mut removed = self.state.input.truncate(r);
+        let Some(InputLayer::Confirm(confirm)) = removed.pop() else {
+            unreachable!("dispatch_at already checked kind(r) == LayerKind::Confirm");
+        };
 
         let matched = (key.modifiers == Modifiers::NONE)
             .then(|| {
@@ -53,132 +55,152 @@ impl Editor {
             },
         }
 
-        matched.is_some() || key.code == KeyCode::Escape
+        if matched.is_none() && key.code != KeyCode::Escape {
+            self.fall_through(r, InputEvent::Key(key));
+        }
     }
 
-    /// Handles one key while a selection menu is open. Returns `true`
-    /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false` if
-    /// a stray key dismissed the menu but should still fall through to
-    /// normal dispatch this same call: a stray key both closes the menu
-    /// (with a `#f` callback) *and* executes its usual effect.
+    /// Handles one key while a selection menu is open. Movement is handled
+    /// in place; `Enter`/`Esc`/a stray key all retire the layer and fire the
+    /// callback exactly once (one-shot `.take()`-equivalent discipline via
+    /// `truncate`) — `queue_steel_call` never invokes it inline, matching
+    /// every other Rust→Steel callback in this codebase. A stray key both
+    /// closes the menu (with a `#f` callback) *and* falls through to normal
+    /// dispatch this same call.
     ///
-    /// The callback fires exactly once (one-shot `.take()` discipline) —
-    /// `queue_steel_call` never invokes it inline, matching every other
-    /// Rust→Steel callback in this codebase.
-    pub(super) fn handle_menu_key(&mut self, key: KeyEvent) -> bool {
-        let Some(menu) = self.state.config.menu.as_mut() else {
-            return false;
-        };
+    /// Keeps its own `Normal | Extend` mode gate rather than relying on an
+    /// opener-side check: a non-matching mode falls straight through,
+    /// leaving the menu open and inert underneath whatever mode-layer
+    /// handling runs instead.
+    pub(super) fn menu_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        if !matches!(self.state.mode(), Mode::Normal | Mode::Extend) {
+            self.fall_through(r, InputEvent::Key(key));
+            return;
+        }
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
+                let menu = self
+                    .state
+                    .input
+                    .menu_mut()
+                    .expect("dispatch_at already checked kind(r) == LayerKind::Menu");
                 if menu.selected + 1 < menu.rows.len() {
                     menu.selected += 1;
                 }
-                true
             }
             KeyCode::Char('k') | KeyCode::Up => {
+                let menu = self
+                    .state
+                    .input
+                    .menu_mut()
+                    .expect("dispatch_at already checked kind(r) == LayerKind::Menu");
                 menu.selected = menu.selected.saturating_sub(1);
-                true
             }
             KeyCode::Enter => {
-                let menu = self
-                    .state
-                    .config
-                    .menu
-                    .take()
-                    .expect("checked by the caller above");
+                let mut removed = self.state.input.truncate(r);
+                let Some(InputLayer::Menu(menu)) = removed.pop() else {
+                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
+                };
                 let idx = steel::rvals::SteelVal::IntV(menu.selected as isize);
                 self.state.queue_steel_call(menu.callback, vec![idx]);
-                true
             }
             KeyCode::Escape => {
-                let menu = self
-                    .state
-                    .config
-                    .menu
-                    .take()
-                    .expect("checked by the caller above");
+                let mut removed = self.state.input.truncate(r);
+                let Some(InputLayer::Menu(menu)) = removed.pop() else {
+                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
+                };
                 self.state
                     .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
-                true
             }
             _ => {
-                let menu = self
-                    .state
-                    .config
-                    .menu
-                    .take()
-                    .expect("checked by the caller above");
+                let mut removed = self.state.input.truncate(r);
+                let Some(InputLayer::Menu(menu)) = removed.pop() else {
+                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
+                };
                 self.state
                     .queue_steel_call(menu.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
-                false
+                self.fall_through(r, InputEvent::Key(key));
             }
         }
     }
 
-    /// Handles one key while the bottom drawer is open. Returns `true`
-    /// if the key was fully consumed (movement, `Enter`, `Esc`) — `false`
-    /// for any other key, which the drawer leaves completely untouched (no
-    /// close, no callback) so normal dispatch runs as if the drawer weren't
-    /// open at all.
+    /// Handles one key while the bottom drawer is open. Movement, half-page
+    /// scroll, and `Enter` (which fires `on-select` repeatedly across a
+    /// browse session, unlike the menu, without closing the drawer) are
+    /// handled in place; `Esc` retires the layer and fires `#f`; any other
+    /// key falls through completely untouched (no close, no callback),
+    /// leaving the drawer open while focus moves to whatever the fallen-
+    /// through key does (Helix-style browse-while-editing).
     ///
-    /// Unlike the menu, `Enter` does not close the drawer or take the
-    /// callback — it clones it and queues a call, so the drawer can fire
-    /// `on-select` repeatedly across a browse session (Helix-style: pick a
-    /// diagnostic, jump, come back, pick another).
-    pub(super) fn handle_drawer_key(&mut self, key: KeyEvent) -> bool {
-        if self.state.config.drawer.is_none() {
-            return false;
+    /// Same `Normal | Extend` mode gate as [`Self::menu_input`], for the
+    /// same reason.
+    pub(super) fn drawer_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
+        if !matches!(self.state.mode(), Mode::Normal | Mode::Extend) {
+            self.fall_through(r, InputEvent::Key(key));
+            return;
         }
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
-                let drawer = self.state.config.drawer.as_mut().expect("checked above");
+                let drawer = self
+                    .state
+                    .input
+                    .drawer_mut()
+                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
                 if drawer.selected + 1 < drawer.items.len() {
                     drawer.selected += 1;
                     self.clamp_drawer_scroll();
                 }
-                true
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                let drawer = self.state.config.drawer.as_mut().expect("checked above");
+                let drawer = self
+                    .state
+                    .input
+                    .drawer_mut()
+                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
                 if drawer.selected > 0 {
                     drawer.selected -= 1;
                     self.clamp_drawer_scroll();
                 }
-                true
             }
             KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let half = (self.drawer_visible_rows() / 2).max(1);
-                if let Some(drawer) = self.state.config.drawer.as_mut() {
+                if let Some(drawer) = self.state.input.drawer_mut() {
                     drawer.selected =
                         (drawer.selected + half).min(drawer.items.len().saturating_sub(1));
                 }
                 self.clamp_drawer_scroll();
-                true
             }
             KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
                 let half = (self.drawer_visible_rows() / 2).max(1);
-                if let Some(drawer) = self.state.config.drawer.as_mut() {
+                if let Some(drawer) = self.state.input.drawer_mut() {
                     drawer.selected = drawer.selected.saturating_sub(half);
                 }
                 self.clamp_drawer_scroll();
-                true
             }
             KeyCode::Enter => {
-                let drawer = self.state.config.drawer.as_ref().expect("checked above");
+                let drawer = self
+                    .state
+                    .input
+                    .drawer()
+                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
                 let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
                 let callback = drawer.callback.clone();
                 self.state.queue_steel_call(callback, vec![idx]);
-                true
             }
             KeyCode::Escape => {
-                let drawer = self.state.config.drawer.take().expect("checked above");
+                let mut removed = self.state.input.truncate(r);
+                let Some(InputLayer::Drawer(drawer)) = removed.pop() else {
+                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Drawer");
+                };
                 self.state
                     .queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
                 self.state.sync_drawer_view();
-                true
             }
-            _ => false,
+            _ => {
+                self.fall_through(r, InputEvent::Key(key));
+            }
         }
     }
 
@@ -190,7 +212,7 @@ impl Editor {
     /// re-synced every frame regardless (`Editor::sync_popup_view`/
     /// `sync_popup_band_view`), so no explicit sync is needed here. Before
     /// the first frame both are empty — a documented no-op, same as
-    /// `handle_picker_key`'s geometry.
+    /// `picker_input`'s own geometry.
     ///
     /// Returns `true` if the popup actually has content past one screenful
     /// (`max_scroll > 0`) — the caller (`handle_key`) uses this to tell a
@@ -265,7 +287,7 @@ impl Editor {
     fn drawer_visible_rows(&self) -> usize {
         let max =
             hume_engine::pipeline::EngineView::bottom_band_max(self.view.last_terminal_area.height);
-        let Some(drawer) = self.state.config.drawer.as_ref() else {
+        let Some(drawer) = self.state.input.drawer() else {
             return 0;
         };
         hume_ui::drawer::visible_rows(drawer.items.len(), max)
@@ -276,7 +298,7 @@ impl Editor {
     /// move_selection`), then syncs the view.
     fn clamp_drawer_scroll(&mut self) {
         let visible_rows = self.drawer_visible_rows();
-        let Some(drawer) = self.state.config.drawer.as_mut() else {
+        let Some(drawer) = self.state.input.drawer_mut() else {
             return;
         };
         drawer.scroll =
@@ -284,21 +306,25 @@ impl Editor {
         self.state.sync_drawer_view();
     }
 
-    /// Handles one key while the picker is open. Always returns `true` —
+    /// Handles one key while the picker is open. Always fully consumes —
     /// unlike the menu (a stray key closes it and falls through) or the
     /// drawer (a stray key falls through untouched), the picker is
     /// full-modal: it owns the entire interaction, so an unrecognized key
     /// (Left/Right/Home/Tab/…) is simply consumed and ignored rather than
-    /// leaking through to whatever mode sits underneath.
+    /// leaking through to whatever mode sits underneath. `r` is unused —
+    /// every retirement path goes through `picker::close_picker[_with]`,
+    /// which finds the picker's own ref itself rather than needing this
+    /// call's.
     ///
-    /// `on_select` fires exactly once via `.take()` + `queue_steel_call`
-    /// (never invoked inline) — same one-shot discipline as the menu.
-    /// `visible_rows` comes from `panel_geometry` against the same
-    /// `last_pane_area` the next frame's `sync_picker_view` will use, so a
-    /// keystroke and the following paint always agree on how many rows are
-    /// visible (before the first frame, geometry is `None` and paging is a
-    /// documented no-op on the store).
-    pub(super) fn handle_picker_key(&mut self, key: KeyEvent) -> bool {
+    /// `on_select` fires exactly once via `.take()`-equivalent truncate +
+    /// `queue_steel_call` (never invoked inline) — same one-shot discipline
+    /// as the menu. `visible_rows` comes from `panel_geometry` against the
+    /// same `last_pane_area` the next frame's `sync_picker_view` will use,
+    /// so a keystroke and the following paint always agree on how many rows
+    /// are visible (before the first frame, geometry is `None` and paging is
+    /// a documented no-op on the store).
+    pub(super) fn picker_input(&mut self, _r: LayerRef, ev: InputEvent) {
+        let InputEvent::Key(key) = ev;
         let visible_rows = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area)
             .map_or(0, |geo| geo.list_rows);
 
@@ -324,7 +350,7 @@ impl Editor {
         };
         if let Some(delta) = step {
             self.picker_mut().move_selection(delta, visible_rows);
-            return true;
+            return;
         }
 
         match key.code {
@@ -363,7 +389,6 @@ impl Editor {
                 }
             }
         }
-        true
     }
 
     /// Queues `cb` — the `on_query_change` callback a `PickerSession` query
@@ -399,15 +424,13 @@ impl Editor {
         );
     }
 
-    /// The open picker session — only ever called from `handle_picker_key`,
-    /// whose caller (`handle_key`) already checked `state.config.picker.is_some()`
-    /// before dispatching here.
+    /// The open picker session — only ever called from `picker_input`, which
+    /// `dispatch_at` only reaches while a `Picker` layer is on top.
     fn picker_mut(&mut self) -> &mut super::super::picker::PickerSession {
         self.state
-            .config
-            .picker
-            .as_mut()
-            .expect("handle_picker_key is only called while state.config.picker.is_some()")
+            .input
+            .picker_mut()
+            .expect("picker_input is only called while a Picker layer is on top of the stack")
     }
 
     /// Close the picker, firing `callback` (or `on_select` when `None`) with

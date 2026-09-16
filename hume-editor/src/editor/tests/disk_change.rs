@@ -32,7 +32,7 @@ fn external_rewrite_is_detected_and_opens_confirm() {
     // Fail oracle: a mtime-only comparison could miss this on a filesystem
     // whose mtime resolution is coarser than the test's wall-clock delta.
     assert!(ed.doc().is_disk_stale());
-    assert!(ed.state.config.confirm.is_some());
+    assert!(ed.state.input.confirm().is_some());
 }
 
 /// `autoread=false` only warns — no confirm, but the stale flag is still set
@@ -50,7 +50,7 @@ fn autoread_false_warns_without_opening_confirm() {
 
     assert_eq!(warnings_after, warnings_before + 1);
     assert!(ed.doc().is_disk_stale());
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 }
 
 /// A deleted file reads as `Vanished`: warns, marks the buffer stale, never
@@ -65,7 +65,7 @@ fn deleted_file_warns_and_never_prompts() {
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
     assert!(ed.doc().is_disk_stale());
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert_eq!(
         ed.state.status_msg.as_deref(),
         Some(format!("{name}: file no longer exists on disk").as_str())
@@ -178,7 +178,7 @@ fn bnext_and_bprev_run_the_buffer_enter_disk_check() {
     type_cmd_event(&mut ed, ":bp");
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "Fail oracle: :bp must run the buffer-enter disk check, not just switch"
     );
 }
@@ -221,13 +221,13 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
         warnings_before + 1,
         "a non-focused change only warns"
     );
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 
     // Enter B via :b — the deferred prompt must appear now.
     type_cmd_event(&mut ed, ":b #");
     assert_eq!(ed.focused_buffer_id(), bid_b);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "buffer-enter must prompt a pending change even if already warned about"
     );
 }
@@ -257,7 +257,7 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
         warnings_before + 1,
         "must warn instead of prompting"
     );
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 
     // Back in Normal, only a buffer-enter check reopens the deferred prompt
     // — same deferral rule as a non-focused buffer's warning (see
@@ -265,7 +265,7 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     ed.state.mode = Mode::Normal;
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "a mode-blocked Changed must still prompt on the next buffer-enter"
     );
 }
@@ -292,7 +292,7 @@ fn writing_the_buffer_does_not_flag_it_as_externally_changed() {
 
     assert_eq!(warnings_after, warnings_before);
     assert!(!ed.doc().is_disk_stale());
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 }
 
 // ── Confirm overlay choices ───────────────────────────────────────────────────
@@ -307,13 +307,13 @@ fn confirm_reload_choice_reloads_and_clears_disk_stale() {
     let bid = ed.focused_buffer_id();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "setup: confirm must be open"
     );
 
     ed.handle_key(key('r'));
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "HELLO!!\n");
     assert_eq!(state(&ed), "-[H]>ELLO!!\n");
     assert!(!ed.doc().is_dirty());
@@ -338,7 +338,7 @@ fn confirm_keep_choice_leaves_buffer_untouched_and_still_stale() {
 
     ed.handle_key(key('k'));
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.doc().is_disk_stale());
 }
@@ -353,7 +353,7 @@ fn confirm_esc_dismisses_without_answering() {
 
     ed.handle_key(key_esc());
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.doc().is_disk_stale());
 }
@@ -375,7 +375,7 @@ fn confirm_stray_key_dismisses_and_still_runs_its_binding() {
 
     ed.handle_key(key('/'));
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert_eq!(ed.doc().text().to_string(), "hello\n");
     assert!(ed.doc().is_disk_stale());
     assert_eq!(
@@ -400,7 +400,7 @@ fn confirm_choice_key_with_ctrl_does_not_answer_the_prompt() {
 
     ed.handle_key(key_ctrl('k'));
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert!(
         matches!(ed.state.buffers.get(bid).disk_state, DiskState::Changed(_)),
         "Ctrl-k must not decline — the choice match requires no modifiers"
@@ -423,7 +423,7 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "setup: confirm must be open"
     );
 
@@ -443,7 +443,7 @@ fn reload_confirm_accept_after_focus_moved_away_does_not_panic() {
     let (_, warnings_after) = ed.state.message_log.totals();
 
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "confirm must still close"
     );
     assert_eq!(
@@ -589,7 +589,7 @@ fn checktime_is_silent_when_nothing_changed() {
 
     let (_, warnings_after) = ed.state.message_log.totals();
     assert_eq!(warnings_after, warnings_before);
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 }
 
 /// `:checktime` runs the same check as any ambient trigger — it opens a
@@ -603,7 +603,7 @@ fn checktime_prompts_the_focused_changed_buffer() {
 
     type_cmd(&mut ed, ":checktime");
 
-    assert!(ed.state.config.confirm.is_some());
+    assert!(ed.state.input.confirm().is_some());
 }
 
 /// `:checktime` warns (doesn't prompt) for a changed buffer that isn't
@@ -631,7 +631,7 @@ fn checktime_warns_for_a_changed_non_focused_buffer() {
 
     let (_, warnings_after) = ed.state.message_log.totals();
     assert_eq!(warnings_after, warnings_before + 1);
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 }
 
 // ── `:wa` stale-buffer skip ──────────────────────────────────────────────────────
@@ -786,7 +786,8 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session)
+        .expect("nothing else is open");
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
@@ -797,18 +798,48 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         warnings_before + 1,
         "must warn instead of prompting"
     );
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     assert!(
-        ed.state.config.picker.is_some(),
+        ed.state.input.picker().is_some(),
         "the picker must stay open"
     );
 
-    ed.state.config.picker = None;
+    let picker_ref = ed
+        .state
+        .input
+        .ref_of(crate::editor::input_stack::LayerKind::Picker)
+        .expect("sanity: the picker must still be open");
+    ed.state.input.truncate(picker_ref);
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "the deferred prompt must arrive once the picker is gone"
     );
+}
+
+/// The flip side of the test above: a picker opening while a confirm is
+/// already up is refused outright, rather than opening a second modal
+/// surface a confirm's own key intercept would never let a keystroke reach.
+#[test]
+fn picker_refuses_to_open_over_a_live_confirm() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
+    assert!(ed.state.input.confirm().is_some(), "sanity: confirm open");
+
+    let session = crate::editor::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::host::PickerOpts::default(),
+    );
+    let result = crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+
+    assert!(
+        result.is_err(),
+        "a picker must not open over a live confirm"
+    );
+    assert!(ed.state.input.confirm().is_some(), "the confirm stays open");
+    assert!(ed.state.input.picker().is_none(), "the picker never opened");
 }
 
 /// A confirm must never open while `pending_keys` is non-empty — a live
@@ -826,7 +857,7 @@ fn confirm_does_not_open_mid_pending_key_sequence() {
 
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
 
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 }
 
 // ── `OnBufferEnter`'s disk check: closing/cycling/clicking reveals a
@@ -894,7 +925,7 @@ fn quit_closing_a_buffer_prompts_the_revealed_one() {
         "setup: A only warns while B is focused"
     );
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "setup: A is not focused, so no confirm yet"
     );
 
@@ -906,7 +937,7 @@ fn quit_closing_a_buffer_prompts_the_revealed_one() {
         "setup: closing B must reveal A, the only other real buffer"
     );
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "landing on A via :q must re-open its deferred reload confirm"
     );
 }
@@ -926,13 +957,16 @@ fn buffer_delete_prompts_the_revealed_buffer() {
 
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_none(), "setup: A is not focused");
+    assert!(
+        ed.state.input.confirm().is_none(),
+        "setup: A is not focused"
+    );
 
     type_cmd_event(&mut ed, ":bd");
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         ":bd must run the same buffer-enter check as :q"
     );
 }
@@ -952,7 +986,7 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "setup: A is not focused (right pane shows B)"
     );
 
@@ -965,7 +999,7 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
     );
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "the surviving pane landing on A must re-open its deferred confirm"
     );
 }
@@ -982,7 +1016,10 @@ fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
 
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_none(), "setup: A is not focused");
+    assert!(
+        ed.state.input.confirm().is_none(),
+        "setup: A is not focused"
+    );
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('c'));
@@ -994,7 +1031,7 @@ fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {
     );
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "landing on A via pane-close must re-open its deferred confirm"
     );
 }
@@ -1011,7 +1048,10 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
 
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_none(), "setup: A is not focused");
+    assert!(
+        ed.state.input.confirm().is_none(),
+        "setup: A is not focused"
+    );
 
     ed.feed_event(key_ctrl('p'));
     ed.feed_event(key('p'));
@@ -1022,7 +1062,7 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
         "setup: with only two panes, cycling lands on the other one"
     );
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "landing on A via pane-focus-next must re-open its deferred confirm"
     );
 }
@@ -1038,7 +1078,10 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
 
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_none(), "setup: A is not focused");
+    assert!(
+        ed.state.input.confirm().is_none(),
+        "setup: A is not focused"
+    );
 
     // 100×25, 0.5 split: pane A (left) spans x ∈ [0, 49); col 0 lands inside
     // it regardless of gutter width, since click-to-focus happens before
@@ -1052,7 +1095,7 @@ fn clicking_into_another_pane_prompts_that_panes_buffer() {
 
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "clicking into A's pane must re-open its deferred confirm"
     );
 }
@@ -1076,7 +1119,7 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
     rewrite_externally(&tmp, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "setup: confirm must be open"
     );
 
@@ -1088,7 +1131,7 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
     );
 
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "closing the confirm's target buffer must retire the confirm"
     );
 }
@@ -1119,7 +1162,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "setup: A's confirm must be open"
     );
 
@@ -1134,7 +1177,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
 
     assert!(
         matches!(
-            ed.state.config.confirm.as_ref().unwrap().action,
+            ed.state.input.confirm().unwrap().action,
             crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "A's confirm must survive B's check untouched"
@@ -1197,7 +1240,7 @@ fn confirm_does_not_open_during_macro_replay() {
 
     let (_, warnings_after) = ed.state.message_log.totals();
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "no confirm may open mid-replay"
     );
     assert_eq!(
@@ -1211,7 +1254,7 @@ fn confirm_does_not_open_during_macro_replay() {
     // buffer-enter — same deferral rule as any other blocked case.
     ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::BufferEnter);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "the deferred prompt must arrive once replay is over"
     );
 }
@@ -1266,7 +1309,7 @@ fn macro_replay_onto_an_already_warned_stale_buffer_still_warns() {
     let (_, warnings_after) = ed.state.message_log.totals();
     assert_eq!(ed.focused_buffer_id(), bid_b);
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "no confirm may open mid-replay"
     );
     assert_eq!(
@@ -1390,7 +1433,7 @@ fn quit_all_error_is_not_shadowed_by_a_disk_confirm() {
         ed.state.status_msg
     );
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "no reload confirm may shadow the :qa error"
     );
 }
@@ -1459,13 +1502,13 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
     ed.feed_event(key('p'));
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "setup: A's confirm opens"
     );
 
     // Decline it.
     ed.feed_event(key('k'));
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
 
     // Cycle away to B and back to A: must stay silent for the same change.
     ed.feed_event(key_ctrl('p'));
@@ -1475,7 +1518,7 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
     ed.feed_event(key('p'));
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "a declined change must not re-prompt on a later, unrelated focus change"
     );
 
@@ -1487,7 +1530,7 @@ fn declined_confirm_does_not_reopen_on_later_focus_change() {
     ed.feed_event(key('p'));
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "a further external change must still prompt"
     );
 }
@@ -1509,10 +1552,10 @@ fn declined_change_still_warns_on_explicit_checktime() {
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
-    assert!(ed.state.config.confirm.is_some(), "setup: confirm opens");
+    assert!(ed.state.input.confirm().is_some(), "setup: confirm opens");
 
     ed.feed_event(key('k'));
-    assert!(ed.state.config.confirm.is_none(), "setup: declined");
+    assert!(ed.state.input.confirm().is_none(), "setup: declined");
 
     // Ambient stays silent for the declined signature.
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -1529,7 +1572,7 @@ fn declined_change_still_warns_on_explicit_checktime() {
         ":checktime must still warn about a declined change, not stay silent forever"
     );
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         ":checktime must warn, not reopen the confirm the user already answered"
     );
 }
@@ -1549,7 +1592,7 @@ fn declined_change_then_vanished_file_still_warns() {
     rewrite_externally(&tmp, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     ed.feed_event(key('k'));
-    assert!(ed.state.config.confirm.is_none(), "setup: declined");
+    assert!(ed.state.input.confirm().is_none(), "setup: declined");
 
     std::fs::remove_file(&tmp).unwrap();
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -1583,7 +1626,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     rewrite_externally(&tmp_a, "hello, externally changed!\n");
     ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "setup: A is not focused yet"
     );
 
@@ -1591,7 +1634,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     ed.check_buffer_disk_state(bid_b, DiskCheckTrigger::Ambient);
     assert!(
         matches!(
-            ed.state.config.confirm.as_ref().unwrap().action,
+            ed.state.input.confirm().unwrap().action,
             crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_b
         ),
         "setup: B's own confirm is open"
@@ -1609,7 +1652,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     assert_eq!(ed.focused_buffer_id(), bid_a);
     assert!(
         matches!(
-            ed.state.config.confirm.as_ref().unwrap().action,
+            ed.state.input.confirm().unwrap().action,
             crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "B's orphaned confirm must be retired and A's own prompt opened in its place"
@@ -1628,7 +1671,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
 /// path never ran through `enter_buffer_with_jump` (a fuzzy picker doesn't
 /// dispatch `:e`/`:b`) or
 /// `handle_input`'s tail check (the switch happens a frame later, inside the
-/// drain), so `ed.state.config.confirm` stays `None`.
+/// drain), so `ed.state.input.confirm()` stays `None`.
 #[test]
 fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     let tmp = safe_tempdir();
@@ -1663,7 +1706,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
     ed.scripting = Some(host);
 
     type_cmd(&mut ed, ":go");
-    assert!(ed.state.config.picker.is_some(), "sanity: picker open");
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
 
     let rect = Rect::new(0, 0, 40, 12);
     let _ = ed.render_to_buf(rect);
@@ -1682,7 +1725,7 @@ fn picker_accept_onto_an_externally_changed_buffer_opens_the_reload_confirm() {
         "sanity: picker accept switched onto the target buffer"
     );
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "picker accept onto an externally-changed buffer must open the reload confirm \
          — the originating bug this refactor fixes"
     );
@@ -1718,7 +1761,7 @@ fn non_interactive_switch_to_buffer_onto_a_stale_buffer_opens_the_reload_confirm
 
     assert_eq!(ed.focused_buffer_id(), bid_b);
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "a non-interactive switch onto a stale buffer must still prompt"
     );
 }
@@ -1754,7 +1797,7 @@ fn focus_gained_sweeps_every_open_buffer_not_just_the_focused_one() {
         "OnFocusGained's sweep must warn for A even though B is focused"
     );
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "A is not focused, so an ambient check only warns — never opens a confirm"
     );
 }
@@ -1794,7 +1837,7 @@ fn switching_onto_a_stale_buffer_checks_disk_state_exactly_once() {
     );
 
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "sanity: the switch onto B must open the reload confirm"
     );
     let (_, warnings_after) = ed.state.message_log.totals();
@@ -1867,7 +1910,7 @@ fn inline_output_commands_own_warning_does_not_shadow_its_own_reload_confirm() {
         "sanity: the command's own warning must have logged"
     );
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "the reload confirm must open despite the command's own warning"
     );
 }

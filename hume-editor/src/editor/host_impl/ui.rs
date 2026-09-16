@@ -2,6 +2,8 @@
 //! drawer, minibuffer prompt, and the fuzzy-finder picker.
 
 use super::EditorHostImpl;
+use crate::editor::input_stack::{InputLayer, LayerKind};
+use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use hume_scripting::host::{
     LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };
@@ -100,17 +102,26 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if self.state.mode() == hume_engine::types::EditorMode::Insert {
             return Err("show-menu!: not available in Insert mode".to_string());
         }
-        self.state.config.menu = Some(crate::editor::overlay_models::MenuModel {
+        if !self.state.input.accepts_above(LayerKind::Menu) {
+            return Err("show-menu!: another overlay is open".to_string());
+        }
+        self.state.input.push(InputLayer::Menu(MenuModel {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
             selected: 0,
             callback,
-        });
+        }));
         Ok(())
     }
 
     fn close_menu(&mut self) -> Result<(), String> {
-        self.state.config.menu = None;
-        Ok(())
+        match self.state.input.ref_of(LayerKind::Menu) {
+            None => Ok(()),
+            Some(r) if r == self.state.input.top() => {
+                self.state.input.truncate(r);
+                Ok(())
+            }
+            Some(_) => Err("close-menu!: menu is not the active overlay".to_string()),
+        }
     }
 
     // ── Bottom drawer ──────────────────────────────────────────────────────
@@ -119,20 +130,29 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        self.state.config.drawer = Some(crate::editor::overlay_models::DrawerModel {
+        if !self.state.input.accepts_above(LayerKind::Drawer) {
+            return Err("show-drawer-list!: another overlay is open".to_string());
+        }
+        self.state.input.push(InputLayer::Drawer(DrawerModel {
             items: std::sync::Arc::new(items),
             selected: 0,
             scroll: 0,
             callback,
-        });
+        }));
         self.state.sync_drawer_view();
         Ok(())
     }
 
     fn close_drawer(&mut self) -> Result<(), String> {
-        self.state.config.drawer = None;
-        self.state.sync_drawer_view();
-        Ok(())
+        match self.state.input.ref_of(LayerKind::Drawer) {
+            None => Ok(()),
+            Some(r) if r == self.state.input.top() => {
+                self.state.input.truncate(r);
+                self.state.sync_drawer_view();
+                Ok(())
+            }
+            Some(_) => Err("close-drawer!: drawer is not the active overlay".to_string()),
+        }
     }
 
     // ── Fuzzy picker ──────────────────────────────────────────────────────
@@ -145,7 +165,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
         let token = session.token();
         session.seed(crate::editor::picker::picker_items(items));
-        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
+        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session)?;
         Ok(token)
     }
 
@@ -156,7 +176,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<u64, String> {
         let session = crate::editor::picker::PickerSession::new_live(on_select, opts);
         let token = session.token();
-        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session);
+        crate::editor::picker::open_picker(self.state, self.lsp.as_deref_mut(), session)?;
         Ok(token)
     }
 

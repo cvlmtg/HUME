@@ -120,12 +120,14 @@ impl Editor {
 
         // ── Steel values rooted in the outgoing engine ──
         //
-        // `pending_work` and the five overlay models
-        // (popup/menu/drawer/picker/confirm) all drop below when
-        // `self.state.config = ConfigState::new(…)` runs — nothing here
-        // reads any of them in between, so there's nothing to clear early.
+        // `pending_work` and `popup` drop below when `self.state.config =
+        // ConfigState::new(…)` runs; the other three overlay widgets
+        // (menu/drawer/picker) plus the disk-change confirm live on
+        // `state.input` instead and are dropped by the explicit
+        // `input.truncate_to_base()` call further down — nothing here reads
+        // any of them in between, so there's nothing to clear early.
         // `PickerSession::source` (if a picker was open) kills any streaming
-        // child process on drop, same as any other `ConfigState` drop; the
+        // child process on drop, same as any other overlay drop; the
         // overlay *views* (`popup_view`/`menu_view`/`drawer_view`/
         // `picker_view`) self-heal from `prepare_frame` every frame
         // regardless, so nothing here needs to touch them directly either.
@@ -135,13 +137,14 @@ impl Editor {
         if self.state.config.steel_prompt_callback.is_some() {
             // A `(prompt! …)` session was open. Its callback belongs to the
             // outgoing engine and is discarded (not fired) by the
-            // `ConfigState` rebuild below, same policy as the popup/menu/
-            // drawer/picker overlays — but unlike those, a prompt also parks
-            // the editor in `Mode::Command` with an open minibuf and an
-            // in-progress history session (`host_impl.rs`'s `%prompt!` sets
-            // all three together). Leaving those live would route the next
-            // `:`/Enter through the *ordinary* command-line path, misreading
-            // the abandoned prompt's half-typed answer as a `:` command.
+            // `ConfigState` rebuild and `state.input.truncate_to_base()`
+            // calls below, same policy as the popup/menu/drawer/picker
+            // overlays — but unlike those, a prompt also parks the editor in
+            // `Mode::Command` with an open minibuf and an in-progress
+            // history session (`host_impl.rs`'s `%prompt!` sets all three
+            // together). Leaving those live would route the next `:`/Enter
+            // through the *ordinary* command-line path, misreading the
+            // abandoned prompt's half-typed answer as a `:` command.
             self.close_minibuf();
             self.state.set_mode(super::Mode::Normal);
         }
@@ -196,6 +199,10 @@ impl Editor {
         self.state.buffers.clear_overrides_all();
         let prior_clock = self.state.config.decorations.clock();
         self.state.config = super::ConfigState::new(self.kitty_enabled, prior_clock);
+        // Drops any still-open confirm/picker/menu/drawer layer without
+        // firing its callback — same "outgoing engine, nothing left to
+        // observe the fire" reasoning as the comment above.
+        self.state.input.truncate_to_base();
         super::settings::ops::reset_globals(&mut self.state, &mut self.view);
 
         ReloadSnapshot {

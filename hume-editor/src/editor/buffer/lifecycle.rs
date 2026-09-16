@@ -17,6 +17,7 @@ use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::event::EditorEvent;
+use crate::editor::input_stack::LayerKind;
 use crate::editor::jump_list::{JumpEntry, JumpLists};
 use crate::editor::lsp::LspState;
 use crate::editor::pane_state::{self, PaneBufferState};
@@ -259,16 +260,13 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // for a fresh scratch, so `reload_buffer_from_disk` would bail on
     // `try_get` or on the scratch's missing path and the user's `r` would do
     // nothing. Retire the question rather than leave one that can't be
-    // answered; with `can_open_confirm`'s `confirm.is_none()` guard, leaving
-    // it would also block every later prompt until some stray key happened
-    // to dismiss it.
-    if state
-        .config
-        .confirm
-        .as_ref()
-        .is_some_and(|c| c.targets_buffer(id))
+    // answered; with `can_open_confirm`'s stack-is-`Base` guard, leaving it
+    // would also block every later prompt until some stray key happened to
+    // dismiss it.
+    if state.input.confirm().is_some_and(|c| c.targets_buffer(id))
+        && let Some(r) = state.input.ref_of(LayerKind::Confirm)
     {
-        state.config.confirm = None;
+        state.input.truncate(r);
     }
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;

@@ -26,7 +26,7 @@ fn select_second_item_calls_back_with_index_1() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
-    assert!(ed.state.config.menu.is_some(), "sanity: menu open");
+    assert!(ed.state.input.menu().is_some(), "sanity: menu open");
 
     ed.feed_key(key('j'));
     ed.feed_key(key_enter());
@@ -34,7 +34,7 @@ fn select_second_item_calls_back_with_index_1() {
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
     assert!(
-        ed.state.config.menu.is_none(),
+        ed.state.input.menu().is_none(),
         "menu must close after Enter"
     );
 }
@@ -50,7 +50,7 @@ fn esc_calls_back_with_false() {
     ed.settle();
 
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
-    assert!(ed.state.config.menu.is_none());
+    assert!(ed.state.input.menu().is_none());
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn stray_key_dismisses_the_menu_and_still_executes() {
     ed.settle();
 
     assert!(
-        ed.state.config.menu.is_none(),
+        ed.state.input.menu().is_none(),
         "the stray key must dismiss the menu"
     );
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
@@ -145,12 +145,12 @@ fn close_menu_drops_the_callback_without_invoking_it() {
         steel::rvals::SteelVal::Void,
     )
     .unwrap();
-    assert!(ed.state.config.menu.is_some(), "sanity: menu open");
+    assert!(ed.state.input.menu().is_some(), "sanity: menu open");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.close_menu().unwrap();
 
-    assert!(ed.state.config.menu.is_none());
+    assert!(ed.state.input.menu().is_none());
     assert!(
         ed.state.config.pending_work.is_empty(),
         "close_menu must not queue the callback"
@@ -173,7 +173,7 @@ fn show_menu_rejected_outside_normal_extend_mode() {
         "show-menu! must reject Insert mode — a menu that can't be driven is worse than none"
     );
     assert!(
-        ed.state.config.menu.is_none(),
+        ed.state.input.menu().is_none(),
         "must not have opened despite the error"
     );
 }
@@ -187,7 +187,35 @@ fn show_menu_accepted_in_normal_mode() {
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
     assert!(result.is_ok());
-    assert!(ed.state.config.menu.is_some());
+    assert!(ed.state.input.menu().is_some());
+}
+
+/// A picker is full-modal: it refuses anything pushed above it, so
+/// `show-menu!` while one is open errors instead of opening a menu that
+/// paints under a picker no key path can ever reach.
+#[test]
+fn show_menu_rejected_when_a_picker_is_open() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PickerOpts, UiHost};
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let session = crate::editor::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        PickerOpts::default(),
+    );
+    crate::editor::picker::open_picker(&mut ed.state, None, session).expect("nothing else is open");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+    assert!(
+        result.is_err(),
+        "show-menu! must reject a live picker — it's full-modal"
+    );
+    assert!(
+        ed.state.input.menu().is_none(),
+        "must not have opened despite the error"
+    );
+    assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }
 
 // ── Render snapshot: highlighted row ──────────────────────────────────────────

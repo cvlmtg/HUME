@@ -354,7 +354,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
     // external rewrite below, so it can't produce a `confirm` of its own —
     // see `hook_call_bang_…`'s identical drain.
     ed.settle();
-    assert!(ed.state.config.confirm.is_none());
+    assert!(ed.state.input.confirm().is_none());
     let scm_dir = safe_tempdir();
 
     run(
@@ -384,7 +384,7 @@ fn caught_error_inside_call_bang_still_closes_bracket_and_drains_state() {
         "the leaked raiser2 frame must not survive the dispatch"
     );
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "raiser2 still ran with the TUI active, so the reload \
          confirm its subprocess caused must still open even though its error \
          was caught"
@@ -417,7 +417,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     ed.tui = Tui::OnHeadless;
     ed.settle();
     assert!(
-        ed.state.config.confirm.is_none(),
+        ed.state.input.confirm().is_none(),
         "sanity: nothing has changed on disk yet"
     );
 
@@ -440,7 +440,7 @@ fn hook_call_bang_to_inline_output_command_closes_the_bracket() {
     ed.settle();
 
     assert!(
-        ed.state.config.confirm.is_some(),
+        ed.state.input.confirm().is_some(),
         "hook-inner-probe ran with the TUI active, so the \
          hook path's close must queue the reload confirm its subprocess \
          caused, the same way direct dispatch's close does"

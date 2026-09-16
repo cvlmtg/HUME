@@ -408,7 +408,7 @@ fn tall_content_docks_instead_of_using_the_drawer() {
         "the docked band's view must resolve after a frame"
     );
     assert!(
-        ed.state.config.drawer.is_none(),
+        ed.state.input.drawer().is_none(),
         "hover overflow must never open the pick-list drawer"
     );
 }

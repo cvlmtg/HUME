@@ -57,13 +57,7 @@ fn drain_sources_until(ed: &mut Editor, mut until: impl FnMut(&Editor) -> bool) 
 /// `spawn-async!` picker test. No picker open never satisfies it.
 fn drain_until_picker_total(ed: &mut Editor, n: usize) {
     drain_until(ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            == n
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) == n
     });
 }
 
@@ -75,11 +69,7 @@ fn drain_until_picker_total(ed: &mut Editor, n: usize) {
 /// (Rust-only, no Steel VM in play) depending on which they're already
 /// using.
 fn source_detached(ed: &Editor) -> bool {
-    ed.state
-        .config
-        .picker
-        .as_ref()
-        .is_some_and(|p| !p.has_source())
+    ed.state.input.picker().is_some_and(|p| !p.has_source())
 }
 
 // ── Shared process-liveness helper ──────────────────────────────────────────

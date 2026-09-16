@@ -32,7 +32,9 @@ fn editor_state_fields_are_classified() {
             // language + overrides; content, undo history, and
             // everything else survive
             buffers: _,
-            config: _,              // exempt — see ConfigState's own doc
+            config: _, // exempt — see ConfigState's own doc
+            // config: reset_config_state → input.truncate_to_base()
+            input: _,
             mode: _,                // preserved
             pending_keys: _,        // preserved
             count: _,               // preserved

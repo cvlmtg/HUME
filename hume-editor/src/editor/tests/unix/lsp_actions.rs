@@ -105,9 +105,8 @@ fn run_actions(ed: &mut Editor) {
 
 fn menu_items(ed: &Editor) -> Vec<String> {
     ed.state
-        .config
-        .menu
-        .as_ref()
+        .input
+        .menu()
         .map(|m| m.rows.labels().as_ref().clone())
         .unwrap_or_default()
 }
@@ -275,7 +274,7 @@ fn empty_response_reports_no_code_actions_and_opens_no_menu() {
 
     run_actions(&mut ed);
 
-    assert!(ed.state.config.menu.is_none());
+    assert!(ed.state.input.menu().is_none());
     let msg = ed.state.status_msg.clone().unwrap_or_default();
     assert!(
         msg.to_lowercase().contains("no code actions"),

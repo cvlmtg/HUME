@@ -51,7 +51,7 @@ impl Editor {
                 // A menu/drawer consumes stray input without editing the
                 // buffer — same treatment `handle_key`'s intercepts give a
                 // stray key while one is open.
-                if self.state.config.menu.is_some() || self.state.config.drawer.is_some() {
+                if self.state.input.menu().is_some() || self.state.input.drawer().is_some() {
                     return;
                 }
                 self.state.status_msg.take();

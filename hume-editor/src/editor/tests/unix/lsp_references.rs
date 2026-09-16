@@ -136,7 +136,7 @@ fn enter_jumps_and_drawer_stays_open() {
         "Enter on row 2 must jump to that entry's line"
     );
     assert!(
-        ed.state.config.drawer.is_some(),
+        ed.state.input.drawer().is_some(),
         "the references drawer must stay open after a jump (drawer browse behavior)"
     );
 }
@@ -156,7 +156,7 @@ fn single_result_still_opens_the_drawer() {
     run_references(&mut ed);
 
     assert!(
-        ed.state.config.drawer.is_some(),
+        ed.state.input.drawer().is_some(),
         "references must always drawer-list, even a single result (unlike goto's auto-jump)"
     );
 }

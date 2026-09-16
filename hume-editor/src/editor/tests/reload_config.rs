@@ -485,9 +485,10 @@ fn reset_cancels_pending_steel_timers() {
 
 // ── Overlays ─────────────────────────────────────────────────────────────────
 
-/// Regression test: `reset_config_state` clears `state.config.drawer`
-/// directly (not through `close-drawer!`, which would queue a callback the
-/// reset already drops), with no paired view sync at that call site — unlike
+/// Regression test: `reset_config_state`'s `input.truncate_to_base()` call
+/// drops the drawer layer directly (not through `close-drawer!`, which would
+/// queue a callback the reset already drops), with no paired view sync at
+/// that call site — unlike
 /// popup/menu/picker, whose views re-resolve from the model every frame, the
 /// drawer's view previously synced only on-mutation, so nothing ever told it
 /// the model had changed. Fixed by making `prepare_frame` sync the drawer
@@ -512,7 +513,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
 
     ed.reset_config_state();
     assert!(
-        ed.state.config.drawer.is_none(),
+        ed.state.input.drawer().is_none(),
         "sanity: the model must be cleared by the reset"
     );
 
@@ -525,7 +526,7 @@ fn reset_reload_drawer_view_self_heals_on_the_next_frame() {
         ed.state.views.drawer.read().is_none(),
         "the drawer view must self-heal on the very next frame after a \
          reset clears the model, not stay stale (and uncloseable — key \
-         routing gates on state.config.drawer.is_some()) forever"
+         routing gates on state.input.drawer().is_some()) forever"
     );
 }
 
@@ -602,16 +603,17 @@ fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
         display: "one".to_string(),
         payload: steel::rvals::SteelVal::StringV("one".into()),
     }]);
-    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session);
+    crate::editor::picker::open_picker(&mut ed.state, Some(&mut ed.lsp), session)
+        .expect("nothing else is open");
     assert!(
-        ed.state.config.picker.is_some(),
+        ed.state.input.picker().is_some(),
         "sanity: the picker must be open"
     );
 
     ed.reset_config_state();
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "the picker session must not survive a reset"
     );
     assert!(

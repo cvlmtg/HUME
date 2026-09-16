@@ -1,14 +1,16 @@
 //! The raw, not-yet-resolved model behind each transient-chrome overlay
-//! (popup, menu, drawer) and the native confirm prompt — `ConfigState`'s
-//! input-side state, held until the next frame's `overlay_sync` resolves it
-//! into a positioned `hume_ui` view state (or, for the confirm prompt,
-//! which has no separate view type, rendered directly by the statusline).
+//! (popup, menu, drawer) and the native confirm prompt, held until the next
+//! frame's `overlay_sync` resolves it into a positioned `hume_ui` view state
+//! (or, for the confirm prompt, which has no separate view type, rendered
+//! directly by the statusline). `PopupModel` lives on `ConfigState`;
+//! `MenuModel`/`DrawerModel`/`ConfirmModel` are payloads on
+//! `EditorState.input`'s layer stack instead.
 //!
-//! Grouped here because they're one conceptual kind: editor-owned input
-//! state (a not-yet-fired Steel callback, a `BufferId` to act on), not a
-//! `hume_ui` value object or provider reading from a handle it was given —
+//! Grouped here regardless because they're one conceptual kind: editor-owned
+//! input state (a not-yet-fired Steel callback, a `BufferId` to act on), not
+//! a `hume_ui` value object or provider reading from a handle it was given —
 //! mirroring [`super::picker::PickerSession`], the picker's own analogous
-//! model, which lives here for the same reason.
+//! model, which lives on the same layer stack for the same reason.
 
 use hume_engine::pipeline::BufferId;
 use hume_engine::theme::Theme;

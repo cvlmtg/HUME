@@ -85,7 +85,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     ed.feed_key(key('f'));
     drain_until_picker_total(&mut ed, 3);
 
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     assert_eq!(picker.prompt(), "files: ");
     let rows: Vec<&str> = picker.window(10).collect();
     assert!(
@@ -100,7 +100,7 @@ fn files_picker_in_git_repo_uses_git_index_and_opens_selection() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert!(
@@ -140,7 +140,7 @@ fn files_picker_ctrl_t_opens_selection_in_a_new_tab() {
     ed.settle();
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "Ctrl-t must close the picker"
     );
     assert_eq!(
@@ -193,7 +193,7 @@ fn files_picker_ctrl_t_on_no_match_does_not_open_a_tab() {
     ed.settle();
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "Ctrl-t is still a terminal action even on no match"
     );
     assert_eq!(
@@ -233,7 +233,7 @@ fn files_picker_ctrl_v_in_a_too_narrow_pane_does_nothing() {
     ed.settle();
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "Ctrl-v is still a terminal action even when the split is refused"
     );
     assert_eq!(
@@ -284,7 +284,7 @@ fn files_picker_ctrl_v_opens_selection_in_a_new_pane() {
     ed.settle();
 
     assert!(
-        ed.state.config.picker.is_none(),
+        ed.state.input.picker().is_none(),
         "Ctrl-v must close the picker"
     );
     assert_eq!(
@@ -326,19 +326,13 @@ fn files_picker_esc_dismisses_cleanly() {
     ed.feed_key(key('z'));
     ed.feed_key(key('f'));
     drain_until(&mut ed, |ed| {
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .map(|p| p.total_len())
-            .unwrap_or(0)
-            >= 1
+        ed.state.input.picker().map(|p| p.total_len()).unwrap_or(0) >= 1
     });
 
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     assert_eq!(
         ed.focused_buffer_id(),
         starting_bid,
@@ -381,7 +375,7 @@ fn files_picker_fd_branch_spawns_given_binary() {
 
     call(&mut ed, "test-fd-branch");
     drain_until_picker_total(&mut ed, 2);
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     assert_eq!(
         picker.window(10).collect::<Vec<_>>(),
         vec!["one.txt", "two.txt"]
@@ -411,7 +405,7 @@ fn files_picker_error_path_names_fd() {
         .clone()
         .expect("error must surface as a status message");
     assert!(msg.contains("fd"), "error must name fd; got: {msg}");
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
 }
 
 // ── Git-modified-files picker ──────────────────────────────────────────────────
@@ -440,7 +434,7 @@ fn git_modified_picker_lists_changed_files_with_status_codes() {
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 3);
 
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     assert_eq!(picker.prompt(), "git: ");
     assert_eq!(picker.total_len(), 3);
     let rows: Vec<&str> = picker.window(10).collect();
@@ -478,32 +472,21 @@ fn git_modified_picker_is_pending_until_git_status_returns() {
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     assert!(
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .expect("picker open")
-            .is_pending(),
+        ed.state.input.picker().expect("picker open").is_pending(),
         "must be pending the instant it opens, before `git status` has had a \
          chance to run"
     );
 
     drain_until(&mut ed, |ed| {
         ed.state
-            .config
-            .picker
-            .as_ref()
+            .input
+            .picker()
             .map(|p| !p.is_pending())
             .unwrap_or(false)
     });
 
     assert_eq!(
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .expect("picker open")
-            .total_len(),
+        ed.state.input.picker().expect("picker open").total_len(),
         1,
         "the result that arrived must actually be there once pending clears"
     );
@@ -530,20 +513,12 @@ fn git_modified_picker_accept_resolves_relative_to_repo_root_from_subdirectory()
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
-    assert_eq!(
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .expect("picker open")
-            .total_len(),
-        1
-    );
+    assert_eq!(ed.state.input.picker().expect("picker open").total_len(), 1);
 
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
@@ -572,7 +547,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
 
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
     assert_eq!(
         rows,
@@ -583,7 +558,7 @@ fn git_modified_picker_row_and_accept_handle_path_with_space() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
@@ -615,20 +590,12 @@ fn git_modified_picker_accept_resolves_nested_relative_path() {
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
-    assert_eq!(
-        ed.state
-            .config
-            .picker
-            .as_ref()
-            .expect("picker open")
-            .total_len(),
-        1
-    );
+    assert_eq!(ed.state.input.picker().expect("picker open").total_len(), 1);
 
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert_eq!(
@@ -663,7 +630,7 @@ fn git_modified_picker_untracked_false_config_hides_untracked_files() {
     ed.feed_key(key('m'));
     drain_until_picker_total(&mut ed, 1);
 
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     let rows: Vec<&str> = picker.window(10).collect();
     assert_eq!(
         rows,
@@ -688,9 +655,8 @@ fn git_modified_picker_untracked_default_lists_files_inside_untracked_directory(
     drain_until_picker_total(&mut ed, 1);
     let rows: Vec<&str> = ed
         .state
-        .config
-        .picker
-        .as_ref()
+        .input
+        .picker()
         .expect("picker open")
         .window(10)
         .collect();
@@ -781,9 +747,8 @@ fn git_modified_picker_clean_tree_opens_empty_picker() {
 
     let picker = ed
         .state
-        .config
-        .picker
-        .as_ref()
+        .input
+        .picker()
         .expect("a clean tree still opens the picker, just with no rows");
     assert_eq!(picker.total_len(), 0);
 }
@@ -805,7 +770,7 @@ fn git_modified_picker_not_a_repo_names_git() {
         .clone()
         .expect("error must surface as a status message");
     assert!(msg.contains("git"), "error must name git; got: {msg}");
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
 }
 
 #[test]
@@ -841,7 +806,7 @@ fn git_modified_picker_git_status_failure_does_not_say_clean() {
         "the log message must carry git's own diagnostic (stderr), not just a \
          generic failure line; got: {msg}"
     );
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
 }
 
 #[test]
@@ -858,7 +823,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
 
     ed.feed_key(key('z'));
     ed.feed_key(key('m'));
-    assert!(ed.state.config.picker.is_some());
+    assert!(ed.state.input.picker().is_some());
     assert_eq!(
         ed.state.config.async_jobs.len(),
         1,
@@ -870,7 +835,7 @@ fn git_modified_picker_esc_dismisses_cleanly() {
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     assert!(
         ed.state.config.async_jobs.is_empty(),
         "dismissing the picker must cancel the outstanding `git status` job, \
@@ -917,7 +882,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
 
     ed.feed_key(key('z'));
     ed.feed_key(key('b'));
-    let picker = ed.state.config.picker.as_ref().expect("picker open");
+    let picker = ed.state.input.picker().expect("picker open");
     assert_eq!(picker.total_len(), 3);
     let rows: Vec<&str> = picker.window(10).collect();
     assert!(rows.iter().any(|r| r.ends_with("a/mod.rs")));
@@ -934,7 +899,7 @@ fn buffers_picker_lists_switches_and_disambiguates() {
     ed.feed_key(key_enter());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     let bid = ed.focused_buffer_id();
     let path = ed.state.buffers.get(bid).path().expect("buffer has a path");
     assert!(path.ends_with("a/mod.rs"), "got {path:?}");
@@ -949,12 +914,12 @@ fn buffers_picker_esc_is_a_no_op() {
 
     ed.feed_key(key('z'));
     ed.feed_key(key('b'));
-    assert!(ed.state.config.picker.is_some());
+    assert!(ed.state.input.picker().is_some());
 
     ed.feed_key(key_esc());
     ed.settle();
 
-    assert!(ed.state.config.picker.is_none());
+    assert!(ed.state.input.picker().is_none());
     assert_eq!(ed.focused_buffer_id(), starting_bid);
 
     // Keep interacting past the terminal action.

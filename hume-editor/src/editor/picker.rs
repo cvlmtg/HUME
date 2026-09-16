@@ -6,12 +6,12 @@
 //! converge later. Mirrors completion's `rank_scratch` reuse and
 //! reset-on-rerank patterns.
 //!
-//! Wired onto `EditorState.picker`; opened through the [`open_picker`] free
-//! fn below, via [`PickerSession::new`] (Steel's `picker!` builtin,
-//! `hume-scripting`'s `ui::picker`) or [`PickerSession::new_live`]
-//! (`live-picker!`, `ui::live_picker`) — and driven per-frame by
-//! `Editor::sync_picker_view` and per-key by `Editor::handle_picker_key`
-//! (`editor/mappings/mod.rs`).
+//! Wired onto `EditorState.input` as a `Picker` layer; opened through the
+//! [`open_picker`] free fn below, via [`PickerSession::new`] (Steel's
+//! `picker!` builtin, `hume-scripting`'s `ui::picker`) or
+//! [`PickerSession::new_live`] (`live-picker!`, `ui::live_picker`) — and
+//! driven per-frame by `Editor::sync_picker_view` and per-key by
+//! `Editor::picker_input` (`editor/mappings/widgets.rs`).
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -23,6 +23,7 @@ use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use super::input_stack::{InputLayer, LayerKind};
 use super::keymap::CanonicalKey;
 
 /// One row in a picker: a display string shown to the user and an opaque
@@ -693,20 +694,21 @@ pub(in crate::editor) fn session_for_token(
     token: u64,
 ) -> Option<&mut PickerSession> {
     state
-        .config
-        .picker
-        .as_mut()
+        .input
+        .picker_mut()
         .filter(|session| session.token() == token)
 }
 
 /// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
 /// builtin (`ui::picker`) calls this via `EditorHostImpl`. Allowed from any
-/// mode, but one modal owner at a time, so opening a picker always closes
-/// any live completion session first. Replacing an already-open picker
+/// mode, but one modal owner at a time: replacing an already-open picker
 /// fires *its* `on_select` with `#f` before installing the new one, via
-/// [`close_picker`] — the
-/// exactly-once callback contract must never have a window where a session
-/// can be silently dropped without firing.
+/// [`close_picker`] — the exactly-once callback contract must never have a
+/// window where a session can be silently dropped without firing. Opening
+/// over any *other* live overlay (a menu, drawer, or confirm) is refused —
+/// each of those already claims the whole keyboard for itself, and a picker
+/// landing on top of one would open a modal surface no key path could ever
+/// reach through it.
 ///
 /// Takes `state`/`lsp` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -715,10 +717,15 @@ pub(in crate::editor) fn open_picker(
     state: &mut super::EditorState,
     lsp: Option<&mut super::lsp::LspState>,
     session: PickerSession,
-) {
+) -> Result<(), String> {
     super::lsp::completion::clear_completion_menu(state, lsp);
+    let picker_already_open = state.input.kind(state.input.top()) == Some(LayerKind::Picker);
+    if !picker_already_open && !state.input.accepts_above(LayerKind::Picker) {
+        return Err("picker!: another overlay is open".to_string());
+    }
     close_picker(state, SteelVal::BoolV(false));
-    state.config.picker = Some(session);
+    state.input.push(InputLayer::Picker(Box::new(session)));
+    Ok(())
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
@@ -728,18 +735,22 @@ pub(in crate::editor) fn open_picker(
 /// replace-on-open path — one chokepoint, not one copy per caller.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
-/// "fires exactly once" contract: its wholesale `ConfigState` rebuild drops
-/// `state.config.picker` directly (never calling this function) along with
-/// the `pending_work` queue this function would have pushed the callback
-/// onto — the outgoing engine that owns the callback is seconds from being
-/// dropped, so firing it would be observable to nothing.
+/// "fires exactly once" contract: its `input.truncate_to_base()` call drops
+/// a still-open picker layer directly (never calling this function) along
+/// with the `pending_work` queue this function would have pushed the
+/// callback onto — the outgoing engine that owns the callback is seconds
+/// from being dropped, so firing it would be observable to nothing.
 pub(in crate::editor) fn close_picker_with(
     state: &mut super::EditorState,
     callback: Option<SteelVal>,
     payload: SteelVal,
 ) {
-    let Some(session) = state.config.picker.take() else {
+    let Some(r) = state.input.ref_of(LayerKind::Picker) else {
         return;
+    };
+    let mut removed = state.input.truncate(r);
+    let Some(InputLayer::Picker(session)) = removed.pop() else {
+        unreachable!("ref_of(Picker) guarantees a Picker layer at r");
     };
     let callback = callback.unwrap_or_else(|| session.on_select().clone());
     state.queue_steel_call(callback, vec![payload]);

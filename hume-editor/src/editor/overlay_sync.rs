@@ -191,7 +191,7 @@ impl Editor {
     /// (no word-wrap: menu entries are short labels, not prose) and
     /// `selected` marks the highlighted row.
     pub(super) fn sync_menu_view(&mut self, ctx: &mut RenderContext) {
-        if self.state.config.menu.is_none() {
+        if self.state.input.menu().is_none() {
             // Skip the write-lock when both sides are already None — common
             // case while no menu is open.
             if self.state.views.menu.read().is_none() {
@@ -203,13 +203,13 @@ impl Editor {
 
         // Hoisted out of the `and_then` below: resolving the anchor takes
         // `&mut self` (it may walk the pane's display-line map), which cannot overlap
-        // the `&self.state.config.menu` that closure's receiver holds.
+        // the `&self.state.input` that closure's receiver holds.
         let anchor_char = self.focused_cursor_char();
         let placement = self.popup_placement(ctx, anchor_char);
         let border = self.state.settings.popup_border;
 
         let resolved = placement.and_then(|placement| {
-            let model = self.state.config.menu.as_ref()?;
+            let model = self.state.input.menu()?;
             // `MenuRows::clone` is an `Arc` bump plus a `u16` copy, not a
             // re-measure: `MenuModel::rows` is pre-measured once at
             // `show-menu!` time (labels never change during a menu's
@@ -291,12 +291,12 @@ impl Editor {
     /// resize between the last keystroke and this frame self-heals here
     /// rather than leaving a stale scroll offset from a taller frame.
     pub(super) fn sync_picker_view(&mut self) {
-        if self.state.config.picker.is_none() && self.state.views.picker.read().is_none() {
+        if self.state.input.picker().is_none() && self.state.views.picker.read().is_none() {
             return;
         }
 
         let geo = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area);
-        let resolved = match (self.state.config.picker.as_mut(), geo) {
+        let resolved = match (self.state.input.picker_mut(), geo) {
             (Some(session), Some(geo)) => {
                 session.move_selection(0, geo.list_rows);
                 let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();

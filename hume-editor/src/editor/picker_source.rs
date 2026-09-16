@@ -78,7 +78,7 @@ impl Editor {
     /// per queued batch instead of once per frame would multiply the
     /// rerank cost by however many batches arrived this frame.
     pub(super) fn drain_picker_source(&mut self) {
-        let Some(session) = self.state.config.picker.as_mut() else {
+        let Some(session) = self.state.input.picker_mut() else {
             return;
         };
         let Some(source) = session.source_mut() else {
@@ -123,7 +123,7 @@ impl Editor {
                 .take_source()
                 .expect("source_mut returned Some above, and disconnect came from the same source")
         });
-        // `session` (a borrow of `self.state.config.picker`) is not used past this
+        // `session` (a borrow of `self.state.input`) is not used past this
         // point, so `report_source_exit` below can take `&mut self.state` freely.
 
         if let Some((source, ok_exit_codes)) = exit {
@@ -169,7 +169,7 @@ fn report_source_exit(state: &mut EditorState, source: SpawnedLineSource, ok_exi
 /// drops a source without going through here — a picker being closed has
 /// nowhere left to report to, so its exit (if any) goes unreported.
 fn take_and_report_outgoing_source(state: &mut EditorState) {
-    let Some(session) = state.config.picker.as_mut() else {
+    let Some(session) = state.input.picker_mut() else {
         return;
     };
     let Some((source, ok_exit_codes)) = session.take_source() else {

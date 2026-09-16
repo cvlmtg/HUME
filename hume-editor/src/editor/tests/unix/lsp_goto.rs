@@ -205,7 +205,7 @@ fn single_element_array_jumps_directly() {
         hume_rope::line::ContentLine::new(1),
         "a length-1 Location[] must jump directly, not open the drawer"
     );
-    assert!(ed.state.config.drawer.is_none());
+    assert!(ed.state.input.drawer().is_none());
 }
 
 #[test]
