@@ -4,14 +4,14 @@
 //! `dispatch_at` (in `mod.rs`) routes into these by layer kind. A `Sticky`
 //! popup (signature help) has no handler here: it lives in a mode layer's
 //! slot, never its own layer, so it's never a dispatch target — see
-//! `input_stack.rs`'s `LayerKind::Popup` doc.
+//! `PopupModel`'s `Layer` doc, `input_stack/stack.rs`.
 
 use termina::event::{KeyCode, Modifiers};
 
 use super::super::Editor;
-use super::super::input_stack::{InputEvent, InputLayer, LayerRef};
+use super::super::input_stack::{InputEvent, LayerRef};
 use super::super::mouse::is_fresh_gesture;
-use super::super::overlay_models::{ConfirmAction, MenuModel};
+use super::super::overlay_models::{ConfirmAction, ConfirmModel, DrawerModel, MenuModel};
 
 impl Editor {
     /// Handles one key while a native confirm overlay
@@ -61,9 +61,10 @@ impl Editor {
             }
         };
         let mut removed = self.state.input.truncate(r);
-        let Some(InputLayer::Confirm(confirm)) = removed.pop() else {
-            unreachable!("dispatch_at already checked kind(r) == LayerKind::Confirm");
+        let Some(confirm) = removed.pop().and_then(|l| l.downcast::<ConfirmModel>()) else {
+            unreachable!("dispatch_at already checked kind(r) == ConfirmModel");
         };
+        let confirm = *confirm;
 
         let matched = (key.modifiers == Modifiers::NONE)
             .then(|| {
@@ -132,7 +133,7 @@ impl Editor {
                     .state
                     .input
                     .menu_mut()
-                    .expect("dispatch_at already checked kind(r) == LayerKind::Menu");
+                    .expect("dispatch_at already checked kind(r) == MenuModel");
                 if menu.selected + 1 < menu.rows.len() {
                     menu.selected += 1;
                 }
@@ -142,7 +143,7 @@ impl Editor {
                     .state
                     .input
                     .menu_mut()
-                    .expect("dispatch_at already checked kind(r) == LayerKind::Menu");
+                    .expect("dispatch_at already checked kind(r) == MenuModel");
                 menu.selected = menu.selected.saturating_sub(1);
             }
             KeyCode::Enter => {
@@ -171,10 +172,10 @@ impl Editor {
     /// fresh mouse gesture).
     fn take_menu(&mut self, r: LayerRef) -> MenuModel {
         let mut removed = self.state.input.truncate(r);
-        let Some(InputLayer::Menu(menu)) = removed.pop() else {
-            unreachable!("dispatch_at already checked kind(r) == LayerKind::Menu");
+        let Some(menu) = removed.pop().and_then(|l| l.downcast::<MenuModel>()) else {
+            unreachable!("dispatch_at already checked kind(r) == MenuModel");
         };
-        menu
+        *menu
     }
 
     /// Handles one key while the bottom drawer is open. Movement, half-page
@@ -207,7 +208,7 @@ impl Editor {
                     .state
                     .input
                     .drawer_mut()
-                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
+                    .expect("dispatch_at already checked kind(r) == DrawerModel");
                 if drawer.selected + 1 < drawer.items.len() {
                     drawer.selected += 1;
                     self.clamp_drawer_scroll();
@@ -218,7 +219,7 @@ impl Editor {
                     .state
                     .input
                     .drawer_mut()
-                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
+                    .expect("dispatch_at already checked kind(r) == DrawerModel");
                 if drawer.selected > 0 {
                     drawer.selected -= 1;
                     self.clamp_drawer_scroll();
@@ -244,15 +245,15 @@ impl Editor {
                     .state
                     .input
                     .drawer()
-                    .expect("dispatch_at already checked kind(r) == LayerKind::Drawer");
+                    .expect("dispatch_at already checked kind(r) == DrawerModel");
                 let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
                 let callback = drawer.callback.clone();
                 self.state.queue_steel_call(callback, vec![idx]);
             }
             KeyCode::Escape => {
                 let mut removed = self.state.input.truncate(r);
-                let Some(InputLayer::Drawer(drawer)) = removed.pop() else {
-                    unreachable!("dispatch_at already checked kind(r) == LayerKind::Drawer");
+                let Some(drawer) = removed.pop().and_then(|l| l.downcast::<DrawerModel>()) else {
+                    unreachable!("dispatch_at already checked kind(r) == DrawerModel");
                 };
                 self.state
                     .queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
@@ -264,9 +265,9 @@ impl Editor {
         }
     }
 
-    /// Handles one event while a `Scrollable` popup is open (`LayerKind::Popup`
-    /// — a `Sticky` popup lives in a mode layer's slot instead and is never
-    /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
+    /// Handles one event while a `Scrollable` popup is open (a `PopupModel`
+    /// layer — a `Sticky` popup lives in a mode layer's slot instead and is
+    /// never dispatch's target). Ctrl-u/Ctrl-d consume the key only when
     /// [`Self::scroll_popup`] finds content past one screenful; every other
     /// key, a paste, and any mouse gesture retire the layer and fall
     /// through this same call, so a short popup never blocks the buffer's

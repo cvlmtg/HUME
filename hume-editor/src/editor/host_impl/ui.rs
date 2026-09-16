@@ -3,7 +3,7 @@
 
 use super::EditorHostImpl;
 use crate::editor::Severity;
-use crate::editor::input_stack::{InputLayer, LayerKind};
+use crate::editor::input_stack::{BaseLayer, PromptLayer};
 use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use hume_scripting::host::{
     LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
@@ -45,14 +45,18 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         // command returns, per truncate-before-execute). Only a `Prompt`
         // layer already on top means a *prior* `prompt!` call has taken
         // over the session.
-        if self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Prompt) {
+        if self
+            .state
+            .input
+            .is::<PromptLayer>(self.state.input.mode_layer())
+        {
             return Err("prompt!: a minibuffer session is already open".to_string());
         }
         let cursor = prefill.len();
         self.state.history.begin_session_all();
         self.state.push_mode_layer(
             self.view,
-            InputLayer::Prompt {
+            PromptLayer {
                 minibuf: crate::editor::MiniBuffer {
                     prompt: label,
                     input: prefill,
@@ -119,7 +123,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             }
             PopupKind::Scrollable => {
                 self.state.input.clear_popups();
-                self.state.input.push(InputLayer::Popup(model));
+                self.state.input.push(model);
             }
         }
         Ok(())
@@ -128,9 +132,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// Idempotent — clears whichever home currently holds a popup, or does
     /// nothing if neither does. There is no present-but-not-top error path
     /// (unlike `close_menu`'s): a `Popup` layer is never buried (see
-    /// `LayerKind::Popup`'s doc) and a `Sticky` popup's slot never occupies
-    /// `top()` at all, so this can never observe one it isn't allowed to
-    /// close.
+    /// `PopupModel`'s `Layer` doc, `input_stack/stack.rs`) and a `Sticky`
+    /// popup's slot never occupies `top()` at all, so this can never observe
+    /// one it isn't allowed to close.
     fn close_popup(&mut self) -> Result<(), String> {
         self.state.input.clear_popups();
         Ok(())
@@ -150,7 +154,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         // bug, so this drops silently (`Trace`, `Ok`) rather than erroring,
         // which would abort the whole `run_call_batch` this `Call` was
         // batched into.
-        if self.state.input.kind(self.state.input.mode_layer()) != Some(LayerKind::Base)
+        if !self
+            .state
+            .input
+            .is::<BaseLayer>(self.state.input.mode_layer())
             || !self.state.input.is_stack_settled()
         {
             self.state.report(
@@ -159,16 +166,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        self.state.input.push(InputLayer::Menu(MenuModel {
+        self.state.input.push(MenuModel {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
             selected: 0,
             callback,
-        }));
+        });
         Ok(())
     }
 
     fn close_menu(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of(LayerKind::Menu) {
+        match self.state.input.ref_of::<MenuModel>() {
             None => Ok(()),
             Some(r) if r == self.state.input.top() => {
                 self.state.input.truncate(r);
@@ -195,9 +202,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         // the same way `close-drawer!` already closes one, without firing
         // its callback, since the new call is what Steel considers "done"
         // with the old drawer.
-        let mode_ok = self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Base);
-        let top_kind = self.state.input.kind(self.state.input.top());
-        let stack_ok = self.state.input.is_stack_settled() || top_kind == Some(LayerKind::Drawer);
+        let mode_ok = self
+            .state
+            .input
+            .is::<BaseLayer>(self.state.input.mode_layer());
+        let top_is_drawer = self.state.input.is::<DrawerModel>(self.state.input.top());
+        let stack_ok = self.state.input.is_stack_settled() || top_is_drawer;
         if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
@@ -206,22 +216,22 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        if top_kind == Some(LayerKind::Drawer) {
+        if top_is_drawer {
             let r = self.state.input.top();
             self.state.input.truncate(r);
         }
-        self.state.input.push(InputLayer::Drawer(DrawerModel {
+        self.state.input.push(DrawerModel {
             items: std::sync::Arc::new(items),
             selected: 0,
             scroll: 0,
             callback,
-        }));
+        });
         self.state.sync_drawer_view();
         Ok(())
     }
 
     fn close_drawer(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of(LayerKind::Drawer) {
+        match self.state.input.ref_of::<DrawerModel>() {
             None => Ok(()),
             Some(r) if r == self.state.input.top() => {
                 self.state.input.truncate(r);

@@ -749,32 +749,28 @@ impl EditorState {
     /// Clearing popups here — not just on the `Base` branch, though that's
     /// the only branch where it does anything `truncate_layers` wasn't
     /// about to do anyway — is what keeps a `Popup` layer from ever being
-    /// buried (`LayerKind::Popup`'s doc): landing a new mode layer directly
-    /// on top of `Base` (the one case `truncate_layers` skips) would
-    /// otherwise sandwich a `Popup` layer, or a `Sticky` popup sitting in
-    /// `Base`'s own slot, between `Base` and the incoming layer. This
-    /// replaces the Steel `on-mode-change → close-popup!` hook the popup
-    /// used to need for exactly this case.
+    /// buried (`PopupModel`'s `Layer` doc, `input_stack/stack.rs`): landing
+    /// a new mode layer directly on top of `Base` (the one case
+    /// `truncate_layers` skips) would otherwise sandwich a `Popup` layer, or
+    /// a `Sticky` popup sitting in `Base`'s own slot, between `Base` and the
+    /// incoming layer. This replaces the Steel `on-mode-change →
+    /// close-popup!` hook the popup used to need for exactly this case.
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
     /// key path; a Steel-initiated push (a timer's `prompt!` while a picker
     /// is open) simply lands on top, where the picker's own key policy
     /// governs what happens next.
-    pub(in crate::editor) fn push_mode_layer(
+    pub(in crate::editor) fn push_mode_layer<L: input_stack::Layer>(
         &mut self,
         view: &EngineView,
-        layer: input_stack::InputLayer,
+        layer: L,
     ) {
         let mode_layer = self.input.mode_layer();
-        let current_kind = self
-            .input
-            .kind(mode_layer)
-            .expect("mode_layer() always names a live layer");
-        if current_kind == layer.kind() {
+        if self.input.is::<L>(mode_layer) {
             return;
         }
-        if current_kind != input_stack::LayerKind::Base {
+        if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
             self.truncate_layers(view, mode_layer);
         }
         self.input.clear_popups();
@@ -782,66 +778,24 @@ impl EditorState {
         self.input.push(layer);
     }
 
-    /// Removes `r` and everything above it, running [`Self::tear_down`] on
-    /// each removed layer top-first — the single teardown path for both a
-    /// mode-layer exit and a `close-*!`/Rust-internal overlay retirement.
+    /// Removes `r` and everything above it, running each removed layer's own
+    /// [`input_stack::Layer::tear_down`] top-first — the single teardown
+    /// path for both a mode-layer exit and a `close-*!`/Rust-internal
+    /// overlay retirement. What each layer's teardown does, for any reason
+    /// it leaves the stack, lives on that layer's own `Layer` impl — a
+    /// `Confirm` arm does its own accept work (recording history,
+    /// restoring/clearing a stash) *before* truncating, so by the time
+    /// teardown runs, every removal is already the "cancel" case; there is
+    /// no separate "cancel-specific work" split to make. Teardown never
+    /// fires a Steel callback — those are queued only from explicit
+    /// accept/cancel arms, before the truncate that reaches here.
     pub(in crate::editor) fn truncate_layers(
         &mut self,
         view: &EngineView,
         r: input_stack::LayerRef,
     ) {
-        for layer in self.input.truncate(r) {
-            self.tear_down(view, layer);
-        }
-    }
-
-    /// What happens when `layer` leaves the stack, for any reason —
-    /// teardown of a mode layer *is* its cancel. A `Confirm` arm does its
-    /// own accept work (recording history, restoring/clearing a stash)
-    /// *before* truncating, so by the time this runs, every removal is
-    /// already the "cancel" case; there is no separate "cancel-specific
-    /// work" split to make here. Never fires a Steel callback — those are
-    /// queued only from explicit accept/cancel arms, before the truncate
-    /// that reaches here.
-    fn tear_down(&mut self, view: &EngineView, layer: input_stack::InputLayer) {
-        match layer {
-            input_stack::InputLayer::Insert { .. } => {
-                commands::tear_down_insert(self, view);
-            }
-            input_stack::InputLayer::Command { .. } | input_stack::InputLayer::Prompt { .. } => {
-                self.history.begin_session_all();
-            }
-            input_stack::InputLayer::Search { .. } => {
-                let pid = self.focus.id();
-                if let Some(sels) = self.panes.transient[pid].pre_search_sels.take() {
-                    commands::set_current_selections(self, view, sels);
-                    let bid = commands::focused_buffer_id(self, view);
-                    search::ops::clear_buffer_search(&mut self.buffers, &mut self.panes.state, bid);
-                }
-                self.history.begin_session_all();
-            }
-            input_stack::InputLayer::Sift { .. } => {
-                let pid = self.focus.id();
-                if let Some(sels) = self.panes.transient[pid].pre_sift_sels.take() {
-                    commands::set_current_selections(self, view, sels);
-                }
-                // Sift has no history ring of its own — `begin_session_all`
-                // only touches the command/search rings, so this is a no-op
-                // for Sift — but every other minibuf-backed mode's teardown
-                // calls it unconditionally, and Sift stays uniform with
-                // them rather than being special-cased as the one mode that
-                // skips it.
-                self.history.begin_session_all();
-            }
-            input_stack::InputLayer::Completion { .. } => {
-                self.views.completion_menu.set(None);
-            }
-            input_stack::InputLayer::Base { .. }
-            | input_stack::InputLayer::Drawer(_)
-            | input_stack::InputLayer::Menu(_)
-            | input_stack::InputLayer::Picker(_)
-            | input_stack::InputLayer::Confirm(_)
-            | input_stack::InputLayer::Popup(_) => {}
+        for mut layer in self.input.truncate(r) {
+            layer.tear_down(self, view);
         }
     }
 
@@ -851,7 +805,7 @@ impl EditorState {
     /// stale session behind one.
     /// A no-op when no session is open.
     pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
-        if let Some(r) = self.input.ref_of(input_stack::LayerKind::Completion) {
+        if let Some(r) = self.input.ref_of::<input_stack::CompletionLayer>() {
             self.truncate_layers(view, r);
         }
     }
@@ -859,24 +813,27 @@ impl EditorState {
     /// [`Self::dismiss_completion`]'s variant for the two accept paths,
     /// which need the session *by value* rather than merely retired —
     /// truncates the same way (top-first — anything pushed above
-    /// `Completion` gets ordinary [`Self::tear_down`]), but pulls the
-    /// session itself out of the batch instead of dropping it, clearing the
-    /// menu view directly rather than through `tear_down`'s `Completion` arm.
+    /// `Completion` gets ordinary teardown), but pulls the session itself
+    /// out of the batch instead of dropping it, clearing the menu view
+    /// directly rather than through `CompletionLayer::tear_down`.
     /// `None` when no session is open.
     pub(in crate::editor) fn take_completion_session(
         &mut self,
         view: &EngineView,
     ) -> Option<lsp::completion::CompletionSession> {
-        let r = self.input.ref_of(input_stack::LayerKind::Completion)?;
+        let r = self.input.ref_of::<input_stack::CompletionLayer>()?;
         let mut removed = self.input.truncate(r);
-        let Some(input_stack::InputLayer::Completion { session, .. }) = removed.pop() else {
-            unreachable!("ref_of(Completion) guarantees the last removed layer is Completion");
-        };
+        let taken = removed
+            .pop()
+            .expect("ref_of(CompletionLayer) guarantees at least one removed layer");
+        let completion = taken
+            .downcast::<input_stack::CompletionLayer>()
+            .expect("ref_of(CompletionLayer) guarantees the last removed layer is CompletionLayer");
         self.views.completion_menu.set(None);
-        for layer in removed {
-            self.tear_down(view, layer);
+        for mut layer in removed {
+            layer.tear_down(self, view);
         }
-        Some(session)
+        Some(completion.session)
     }
 
     /// Enqueue `event` to fire after the current command returns — the

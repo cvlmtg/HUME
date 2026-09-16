@@ -1,8 +1,12 @@
 use termina::event::KeyEvent;
 
 use super::Editor;
-use super::input_stack::{InputEvent, LayerKind, LayerRef};
+use super::input_stack::{
+    BaseLayer, CommandLayer, CompletionLayer, InputEvent, InsertLayer, LayerRef, PickerLayer,
+    PromptLayer, SearchLayer, SiftLayer,
+};
 use super::minibuf::MiniBufferEvent;
+use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
 use super::replay::InsertInput;
 
 mod bracketed_paste;
@@ -80,25 +84,42 @@ impl Editor {
         self.dispatch_at(top, ev);
     }
 
+    /// Routes to whichever handler owns `r`'s concrete type. A chain of
+    /// `is::<L>()` checks, not a match on a closed `enum`'s discriminant —
+    /// see `input_stack/stack.rs`'s own doc for why: each handler still
+    /// lives beside its old neighbors (`mappings::widgets`,
+    /// `mappings::completion_menu`, this very `impl` block) rather than
+    /// beside its own `Layer` impl, so there is no `handler()` fn pointer to
+    /// call yet. This chain collapses to one as each layer's handler moves
+    /// into its own file and starts implementing `handler()` instead.
     fn dispatch_at(&mut self, r: LayerRef, ev: InputEvent) {
-        let kind = self
-            .state
-            .input
-            .kind(r)
-            .expect("dispatch target is live: top(), or below(r) under the index invariant");
-        match kind {
-            LayerKind::Base => self.base_input(r, ev),
-            LayerKind::Insert => self.insert_input(r, ev),
-            LayerKind::Command => self.command_input(r, ev),
-            LayerKind::Search => self.search_input(r, ev),
-            LayerKind::Sift => self.sift_input(r, ev),
-            LayerKind::Prompt => self.prompt_input(r, ev),
-            LayerKind::Drawer => self.drawer_input(r, ev),
-            LayerKind::Menu => self.menu_input(r, ev),
-            LayerKind::Picker => self.picker_input(r, ev),
-            LayerKind::Confirm => self.confirm_input(r, ev),
-            LayerKind::Completion => self.completion_input(r, ev),
-            LayerKind::Popup => self.popup_input(r, ev),
+        let input = &self.state.input;
+        if input.is::<BaseLayer>(r) {
+            self.base_input(r, ev)
+        } else if input.is::<InsertLayer>(r) {
+            self.insert_input(r, ev)
+        } else if input.is::<CommandLayer>(r) {
+            self.command_input(r, ev)
+        } else if input.is::<SearchLayer>(r) {
+            self.search_input(r, ev)
+        } else if input.is::<SiftLayer>(r) {
+            self.sift_input(r, ev)
+        } else if input.is::<PromptLayer>(r) {
+            self.prompt_input(r, ev)
+        } else if input.is::<DrawerModel>(r) {
+            self.drawer_input(r, ev)
+        } else if input.is::<MenuModel>(r) {
+            self.menu_input(r, ev)
+        } else if input.is::<PickerLayer>(r) {
+            self.picker_input(r, ev)
+        } else if input.is::<ConfirmModel>(r) {
+            self.confirm_input(r, ev)
+        } else if input.is::<CompletionLayer>(r) {
+            self.completion_input(r, ev)
+        } else if input.is::<PopupModel>(r) {
+            self.popup_input(r, ev)
+        } else {
+            unreachable!("dispatch target is live: top(), or below(r) under the index invariant")
         }
     }
 
@@ -121,7 +142,7 @@ impl Editor {
     /// The base layer's own policy. `r` is unused: `Base` never falls
     /// through further (there is nothing below it) and never truncates
     /// itself (it is never removed). Only ever runs for Normal/Extend —
-    /// every other mode is its own `LayerKind`, routed directly by
+    /// every other mode is its own layer type, routed directly by
     /// `dispatch_at`; `handle_normal` still reads `state.mode()` internally
     /// to tell the two apart.
     fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {

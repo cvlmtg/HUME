@@ -5,9 +5,10 @@
 //! directly by the statusline). `PopupModel`/`MenuModel`/`DrawerModel`/
 //! `ConfirmModel` are all payloads on `EditorState.input`'s layer stack —
 //! `PopupModel` alone lives in two places there: a `Scrollable` popup as its
-//! own `InputLayer::Popup`, a `Sticky` one in the `sticky_popup` slot on
-//! `Base`/`Insert` (see `input_stack::LayerKind::Popup`'s doc for why the
-//! two kinds need different homes).
+//! own layer (`PopupModel` implements `input_stack::Layer` directly), a
+//! `Sticky` one in the `sticky_popup` slot on `Base`/`Insert` (see
+//! `input_stack::Layer::sticky_popup_slot`'s doc for why the two kinds need
+//! different homes).
 //!
 //! Grouped here regardless because they're one conceptual kind: editor-owned
 //! input state (a not-yet-fired Steel callback, a `BufferId` to act on), not

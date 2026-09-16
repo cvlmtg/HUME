@@ -5,7 +5,7 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
-use crate::editor::input_stack::InputLayer;
+use crate::editor::input_stack::CompletionLayer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_engine::pipeline::RenderContext;
@@ -370,9 +370,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     let items =
         vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state
-        .input
-        .push(InputLayer::Completion { session, ui: None });
+    ed.state.input.push(CompletionLayer { session, ui: None });
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(
@@ -513,16 +511,14 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     let mut ed = editor_from("-[a]>bc\n");
     ed.state
         .input
-        .push(crate::editor::input_stack::InputLayer::Menu(
-            crate::editor::overlay_models::MenuModel {
-                rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
-                    "m0".into(),
-                    "m1".into(),
-                ])),
-                selected: 0,
-                callback: marker("menu-cb"),
-            },
-        ));
+        .push(crate::editor::overlay_models::MenuModel {
+            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
+                "m0".into(),
+                "m1".into(),
+            ])),
+            selected: 0,
+            callback: marker("menu-cb"),
+        });
 
     let mut session = PickerSession::new(marker("cb"), PickerOpts::default());
     session.push(vec![PickerItem {
@@ -536,9 +532,10 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
         ed.state.input.menu().is_some(),
         "the menu survives beneath it"
     );
-    assert_eq!(
-        ed.state.input.kind(ed.state.input.top()),
-        Some(crate::editor::input_stack::LayerKind::Picker),
+    assert!(
+        ed.state
+            .input
+            .is::<crate::editor::input_stack::PickerLayer>(ed.state.input.top()),
         "the picker, not the menu, drives input while it's open"
     );
 

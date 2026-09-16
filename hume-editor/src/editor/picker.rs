@@ -24,7 +24,7 @@ use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
 use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
-use super::input_stack::{InputLayer, LayerKind};
+use super::input_stack::PickerLayer;
 use super::keymap::CanonicalKey;
 
 /// One row in a picker: a display string shown to the user and an opaque
@@ -729,8 +729,9 @@ pub(in crate::editor) fn session_for_token(
 /// (`InputStack::clear_popups`): unlike a menu or drawer, which stay open
 /// underneath and simply stop seeing input, a `Popup` layer left in place
 /// would be sandwiched between whatever was below it and the picker landing
-/// on top — the one case `LayerKind::Popup`'s "never buried" invariant
-/// requires every ungated, unconditional pusher to close off itself.
+/// on top — the one case `PopupModel`'s "never buried" invariant (its
+/// `Layer` doc, `input_stack/stack.rs`) requires every ungated, unconditional
+/// pusher to close off itself.
 ///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
@@ -743,7 +744,7 @@ pub(in crate::editor) fn open_picker(
     state.dismiss_completion(view);
     close_picker(state, SteelVal::BoolV(false));
     state.input.clear_popups();
-    state.input.push(InputLayer::Picker(Box::new(session)));
+    state.input.push(PickerLayer(Box::new(session)));
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is
@@ -763,13 +764,14 @@ pub(in crate::editor) fn close_picker_with(
     callback: Option<SteelVal>,
     payload: SteelVal,
 ) {
-    let Some(r) = state.input.ref_of(LayerKind::Picker) else {
+    let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
     let mut removed = state.input.truncate(r);
-    let Some(InputLayer::Picker(session)) = removed.pop() else {
-        unreachable!("ref_of(Picker) guarantees a Picker layer at r");
+    let Some(session) = removed.pop().and_then(|l| l.downcast::<PickerLayer>()) else {
+        unreachable!("ref_of(PickerLayer) guarantees a PickerLayer at r");
     };
+    let session = session.0;
     let callback = callback.unwrap_or_else(|| session.on_select().clone());
     state.queue_steel_call(callback, vec![payload]);
 }

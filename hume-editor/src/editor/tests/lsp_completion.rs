@@ -14,7 +14,7 @@
 // accept outside Insert mode takes).
 
 use super::*;
-use crate::editor::input_stack::InputLayer;
+use crate::editor::input_stack::InsertLayer;
 
 #[test]
 fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
@@ -31,7 +31,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -66,7 +66,7 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -94,7 +94,7 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -125,7 +125,7 @@ fn update_filter_with_trailing_space_matches_nothing() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -154,7 +154,7 @@ fn update_filter_with_only_a_space_matches_nothing() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.state.status_msg.clone().unwrap(),
@@ -178,7 +178,7 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     // anchor = 0 (cursor was on 'a' at begin time), filter "fo" = 2 chars,
     // so the fallback replaces chars [0, 2) ("ab") with "hello".
@@ -202,7 +202,7 @@ fn accept_normalizes_crlf_in_insert_text() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "hel\nlocdef\n");
 }
@@ -225,7 +225,7 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "foobar bar\n");
 }
@@ -248,7 +248,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
 }
@@ -274,7 +274,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     // Without the fix, only [0, 2) ("fo") is replaced, leaving the "r"
     // typed after begin sitting untouched next to the insert: "format!r".
@@ -304,7 +304,7 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     // A delete region that doesn't reach the cursor errors instead of
     // silently clamping to some other span the server never asked for — no
@@ -365,7 +365,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
     );
     let before = ed.doc().text().to_string();
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
@@ -400,7 +400,7 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("begin".into(), None, false);
 
     let before_accept = ed.doc().text().to_string();
@@ -444,7 +444,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("begin".into(), None, false);
     assert!(
         ed.state.input.completion().is_some(),
@@ -501,7 +501,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
@@ -530,7 +530,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
@@ -577,7 +577,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
@@ -625,7 +625,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
@@ -649,7 +649,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
              (completion-begin! (current-buffer) (list))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     assert!(
         ed.state.input.completion().is_none(),
@@ -676,7 +676,7 @@ fn begin_with_empty_items_clears_an_already_open_session() {
              (completion-begin! (current-buffer) (list))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("open".into(), None, false);
     assert!(
         ed.state.input.completion().is_some(),
@@ -709,7 +709,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
              (log! 'info (hash-ref item "extra"))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     ed.settle();
     assert_eq!(
@@ -742,7 +742,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "hellocdef\n");
@@ -829,7 +829,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
     );
     let start = std::time::Instant::now();
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     let elapsed = start.elapsed();
     assert!(
@@ -878,7 +878,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     // check this test is actually pinning — without it, a
     // call from Normal would Trace-drop on the mode check first instead.
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
 
     let mut impl_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
@@ -916,7 +916,7 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
 
     assert_eq!(
@@ -947,7 +947,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
              (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)))))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
 
     assert!(
@@ -986,7 +986,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
              (completion-accept! 0)))"#,
     );
     ed.state
-        .push_mode_layer(&ed.view, InputLayer::Insert { sticky_popup: None });
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
     ed.execute_keymap_command("go".into(), None, false);
     // insert = [1,3) ("bc"), replace = [1,6) ("bcdef") — using replace would
     // leave "aXYZ\n"; the narrower insert range must leave "def" behind.

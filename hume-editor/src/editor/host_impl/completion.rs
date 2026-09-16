@@ -3,7 +3,7 @@
 use hume_engine::pipeline::BufferId;
 
 use crate::editor::Severity;
-use crate::editor::input_stack::{InputLayer, LayerKind};
+use crate::editor::input_stack::{CompletionLayer, InsertLayer};
 
 use super::EditorHostImpl;
 use hume_scripting::host::CompletionHost;
@@ -55,11 +55,15 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // sitting above `Insert`): it's the *normal* refresh path, not an
         // edge — `on-completion-refilter` re-calls this while a session is
         // already open, and so does a trigger char typed with the menu up.
-        let mode_ok =
-            self.state.input.kind(self.state.input.mode_layer()) == Some(LayerKind::Insert);
-        let top_kind = self.state.input.kind(self.state.input.top());
-        let stack_ok =
-            self.state.input.is_stack_settled() || top_kind == Some(LayerKind::Completion);
+        let mode_ok = self
+            .state
+            .input
+            .is::<InsertLayer>(self.state.input.mode_layer());
+        let top_is_completion = self
+            .state
+            .input
+            .is::<CompletionLayer>(self.state.input.top());
+        let stack_ok = self.state.input.is_stack_settled() || top_is_completion;
         if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
@@ -90,13 +94,11 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.lsp.is_none() {
             return Err("completion-begin!: no LSP state available".to_string());
         }
-        if top_kind == Some(LayerKind::Completion) {
+        if top_is_completion {
             let r = self.state.input.top();
             self.state.truncate_layers(self.view, r);
         }
-        self.state
-            .input
-            .push(InputLayer::Completion { session, ui: None });
+        self.state.input.push(CompletionLayer { session, ui: None });
         Ok(())
     }
 
@@ -136,7 +138,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_dismiss(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of(LayerKind::Completion) {
+        match self.state.input.ref_of::<CompletionLayer>() {
             None => Ok(()),
             Some(r) if r == self.state.input.top() => {
                 self.state.truncate_layers(self.view, r);

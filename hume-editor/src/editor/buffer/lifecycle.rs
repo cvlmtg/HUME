@@ -17,9 +17,9 @@ use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::event::EditorEvent;
-use crate::editor::input_stack::LayerKind;
 use crate::editor::jump_list::{JumpEntry, JumpLists};
 use crate::editor::lsp::LspState;
+use crate::editor::overlay_models::ConfirmModel;
 use crate::editor::pane_state::{self, PaneBufferState};
 
 // ── open_or_dedup / open_buffer ───────────────────────────────────────────────
@@ -264,7 +264,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // would also block every later prompt until some stray key happened to
     // dismiss it.
     if state.input.confirm().is_some_and(|c| c.targets_buffer(id))
-        && let Some(r) = state.input.ref_of(LayerKind::Confirm)
+        && let Some(r) = state.input.ref_of::<ConfirmModel>()
     {
         state.input.truncate(r);
     }

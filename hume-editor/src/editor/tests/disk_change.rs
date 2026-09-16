@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::InputLayer;
+use crate::editor::input_stack::InsertLayer;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
@@ -250,9 +250,7 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     // insert session (which would need a matching `end_insert_session` to
     // avoid `commit_edit_group_current` panicking on a group that was
     // never opened).
-    ed.state
-        .input
-        .push(InputLayer::Insert { sticky_popup: None });
+    ed.state.input.push(InsertLayer { sticky_popup: None });
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -818,7 +816,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     let picker_ref = ed
         .state
         .input
-        .ref_of(crate::editor::input_stack::LayerKind::Picker)
+        .ref_of::<crate::editor::input_stack::PickerLayer>()
         .expect("sanity: the picker must still be open");
     ed.state.input.truncate(picker_ref);
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
@@ -853,23 +851,25 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
         ed.state.input.confirm().is_some(),
         "the confirm survives beneath it"
     );
-    assert_eq!(
-        ed.state.input.kind(ed.state.input.top()),
-        Some(crate::editor::input_stack::LayerKind::Picker),
+    assert!(
+        ed.state
+            .input
+            .is::<crate::editor::input_stack::PickerLayer>(ed.state.input.top()),
         "the picker, not the confirm, drives input while it's open"
     );
 
     let picker_ref = ed
         .state
         .input
-        .ref_of(crate::editor::input_stack::LayerKind::Picker)
+        .ref_of::<crate::editor::input_stack::PickerLayer>()
         .expect("sanity: the picker must still be open");
     ed.state.input.truncate(picker_ref);
 
     assert!(ed.state.input.picker().is_none(), "the picker closed");
-    assert_eq!(
-        ed.state.input.kind(ed.state.input.top()),
-        Some(crate::editor::input_stack::LayerKind::Confirm),
+    assert!(
+        ed.state
+            .input
+            .is::<crate::editor::overlay_models::ConfirmModel>(ed.state.input.top()),
         "the confirm must drive input again once the picker is gone"
     );
 }

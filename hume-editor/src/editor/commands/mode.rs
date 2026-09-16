@@ -12,7 +12,7 @@ use hume_ops::motion::{
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
-use super::super::input_stack::InputLayer;
+use super::super::input_stack::CommandLayer;
 use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer};
 use super::{
@@ -202,7 +202,7 @@ pub(in crate::editor) fn cmd_command_mode(
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
-        InputLayer::Command {
+        CommandLayer {
             minibuf: MiniBuffer {
                 prompt: ":".to_string(),
                 input: String::new(),

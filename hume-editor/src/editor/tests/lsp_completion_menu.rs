@@ -9,7 +9,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use crate::editor::input_stack::InputLayer;
+use crate::editor::input_stack::CompletionLayer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
@@ -42,9 +42,7 @@ fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
         .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state
-        .input
-        .push(InputLayer::Completion { session, ui: None });
+    ed.state.input.push(CompletionLayer { session, ui: None });
 }
 
 // ── Pane-fit clamp: menu must render (clamped), never vanish ────────────────

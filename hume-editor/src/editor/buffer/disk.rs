@@ -10,7 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::input_stack::{InputLayer, LayerKind};
+use crate::editor::input_stack::BaseLayer;
 use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice, ConfirmModel};
 use crate::editor::{Editor, Severity};
 
@@ -231,7 +231,7 @@ impl Editor {
     /// steal a keystroke from something else already mid-interaction.
     ///
     /// Top-is-`Base`: `Insert`/`Command`/`Search`/`Sift`/`Prompt` are each
-    /// their own `LayerKind` now, so "top of the stack is `Base`" already
+    /// their own layer type now, so "top of the stack is `Base`" already
     /// means "Normal or Extend, no mode layer, no overlay" in one check —
     /// it's both the mode gate and the overlay gate at once. That is the
     /// difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as
@@ -290,7 +290,7 @@ impl Editor {
     /// `handle_input` even assigns the flag, so the trigger never observes
     /// it either way.
     fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
-        self.state.input.kind(self.state.input.top()) == Some(LayerKind::Base)
+        self.state.input.is::<BaseLayer>(self.state.input.top())
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
@@ -348,7 +348,7 @@ impl Editor {
             .input
             .confirm()
             .is_some_and(|c| !c.targets_buffer(entered))
-            && let Some(r) = self.state.input.ref_of(LayerKind::Confirm)
+            && let Some(r) = self.state.input.ref_of::<ConfirmModel>()
         {
             self.state.input.truncate(r);
         }
@@ -386,7 +386,7 @@ impl Editor {
         } else {
             format!("{name} has changed on disk.")
         };
-        self.state.input.push(InputLayer::Confirm(ConfirmModel {
+        self.state.input.push(ConfirmModel {
             prompt,
             choices: vec![
                 ConfirmChoice {
@@ -399,7 +399,7 @@ impl Editor {
                 },
             ],
             action: ConfirmAction::ReloadBuffer(bid),
-        }));
+        });
     }
 
     /// Re-read `bid` from disk and reload it in place. Called by the

@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::InputLayer;
+use crate::editor::input_stack::CompletionLayer;
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
 use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use crate::editor::picker::{self, PickerItem, PickerSession};
@@ -23,9 +23,7 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
         })
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state
-        .input
-        .push(InputLayer::Completion { session, ui: None });
+    ed.state.input.push(CompletionLayer { session, ui: None });
 }
 
 // ── No-op guards ──────────────────────────────────────────────────────────
@@ -282,11 +280,11 @@ fn confirm_paste_is_swallowed_and_the_confirm_stays_open() {
 fn menu_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.status_msg = Some("previous message".to_string());
-    ed.state.input.push(InputLayer::Menu(MenuModel {
+    ed.state.input.push(MenuModel {
         rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
         selected: 0,
         callback: marker("menu-cb"),
-    }));
+    });
 
     ed.feed_paste("xyz");
 
@@ -299,12 +297,12 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
 fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.status_msg = Some("previous message".to_string());
-    ed.state.input.push(InputLayer::Drawer(DrawerModel {
+    ed.state.input.push(DrawerModel {
         items: std::sync::Arc::new(vec!["d0".to_string()]),
         selected: 0,
         scroll: 0,
         callback: marker("drawer-cb"),
-    }));
+    });
 
     ed.feed_paste("xyz");
 

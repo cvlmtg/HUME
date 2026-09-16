@@ -201,7 +201,7 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
     }
     state.push_mode_layer(
         view,
-        crate::editor::input_stack::InputLayer::Insert { sticky_popup: None },
+        crate::editor::input_stack::InsertLayer { sticky_popup: None },
     );
 }
 
