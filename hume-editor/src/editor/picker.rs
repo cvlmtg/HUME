@@ -725,6 +725,13 @@ pub(in crate::editor) fn session_for_token(
 /// contract must never have a window where a session can be silently
 /// dropped without firing.
 ///
+/// A popup is the one thing this must clear rather than suspend
+/// (`InputStack::clear_popups`): unlike a menu or drawer, which stay open
+/// underneath and simply stop seeing input, a `Popup` layer left in place
+/// would be sandwiched between whatever was below it and the picker landing
+/// on top — the one case `LayerKind::Popup`'s "never buried" invariant
+/// requires every ungated, unconditional pusher to close off itself.
+///
 /// Takes `state`/`view` rather than `&mut Editor` because its production
 /// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
 /// not a whole `Editor` — it can never reach an `&mut Editor`.
@@ -735,6 +742,7 @@ pub(in crate::editor) fn open_picker(
 ) {
     state.dismiss_completion(view);
     close_picker(state, SteelVal::BoolV(false));
+    state.input.clear_popups();
     state.input.push(InputLayer::Picker(Box::new(session)));
 }
 

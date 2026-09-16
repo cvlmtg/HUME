@@ -7,7 +7,6 @@ use hume_grid::Rect;
 use std::sync::Arc;
 
 use super::*;
-use crate::editor::input_stack::InputLayer;
 use hume_engine::pipeline::RenderContext;
 
 /// Independent width oracle for the code under test — see `clippy.toml`'s
@@ -210,7 +209,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     ed.prepare_frame(&mut ctx);
 
     let before = state(&ed);
-    assert_eq!(ed.state.config.popup.as_ref().expect("shown").scroll, 0);
+    assert_eq!(ed.state.input.popup().expect("shown").scroll, 0);
 
     ed.feed_key(key_ctrl('d'));
     ed.sync_viewport_dims(80, 10);
@@ -218,9 +217,8 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
         .state
-        .config
-        .popup
-        .as_ref()
+        .input
+        .popup()
         .expect("Ctrl-d must not close it")
         .scroll;
     assert!(
@@ -239,9 +237,8 @@ fn ctrl_d_and_ctrl_u_scroll_a_docked_popup_without_touching_the_buffer() {
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
-        .config
-        .popup
-        .as_ref()
+        .input
+        .popup()
         .expect("Ctrl-u must not close it")
         .scroll;
     assert!(
@@ -269,7 +266,7 @@ fn any_other_key_closes_a_docked_popup_and_still_dispatches() {
 
     ed.feed_key(key('l'));
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "any non-scroll key must close a docked popup"
     );
     assert_eq!(
@@ -311,7 +308,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
 
     ed.feed_key(key('l')); // any non-scroll key dismisses a docked popup
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "sanity: model closed by the dismiss key"
     );
 
@@ -332,7 +329,7 @@ fn dismiss_key_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame()
 }
 
 #[test]
-fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
+fn popup_closed_out_of_band_repaints_the_rows_a_docked_popup_vacated_on_the_very_next_frame() {
     let tmp = safe_tempdir();
     // See the sibling test above: needs `Editor::open`'s real `bottom_bands`
     // registration for the pane-shrinking geometry this test asserts on.
@@ -359,37 +356,22 @@ fn settle_driven_close_repaints_the_rows_a_docked_popup_vacated_on_the_very_next
         "sanity: band must shrink the pane"
     );
 
-    // Register the real `lib.scm:38` hook only now — done as a separate
-    // `run()` (registering earlier would have it fire on the Command-mode
-    // entry/exit `:go`'s own dispatch triggers, closing the popup before
-    // frame 1 finished, since a docked popup is otherwise indistinguishable
-    // from any other mode transition to this unconditional hook).
-    run(
-        &mut ed,
-        tmp.path(),
-        r#"(register-hook! 'on-mode-change (lambda (old new) (close-popup!)))"#,
-    );
-
-    // `push_mode_layer` doesn't itself queue `OnModeChange` — `settle()`'s
-    // `detect_mode_change` diff does, the next time it runs (the same
-    // funnel a programmatic mode change — LSP callback, plugin command —
-    // goes through). Unlike a keypress it never runs through `handle_key`'s
-    // any-key-closes-a-docked-popup intercept, so the popup is still open
-    // here. The `on-mode-change` hook (mirroring `lib.scm`'s real one) only
-    // runs when `render_to_buf`'s `settle()` drains the queued event —
-    // reproducing the settle-time close window a real hook uses.
-    ed.state.push_mode_layer(&ed.view, InputLayer::Insert);
-    assert!(
-        ed.state.config.popup.is_some(),
-        "sanity: popup still open before settle drains the queued hook"
-    );
+    // Close it a way that isn't a key, paste, or mouse event reaching the
+    // `Popup` layer's own dispatch policy (any of those would fall under
+    // the sibling `dismiss_key_repaints…` test's coverage instead, and
+    // `push_mode_layer`'s own `clear_popups()` call — the mechanism that
+    // now replaces `lib.scm`'s old `on-mode-change` hook, see D2 — closes
+    // one just as synchronously). `close-popup!`'s Rust body
+    // (`InputStack::clear_popups`) is what a Steel callback drained at
+    // `settle()` — an LSP response, a fired timer — ultimately reaches
+    // regardless of what queued it, so calling it directly here reproduces
+    // the same "popup vanished with no frame in between to notice" case one
+    // of those would, without needing to reproduce the whole queuing
+    // apparatus.
+    ed.state.input.clear_popups();
 
     let pid = ed.state.focus.id();
-    let buf = ed.render_to_buf(rect); // frame 2: settle() drains the hook, which closes the popup
-    assert!(
-        ed.state.config.popup.is_none(),
-        "sanity: hook must have closed the popup during settle"
-    );
+    let buf = ed.render_to_buf(rect); // frame 2: must notice the popup is gone and repaint its rows
     assert_eq!(
         ed.view.panes[pid].viewport.height,
         ed.view.pane_area(rect).height,
@@ -562,7 +544,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
     let before = state(&ed);
     assert_eq!(
-        ed.state.config.popup.as_ref().expect("shown").scroll,
+        ed.state.input.popup().expect("shown").scroll,
         0,
         "sanity: starts unscrolled"
     );
@@ -573,9 +555,8 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     ed.prepare_frame(&mut ctx);
     let scroll_after_down = ed
         .state
-        .config
-        .popup
-        .as_ref()
+        .input
+        .popup()
         .expect("Ctrl-d must not close a scrollable popup")
         .scroll;
     assert!(
@@ -594,9 +575,8 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
-        .config
-        .popup
-        .as_ref()
+        .input
+        .popup()
         .expect("Ctrl-u must not close a scrollable popup")
         .scroll;
     assert!(
@@ -636,7 +616,7 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
 
     // Force a stale scroll far beyond what a much taller frame's window
     // will allow, standing in for a scroll set before the terminal grew.
-    ed.state.config.popup.as_mut().expect("shown").scroll = 30;
+    ed.state.input.popup_mut().expect("shown").scroll = 30;
 
     // Grow the frame: more visible rows, so `max_scroll` shrinks well below
     // the stale value set above.
@@ -660,9 +640,8 @@ fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     ed.prepare_frame(&mut ctx);
     let scroll_after_up = ed
         .state
-        .config
-        .popup
-        .as_ref()
+        .input
+        .popup()
         .expect("Ctrl-u must not close a scrollable popup")
         .scroll;
     assert!(
@@ -695,7 +674,7 @@ fn any_other_key_closes_a_scrollable_popup_and_still_dispatches() {
     // dismiss-and-swallow.
     ed.feed_key(key('l'));
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "any non-scroll key must close a scrollable popup"
     );
     assert_eq!(
@@ -729,7 +708,7 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
 
     assert!(
         matches!(
-            ed.state.config.popup.as_ref().map(|p| p.kind),
+            ed.state.input.popup().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Sticky)
         ),
         "a plain popup must be untouched by Ctrl-d"
@@ -770,7 +749,7 @@ fn a_mouse_wheel_closes_a_scrollable_popup_and_still_scrolls() {
     ed.handle_input(mouse_wheel(true));
 
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "a mouse wheel tick must close a scrollable popup"
     );
     assert_eq!(
@@ -801,7 +780,7 @@ fn a_mouse_click_closes_a_scrollable_popup() {
     ed.handle_input(mouse_left_down(3, 0));
 
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "a mouse click must close a scrollable popup"
     );
     assert_eq!(
@@ -829,7 +808,7 @@ fn a_sticky_popup_survives_mouse_input() {
     ed.prepare_frame(&mut ctx);
     assert!(
         matches!(
-            ed.state.config.popup.as_ref().map(|p| p.kind),
+            ed.state.input.popup().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Sticky)
         ),
         "sanity: sticky by default"
@@ -839,7 +818,7 @@ fn a_sticky_popup_survives_mouse_input() {
 
     assert!(
         matches!(
-            ed.state.config.popup.as_ref().map(|p| p.kind),
+            ed.state.input.popup().map(|p| p.kind),
             Some(hume_scripting::host::PopupKind::Sticky)
         ),
         "a sticky popup must be untouched by mouse input"

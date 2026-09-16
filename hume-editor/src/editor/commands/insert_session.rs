@@ -199,7 +199,10 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
             keystrokes: Vec::new(),
         });
     }
-    state.push_mode_layer(view, crate::editor::input_stack::InputLayer::Insert);
+    state.push_mode_layer(
+        view,
+        crate::editor::input_stack::InputLayer::Insert { sticky_popup: None },
+    );
 }
 
 /// Exit Insert mode: truncates the `Insert` layer, running

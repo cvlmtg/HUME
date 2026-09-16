@@ -27,7 +27,7 @@ use steel::rvals::SteelVal;
 use super::completion::MinibufCompletionState;
 use super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::minibuf::MiniBuffer;
-use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel};
+use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
 use super::picker::PickerSession;
 
 /// Addresses one layer by position — minted only by [`InputStack::push`] and
@@ -61,14 +61,25 @@ pub(in crate::editor) enum LayerKind {
     /// pushed above `Insert`; `mode()` skips it, reading `Insert` from the
     /// layer beneath).
     Completion,
+    /// A `Scrollable` popup (hover, `gn`/`gp`'s diagnostic overlay) — not a
+    /// mode layer. A `Sticky` popup (signature help) uses a different home,
+    /// the `sticky_popup` slot on `Base`/`Insert`, and so never appears as
+    /// this kind — see `PopupKind`'s two homes, `overlay_models.rs`.
+    Popup,
 }
 
 /// One entry on the stack.
 ///
-/// `Base` carries `extend` (Extend is a flag on `Base`, never its own
-/// layer) — the sticky-popup slot lands here once popups move by ownership
-/// (step 6). `Insert` carries no payload yet for the same reason: its own
-/// sticky-popup slot is step 6's addition too.
+/// `Base` and `Insert` carry `sticky_popup` — the home for a `Sticky` popup
+/// (signature help), which belongs to whichever mode owns it rather than to
+/// its own layer: it must survive underneath a completion session or an LSP
+/// menu without gating either (`is_stack_settled()` never sees a slot), and
+/// it dies when its mode layer does, not on a separate Steel hook. A
+/// `Scrollable` popup (hover, `gn`/`gp`) instead gets its own `Popup` layer
+/// below — the two kinds' dismiss rules differ enough (a slot is invisible
+/// to input dispatch; a layer intercepts it) that one shape can't serve
+/// both. `Base` also carries `extend` (Extend is a flag on `Base`, never its
+/// own layer).
 ///
 /// `Picker` is boxed: `PickerSession` alone is several times the size of
 /// every other variant's payload (its own fuzzy-match scoring buffers,
@@ -78,8 +89,11 @@ pub(in crate::editor) enum LayerKind {
 pub(in crate::editor) enum InputLayer {
     Base {
         extend: bool,
+        sticky_popup: Option<PopupModel>,
     },
-    Insert,
+    Insert {
+        sticky_popup: Option<PopupModel>,
+    },
     Command {
         minibuf: MiniBuffer,
         completion: Option<MinibufCompletionState>,
@@ -105,13 +119,19 @@ pub(in crate::editor) enum InputLayer {
         session: CompletionSession,
         ui: Option<CompletionMenuUi>,
     },
+    /// An open `Scrollable` popup — see `LayerKind::Popup`'s doc. Never
+    /// buried: every opener that could otherwise land above it retires it
+    /// first (`show_popup`'s self-replace, `open_picker`,
+    /// `EditorState::push_mode_layer`) or is itself gated on the stack being
+    /// settled, so `close-popup!`/`popup()` never need to look past `top()`.
+    Popup(PopupModel),
 }
 
 impl InputLayer {
     pub(in crate::editor) fn kind(&self) -> LayerKind {
         match self {
             InputLayer::Base { .. } => LayerKind::Base,
-            InputLayer::Insert => LayerKind::Insert,
+            InputLayer::Insert { .. } => LayerKind::Insert,
             InputLayer::Command { .. } => LayerKind::Command,
             InputLayer::Search { .. } => LayerKind::Search,
             InputLayer::Sift { .. } => LayerKind::Sift,
@@ -121,6 +141,7 @@ impl InputLayer {
             InputLayer::Picker(_) => LayerKind::Picker,
             InputLayer::Confirm(_) => LayerKind::Confirm,
             InputLayer::Completion { .. } => LayerKind::Completion,
+            InputLayer::Popup(_) => LayerKind::Popup,
         }
     }
 
@@ -173,7 +194,13 @@ pub(in crate::editor) struct InputStack {
 impl InputStack {
     pub(in crate::editor) fn new() -> Self {
         Self {
-            layers: vec![(0, InputLayer::Base { extend: false })],
+            layers: vec![(
+                0,
+                InputLayer::Base {
+                    extend: false,
+                    sticky_popup: None,
+                },
+            )],
             next_id: 1,
         }
     }
@@ -292,10 +319,10 @@ impl InputStack {
     }
 
     /// Removes every layer above `Base`, top-first, same return contract as
-    /// [`Self::truncate`], and resets `Base` itself to `extend: false` — a
-    /// reload must not leave Extend on for hooks that never saw it turned
-    /// on (today's reload drops `ConfigState.popup` outright; the sticky
-    /// slot arriving on `Base` in step 6 resets here the same way).
+    /// [`Self::truncate`], and resets `Base` itself to `extend: false,
+    /// sticky_popup: None` — a reload must not leave Extend on, or a
+    /// signature-help popup visible, for hooks that never saw either turned
+    /// on.
     pub(in crate::editor) fn truncate_to_base(&mut self) -> Vec<InputLayer> {
         let removed = self
             .layers
@@ -304,7 +331,10 @@ impl InputStack {
             .rev()
             .map(|(_, layer)| layer)
             .collect();
-        self.layers[0].1 = InputLayer::Base { extend: false };
+        self.layers[0].1 = InputLayer::Base {
+            extend: false,
+            sticky_popup: None,
+        };
         removed
     }
 
@@ -330,9 +360,9 @@ impl InputStack {
     /// outside this crate.
     pub(in crate::editor) fn mode(&self) -> EditorMode {
         match &self.layers[self.mode_layer().depth].1 {
-            InputLayer::Base { extend: false } => EditorMode::Normal,
-            InputLayer::Base { extend: true } => EditorMode::Extend,
-            InputLayer::Insert => EditorMode::Insert,
+            InputLayer::Base { extend: false, .. } => EditorMode::Normal,
+            InputLayer::Base { extend: true, .. } => EditorMode::Extend,
+            InputLayer::Insert { .. } => EditorMode::Insert,
             InputLayer::Command { .. } => EditorMode::Command,
             InputLayer::Search { .. } => EditorMode::Search,
             InputLayer::Sift { .. } => EditorMode::Sift,
@@ -347,7 +377,7 @@ impl InputStack {
     /// separately, and a toggle reads `mode()` first to decide the target
     /// value.
     pub(in crate::editor) fn set_extend(&mut self, extend: bool) {
-        let InputLayer::Base { extend: slot } = &mut self.layers[0].1 else {
+        let InputLayer::Base { extend: slot, .. } = &mut self.layers[0].1 else {
             unreachable!("index 0 is always Base");
         };
         *slot = extend;
@@ -514,6 +544,91 @@ impl InputStack {
                 _ => None,
             })
     }
+
+    /// The active popup, whichever of its two homes holds it: a `Popup`
+    /// layer (checked first — see `LayerKind::Popup`'s "never buried" doc,
+    /// which is what makes checking it independently of `mode_layer()`
+    /// sound) or the *current* mode layer's own `sticky_popup` slot. Reading
+    /// only the current mode layer's slot — not any slot buried below it —
+    /// matters when `Base`'s slot holds a value that a later mode-layer push
+    /// left behind: `push_mode_layer` clears it before taking over as mode
+    /// layer for exactly this reason, but this lookup would still be wrong
+    /// to read past `mode_layer()` even if it didn't.
+    pub(in crate::editor) fn popup(&self) -> Option<&PopupModel> {
+        if let Some(model) = self.layers.iter().rev().find_map(|(_, layer)| match layer {
+            InputLayer::Popup(model) => Some(model),
+            _ => None,
+        }) {
+            return Some(model);
+        }
+        match &self.layers[self.mode_layer().depth].1 {
+            InputLayer::Base { sticky_popup, .. } | InputLayer::Insert { sticky_popup } => {
+                sticky_popup.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    pub(in crate::editor) fn popup_mut(&mut self) -> Option<&mut PopupModel> {
+        let has_popup_layer = self
+            .layers
+            .iter()
+            .any(|(_, layer)| matches!(layer, InputLayer::Popup(_)));
+        if has_popup_layer {
+            return self
+                .layers
+                .iter_mut()
+                .rev()
+                .find_map(|(_, layer)| match layer {
+                    InputLayer::Popup(model) => Some(model),
+                    _ => None,
+                });
+        }
+        let mode_depth = self.mode_layer().depth;
+        match &mut self.layers[mode_depth].1 {
+            InputLayer::Base { sticky_popup, .. } | InputLayer::Insert { sticky_popup } => {
+                sticky_popup.as_mut()
+            }
+            _ => None,
+        }
+    }
+
+    /// The current mode layer's sticky-popup slot, if that layer kind has
+    /// one — `Base`/`Insert` only; the four minibuf mode layers do not. The
+    /// SSOT `show_popup` gates a `Sticky` popup against, rather than
+    /// re-listing which mode kinds may hold one.
+    pub(in crate::editor) fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupModel>> {
+        let mode_depth = self.mode_layer().depth;
+        match &mut self.layers[mode_depth].1 {
+            InputLayer::Base { sticky_popup, .. } | InputLayer::Insert { sticky_popup } => {
+                Some(sticky_popup)
+            }
+            _ => None,
+        }
+    }
+
+    /// Clears every home a popup could occupy: a `Popup` layer, if one is
+    /// open (always `top()` — see `LayerKind::Popup`'s doc), and the current
+    /// mode layer's sticky slot. Shared by `show_popup` (so `(show-popup!
+    /// …)` replaces any popup already showing, regardless of which of the
+    /// two homes it used — the documented "no stacking" contract) and
+    /// `close_popup`, and called by `EditorState::push_mode_layer` and
+    /// `open_picker` before they take over the stack, which is what keeps
+    /// the "never buried" invariant true.
+    pub(in crate::editor) fn clear_popups(&mut self) {
+        if let Some(r) = self.ref_of(LayerKind::Popup) {
+            debug_assert_eq!(
+                r,
+                self.top(),
+                "a Popup layer is never buried: every opener that could land \
+                 above it retires it first"
+            );
+            self.truncate(r);
+        }
+        if let Some(slot) = self.sticky_popup_slot_mut() {
+            *slot = None;
+        }
+    }
 }
 
 impl Default for InputStack {
@@ -545,6 +660,17 @@ mod tests {
             }],
             action: ConfirmAction::ReloadBuffer(hume_engine::pipeline::BufferId::default()),
         })
+    }
+
+    fn popup_model(text: &str) -> PopupModel {
+        PopupModel {
+            text: text.to_string(),
+            kind: hume_scripting::host::PopupKind::Scrollable,
+            scroll: 0,
+            syntax: None,
+            layout: hume_ui::popup::PopupLayout::Cursor,
+            content: None,
+        }
     }
 
     #[test]
@@ -623,7 +749,7 @@ mod tests {
     #[test]
     fn is_stack_settled_true_with_a_mode_layer_alone_on_top() {
         let mut stack = InputStack::new();
-        stack.push(InputLayer::Insert);
+        stack.push(InputLayer::Insert { sticky_popup: None });
         assert!(stack.is_stack_settled());
     }
 
@@ -639,5 +765,63 @@ mod tests {
         let r = stack.push(menu("m"));
         stack.truncate(r);
         assert_eq!(stack.below(r), base);
+    }
+
+    #[test]
+    fn popup_prefers_a_popup_layer_over_a_lower_sticky_slot() {
+        let mut stack = InputStack::new();
+        *stack.sticky_popup_slot_mut().expect("Base has a slot") =
+            Some(popup_model("sticky on base"));
+        stack.push(InputLayer::Popup(popup_model("scrollable layer")));
+        assert_eq!(
+            stack.popup().map(|p| p.text.as_str()),
+            Some("scrollable layer")
+        );
+    }
+
+    #[test]
+    fn popup_reads_only_the_current_mode_layers_slot_not_a_buried_one() {
+        // Base's own slot holding a value must not leak through once a
+        // different mode layer is on top — `push_mode_layer` clears it
+        // before taking over for exactly this reason; this pins the read
+        // side independent of that write-time behavior.
+        let mut stack = InputStack::new();
+        *stack.sticky_popup_slot_mut().expect("Base has a slot") =
+            Some(popup_model("buried on base"));
+        stack.push(InputLayer::Insert { sticky_popup: None });
+        assert!(stack.popup().is_none());
+    }
+
+    #[test]
+    fn sticky_popup_slot_mut_is_none_under_a_minibuf_mode_layer() {
+        let mut stack = InputStack::new();
+        stack.push(InputLayer::Command {
+            minibuf: MiniBuffer {
+                prompt: String::new(),
+                input: String::new(),
+                cursor: 0,
+            },
+            completion: None,
+        });
+        assert!(stack.sticky_popup_slot_mut().is_none());
+    }
+
+    #[test]
+    fn clear_popups_clears_both_a_popup_layer_and_the_current_slot() {
+        let mut stack = InputStack::new();
+        *stack.sticky_popup_slot_mut().expect("Base has a slot") = Some(popup_model("sticky"));
+        stack.push(InputLayer::Popup(popup_model("scrollable")));
+        stack.clear_popups();
+        assert!(stack.popup().is_none());
+        assert_eq!(stack.kind(stack.top()), Some(LayerKind::Base));
+    }
+
+    #[test]
+    fn truncate_to_base_clears_the_sticky_slot() {
+        let mut stack = InputStack::new();
+        *stack.sticky_popup_slot_mut().expect("Base has a slot") = Some(popup_model("sticky"));
+        stack.push(menu("m"));
+        stack.truncate_to_base();
+        assert!(stack.popup().is_none());
     }
 }

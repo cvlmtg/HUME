@@ -1,7 +1,10 @@
-//! Key handling for transient chrome — the selection menu, bottom drawer,
-//! popup (hover/signature-help), and picker — plus the scroll/geometry
-//! helpers they share. `dispatch_at` (in `mod.rs`) routes into these by
-//! layer kind.
+//! Key handling for transient chrome — the selection menu, bottom drawer, a
+//! `Scrollable` popup (hover, `gn`/`gp`'s diagnostic overlay), and the
+//! picker — plus the scroll/geometry helpers they share. `dispatch_at` (in
+//! `mod.rs`) routes into these by layer kind. A `Sticky` popup (signature
+//! help) has no handler here: it lives in a mode layer's slot, never its
+//! own layer, so it's never a dispatch target — see `input_stack.rs`'s
+//! `LayerKind::Popup` doc.
 
 use termina::event::{KeyCode, Modifiers};
 
@@ -261,7 +264,37 @@ impl Editor {
         }
     }
 
-    /// Scrolls a `Scrollable` popup half its visible content height, in the
+    /// Handles one event while a `Scrollable` popup is open (`LayerKind::Popup`
+    /// — a `Sticky` popup lives in a mode layer's slot instead and is never
+    /// dispatch's target). Ctrl-u/Ctrl-d consume the key only when
+    /// [`Self::scroll_popup`] finds content past one screenful; every other
+    /// key, a paste, and any mouse gesture retire the layer and fall
+    /// through this same call, so a short popup never blocks the buffer's
+    /// own half-page scroll and a click still moves the cursor underneath
+    /// it. Unlike `Confirm`/`Menu`'s mouse arm, this doesn't gate on
+    /// [`is_fresh_gesture`]: nothing opens a popup mid-gesture, so there is
+    /// no release to protect the way a click-opened confirm needs its own
+    /// `Up` protected.
+    pub(super) fn popup_input(&mut self, r: LayerRef, ev: InputEvent) {
+        let key = match ev {
+            InputEvent::Key(key) => key,
+            InputEvent::Paste(_) | InputEvent::Mouse(_) => {
+                self.state.input.truncate(r);
+                self.fall_through(r, ev);
+                return;
+            }
+        };
+        if key.modifiers.contains(Modifiers::CONTROL)
+            && let KeyCode::Char(c @ ('u' | 'd')) = key.code
+            && self.scroll_popup(c == 'd')
+        {
+            return;
+        }
+        self.state.input.truncate(r);
+        self.fall_through(r, InputEvent::Key(key));
+    }
+
+    /// Scrolls the open popup half its visible content height, in the
     /// direction given by `down`. Reads the visible height and total row
     /// count from the *already-resolved* view for the popup's current
     /// layout — this same frame's paint — rather than recomputing geometry,
@@ -272,11 +305,11 @@ impl Editor {
     /// `picker_input`'s own geometry.
     ///
     /// Returns `true` if the popup actually has content past one screenful
-    /// (`max_scroll > 0`) — the caller (`handle_key`) uses this to tell a
-    /// real scroll from a popup too short to scroll, so Ctrl-d/Ctrl-u fall
+    /// (`max_scroll > 0`) — [`Self::popup_input`] uses this to tell a real
+    /// scroll from a popup too short to scroll, so Ctrl-d/Ctrl-u fall
     /// through to their usual buffer effect instead of being silently eaten.
-    pub(super) fn scroll_popup(&mut self, down: bool) -> bool {
-        let Some(layout) = self.state.config.popup.as_ref().map(|p| &p.layout) else {
+    fn scroll_popup(&mut self, down: bool) -> bool {
+        let Some(layout) = self.state.input.popup().map(|p| &p.layout) else {
             return false;
         };
         let (inner_h, total) = match layout {
@@ -314,7 +347,7 @@ impl Editor {
         if max_scroll == 0 {
             return false;
         }
-        let Some(popup) = self.state.config.popup.as_mut() else {
+        let Some(popup) = self.state.input.popup_mut() else {
             return false;
         };
         let half = (inner_h / 2).max(1);

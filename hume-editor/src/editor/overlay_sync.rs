@@ -112,7 +112,7 @@ impl Editor {
     /// would position against the previous frame's geometry.
     pub(super) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
         let is_cursor = matches!(
-            self.state.config.popup.as_ref().map(|m| &m.layout),
+            self.state.input.popup().map(|m| &m.layout),
             Some(hume_ui::popup::PopupLayout::Cursor)
         );
         if !is_cursor {
@@ -130,11 +130,10 @@ impl Editor {
         let theme = &self.view.theme;
         let model = self
             .state
-            .config
-            .popup
-            .as_mut()
+            .input
+            .popup_mut()
             .expect("popup present: is_cursor checked above");
-        // Read before the `&mut` below — a second `self.state.config.popup`
+        // Read before the `&mut` below — a second `self.state.input.popup()`
         // borrow once `content` is live would conflict with it.
         let scroll = model.scroll;
         let content = model.content_mut(theme);
@@ -158,7 +157,7 @@ impl Editor {
     /// its height ceiling.
     pub(super) fn sync_popup_band_view(&mut self) {
         let is_docked = matches!(
-            self.state.config.popup.as_ref().map(|m| &m.layout),
+            self.state.input.popup().map(|m| &m.layout),
             Some(hume_ui::popup::PopupLayout::Docked)
         );
         if !is_docked {
@@ -174,9 +173,8 @@ impl Editor {
         let theme = &self.view.theme;
         let model = self
             .state
-            .config
-            .popup
-            .as_mut()
+            .input
+            .popup_mut()
             .expect("popup present: is_docked checked above");
         let scroll = model.scroll;
         let content = model.content_mut(theme);

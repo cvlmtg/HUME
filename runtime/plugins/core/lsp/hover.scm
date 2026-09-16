@@ -38,9 +38,6 @@
         (show-popup! text #:kind 'scrollable #:lang lang)
         (show-popup! text #:kind 'scrollable #:lang lang #:anchor 'bottom))))
 
-;; ── Dismiss ─────────────────────────────────────────────────────────────────
-;; Shared with sighelp.scm — see lib.scm's `on-mode-change` registration.
-
 ;; ── Command ─────────────────────────────────────────────────────────────────
 
 (define-command! "lsp-hover" "Show hover info for the symbol under the cursor."

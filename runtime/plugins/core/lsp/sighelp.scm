@@ -1,6 +1,7 @@
 ;;; core:lsp/sighelp.scm — textDocument/signatureHelp. See docs/features.md.
-;;; Dismiss on mode change is handled by lib.scm's shared `on-mode-change`
-;;; popup registration.
+;;; The popup is `'sticky` (the default `#:kind`) — it lives in the editor's
+;;; current-mode slot and closes on its own once Insert ends, with no
+;;; dismiss-on-mode-change code needed here.
 
 (require "lib.scm")
 

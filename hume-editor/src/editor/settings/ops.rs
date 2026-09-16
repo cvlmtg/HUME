@@ -96,7 +96,7 @@ pub(in crate::editor) fn reset_globals(state: &mut EditorState, view: &mut Engin
     state.settings = crate::editor::settings::EditorSettings::default();
     theme::set_theme(
         view,
-        state.config.popup.as_mut(),
+        state.input.popup_mut(),
         crate::editor::theme::build_default_theme(),
     );
     for &key in crate::editor::settings::all_setting_keys() {
@@ -147,7 +147,7 @@ fn resync_derived_state(state: &mut EditorState, view: &mut EngineView, rk: Resy
             view,
             &mut state.message_log,
             &mut state.status_msg,
-            state.config.popup.as_mut(),
+            state.input.popup_mut(),
             &state.settings.theme,
         ),
         // Empty theme (cleared, or never set): nothing to load.

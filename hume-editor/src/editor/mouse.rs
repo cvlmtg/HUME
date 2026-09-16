@@ -20,10 +20,11 @@
 //! the pointer is over, falling back to the focused pane on a miss — but,
 //! unlike a click, never moves focus there.
 //!
-//! Every mouse event dismisses an open `Scrollable` popup first — matching
-//! `handle_key`'s any-key dismissal (`editor/mappings/mod.rs`). Past that
-//! pre-step, [`Editor::handle_mouse`] walks the input-layer stack exactly
-//! like a key or a paste (`InputEvent::Mouse` — `input_stack.rs`);
+//! A mouse event walks the input-layer stack exactly like a key or a paste
+//! (`InputEvent::Mouse` — `input_stack.rs`), via `Editor::dispatch_input`
+//! (`handle_input`'s caller, `lifecycle.rs`) — a `Popup` layer's own policy
+//! dismisses it unconditionally on any mouse event, same as any other input
+//! it doesn't recognize (`mappings/widgets.rs`'s `popup_input`).
 //! [`Editor::base_mouse`] is `Base`'s own policy, the `match mouse.kind`
 //! this module used to dispatch unconditionally before the stack could gate
 //! it.
@@ -34,7 +35,6 @@ use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands::{self, pane_display_lines};
 use super::cursor;
-use super::input_stack::InputEvent;
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_ops::MotionMode;
 
@@ -56,21 +56,6 @@ pub(super) fn is_fresh_gesture(kind: MouseEventKind) -> bool {
 }
 
 impl Editor {
-    /// Dispatch a [`MouseEvent`] into the input-layer stack.
-    ///
-    /// Hook draining happens in the caller (`handle_input`) — this method only
-    /// performs the dispatch.
-    pub(super) fn handle_mouse(&mut self, mouse: MouseEvent) {
-        // Any mouse event dismisses a scrollable popup, same as any key —
-        // see `ConfigState::dismiss_scrollable_popup`. Before the dispatch
-        // below, so the event still performs its own action (a wheel notch
-        // still scrolls, a click still moves the cursor). Stays a pre-step
-        // here (mirroring `handle_key`'s own) until step 6 folds the popup
-        // into the stack.
-        self.state.config.dismiss_scrollable_popup();
-        self.dispatch_input(InputEvent::Mouse(mouse));
-    }
-
     /// The `Base` layer's own mouse policy — routed here by `dispatch_at`
     /// once every overlay above it has had a chance to swallow or fall
     /// through the event.

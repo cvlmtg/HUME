@@ -7,7 +7,7 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
-use self::overlay_models::{ConfirmModel, PopupModel};
+use self::overlay_models::ConfirmModel;
 use self::registry::CommandRegistry;
 use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
@@ -178,10 +178,6 @@ pub(crate) struct ConfigState {
     /// the picker's `token`/timer's `TimerId` shape, but lives here (rather
     /// than reusing either) since a job id is neither.
     pub(in crate::editor) next_async_job_id: u64,
-    /// `(show-popup! text)`'s raw content — resolved into a positioned
-    /// `PopupState` each frame by `Editor::sync_popup_view` (geometry needs
-    /// the focused pane's *current* rect, so it can't be pre-computed here).
-    pub(in crate::editor) popup: Option<PopupModel>,
 }
 
 impl ConfigState {
@@ -208,23 +204,6 @@ impl ConfigState {
             pending_language_detection: Vec::new(),
             async_jobs: rustc_hash::FxHashMap::default(),
             next_async_job_id: 0,
-            popup: None,
-        }
-    }
-
-    /// Close an open `Scrollable` popup, leaving a `Sticky` one alone. Called
-    /// from both input paths (`Editor::handle_key`, `Editor::handle_mouse`):
-    /// hover-style content is pinned to a cursor position the very event
-    /// dismissing it is about to move, so it would otherwise stay painted
-    /// describing a symbol the cursor has left. A `Sticky` popup (signature
-    /// help) belongs to an ongoing Insert session instead, and is closed by
-    /// the `on-mode-change` hook.
-    pub(in crate::editor) fn dismiss_scrollable_popup(&mut self) {
-        if matches!(
-            self.popup.as_ref().map(|p| p.kind),
-            Some(hume_scripting::host::PopupKind::Scrollable)
-        ) {
-            self.popup = None;
         }
     }
 }
@@ -258,12 +237,12 @@ pub(crate) struct EditorState {
     /// separate struct.
     pub(crate) config: ConfigState,
     /// The stack of active input-handling layers above the base editing
-    /// surface: `Base` (carrying the sticky Extend flag) or one of the four
-    /// other editing-mode layers (Insert/Command/Search/Sift/Prompt), plus
-    /// whatever overlay widgets (disk-change confirm, fuzzy picker,
-    /// selection menu, bottom drawer, an open LSP completion session) are
-    /// pushed above that. The hover/signature-help popup still lives on its
-    /// own field and joins this stack in later work.
+    /// surface: `Base` (carrying the sticky Extend flag and a `Sticky`
+    /// popup's slot) or one of the four other editing-mode layers
+    /// (Insert — which carries the slot too — /Command/Search/Sift/Prompt),
+    /// plus whatever overlay widgets (disk-change confirm, fuzzy picker,
+    /// selection menu, bottom drawer, an open LSP completion session, a
+    /// `Scrollable` popup) are pushed above that.
     ///
     /// Not reset by `ConfigState`'s wholesale rebuild — `Base` must survive
     /// a `:reload-config`, and a still-open mode layer or overlay's Steel
@@ -758,11 +737,21 @@ impl EditorState {
     /// `begin_insert_session`'s open-group guard). Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
     /// a `prompt!` from Insert ends the insert session before the prompt
-    /// lands), clears Extend, then pushes `layer` on top of whatever is
-    /// left — any overlay that sits *below* the outgoing mode layer (a
-    /// drawer opened while still in Normal) is untouched, since
-    /// `truncate_layers` only removes the mode layer's own ref and
-    /// whatever was pushed above it.
+    /// lands), clears Extend and every popup (`InputStack::clear_popups`),
+    /// then pushes `layer` on top of whatever is left — any overlay that
+    /// sits *below* the outgoing mode layer (a drawer opened while still in
+    /// Normal) is untouched, since `truncate_layers` only removes the mode
+    /// layer's own ref and whatever was pushed above it.
+    ///
+    /// Clearing popups here — not just on the `Base` branch, though that's
+    /// the only branch where it does anything `truncate_layers` wasn't
+    /// about to do anyway — is what keeps a `Popup` layer from ever being
+    /// buried (`LayerKind::Popup`'s doc): landing a new mode layer directly
+    /// on top of `Base` (the one case `truncate_layers` skips) would
+    /// otherwise sandwich a `Popup` layer, or a `Sticky` popup sitting in
+    /// `Base`'s own slot, between `Base` and the incoming layer. This
+    /// replaces the Steel `on-mode-change → close-popup!` hook the popup
+    /// used to need for exactly this case.
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
@@ -785,6 +774,7 @@ impl EditorState {
         if current_kind != input_stack::LayerKind::Base {
             self.truncate_layers(view, mode_layer);
         }
+        self.input.clear_popups();
         self.input.set_extend(false);
         self.input.push(layer);
     }
@@ -812,7 +802,7 @@ impl EditorState {
     /// that reaches here.
     fn tear_down(&mut self, view: &EngineView, layer: input_stack::InputLayer) {
         match layer {
-            input_stack::InputLayer::Insert => {
+            input_stack::InputLayer::Insert { .. } => {
                 commands::tear_down_insert(self, view);
             }
             input_stack::InputLayer::Command { .. } | input_stack::InputLayer::Prompt { .. } => {
@@ -847,14 +837,15 @@ impl EditorState {
             | input_stack::InputLayer::Drawer(_)
             | input_stack::InputLayer::Menu(_)
             | input_stack::InputLayer::Picker(_)
-            | input_stack::InputLayer::Confirm(_) => {}
+            | input_stack::InputLayer::Confirm(_)
+            | input_stack::InputLayer::Popup(_) => {}
         }
     }
 
     /// Retires the completion layer wherever it is on the stack — truncates
     /// at its own ref rather than only if it's on top, since a `Completion`
-    /// layer can sit under a scrollable `Popup` once popups get their own
-    /// layer, and a pop-if-top rule would leave a stale session behind one.
+    /// layer can sit under a `Popup`, and a pop-if-top rule would leave a
+    /// stale session behind one.
     /// A no-op when no session is open.
     pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
         if let Some(r) = self.input.ref_of(input_stack::LayerKind::Completion) {

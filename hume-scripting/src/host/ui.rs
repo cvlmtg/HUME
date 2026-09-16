@@ -13,9 +13,11 @@ use hume_engine::types::TruncateEnd;
 /// the trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopupKind {
-    /// Untouched by keys and mouse input alike; closed only by the
-    /// `on-mode-change` Steel hook and the next `show-popup!`. Default —
-    /// `#:kind` omitted, or `'sticky`.
+    /// Untouched by keys and mouse input alike; lives in the current editing
+    /// mode's own slot (`Base`/`Insert` only — anything else has none, so
+    /// `#:kind 'sticky` from `:`-typing or with a menu/drawer/picker open is
+    /// a no-op), and closes when that mode ends, via `close-popup!`, or on
+    /// the next `show-popup!`. Default — `#:kind` omitted, or `'sticky`.
     Sticky,
     /// Ctrl-u/Ctrl-d scroll the content and are consumed *when it overflows
     /// one screenful*; every other key or mouse event — and Ctrl-u/d with

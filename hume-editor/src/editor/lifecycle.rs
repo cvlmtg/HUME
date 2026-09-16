@@ -13,6 +13,7 @@ use hume_platform::terminal::SharedTerm;
 
 use super::Editor;
 use super::event::EditorEvent;
+use super::input_stack::InputEvent;
 use super::tui::Tui;
 use crate::cli::ConfigSource;
 
@@ -295,7 +296,7 @@ impl Editor {
         let totals_before = self.state.message_log.totals();
         match ev {
             TerminalEvent::Key(k) => self.handle_key(k),
-            TerminalEvent::Mouse(m) => self.handle_mouse(m),
+            TerminalEvent::Mouse(m) => self.dispatch_input(InputEvent::Mouse(m)),
             TerminalEvent::Paste(s) => self.handle_terminal_paste(s),
             // Regaining focus is one of the external-file-change check's
             // trigger points (alongside buffer-enter and `:checktime`) — see

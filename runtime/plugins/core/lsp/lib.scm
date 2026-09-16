@@ -39,10 +39,6 @@
 (define (lsp/cap-flag? cap-key field)
   (equal? (lsp/cap-field (lsp-capabilities #f) cap-key field #f) #t))
 
-;; ── Popup dismissal ─────────────────────────────────────────────────────────
-;; Shared by every feature using a popup (hover, sighelp, …).
-(register-hook! 'on-mode-change (lambda (old-mode new-mode) (close-popup!)))
-
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)

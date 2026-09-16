@@ -65,6 +65,20 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     // ── Cursor-anchored / docked popup ───────────────────────────────────
+    /// `Scrollable` pushes its own `Popup` layer, ungated — unlike
+    /// `show_menu`/`show_drawer_list` below, a late hover response must
+    /// still open even while a references drawer is up (browse-while-editing
+    /// is the drawer's whole point), and a popup owns no input beyond
+    /// Ctrl-u/Ctrl-d, so it never conflicts with whatever else is open.
+    /// `Sticky` instead writes into the *current* mode layer's own slot —
+    /// `Base`/`Insert` are the only kinds with one (`sticky_popup_slot_mut`
+    /// is the SSOT for that), so a `Sticky` `show-popup!` from `:`-typing or
+    /// while a menu/drawer/picker is open drops silently (`Trace`, `Ok`),
+    /// same shape as `show_menu`'s own staleness drop. Either kind first
+    /// clears every home a popup could already occupy
+    /// (`InputStack::clear_popups`), which is what makes `(show-popup! …)`
+    /// replace rather than stack regardless of which of the two kinds was
+    /// showing before.
     fn show_popup(
         &mut self,
         text: String,
@@ -78,19 +92,47 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             hume_ui::popup::PopupLayout::Cursor
         };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
-        self.state.config.popup = Some(crate::editor::overlay_models::PopupModel {
+        let model = crate::editor::overlay_models::PopupModel {
             text,
             kind,
             scroll: 0,
             syntax,
             layout,
             content: None,
-        });
+        };
+        match kind {
+            PopupKind::Sticky => {
+                if self.state.input.sticky_popup_slot_mut().is_none() {
+                    self.state.report(
+                        Severity::Trace,
+                        "show-popup!: no mode layer can hold a sticky popup right now — ignored"
+                            .to_string(),
+                    );
+                    return Ok(());
+                }
+                self.state.input.clear_popups();
+                *self
+                    .state
+                    .input
+                    .sticky_popup_slot_mut()
+                    .expect("slot presence checked above") = Some(model);
+            }
+            PopupKind::Scrollable => {
+                self.state.input.clear_popups();
+                self.state.input.push(InputLayer::Popup(model));
+            }
+        }
         Ok(())
     }
 
+    /// Idempotent — clears whichever home currently holds a popup, or does
+    /// nothing if neither does. There is no present-but-not-top error path
+    /// (unlike `close_menu`/D4): a `Popup` layer is never buried (see
+    /// `LayerKind::Popup`'s doc) and a `Sticky` popup's slot never occupies
+    /// `top()` at all, so this can never observe one it isn't allowed to
+    /// close.
     fn close_popup(&mut self) -> Result<(), String> {
-        self.state.config.popup = None;
+        self.state.input.clear_popups();
         Ok(())
     }
 

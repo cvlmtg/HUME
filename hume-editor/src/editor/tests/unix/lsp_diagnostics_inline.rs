@@ -196,7 +196,7 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
     ed.feed_key(key('g'));
     ed.feed_key(key('n'));
 
-    let popup = ed.state.config.popup.as_ref().expect("popup must be shown");
+    let popup = ed.state.input.popup().expect("popup must be shown");
     assert_eq!(
         popup.text, "problem A\nsecond line of detail",
         "the overlay must show the FULL message, not just its first line \
@@ -222,7 +222,7 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
     ed.feed_key(key('g'));
     ed.feed_key(key('n'));
     assert!(
-        ed.state.config.popup.is_some(),
+        ed.state.input.popup().is_some(),
         "popup must be open after gn"
     );
     let line_before = ed.current_selections().primary().head();
@@ -230,7 +230,7 @@ fn the_next_key_after_gn_dismisses_the_popup_but_still_executes() {
     ed.feed_key(key('j')); // an ordinary Normal-mode motion, not a special dismiss key
 
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "any key press must dismiss the overlay"
     );
     assert_ne!(
@@ -254,7 +254,7 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
 
     run(&mut ed, ":diagnostics");
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "opening the drawer itself must not show a popup"
     );
 
@@ -263,7 +263,7 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
     ed.settle();
 
     assert!(
-        ed.state.config.popup.is_none(),
+        ed.state.input.popup().is_none(),
         "selecting a row in the :diagnostics drawer must jump without \
          opening the gn/gp overlay — only gn/gp show it"
     );

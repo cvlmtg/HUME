@@ -35,8 +35,9 @@ fn editor_state_fields_are_classified() {
             config: _, // exempt — see ConfigState's own doc
             // config: reset_config_state → input.truncate_to_base() (drops
             // every mode layer's minibuf/completion/prompt-callback payload
-            // along with the five overlay widgets — confirm/picker/menu/
-            // drawer/completion — and resets Base's extend flag)
+            // along with the six overlay widgets — confirm/picker/menu/
+            // drawer/completion/popup — and resets Base's extend flag and
+            // sticky-popup slot)
             input: _,
             pending_keys: _,        // preserved
             count: _,               // preserved

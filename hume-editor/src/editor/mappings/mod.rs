@@ -1,6 +1,4 @@
-use termina::event::{KeyCode, KeyEvent, Modifiers};
-
-use hume_scripting::host::PopupKind;
+use termina::event::KeyEvent;
 
 use super::Editor;
 use super::input_stack::{InputEvent, LayerKind, LayerRef};
@@ -45,24 +43,6 @@ impl Editor {
             }
         }
 
-        // Popup dismissal/scroll, before the stack walk — see `PopupKind`.
-        // `Scrollable` (scrollable hover, `gn`/`gp`'s diagnostic overlay)
-        // consumes Ctrl-u/Ctrl-d to scroll when there's actually content past
-        // one screenful; otherwise (and for any other key) it closes the
-        // popup and falls through to normal dispatch this same call, so a
-        // short popup never blocks buffer half-page scroll. The close itself
-        // is `ConfigState::dismiss_scrollable_popup`, shared with
-        // `handle_mouse` — any input event dismisses a `Scrollable` popup,
-        // not just keys.
-        if self.state.config.popup.as_ref().map(|p| p.kind) == Some(PopupKind::Scrollable)
-            && key.modifiers.contains(Modifiers::CONTROL)
-            && let KeyCode::Char(c @ ('u' | 'd')) = key.code
-            && self.scroll_popup(c == 'd')
-        {
-            return;
-        }
-        self.state.config.dismiss_scrollable_popup();
-
         self.dispatch_input(InputEvent::Key(key));
 
         // ── Macro recording ───────────────────────────────────────────────────
@@ -84,8 +64,8 @@ impl Editor {
     }
 
     /// Bare stack walk, no cross-cutting bookkeeping — `handle_key` wraps it
-    /// with the status/summary bookkeeping, popup pre-step, macro recording,
-    /// and dot-repeat replay above and below. `replay_dot` calls this
+    /// with the status/summary bookkeeping, macro recording, and dot-repeat
+    /// replay above and below. `replay_dot` calls this
     /// directly instead of going through `handle_key`, since a replayed key
     /// must skip all of that (recording it again, re-arming the summary
     /// countdown).
@@ -112,6 +92,7 @@ impl Editor {
             LayerKind::Picker => self.picker_input(r, ev),
             LayerKind::Confirm => self.confirm_input(r, ev),
             LayerKind::Completion => self.completion_input(r, ev),
+            LayerKind::Popup => self.popup_input(r, ev),
         }
     }
 

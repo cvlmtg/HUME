@@ -265,7 +265,7 @@ fn load_theme_by_name_fails_gracefully() {
         &mut ed.view,
         &mut ed.state.message_log,
         &mut ed.state.status_msg,
-        ed.state.config.popup.as_mut(),
+        ed.state.input.popup_mut(),
         "no_such_theme_xyz",
     );
     assert!(!ok, "expected false for nonexistent theme");

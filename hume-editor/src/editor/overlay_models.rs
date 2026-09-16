@@ -2,9 +2,12 @@
 //! (popup, menu, drawer) and the native confirm prompt, held until the next
 //! frame's `overlay_sync` resolves it into a positioned `hume_ui` view state
 //! (or, for the confirm prompt, which has no separate view type, rendered
-//! directly by the statusline). `PopupModel` lives on `ConfigState`;
-//! `MenuModel`/`DrawerModel`/`ConfirmModel` are payloads on
-//! `EditorState.input`'s layer stack instead.
+//! directly by the statusline). `PopupModel`/`MenuModel`/`DrawerModel`/
+//! `ConfirmModel` are all payloads on `EditorState.input`'s layer stack —
+//! `PopupModel` alone lives in two places there: a `Scrollable` popup as its
+//! own `InputLayer::Popup`, a `Sticky` one in the `sticky_popup` slot on
+//! `Base`/`Insert` (see `input_stack::LayerKind::Popup`'s doc for why the
+//! two kinds need different homes).
 //!
 //! Grouped here regardless because they're one conceptual kind: editor-owned
 //! input state (a not-yet-fired Steel callback, a `BufferId` to act on), not
@@ -23,6 +26,13 @@ use hume_engine::types::Scope;
 /// `hume_ui::popup::PopupState` or a `PopupBandState`.
 pub(in crate::editor) struct PopupModel {
     pub(in crate::editor) text: String,
+    /// Which of the two homes this popup used to get here (`Popup` layer vs.
+    /// a mode layer's `sticky_popup` slot) already encodes `kind` for every
+    /// production consumer — dismiss policy is entirely a function of
+    /// storage location now, not this field. Kept for tests, which still
+    /// assert on it directly rather than reaching for the storage location
+    /// as a proxy.
+    #[allow(dead_code)]
     pub(in crate::editor) kind: hume_scripting::host::PopupKind,
     /// First visible wrapped row, for a `Scrollable` popup. Clamped against
     /// `max_scroll` in `Editor::scroll_popup` before each delta is applied,

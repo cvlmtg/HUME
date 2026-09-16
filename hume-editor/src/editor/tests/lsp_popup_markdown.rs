@@ -58,7 +58,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.config.popup.as_ref().unwrap().syntax.is_some(),
+        ed.state.input.popup().unwrap().syntax.is_some(),
         "a registered markdown grammar must attach synchronous syntax to the popup"
     );
 
@@ -136,7 +136,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.config.popup.as_ref().unwrap().syntax.is_some(),
+        ed.state.input.popup().unwrap().syntax.is_some(),
         "a registered markdown grammar must attach synchronous syntax to a docked popup"
     );
 
@@ -205,7 +205,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.config.popup.as_ref().unwrap().syntax.is_none(),
+        ed.state.input.popup().unwrap().syntax.is_none(),
         "without #:lang, the popup must stay plain even when a markdown \
          grammar is registered"
     );
@@ -233,7 +233,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.config.popup.as_ref().unwrap().syntax.is_none(),
+        ed.state.input.popup().unwrap().syntax.is_none(),
         "#:lang \"markdown\" with no markdown grammar registered must fall \
          back to plain, not error"
     );

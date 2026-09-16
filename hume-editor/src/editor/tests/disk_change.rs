@@ -250,7 +250,9 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     // insert session (which would need a matching `end_insert_session` to
     // avoid `commit_edit_group_current` panicking on a group that was
     // never opened).
-    ed.state.input.push(InputLayer::Insert);
+    ed.state
+        .input
+        .push(InputLayer::Insert { sticky_popup: None });
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -1098,8 +1100,8 @@ fn pane_focus_cycling_prompts_the_buffer_it_lands_on() {
 
 /// A click into another pane (`mouse_left_down`'s click-to-focus) routes
 /// through the same `focus_pane` and never touches `handle_key` at all — a
-/// chokepoint placed only in `handle_key`/`handle_mouse` would have to
-/// duplicate itself to cover this; `handle_input` covers both for free.
+/// chokepoint placed only in `handle_key` would have to duplicate itself for
+/// a mouse-triggered focus change; `handle_input` covers both for free.
 #[test]
 fn clicking_into_another_pane_prompts_that_panes_buffer() {
     let (mut ed, tmp_a, _tmp_b_guard, bid_a, bid_b) = two_panes_with_b_focused();
@@ -1636,10 +1638,10 @@ fn declined_change_then_vanished_file_still_warns() {
     assert_eq!(ed.state.buffers.get(bid).disk_state, DiskState::Vanished);
 }
 
-/// A confirm left open for a buffer the user just clicked away from
-/// (`handle_mouse` has no confirm-key intercept, unlike `handle_key`) must
-/// be retired rather than left on screen pointing at a pane no longer in
-/// view — and the buffer the click actually landed on must get its own
+/// A confirm left open for a buffer the user just clicked away from (a
+/// mouse gesture has no confirm-key of its own to match, unlike a keypress)
+/// must be retired rather than left on screen pointing at a pane no longer
+/// in view — and the buffer the click actually landed on must get its own
 /// deferred prompt, not be blocked by the stale one.
 ///
 /// Fail oracle: without `enter_buffer_disk_check` (`OnBufferEnter`'s Rust
