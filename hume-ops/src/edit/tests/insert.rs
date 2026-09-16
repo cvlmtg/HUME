@@ -1,6 +1,6 @@
 use super::super::*;
+use crate::edit::insert::line_indent_range;
 use hume_editing::changeset::ChangeSet;
-use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::tab_style::TabStyle;
 use hume_editing::text::BufferText;
@@ -14,12 +14,7 @@ use test_fixtures::assert_state;
 /// via what was then a single unconditional bool.
 fn owns_every_line(text: &BufferText, sels: &SelectionSet) -> Vec<ExclusiveRange<CharOffset>> {
     sels.iter_sorted()
-        .map(|sel| {
-            let line = text.char_to_line(sel.head());
-            let line_start = text.line_to_char(line.into());
-            let ws_end = leading_whitespace_end(text, line);
-            ExclusiveRange::new(line_start, ws_end)
-        })
+        .map(|sel| line_indent_range(text, sel.head()))
         .collect()
 }
 

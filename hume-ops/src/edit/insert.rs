@@ -79,10 +79,14 @@ fn is_blank_indented_line(text: &BufferText, line_start: CharOffset, ws_end: Cha
 
 /// `[line_start, ws_end)` — the leading-whitespace range of the line
 /// containing `pos`. Single source of truth for that computation: every
-/// caller below that needs a line's indent bounds — the blank-line ownership
-/// check, the "already consumed by a prior selection" guard, and `O`'s own
-/// indent copy — goes through this instead of re-deriving it.
-fn line_indent_range(text: &BufferText, pos: CharOffset) -> ExclusiveRange<CharOffset> {
+/// caller that needs a line's indent bounds — the blank-line ownership
+/// check and "already consumed by a prior selection" guard below, `O`'s own
+/// indent copy, and the sibling test module's `owns_every_line` stand-in for
+/// `arm_autoindent` — goes through this instead of re-deriving it.
+pub(in crate::edit) fn line_indent_range(
+    text: &BufferText,
+    pos: CharOffset,
+) -> ExclusiveRange<CharOffset> {
     let line_idx = text.char_to_line(pos);
     let line_start = text.line_to_char(line_idx.into());
     let ws_end = leading_whitespace_end(text, line_idx);
