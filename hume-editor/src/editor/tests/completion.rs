@@ -478,10 +478,9 @@ fn tab_on_set_g_silently_completes_global() {
 
 // ── Render snapshot ──────────────────────────────────────────────────────────
 
-/// Characterization test, written before the renderer swap the merge's Step 1
-/// makes (`hume-ui/src/completion_overlay.rs`'s bespoke overlay → `resolve_menu`
-/// + `PopupOverlay`, same as every other menu-shaped overlay). Passes before
-/// and after by design — no red run to manufacture.
+/// The minibuffer completion popup renders through the same generic
+/// `resolve_menu` + `PopupOverlay` every other menu-shaped overlay uses,
+/// not a bespoke widget of its own.
 #[test]
 fn minibuf_completion_popup_renders_above_the_statusline() {
     // `Editor::open`, not `editor_from`: `Editor::for_testing` never goes

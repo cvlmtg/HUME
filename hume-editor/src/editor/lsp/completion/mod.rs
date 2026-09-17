@@ -1,19 +1,31 @@
-//! Completion orchestration: a Rust store holds the server's items and
-//! does the per-keystroke filter/rank; Steel drives `begin!`/
-//! `update-filter!`/`top`/`accept!`/`dismiss!`. One singleton session per
-//! editor (not per buffer) — starting a new one replaces the old.
+//! Completion orchestration: a Rust store holds every contributing source's
+//! items and does the per-keystroke filter/rank; Steel drives `begin!`/
+//! `add-items!`/`update-filter!`/`top`/`accept!`/`dismiss!`. One singleton
+//! session per editor (not per buffer) — starting a new one (`begin!`)
+//! replaces the old; merging into the current one (`add-items!`) is a
+//! second source joining, gated on `begin!`'s own session token so a stale
+//! source's late answer can't land in the wrong session.
 
 mod accept;
 mod item;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::CharOffset;
+use rustc_hash::FxHashMap;
 
 use crate::editor::EditorState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 
-pub(in crate::editor) use item::StoredCompletionItem;
+pub(in crate::editor) use item::CompletionItem;
+
+/// Mints `CompletionSession::token` — mirrors `PickerSession`'s own
+/// `NEXT_TOKEN` (`input_stack/picker/session.rs`) so a late async add
+/// racing a session the user already replaced is a silent no-op rather
+/// than a merge into the wrong session (see [`CompletionSession::token`]).
+static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 pub(in crate::editor) struct CompletionSession {
     bid: BufferId,
@@ -45,7 +57,7 @@ pub(in crate::editor) struct CompletionSession {
     /// snapshot, then map forward through every keystroke since, rather than
     /// approximating drift as a scalar shift.
     cs_since_begin: ChangeSet,
-    items: Vec<StoredCompletionItem>,
+    items: Vec<CompletionItem>,
     /// Ranked indices into `items`, rebuilt by every `update_filter` call.
     filtered: Vec<u32>,
     /// Retained across `update_filter` calls so per-keystroke filtering
@@ -55,10 +67,20 @@ pub(in crate::editor) struct CompletionSession {
     /// Reusable scoring engine — `FuzzyProfile::Autocomplete` (see its doc)
     /// distinguishes this from the picker's own instance.
     matcher: FuzzyMatcher,
-    /// Server's `isIncomplete` flag — gates `on-completion-refilter`:
-    /// the hook only fires per-keystroke while this is set, since a complete
-    /// list needs no re-request from Steel.
-    incomplete: bool,
+    /// Every source that has contributed to this session, keyed by name —
+    /// its latest priority and `isIncomplete` flag. One entry per source
+    /// that has ever called [`Self::add_items`] (including the first, via
+    /// `begin`); an entry is overwritten, never removed, by a same-source
+    /// re-add. `incomplete()` is the OR across every entry's flag —
+    /// `update_filter`'s rank key reads each item's own entry for its
+    /// priority tiebreaker.
+    sources: FxHashMap<Box<str>, SourceState>,
+    /// Identifies this session to Steel and to
+    /// `input_stack::completion::session_for_token`, the guard
+    /// `completion-add-items!` checks before reaching a `&mut
+    /// CompletionSession` at all — mirrors `PickerSession::token`'s own
+    /// doc and purpose exactly.
+    token: u64,
     /// Buffer generation as of the last `begin`/`update_filter` call —
     /// `accept!` rejects if the buffer changed by any other path since.
     generation_at_begin: u64,
@@ -80,6 +102,15 @@ pub(in crate::editor) struct CompletionSession {
 /// session's filtering/accept logic stays free of rendering concerns.
 pub(in crate::editor) struct CompletionMenuUi {
     pub(in crate::editor) selected: usize,
+}
+
+/// One source's latest contribution metadata — see
+/// `CompletionSession::sources`'s doc for why priority and `isIncomplete`
+/// live together in one map rather than two that would have to stay in
+/// sync.
+struct SourceState {
+    priority: i64,
+    incomplete: bool,
 }
 
 impl CompletionSession {
@@ -133,14 +164,26 @@ impl CompletionSession {
         true
     }
 
-    /// The server's `isIncomplete` flag from the response that began this
-    /// session — gates `on-completion-refilter`.
+    /// Whether any source's *latest* contribution was `isIncomplete` — gates
+    /// `on-completion-refilter`. Recomputed fresh from every source's own
+    /// flag on each read, so it moves in both directions: a slow source
+    /// arriving incomplete via `completion-add-items!` can flip this from
+    /// `false` to `true` on a session that began complete, and it flips
+    /// back once that source's own re-add reports `false` (a source's
+    /// re-add always carries its current flag, so a resolved source simply
+    /// stops being counted).
     pub(in crate::editor) fn incomplete(&self) -> bool {
-        self.incomplete
+        self.sources.values().any(|s| s.incomplete)
     }
 
     pub(in crate::editor) fn bid(&self) -> BufferId {
         self.bid
+    }
+
+    /// Identifies this session to Steel — see the `token` field's own doc
+    /// for the race it closes.
+    pub(in crate::editor) fn token(&self) -> u64 {
+        self.token
     }
 
     /// Number of candidates surviving the current filter — cheap count for
@@ -166,7 +209,9 @@ impl CompletionSession {
     pub(in crate::editor) fn begin(
         state: &EditorState,
         bid: BufferId,
-        items: Vec<StoredCompletionItem>,
+        source: Box<str>,
+        priority: i64,
+        items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> Option<Self> {
         let pid = state.focus.id();
@@ -182,18 +227,58 @@ impl CompletionSession {
             anchor_at_begin: anchor,
             cs_since_begin: ChangeSet::identity(rope_at_begin.len_chars()),
             rope_at_begin,
-            items,
+            items: Vec::new(),
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
             filter: String::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
-            incomplete,
-            // Real value stamped by `update_filter`, just below.
+            sources: FxHashMap::default(),
+            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            // Real value stamped by `add_items` -> `update_filter`, below.
             generation_at_begin: 0,
             menu_cache: None,
         };
-        session.update_filter(state.buffers.get(bid).text_gen, String::new());
+        session.add_items(
+            state.buffers.get(bid).text_gen,
+            source,
+            priority,
+            incomplete,
+            items,
+        );
         Some(session)
+    }
+
+    /// Merges `items` into the session under `source`, replacing that
+    /// source's prior contribution wholesale — an add first evicts, then
+    /// inserts, so the `isIncomplete` refilter flow (which re-invokes the
+    /// same source against the same session) is idempotent rather than
+    /// duplicating rows. `begin` is itself the first call: the first
+    /// source's own items arrive through this same path, so there is
+    /// exactly one insertion point, not two. Re-ranks against the filter
+    /// text already in effect (not an empty one) — a mid-session add must
+    /// respect what the user has already typed.
+    pub(in crate::editor) fn add_items(
+        &mut self,
+        text_gen: u64,
+        source: Box<str>,
+        priority: i64,
+        incomplete: bool,
+        mut items: Vec<CompletionItem>,
+    ) {
+        for item in &mut items {
+            item.source = source.clone();
+        }
+        self.items
+            .retain(|item| item.source.as_ref() != source.as_ref());
+        self.items.extend(items);
+        self.sources.insert(
+            source,
+            SourceState {
+                priority,
+                incomplete,
+            },
+        );
+        self.update_filter(text_gen, self.filter.clone());
     }
 
     /// Re-ranks `items` against `text`, re-stamping `generation_at_begin` to
@@ -216,20 +301,32 @@ impl CompletionSession {
                 self.rank_scratch.push((score, i as u32));
             }
         }
-        // Score descending, then sortText ascending — the server's own
-        // ordering hint, which is the *only* signal on an empty filter
-        // (nucleo scores every haystack `0` for an empty pattern, so every
-        // item ties on the first key). Ascending index last, since sortText
-        // is very often duplicated across a server's items and the pair
-        // alone wouldn't be a unique key.
+        // Score descending, then source priority descending — a tiebreaker
+        // only (match quality stays king), applied before sortText so a
+        // higher-priority source's item wins a tie regardless of how its
+        // label sorts. Priority direction matches `register_sign_source`'s
+        // own `(priority desc, name asc)` convention: a higher number is a
+        // more important source, same as it's a more important sign.
+        // sortText ascending next — the server's own ordering hint, which
+        // is the *only* signal left on an empty filter with a single
+        // source (nucleo scores every haystack `0` for an empty pattern, so
+        // every item ties on every key above). Ascending index last, since
+        // sortText is very often duplicated across a server's items and the
+        // triple alone wouldn't be a unique key.
         let items = &self.items;
+        let sources = &self.sources;
+        let priority_of = |item: &CompletionItem| {
+            sources
+                .get(item.source.as_ref())
+                .expect("every item's source has a live entry, stamped by add_items")
+                .priority
+        };
         self.rank_scratch.sort_unstable_by(|a, b| {
+            let item_a = &items[a.1 as usize];
+            let item_b = &items[b.1 as usize];
             b.0.cmp(&a.0)
-                .then_with(|| {
-                    items[a.1 as usize]
-                        .sort_text
-                        .cmp(&items[b.1 as usize].sort_text)
-                })
+                .then_with(|| priority_of(item_b).cmp(&priority_of(item_a)))
+                .then_with(|| item_a.sort_text.cmp(&item_b.sort_text))
                 .then(a.1.cmp(&b.1))
         });
         self.filtered.clear();

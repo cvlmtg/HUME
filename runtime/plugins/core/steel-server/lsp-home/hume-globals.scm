@@ -71,6 +71,7 @@
 (#%register-global "command-plugin")
 (#%register-global "compile-grammar!")
 (#%register-global "completion-accept!")
+(#%register-global "completion-add-items!")
 (#%register-global "completion-begin!")
 (#%register-global "completion-dismiss!")
 (#%register-global "completion-top")

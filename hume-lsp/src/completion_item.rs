@@ -1,11 +1,11 @@
 //! Protocol-only decode helpers a `textDocument/completion` item's fields
 //! need: stripping snippet syntax HUME's v1 completion UI can't render, and
-//! the lenient `TextEdit` fallback for off-spec servers. `StoredCompletionItem`
-//! itself — the completion store's item type, ranked/filtered by
-//! `CompletionSession` and rendered as a menu row — is not a wire type and
-//! stays in `hume-editor/src/editor/lsp/completion/item/mod.rs`; only the
-//! decode logic it needs lives here, alongside the sibling `location.rs`
-//! wire decoder.
+//! the lenient `TextEdit` fallback for off-spec servers. `hume-editor`'s
+//! `CompletionItem` itself — the completion store's item type, ranked/
+//! filtered by `CompletionSession` and rendered as a menu row — is not a
+//! wire type and stays in `hume-editor/src/editor/lsp/completion/item/mod.rs`;
+//! only the decode logic it needs lives here, alongside the sibling
+//! `location.rs` wire decoder.
 
 /// Rewrites `${n:default}` -> `default` (empty string if no `:default`) and
 /// bare `$n` -> "" (dropped) in an `insertTextFormat: Snippet` item's text —

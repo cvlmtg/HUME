@@ -8,7 +8,7 @@ use super::*;
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;
@@ -368,9 +368,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     assert_eq!(ed.state.mode(), Mode::Insert);
 
     let bid = ed.focused_buffer_id();
-    let items =
-        vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
-    let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
+    let items = vec![CompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
+    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 

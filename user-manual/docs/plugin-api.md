@@ -189,13 +189,14 @@ These are editor-builtin commands any completion plugin can drive — a source r
 | Call | Effect |
 |------|--------|
 | `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)` — feeds the `on-trigger-char` hook |
-| `(completion-begin! bid items #:incomplete)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps |
+| `(completion-begin! bid items #:source #:incomplete #:priority)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token |
+| `(completion-add-items! token items #:source #:priority #:incomplete)` | Merge more items into the session `token` names, replacing that `source`'s prior contribution rather than appending — a stale `token` (the session closed or restarted since) is a silent no-op |
 | `(completion-update-filter! text)` | Re-filter the open session against `text` |
 | `(completion-top n)` | The top `n` ranked/filtered items |
 | `(completion-accept! idx)` | Accept item `idx` from `completion-top`'s (ranked) order — fires the `on-completion-accept` hook |
 | `(completion-dismiss!)` | Close the open session; a no-op if none is open |
 
-A completion source registers its trigger characters, then reacts to the `on-trigger-char` hook by fetching candidates and calling `completion-begin!`; `on-completion-refilter` fires as the user keeps typing, and `on-completion-accept` once they pick a result. See [Hooks](plugins.md#hooks) for those three hooks' lambda signatures.
+A completion source registers its trigger characters, then reacts to the `on-trigger-char` hook by fetching candidates and calling `completion-begin!` (or, once a session from another source is already open, `completion-add-items!` with the token that session returned); `on-completion-refilter` fires as the user keeps typing, and `on-completion-accept` once they pick a result. See [Hooks](plugins.md#hooks) for those three hooks' lambda signatures.
 
 ## Pickers
 

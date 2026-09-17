@@ -3,34 +3,49 @@
 use hume_engine::pipeline::BufferId;
 
 use crate::editor::Severity;
-use crate::editor::input_stack::{CompletionLayer, InsertLayer};
+use crate::editor::input_stack::{self, CompletionLayer, InsertLayer};
 
 use super::EditorHostImpl;
 use hume_scripting::host::CompletionHost;
+
+/// Parses `items` via `CompletionItem::from_json`, skipping (not failing on)
+/// a malformed one — shared by `completion_begin` and `completion_add_items`
+/// so the two never drift on this tolerance. `builtin_name` is only for the
+/// skip's own Trace line.
+fn parse_items(
+    state: &mut crate::editor::EditorState,
+    items: &[serde_json::Value],
+    builtin_name: &str,
+) -> Vec<crate::editor::lsp::completion::CompletionItem> {
+    let mut parsed = Vec::with_capacity(items.len());
+    for v in items {
+        match crate::editor::lsp::completion::CompletionItem::from_json(v) {
+            Ok(item) => parsed.push(item),
+            Err(e) => state.report(
+                Severity::Trace,
+                format!("{builtin_name}: skipped malformed item: {e}"),
+            ),
+        }
+    }
+    parsed
+}
 
 impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_begin(
         &mut self,
         bid: BufferId,
         items: Vec<serde_json::Value>,
+        source: String,
+        priority: i64,
         incomplete: bool,
-    ) -> Result<(), String> {
+    ) -> Result<u64, String> {
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
         // A malformed item (e.g. missing the spec-required `label`) is
         // skipped, not fatal to the whole batch — one bad item from a
         // misbehaving server must not silently drop every good one.
-        let mut parsed = Vec::with_capacity(items.len());
-        for v in &items {
-            match crate::editor::lsp::completion::StoredCompletionItem::from_json(v) {
-                Ok(item) => parsed.push(item),
-                Err(e) => self.state.report(
-                    Severity::Trace,
-                    format!("completion-begin!: skipped malformed item: {e}"),
-                ),
-            }
-        }
+        let parsed = parse_items(self.state, &items, "completion-begin!");
         if parsed.is_empty() {
             // Replaces any open session too — an isIncomplete re-request
             // that comes back empty (or entirely malformed) must close the
@@ -40,7 +55,11 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             self.state.dismiss_completion(self.view);
             self.state
                 .report(Severity::Info, "no completions".to_string());
-            return Ok(());
+            // No session opened — there is no token to hand back. `0` is
+            // never a live token (`NEXT_TOKEN` starts at 1), so a caller
+            // that (wrongly) tries to `completion-add-items!` against it
+            // gets the same silent no-op a real stale token would.
+            return Ok(0);
         }
         // Async staleness — see `EditorState::async_opener_stale`'s own doc.
         // A prior `Completion` instance — buried or not — is the one
@@ -51,10 +70,15 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             .state
             .async_opener_stale::<InsertLayer, CompletionLayer>("completion-begin!")
         {
-            return Ok(());
+            return Ok(0);
         }
         let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
-            self.state, bid, parsed, incomplete,
+            self.state,
+            bid,
+            source.into(),
+            priority,
+            parsed,
+            incomplete,
         ) else {
             // Benign race: the async completion response landed after the
             // user switched away from `bid`'s pane.
@@ -62,7 +86,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 Severity::Trace,
                 "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
             );
-            return Ok(());
+            return Ok(0);
         };
         // The session itself no longer lives on `LspState`, but this
         // builtin has no `require_cmd_ctx!` gate of its own (unlike most
@@ -75,13 +99,50 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.lsp.is_none() {
             return Err("completion-begin!: no LSP state available".to_string());
         }
+        let token = session.token();
         // Retires a prior `Completion` instance on the refresh path,
         // wherever it sits — buried under a non-modal `Popup` counts too,
         // now that `is_settled_for` tolerates that above.
         self.state.retire::<CompletionLayer>(self.view);
         self.state
             .push_layer(self.view, CompletionLayer { session, ui: None });
-        Ok(())
+        Ok(token)
+    }
+
+    fn completion_add_items(
+        &mut self,
+        token: u64,
+        items: Vec<serde_json::Value>,
+        source: String,
+        priority: i64,
+        incomplete: bool,
+    ) -> bool {
+        // Token checked before parsing anything — a stale token is a
+        // silent no-op end to end, including no Trace noise from parsing
+        // items nothing will ever use.
+        //
+        // Two-phase, same shape `refilter_lsp_completion_after_edit` uses
+        // and documents: `bid` comes from a first, short-lived lookup so
+        // `text_gen` can then borrow `self.state.buffers` on its own,
+        // disjoint from the second lookup's `&mut` on `self.state.input`
+        // that actually calls `add_items`.
+        let Some(bid) =
+            input_stack::completion::session_for_token(self.state, token).map(|s| s.bid())
+        else {
+            return false;
+        };
+        let parsed = parse_items(self.state, &items, "completion-add-items!");
+        let text_gen = self.state.buffers.get(bid).text_gen;
+        let Some(session) = input_stack::completion::session_for_token(self.state, token) else {
+            return false;
+        };
+        session.add_items(text_gen, source.into(), priority, incomplete, parsed);
+        if let Some(r) = self.state.input.ref_of::<CompletionLayer>()
+            && let Some(slot) = self.state.input.completion_ui_mut(r)
+        {
+            *slot = None;
+        }
+        true
     }
 
     fn completion_update_filter(&mut self, text: String) -> Result<(), String> {

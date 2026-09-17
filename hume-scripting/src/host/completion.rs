@@ -5,15 +5,38 @@ use hume_engine::pipeline::BufferId;
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
-    /// `(completion-begin! bid items #:incomplete f)` — `items` is a list of
-    /// decoded `CompletionItem` hashmaps (JSON already converted by the
-    /// caller). Starting a session replaces any session already open.
+    /// `(completion-begin! bid items #:source s #:incomplete f #:priority
+    /// n)` — `items` is a list of decoded `CompletionItem` hashmaps (JSON
+    /// already converted by the caller), tagged with the contributing
+    /// `source`'s name. Starting a session replaces any session already
+    /// open. Returns the new session's token (`0` if no session was opened —
+    /// an empty/all-malformed `items`), for a later
+    /// `completion-add-items!` to merge a second source into.
     fn completion_begin(
         &mut self,
         bid: BufferId,
         items: Vec<serde_json::Value>,
+        source: String,
+        priority: i64,
         incomplete: bool,
-    ) -> Result<(), String>;
+    ) -> Result<u64, String>;
+
+    /// `(completion-add-items! token items #:source s #:priority n
+    /// #:incomplete f)` — merges `items` into the session `token` names,
+    /// replacing that source's prior contribution wholesale (an
+    /// `isIncomplete` re-request re-emitting the same source is therefore
+    /// idempotent, not additive) and re-ranking. A mismatched `token` — the
+    /// session was replaced or dismissed since the caller captured it — is
+    /// expected-normal, not an error: returns whether the merge applied,
+    /// same silent-no-op contract as `picker-push!`/`picker-replace!`.
+    fn completion_add_items(
+        &mut self,
+        token: u64,
+        items: Vec<serde_json::Value>,
+        source: String,
+        priority: i64,
+        incomplete: bool,
+    ) -> bool;
 
     /// `(completion-update-filter! text)` — re-ranks the open session
     /// against `text`; Rust-side work only, safe to call every keystroke.

@@ -4,6 +4,8 @@
 //! — pure protocol work with no editor dependency — but the item type itself
 //! is HUME's completion-store item: `CompletionSession` ranks/filters it and
 //! `to_json`/`menu_row_label` render it, neither of which is a wire concern.
+//! The wire type is always spelled `lsp_types::CompletionItem`; the bare
+//! name here is this store's own item.
 
 use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snippet};
 
@@ -12,7 +14,7 @@ use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snipp
 /// server declared `insertTextFormat: Snippet` — see [`strip_snippet`].
 /// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
 /// hook and `completionItem/resolve` both see the server's original text).
-pub(in crate::editor) struct StoredCompletionItem {
+pub(in crate::editor) struct CompletionItem {
     pub(super) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
@@ -38,9 +40,17 @@ pub(in crate::editor) struct StoredCompletionItem {
     /// (snippet syntax included) — Steel/resolve should see exactly what
     /// the server sent, not this store's stripped/narrowed projection.
     pub(super) raw: serde_json::Value,
+    /// The name of the source that contributed this item — `"lsp"` for
+    /// today's sole caller. Empty at construction (`from_json`/
+    /// `from_json_lenient` parse a wire item in isolation, with no source
+    /// context of their own); `CompletionSession::add_items` stamps every
+    /// item with its own `source` argument immediately after parsing,
+    /// before any item is visible outside this module. Used for the
+    /// per-source eviction on merge, the rank tiebreaker, and display.
+    pub(super) source: Box<str>,
 }
 
-impl StoredCompletionItem {
+impl CompletionItem {
     /// Parses one item, strict first: `v` itself is never consumed, so
     /// `raw: v.clone()` (below) still captures the full item, including
     /// fields this projection drops. A strict deserialize into
@@ -106,6 +116,7 @@ impl StoredCompletionItem {
             additional_text_edits,
             has_additional_text_edits,
             raw: v.clone(),
+            source: Box::default(),
         }
     }
 
@@ -161,6 +172,7 @@ impl StoredCompletionItem {
             additional_text_edits,
             has_additional_text_edits,
             raw: v.clone(),
+            source: Box::default(),
         })
     }
 
@@ -169,6 +181,7 @@ impl StoredCompletionItem {
             "label": self.label,
             "kind": self.kind,
             "detail": self.detail,
+            "source": self.source,
         })
     }
 

@@ -117,8 +117,11 @@
 (define (prompt! label on-confirm #:prefill [prefill ""])
   (%prompt! label prefill on-confirm))
 
-(define (completion-begin! bid items #:incomplete [incomplete #f])
-  (%completion-begin! bid items incomplete))
+(define (completion-begin! bid items #:source source #:incomplete [incomplete #f] #:priority [priority 0])
+  (%completion-begin! bid items incomplete source priority))
+
+(define (completion-add-items! token items #:source source #:priority [priority 0] #:incomplete [incomplete #f])
+  (%completion-add-items! token items source priority incomplete))
 
 (define (run-inline-output! cmd args #:cwd [cwd #f])
   (let ([code (%run-inline-output! cmd args cwd)])

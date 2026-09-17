@@ -8,7 +8,7 @@ use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use hume_engine::types::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use pretty_assertions::assert_eq;
@@ -16,14 +16,13 @@ use steel::rvals::SteelVal;
 
 fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
     let bid = ed.focused_buffer_id();
-    let items: Vec<StoredCompletionItem> = items
+    let items: Vec<CompletionItem> = items
         .iter()
         .map(|label| {
-            StoredCompletionItem::from_json(&serde_json::json!({"label": label}))
-                .expect("test item")
+            CompletionItem::from_json(&serde_json::json!({"label": label})).expect("test item")
         })
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
+    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }

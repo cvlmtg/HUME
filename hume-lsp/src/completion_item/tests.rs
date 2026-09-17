@@ -75,7 +75,7 @@ fn text_edit_from_json_lenient_reads_the_edit_shape() {
 fn text_edit_from_json_lenient_prefers_the_narrower_insert_range() {
     // `InsertReplaceEdit` has both an `insert` and a wider `replace` range —
     // only `insert` is read, matching the strict-parse path's own choice
-    // (see `StoredCompletionItem::from_typed` in `hume-editor`).
+    // (see `CompletionItem::from_typed` in `hume-editor`).
     let v = serde_json::json!({
         "insert": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 2}},
         "replace": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 9}},

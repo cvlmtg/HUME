@@ -103,6 +103,20 @@ impl Editor {
     }
 }
 
+/// The open completion session, but only if its token is `token` — the
+/// guard `completion-add-items!` checks before reaching a `&mut
+/// CompletionSession` at all. A mismatch, or no session open at all, is
+/// expected-normal — a late async source racing a session the user already
+/// replaced or dismissed — so callers treat `None` as a silent no-op, never
+/// an error. Mirrors `picker::session_for_token`'s own doc and shape
+/// exactly (`input_stack/picker/mod.rs`).
+pub(in crate::editor) fn session_for_token(
+    state: &mut EditorState,
+    token: u64,
+) -> Option<&mut CompletionSession> {
+    state.input.completion_mut().filter(|s| s.token() == token)
+}
+
 /// Named sugar over the generic lookup — the ~350 existing call sites
 /// (`ed.state.input.completion()`) stay as they are, and `stack.rs` stays
 /// agnostic.

@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
 use super::CompletionSession;
-use super::item::StoredCompletionItem;
+use super::item::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
@@ -55,7 +55,7 @@ impl CompletionSession {
     /// over each cursor's own identifier token when absent) at *every*
     /// cursor in the session's pane, as if the completion had been typed at
     /// each — a conforming server's completion range always contains the
-    /// request position (LSP spec, `item/mod.rs`'s `StoredCompletionItem`
+    /// request position (LSP spec, `item/mod.rs`'s `CompletionItem`
     /// doc), so the primary's own edit, re-expressed as a char count behind/ahead of
     /// its live head, is the same span typing would have consumed at any
     /// cursor. `additionalTextEdits` have no cursor of their own and are
@@ -63,7 +63,7 @@ impl CompletionSession {
     /// against `generation_at_begin`.
     ///
     /// If the item lacks `additionalTextEdits` entirely (not just an empty
-    /// array — see [`StoredCompletionItem::has_additional_text_edits`]) and
+    /// array — see [`CompletionItem::has_additional_text_edits`]) and
     /// the server advertises `completionProvider.resolveProvider`, sends
     /// `completionItem/resolve` and applies whatever it returns once the
     /// response lands (via the ordinary `LspCallback`/`stale_check`
@@ -415,7 +415,7 @@ impl CompletionSession {
         &self,
         state: &mut EditorState,
         lsp: &mut LspState,
-        item: &StoredCompletionItem,
+        item: &CompletionItem,
         rope_pre: ropey::Rope,
         accept_cs: hume_editing::changeset::ChangeSet,
         encoding: hume_rope::position_encoding::PositionEncoding,

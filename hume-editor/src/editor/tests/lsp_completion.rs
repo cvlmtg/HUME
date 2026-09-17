@@ -27,7 +27,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
              (completion-begin! (current-buffer)
                (list (hash "label" "second" "sortText" "b")
                      (hash "label" "first" "sortText" "a")
-                     (hash "label" "third" "sortText" "c")))
+                     (hash "label" "third" "sortText" "c")) #:source "test")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
@@ -61,7 +61,7 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
                      ; still rank first is if the fuzzy score genuinely
                      ; dominates the sortText tie-break.
                      (hash "label" "rnorm" "sortText" "z")
-                     (hash "label" "grape")))                  ; no "r" at all — dropped
+                     (hash "label" "grape")) #:source "test")                  ; no "r" at all — dropped
              (completion-update-filter! "rn")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -89,7 +89,7 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "Vec") (hash "label" "vec_deque")))
+               (list (hash "label" "Vec") (hash "label" "vec_deque")) #:source "test")
              (completion-update-filter! "Vec")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -120,7 +120,7 @@ fn update_filter_with_trailing_space_matches_nothing() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar")))
+               (list (hash "label" "foobar")) #:source "test")
              (completion-update-filter! "foo ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -149,7 +149,7 @@ fn update_filter_with_only_a_space_matches_nothing() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar") (hash "label" "foo")))
+               (list (hash "label" "foobar") (hash "label" "foo")) #:source "test")
              (completion-update-filter! " ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -173,7 +173,7 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")))
+               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -197,7 +197,7 @@ fn accept_normalizes_crlf_in_insert_text() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hel\r\nlo")))
+               (list (hash "label" "foobar" "insertText" "hel\r\nlo")) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -221,7 +221,7 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "foobar")))
+               (list (hash "label" "foobar" "insertText" "foobar")) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -244,7 +244,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foo-bar" "insertText" "foo-bar")))
+               (list (hash "label" "foo-bar" "insertText" "foo-bar")) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -269,7 +269,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
                (list (hash "label" "format!" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                         "end" (hash "line" 0 "character" 2))
-                                       "newText" "format!"))))
+                                       "newText" "format!"))) #:source "test")
              (completion-update-filter! "for")
              (completion-accept! 0)))"#,
     );
@@ -300,7 +300,7 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
                                                         "end" (hash "line" 0 "character" 4))
-                                       "newText" "XYZ"))))
+                                       "newText" "XYZ"))) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -330,7 +330,7 @@ fn accept_is_one_undo_step() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")))
+               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -359,7 +359,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
              (completion-dismiss!)
              (completion-accept! 0)))"#,
     );
@@ -387,7 +387,7 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
              ; An edit that never goes through completion-update-filter! —
              ; a raw text-edit builtin, not Insert-mode typing (which is
              ; wired to call completion-update-filter! automatically
@@ -439,7 +439,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
            (define-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
@@ -497,7 +497,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
                                                       "end" (hash "line" 0 "character" 4))
-                                     "newText" "QQ")))))
+                                     "newText" "QQ")))) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -526,7 +526,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -573,7 +573,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
                                                       "end" (hash "line" 0 "character" 2))
-                                     "newText" "ZZ")))))
+                                     "newText" "ZZ")))) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -620,7 +620,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                       "end" (hash "line" 0 "character" 0))
-                                     "newText" "// ")))))
+                                     "newText" "// ")))) #:source "test")
              (completion-update-filter! "wxyz")
              (completion-accept! 0)))"#,
     );
@@ -646,7 +646,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list))))"#,
+             (completion-begin! (current-buffer) (list) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -671,9 +671,9 @@ fn begin_with_empty_items_clears_an_already_open_session() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "open" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")))))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
            (define-command! "reopen-empty" "" (lambda ()
-             (completion-begin! (current-buffer) (list))))"#,
+             (completion-begin! (current-buffer) (list) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -702,7 +702,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")))
+               (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))
            (register-hook! 'on-completion-accept (lambda (bid item)
@@ -721,7 +721,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
         ed.state.status_msg.clone().unwrap(),
         "e1",
         "on-completion-accept must receive the accepted item's raw JSON, including \
-         fields (\"extra\") that StoredCompletionItem doesn't otherwise parse"
+         fields (\"extra\") that CompletionItem doesn't otherwise parse"
     );
 }
 
@@ -737,7 +737,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")))
+               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -758,7 +758,7 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
                (list (hash "label" "foobar" "insertText" "hello"))
-               #:incomplete #t)))
+               #:incomplete #t #:source "test")))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info (string-append "refilter:" text))))"#,
     );
@@ -787,7 +787,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")))))
+               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info "should-not-fire")))"#,
     );
@@ -801,6 +801,183 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
         "should-not-fire",
         "on-completion-refilter must not fire for a complete (non-isIncomplete) session — \
          it's a bounded window, not an unconditional per-keystroke hook"
+    );
+}
+
+// ── Multi-source merge (completion-add-items!) ────────────────────────
+
+/// A stale token — the session was replaced by a new `completion-begin!`
+/// since the caller captured it — must be a silent no-op, not an error and
+/// not a merge into whatever session happens to be open now.
+#[test]
+fn add_items_with_a_stale_token_is_a_silent_no_op() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (define tok (completion-begin! (current-buffer) (list (hash "label" "a")) #:source "s1"))
+             (completion-add-items! (+ tok 1000) (list (hash "label" "z")) #:source "s2")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "a",
+        "an add against a stale token must not merge into the live session"
+    );
+}
+
+/// Items from two different sources are ranked together by the same fuzzy
+/// filter — a contiguous-prefix match from the second source outranks a
+/// scattered match from the first, exactly as `update_filter_narrows_and_
+/// fuzzy_score_beats_sort_text` proves within one source.
+#[test]
+fn add_items_merges_and_reranks_across_sources_by_score() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (define tok (completion-begin! (current-buffer)
+               (list (hash "label" "random" "sortText" "a")) #:source "a"))
+             (completion-add-items! tok
+               (list (hash "label" "rnorm" "sortText" "z")) #:source "b")
+             (completion-update-filter! "rn")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "rnorm,random",
+        "a contiguous-prefix match from one source must outrank a scattered match \
+         from another, regardless of arrival order or sortText"
+    );
+}
+
+/// Re-emitting a source (the `isIncomplete` refilter flow re-invokes the
+/// same source on the same session) replaces that source's prior
+/// contribution wholesale rather than appending — no duplicates, and other
+/// sources' items are untouched.
+#[test]
+fn add_items_same_source_replaces_rather_than_appends() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (define tok (completion-begin! (current-buffer)
+               (list (hash "label" "x") (hash "label" "y")) #:source "s"))
+             (completion-add-items! tok (list (hash "label" "x") (hash "label" "z")) #:source "s")
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "x,z",
+        "re-adding source \"s\" must evict its prior items (x, y), not append \
+         alongside them"
+    );
+}
+
+/// A source arriving late via `completion-add-items!` with `#:incomplete
+/// #t` must flip the session-level flag even though the session began
+/// complete — `on-completion-refilter` gates on the OR across every
+/// source's latest flag, not just the one `begin` saw.
+#[test]
+fn late_add_flips_incomplete_even_though_the_session_began_complete() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (define tok (completion-begin! (current-buffer)
+               (list (hash "label" "foobar" "insertText" "hello")) #:source "a"))
+             (completion-add-items! tok (list (hash "label" "other")) #:source "b" #:incomplete #t)))
+           (register-hook! 'on-completion-refilter (lambda (bid text)
+             (log! 'info (string-append "refilter:" text))))"#,
+    );
+    // Real Insert entry — see `refilter_fires_on_completion_refilter_only_when_incomplete`
+    // above for why a raw mode-layer push isn't enough here.
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command("go".into(), None, false);
+    ed.feed_key(key('f'));
+    ed.settle();
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "refilter:f",
+        "a late add's #:incomplete #t must flip a session that began complete"
+    );
+}
+
+/// Merging in a second source must reset the menu selection to row 0 —
+/// matching what `refilter_lsp_completion_after_edit` already does on
+/// every keystroke, since a re-rank can move whatever row was under the
+/// cursor.
+#[test]
+fn add_items_resets_the_menu_selection_to_row_zero() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define completion-token #f)
+           (define-command! "begin" "" (lambda ()
+             (set! completion-token (completion-begin! (current-buffer)
+               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:source "s"))))
+           (define-command! "merge" "" (lambda ()
+             (completion-add-items! completion-token (list (hash "label" "d")) #:source "s2")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("begin".into(), None, false);
+    ed.feed_key(key_tab());
+    ed.feed_key(key_tab());
+    assert_eq!(
+        ed.state.input.completion_ui().unwrap().selected,
+        2,
+        "sanity check: two Tabs move the selection off row 0"
+    );
+    ed.execute_keymap_command("merge".into(), None, false);
+    assert!(
+        ed.state.input.completion_ui().is_none(),
+        "a merge must reset the selection to row 0 (cleared, same as refilter's own reset)"
+    );
+}
+
+/// Priority is a tiebreaker applied *before* sortText, not after — a
+/// higher-priority source's item must rank first on a score tie even when
+/// its label sorts alphabetically last.
+#[test]
+fn add_items_priority_breaks_a_score_tie_before_sort_text() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (define tok (completion-begin! (current-buffer)
+               (list (hash "label" "aaa")) #:source "lo" #:priority 0))
+             (completion-add-items! tok (list (hash "label" "zzz")) #:source "hi" #:priority 10)
+             (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "zzz,aaa",
+        "the higher-priority source's item must rank first despite losing on sortText"
     );
 }
 
@@ -821,7 +998,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-                 (completion-begin! (current-buffer) (list {items}))
+                 (completion-begin! (current-buffer) (list {items}) #:source "test")
                  (completion-update-filter! "item5")
                  (completion-top 64)
                  (completion-accept! 0)))"#
@@ -881,7 +1058,13 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
 
     let mut impl_host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let result = impl_host.completion_begin(bid_b, vec![serde_json::json!({"label": "x"})], false);
+    let result = impl_host.completion_begin(
+        bid_b,
+        vec![serde_json::json!({"label": "x"})],
+        "test".to_string(),
+        0,
+        false,
+    );
     assert!(
         result.is_ok(),
         "unfocused-pane buffer must be a benign no-op, not an error: {result:?}"
@@ -923,8 +1106,14 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
     let bid = ed.focused_buffer_id();
 
     let mut host = live_host!(ed);
-    host.completion_begin(bid, vec![serde_json::json!({"label": "x"})], true)
-        .unwrap();
+    host.completion_begin(
+        bid,
+        vec![serde_json::json!({"label": "x"})],
+        "test".to_string(),
+        0,
+        true,
+    )
+    .unwrap();
     assert_eq!(ed.state.input.completion().unwrap().len(), 1, "sanity");
 
     ed.state.push_layer(
@@ -949,6 +1138,8 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
             serde_json::json!({"label": "x"}),
             serde_json::json!({"label": "y"}),
         ],
+        "test".to_string(),
+        0,
         false,
     )
     .unwrap();
@@ -971,7 +1162,7 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "good") (hash "kind" 1)))
+               (list (hash "label" "good") (hash "kind" 1)) #:source "test")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
@@ -1003,7 +1194,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)))))"#,
+             (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -1041,7 +1232,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
                                                             "end" (hash "line" 0 "character" 3))
                                             "replace" (hash "start" (hash "line" 0 "character" 1)
                                                              "end" (hash "line" 0 "character" 6))
-                                            "newText" "XYZ"))))
+                                            "newText" "XYZ"))) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state

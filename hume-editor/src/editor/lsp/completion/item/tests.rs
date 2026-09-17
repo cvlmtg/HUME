@@ -10,7 +10,7 @@ fn from_typed_strips_snippet_insert_text_only_when_format_is_snippet() {
         "insertText": "${1:foo}(${2:bar})",
         "insertTextFormat": 2,
     });
-    let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+    let item = CompletionItem::from_json(&v).expect("well-formed item");
     assert_eq!(item.insert_text, "foo(bar)");
     assert_eq!(
         item.raw.get("insertText").and_then(|v| v.as_str()),
@@ -25,7 +25,7 @@ fn from_typed_leaves_insert_text_untouched_without_snippet_format() {
         "label": "foo",
         "insertText": "$100 literal",
     });
-    let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+    let item = CompletionItem::from_json(&v).expect("well-formed item");
     assert_eq!(item.insert_text, "$100 literal");
 }
 
@@ -39,7 +39,7 @@ fn from_typed_strips_snippet_text_edit_new_text() {
             "newText": "${1:foo}",
         },
     });
-    let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+    let item = CompletionItem::from_json(&v).expect("well-formed item");
     assert_eq!(item.text_edit.unwrap().new_text, "foo");
 }
 
@@ -57,7 +57,7 @@ fn from_json_lenient_also_strips_snippet_insert_text() {
         "insertText": "${1:foo}",
     });
     assert_strict_parse_fails(&v);
-    let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+    let item = CompletionItem::from_json(&v).expect("label present — must recover");
     assert_eq!(item.insert_text, "foo");
     assert_eq!(
         item.raw.get("insertText").and_then(|v| v.as_str()),
@@ -84,7 +84,7 @@ fn well_formed_item_never_touches_the_lenient_path() {
     // in those tests wouldn't prove anything.
     let v = serde_json::json!({"label": "ok", "kind": 3});
     assert!(serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_ok());
-    let item = StoredCompletionItem::from_json(&v).expect("well-formed item");
+    let item = CompletionItem::from_json(&v).expect("well-formed item");
     assert_eq!(item.label, "ok");
     assert_eq!(item.kind, Some(3));
 }
@@ -98,7 +98,7 @@ fn string_kind_recovers_via_lenient_fallback() {
     let v = serde_json::json!({"label": "foo", "kind": "Function"});
     assert_strict_parse_fails(&v);
 
-    let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+    let item = CompletionItem::from_json(&v).expect("label present — must recover");
     assert_eq!(item.label, "foo");
     // The lenient reader can't make sense of a non-numeric kind either
     // — dropped, not faked as some default kind.
@@ -127,7 +127,7 @@ fn malformed_text_edit_recovers_the_item_without_the_edit() {
     });
     assert_strict_parse_fails(&v);
 
-    let item = StoredCompletionItem::from_json(&v).expect("label present — must recover");
+    let item = CompletionItem::from_json(&v).expect("label present — must recover");
     assert_eq!(item.label, "bar");
     assert_eq!(item.detail.as_deref(), Some("a detail"));
     assert!(
@@ -141,7 +141,7 @@ fn missing_label_is_rejected_by_both_strict_and_lenient() {
     let v = serde_json::json!({"kind": 1});
     assert_strict_parse_fails(&v);
     assert!(
-        StoredCompletionItem::from_json(&v).is_err(),
+        CompletionItem::from_json(&v).is_err(),
         "no label recoverable — item must still be dropped"
     );
 }

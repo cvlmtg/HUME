@@ -10,7 +10,7 @@
 use super::*;
 use crate::editor::buffer::Buffer;
 use crate::editor::input_stack::CompletionLayer;
-use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
+use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -37,11 +37,11 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
 /// `additionalTextEdits` — arbitrary JSON, not just label/detail.
 fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
     let bid = ed.focused_buffer_id();
-    let items: Vec<StoredCompletionItem> = items
+    let items: Vec<CompletionItem> = items
         .iter()
-        .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
+        .map(|v| CompletionItem::from_json(v).expect("test item"))
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
+    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }
