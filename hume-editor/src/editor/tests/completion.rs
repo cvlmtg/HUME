@@ -18,6 +18,14 @@ fn minibuf_input(ed: &Editor) -> &str {
     ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
 }
 
+/// The completion popup's selected row index — `0` when no `CompletionMenuUi`
+/// has been allocated yet, matching `move_completion_selection`'s own
+/// `map_or(0, ...)` convention (a session opens with `ui: None` until the
+/// first Tab/Down/BackTab/Up moves the selection off its implicit default).
+fn selected_row(ed: &Editor) -> usize {
+    ed.state.input.completion_ui().map_or(0, |ui| ui.selected)
+}
+
 // ── Command-name completion ───────────────────────────────────────────────────
 
 #[test]
@@ -32,7 +40,7 @@ fn tab_on_command_prefix_single_match_completes_silently() {
 
     assert_eq!(minibuf_input(&ed), "reload-config");
     // Single-match: no popup state.
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -45,7 +53,7 @@ fn tab_no_match_is_noop() {
     ed.handle_key(key_tab());
 
     assert_eq!(minibuf_input(&ed), "zzz");
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -58,14 +66,14 @@ fn tab_multiple_matches_opens_popup_with_first_candidate() {
 
     // Completion state must be open.
     assert!(
-        ed.state.input.minibuf_completion().is_some(),
+        ed.state.input.completion().is_some(),
         "popup should be open"
     );
-    let state = ed.state.input.minibuf_completion().unwrap();
-    assert_eq!(state.selected, 0);
-    assert!(state.candidates.len() >= 2);
+    assert_eq!(selected_row(&ed), 0);
+    let session = ed.state.input.completion().unwrap();
+    assert!(session.len() >= 2);
     // Input shows the first candidate.
-    let first = state.candidates[0].replacement.clone();
+    let first = session.selected_item(0).unwrap().insert_text().to_owned();
     assert_eq!(minibuf_input(&ed), first);
 }
 
@@ -77,9 +85,9 @@ fn second_tab_cycles_to_next_candidate() {
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
 
-    let state = ed.state.input.minibuf_completion().unwrap();
-    assert_eq!(state.selected, 1);
-    let second = state.candidates[1].replacement.clone();
+    assert_eq!(selected_row(&ed), 1);
+    let session = ed.state.input.completion().unwrap();
+    let second = session.selected_item(1).unwrap().insert_text().to_owned();
     assert_eq!(minibuf_input(&ed), second);
 }
 
@@ -95,8 +103,7 @@ fn shift_tab_cycles_backward() {
     // Shift-Tab back to candidate 0.
     ed.handle_key(key_shift_tab());
 
-    let state = ed.state.input.minibuf_completion().unwrap();
-    assert_eq!(state.selected, 0);
+    assert_eq!(selected_row(&ed), 0);
 }
 
 #[test]
@@ -106,18 +113,12 @@ fn tab_wraps_at_end() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab());
 
-    let n = ed
-        .state
-        .input
-        .minibuf_completion()
-        .unwrap()
-        .candidates
-        .len();
+    let n = ed.state.input.completion().unwrap().len();
     // Tab n times to wrap back to 0.
     for _ in 0..n {
         ed.handle_key(key_tab());
     }
-    assert_eq!(ed.state.input.minibuf_completion().unwrap().selected, 0);
+    assert_eq!(selected_row(&ed), 0);
 }
 
 #[test]
@@ -127,9 +128,9 @@ fn typing_char_dismisses_popup() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab()); // open popup
 
-    assert!(ed.state.input.minibuf_completion().is_some());
+    assert!(ed.state.input.completion().is_some());
     ed.handle_key(key('r')); // type a char → dismiss
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -145,7 +146,7 @@ fn enter_mid_completion_executes_selected_candidate() {
     // Now input = "quit". Enter should quit.
     ed.handle_key(key_enter());
     assert!(ed.state.should_quit);
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
     assert!(ed.state.minibuf().is_none());
 }
 
@@ -159,7 +160,7 @@ fn esc_dismisses_minibuf_and_clears_completion() {
 
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(ed.state.minibuf().is_none());
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -173,7 +174,7 @@ fn shift_tab_with_no_popup_is_noop() {
 
     // Nothing should have changed: input stays "wri", no popup.
     assert_eq!(minibuf_input(&ed), "wri");
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -186,7 +187,7 @@ fn tab_in_search_mode_is_noop() {
 
     // Input unchanged; no completion.
     assert_eq!(minibuf_input(&ed), "e");
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 // ── Path completion ───────────────────────────────────────────────────────────
@@ -210,7 +211,7 @@ fn tab_on_edit_arg_completes_path() {
     // Single match → silent completion, no popup.
     let expected = format!("e {}/hello.txt", dir.path().display());
     assert_eq!(minibuf_input(&ed), expected);
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 #[test]
@@ -258,7 +259,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
         "cd must complete to the directory"
     );
     assert!(
-        ed.state.input.minibuf_completion().is_none(),
+        ed.state.input.completion().is_none(),
         ":cd completion must exclude files, leaving a single dir match"
     );
 }
@@ -283,12 +284,8 @@ fn enter_on_directory_candidate_restarts_completion() {
     }
     ed.handle_key(key_tab()); // opens popup; "alpha/" selected first (alphabetical).
 
-    let state = ed
-        .state
-        .input
-        .minibuf_completion()
-        .expect("popup should be open");
-    let first = state.candidates[0].replacement.clone();
+    let session = ed.state.input.completion().expect("popup should be open");
+    let first = session.selected_item(0).unwrap().insert_text().to_owned();
     assert!(
         first.ends_with('/'),
         "expected directory candidate, got {first}"
@@ -311,13 +308,9 @@ fn enter_on_directory_candidate_restarts_completion() {
     let restarted = ed
         .state
         .input
-        .minibuf_completion()
+        .completion()
         .expect("completion should restart for dir children");
-    assert_eq!(
-        restarted.candidates.len(),
-        2,
-        "expected 2 files under alpha/"
-    );
+    assert_eq!(restarted.len(), 2, "expected 2 files under alpha/");
 }
 
 // ── Ctrl-w delete-word in minibuf ─────────────────────────────────────────────
@@ -387,14 +380,14 @@ fn ctrl_w_dismisses_open_completion_popup() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab()); // opens popup for "w"-prefixed commands
     assert!(
-        ed.state.input.minibuf_completion().is_some(),
+        ed.state.input.completion().is_some(),
         "sanity: popup should be open"
     );
 
     ed.handle_key(key_ctrl('w'));
     // Edited event clears completion; Ctrl-w consumed the word ("w"-based candidate).
     assert!(
-        ed.state.input.minibuf_completion().is_none(),
+        ed.state.input.completion().is_none(),
         "Ctrl-w must dismiss the popup"
     );
 }
@@ -448,19 +441,17 @@ fn tab_on_set_opens_scope_popup() {
     ed.handle_key(key(' '));
     ed.handle_key(key_tab());
 
-    let state = ed
+    let session = ed
         .state
         .input
-        .minibuf_completion()
+        .completion()
         .expect(":set <space> should open scope popup");
-    let names: Vec<&str> = state
-        .candidates
-        .iter()
-        .map(|c| c.replacement.as_str())
+    let names: Vec<String> = (0..session.len())
+        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
         .collect();
-    assert!(names.contains(&"global"));
-    assert!(names.contains(&"buffer"));
-    assert!(names.contains(&"pane"));
+    assert!(names.iter().any(|n| n == "global"));
+    assert!(names.iter().any(|n| n == "buffer"));
+    assert!(names.iter().any(|n| n == "pane"));
 }
 
 /// `:set g` is a single unique scope match → silent completion, no popup.
@@ -473,7 +464,7 @@ fn tab_on_set_g_silently_completes_global() {
     }
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "set global");
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
 }
 
 // ── Render snapshot ──────────────────────────────────────────────────────────

@@ -45,22 +45,20 @@ fn tab_completes_set_global_theme_value() {
     }
     ed.handle_key(key_tab());
 
-    let state = ed
+    let session = ed
         .state
         .input
-        .minibuf_completion()
+        .completion()
         .expect("theme value should open a popup (>=2 candidates)");
-    let names: Vec<&str> = state
-        .candidates
-        .iter()
-        .map(|c| c.replacement.as_str())
+    let names: Vec<String> = (0..session.len())
+        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
         .collect();
     assert!(
-        names.contains(&"zorro"),
+        names.iter().any(|n| n == "zorro"),
         "theme candidate missing: {names:?}"
     );
     assert!(
-        names.contains(&"alpha"),
+        names.iter().any(|n| n == "alpha"),
         "theme candidate missing: {names:?}"
     );
 }

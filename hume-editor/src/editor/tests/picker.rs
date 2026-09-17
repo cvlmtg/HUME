@@ -5,7 +5,7 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
-use crate::editor::completion::{CompletionItem, CompletionSession};
+use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
@@ -369,7 +369,17 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 
     let bid = ed.focused_buffer_id();
     let items = vec![CompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
-    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
+    let session = CompletionSession::begin_buffer(
+        &ed.state,
+        bid,
+        "test".into(),
+        0,
+        MatchKind::Fuzzy,
+        Interaction::SelectAccept,
+        items,
+        false,
+    )
+    .unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 

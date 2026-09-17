@@ -1063,6 +1063,8 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         vec![serde_json::json!({"label": "x"})],
         "test".to_string(),
         0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        hume_scripting::host::Interaction::SelectAccept,
         false,
     );
     assert!(
@@ -1111,6 +1113,8 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
         vec![serde_json::json!({"label": "x"})],
         "test".to_string(),
         0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        hume_scripting::host::Interaction::SelectAccept,
         true,
     )
     .unwrap();
@@ -1140,6 +1144,8 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
         ],
         "test".to_string(),
         0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        hume_scripting::host::Interaction::SelectAccept,
         false,
     )
     .unwrap();

@@ -25,6 +25,7 @@ use hume_engine::types::EditorMode;
 use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
 use super::base::BaseLayer;
+use super::completion::CompletionLayer;
 use super::popup::PopupLayer;
 
 /// Addresses one layer by position — minted only by [`InputStack::push`] and
@@ -555,14 +556,22 @@ impl InputStack {
     /// one of the four minibuf-backed mode layers, even if one is open
     /// buried beneath a picker or menu (a mouse click always falls through
     /// under a minibuf-mode layer, so focus and the picker/menu it opens can
-    /// land above one without ever closing it). Distinct from
-    /// [`Self::minibuf`] (topmost-of-any-depth), which every minibuf-mode
-    /// layer's *own* handler uses safely — dispatch only ever reaches it
-    /// while it's already `top()`. [`EditorState::minibuf`] is the gated
-    /// reader every external (non-owning-layer) consumer — the statusline,
-    /// the hardware-cursor placement — must use instead.
+    /// land above one without ever closing it). A `Minibuf`-target
+    /// `CompletionLayer` is not such a takeover — it's a dropdown drawn
+    /// above the command line, not a replacement for it — so it's skipped
+    /// here the same way `mode_layer()` skips it (its own `mode()` is
+    /// `None`) rather than counting as "something else is on top now".
+    /// Distinct from [`Self::minibuf`] (topmost-of-any-depth), which every
+    /// minibuf-mode layer's *own* handler uses safely — dispatch only ever
+    /// reaches it while it's already `top()`. [`EditorState::minibuf`] is
+    /// the gated reader every external (non-owning-layer) consumer — the
+    /// statusline, the hardware-cursor placement — must use instead.
     pub(in crate::editor) fn top_minibuf(&self) -> Option<&MiniBuffer> {
-        self.layers.last().and_then(|(_, layer)| layer.minibuf())
+        self.layers
+            .iter()
+            .rev()
+            .find(|(_, layer)| !layer.is::<CompletionLayer>())
+            .and_then(|(_, layer)| layer.minibuf())
     }
 
     /// The active popup, whichever of its two homes holds it: a
@@ -976,7 +985,6 @@ mod tests {
         let mut stack = InputStack::new();
         stack.push(CommandLayer {
             minibuf: MiniBuffer::new(""),
-            completion: None,
         });
         assert!(stack.sticky_popup_slot_mut().is_none());
     }

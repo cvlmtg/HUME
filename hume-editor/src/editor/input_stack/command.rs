@@ -3,17 +3,17 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::completion::MinibufCompletionState;
+use super::super::completion;
 use super::super::error::CommandError;
+use super::super::input_stack::CompletionLayer;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::registry::TypedBody;
-use super::super::{Editor, EditorState, commands};
+use super::super::{Editor, EditorState, Severity, commands};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
-    pub(in crate::editor) completion: Option<MinibufCompletionState>,
 }
 
 impl Layer for CommandLayer {
@@ -35,80 +35,62 @@ impl Layer for CommandLayer {
 }
 
 impl Editor {
-    /// Write the current completion state into the shared `PopupState` Arc —
-    /// same widget as [`Self::sync_menu_view`]/[`Self::sync_completion_menu_view`]
-    /// (unwrapped rows, selected-row styling), but anchored at the pane's
-    /// bottom edge above the statusline rather than a buffer cursor.
+    /// Write the open minibuffer completion session into the shared
+    /// `PopupState` Arc — same widget as [`Self::sync_menu_view`]/
+    /// [`Self::sync_completion_menu_view`] (unwrapped rows, selected-row
+    /// styling), but anchored at the pane's bottom edge above the
+    /// statusline rather than a buffer cursor. `Minibuf`-target only — a
+    /// `Buffer`-target session renders through
+    /// [`Self::sync_completion_menu_view`] instead, into its own slot.
     ///
     /// Called from `prepare_frame`'s overlay-sync step. Needs only
     /// `last_pane_area` (settled in step 0), unlike its cursor-anchored
-    /// siblings, which need the current frame's scroll result too — so this
-    /// stays `&self`, no `RenderContext`.
-    pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
-        let completion = self.state.input.minibuf_completion();
+    /// siblings, which need the current frame's scroll result too.
+    /// `&mut self`, not `&self` — `menu_rows()` lazily populates a cache.
+    pub(in crate::editor) fn sync_minibuf_completion_view(&mut self) {
+        let is_open = self
+            .state
+            .input
+            .completion()
+            .is_some_and(|s| s.minibuf_span_start().is_some());
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
-        if completion.is_none() && self.state.views.minibuf_completion.read().is_none() {
+        if !is_open && self.state.views.minibuf_completion.read().is_none() {
             return;
         }
         let pane_rect = self.view.last_pane_area;
-        let view = completion.map(|state| {
+        // Sequential borrows, same reasoning as `sync_completion_menu_view`:
+        // the shared reads (span, selection) have to end before `menu_rows`
+        // takes `&mut self`.
+        let view = (|| -> Option<hume_ui::popup::PopupState> {
+            let session = self.state.input.completion()?;
+            let span_start = session.minibuf_span_start()?;
+            let selected = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
             let anchor_x = self
                 .state
                 .input
                 .minibuf()
-                .map(|mb| mb.cursor_x_at(state.span_start))
+                .map(|mb| mb.cursor_x_at(span_start))
                 .unwrap_or(0);
+            let session = self.state.input.completion_mut()?;
+            let rows = session.menu_rows();
             // Anchoring at the pane's bottom edge is what drives
             // `resolve_popup_geometry` into its flip-above branch
             // (`space_below` saturates to 0 there), landing the box on the
             // rows just above the statusline. The -1 pulls the frame left so
             // the first label column sits under the token in the input.
-            hume_ui::popup::resolve_menu(
-                state.rows.clone(),
-                state.selected,
+            Some(hume_ui::popup::resolve_menu(
+                rows,
+                selected,
                 hume_ui::popup::PopupPlacement {
                     anchor: (anchor_x.saturating_sub(1), pane_rect.bottom()),
                     pane_rect,
                     content_width: pane_rect.width,
                 },
                 self.state.settings.popup_border,
-            )
-        });
+            ))
+        })();
         self.state.views.minibuf_completion.set(view);
-    }
-}
-
-impl super::stack::InputStack {
-    /// The active completion session, flattened — `None` both when no
-    /// `Command` layer is open and when one is open with no session. Reads
-    /// only; see [`Self::minibuf_completion_mut`] to replace or clear it.
-    pub(in crate::editor) fn minibuf_completion(&self) -> Option<&MinibufCompletionState> {
-        self.find::<CommandLayer>()
-            .and_then(|l| l.completion.as_ref())
-    }
-
-    /// The `Command` layer's completion slot itself (not its content) —
-    /// `Some(&mut Option<..>)` when `r` names the (live) `Command` layer,
-    /// letting a caller assign a fresh session or clear one (`*slot =
-    /// None`), as opposed to [`Self::minibuf_completion`]'s flattened read.
-    /// Address-based, not `find_mut`-based: both callers already know `r`
-    /// from their own dispatch.
-    pub(in crate::editor) fn minibuf_completion_mut(
-        &mut self,
-        r: LayerRef,
-    ) -> Option<&mut Option<MinibufCompletionState>> {
-        self.at_mut::<CommandLayer>(r).map(|l| &mut l.completion)
-    }
-
-    /// Clears the `Command` layer's completion slot at `r`, if it's still
-    /// live — [`Self::minibuf_completion_mut`]'s common case, shared by
-    /// every event that dismisses the popup without closing the minibuffer
-    /// itself (an edit, a cursor move, a history recall).
-    pub(in crate::editor) fn clear_minibuf_completion(&mut self, r: LayerRef) {
-        if let Some(l) = self.at_mut::<CommandLayer>(r) {
-            l.completion = None;
-        }
     }
 }
 
@@ -119,6 +101,13 @@ pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEv
 }
 
 fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
+    // No completion-dismiss calls in this function, on any arm: a
+    // `CompletionLayer` sits *above* `Command` whenever a popup is open, and
+    // `completion_input_minibuf` (`input_stack/completion.rs`) dismisses it
+    // before falling through to whatever runs here — by the time any of
+    // these arms sees an event, either no popup was open, or one already
+    // was and just closed. One place enforces "any non-Tab key dismisses",
+    // not one check repeated at every event site here.
     match event {
         MiniBufferEvent::Cancel
         | MiniBufferEvent::ConfirmEmpty
@@ -126,23 +115,6 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Confirm(_) => {
-            // If the selected completion candidate is a directory
-            // (trailing `/`), Enter descends into it instead of executing:
-            // the candidate is already in the input (Tab applied it), so
-            // we just dismiss the popup and restart completion for the
-            // directory's children.
-            if ed
-                .state
-                .input
-                .at::<CommandLayer>(r)
-                .and_then(|l| l.completion.as_ref())
-                .and_then(|s| s.candidates.get(s.selected))
-                .is_some_and(|c| c.replacement.ends_with('/'))
-            {
-                ed.state.input.clear_minibuf_completion(r);
-                complete_minibuf(ed, r, false);
-                return;
-            }
             // Record into history and extract the input before
             // truncating — the `Command` layer (and the minibuf it
             // owns) is gone by the time `execute_command` runs, so the
@@ -166,29 +138,26 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
             execute_command(ed, &input);
         }
-        // Any edit, cursor move, or Backspace that clears to empty dismisses the
-        // completion popup and demotes any active history recall back to scratch.
-        // EmptiedByBackspace keeps the minibuffer open (showing just the prompt)
-        // so a second Backspace is needed to dismiss — avoids accidental closure
-        // when the user deletes a one-char typo.
+        // An edit, cursor move, or Backspace that clears to empty demotes
+        // any active history recall back to scratch. EmptiedByBackspace
+        // keeps the minibuffer open (showing just the prompt) so a second
+        // Backspace is needed to dismiss — avoids accidental closure when
+        // the user deletes a one-char typo.
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
         | MiniBufferEvent::CursorMoved => {
-            ed.state.input.clear_minibuf_completion(r);
             ed.state
                 .history
                 .get_mut(HistoryKind::Command)
                 .demote_to_scratch();
         }
         MiniBufferEvent::CompleteRequested { reverse } => {
-            complete_minibuf(ed, r, reverse);
+            complete_minibuf(ed, reverse);
         }
         MiniBufferEvent::HistoryPrev => {
-            ed.state.input.clear_minibuf_completion(r);
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
         }
         MiniBufferEvent::HistoryNext => {
-            ed.state.input.clear_minibuf_completion(r);
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Next);
         }
         MiniBufferEvent::Ignored => {}
@@ -197,44 +166,22 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 
 /// Drive one Tab / Shift-Tab cycle in the completion popup.
 ///
-/// On the first Tab: queries the appropriate completer for the current
-/// minibuffer input.  If zero candidates → no-op.  If one → apply
-/// silently.  If two or more → open the popup and apply the first
-/// candidate.
-///
-/// On subsequent Tab presses (state already Some): rotate `selected`
-/// forward (or backward when `reverse`) and apply the new candidate.
-fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
-    // If completion is already open, cycle to the next candidate.
-    if let Some(slot) = ed.state.input.minibuf_completion_mut(r)
-        && let Some(completion) = slot.as_mut()
-    {
-        let n = completion.candidates.len();
-        // current_span() reflects what's currently in the input (based on the
-        // previously-selected candidate), so it must be read before advancing
-        // completion.selected — after the update, candidates[selected] is the new one.
-        let span = completion.current_span();
-        completion.selected = if reverse {
-            completion.selected.checked_sub(1).unwrap_or(n - 1)
-        } else {
-            (completion.selected + 1) % n
-        };
-        let replacement = completion.candidates[completion.selected]
-            .replacement
-            .clone();
-        if let Some(mb) = ed.state.input.minibuf_mut() {
-            mb.input.replace_range(span.clone(), &replacement);
-            mb.cursor = span.start + replacement.len();
-        }
-        return;
-    }
-
+/// Runs only for the *first* Tab, when no completion session is open yet:
+/// once one opens (a `CompletionLayer` pushed above this one), every
+/// subsequent Tab/Shift-Tab — and the directory-descend-on-Enter check — is
+/// handled by that layer's own key handler
+/// (`completion_input_minibuf`, `input_stack/completion.rs`) before it ever
+/// reaches here again. Resolves the applicable source for the current input
+/// shape, runs it, and either applies the sole candidate silently, or opens
+/// the popup with the first candidate already applied (`Interaction::
+/// CycleApply` — see `completion/session.rs`'s doc).
+pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse: bool) {
     // Shift-Tab with no open popup is a no-op.
     if reverse {
         return;
     }
 
-    // First Tab: extract input context without holding &mut ed.state.input.
+    // Extract input context without holding &mut ed.state.input.
     let (input, cursor) = match ed.state.input.minibuf() {
         Some(mb) => (mb.input.clone(), mb.cursor),
         None => return,
@@ -245,90 +192,106 @@ fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
         return;
     }
 
-    let ctx = crate::editor::completion::CompletionCtx {
+    let Some((source_name, universe_span_start)) = resolve_minibuf_source(ed, &input, cursor)
+    else {
+        return;
+    };
+
+    let ctx = completion::CompletionCtx {
         registry: &ed.state.config.registry,
         buffers: &ed.state.buffers,
         cwd: &ed.state.cwd,
         languages: &ed.state.config.languages,
     };
 
-    // Dispatch to the right completer based on command + input shape.
-    use crate::editor::completion::{
-        CompletionResult, MinibufCompletionState, complete_buffer_name, complete_command,
-        complete_path, complete_set, complete_theme,
-    };
-    use crate::editor::registry::ArgCompleter;
-
-    let result: CompletionResult = {
-        // Split input into (cmd_raw, arg) to determine the completer.
-        match input.split_once(' ') {
-            None => {
-                // No space yet — complete the command name.
-                complete_command(&input, cursor, &ctx)
-            }
-            Some((cmd_raw, _)) if cursor <= cmd_raw.len() => {
-                // Cursor is within the command name (user moved left past the
-                // space) — complete the command name, not the argument.
-                complete_command(&input, cursor, &ctx)
-            }
-            Some((cmd_raw, _)) => {
-                // Resolve alias → command, and its declared argument completer.
-                let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-                let completer = ed
-                    .state
-                    .config
-                    .registry
-                    .get_typed(cmd)
-                    .and_then(|tc| tc.completer.as_ref());
-                match completer {
-                    Some(ArgCompleter::Path { dirs_only }) => {
-                        complete_path(&input, cursor, &ctx, *dirs_only)
-                    }
-                    Some(ArgCompleter::Buffer) => complete_buffer_name(&input, cursor, &ctx),
-                    Some(ArgCompleter::Theme) => complete_theme(&input, cursor, &ctx),
-                    Some(ArgCompleter::Set) => complete_set(&input, cursor, &ctx),
-                    // No completer declared — e.g. `:bd` ignores its argument;
-                    // skip completion to avoid a misleading
-                    // pick-then-close-current-buffer UX.
-                    None => return,
-                }
-            }
-        }
+    let Some((match_kind, source_result)) =
+        ed.state
+            .config
+            .completion_sources
+            .run(source_name, &input, cursor, &ctx)
+    else {
+        // `TypedCommand.completer` naming no registered source — a stale
+        // name after a rename. Silent to the user, same as `:bd` declaring
+        // no completer at all; loud enough to find in the log.
+        ed.report(
+            Severity::Trace,
+            format!("no completion source named {source_name:?}"),
+        );
+        return;
     };
 
-    if result.candidates.is_empty() {
+    use completion::SourceResult;
+    let (span_start, items) = match source_result {
+        SourceResult::Universe(items) => (universe_span_start, items),
+        SourceResult::Delegated { span_start, items } => (span_start, items),
+    };
+
+    if items.is_empty() {
         return;
     }
 
-    let span_start = result.span_start;
-    let mut candidates = result.candidates;
+    // A `Universe`-kind source (`String`/`Fuzzy`) returns its whole stable
+    // candidate set unfiltered — narrowing against what's actually been
+    // typed is the session's own job (`MatchKind::String`'s boundary-safe
+    // prefix gate), not this function's. Building the session and filtering
+    // it before the single-vs-multi decision below means that decision
+    // reads real match counts, not the source's raw universe size. A
+    // `Delegated` source already returned its final, filtered order — its
+    // own `MatchKind::Delegated` ignores filter text entirely, so applying
+    // it here is a no-op for that case.
+    let source = Box::<str>::from(source_name);
+    let mut session =
+        completion::CompletionSession::begin_minibuf(span_start, source, match_kind, items);
+    let prefix_text = input[span_start.min(input.len())..cursor.min(input.len())].to_owned();
+    session.update_filter(0, prefix_text);
 
-    if candidates.len() == 1 {
+    if session.is_empty() {
+        return;
+    }
+
+    if session.len() == 1 {
         // Single match: apply silently without opening a popup.
-        let replacement = candidates.remove(0).replacement;
+        let insert_text = session
+            .selected_item(0)
+            .expect("len() == 1 just above")
+            .insert_text()
+            .to_owned();
         if let Some(mb) = ed.state.input.minibuf_mut() {
-            mb.input.replace_range(span_start..cursor, &replacement);
-            mb.cursor = span_start + replacement.len();
+            mb.input.replace_range(span_start..cursor, &insert_text);
+            mb.cursor = span_start + insert_text.len();
         }
         return;
     }
 
-    // Two or more: open popup with the first candidate selected.
-    let replacement = candidates[0].replacement.clone();
-    if let Some(mb) = ed.state.input.minibuf_mut() {
-        mb.input.replace_range(span_start..cursor, &replacement);
-        mb.cursor = span_start + replacement.len();
-    }
-    let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
-        candidates.iter().map(|c| c.display.clone()).collect(),
-    ));
-    if let Some(slot) = ed.state.input.minibuf_completion_mut(r) {
-        *slot = Some(MinibufCompletionState {
-            candidates,
-            selected: 0,
-            span_start,
-            rows,
-        });
+    // Two or more: open the session and apply the first candidate.
+    let new_r = ed
+        .state
+        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+    super::completion::apply_selected_minibuf_candidate(ed, new_r);
+}
+
+/// Resolves which registered source applies to the current `(input,
+/// cursor)` shape, and — for a `String`/`Fuzzy` source, whose function no
+/// longer sees the input at all — the span its completed token starts at
+/// (a `Delegated` source computes its own span instead, from the live
+/// input it's handed directly).
+fn resolve_minibuf_source(
+    ed: &Editor,
+    input: &str,
+    cursor: usize,
+) -> Option<(&'static str, usize)> {
+    match input.split_once(' ') {
+        // No space yet, or the cursor sits within the command name (moved
+        // left past the space) — complete the command name itself.
+        None => Some((completion::COMMAND_SOURCE, 0)),
+        Some((cmd_raw, _)) if cursor <= cmd_raw.len() => Some((completion::COMMAND_SOURCE, 0)),
+        Some((cmd_raw, _)) => {
+            // Resolve alias → command, and its declared argument completer.
+            let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
+            let name = ed.state.config.registry.get_typed(cmd)?.completer?;
+            let (arg_start, _) = completion::arg_prefix(input, cursor);
+            Some((name, arg_start))
+        }
     }
 }
 

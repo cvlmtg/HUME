@@ -4,38 +4,34 @@ use hume_treesitter::registry::LanguageRegistry;
 
 // ── complete_set: scope phase ─────────────────────────────────────────────
 
-fn set_result(input: &str) -> CompletionResult {
+fn set_result(input: &str) -> (usize, Vec<CompletionItem>) {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
     complete_set(input, input.len(), &ctx)
 }
 
-fn names_of(result: &CompletionResult) -> Vec<&str> {
-    result
-        .candidates
-        .iter()
-        .map(|c| c.replacement.as_str())
-        .collect()
+fn names_of(result: &(usize, Vec<CompletionItem>)) -> Vec<&str> {
+    result.1.iter().map(|c| c.insert_text.as_str()).collect()
 }
 
 #[test]
 fn set_completer_scope_empty_prefix_lists_all_scopes() {
     let result = set_result("set ");
-    assert_eq!(result.span_start, 4);
+    assert_eq!(result.0, 4);
     assert_eq!(names_of(&result), vec!["buffer", "global", "pane"]);
 }
 
 #[test]
 fn set_completer_scope_prefix_filters() {
     let result = set_result("set g");
-    assert_eq!(result.span_start, 4);
+    assert_eq!(result.0, 4);
     assert_eq!(names_of(&result), vec!["global"]);
 }
 
 #[test]
 fn set_completer_scope_exact_match_excluded() {
     let result = set_result("set global");
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 // ── complete_set: key phase ───────────────────────────────────────────────
@@ -43,7 +39,7 @@ fn set_completer_scope_exact_match_excluded() {
 #[test]
 fn set_completer_keys_for_global_scope() {
     let result = set_result("set global ");
-    assert_eq!(result.span_start, 11);
+    assert_eq!(result.0, 11);
     let names = names_of(&result);
     assert!(!names.is_empty());
     assert!(
@@ -65,7 +61,7 @@ fn set_completer_keys_for_global_scope() {
 #[test]
 fn set_completer_keys_for_buffer_scope_includes_language() {
     let result = set_result("set buffer ");
-    assert_eq!(result.span_start, 11);
+    assert_eq!(result.0, 11);
     let names = names_of(&result);
     assert!(names.contains(&"language"), "language is buffer-only");
     assert!(names.contains(&"tab-width"), "buffer-overridable key");
@@ -82,14 +78,14 @@ fn set_completer_keys_for_buffer_scope_includes_language() {
 #[test]
 fn set_completer_keys_for_pane_scope_only_wrap_mode() {
     let result = set_result("set pane ");
-    assert_eq!(result.span_start, 9);
+    assert_eq!(result.0, 9);
     assert_eq!(names_of(&result), vec!["wrap-mode"]);
 }
 
 #[test]
 fn set_completer_key_prefix_filters() {
     let result = set_result("set global tab");
-    assert_eq!(result.span_start, 11);
+    assert_eq!(result.0, 11);
     let names = names_of(&result);
     assert!(names.contains(&"tab-width"));
     assert!(names.contains(&"tab-style"));
@@ -107,7 +103,7 @@ fn set_completer_key_exact_match_excluded() {
 #[test]
 fn set_completer_value_bool_offers_true_false() {
     let result = set_result("set global mouse-enabled=");
-    assert_eq!(result.span_start, "set global mouse-enabled=".len());
+    assert_eq!(result.0, "set global mouse-enabled=".len());
     assert_eq!(names_of(&result), vec!["false", "true"]);
 }
 
@@ -148,20 +144,20 @@ fn set_completer_value_whitespace_newline() {
 #[test]
 fn set_completer_value_prefix_filters() {
     let result = set_result("set buffer tab-style=s");
-    assert_eq!(result.span_start, "set buffer tab-style=".len());
+    assert_eq!(result.0, "set buffer tab-style=".len());
     assert_eq!(names_of(&result), vec!["soft"]);
 }
 
 #[test]
 fn set_completer_value_exact_match_excluded() {
     let result = set_result("set buffer tab-style=hard");
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 #[test]
 fn set_completer_value_numeric_no_candidates() {
     let result = set_result("set global scrolloff=");
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 #[test]
@@ -170,13 +166,13 @@ fn set_completer_value_static_enum_rejects_ineligible_scope() {
     // must not offer values for a scope the key doesn't accept, matching
     // the error `typed_set` would give on Enter.
     let result = set_result("set pane tab-style=");
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 #[test]
 fn set_completer_value_static_bool_rejects_unknown_scope() {
     let result = set_result("set bogus mouse-enabled=");
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 #[test]
@@ -187,7 +183,7 @@ fn set_completer_value_span_start_stops_at_equals_not_internal_space() {
     // replace only the tail after the space and duplicate the rest
     // (e.g. "set global theme=my my theme").
     let result = set_result("set global theme=my theme");
-    assert_eq!(result.span_start, "set global theme=".len());
+    assert_eq!(result.0, "set global theme=".len());
 }
 
 // ── complete_set: stray whitespace robustness ─────────────────────────────
@@ -241,7 +237,7 @@ fn set_completer_value_language_from_registry() {
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ruby"));
-    assert_eq!(result.span_start, "set buffer language=".len());
+    assert_eq!(result.0, "set buffer language=".len());
 }
 
 #[test]
@@ -255,7 +251,7 @@ fn set_completer_value_language_only_buffer_scope() {
         .unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
     let result = complete_set("set global language=", 21, &ctx);
-    assert!(result.candidates.is_empty());
+    assert!(result.1.is_empty());
 }
 
 #[test]

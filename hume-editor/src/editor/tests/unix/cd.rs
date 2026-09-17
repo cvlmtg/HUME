@@ -249,54 +249,6 @@ fn typed_pwd_long_alias_works() {
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
 
-// ── complete_path dirs_only ────────────────────────────────────────────────────
-
-#[test]
-fn path_completer_dirs_only_mode() {
-    use crate::editor::completion::{CompletionCtx, complete_path};
-
-    let dir = safe_tempdir();
-    let subdir = dir.path().join("mysubdir");
-    let file = dir.path().join("myfile.txt");
-    std::fs::create_dir(&subdir).unwrap();
-    std::fs::write(&file, "x\n").unwrap();
-
-    let canonical = std::fs::canonicalize(dir.path()).unwrap();
-    let registry = crate::editor::registry::CommandRegistry::with_defaults();
-    let buffers = crate::editor::buffer::store::BufferStore::new();
-    let languages = hume_treesitter::registry::LanguageRegistry::new();
-    let ctx = CompletionCtx {
-        registry: &registry,
-        buffers: &buffers,
-        cwd: &canonical,
-        languages: &languages,
-    };
-
-    // dirs_only: true — files must be excluded.
-    let dirs = complete_path("cd m", 4, &ctx, true);
-    let dir_names: Vec<&str> = dirs.candidates.iter().map(|c| c.display.as_str()).collect();
-    assert!(
-        dir_names.contains(&"mysubdir/"),
-        "dirs_only must include subdirectory"
-    );
-    assert!(
-        !dir_names.contains(&"myfile.txt"),
-        "dirs_only must exclude files"
-    );
-
-    // dirs_only: false — both dirs and files must appear.
-    let all = complete_path("e m", 3, &ctx, false);
-    let all_names: Vec<&str> = all.candidates.iter().map(|c| c.display.as_str()).collect();
-    assert!(
-        all_names.contains(&"mysubdir/"),
-        "dirs_only=false must include subdirectory"
-    );
-    assert!(
-        all_names.contains(&"myfile.txt"),
-        "dirs_only=false must include files"
-    );
-}
-
 // ── CwdSandbox teardown ordering ───────────────────────────────────────────────
 
 /// Basic mechanics, checked entirely while `CwdSandbox` (and thus its

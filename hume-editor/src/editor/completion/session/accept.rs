@@ -76,13 +76,16 @@ impl CompletionSession {
         lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
+        let bt = self
+            .buffer_target()
+            .expect("completion-accept! is Buffer-target only");
         let &item_idx = self
             .filtered
             .get(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let item = &self.items[item_idx as usize];
-        edits::checked_buffer(state, self.bid, Some(self.generation_at_begin))?;
-        let encoding = introspect::encoding_for_buffer(state, lsp, self.bid);
+        edits::checked_buffer(state, bt.bid, Some(bt.generation_at_begin))?;
+        let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 
         // The session's pane/buffer pairing may no longer be live — a pane
         // switch (nothing dismisses the session on one), or the Steel
@@ -92,12 +95,12 @@ impl CompletionSession {
         // is right for "a background buffer with no selection state yet",
         // not for "this session's own point of reference is gone" — so this
         // errors instead of silently landing the edit at the top of the file.
-        if state.focus.id() != self.pane_id {
+        if state.focus.id() != bt.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
         }
-        let pid = self.pane_id;
+        let pid = bt.pane_id;
         let head_now = {
-            let pbs = state.panes.buffer_state(pid, self.bid).ok_or_else(|| {
+            let pbs = state.panes.buffer_state(pid, bt.bid).ok_or_else(|| {
                 "completion-accept!: buffer is no longer shown in the session's pane".to_string()
             })?;
             // The "as if typed at each cursor" model has no meaning for a
@@ -113,7 +116,7 @@ impl CompletionSession {
 
         let (span, new_text) = match &item.text_edit {
             Some(te) => {
-                let rope_at_begin = &self.rope_at_begin;
+                let rope_at_begin = &bt.rope_at_begin;
                 let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
                 let (start_b, end_b) = (range.start, range.end);
                 if end_b < start_b {
@@ -135,12 +138,11 @@ impl CompletionSession {
                 // on a boundary insertion, which is the wrong association
                 // for the end here.
                 let mut start_pos = [start_b];
-                self.cs_since_begin
+                bt.cs_since_begin
                     .map_positions(&mut start_pos, Assoc::Before);
                 let start_now = start_pos[0];
                 let mut end_pos = [end_b];
-                self.cs_since_begin
-                    .map_positions(&mut end_pos, Assoc::After);
+                bt.cs_since_begin.map_positions(&mut end_pos, Assoc::After);
                 // `self.filter` can narrow independent of any edit this
                 // session observed — `completion-update-filter!` sets it
                 // directly, without touching the buffer (used by
@@ -202,14 +204,14 @@ impl CompletionSession {
         // up sent below) is computed against this exact pre-accept document,
         // and its wire positions must be decoded against it, not whatever
         // the buffer holds once the response actually arrives.
-        let rope_pre = state.buffers.get(self.bid).text().rope().clone();
+        let rope_pre = state.buffers.get(bt.bid).text().rope().clone();
 
         // Decoded and mapped here (pure — no mutation yet) so an overlap
         // with the main edit's own range (checked just below) can be caught
         // before either lands.
         let additional_char_edits = edits::build_edits_from_earlier_document(
-            &self.rope_at_begin,
-            &self.cs_since_begin,
+            &bt.rope_at_begin,
+            &bt.cs_since_begin,
             encoding,
             &item.additional_text_edits,
         )?;
@@ -240,13 +242,13 @@ impl CompletionSession {
         // the ongoing session); a Steel-triggered accept outside Insert mode
         // does not, so open one here — both edits below then land as one
         // undo step regardless of caller.
-        let opened_group = state.panes.state[pid][self.bid].edit_group.is_none();
+        let opened_group = state.panes.state[pid][bt.bid].edit_group.is_none();
         if opened_group {
             crate::editor::doc_ops::begin_edit_group(
                 &state.buffers,
                 &mut state.panes.state,
                 pid,
-                self.bid,
+                bt.bid,
             );
         }
 
@@ -263,7 +265,7 @@ impl CompletionSession {
         // composed in) before propagating the error.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional = match edits::commit_char_edits(state, self.bid, additional_char_edits) {
+        let cs_additional = match edits::commit_char_edits(state, bt.bid, additional_char_edits) {
             Ok(cs) => cs,
             Err(e) => {
                 if opened_group {
@@ -271,7 +273,7 @@ impl CompletionSession {
                         &mut state.buffers,
                         &mut state.panes.state,
                         pid,
-                        self.bid,
+                        bt.bid,
                     );
                 }
                 return Err(e);
@@ -335,7 +337,7 @@ impl CompletionSession {
                     &mut state.panes.state,
                     &mut state.panes.jumps,
                     pid,
-                    self.bid,
+                    bt.bid,
                     move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
                 )
             }
@@ -346,7 +348,7 @@ impl CompletionSession {
                 forward,
             } => {
                 let word_chars = crate::editor::commands::word_chars_owned(
-                    state.buffers.get(self.bid),
+                    state.buffers.get(bt.bid),
                     &state.settings,
                 );
                 crate::editor::doc_ops::apply_doc_edit_grouped(
@@ -355,7 +357,7 @@ impl CompletionSession {
                     &mut state.panes.state,
                     &mut state.panes.jumps,
                     pid,
-                    self.bid,
+                    bt.bid,
                     move |b, s| {
                         let chars = hume_editing::word::WordChars::new(&word_chars);
                         replace_span_around_cursors(
@@ -381,7 +383,7 @@ impl CompletionSession {
                 &mut state.buffers,
                 &mut state.panes.state,
                 pid,
-                self.bid,
+                bt.bid,
             );
         }
 
@@ -397,7 +399,7 @@ impl CompletionSession {
         // edit lands — an extension point for anything this store doesn't
         // parse (e.g. `command`); Rust now owns additionalTextEdits/resolve.
         state.queue_event(EditorEvent::OnCompletionAccept {
-            buffer: self.bid,
+            buffer: bt.bid,
             item: item.raw.clone(),
         });
 
@@ -420,7 +422,10 @@ impl CompletionSession {
         accept_cs: hume_editing::changeset::ChangeSet,
         encoding: hume_rope::position_encoding::PositionEncoding,
     ) {
-        let Some(server_id) = state.buffers.try_get(self.bid).and_then(|b| b.lsp_server) else {
+        let bt = self
+            .buffer_target()
+            .expect("maybe_send_resolve is Buffer-target only");
+        let Some(server_id) = state.buffers.try_get(bt.bid).and_then(|b| b.lsp_server) else {
             return;
         };
         if !introspect::completion_resolve_provider(lsp, server_id) {
@@ -431,7 +436,7 @@ impl CompletionSession {
         // minted here must not reach the wire ahead of the didChange
         // describing the edit `accept` just applied.
         crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);
-        let bid = self.bid;
+        let bid = bt.bid;
         let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         let meta = hume_lsp::client::RequestMeta {

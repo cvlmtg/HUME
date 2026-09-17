@@ -9,7 +9,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use crate::editor::completion::{CompletionItem, CompletionSession};
+use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
@@ -41,7 +41,17 @@ fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
         .iter()
         .map(|v| CompletionItem::from_json(v).expect("test item"))
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
+    let session = CompletionSession::begin_buffer(
+        &ed.state,
+        bid,
+        "test".into(),
+        0,
+        MatchKind::Fuzzy,
+        Interaction::SelectAccept,
+        items,
+        false,
+    )
+    .unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }

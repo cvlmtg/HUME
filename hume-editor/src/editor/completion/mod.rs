@@ -1,23 +1,18 @@
-//! Completion — both of the editor's completion systems.
+//! Completion — both of the editor's completion systems, on one shared
+//! item/session model.
 //!
 //! - Insert-mode: `CompletionSession` (`session.rs`) holds every
 //!   contributing source's items and does the per-keystroke filter/rank;
 //!   `CompletionItem` (`item.rs`) is its item type; `session/accept.rs`
 //!   applies the accepted item as a buffer edit.
-//! - Minibuffer (`:` command line): the completer functions below,
-//!   prefix-matched; accept splices the minibuffer input.
+//! - Minibuffer (`:` command line): the same `CompletionSession`/
+//!   `CompletionItem`, targeted at the minibuffer's own input instead of a
+//!   buffer (`CompletionTarget::Minibuf`) — see `session.rs`'s module doc.
 //!
-//! One module because today they share only `hume_ui::popup`'s menu
-//! renderer, and the shared half has to have somewhere to land.
-//!
-//! Minibuffer design contract:
-//! - Each completer is a pure function: given `(input, cursor, ctx)` it
-//!   returns a sorted `Vec<Completion>` and the byte offset in `input` at which
-//!   the completed token starts (`span_start`).  No &mut access, no I/O side
-//!   effects visible to the caller.
-//! - `MinibufCompletionState` lives on `CommandLayer`
-//!   (`input_stack/command.rs`) — cleared whenever the minibuffer closes or
-//!   the user edits the input by any key other than Tab / Shift-Tab.
+//! What still differs per source is *how* candidates are gathered — see
+//! `MatchKind`'s own doc for the three kinds and why `Delegated` sources
+//! (`complete_path`/`complete_set`) keep taking the live input while
+//! `Fuzzy`/`String` sources don't.
 
 use std::path::Path;
 
@@ -27,66 +22,22 @@ use hume_treesitter::registry::LanguageRegistry;
 
 mod item;
 mod path;
+mod registry;
 mod session;
 mod set;
 mod simple;
 
 pub(in crate::editor) use item::CompletionItem;
-pub(in crate::editor) use path::complete_path;
-pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession};
-pub(in crate::editor) use set::complete_set;
-pub(in crate::editor) use simple::{complete_buffer_name, complete_command, complete_theme};
+pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
+pub(in crate::editor) use registry::{CompletionSourceRegistry, SourceResult};
+pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, Interaction, MatchKind};
+pub(in crate::editor) use set::SET_SOURCE;
+pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
-// ── Public types ──────────────────────────────────────────────────────────────
+// ── Context ──────────────────────────────────────────────────────────────────
 
-/// A single completion candidate.
-///
-/// `display` is shown in the popup (may include decorators like trailing `/`
-/// for directories). `replacement` is the text written into the minibuffer.
-/// The two fields are often identical; they differ for e.g. buffer names where
-/// the display is the basename but the replacement is the full path.
-#[derive(Debug, Clone)]
-pub(in crate::editor) struct Completion {
-    /// BufferText to insert at the span location in the minibuffer input.
-    pub replacement: String,
-    /// BufferText shown in the completion popup row.
-    pub display: String,
-}
-
-/// Completion session state, stored on `Editor` while a popup is open.
-///
-/// Invariant: `selected < candidates.len()`. Created only when there are ≥2
-/// candidates (single-candidate completion is applied silently without state).
-pub(in crate::editor) struct MinibufCompletionState {
-    pub candidates: Vec<Completion>,
-    /// Index of the currently-displayed candidate.
-    pub selected: usize,
-    /// Byte offset in the minibuffer input where the completed token starts.
-    /// Constant across the session (the span start never shifts while cycling).
-    pub span_start: usize,
-    /// `candidates`' display strings, pre-measured once here at construction
-    /// — candidates never change during a session's lifetime (only
-    /// `selected` does), so `Editor::sync_minibuf_completion_view` clones
-    /// this (an `Arc` bump) each frame instead of re-collecting and
-    /// re-measuring every candidate every frame the popup stays open.
-    pub rows: hume_ui::popup::MenuRows,
-}
-
-impl MinibufCompletionState {
-    /// The byte range that the current replacement occupies in the input.
-    pub(in crate::editor) fn current_span(&self) -> std::ops::Range<usize> {
-        debug_assert!(
-            self.selected < self.candidates.len(),
-            "MinibufCompletionState invariant violated: selected {} >= len {}",
-            self.selected,
-            self.candidates.len(),
-        );
-        let end = self.span_start + self.candidates[self.selected].replacement.len();
-        self.span_start..end
-    }
-}
-
-/// Context supplied to every minibuffer completer function.
+/// Context supplied to every completer function — Insert-mode's native
+/// sources (none exist yet) and the minibuffer's five.
 ///
 /// Bundles read-only references to the editor state that completers need
 /// (command registry, buffer list, working directory) without exposing a full
@@ -99,27 +50,6 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub languages: &'a LanguageRegistry,
 }
 
-/// Result of a single completer function call.
-///
-/// `span_start` is the byte offset in `input` where the completed token
-/// begins.  All candidates are replacements for `input[span_start..cursor]`.
-pub(in crate::editor) struct CompletionResult {
-    pub span_start: usize,
-    pub candidates: Vec<Completion>,
-}
-
-impl CompletionResult {
-    /// Sort `candidates` by display text and wrap for `span_start` — every
-    /// completer does this immediately before returning.
-    fn sorted(span_start: usize, mut candidates: Vec<Completion>) -> Self {
-        candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-        Self {
-            span_start,
-            candidates,
-        }
-    }
-}
-
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 /// Extract the argument prefix for commands that take a single argument.
@@ -129,7 +59,11 @@ impl CompletionResult {
 /// `prefix` is the unfinished argument text up to the cursor.
 ///
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
-fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
+/// `Delegated` sources use this for their own filtering; `complete_minibuf`
+/// (`input_stack/command.rs`) uses it too, for a `String`/`Fuzzy` argument
+/// source's span — that source's own function doesn't see the input at all,
+/// so nothing else computes this for it.
+pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
     let up_to_cursor = &input[..cursor.min(input.len())];
     match up_to_cursor.find(' ') {
         Some(space_idx) => (space_idx + 1, &up_to_cursor[space_idx + 1..]),
@@ -138,16 +72,17 @@ fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
 }
 
 /// Scan `themes/*.toml` in every search path and return the stems that start
-/// with `prefix` (excluding an exact match, so Tab on a fully-typed theme name
-/// is a no-op rather than re-offering it). User themes (earlier in the search
-/// path list) shadow bundled themes with the same stem.
+/// with `prefix` (excluding an exact match, so a fully-typed theme name
+/// isn't re-offered). User themes (earlier in the search path list) shadow
+/// bundled themes with the same stem.
 ///
-/// Shared by `:theme` (via [`complete_theme`](simple::complete_theme)) and
-/// `:set global theme=` (via [`complete_set`](set::complete_set)) so the
-/// candidate set stays in sync.
-fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
+/// Shared by `:theme` ([`complete_theme`], called with an empty prefix — a
+/// `String`-kind source's full universe) and `:set global theme=`'s value
+/// phase ([`set::complete_set`], `Delegated`, called with the real typed
+/// prefix) so the candidate set stays in sync between the two.
+fn theme_name_candidates(prefix: &str) -> Vec<CompletionItem> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
-    let mut candidates: Vec<Completion> = Vec::new();
+    let mut candidates = Vec::new();
 
     for dir in &super::theme_search_paths() {
         let entries = match std::fs::read_dir(dir) {
@@ -167,10 +102,11 @@ fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
                 continue;
             }
             if stem.starts_with(prefix) && stem != prefix {
-                candidates.push(Completion {
-                    replacement: stem.to_owned(),
-                    display: stem.to_owned(),
-                });
+                candidates.push(CompletionItem::plain(
+                    stem.to_owned(),
+                    stem.to_owned(),
+                    stem.to_owned(),
+                ));
             }
         }
     }

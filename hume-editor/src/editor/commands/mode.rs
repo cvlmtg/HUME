@@ -204,7 +204,6 @@ pub(in crate::editor) fn cmd_command_mode(
         view,
         CommandLayer {
             minibuf: MiniBuffer::new(":"),
-            completion: None,
         },
     );
     Ok(())

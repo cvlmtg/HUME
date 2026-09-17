@@ -14,17 +14,13 @@ fn path_completer_lists_directory() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let ctx = ctx(&reg, &store, dir.path());
     let input = "e ";
-    let result = complete_path(input, input.len(), &ctx, false);
+    let (span_start, candidates) = complete_path(input, input.len(), &ctx);
 
-    let names: Vec<&str> = result
-        .candidates
-        .iter()
-        .map(|c| c.display.as_str())
-        .collect();
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
     assert!(names.contains(&"alpha.txt"), "alpha.txt should appear");
     assert!(names.contains(&"beta.txt"), "beta.txt should appear");
     assert!(names.contains(&"gamma/"), "directory gets trailing /");
-    assert_eq!(result.span_start, 2);
+    assert_eq!(span_start, 2);
 }
 
 #[test]
@@ -36,10 +32,10 @@ fn path_completer_filters_by_prefix() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let ctx = ctx(&reg, &store, dir.path());
     let input = "e foo";
-    let result = complete_path(input, input.len(), &ctx, false);
+    let (_, candidates) = complete_path(input, input.len(), &ctx);
 
-    assert_eq!(result.candidates.len(), 1);
-    assert_eq!(result.candidates[0].replacement, "foo.txt");
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].insert_text, "foo.txt");
 }
 
 #[test]
@@ -52,14 +48,14 @@ fn path_completer_excludes_hidden_unless_dot_prefix() {
     let ctx = ctx(&reg, &store, dir.path());
 
     // Without dot prefix: hidden excluded.
-    let result = complete_path("e ", 2, &ctx, false);
-    assert!(!result.candidates.iter().any(|c| c.display.starts_with('.')));
-    assert!(result.candidates.iter().any(|c| c.display == "visible"));
+    let (_, candidates) = complete_path("e ", 2, &ctx);
+    assert!(!candidates.iter().any(|c| c.label.starts_with('.')));
+    assert!(candidates.iter().any(|c| c.label == "visible"));
 
     // With dot prefix: hidden included.
     let input = "e .";
-    let result = complete_path(input, input.len(), &ctx, false);
-    assert!(result.candidates.iter().any(|c| c.display == ".hidden"));
+    let (_, candidates) = complete_path(input, input.len(), &ctx);
+    assert!(candidates.iter().any(|c| c.label == ".hidden"));
 }
 
 #[test]
@@ -74,9 +70,9 @@ fn path_completer_multi_segment() {
 
     // Completing "sub/f" — should find "sub/file.rs".
     let input = "e sub/f";
-    let result = complete_path(input, input.len(), &ctx, false);
-    assert_eq!(result.candidates.len(), 1);
-    assert_eq!(result.candidates[0].replacement, "sub/file.rs");
+    let (_, candidates) = complete_path(input, input.len(), &ctx);
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].insert_text, "sub/file.rs");
 }
 
 #[test]
@@ -90,8 +86,8 @@ fn path_completer_missing_dir_returns_empty() {
         cwd,
         languages: &langs,
     };
-    let result = complete_path("e foo", 5, &ctx, false);
-    assert!(result.candidates.is_empty());
+    let (_, candidates) = complete_path("e foo", 5, &ctx);
+    assert!(candidates.is_empty());
 }
 
 #[test]
@@ -102,12 +98,8 @@ fn path_completer_sorted_ascending() {
     }
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let ctx = ctx(&reg, &store, dir.path());
-    let result = complete_path("e ", 2, &ctx, false);
-    let names: Vec<&str> = result
-        .candidates
-        .iter()
-        .map(|c| c.display.as_str())
-        .collect();
+    let (_, candidates) = complete_path("e ", 2, &ctx);
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
     let mut sorted = names.clone();
     sorted.sort_unstable();
     assert_eq!(names, sorted, "results must be sorted alphabetically");

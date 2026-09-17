@@ -1,39 +1,55 @@
 use std::path::{Path, PathBuf};
 
-use super::{Completion, CompletionCtx, CompletionResult, arg_prefix};
+use super::{CompletionCtx, CompletionItem, arg_prefix};
 
 // ── Filesystem path ───────────────────────────────────────────────────────────
 
-/// Completes filesystem paths for `:e` / `:w` / `:cd`.
-///
-/// Splits the arg into a directory prefix and a filename prefix.  Reads the
-/// directory and filters by the filename prefix.  Directory entries get a
-/// trailing `/` in both `display` and `replacement`.  Hidden files (leading
-/// `.`) are excluded unless the filename prefix itself starts with `.`.
-///
-/// When `dirs_only` is `true` (used by `:cd`), non-directory entries are
-/// filtered out.
+/// The name this source registers under for file/directory completion
+/// (`:e`/`:w`); `PATH_DIRS_ONLY_SOURCE` is the directory-only variant
+/// (`:cd`) — two names, not one name plus a hidden config, since the
+/// registry's native-fn entries carry no parameters of their own.
+pub(in crate::editor) const PATH_SOURCE: &str = "path";
+pub(in crate::editor) const PATH_DIRS_ONLY_SOURCE: &str = "path-dirs-only";
+
+/// Completes filesystem paths for `:e`/`:w` — files and directories alike.
+/// `Delegated`: the candidate universe (a directory's own listing) depends
+/// entirely on the live input, so this takes it directly rather than
+/// enumerating a stable universe for the session to filter.
 pub(in crate::editor) fn complete_path(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
-    dirs_only: bool,
-) -> CompletionResult {
-    complete_path_with_expand(input, cursor, ctx, dirs_only, hume_platform::path::expand)
+) -> (usize, Vec<CompletionItem>) {
+    complete_path_with_expand(input, cursor, ctx, false, hume_platform::path::expand)
 }
 
-/// Testable core of [`complete_path`].
+/// `:cd`'s variant — non-directory entries are filtered out.
+pub(in crate::editor) fn complete_path_dirs_only(
+    input: &str,
+    cursor: usize,
+    ctx: &CompletionCtx<'_>,
+) -> (usize, Vec<CompletionItem>) {
+    complete_path_with_expand(input, cursor, ctx, true, hume_platform::path::expand)
+}
+
+/// Testable core of [`complete_path`]/[`complete_path_dirs_only`].
 ///
-/// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path string it
-/// returns the tilde / env-var expanded form.  Tests pass a stub closure;
-/// production calls this with the real `expand`.
+/// Splits the arg into a directory prefix and a filename prefix.  Reads the
+/// directory and filters by the filename prefix.  Directory entries get a
+/// trailing `/` in both the label and the insert text.  Hidden files
+/// (leading `.`) are excluded unless the filename prefix itself starts with
+/// `.`.
+///
+/// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path
+/// string it returns the tilde/env-var expanded form.  Tests pass a stub
+/// closure; production calls this with the real `expand`.
 fn complete_path_with_expand<F>(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
     dirs_only: bool,
     expand_fn: F,
-) -> CompletionResult
+) -> (usize, Vec<CompletionItem>)
 where
     F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
 {
@@ -43,7 +59,7 @@ where
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
 
     // Expand `~` and env vars for the directory lookup only; the literal
-    // `dir_str` is still used in `replacement` below so `~/` is preserved
+    // `dir_str` is still used in the insert text below so `~/` is preserved
     // in the minibuffer exactly as the user typed it.
     let expanded_dir = expand_fn(dir_str);
 
@@ -62,10 +78,10 @@ where
     // candidates — not a hard error.
     let rd = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
-        Err(_) => return CompletionResult::sorted(arg_start, vec![]),
+        Err(_) => return (arg_start, Vec::new()),
     };
 
-    let candidates: Vec<Completion> = rd
+    let mut candidates: Vec<CompletionItem> = rd
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -80,17 +96,18 @@ where
                 return None;
             }
             let suffix = if is_dir { "/" } else { "" };
-            let display = format!("{name}{suffix}");
-            // Build the full replacement: dir_str + name + suffix.
-            let replacement = format!("{dir_str}{name}{suffix}");
-            Some(Completion {
-                display,
-                replacement,
-            })
+            let label = format!("{name}{suffix}");
+            // Build the full insert text: dir_str + name + suffix.
+            let insert_text = format!("{dir_str}{name}{suffix}");
+            // Empty sort_text: a `Delegated` source's own order is what the
+            // session's rank key preserves (see `MatchKind::Delegated`'s
+            // doc) — sorted right here, not left to that tiebreak.
+            Some(CompletionItem::plain(label, insert_text, String::new()))
         })
         .collect();
+    candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
 
-    CompletionResult::sorted(arg_start, candidates)
+    (arg_start, candidates)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

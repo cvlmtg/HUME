@@ -1,6 +1,6 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::completion::{CompletionItem, CompletionSession};
+use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
@@ -60,7 +60,17 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
             CompletionItem::from_json(&serde_json::json!({"label": label})).expect("test item")
         })
         .collect();
-    let session = CompletionSession::begin(&ed.state, bid, "test".into(), 0, items, false).unwrap();
+    let session = CompletionSession::begin_buffer(
+        &ed.state,
+        bid,
+        "test".into(),
+        0,
+        MatchKind::Fuzzy,
+        Interaction::SelectAccept,
+        items,
+        false,
+    )
+    .unwrap();
     ed.state
         .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }

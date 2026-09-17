@@ -119,6 +119,10 @@ pub(crate) struct ConfigState {
     /// Registry of all mappable commands (motions, selections, edits), plus
     /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
     pub(in crate::editor) registry: CommandRegistry,
+    /// The minibuffer's argument-completion sources, keyed by name —
+    /// `TypedCommand.completer` names an entry here. See `completion/
+    /// registry.rs`'s module doc.
+    pub(in crate::editor) completion_sources: completion::CompletionSourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
     /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
@@ -192,6 +196,7 @@ impl ConfigState {
         Self {
             keymap: default_keymap_for(kitty_enabled),
             registry: CommandRegistry::with_defaults(),
+            completion_sources: completion::CompletionSourceRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
             decorations: hume_decorations::DecorationStores::reset(prior_clock),

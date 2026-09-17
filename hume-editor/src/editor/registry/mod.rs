@@ -42,9 +42,7 @@ use std::borrow::Cow;
 mod command;
 mod defaults;
 
-pub(in crate::editor) use command::{
-    ArgCompleter, CmdMeta, SelectionTracking, TypedBody, TypedCommand,
-};
+pub(in crate::editor) use command::{CmdMeta, SelectionTracking, TypedBody, TypedCommand};
 // Narrower than the re-exports above: these carry a native command's `fun`
 // function pointer, wrapped in `commands::NativeBody` so only
 // `commands::pipeline::run_native_body` can call it — see `MappableCommand`'s

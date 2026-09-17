@@ -1,71 +1,52 @@
-use super::{Completion, CompletionCtx, CompletionResult, arg_prefix, theme_name_candidates};
+use super::{CompletionCtx, CompletionItem};
 
 // ── Command name ──────────────────────────────────────────────────────────────
 
-/// Completes typed command names from the registry.
-///
-/// The completed token is the command name prefix `input[0..cursor]`.
-/// Only canonical names are offered — abbreviated aliases (e.g. `w` for
-/// `write`) still dispatch when typed directly, but are omitted from the
-/// popup so it doesn't get cluttered with shorthand. Editor (key-bindable)
-/// commands are never offered here — `:` can't dispatch them; see
-/// `registry/mod.rs`'s module doc.
-pub(in crate::editor) fn complete_command(
-    input: &str,
-    cursor: usize,
-    ctx: &CompletionCtx<'_>,
-) -> CompletionResult {
-    let prefix = &input[..cursor.min(input.len())];
-    let mut candidates: Vec<Completion> = ctx
-        .registry
-        .typed_names()
-        .filter(|name| {
-            // `str::get` returns None if `prefix.len()` is off a char boundary or
-            // out of range — safe for non-ASCII command/alias names from plugins.
-            name.get(..prefix.len())
-                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
-                && !name.eq_ignore_ascii_case(prefix)
-        })
-        .map(|name| Completion {
-            replacement: name.to_owned(),
-            display: name.to_owned(),
-        })
-        .collect();
-    candidates.sort_unstable_by(|a, b| a.display.cmp(&b.display));
-    candidates.dedup_by(|a, b| a.replacement == b.replacement);
-    CompletionResult {
-        span_start: 0,
-        candidates,
-    }
+/// The name this source registers under — referenced by the built-in
+/// commands that declare it as their argument completer
+/// (`registry/defaults/typed.rs`), so a typo there fails to compile at this
+/// constant rather than silently naming a source that doesn't exist.
+pub(in crate::editor) const COMMAND_SOURCE: &str = "command";
+
+/// Every registered typed command's canonical name — the completed token is
+/// the command name prefix, filtered generically by the session's own
+/// `MatchKind::String { case_sensitive: false }` (aliases are excluded —
+/// `:` can't dispatch editor commands anyway; see `registry/mod.rs`'s
+/// module doc — and only canonical names are offered, so the popup doesn't
+/// get cluttered with shorthand like `w` alongside `write`).
+pub(in crate::editor) fn complete_command(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+    let mut names: Vec<&str> = ctx.registry.typed_names().collect();
+    names.sort_unstable();
+    names.dedup();
+    names
+        .into_iter()
+        .map(|name| CompletionItem::plain(name.to_owned(), name.to_owned(), name.to_owned()))
+        .collect()
 }
 
 // ── Buffer name ───────────────────────────────────────────────────────────────
 
-/// Completes open buffer names for `:b`.
+pub(in crate::editor) const BUFFER_NAME_SOURCE: &str = "buffer-name";
+
+/// Every open buffer's display name for `:b`.
 ///
 /// Matches on the file basename (or `*scratch*` for unnamed buffers).
-/// The `replacement` is the full canonical `path`, not `display_path` — it
+/// The `insert_text` is the full canonical `path`, not `display_path` — it
 /// feeds straight back into path resolution, which doesn't `~`-expand, so an
 /// unambiguous target requires the canonical form.
 ///
 /// When two open buffers share the same basename, a shortened parent-directory
-/// suffix is appended to `display` (e.g. `foo.rs  (~/a/)`) so the user can
+/// suffix is appended to the label (e.g. `foo.rs  (~/a/)`) so the user can
 /// distinguish them in the popup without accepting the wrong one.
-pub(in crate::editor) fn complete_buffer_name(
-    input: &str,
-    cursor: usize,
-    ctx: &CompletionCtx<'_>,
-) -> CompletionResult {
-    let (arg_start, prefix) = arg_prefix(input, cursor);
-
-    // (display-basename, full-path replacement for the command).
+pub(in crate::editor) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+    // (display-basename, full-path insert text).
     let entry_for = |buf: &crate::editor::buffer::Buffer| -> (String, String) {
         let base = buf.display_name();
-        let replacement = buf
+        let insert_text = buf
             .path()
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| base.clone());
-        (base, replacement)
+        (base, insert_text)
     };
 
     // Count how many open buffers share each basename (for disambiguation).
@@ -75,15 +56,11 @@ pub(in crate::editor) fn complete_buffer_name(
         *name_count.entry(base).or_insert(0) += 1;
     }
 
-    let candidates: Vec<Completion> = ctx
-        .buffers
+    ctx.buffers
         .iter()
-        .filter_map(|(_, buf)| {
-            let (base, replacement) = entry_for(buf);
-            if !base.starts_with(prefix) {
-                return None;
-            }
-            let display = if *name_count.get(&base).expect("base was counted above") >= 2 {
+        .map(|(_, buf)| {
+            let (base, insert_text) = entry_for(buf);
+            let label = if *name_count.get(&base).expect("base was counted above") >= 2 {
                 // Two or more buffers share this basename — show parent dir,
                 // taken from the display-ready path (already `~`-collapsed).
                 let dir = buf
@@ -96,32 +73,20 @@ pub(in crate::editor) fn complete_buffer_name(
             } else {
                 base
             };
-            Some(Completion {
-                display,
-                replacement,
-            })
+            CompletionItem::plain(label.clone(), insert_text, label)
         })
-        .collect();
-
-    CompletionResult::sorted(arg_start, candidates)
+        .collect()
 }
 
 // ── Theme name ────────────────────────────────────────────────────────────────
 
-/// Completes theme names for `:theme`.
-///
-/// Scans `<config_dir>/themes/*.toml`, `<data_dir>/themes/*.toml`, and
-/// `<runtime_dir>/themes/*.toml`, strips the `.toml` extension, deduplicates
-/// (config wins over data-dir wins over bundled), and filters by the current
-/// prefix.
-pub(in crate::editor) fn complete_theme(
-    input: &str,
-    cursor: usize,
-    _ctx: &CompletionCtx<'_>,
-) -> CompletionResult {
-    let (arg_start, prefix) = arg_prefix(input, cursor);
-    let candidates = theme_name_candidates(prefix);
-    CompletionResult::sorted(arg_start, candidates)
+pub(in crate::editor) const THEME_SOURCE: &str = "theme";
+
+/// Every installed theme name for `:theme` — see [`super::theme_name_candidates`]
+/// (called here with an empty prefix — an unfiltered universe, narrowed
+/// generically by the session's own `MatchKind::String`).
+pub(in crate::editor) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+    super::theme_name_candidates("")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

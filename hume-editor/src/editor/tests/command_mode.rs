@@ -1034,7 +1034,7 @@ fn history_up_clears_completion_popup() {
     // Completion may or may not be Some depending on candidates, but pressing
     // Up must clear it regardless.
     ed.handle_key(key_up());
-    assert!(ed.state.input.minibuf_completion().is_none());
+    assert!(ed.state.input.completion().is_none());
     ed.handle_key(key_esc());
 }
 

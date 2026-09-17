@@ -117,11 +117,19 @@
 (define (prompt! label on-confirm #:prefill [prefill ""])
   (%prompt! label prefill on-confirm))
 
-(define (completion-begin! bid items #:source source #:incomplete [incomplete #f] #:priority [priority 0])
-  (%completion-begin! bid items incomplete source priority))
+;; The bound identifier is `match-kind`, not `match` — `match` is Steel's own
+;; pattern-matching macro (steel-core's `match.scm`), and the reader can't
+;; tell `[match 'fuzzy]` apart from a real `(match 'fuzzy)` invocation until
+;; after macro expansion has already tried (and failed) to expand it. The
+;; external keyword stays `#:match`; keyword name and bound identifier are
+;; independent in Steel's `#:kw [name default]` syntax.
+(define (completion-begin! bid items #:source source #:incomplete [incomplete #f] #:priority [priority 0]
+                                      #:match [match-kind 'fuzzy] #:interaction [interaction 'select])
+  (%completion-begin! bid items incomplete source priority match-kind interaction))
 
-(define (completion-add-items! token items #:source source #:priority [priority 0] #:incomplete [incomplete #f])
-  (%completion-add-items! token items source priority incomplete))
+(define (completion-add-items! token items #:source source #:priority [priority 0]
+                                            #:match [match-kind 'fuzzy] #:incomplete [incomplete #f])
+  (%completion-add-items! token items source priority match-kind incomplete))
 
 (define (run-inline-output! cmd args #:cwd [cwd #f])
   (let ([code (%run-inline-output! cmd args cwd)])

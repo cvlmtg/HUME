@@ -531,21 +531,6 @@ impl MappableCommand {
 
 // ── TypedCommand ──────────────────────────────────────────────────────────────
 
-/// Which argument completer a typed command's `:` command-line argument uses,
-/// if any. Declared alongside the command name in `typed_cmd!` so renaming a
-/// command can't silently desync it from the completion dispatch in
-/// `input_stack/command.rs`, which reads this instead of re-matching on the name.
-pub(in crate::editor) enum ArgCompleter {
-    /// Path completion. `dirs_only` restricts candidates to directories
-    /// (`:change-directory`); `false` covers files too (`:edit`/`:write`).
-    Path {
-        dirs_only: bool,
-    },
-    Buffer,
-    Theme,
-    Set,
-}
-
 /// A command invocable from the `:` command line.
 ///
 /// Typed commands have a canonical name and optional short aliases. They are
@@ -569,8 +554,26 @@ pub(in crate::editor) struct TypedCommand {
     pub aliases: &'static [&'static str],
     /// How this command executes — see [`TypedBody`].
     pub body: TypedBody,
-    /// Argument completer for this command's `:` command-line argument, if any.
-    pub completer: Option<ArgCompleter>,
+    /// Names this command's `:` argument-completion source in
+    /// `completion::CompletionSourceRegistry`, if it declares one. A
+    /// `&'static str`, not a closed enum: `input_stack/command.rs`'s
+    /// `resolve_minibuf_source` looks it up by name at completion time
+    /// instead of matching on it — a precondition for a Steel-defined typed
+    /// command to eventually declare a completer of its own, though
+    /// `define-typed-command!` doesn't expose that keyword yet (no
+    /// `SteelTypedCmdDef` field feeds this); every command with a non-`None`
+    /// value today is a built-in registered in `registry/defaults/typed.rs`.
+    ///
+    /// ⚠️ Constraint Relaxation, per `CLAUDE.md`: the enum this replaced
+    /// made "this command's declared completer exists" a compile-time
+    /// fact. Now, a typo or a stale name after a rename resolves to
+    /// nothing at completion time — silent (a `Severity::Trace` line), not
+    /// a compile error. Built-in commands keep a compile-time check by a
+    /// different route: they reference the `&'static str` constants
+    /// declared beside each source's own registration
+    /// (`completion::COMMAND_SOURCE` and siblings), so a rename there still
+    /// breaks the build at the constant, just not at this field.
+    pub completer: Option<&'static str>,
 }
 
 /// How a [`TypedCommand`] executes when dispatched from `:`.

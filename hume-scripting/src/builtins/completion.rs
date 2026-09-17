@@ -4,11 +4,40 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
+use crate::host::{Interaction, MatchKind};
 use crate::json::{json_to_steel, steel_to_json};
 
 use super::SteelResult;
 use super::args::{BidArg, bool_arg, chars_arg, int_arg, list_items, string_arg, usize_arg};
 use super::errors::{generic_err, require_cap};
+
+/// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`) — a `String` source
+/// is case-sensitive by default; no Steel caller needs case-insensitive
+/// matching yet, so there's no second keyword for it (the native minibuffer
+/// registry sets this directly in Rust, bypassing this decode entirely).
+fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, steel::rerrs::SteelErr> {
+    match string_arg(val, ctx_name)?.as_str() {
+        "fuzzy" => Ok(MatchKind::Fuzzy),
+        "string" => Ok(MatchKind::String {
+            case_sensitive: true,
+        }),
+        "delegated" => Ok(MatchKind::Delegated),
+        other => {
+            steel::stop!(Generic => "{}: must be 'fuzzy, 'string, or 'delegated, got '{}'", ctx_name, other)
+        }
+    }
+}
+
+/// Decodes `#:interaction` (`'select`/`'cycle`).
+fn interaction_arg(val: SteelVal, ctx_name: &str) -> Result<Interaction, steel::rerrs::SteelErr> {
+    match string_arg(val, ctx_name)?.as_str() {
+        "select" => Ok(Interaction::SelectAccept),
+        "cycle" => Ok(Interaction::CycleApply),
+        other => {
+            steel::stop!(Generic => "{}: must be 'select or 'cycle, got '{}'", ctx_name, other)
+        }
+    }
+}
 
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable
@@ -32,10 +61,12 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-begin! bid items incomplete source priority)` — the
-/// `completion-begin!` Scheme wrapper supplies `#:incomplete`/`#:priority`'s
-/// defaults; `#:source` has none (see the wrapper's own doc). `items`: list
-/// of decoded `CompletionItem` hashmaps. Returns the new session's token.
+/// `(%completion-begin! bid items incomplete source priority match
+/// interaction)` — the `completion-begin!` Scheme wrapper supplies
+/// `#:incomplete`/`#:priority`/`#:match`/`#:interaction`'s defaults;
+/// `#:source` has none (see the wrapper's own doc). `items`: list of decoded
+/// `CompletionItem` hashmaps. Returns the new session's token.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn completion_begin(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -43,43 +74,59 @@ pub(crate) fn completion_begin(
     incomplete: SteelVal,
     source: SteelVal,
     priority: SteelVal,
+    match_kind: SteelVal,
+    interaction: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
     let incomplete = bool_arg(incomplete, "completion-begin! #:incomplete")?;
     let source = string_arg(source, "completion-begin! #:source")?;
     let priority = int_arg(priority, "completion-begin! #:priority")?;
+    let match_kind = match_kind_arg(match_kind, "completion-begin! #:match")?;
+    let interaction = interaction_arg(interaction, "completion-begin! #:interaction")?;
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-begin! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
     require_cap(ctx.host.completions(), "completion-begin!")?
-        .completion_begin(id, parsed, source, priority, incomplete)
+        .completion_begin(
+            id,
+            parsed,
+            source,
+            priority,
+            match_kind,
+            interaction,
+            incomplete,
+        )
         .map(|token| SteelVal::IntV(token as isize))
         .map_err(generic_err)
 }
 
-/// `(%completion-add-items! token items source priority incomplete)` — the
-/// `completion-add-items!` Scheme wrapper supplies `#:priority`/
-/// `#:incomplete`'s defaults; `#:source` has none, same as `%completion-
-/// begin!`. Returns whether the merge applied (`#f` on a stale token).
+/// `(%completion-add-items! token items source priority match incomplete)`
+/// — the `completion-add-items!` Scheme wrapper supplies `#:priority`/
+/// `#:match`/`#:incomplete`'s defaults; `#:source` has none, same as
+/// `%completion-begin!`. Returns whether the merge applied (`#f` on a stale
+/// token). No `#:interaction` here — it's decided once, by whoever calls
+/// `completion-begin!`.
 pub(crate) fn completion_add_items(
     ctx: &mut SteelCtx,
     token: SteelVal,
     items: SteelVal,
     source: SteelVal,
     priority: SteelVal,
+    match_kind: SteelVal,
     incomplete: SteelVal,
 ) -> SteelResult {
     let token = usize_arg(token, "completion-add-items! token")? as u64;
     let source = string_arg(source, "completion-add-items! #:source")?;
     let priority = int_arg(priority, "completion-add-items! #:priority")?;
+    let match_kind = match_kind_arg(match_kind, "completion-add-items! #:match")?;
     let incomplete = bool_arg(incomplete, "completion-add-items! #:incomplete")?;
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-add-items! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
     let applied = require_cap(ctx.host.completions(), "completion-add-items!")?
-        .completion_add_items(token, parsed, source, priority, incomplete);
+        .completion_add_items(token, parsed, source, priority, match_kind, incomplete);
     Ok(SteelVal::BoolV(applied))
 }
 

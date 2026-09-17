@@ -8,6 +8,31 @@ use crate::editor::input_stack::{self, CompletionLayer, InsertLayer};
 use super::EditorHostImpl;
 use hume_scripting::host::CompletionHost;
 
+/// `hume-scripting`'s `MatchKind`/`Interaction` are the Steel/host-trait
+/// boundary's own mirror (see their doc) — converted here into the editor's
+/// richer internal enum, one-to-one, the same crossing every other Steel-
+/// facing option (`PickerFeedMode`, `TruncateEnd`) makes at this same seam.
+fn match_kind_from_host(
+    m: hume_scripting::host::MatchKind,
+) -> crate::editor::completion::MatchKind {
+    use crate::editor::completion::MatchKind as M;
+    match m {
+        hume_scripting::host::MatchKind::Fuzzy => M::Fuzzy,
+        hume_scripting::host::MatchKind::String { case_sensitive } => M::String { case_sensitive },
+        hume_scripting::host::MatchKind::Delegated => M::Delegated,
+    }
+}
+
+fn interaction_from_host(
+    i: hume_scripting::host::Interaction,
+) -> crate::editor::completion::Interaction {
+    use crate::editor::completion::Interaction as I;
+    match i {
+        hume_scripting::host::Interaction::CycleApply => I::CycleApply,
+        hume_scripting::host::Interaction::SelectAccept => I::SelectAccept,
+    }
+}
+
 /// Parses `items` via `CompletionItem::from_json`, skipping (not failing on)
 /// a malformed one — shared by `completion_begin` and `completion_add_items`
 /// so the two never drift on this tolerance. `builtin_name` is only for the
@@ -37,8 +62,12 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         items: Vec<serde_json::Value>,
         source: String,
         priority: i64,
+        match_kind: hume_scripting::host::MatchKind,
+        interaction: hume_scripting::host::Interaction,
         incomplete: bool,
     ) -> Result<u64, String> {
+        let match_kind = match_kind_from_host(match_kind);
+        let interaction = interaction_from_host(interaction);
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
@@ -72,11 +101,13 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         {
             return Ok(0);
         }
-        let Some(session) = crate::editor::completion::CompletionSession::begin(
+        let Some(session) = crate::editor::completion::CompletionSession::begin_buffer(
             self.state,
             bid,
             source.into(),
             priority,
+            match_kind,
+            interaction,
             parsed,
             incomplete,
         ) else {
@@ -115,8 +146,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         items: Vec<serde_json::Value>,
         source: String,
         priority: i64,
+        match_kind: hume_scripting::host::MatchKind,
         incomplete: bool,
     ) -> bool {
+        let match_kind = match_kind_from_host(match_kind);
         // Token checked before parsing anything — a stale token is a
         // silent no-op end to end, including no Trace noise from parsing
         // items nothing will ever use.
@@ -136,7 +169,14 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(session) = input_stack::completion::session_for_token(self.state, token) else {
             return false;
         };
-        session.add_items(text_gen, source.into(), priority, incomplete, parsed);
+        session.add_items(
+            text_gen,
+            source.into(),
+            priority,
+            match_kind,
+            incomplete,
+            parsed,
+        );
         if let Some(r) = self.state.input.ref_of::<CompletionLayer>()
             && let Some(slot) = self.state.input.completion_ui_mut(r)
         {

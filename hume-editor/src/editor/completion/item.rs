@@ -51,6 +51,32 @@ pub(in crate::editor) struct CompletionItem {
 }
 
 impl CompletionItem {
+    /// Builds a non-LSP item — every minibuffer completer's constructor.
+    /// `filter_text` is always `label` (what the user sees is what a
+    /// `MatchKind::String` source matches against); `sort_text` is the
+    /// caller's own tiebreak key — the item's own `label` for a `String`
+    /// source (alphabetical), or empty for a `MatchKind::Delegated` source,
+    /// so the rank key's final
+    /// index-ascending tiebreak preserves the delegate's own return order
+    /// instead of re-sorting it. Every LSP-only field defaults inert:
+    /// `kind`/`detail`/`text_edit` absent, no `additionalTextEdits`, `raw`
+    /// null — nothing here is a wire concern.
+    pub(in crate::editor) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
+        Self {
+            filter_text: label.clone(),
+            label,
+            insert_text,
+            sort_text,
+            kind: None,
+            detail: None,
+            text_edit: None,
+            additional_text_edits: Vec::new(),
+            has_additional_text_edits: false,
+            raw: serde_json::Value::Null,
+            source: Box::default(),
+        }
+    }
+
     /// Parses one item, strict first: `v` itself is never consumed, so
     /// `raw: v.clone()` (below) still captures the full item, including
     /// fields this projection drops. A strict deserialize into
@@ -174,6 +200,15 @@ impl CompletionItem {
             raw: v.clone(),
             source: Box::default(),
         })
+    }
+
+    /// The accept-time replacement text — read from outside this module by
+    /// the `Minibuf`-target accept path (`input_stack/completion.rs`,
+    /// `input_stack/command.rs`), which splices it into the minibuffer's
+    /// own input directly rather than through `CompletionSession::accept`
+    /// (`Buffer`-target only).
+    pub(in crate::editor) fn insert_text(&self) -> &str {
+        &self.insert_text
     }
 
     pub(super) fn to_json(&self) -> serde_json::Value {

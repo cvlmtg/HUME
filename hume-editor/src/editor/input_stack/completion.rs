@@ -1,6 +1,10 @@
-//! The LSP completion-menu layer — an overlay pushed above `Insert`, never a
-//! mode of its own. `dispatch_at` (`mappings/mod.rs`) routes into
-//! [`completion_input`] by layer type.
+//! The completion overlay — pushed above `Insert` for an LSP session, or
+//! above `Command` for a minibuffer one. One `CompletionLayer` type serves
+//! both; `dispatch_at` (`mappings/mod.rs`) routes into whichever key
+//! handler `handler()` names, chosen by the session's own target — see
+//! `completion/session.rs`'s module doc for what genuinely differs between
+//! the two (the accept mechanism, and further-typing's `Interaction`) and
+//! what doesn't (this layer's own `Layer` impl, menu navigation).
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -15,10 +19,11 @@ use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
-/// An open LSP completion session, pushed above `Insert` — an overlay, not a
-/// mode layer (`mode()` returns `None`; `InputStack::mode_layer()` skips it,
-/// reading `Insert` from the layer beneath). `ui` is `None` until the first
-/// Tab/Down/BackTab/Up moves the selection off its implicit default of 0.
+/// An open completion session, pushed above whichever base layer opened it
+/// — an overlay, not a mode layer (`mode()` returns `None`;
+/// `InputStack::mode_layer()` skips it, reading the mode from the layer
+/// beneath). `ui` is `None` until the first Tab/Down/BackTab/Up moves the
+/// selection off its implicit default of 0.
 pub(in crate::editor) struct CompletionLayer {
     pub(in crate::editor) session: CompletionSession,
     pub(in crate::editor) ui: Option<CompletionMenuUi>,
@@ -26,7 +31,16 @@ pub(in crate::editor) struct CompletionLayer {
 
 impl Layer for CompletionLayer {
     fn handler(&self) -> LayerHandler {
-        completion_input
+        // Keyed on `Interaction`, not `CompletionTarget` — the two coincide
+        // in every session that exists today (LSP is Buffer+SelectAccept,
+        // every native minibuffer source is Minibuf+CycleApply), but
+        // they're different axes (see `completion/session.rs`'s doc):
+        // `Interaction` is what actually decides which key behavior this
+        // layer needs.
+        match self.session.interaction() {
+            crate::editor::completion::Interaction::SelectAccept => completion_input_buffer,
+            crate::editor::completion::Interaction::CycleApply => completion_input_minibuf,
+        }
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -48,19 +62,25 @@ impl Layer for CompletionLayer {
 }
 
 impl Editor {
-    /// Write the LSP completion menu into the shared `PopupState` Arc —
-    /// same widget as [`Self::sync_menu_view`] (unwrapped rows,
-    /// selected-row styling), but anchored at the completion session's
-    /// token-start char rather than the live cursor (which drifts as the
-    /// user types further into the token). Called every frame from
-    /// `prepare_frame`'s step 10, same as [`Self::sync_popup_view`]/
-    /// [`Self::sync_menu_view`] and for the same reason: it needs
-    /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
-    /// after step 9 runs.
+    /// Write the Insert-mode/LSP completion menu into the shared
+    /// `PopupState` Arc — same widget as [`Self::sync_menu_view`]
+    /// (unwrapped rows, selected-row styling), but anchored at the
+    /// completion session's token-start char rather than the live cursor
+    /// (which drifts as the user types further into the token).
+    /// `Buffer`-target only — a `Minibuf`-target session renders through
+    /// [`Editor::sync_minibuf_completion_view`] instead, into its own slot.
+    ///
+    /// Called every frame from `prepare_frame`'s step 10, same as
+    /// [`Self::sync_popup_view`]/[`Self::sync_menu_view`] and for the same
+    /// reason: it needs `EngineView::pane_rect`, which reads
+    /// `last_pane_area` — only current after step 9 runs.
     pub(in crate::editor) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
-        if self.state.input.completion().is_none()
-            && self.state.views.completion_menu.read().is_none()
-        {
+        let buffer_session_open = self
+            .state
+            .input
+            .completion()
+            .is_some_and(|s| s.minibuf_span_start().is_none());
+        if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
             return;
         }
 
@@ -78,6 +98,9 @@ impl Editor {
         let border = self.state.settings.popup_border;
         let resolved = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.completion()?;
+            if session.minibuf_span_start().is_some() {
+                return None;
+            }
             if session.bid() != self.focused_buffer_id() {
                 return None;
             }
@@ -149,7 +172,7 @@ impl super::stack::InputStack {
     }
 }
 
-/// Handles one key while a completion session is open.
+/// Handles one key while an Insert-mode/LSP completion session is open.
 /// Tab/Down/BackTab/Up/Enter/Esc are claimed only while the session has
 /// at least one visible match — a session narrowed to empty (continued
 /// typing, or an `isIncomplete` list awaiting an async re-request) shows
@@ -160,7 +183,7 @@ impl super::stack::InputStack {
 /// `apply_insert_edit`, the one chokepoint keeping the anchor in sync)
 /// dismisses the session outright; anything else falls through and is
 /// resynced against the buffer's new state once the edit lands.
-pub(in crate::editor) fn completion_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
+fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
         // A paste bypasses per-char refiltering the same way an
@@ -250,15 +273,110 @@ pub(in crate::editor) fn completion_input(ed: &mut Editor, r: LayerRef, ev: Inpu
     refilter_lsp_completion_after_edit(ed, r, key);
 }
 
+/// Handles one key while a minibuffer completion session is open —
+/// `Interaction::CycleApply`: Tab/Shift-Tab move the selection *and*
+/// immediately splice the newly-selected candidate into the minibuffer
+/// (there is no separate accept step, unlike the Buffer-target's Enter);
+/// every other key dismisses the popup first, then falls through
+/// unchanged — the minibuffer's own always-eager-apply UX.
+fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
+    let key = match ev {
+        InputEvent::Key(key) => key,
+        // Neither a paste nor a mouse click has a meaningful "cycle" or
+        // "accept" reading here — dismiss and let the minibuffer's own
+        // handler see it, same discipline as the Buffer-target's own
+        // paste/mouse arms above.
+        InputEvent::Paste(text) => {
+            ed.state.dismiss_completion(&ed.view);
+            ed.fall_through(r, InputEvent::Paste(text));
+            return;
+        }
+        InputEvent::Mouse(mouse) => {
+            ed.state.dismiss_completion(&ed.view);
+            ed.fall_through(r, InputEvent::Mouse(mouse));
+            return;
+        }
+    };
+    match key.code {
+        KeyCode::Tab => {
+            move_completion_selection(ed, r, true);
+            apply_selected_minibuf_candidate(ed, r);
+            return;
+        }
+        KeyCode::BackTab => {
+            move_completion_selection(ed, r, false);
+            apply_selected_minibuf_candidate(ed, r);
+            return;
+        }
+        KeyCode::Enter => {
+            // If the selected candidate is a directory (trailing `/`),
+            // Enter descends into it instead of confirming the command
+            // line: the candidate is already in the input (Tab applied
+            // it), so dismiss this session and restart completion for the
+            // directory's children, rather than falling through to
+            // `Command`'s own Confirm handling.
+            let selected = ed
+                .state
+                .input
+                .at::<CompletionLayer>(r)
+                .and_then(|l| l.ui.as_ref())
+                .map_or(0, |ui| ui.selected);
+            let is_dir = ed
+                .state
+                .input
+                .at::<CompletionLayer>(r)
+                .and_then(|l| l.session.selected_item(selected))
+                .is_some_and(|item| item.insert_text().ends_with('/'));
+            if is_dir {
+                ed.state.dismiss_completion(&ed.view);
+                super::command::complete_minibuf(ed, false);
+                return;
+            }
+        }
+        _ => {}
+    }
+    ed.state.dismiss_completion(&ed.view);
+    ed.fall_through(r, InputEvent::Key(key));
+}
+
+/// Splices the currently-selected candidate's `insert_text` into the
+/// minibuffer over `span_start..cursor` — reading `cursor` fresh each call
+/// is equivalent to (and simpler than) tracking "the previous candidate's
+/// own span" separately, since nothing else can move the cursor between
+/// Tab presses without having already dismissed the session first (any
+/// other key does, via `completion_input_minibuf`'s fallthrough arm).
+pub(in crate::editor) fn apply_selected_minibuf_candidate(ed: &mut Editor, r: LayerRef) {
+    let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
+        return;
+    };
+    let Some(span_start) = layer.session.minibuf_span_start() else {
+        return;
+    };
+    let selected = layer.ui.as_ref().map_or(0, |ui| ui.selected);
+    let Some(item) = layer.session.selected_item(selected) else {
+        return;
+    };
+    let insert_text = item.insert_text().to_owned();
+    let Some(mb) = ed.state.input.minibuf_mut() else {
+        return;
+    };
+    let cursor = mb.cursor;
+    mb.input.replace_range(span_start..cursor, &insert_text);
+    mb.cursor = span_start + insert_text.len();
+}
+
 /// Moves the completion menu's selection by one row. The popup scrolls
 /// to keep the selection visible, so the bound is the full ranked
-/// candidate list, not just the visible window.
+/// candidate list, not just the visible window. Shared by both targets —
+/// already target-agnostic.
 fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
     let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    // `completion_input`'s empty-session guard already returned before
-    // dispatching here, so `n` is always positive.
+    // `completion_input_buffer`'s empty-session guard already returned
+    // before dispatching here for a Buffer-target session; a Minibuf-
+    // target session is only ever opened non-empty (see `complete_minibuf`,
+    // `input_stack/command.rs`) — either way `n` is always positive.
     let n = layer.session.len();
     let Some(ui_slot) = ed.state.input.completion_ui_mut(r) else {
         return;
@@ -274,7 +392,8 @@ fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
 /// Accepts the currently-selected completion item through the same
 /// gen-checked edit path as `completion-accept!` — the session ends
 /// either way (success or failure), matching `EditorHostImpl`'s own
-/// `completion_accept`.
+/// `completion_accept`. `Buffer`-target only — a `Minibuf`-target session
+/// has no separate accept step (see `completion_input_minibuf`'s doc).
 fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let selected = ed
         .state
@@ -292,7 +411,7 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
 
 /// Re-ranks the open completion session against the token text between
 /// its anchor and the current cursor — called after a printable char or
-/// Backspace has already landed in the buffer.
+/// Backspace has already landed in the buffer. `Buffer`-target only.
 fn refilter_lsp_completion_after_edit(ed: &mut Editor, r: LayerRef, key: KeyEvent) {
     let is_char =
         matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(Modifiers::CONTROL);

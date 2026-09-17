@@ -23,7 +23,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     let home = home_dir.path().to_path_buf();
     let input = "e ~/";
-    let result = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
+    let (_, candidates) = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
         if let Some(tail) = s.strip_prefix('~')
             && (tail.is_empty() || tail.starts_with('/'))
         {
@@ -34,22 +34,15 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     // Candidates must be present (the temp home has files).
     assert!(
-        !result.candidates.is_empty(),
+        !candidates.is_empty(),
         "tilde should resolve to home and list entries"
     );
     // Replacements must keep the literal `~/` prefix, not expand to the absolute path.
     assert!(
-        result
-            .candidates
-            .iter()
-            .all(|c| c.replacement.starts_with("~/")),
+        candidates.iter().all(|c| c.insert_text.starts_with("~/")),
         "replacements must preserve the `~/` prefix"
     );
-    let names: Vec<&str> = result
-        .candidates
-        .iter()
-        .map(|c| c.display.as_str())
-        .collect();
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
     assert!(names.contains(&"notes.md"), "notes.md should appear");
     assert!(
         names.contains(&"code/"),
@@ -76,7 +69,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
     let expanded = dir.path().to_string_lossy().into_owned();
     let input = "e $MYDIR/";
-    let result = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
+    let (_, candidates) = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
         if let Some(rest) = s.strip_prefix("$MYDIR") {
             Cow::Owned(format!("{expanded}{rest}"))
         } else {
@@ -85,19 +78,57 @@ fn path_completer_dollar_var_expands_for_lookup() {
     });
 
     assert!(
-        !result.candidates.is_empty(),
+        !candidates.is_empty(),
         "$MYDIR should expand and list entries"
     );
     assert!(
-        result
-            .candidates
+        candidates
             .iter()
-            .all(|c| c.replacement.starts_with("$MYDIR/"))
+            .all(|c| c.insert_text.starts_with("$MYDIR/"))
     );
-    let names: Vec<&str> = result
-        .candidates
-        .iter()
-        .map(|c| c.display.as_str())
-        .collect();
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
     assert!(names.contains(&"main.rs"));
+}
+
+#[test]
+fn path_completer_dirs_only_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let subdir = dir.path().join("mysubdir");
+    let file = dir.path().join("myfile.txt");
+    std::fs::create_dir(&subdir).unwrap();
+    std::fs::write(&file, "x\n").unwrap();
+
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let langs = LanguageRegistry::new();
+    let ctx = CompletionCtx {
+        registry: &reg,
+        buffers: &store,
+        cwd: &canonical,
+        languages: &langs,
+    };
+
+    // dirs_only — files must be excluded.
+    let (_, dirs) = complete_path_dirs_only("cd m", 4, &ctx);
+    let dir_names: Vec<&str> = dirs.iter().map(|c| c.label.as_str()).collect();
+    assert!(
+        dir_names.contains(&"mysubdir/"),
+        "dirs_only must include subdirectory"
+    );
+    assert!(
+        !dir_names.contains(&"myfile.txt"),
+        "dirs_only must exclude files"
+    );
+
+    // Plain complete_path — both dirs and files must appear.
+    let (_, all) = complete_path("e m", 3, &ctx);
+    let all_names: Vec<&str> = all.iter().map(|c| c.label.as_str()).collect();
+    assert!(
+        all_names.contains(&"mysubdir/"),
+        "complete_path must include subdirectory"
+    );
+    assert!(
+        all_names.contains(&"myfile.txt"),
+        "complete_path must include files"
+    );
 }

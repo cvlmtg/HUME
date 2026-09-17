@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use crate::editor::commands::*;
-use crate::editor::registry::{ArgCompleter, CommandRegistry, TypedBody, TypedCommand};
+use crate::editor::completion;
+use crate::editor::registry::{CommandRegistry, TypedBody, TypedCommand};
 
 impl CommandRegistry {
     pub(super) fn register_typed_commands(&mut self) {
@@ -33,14 +34,14 @@ impl CommandRegistry {
             "Write changes to disk.",
             &["w"],
             typed_write,
-            completer: Some(ArgCompleter::Path { dirs_only: false })
+            completer: Some(completion::PATH_SOURCE)
         );
         typed_cmd!(
             "write-quit",
             "Write changes and quit.",
             &["wq"],
             typed_write_quit,
-            completer: Some(ArgCompleter::Path { dirs_only: false })
+            completer: Some(completion::PATH_SOURCE)
         );
         typed_cmd!(
             "write-all",
@@ -59,7 +60,7 @@ impl CommandRegistry {
             "Set a configuration value: :set global|buffer|pane key=value.",
             &[],
             typed_set,
-            completer: Some(ArgCompleter::Set)
+            completer: Some(completion::SET_SOURCE)
         );
         typed_cmd!(
             "messages",
@@ -78,7 +79,7 @@ impl CommandRegistry {
             "Open a file or reload current file.",
             &["e"],
             typed_edit,
-            completer: Some(ArgCompleter::Path { dirs_only: false })
+            completer: Some(completion::PATH_SOURCE)
         );
         typed_cmd!(
             "checktime",
@@ -121,7 +122,7 @@ impl CommandRegistry {
             "Open a new tab.",
             &["tabe"],
             typed_tabnew,
-            completer: Some(ArgCompleter::Path { dirs_only: false })
+            completer: Some(completion::PATH_SOURCE)
         );
         typed_cmd!(
             "tabclose",
@@ -146,7 +147,7 @@ impl CommandRegistry {
             "Load a theme by name: :theme <name>. No arg shows current theme.",
             &[],
             typed_theme,
-            completer: Some(ArgCompleter::Theme)
+            completer: Some(completion::THEME_SOURCE)
         );
         typed_cmd!(
             "theme-debug",
@@ -159,7 +160,7 @@ impl CommandRegistry {
             "Change the working directory.",
             &["cd"],
             typed_cd,
-            completer: Some(ArgCompleter::Path { dirs_only: true })
+            completer: Some(completion::PATH_DIRS_ONLY_SOURCE)
         );
         typed_cmd!(
             "print-working-directory",
@@ -184,7 +185,7 @@ impl CommandRegistry {
             "Switch to an open buffer.",
             &["b"],
             typed_buffer,
-            completer: Some(ArgCompleter::Buffer)
+            completer: Some(completion::BUFFER_NAME_SOURCE)
         );
         typed_cmd!(
             "version",

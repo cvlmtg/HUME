@@ -1,7 +1,7 @@
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
-use super::{Completion, CompletionCtx, CompletionResult, theme_name_candidates};
+use super::{CompletionCtx, CompletionItem, theme_name_candidates};
 use crate::editor::settings::{
     LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
@@ -10,16 +10,23 @@ use hume_editing::tab_style::TabStyle;
 
 // ── :set arguments ────────────────────────────────────────────────────────────
 
-/// Prefix-filter `items`, dropping an exact match (Tab on a fully-typed value
-/// is a no-op), and wrap each into a `Completion`. Caller sorts.
-fn prefix_completions<'a>(items: impl Iterator<Item = &'a str>, prefix: &str) -> Vec<Completion> {
-    items
+pub(in crate::editor) const SET_SOURCE: &str = "set";
+
+/// Prefix-filter `items`, dropping an exact match (a fully-typed value is a
+/// no-op), and wrap each into a `CompletionItem` with an empty `sort_text`
+/// — a `Delegated` source's own order is what the session's rank key
+/// preserves (see `MatchKind::Delegated`'s doc), so these are sorted right
+/// here rather than left to that tiebreak.
+fn prefix_completions<'a>(
+    items: impl Iterator<Item = &'a str>,
+    prefix: &str,
+) -> Vec<CompletionItem> {
+    let mut candidates: Vec<CompletionItem> = items
         .filter(|s| s.starts_with(prefix) && *s != prefix)
-        .map(|s| Completion {
-            replacement: s.to_owned(),
-            display: s.to_owned(),
-        })
-        .collect()
+        .map(|s| CompletionItem::plain(s.to_owned(), s.to_owned(), String::new()))
+        .collect();
+    candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
+    candidates
 }
 
 /// Static value candidates for enum/bool keys. Returns `None` for keys whose
@@ -47,9 +54,9 @@ fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
 }
 
 /// Phase 1: completing the scope token (`global`/`buffer`/`pane`).
-fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
+fn complete_set_scope(prefix: &str, span_start: usize) -> (usize, Vec<CompletionItem>) {
     let candidates = prefix_completions(Scope::ALL.iter().map(|s| s.as_str()), prefix);
-    CompletionResult::sorted(span_start, candidates)
+    (span_start, candidates)
 }
 
 /// Phase 2: completing the key. Surface every declared key whose scopes
@@ -57,9 +64,9 @@ fn complete_set_scope(prefix: &str, span_start: usize) -> CompletionResult {
 /// only for buffer, so it's chained in when the scope matches. An unparseable
 /// `scope` token (mid-typing garbage) yields no candidates, same as any real
 /// key that doesn't accept it.
-fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionResult {
+fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> (usize, Vec<CompletionItem>) {
     let Ok(scope) = scope.parse::<Scope>() else {
-        return CompletionResult::sorted(span_start, Vec::new());
+        return (span_start, Vec::new());
     };
     let scope_keys = all_setting_keys()
         .iter()
@@ -67,7 +74,7 @@ fn complete_set_key(scope: &str, rest: &str, span_start: usize) -> CompletionRes
         .filter(|k| setting_scopes(k).contains(&scope));
     let language = (scope == Scope::Buffer).then_some(LANGUAGE_KEY);
     let candidates = prefix_completions(scope_keys.chain(language), rest);
-    CompletionResult::sorted(span_start, candidates)
+    (span_start, candidates)
 }
 
 /// Phase 3: completing the value. Static enum/bool lists come from
@@ -83,7 +90,7 @@ fn complete_set_value(
     value_prefix: &str,
     span_start: usize,
     ctx: &CompletionCtx<'_>,
-) -> CompletionResult {
+) -> (usize, Vec<CompletionItem>) {
     // `language` has no `setting_scopes` entry by design (see settings.rs) —
     // valid only for buffer scope, checked directly instead of through the
     // generic gate below. An unparseable `scope` token falls through both
@@ -104,10 +111,14 @@ fn complete_set_value(
     } else {
         Vec::new()
     };
-    CompletionResult::sorted(span_start, candidates)
+    (span_start, candidates)
 }
 
-/// Completes `:set <scope> <key>=<value>` arguments.
+/// Completes `:set <scope> <key>=<value>` arguments. `Delegated`: the
+/// candidate universe genuinely changes shape at each phase boundary
+/// (scope/key/value), so this takes the live input directly rather than
+/// enumerating a stable universe for the session to filter — same
+/// invocation contract as `complete_path`.
 ///
 /// Three phases, selected by cursor position within the argument:
 /// - **scope** (no space yet) — offers `global`/`buffer`/`pane`.
@@ -126,11 +137,11 @@ pub(in crate::editor) fn complete_set(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
-) -> CompletionResult {
+) -> (usize, Vec<CompletionItem>) {
     let up_to = &input[..cursor.min(input.len())];
     // Argument region begins after the command word ("set ").
     let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
-        return CompletionResult::sorted(up_to.len(), Vec::new());
+        return (up_to.len(), Vec::new());
     };
     let arg = up_to[arg_start..].trim_start();
 
