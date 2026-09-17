@@ -77,6 +77,22 @@ pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<Lan
     lsp.servers.get(&server_id)?.language.clone()
 }
 
+/// Whether `server` advertises `completionProvider.resolveProvider` — the
+/// gate `CompletionSession::accept`'s resolve round trip reads
+/// (`editor/completion/session/accept.rs`). A narrow reader rather than
+/// widening `LspState.servers`/`ServerEntry.client` themselves: the
+/// completion store lives outside this module now, and one bool is all it
+/// needs.
+pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: ServerId) -> bool {
+    lsp.servers
+        .get(&server)
+        .and_then(|e| e.client.capabilities_json())
+        .and_then(|caps| caps.get("completionProvider"))
+        .and_then(|cp| cp.get("resolveProvider"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// The server's raw wire capabilities — see `LspClient::capabilities_json`'s
 /// doc comment for why this, not the typed decode, is what
 /// `(lsp-capabilities …)` must hand to Steel.
@@ -217,7 +233,10 @@ fn negotiated_encoding(
 /// The negotiated encoding of `id`'s attached server, or UTF-16 (the spec
 /// default) if `id` has no attached server — used by `set-inlay-hints!`
 /// to convert its wire positions to char offsets at set time.
-pub(in crate::editor::lsp) fn encoding_for_buffer(
+/// `pub(in crate::editor)` — the completion accept path is a second caller
+/// outside this subtree; see `wire_range_to_chars`'s doc (`lsp/mod.rs`) for
+/// why this is the narrowest visibility that reaches it.
+pub(in crate::editor) fn encoding_for_buffer(
     state: &EditorState,
     lsp: &LspState,
     id: BufferId,

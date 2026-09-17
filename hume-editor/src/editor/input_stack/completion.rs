@@ -8,9 +8,9 @@ use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 use hume_rope::offset::ExclusiveRange;
 
+use super::super::completion::{CompletionMenuUi, CompletionSession};
 use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
-use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};

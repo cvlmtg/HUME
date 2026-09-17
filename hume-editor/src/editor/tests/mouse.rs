@@ -1,10 +1,10 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
+use crate::editor::completion::{CompletionItem, CompletionSession};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use hume_editing::selection::Selection;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;

@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
 use super::CompletionSession;
-use super::item::CompletionItem;
+use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
@@ -55,7 +55,7 @@ impl CompletionSession {
     /// over each cursor's own identifier token when absent) at *every*
     /// cursor in the session's pane, as if the completion had been typed at
     /// each — a conforming server's completion range always contains the
-    /// request position (LSP spec, `item/mod.rs`'s `CompletionItem`
+    /// request position (LSP spec, `item.rs`'s `CompletionItem`
     /// doc), so the primary's own edit, re-expressed as a char count behind/ahead of
     /// its live head, is the same span typing would have consumed at any
     /// cursor. `additionalTextEdits` have no cursor of their own and are
@@ -423,15 +423,7 @@ impl CompletionSession {
         let Some(server_id) = state.buffers.try_get(self.bid).and_then(|b| b.lsp_server) else {
             return;
         };
-        let resolve_provider = lsp
-            .servers
-            .get(&server_id)
-            .and_then(|e| e.client.capabilities_json())
-            .and_then(|caps| caps.get("completionProvider"))
-            .and_then(|cp| cp.get("resolveProvider"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        if !resolve_provider {
+        if !introspect::completion_resolve_provider(lsp, server_id) {
             return;
         }
 

@@ -9,8 +9,8 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
+use crate::editor::completion::{CompletionItem, CompletionSession};
 use crate::editor::input_stack::CompletionLayer;
-use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;

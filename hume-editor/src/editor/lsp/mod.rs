@@ -5,7 +5,6 @@
 //! registration, and observability commands.
 
 mod bridge;
-pub(in crate::editor) mod completion;
 pub(in crate::editor) mod diagnostics;
 mod drain;
 pub(in crate::editor) mod edits;
@@ -38,8 +37,12 @@ use registry::{LanguageName, LspServerConfig};
 /// [`hume_lsp::position::from_lsp_range`] and
 /// [`hume_rope::position_encoding::wire_range_to_char_range`] — see
 /// `hume_lsp::position` for why the `lsp_types` crossing is a free function
-/// rather than a `From` impl.
-pub(in crate::editor::lsp) fn wire_range_to_chars(
+/// rather than a `From` impl. `pub(in crate::editor)`, not `lsp`-only: the
+/// completion accept path (`editor/completion/session/accept.rs`) is the
+/// one caller outside this subtree — `pub(in path)` requires an ancestor of
+/// the defining module, and `editor::completion` isn't one of `editor::lsp`,
+/// so this is the narrowest visibility that reaches it.
+pub(in crate::editor) fn wire_range_to_chars(
     rope: &ropey::Rope,
     range: &lsp_types::Range,
     encoding: hume_rope::position_encoding::PositionEncoding,
@@ -54,8 +57,10 @@ pub(in crate::editor::lsp) fn wire_range_to_chars(
 /// A Rust closure run with a completed request's outcome. `hume-lsp` never
 /// holds this — it only ever sees the `(ServerId, RequestId)` pair the
 /// editor keys its callback under, which `hume-lsp` already hands back from
-/// `send_request`/`take_completed`/`drain_pending`.
-pub(in crate::editor::lsp) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
+/// `send_request`/`take_completed`/`drain_pending`. `pub(in crate::editor)`
+/// for the same reason as `wire_range_to_chars` above — the completion
+/// accept path builds one for its `completionItem/resolve` round trip.
+pub(in crate::editor) type LspCallback = Box<dyn FnOnce(&mut Editor, Outcome)>;
 
 struct CallbackEntry {
     callback: LspCallback,

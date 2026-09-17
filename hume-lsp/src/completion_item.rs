@@ -3,7 +3,7 @@
 //! the lenient `TextEdit` fallback for off-spec servers. `hume-editor`'s
 //! `CompletionItem` itself — the completion store's item type, ranked/
 //! filtered by `CompletionSession` and rendered as a menu row — is not a
-//! wire type and stays in `hume-editor/src/editor/lsp/completion/item/mod.rs`;
+//! wire type and stays in `hume-editor/src/editor/completion/item.rs`;
 //! only the decode logic it needs lives here, alongside the sibling
 //! `location.rs` wire decoder.
 

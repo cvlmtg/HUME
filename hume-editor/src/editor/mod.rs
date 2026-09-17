@@ -776,7 +776,7 @@ impl EditorState {
     pub(in crate::editor) fn take_completion_session(
         &mut self,
         view: &EngineView,
-    ) -> Option<lsp::completion::CompletionSession> {
+    ) -> Option<completion::CompletionSession> {
         let r = self.input.ref_of::<input_stack::CompletionLayer>()?;
         let completion = self.take_layer::<input_stack::CompletionLayer>(view, r);
         self.views.completion_menu.set(None);

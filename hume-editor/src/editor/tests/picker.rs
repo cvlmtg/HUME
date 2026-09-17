@@ -5,10 +5,10 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
+use crate::editor::completion::{CompletionItem, CompletionSession};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
-use crate::editor::lsp::completion::{CompletionItem, CompletionSession};
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_scripting::host::PickerOpts;

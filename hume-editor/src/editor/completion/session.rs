@@ -7,7 +7,6 @@
 //! source's late answer can't land in the wrong session.
 
 mod accept;
-mod item;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -19,7 +18,7 @@ use rustc_hash::FxHashMap;
 use crate::editor::EditorState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
 
-pub(in crate::editor) use item::CompletionItem;
+use super::item::CompletionItem;
 
 /// Mints `CompletionSession::token` — mirrors `PickerSession`'s own
 /// `NEXT_TOKEN` (`input_stack/picker/session.rs`) so a late async add

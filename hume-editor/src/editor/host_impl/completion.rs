@@ -16,10 +16,10 @@ fn parse_items(
     state: &mut crate::editor::EditorState,
     items: &[serde_json::Value],
     builtin_name: &str,
-) -> Vec<crate::editor::lsp::completion::CompletionItem> {
+) -> Vec<crate::editor::completion::CompletionItem> {
     let mut parsed = Vec::with_capacity(items.len());
     for v in items {
-        match crate::editor::lsp::completion::CompletionItem::from_json(v) {
+        match crate::editor::completion::CompletionItem::from_json(v) {
             Ok(item) => parsed.push(item),
             Err(e) => state.report(
                 Severity::Trace,
@@ -72,7 +72,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         {
             return Ok(0);
         }
-        let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(
+        let Some(session) = crate::editor::completion::CompletionSession::begin(
             self.state,
             bid,
             source.into(),

@@ -1,5 +1,5 @@
 //! Fuzzy-picker data store. Sibling of `CompletionSession`
-//! (`editor/lsp/completion.rs`), not a generalization of it: item shape,
+//! (`editor/completion/session.rs`), not a generalization of it: item shape,
 //! query origin, accept semantics, lifetime, scale, and scroll model all
 //! differ between the two, so a shared abstract core would be parameterized
 //! over six axes for two call sites — not worth it unless the bodies

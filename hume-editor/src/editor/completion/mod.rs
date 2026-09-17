@@ -1,13 +1,23 @@
-//! Minibuffer tab-completion — completers, types, and dispatch helpers.
+//! Completion — both of the editor's completion systems.
 //!
-//! Design contract:
+//! - Insert-mode: `CompletionSession` (`session.rs`) holds every
+//!   contributing source's items and does the per-keystroke filter/rank;
+//!   `CompletionItem` (`item.rs`) is its item type; `session/accept.rs`
+//!   applies the accepted item as a buffer edit.
+//! - Minibuffer (`:` command line): the `Completer` implementations below,
+//!   prefix-matched; accept splices the minibuffer input.
+//!
+//! One module because today they share only `hume_ui::popup`'s menu
+//! renderer, and the shared half has to have somewhere to land.
+//!
+//! Minibuffer design contract:
 //! - `Completer::complete` is a pure function: given `(input, cursor, ctx)` it
 //!   returns a sorted `Vec<Completion>` and the byte offset in `input` at which
 //!   the completed token starts (`span_start`).  No &mut access, no I/O side
 //!   effects visible to the caller.
-//! - `MinibufCompletionState` on `Editor` is the SSOT.  It is cleared whenever the
-//!   minibuffer closes or the user edits the input by any key other than Tab /
-//!   Shift-Tab.
+//! - `MinibufCompletionState` lives on `CommandLayer`
+//!   (`input_stack/command.rs`) — cleared whenever the minibuffer closes or
+//!   the user edits the input by any key other than Tab / Shift-Tab.
 
 use std::path::Path;
 
@@ -15,11 +25,15 @@ use crate::editor::buffer::store::BufferStore;
 use crate::editor::registry::CommandRegistry;
 use hume_treesitter::registry::LanguageRegistry;
 
+mod item;
 mod path;
+mod session;
 mod set;
 mod simple;
 
+pub(in crate::editor) use item::CompletionItem;
 pub(in crate::editor) use path::PathCompleter;
+pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession};
 pub(in crate::editor) use set::SetCompleter;
 pub(in crate::editor) use simple::{BufferNameCompleter, CommandCompleter, ThemeCompleter};
 

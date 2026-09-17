@@ -3,7 +3,7 @@
 //! wrapping precedent elsewhere in the editor).
 //!
 //! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and `CompletionSession`
-//! (`editor/lsp/completion/mod.rs`), one instance per profile — see
+//! (`editor/completion/session.rs`), one instance per profile — see
 //! [`FuzzyProfile`].
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
