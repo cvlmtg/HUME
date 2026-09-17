@@ -1,7 +1,7 @@
 use super::*;
 
 /// `:set global theme=<name>` must surface installed themes — verifying the
-/// SetCompleter dispatch reaches `theme_name_candidates` (shared with
+/// `complete_set` dispatch reaches `theme_name_candidates` (shared with
 /// `:theme`) and that the value phase for `theme` is wired end-to-end.
 ///
 /// Sets only `HUME_RUNTIME` (not `TMPDIR`) so it cannot race with the

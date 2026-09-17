@@ -23,19 +23,14 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 
     let home = home_dir.path().to_path_buf();
     let input = "e ~/";
-    let result = PathCompleter { dirs_only: false }.complete_with_expand(
-        input,
-        input.len(),
-        &ctx,
-        |s: &str| {
-            if let Some(tail) = s.strip_prefix('~')
-                && (tail.is_empty() || tail.starts_with('/'))
-            {
-                return Cow::Owned(format!("{}{tail}", home.display()));
-            }
-            Cow::Borrowed(s)
-        },
-    );
+    let result = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
+        if let Some(tail) = s.strip_prefix('~')
+            && (tail.is_empty() || tail.starts_with('/'))
+        {
+            return Cow::Owned(format!("{}{tail}", home.display()));
+        }
+        Cow::Borrowed(s)
+    });
 
     // Candidates must be present (the temp home has files).
     assert!(
@@ -81,18 +76,13 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
     let expanded = dir.path().to_string_lossy().into_owned();
     let input = "e $MYDIR/";
-    let result = PathCompleter { dirs_only: false }.complete_with_expand(
-        input,
-        input.len(),
-        &ctx,
-        |s: &str| {
-            if let Some(rest) = s.strip_prefix("$MYDIR") {
-                Cow::Owned(format!("{expanded}{rest}"))
-            } else {
-                Cow::Borrowed(s)
-            }
-        },
-    );
+    let result = complete_path_with_expand(input, input.len(), &ctx, false, |s: &str| {
+        if let Some(rest) = s.strip_prefix("$MYDIR") {
+            Cow::Owned(format!("{expanded}{rest}"))
+        } else {
+            Cow::Borrowed(s)
+        }
+    });
 
     assert!(
         !result.candidates.is_empty(),

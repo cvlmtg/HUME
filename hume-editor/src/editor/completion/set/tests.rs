@@ -2,12 +2,12 @@ use super::super::testing::*;
 use super::*;
 use hume_treesitter::registry::LanguageRegistry;
 
-// ── SetCompleter: scope phase ─────────────────────────────────────────────
+// ── complete_set: scope phase ─────────────────────────────────────────────
 
 fn set_result(input: &str) -> CompletionResult {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    SetCompleter.complete(input, input.len(), &ctx)
+    complete_set(input, input.len(), &ctx)
 }
 
 fn names_of(result: &CompletionResult) -> Vec<&str> {
@@ -38,7 +38,7 @@ fn set_completer_scope_exact_match_excluded() {
     assert!(result.candidates.is_empty());
 }
 
-// ── SetCompleter: key phase ───────────────────────────────────────────────
+// ── complete_set: key phase ───────────────────────────────────────────────
 
 #[test]
 fn set_completer_keys_for_global_scope() {
@@ -102,7 +102,7 @@ fn set_completer_key_exact_match_excluded() {
     assert!(!names_of(&result).contains(&"tab-width"));
 }
 
-// ── SetCompleter: value phase (static enums / bools) ──────────────────────
+// ── complete_set: value phase (static enums / bools) ──────────────────────
 
 #[test]
 fn set_completer_value_bool_offers_true_false() {
@@ -190,7 +190,7 @@ fn set_completer_value_span_start_stops_at_equals_not_internal_space() {
     assert_eq!(result.span_start, "set global theme=".len());
 }
 
-// ── SetCompleter: stray whitespace robustness ─────────────────────────────
+// ── complete_set: stray whitespace robustness ─────────────────────────────
 //
 // A naive first-space split collapses the parsed scope to "" when extra
 // whitespace appears anywhere before the key token (e.g. a double
@@ -224,7 +224,7 @@ fn set_completer_double_space_before_value_still_offers_bools() {
     assert_eq!(names_of(&result), vec!["false", "true"]);
 }
 
-// ── SetCompleter: value phase (language from registry) ────────────────────
+// ── complete_set: value phase (language from registry) ────────────────────
 
 #[test]
 fn set_completer_value_language_from_registry() {
@@ -237,7 +237,7 @@ fn set_completer_value_language_from_registry() {
         .register_identity("ruby", &["rb"], &[], &[], None)
         .unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
-    let result = SetCompleter.complete("set buffer language=", 21, &ctx);
+    let result = complete_set("set buffer language=", 21, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ruby"));
@@ -254,7 +254,7 @@ fn set_completer_value_language_only_buffer_scope() {
         .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
-    let result = SetCompleter.complete("set global language=", 21, &ctx);
+    let result = complete_set("set global language=", 21, &ctx);
     assert!(result.candidates.is_empty());
 }
 
@@ -269,7 +269,7 @@ fn set_completer_value_language_prefix_filters() {
         .register_identity("ruby", &["rb"], &[], &[], None)
         .unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
-    let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
+    let result = complete_set("set buffer language=ru", 22, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(names.contains(&"ruby"));
@@ -286,7 +286,7 @@ fn set_completer_value_language_excludes_exact_match() {
         .register_identity("rust", &["rs"], &[], &[], None)
         .unwrap();
     let ctx = ctx_with(&reg, &store, dir.path(), &langs);
-    let result = SetCompleter.complete("set buffer language=ru", 22, &ctx);
+    let result = complete_set("set buffer language=ru", 22, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
     assert!(!names.contains(&"ru"));

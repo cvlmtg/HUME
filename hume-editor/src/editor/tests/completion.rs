@@ -240,7 +240,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
 
     let mut ed = editor_from("-[h]>ello\n");
     // "my" matches both mysubdir/ and myfile.txt if dirs_only=false, but :cd
-    // dispatches PathCompleter { dirs_only: true }, leaving only one candidate.
+    // dispatches complete_path(..., true), leaving only one candidate.
     let prefix = format!("{}/my", dir.path().display());
     let input = format!("cd {prefix}");
 
@@ -490,7 +490,7 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
     ed.view.theme = crate::testing::build_snapshot_theme();
 
     // "w" matches exactly three canonical command names: write, write-all,
-    // write-quit. `CommandCompleter` omits aliases (w/wa/wq/wrap) and the
+    // write-quit. `complete_command` omits aliases (w/wa/wq/wrap) and the
     // exact-prefix match, so this candidate set is stable against new
     // commands being registered elsewhere.
     ed.feed_key(key(':'));

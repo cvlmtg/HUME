@@ -798,7 +798,7 @@ macro_rules! define_settings {
         /// entries (`statusline`). Notably **excludes** `"language"`, which
         /// has no macro entry and is surfaced only when the completer knows
         /// the scope is `"buffer"` (its sole valid scope). Used by
-        /// [`crate::editor::completion::SetCompleter`] to enumerate key
+        /// [`crate::editor::completion::complete_set`] to enumerate key
         /// candidates, filtered further by [`setting_scopes`] against the
         /// chosen scope.
         pub(in crate::editor) fn all_setting_keys() -> &'static [&'static str] {
@@ -812,7 +812,7 @@ macro_rules! define_settings {
         /// per-key `parser: kind;` declaration used to dispatch parsing in
         /// `write_global`/`write_buffer`, so a new bool setting is picked up
         /// automatically by anything that queries this (e.g.
-        /// [`crate::editor::completion::SetCompleter`]'s value completion)
+        /// [`crate::editor::completion::complete_set`]'s value completion)
         /// instead of needing a hand-copied key list. `manual_keys` never
         /// declare a `parser:`, so this only checks global/buffer/subfield.
         pub(in crate::editor) fn is_bool_setting(key: &str) -> bool {

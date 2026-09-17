@@ -220,7 +220,7 @@ impl CommandRegistry {
     }
 
     /// Iterate over the canonical names of every registered typed command
-    /// (not aliases). Feeds `:` Tab completion (`CommandCompleter`) — the
+    /// (not aliases). Feeds `:` Tab completion (`complete_command`) — the
     /// typed-only counterpart of [`Self::native_mappable_names`].
     pub(in crate::editor) fn typed_names(&self) -> impl Iterator<Item = &str> {
         self.commands.iter().filter_map(|(k, v)| match v {

@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use super::{Completer, Completion, CompletionCtx, CompletionResult, arg_prefix};
+use super::{Completion, CompletionCtx, CompletionResult, arg_prefix};
 
-// ── PathCompleter ─────────────────────────────────────────────────────────────
+// ── Filesystem path ───────────────────────────────────────────────────────────
 
 /// Completes filesystem paths for `:e` / `:w` / `:cd`.
 ///
@@ -13,87 +13,84 @@ use super::{Completer, Completion, CompletionCtx, CompletionResult, arg_prefix};
 ///
 /// When `dirs_only` is `true` (used by `:cd`), non-directory entries are
 /// filtered out.
-pub(in crate::editor) struct PathCompleter {
-    pub(in crate::editor) dirs_only: bool,
+pub(in crate::editor) fn complete_path(
+    input: &str,
+    cursor: usize,
+    ctx: &CompletionCtx<'_>,
+    dirs_only: bool,
+) -> CompletionResult {
+    complete_path_with_expand(input, cursor, ctx, dirs_only, hume_platform::path::expand)
 }
 
-impl PathCompleter {
-    /// Testable core of [`Completer::complete`].
-    ///
-    /// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path string it
-    /// returns the tilde / env-var expanded form.  Tests pass a stub closure;
-    /// production calls this with the real `expand`.
-    fn complete_with_expand<F>(
-        &self,
-        input: &str,
-        cursor: usize,
-        ctx: &CompletionCtx<'_>,
-        expand_fn: F,
-    ) -> CompletionResult
-    where
-        F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
-    {
-        let (arg_start, prefix) = arg_prefix(input, cursor);
+/// Testable core of [`complete_path`].
+///
+/// `expand_fn` mirrors `hume_platform::path::expand`: given a raw path string it
+/// returns the tilde / env-var expanded form.  Tests pass a stub closure;
+/// production calls this with the real `expand`.
+fn complete_path_with_expand<F>(
+    input: &str,
+    cursor: usize,
+    ctx: &CompletionCtx<'_>,
+    dirs_only: bool,
+    expand_fn: F,
+) -> CompletionResult
+where
+    F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
+{
+    let (arg_start, prefix) = arg_prefix(input, cursor);
 
-        // Split prefix into (dir_str, file_prefix).
-        let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
+    // Split prefix into (dir_str, file_prefix).
+    let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
 
-        // Expand `~` and env vars for the directory lookup only; the literal
-        // `dir_str` is still used in `replacement` below so `~/` is preserved
-        // in the minibuffer exactly as the user typed it.
-        let expanded_dir = expand_fn(dir_str);
+    // Expand `~` and env vars for the directory lookup only; the literal
+    // `dir_str` is still used in `replacement` below so `~/` is preserved
+    // in the minibuffer exactly as the user typed it.
+    let expanded_dir = expand_fn(dir_str);
 
-        // Resolve the directory: absolute if it starts with '/', else relative to cwd.
-        let dir: PathBuf = if expanded_dir.is_empty() {
-            ctx.cwd.to_owned()
-        } else if Path::new(expanded_dir.as_ref()).is_absolute() {
-            PathBuf::from(expanded_dir.as_ref())
-        } else {
-            ctx.cwd.join(expanded_dir.as_ref())
-        };
+    // Resolve the directory: absolute if it starts with '/', else relative to cwd.
+    let dir: PathBuf = if expanded_dir.is_empty() {
+        ctx.cwd.to_owned()
+    } else if Path::new(expanded_dir.as_ref()).is_absolute() {
+        PathBuf::from(expanded_dir.as_ref())
+    } else {
+        ctx.cwd.join(expanded_dir.as_ref())
+    };
 
-        let include_hidden = file_prefix.starts_with('.');
+    let include_hidden = file_prefix.starts_with('.');
 
-        // On error (dir doesn't exist or no permission), return no
-        // candidates — not a hard error.
-        let rd = match std::fs::read_dir(&dir) {
-            Ok(rd) => rd,
-            Err(_) => return CompletionResult::sorted(arg_start, vec![]),
-        };
+    // On error (dir doesn't exist or no permission), return no
+    // candidates — not a hard error.
+    let rd = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(_) => return CompletionResult::sorted(arg_start, vec![]),
+    };
 
-        let candidates: Vec<Completion> = rd
-            .filter_map(|entry| entry.ok())
-            .filter_map(|entry| {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if !name.starts_with(file_prefix) {
-                    return None;
-                }
-                if !include_hidden && name.starts_with('.') {
-                    return None;
-                }
-                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
-                if self.dirs_only && !is_dir {
-                    return None;
-                }
-                let suffix = if is_dir { "/" } else { "" };
-                let display = format!("{name}{suffix}");
-                // Build the full replacement: dir_str + name + suffix.
-                let replacement = format!("{dir_str}{name}{suffix}");
-                Some(Completion {
-                    display,
-                    replacement,
-                })
+    let candidates: Vec<Completion> = rd
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with(file_prefix) {
+                return None;
+            }
+            if !include_hidden && name.starts_with('.') {
+                return None;
+            }
+            let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            if dirs_only && !is_dir {
+                return None;
+            }
+            let suffix = if is_dir { "/" } else { "" };
+            let display = format!("{name}{suffix}");
+            // Build the full replacement: dir_str + name + suffix.
+            let replacement = format!("{dir_str}{name}{suffix}");
+            Some(Completion {
+                display,
+                replacement,
             })
-            .collect();
+        })
+        .collect();
 
-        CompletionResult::sorted(arg_start, candidates)
-    }
-}
-
-impl Completer for PathCompleter {
-    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
-        self.complete_with_expand(input, cursor, ctx, hume_platform::path::expand)
-    }
+    CompletionResult::sorted(arg_start, candidates)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

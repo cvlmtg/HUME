@@ -249,11 +249,11 @@ fn typed_pwd_long_alias_works() {
     assert_eq!(msg, expected, "long alias must match :pwd output");
 }
 
-// ── PathCompleter dirs_only ───────────────────────────────────────────────────
+// ── complete_path dirs_only ────────────────────────────────────────────────────
 
 #[test]
 fn path_completer_dirs_only_mode() {
-    use crate::editor::completion::{Completer, CompletionCtx, PathCompleter};
+    use crate::editor::completion::{CompletionCtx, complete_path};
 
     let dir = safe_tempdir();
     let subdir = dir.path().join("mysubdir");
@@ -273,7 +273,7 @@ fn path_completer_dirs_only_mode() {
     };
 
     // dirs_only: true — files must be excluded.
-    let dirs = PathCompleter { dirs_only: true }.complete("cd m", 4, &ctx);
+    let dirs = complete_path("cd m", 4, &ctx, true);
     let dir_names: Vec<&str> = dirs.candidates.iter().map(|c| c.display.as_str()).collect();
     assert!(
         dir_names.contains(&"mysubdir/"),
@@ -285,7 +285,7 @@ fn path_completer_dirs_only_mode() {
     );
 
     // dirs_only: false — both dirs and files must appear.
-    let all = PathCompleter { dirs_only: false }.complete("e m", 3, &ctx);
+    let all = complete_path("e m", 3, &ctx, false);
     let all_names: Vec<&str> = all.candidates.iter().map(|c| c.display.as_str()).collect();
     assert!(
         all_names.contains(&"mysubdir/"),

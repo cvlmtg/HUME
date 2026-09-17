@@ -254,8 +254,8 @@ fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
 
     // Dispatch to the right completer based on command + input shape.
     use crate::editor::completion::{
-        BufferNameCompleter, CommandCompleter, Completer, CompletionResult, MinibufCompletionState,
-        PathCompleter, SetCompleter, ThemeCompleter,
+        CompletionResult, MinibufCompletionState, complete_buffer_name, complete_command,
+        complete_path, complete_set, complete_theme,
     };
     use crate::editor::registry::ArgCompleter;
 
@@ -264,12 +264,12 @@ fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
         match input.split_once(' ') {
             None => {
                 // No space yet — complete the command name.
-                CommandCompleter.complete(&input, cursor, &ctx)
+                complete_command(&input, cursor, &ctx)
             }
             Some((cmd_raw, _)) if cursor <= cmd_raw.len() => {
                 // Cursor is within the command name (user moved left past the
                 // space) — complete the command name, not the argument.
-                CommandCompleter.complete(&input, cursor, &ctx)
+                complete_command(&input, cursor, &ctx)
             }
             Some((cmd_raw, _)) => {
                 // Resolve alias → command, and its declared argument completer.
@@ -281,15 +281,12 @@ fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
                     .get_typed(cmd)
                     .and_then(|tc| tc.completer.as_ref());
                 match completer {
-                    Some(ArgCompleter::Path { dirs_only }) => PathCompleter {
-                        dirs_only: *dirs_only,
+                    Some(ArgCompleter::Path { dirs_only }) => {
+                        complete_path(&input, cursor, &ctx, *dirs_only)
                     }
-                    .complete(&input, cursor, &ctx),
-                    Some(ArgCompleter::Buffer) => {
-                        BufferNameCompleter.complete(&input, cursor, &ctx)
-                    }
-                    Some(ArgCompleter::Theme) => ThemeCompleter.complete(&input, cursor, &ctx),
-                    Some(ArgCompleter::Set) => SetCompleter.complete(&input, cursor, &ctx),
+                    Some(ArgCompleter::Buffer) => complete_buffer_name(&input, cursor, &ctx),
+                    Some(ArgCompleter::Theme) => complete_theme(&input, cursor, &ctx),
+                    Some(ArgCompleter::Set) => complete_set(&input, cursor, &ctx),
                     // No completer declared — e.g. `:bd` ignores its argument;
                     // skip completion to avoid a misleading
                     // pick-then-close-current-buffer UX.

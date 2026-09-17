@@ -878,7 +878,7 @@ pub(in crate::editor::scripting_setup) fn log_level_to_severity(
 /// then data-dir themes (installed by a tool — same provenance as PLUM's
 /// `data/plugins/`), then runtime themes (bundled) last — each tier shadows
 /// the next by name. Both `theme::load_theme_by_name` and
-/// [`crate::editor::completion::ThemeCompleter`] use this list as the single
+/// [`crate::editor::completion::complete_theme`] use this list as the single
 /// source of truth.
 pub(super) fn theme_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();

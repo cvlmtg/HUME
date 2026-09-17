@@ -173,8 +173,8 @@ pub(in crate::editor) fn typed_set(
     let Some((scope_str, rest)) = arg.split_once(' ') else {
         return Err(CommandError::transient(USAGE));
     };
-    // Tolerate stray extra whitespace before the key, matching the
-    // `SetCompleter`'s tolerance (a6e5adc) — otherwise Tab can complete
+    // Tolerate stray extra whitespace before the key, matching
+    // `complete_set`'s tolerance (a6e5adc) — otherwise Tab can complete
     // through a double space into a command line that errors on Enter.
     let rest = rest.trim_start();
     let Some((key, value)) = rest.split_once('=') else {

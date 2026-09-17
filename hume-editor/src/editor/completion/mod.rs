@@ -4,14 +4,14 @@
 //!   contributing source's items and does the per-keystroke filter/rank;
 //!   `CompletionItem` (`item.rs`) is its item type; `session/accept.rs`
 //!   applies the accepted item as a buffer edit.
-//! - Minibuffer (`:` command line): the `Completer` implementations below,
+//! - Minibuffer (`:` command line): the completer functions below,
 //!   prefix-matched; accept splices the minibuffer input.
 //!
 //! One module because today they share only `hume_ui::popup`'s menu
 //! renderer, and the shared half has to have somewhere to land.
 //!
 //! Minibuffer design contract:
-//! - `Completer::complete` is a pure function: given `(input, cursor, ctx)` it
+//! - Each completer is a pure function: given `(input, cursor, ctx)` it
 //!   returns a sorted `Vec<Completion>` and the byte offset in `input` at which
 //!   the completed token starts (`span_start`).  No &mut access, no I/O side
 //!   effects visible to the caller.
@@ -32,10 +32,10 @@ mod set;
 mod simple;
 
 pub(in crate::editor) use item::CompletionItem;
-pub(in crate::editor) use path::PathCompleter;
+pub(in crate::editor) use path::complete_path;
 pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession};
-pub(in crate::editor) use set::SetCompleter;
-pub(in crate::editor) use simple::{BufferNameCompleter, CommandCompleter, ThemeCompleter};
+pub(in crate::editor) use set::complete_set;
+pub(in crate::editor) use simple::{complete_buffer_name, complete_command, complete_theme};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ impl MinibufCompletionState {
     }
 }
 
-/// Context supplied to every `Completer::complete` call.
+/// Context supplied to every minibuffer completer function.
 ///
 /// Bundles read-only references to the editor state that completers need
 /// (command registry, buffer list, working directory) without exposing a full
@@ -99,7 +99,7 @@ pub(in crate::editor) struct CompletionCtx<'a> {
     pub languages: &'a LanguageRegistry,
 }
 
-/// Result of a single `Completer::complete` call.
+/// Result of a single completer function call.
 ///
 /// `span_start` is the byte offset in `input` where the completed token
 /// begins.  All candidates are replacements for `input[span_start..cursor]`.
@@ -118,16 +118,6 @@ impl CompletionResult {
             candidates,
         }
     }
-}
-
-/// A completion source for a specific context (command name, path, buffer name).
-pub(in crate::editor) trait Completer {
-    /// Return sorted candidates for the token at `cursor` in `input`.
-    ///
-    /// Returns `span_start` (the byte offset where the completed token begins)
-    /// alongside the candidates.  Returns an empty `Vec` when there are no
-    /// matches.
-    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult;
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -152,8 +142,9 @@ fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
 /// is a no-op rather than re-offering it). User themes (earlier in the search
 /// path list) shadow bundled themes with the same stem.
 ///
-/// Shared by `:theme` (via [`ThemeCompleter`]) and `:set global theme=` (via
-/// [`SetCompleter`]) so the candidate set stays in sync.
+/// Shared by `:theme` (via [`complete_theme`](simple::complete_theme)) and
+/// `:set global theme=` (via [`complete_set`](set::complete_set)) so the
+/// candidate set stays in sync.
 fn theme_name_candidates(prefix: &str) -> Vec<Completion> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     let mut candidates: Vec<Completion> = Vec::new();

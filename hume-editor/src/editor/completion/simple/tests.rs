@@ -2,13 +2,13 @@ use super::super::testing::*;
 use super::*;
 use crate::editor::registry::CommandRegistry;
 
-// ── CommandCompleter ──────────────────────────────────────────────────────
+// ── complete_command ────────────────────────────────────────────────────
 
 #[test]
 fn command_completer_empty_prefix_returns_all() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("", 0, &ctx);
+    let result = complete_command("", 0, &ctx);
     // All registered canonical names match an empty prefix.
     assert!(!result.candidates.is_empty());
     assert_eq!(result.span_start, 0);
@@ -18,7 +18,7 @@ fn command_completer_empty_prefix_returns_all() {
 fn command_completer_prefix_filters() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("q", 1, &ctx);
+    let result = complete_command("q", 1, &ctx);
     assert!(
         result
             .candidates
@@ -35,7 +35,7 @@ fn command_completer_prefix_filters() {
 fn command_completer_excludes_editor_commands() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("", 0, &ctx);
+    let result = complete_command("", 0, &ctx);
     for editor_cmd in ["select-next-word", "move-left", "clear-search"] {
         assert!(
             !result
@@ -54,7 +54,7 @@ fn command_completer_excludes_editor_commands() {
 fn command_completer_no_match_returns_empty() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("zzz", 3, &ctx);
+    let result = complete_command("zzz", 3, &ctx);
     assert!(result.candidates.is_empty());
 }
 
@@ -62,7 +62,7 @@ fn command_completer_no_match_returns_empty() {
 fn command_completer_sorted_ascending() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("w", 1, &ctx);
+    let result = complete_command("w", 1, &ctx);
     let names: Vec<&str> = result
         .candidates
         .iter()
@@ -78,7 +78,7 @@ fn command_completer_excludes_aliases() {
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
     // Typing "wr" matches "write" (canonical) and "write-quit" (canonical).
-    let result = CommandCompleter.complete("wr", 2, &ctx);
+    let result = complete_command("wr", 2, &ctx);
     let names: Vec<&str> = result
         .candidates
         .iter()
@@ -90,7 +90,7 @@ fn command_completer_excludes_aliases() {
         "canonical 'write-quit' should appear"
     );
     // Aliases ("w", "wq") must not surface, even though they match prefix "w".
-    let result2 = CommandCompleter.complete("w", 1, &ctx);
+    let result2 = complete_command("w", 1, &ctx);
     let names2: Vec<&str> = result2
         .candidates
         .iter()
@@ -115,7 +115,7 @@ fn command_completer_exact_prefix_not_included() {
     // Typing the exact name should not complete to itself.
     let (reg, store, dir) = make_ctx_parts();
     let ctx = ctx(&reg, &store, dir.path());
-    let result = CommandCompleter.complete("quit", 4, &ctx);
+    let result = complete_command("quit", 4, &ctx);
     assert!(!result.candidates.iter().any(|c| c.replacement == "quit"));
 }
 
@@ -145,7 +145,7 @@ fn command_completer_non_ascii_name_does_not_panic() {
     let ctx = ctx(&reg, &store, dir.path());
     // "n" has byte-length 1; "ï" at bytes 2-3 means name[..1] would panic.
     // Must not panic and must return the non-ASCII command as a candidate.
-    let result = CommandCompleter.complete("n", 1, &ctx);
+    let result = complete_command("n", 1, &ctx);
     assert!(
         result
             .candidates
@@ -155,7 +155,7 @@ fn command_completer_non_ascii_name_does_not_panic() {
     );
 }
 
-// ── BufferNameCompleter ───────────────────────────────────────────────────
+// ── complete_buffer_name ───────────────────────────────────────────────
 
 #[test]
 fn buffer_name_completer_matches_basename() {
@@ -164,7 +164,7 @@ fn buffer_name_completer_matches_basename() {
     let id = make_id(&mut ev);
     store.open(id, buf_with_path("/tmp/foo.txt"));
     let ctx = ctx(&reg, &store, dir.path());
-    let result = BufferNameCompleter.complete("bd f", 4, &ctx);
+    let result = complete_buffer_name("bd f", 4, &ctx);
     assert_eq!(result.span_start, 3);
     assert!(
         result
@@ -181,7 +181,7 @@ fn buffer_name_completer_scratch_buffer() {
     let id = make_id(&mut ev);
     store.open(id, make_buf()); // no path → scratch
     let ctx = ctx(&reg, &store, dir.path());
-    let result = BufferNameCompleter.complete("bd *", 4, &ctx);
+    let result = complete_buffer_name("bd *", 4, &ctx);
     assert_eq!(result.span_start, 3);
     assert!(
         result
@@ -198,7 +198,7 @@ fn buffer_name_completer_no_match() {
     let id = make_id(&mut ev);
     store.open(id, buf_with_path("/tmp/foo.txt"));
     let ctx = ctx(&reg, &store, dir.path());
-    let result = BufferNameCompleter.complete("bd z", 4, &ctx);
+    let result = complete_buffer_name("bd z", 4, &ctx);
     assert!(result.candidates.is_empty());
 }
 
@@ -214,7 +214,7 @@ fn buffer_name_completer_duplicate_basename_adds_parent_suffix() {
     store.open(id3, buf_with_path("/tmp/bar.txt"));
     let ctx = ctx(&reg, &store, dir.path());
 
-    let result = BufferNameCompleter.complete("b ", 2, &ctx);
+    let result = complete_buffer_name("b ", 2, &ctx);
     // All three buffers should appear (prefix "" matches all).
     assert_eq!(result.candidates.len(), 3);
 

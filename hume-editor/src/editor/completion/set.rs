@@ -1,31 +1,14 @@
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
-use super::{Completer, Completion, CompletionCtx, CompletionResult, theme_name_candidates};
+use super::{Completion, CompletionCtx, CompletionResult, theme_name_candidates};
 use crate::editor::settings::{
     LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
 };
 use hume_editing::tab_style::TabStyle;
 
-// ── SetCompleter ──────────────────────────────────────────────────────────────
-
-/// Completes `:set <scope> <key>=<value>` arguments.
-///
-/// Three phases, selected by cursor position within the argument:
-/// - **scope** (no space yet) — offers `global`/`buffer`/`pane`.
-/// - **key** (space present, no `=` yet) — offers every setting key whose
-///   declared scopes include the chosen scope, plus `language` for `buffer`.
-/// - **value** (`=` present) — offers the valid value set for enum/bool keys,
-///   registered language names for `language`, installed theme names for
-///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
-///   candidates — the user types them and `write_global`/`write_buffer`
-///   validates.
-///
-/// Value lists are completion *hints* mirrored from each setting's parser;
-/// `write_global`/`write_buffer` remain the validation SSOT, so the two can
-/// drift only in what's offered, never in what's accepted.
-pub(in crate::editor) struct SetCompleter;
+// ── :set arguments ────────────────────────────────────────────────────────────
 
 /// Prefix-filter `items`, dropping an exact match (Tab on a fully-typed value
 /// is a no-op), and wrap each into a `Completion`. Caller sorts.
@@ -41,7 +24,7 @@ fn prefix_completions<'a>(items: impl Iterator<Item = &'a str>, prefix: &str) ->
 
 /// Static value candidates for enum/bool keys. Returns `None` for keys whose
 /// values are dynamic (`language`, `theme`) or free-form (numbers,
-/// `statusline`) — those are handled in [`SetCompleter::complete`].
+/// `statusline`) — those are handled in [`complete_set`].
 fn static_value_candidates(key: &str) -> Option<&'static [&'static str]> {
     // Bool keys are derived from `define_settings!`'s `parser: bool` — not
     // hand-listed — so a new bool setting gets value completion for free.
@@ -124,40 +107,57 @@ fn complete_set_value(
     CompletionResult::sorted(span_start, candidates)
 }
 
-impl Completer for SetCompleter {
-    fn complete(&self, input: &str, cursor: usize, ctx: &CompletionCtx<'_>) -> CompletionResult {
-        let up_to = &input[..cursor.min(input.len())];
-        // Argument region begins after the command word ("set ").
-        let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
-            return CompletionResult::sorted(up_to.len(), Vec::new());
-        };
-        let arg = up_to[arg_start..].trim_start();
+/// Completes `:set <scope> <key>=<value>` arguments.
+///
+/// Three phases, selected by cursor position within the argument:
+/// - **scope** (no space yet) — offers `global`/`buffer`/`pane`.
+/// - **key** (space present, no `=` yet) — offers every setting key whose
+///   declared scopes include the chosen scope, plus `language` for `buffer`.
+/// - **value** (`=` present) — offers the valid value set for enum/bool keys,
+///   registered language names for `language`, installed theme names for
+///   `theme`. Numeric/free-form keys (e.g. `scrolloff`, `statusline`) get no
+///   candidates — the user types them and `write_global`/`write_buffer`
+///   validates.
+///
+/// Value lists are completion *hints* mirrored from each setting's parser;
+/// `write_global`/`write_buffer` remain the validation SSOT, so the two can
+/// drift only in what's offered, never in what's accepted.
+pub(in crate::editor) fn complete_set(
+    input: &str,
+    cursor: usize,
+    ctx: &CompletionCtx<'_>,
+) -> CompletionResult {
+    let up_to = &input[..cursor.min(input.len())];
+    // Argument region begins after the command word ("set ").
+    let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
+        return CompletionResult::sorted(up_to.len(), Vec::new());
+    };
+    let arg = up_to[arg_start..].trim_start();
 
-        match arg.split_once(' ') {
-            None => {
-                // Scope token: bounded by whitespace only — no '=' can occur
-                // yet, so the last space before the cursor is always correct,
-                // robust to stray extra whitespace.
-                let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-                complete_set_scope(arg, span_start)
-            }
-            Some((scope, rest)) => {
-                let rest = rest.trim_start();
-                match rest.split_once('=') {
-                    None => {
-                        // Key token: same reasoning as the scope case.
-                        let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-                        complete_set_key(scope, rest, span_start)
-                    }
-                    Some((key, value)) => {
-                        // Value token: bounded by '=' only, never by internal
-                        // whitespace — a value can legitimately contain spaces
-                        // (e.g. a theme filename stem like "my theme"), and
-                        // replacing from the last *space* would drop
-                        // everything before it instead of the whole value.
-                        let span_start = up_to.rfind('=').map_or(0, |i| i + 1);
-                        complete_set_value(scope, key, value, span_start, ctx)
-                    }
+    match arg.split_once(' ') {
+        None => {
+            // Scope token: bounded by whitespace only — no '=' can occur
+            // yet, so the last space before the cursor is always correct,
+            // robust to stray extra whitespace.
+            let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
+            complete_set_scope(arg, span_start)
+        }
+        Some((scope, rest)) => {
+            let rest = rest.trim_start();
+            match rest.split_once('=') {
+                None => {
+                    // Key token: same reasoning as the scope case.
+                    let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
+                    complete_set_key(scope, rest, span_start)
+                }
+                Some((key, value)) => {
+                    // Value token: bounded by '=' only, never by internal
+                    // whitespace — a value can legitimately contain spaces
+                    // (e.g. a theme filename stem like "my theme"), and
+                    // replacing from the last *space* would drop
+                    // everything before it instead of the whole value.
+                    let span_start = up_to.rfind('=').map_or(0, |i| i + 1);
+                    complete_set_value(scope, key, value, span_start, ctx)
                 }
             }
         }
