@@ -1,6 +1,6 @@
 //! Cursor-anchored popup widget (`show-popup!`) — a floating text panel used
 //! by hover, signature help, and (as a menu) the selection menu / completion
-//! menu.
+//! menu / minibuffer `:` completion.
 //!
 //! Geometry rules, shared by every caller built on this widget:
 //! - Preferred placement: below-right of the anchor cell.
@@ -13,17 +13,17 @@
 //! - Framed with a 1-cell border on all sides, theme-scoped via `ui.popup`
 //!   (or `ui.menu` for menus) — box-drawing glyphs when the `popup-border`
 //!   setting is on, a plain background margin when it's off. Rendering
-//!   (frame, scroll window, rows) is shared with `MinibufCompletionOverlay` via
-//!   [`super::menu_box`].
+//!   (frame, scroll window, rows) lives in [`super::menu_box`].
 //!
 //! [`resolve_popup`]/[`resolve_menu`]/[`resolve_band`] are the composition
 //! entry points: each resolves geometry (wrapping + flip + clamp) fresh,
 //! every frame, from a [`PopupContent`]/[`MenuRows`] plus a [`PopupPlacement`]
 //! (or, for `resolve_band`, the raw band width — a docked popup has no
 //! anchor or pane rect). `hume-editor`'s `Editor::sync_popup_view`/
-//! `sync_menu_view`/`sync_completion_menu_view`/`sync_popup_band_view` call
-//! these against the focused pane's *current* rect — never pre-computed at
-//! `show-popup!` time — so a resize or scroll never leaves the result stale.
+//! `sync_menu_view`/`sync_completion_menu_view`/`sync_minibuf_completion_view`/
+//! `sync_popup_band_view` call these against the focused pane's *current*
+//! rect — never pre-computed at `show-popup!` time — so a resize or scroll
+//! never leaves the result stale.
 //! `PopupOverlay`/`PopupBandWidget::render` only paint the already-resolved
 //! result, with a final defensive clip against whatever `pane_rect` they're
 //! actually given (belt-and-braces: the write side's rect and the render
@@ -480,19 +480,17 @@ fn resolve_popup_geometry(
 }
 
 /// Clamp `width`×`height` to fit inside `pane_rect` — the size half of a
-/// box-in-pane placement, shared by every caller that positions a box
-/// against a pane rect ([`resolve_popup_geometry`] and, for a box already
-/// anchored on its own axis, `MinibufCompletionOverlay::render`).
-pub(crate) fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
+/// box-in-pane placement, used by [`resolve_popup_geometry`] before it
+/// resolves a position.
+fn clamp_size_to_pane(width: u16, height: u16, pane_rect: Rect) -> (u16, u16) {
     (width.min(pane_rect.width), height.min(pane_rect.height))
 }
 
 /// Clamp `x` so a `width`-wide box starting there never crosses `pane_rect`'s
 /// left or right edge — the horizontal-position half of a box-in-pane
-/// placement, split out from [`resolve_popup_geometry`] so a caller that
-/// only needs this axis (`MinibufCompletionOverlay::render`, which resolves
-/// its own bottom-anchored `y`) doesn't re-derive it by hand.
-pub(crate) fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
+/// placement, split out from [`resolve_popup_geometry`] so its vertical
+/// counterpart isn't tangled up with this axis.
+fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
     x.max(pane_rect.x)
         .min(pane_rect.right().saturating_sub(width))
 }

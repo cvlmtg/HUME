@@ -1,4 +1,5 @@
 use super::*;
+use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 use termina::event::{KeyCode, Modifiers};
 
@@ -473,4 +474,30 @@ fn tab_on_set_g_silently_completes_global() {
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "set global");
     assert!(ed.state.input.minibuf_completion().is_none());
+}
+
+// ── Render snapshot ──────────────────────────────────────────────────────────
+
+/// Characterization test, written before the renderer swap the merge's Step 1
+/// makes (`hume-ui/src/completion_overlay.rs`'s bespoke overlay → `resolve_menu`
+/// + `PopupOverlay`, same as every other menu-shaped overlay). Passes before
+/// and after by design — no red run to manufacture.
+#[test]
+fn minibuf_completion_popup_renders_above_the_statusline() {
+    // `Editor::open`, not `editor_from`: `Editor::for_testing` never goes
+    // through `build_pane`, so no overlay providers are registered and the
+    // popup would silently not paint.
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.view.theme = crate::testing::build_snapshot_theme();
+
+    // "w" matches exactly three canonical command names: write, write-all,
+    // write-quit. `CommandCompleter` omits aliases (w/wa/wq/wrap) and the
+    // exact-prefix match, so this candidate set is stable against new
+    // commands being registered elsewhere.
+    ed.feed_key(key(':'));
+    ed.feed_key(key('w'));
+    ed.feed_key(key_tab());
+
+    let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 10));
+    insta::assert_snapshot!(snap);
 }

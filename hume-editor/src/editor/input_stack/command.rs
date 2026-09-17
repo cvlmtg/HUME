@@ -35,10 +35,15 @@ impl Layer for CommandLayer {
 }
 
 impl Editor {
-    /// Write the current completion state into the shared `MinibufCompletionView`
-    /// so `MinibufCompletionOverlay` can render it during this frame.
+    /// Write the current completion state into the shared `PopupState` Arc —
+    /// same widget as [`Self::sync_menu_view`]/[`Self::sync_completion_menu_view`]
+    /// (unwrapped rows, selected-row styling), but anchored at the pane's
+    /// bottom edge above the statusline rather than a buffer cursor.
     ///
-    /// Called from `prepare_frame` after highlight data is synced.
+    /// Called from `prepare_frame`'s overlay-sync step. Needs only
+    /// `last_pane_area` (settled in step 0), unlike its cursor-anchored
+    /// siblings, which need the current frame's scroll result too — so this
+    /// stays `&self`, no `RenderContext`.
     pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
         let completion = self.state.input.minibuf_completion();
         // Skip the write-lock when both sides are already None — common case
@@ -46,6 +51,7 @@ impl Editor {
         if completion.is_none() && self.state.views.minibuf_completion.read().is_none() {
             return;
         }
+        let pane_rect = self.view.last_pane_area;
         let view = completion.map(|state| {
             let anchor_x = self
                 .state
@@ -53,12 +59,21 @@ impl Editor {
                 .minibuf()
                 .map(|mb| mb.cursor_x_at(state.span_start))
                 .unwrap_or(0);
-            hume_ui::completion_overlay::MinibufCompletionView {
-                rows: state.rows.clone(),
-                selected: state.selected,
-                anchor_x,
-                border: self.state.settings.popup_border,
-            }
+            // Anchoring at the pane's bottom edge is what drives
+            // `resolve_popup_geometry` into its flip-above branch
+            // (`space_below` saturates to 0 there), landing the box on the
+            // rows just above the statusline. The -1 pulls the frame left so
+            // the first label column sits under the token in the input.
+            hume_ui::popup::resolve_menu(
+                state.rows.clone(),
+                state.selected,
+                hume_ui::popup::PopupPlacement {
+                    anchor: (anchor_x.saturating_sub(1), pane_rect.bottom()),
+                    pane_rect,
+                    content_width: pane_rect.width,
+                },
+                self.state.settings.popup_border,
+            )
         });
         self.state.views.minibuf_completion.set(view);
     }

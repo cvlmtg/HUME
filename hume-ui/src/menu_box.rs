@@ -1,8 +1,8 @@
-//! Shared box-drawing + row rendering for the two popup overlays
-//! (`MinibufCompletionOverlay`, `PopupOverlay`). Each overlay owns its own
-//! placement (bottom-anchored vs. cursor-anchored floating); once a
-//! position and outer size are resolved, painting the frame, scroll
-//! window, and rows is identical — that shared part lives here.
+//! Shared box-drawing + row rendering for `PopupOverlay` and `PickerOverlay`.
+//! Placement (bottom-anchored minibuffer completion, cursor-anchored popup/
+//! menu, full-modal picker) is resolved per write side, each against a
+//! different anchor; once a position and outer size are settled, painting the
+//! frame, scroll window, and rows is identical — that shared part lives here.
 
 use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
@@ -74,10 +74,9 @@ pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
 
 /// Outer footprint (including the 1-cell frame) for a box showing `row_count`
 /// rows measuring `inner_width` wide, windowed to at most `row_cap` visible
-/// rows. Every caller (`resolve_popup`/`resolve_menu`'s own `Wrapped`/
-/// `MenuRows` cache, `MinibufCompletionOverlay`'s `MenuRows`) already has the
-/// width in hand from a cached measurement, so this takes it directly rather
-/// than re-measuring `rows` itself.
+/// rows. Every caller (`resolve_popup`'s `Wrapped` cache, `resolve_menu`'s
+/// `MenuRows`) already has the width in hand from a cached measurement, so
+/// this takes it directly rather than re-measuring `rows` itself.
 pub(crate) fn outer_dims_from_width(
     inner_width: u16,
     row_count: usize,

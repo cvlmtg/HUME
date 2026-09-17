@@ -26,7 +26,6 @@
 
 #![deny(rustdoc::broken_intra_doc_links)]
 
-pub mod completion_overlay;
 pub mod drawer;
 pub mod menu_box;
 pub mod picker_panel;
@@ -37,7 +36,6 @@ use hume_engine::lock::SharedSlot;
 use hume_engine::providers::{BottomBandProvider, ProviderSet};
 use hume_engine::theme::ui_scopes;
 
-use completion_overlay::MinibufCompletionOverlay;
 use picker_panel::PickerOverlay;
 use popup::PopupOverlay;
 
@@ -47,8 +45,8 @@ use popup::PopupOverlay;
 /// open`, `EditorState`, and [`register_overlays`]'s parameter list.
 /// Bundling as one struct with distinctly-named fields (not loose
 /// same-typed `Arc` parameters) is what stops two different slots (same
-/// `SharedSlot<Option<PopupState>>` type for `popup`/`menu`/
-/// `completion_menu`) from being wired to each other by mistake — a
+/// `SharedSlot<Option<PopupState>>` type for `minibuf_completion`/`popup`/
+/// `menu`/`completion_menu`) from being wired to each other by mistake — a
 /// `views.popup` at a construction site can't silently become `views.menu`
 /// the way two positional `Arc` arguments of the same type could swap.
 ///
@@ -58,7 +56,7 @@ use popup::PopupOverlay;
 /// pair here would have been a pass-through with nothing left to add.
 #[derive(Default)]
 pub struct OverlayViews {
-    pub minibuf_completion: SharedSlot<Option<completion_overlay::MinibufCompletionView>>,
+    pub minibuf_completion: SharedSlot<Option<popup::PopupState>>,
     pub popup: SharedSlot<Option<popup::PopupState>>,
     pub popup_band: SharedSlot<Option<popup::PopupBandState>>,
     pub menu: SharedSlot<Option<popup::PopupState>>,
@@ -99,8 +97,9 @@ impl OverlayViews {
 /// picker for exactly this reason, so this registration order and input
 /// precedence (push order on `InputStack`, decided per event) always agree.
 pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
-    providers.add_overlay(Box::new(MinibufCompletionOverlay {
+    providers.add_overlay(Box::new(PopupOverlay {
         data: views.minibuf_completion.clone(),
+        scope: ui_scopes::MENU,
     }));
     providers.add_overlay(Box::new(PopupOverlay {
         data: views.popup.clone(),

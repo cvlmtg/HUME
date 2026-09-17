@@ -68,7 +68,7 @@ fn styled_runs_stop_at_the_right_edge() {
 fn a_row_wider_than_the_box_is_clipped_at_the_border() {
     // Rows reach `draw_menu_box` untruncated — the box was sized to the
     // widest of them, then clamped to the pane it has to fit inside (see
-    // `completion_overlay`), so a long LSP label on a narrow terminal is
+    // `resolve_popup_geometry`), so a long LSP label on a narrow terminal is
     // wider than the box it lands in. It must stop at the inner edge: the
     // right border has to survive, and nothing may be written past it.
     let mut buf = Grid::new(20, 5);

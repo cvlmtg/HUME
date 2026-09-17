@@ -65,14 +65,14 @@ Everything below was read from source, not recalled. This is the substrate this 
 **Completion input handling — `hume-editor/src/editor/input_stack/completion.rs`:** the `Completion` overlay layer's own handler, not Insert-mode code — `dispatch_at` routes to it whenever `Completion` is the topmost layer.
 
 - `completion_input` — handles while a session is non-empty: Tab/Down next, BackTab/Up prev, Enter accept, Esc dismiss; everything else (including an empty session) falls through, then re-syncs in a post-step: Backspace/Char re-filters, and the session dismisses if the cursor left the anchor or an Insert leaf ran.
-- `move_completion_selection` — clamped to the **displayed window** (`top(8)`, no scrolling past it).
+- `move_completion_selection` — clamped to the **full ranked list** (`session.len()`); the popup scrolls to keep the selection visible rather than clamping to a fixed window.
 - `accept_completion_selection` — same gen-checked path as `completion-accept!`; session ends on success or failure.
 - `refilter_lsp_completion_after_edit` — after the edit lands, re-ranks against the buffer slice `anchor..head`, fires `OnCompletionRefilter` only if `incomplete`.
 
 **Rendering:**
 
-- `sync_completion_menu_view` (`hume-editor/src/editor/input_stack/completion.rs`, runs in `prepare_frame`): `session.top(8)` → `StoredCompletionItem::menu_row_label` (`"label  detail"`, uniform style — per-part dimming would need segment-styled rows, which nothing requires yet) → `resolve_popup_geometry` → writes a `PopupState` into `EditorState.completion_menu_view: Arc<RwLock<Option<PopupState>>>`.
-- Painted by the **generic** `PopupOverlay` (`hume-ui/src/popup.rs`) — registered in `register_overlays` (`hume-ui/src/lib.rs`) as a third instance with its own `Arc`, scopes `ui.menu` / `ui.menu.selected` (same theme scopes as the selection menu). `PopupState { lines, x, y, selected }`; geometry (below-right preferred, flip above, clamp, max width `min(60, pane_width - 4)`, max height ⅓ pane) resolved once per frame on the write side.
+- `sync_completion_menu_view` (`hume-editor/src/editor/input_stack/completion.rs`, runs in `prepare_frame`): `session.menu_rows()` → `StoredCompletionItem::menu_row_label` (`"label  detail"`, uniform style — per-part dimming would need segment-styled rows, which nothing requires yet) → `resolve_menu` → writes a `PopupState` into `state.views.completion_menu: SharedSlot<Option<PopupState>>` (`hume_ui::OverlayViews`).
+- Painted by the **generic** `PopupOverlay` (`hume-ui/src/popup.rs`) — registered in `register_overlays` (`hume-ui/src/lib.rs`) as one of four instances, each with its own `SharedSlot`, scopes `ui.menu` / `ui.menu.selected` (same theme scopes as the selection menu and the minibuffer `:` completion popup). `PopupState { lines, rect, selected, scroll, border, styled_rows }`; geometry (below-right preferred, flip above, clamp, max width `min(60, pane_width - 4)`, max height ⅓ pane) resolved once per frame on the write side.
 
 ### What is genuinely LSP-coupled vs. already generic
 
@@ -100,7 +100,7 @@ Everything below was read from source, not recalled. This is the substrate this 
 
 ### The minibuffer completion system is a separate thing — leave it alone
 
-`hume-editor/src/editor/completion/` (`Completer` trait: pure `complete(input, cursor, ctx) -> CompletionResult`; implementors `CommandCompleter`, `BufferNameCompleter`, `ThemeCompleter`, `PathCompleter`, `SetCompleter`; dispatched by a hardcoded match in `complete_minibuf`, `input_stack/command.rs`; prefix matching only; rendered by the bespoke statusline-anchored `MinibufCompletionOverlay` in `hume-ui/src/completion_overlay.rs`). It shares no types with the insert-mode stack, and `ROADMAP.md` already records its own future direction ("Steel builtin to register custom completers … core does prefix matching only"). Neither this design nor the picker (`core:pickers`) builds on it, and neither changes it.
+`hume-editor/src/editor/completion/` (`Completer` trait: pure `complete(input, cursor, ctx) -> CompletionResult`; implementors `CommandCompleter`, `BufferNameCompleter`, `ThemeCompleter`, `PathCompleter`, `SetCompleter`; dispatched by a hardcoded match in `complete_minibuf`, `input_stack/command.rs`; prefix matching only; rendered by the generic `PopupOverlay` via `resolve_menu`, the same widget the selection menu and LSP completion menu use). It shares no types with the insert-mode stack, and `ROADMAP.md` already records its own future direction ("Steel builtin to register custom completers … core does prefix matching only"). Neither this design nor the picker (`core:pickers`) builds on it, and neither changes it.
 
 ### Gaps (what does not exist today)
 

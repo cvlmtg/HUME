@@ -1,0 +1,15 @@
+---
+source: hume-editor/src/editor/tests/completion.rs
+assertion_line: 502
+expression: snap
+---
+<fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</>
+<fg=#928374,bg=#282828>~</><fg=#ebdbb2,bg=#504945>┌──────────┐</>
+<fg=#928374,bg=#282828>~</><fg=#ebdbb2,bg=#504945>│</><fg=#b8bb26,bg=#3c3836,bold>write     </><fg=#ebdbb2,bg=#504945>│</>
+<fg=#928374,bg=#282828>~</><fg=#ebdbb2,bg=#504945>│write-all │</>
+<fg=#928374,bg=#282828>~</><fg=#ebdbb2,bg=#504945>│write-quit│</>
+<fg=#928374,bg=#282828>~</><fg=#ebdbb2,bg=#504945>└──────────┘</>
+<fg=#3c3836,bg=#b8bb26,bold> :write                           </><fg=#665c54,bg=#b8bb26>│</><fg=#3c3836,bg=#b8bb26,bold> CMD</>

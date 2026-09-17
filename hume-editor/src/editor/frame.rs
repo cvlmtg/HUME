@@ -639,17 +639,18 @@ impl Editor {
         self.update_highlight_providers(&panes);
         self.update_line_bg_providers(&panes);
 
-        // 6. Sync completion-popup view to the shared Arc for `MinibufCompletionOverlay`.
+        // 6. Sync the overlay views: minibuffer completion, the cursor-anchored
+        //    popup, menu, LSP-completion-menu, and picker. All five resolve a
+        //    `PopupState`/view model on the write side against this frame's
+        //    settled geometry, so grouping them here keeps that "resolve, then
+        //    only paint" contract in one place. The cursor-anchored four also
+        //    need step 4's scroll result (`ctx.cursor_content_pos`) or the
+        //    current-frame `pane_rect` — both only settled after step 0
+        //    re-partitions and step 4 scrolls — which is why the group stays
+        //    here while the bottom bands (docked popup, drawer) sync in step 0
+        //    instead: those have no cursor-relative geometry, only the settled
+        //    model, so they don't need to wait on scroll.
         self.sync_minibuf_completion_view();
-
-        // 7. Sync the cursor-anchored popup, menu, LSP-completion-menu, and
-        //    picker overlay views. Their geometry needs step 4's scroll
-        //    result (`ctx.cursor_content_pos`) or the current-frame
-        //    `last_pane_area`/`pane_rect` — both only settled after step 0
-        //    re-partitions and step 4 scrolls — which is why these stay
-        //    here while the bottom bands (docked popup, drawer) sync in
-        //    step 0 instead: those have no cursor-relative geometry, only
-        //    the settled model, so they don't need to wait on scroll.
         self.sync_popup_view(ctx);
         self.sync_menu_view(ctx);
         self.sync_completion_menu_view(ctx);
