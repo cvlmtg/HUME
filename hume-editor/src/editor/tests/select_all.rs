@@ -200,13 +200,7 @@ fn star_punctuation_run_stays_literal() {
 #[test]
 fn star_on_double_slash_punctuation_run_stays_literal() {
     // Buffer: "a // b\n". Collapsed cursor on the first '/' (position 2).
-    let mut ed = editor_from("-[a]>b\n");
-    let text = hume_editing::text::BufferText::from("a // b\n");
-    let sels = hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(2)),
-    );
-    *ed.doc_mut() = crate::editor::buffer::Buffer::new(text, sels.clone());
-    ed.set_current_selections(sels);
+    let mut ed = editor_from("a -[/]>/ b\n");
 
     ed.handle_key(key('*'));
     assert_eq!(reg(&ed, 's'), vec!["//"]);

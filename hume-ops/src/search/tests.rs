@@ -18,6 +18,10 @@ fn buf(text: &str) -> BufferText {
     BufferText::from(text)
 }
 
+fn fl(multi: bool, verbatim: bool) -> SearchFlags {
+    SearchFlags { multi, verbatim }
+}
+
 // ── parse_search_input / render_search_input / compile_search_input ────────
 
 #[test]
@@ -27,29 +31,17 @@ fn parse_no_flags() {
 
 #[test]
 fn parse_multi_flag() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: false,
-    };
-    assert_eq!(parse_search_input("m/bar"), (flags, "bar"));
+    assert_eq!(parse_search_input("m/bar"), (fl(true, false), "bar"));
 }
 
 #[test]
 fn parse_multi_verbatim_flags() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: true,
-    };
-    assert_eq!(parse_search_input("mv/.rs"), (flags, ".rs"));
+    assert_eq!(parse_search_input("mv/.rs"), (fl(true, true), ".rs"));
 }
 
 #[test]
 fn parse_flag_order_independent() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: true,
-    };
-    assert_eq!(parse_search_input("vm/.rs"), (flags, ".rs"));
+    assert_eq!(parse_search_input("vm/.rs"), (fl(true, true), ".rs"));
 }
 
 #[test]
@@ -63,11 +55,10 @@ fn parse_leading_slash_is_literal() {
 
 #[test]
 fn parse_multi_flag_then_literal_leading_slash_pattern() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: false,
-    };
-    assert_eq!(parse_search_input("m//usr/bin"), (flags, "/usr/bin"));
+    assert_eq!(
+        parse_search_input("m//usr/bin"),
+        (fl(true, false), "/usr/bin")
+    );
 }
 
 #[test]
@@ -85,11 +76,7 @@ fn parse_no_slash_at_all() {
 
 #[test]
 fn parse_duplicate_flag_letter() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: false,
-    };
-    assert_eq!(parse_search_input("mm/foo"), (flags, "foo"));
+    assert_eq!(parse_search_input("mm/foo"), (fl(true, false), "foo"));
 }
 
 #[test]
@@ -99,10 +86,7 @@ fn parse_empty_input() {
 
 #[test]
 fn render_round_trips_through_parse() {
-    let flags = SearchFlags {
-        multi: true,
-        verbatim: true,
-    };
+    let flags = fl(true, true);
     let rendered = render_search_input(flags, ".rs");
     assert_eq!(parse_search_input(&rendered), (flags, ".rs"));
 }
@@ -451,6 +435,256 @@ fn cache_single_match_backward_wrap() {
     let (span, w) = find_match_from_cache(single, co(2), SearchDirection::Backward).unwrap();
     assert_eq!(span, ir(4, 7));
     assert!(w);
+}
+
+// ── MatchScan ────────────────────────────────────────────────────────────
+
+// "bar" at (3,5) and (10,12).
+// indices: a0 a1 sp2 b3 a4 r5 sp6 b7 b8 sp9 b10 a11 r12 sp13 c14 c15 \n16
+fn scan_text() -> BufferText {
+    buf("aa bar bb bar cc\n")
+}
+
+#[test]
+fn match_scan_at_selection_forward_scans_regex_when_uncached() {
+    let text = scan_text();
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    let (new_sel, wrapped) = scan
+        .advance(Selection::collapsed(co(0)), 1)
+        .expect("bar exists");
+    assert_eq!(
+        (new_sel.start(), new_sel.end_inclusive(&text)),
+        (co(3), co(5))
+    );
+    assert!(!wrapped);
+}
+
+#[test]
+fn match_scan_past_selection_steps_over_current_match() {
+    let text = scan_text();
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::PastSelection,
+    };
+    // Selection already sitting on the first "bar" — PastSelection must land
+    // on the second one, not re-find the first.
+    let sel = Selection::new(co(3), co(5));
+    let (new_sel, _) = scan.advance(sel, 1).expect("second bar exists");
+    assert_eq!(
+        (new_sel.start(), new_sel.end_inclusive(&text)),
+        (co(10), co(12))
+    );
+}
+
+#[test]
+fn match_scan_at_selection_stays_on_current_match_when_already_there() {
+    let text = scan_text();
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    // AtSelection seeds from the selection's own start, so a selection
+    // already on a match re-finds that same match instead of skipping it —
+    // the live-preview seed rule (a keystroke shouldn't jump a selection
+    // that's already correct).
+    let sel = Selection::new(co(3), co(5));
+    let (new_sel, _) = scan.advance(sel, 1).expect("bar exists");
+    assert_eq!(
+        (new_sel.start(), new_sel.end_inclusive(&text)),
+        (co(3), co(5))
+    );
+}
+
+#[test]
+fn match_scan_cached_empty_is_zero_matches_not_cold() {
+    let text = scan_text();
+    let regex = re("bar");
+    // A warm cache with zero matches must not fall back to scanning `regex` —
+    // that's exactly the bug an "empty means cold" heuristic would reintroduce
+    // once the live-search path warms the cache on every keystroke.
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: Some(&[]),
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    assert!(scan.advance(Selection::collapsed(co(0)), 1).is_none());
+}
+
+#[test]
+fn match_scan_cached_populated_binary_searches_instead_of_scanning() {
+    let text = scan_text();
+    let regex = re("zzz"); // would find nothing if `cached` were ignored
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: Some(&[ir(3, 5), ir(10, 12)]),
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    let (new_sel, _) = scan
+        .advance(Selection::collapsed(co(0)), 1)
+        .expect("cache has matches even though regex would find none");
+    assert_eq!(
+        (new_sel.start(), new_sel.end_inclusive(&text)),
+        (co(3), co(5))
+    );
+}
+
+#[test]
+fn match_scan_count_of_two_advances_twice() {
+    let text = scan_text();
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::PastSelection,
+    };
+    let (new_sel, _) = scan
+        .advance(Selection::collapsed(co(0)), 2)
+        .expect("two bars exist");
+    assert_eq!(
+        (new_sel.start(), new_sel.end_inclusive(&text)),
+        (co(10), co(12))
+    );
+}
+
+#[test]
+fn match_scan_returns_none_when_zero_matches_total() {
+    // The only way a hop in the `count` chain can miss: both `find_next_match`
+    // and `find_match_from_cache` wrap around the buffer boundary rather than
+    // stopping, so a chain only fails atomically when no match exists at all —
+    // wrapping otherwise guarantees every later hop in the chain succeeds too.
+    let text = scan_text();
+    let regex = re("zzz");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    assert!(scan.advance(Selection::collapsed(co(0)), 1).is_none());
+}
+
+#[test]
+fn match_scan_extend_keeps_original_anchor() {
+    let text = scan_text();
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Extend,
+        seed: MatchSeed::PastSelection,
+    };
+    let sel = Selection::new(co(0), co(1));
+    let (new_sel, _) = scan.advance(sel, 1).expect("bar exists");
+    assert_eq!(
+        new_sel.anchor(),
+        co(0),
+        "anchor stays at the original selection's anchor"
+    );
+    assert_eq!(
+        new_sel.head(),
+        co(5),
+        "head moves to the match's forward edge"
+    );
+}
+
+#[test]
+fn match_scan_advance_all_merges_converging_selections() {
+    // "aa foo bb\n": one "foo" at (3,5); both selections sit before it, so
+    // both independently land on it and merge into one.
+    let text = buf("aa foo bb\n");
+    let regex = re("foo");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    let sels = SelectionSet::from_vec(
+        vec![Selection::collapsed(co(0)), Selection::collapsed(co(2))],
+        0,
+    );
+    let (new_sels, _wrapped) = scan.advance_all(sels, 1).expect("both selections match");
+    assert_eq!(
+        new_sels.len(),
+        1,
+        "both selections converge on the one \"foo\" match"
+    );
+}
+
+#[test]
+fn match_scan_advance_all_none_when_nothing_matches() {
+    let text = buf("aa bb\n");
+    let regex = re("zzz");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    let sels = SelectionSet::from_vec(
+        vec![Selection::collapsed(co(0)), Selection::collapsed(co(3))],
+        0,
+    );
+    assert!(scan.advance_all(sels, 1).is_none());
+}
+
+#[test]
+fn match_scan_advance_all_wrapped_bit_tracks_only_the_primary() {
+    // "bar" at (0,2), (7,9), (14,16). Primary (co(15), inside the third "bar")
+    // has nothing ahead of it and must wrap to the first match; the secondary
+    // (co(3), before the second "bar") finds one without wrapping.
+    let text = buf("bar xx bar yy bar\n");
+    let regex = re("bar");
+    let scan = MatchScan {
+        text: &text,
+        regex: &regex,
+        cached: None,
+        direction: SearchDirection::Forward,
+        mode: MotionMode::Move,
+        seed: MatchSeed::AtSelection,
+    };
+    let sels = SelectionSet::from_vec(
+        vec![Selection::collapsed(co(3)), Selection::collapsed(co(15))],
+        1, // co(15) is primary
+    );
+    let (new_sels, primary_wrapped) = scan.advance_all(sels, 1).expect("both selections match");
+    assert_eq!(new_sels.len(), 2, "the two hops land on different matches");
+    assert!(primary_wrapped, "only the primary's own hop wrapped");
 }
 
 // ── find_matches_in_range ────────────────────────────────────────────────

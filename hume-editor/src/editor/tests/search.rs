@@ -806,11 +806,7 @@ fn multi_flag_moves_every_selection_to_its_own_next_match() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "m/bar".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/bar");
 
     assert_eq!(reg(&ed, 's'), vec!["m/bar"]);
     assert_eq!(ed.current_selections().len(), 3);
@@ -846,11 +842,7 @@ fn no_flags_search_and_n_move_only_primary() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    ed.handle_key(key('b'));
-    ed.handle_key(key('a'));
-    ed.handle_key(key('r'));
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "bar");
 
     assert_eq!(ed.current_selections().len(), 3);
     let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
@@ -903,11 +895,7 @@ fn multi_flag_persists_across_n() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "m/bar".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/bar");
     // All three now sit on the three "bar" occurrences.
     assert_eq!(ed.current_selections().len(), 3);
 
@@ -944,11 +932,7 @@ fn multi_flag_backward_capital_n() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "m/bar".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/bar");
     // Forward multi search: co(6) -> (8,10), co(14) -> (16,18).
     let text = ed.doc().text();
     let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
@@ -993,11 +977,7 @@ fn multi_flag_count_prefix_on_n() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "m/bar".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/bar");
     // Confirm (count 1): co(0) -> (2,4), co(6) -> (8,10).
     let text = ed.doc().text();
     let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
@@ -1040,11 +1020,7 @@ fn multi_flag_no_selection_matches_reports_transient() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "m/zzz".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/zzz");
     let before = state(&ed);
 
     ed.handle_key(key('n'));
@@ -1103,11 +1079,7 @@ fn multi_verbatim_flags_combine_and_converging_selections_merge() {
     );
     ed.set_current_selections(sels);
 
-    ed.handle_key(key('/'));
-    for ch in "mv/.rs".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "mv/.rs");
 
     assert_eq!(
         ed.current_selections().len(),
@@ -1138,11 +1110,7 @@ fn multi_extend_extends_each_selection_from_its_own_anchor() {
     ed.set_current_selections(sels);
     ed.state.input.set_extend(true);
 
-    ed.handle_key(key('/'));
-    for ch in "m/foo".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_enter());
+    search_forward(&mut ed, "m/foo");
 
     assert_eq!(ed.current_selections().len(), 2);
     let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();

@@ -94,15 +94,14 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 ///
 /// Shares `parse_search_input`'s flag grammar with the search prompt — `v`
 /// (verbatim) literalizes the pattern the same way it does in search. `m`
-/// (multi) parses but is inert here: sift already operates on every
-/// selection, so there is no second grammar to keep in sync.
+/// (multi) parses but is inert here: sift already operates on every selection.
 fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
 
-    let Some((_flags, regex)) = compile_search_input(&pattern) else {
+    let Some((_, regex)) = compile_search_input(&pattern) else {
         // Invalid regex in progress — restore originals.
         restore_sift_snapshot(ed, r);
         return;

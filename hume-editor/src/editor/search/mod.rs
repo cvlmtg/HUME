@@ -16,7 +16,7 @@ pub(in crate::editor) mod ops;
 use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
-use hume_ops::search::{SearchDirection, SearchFlags};
+use hume_ops::search::{SearchDirection, compile_search_input};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
@@ -26,16 +26,38 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 /// `Arc<Regex>` makes the clone needed by `update_buffer_matches` a refcount bump —
 /// no deep clone, no take/put-back dance. A present `SearchPattern` is always
 /// fully-valid by construction (invalid regexes are rejected at compile time and
-/// leave `Buffer.search_pattern = None`).
+/// leave `Buffer.search_pattern = None`) — [`SearchPattern::compile`] is the one
+/// way to build one, so every producer gets this for free.
 pub(in crate::editor) struct SearchPattern {
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
     /// Raw prompt input, flag prefix included (`"m/bar"`, not `"bar"`) — used
-    /// as an invalidation key for `SearchMatches`. Keeping the flags in the key
-    /// over-invalidates when only `multi` toggles (identical matches, new key,
-    /// one extra rescan), which is cheaper than a second key for a field that
-    /// never affects the match list itself.
+    /// as an invalidation key for `SearchMatches`, and as the source of truth
+    /// for [`SearchPattern::multi`] rather than a separately-stored field:
+    /// keeping it in the key over-invalidates when only `multi` toggles
+    /// (identical matches, new key, one extra rescan), which is cheaper than a
+    /// second key for a field that never affects the match list itself.
     pub pattern_str: String,
-    pub flags: SearchFlags,
+}
+
+impl SearchPattern {
+    /// Parse `raw`'s leading flags and compile the remaining pattern. `None`
+    /// on an invalid regex — the caller leaves `Buffer.search_pattern`
+    /// untouched (or `None`) rather than storing a half-valid pattern.
+    pub(in crate::editor) fn compile(raw: &str) -> Option<Self> {
+        let (_flags, regex) = compile_search_input(raw)?;
+        Some(Self {
+            regex: Arc::new(regex),
+            pattern_str: raw.to_string(),
+        })
+    }
+
+    /// The `m` (multi) flag, read back off the raw input — see
+    /// [`SearchPattern::pattern_str`]'s doc for why this isn't a stored field.
+    pub(in crate::editor) fn multi(&self) -> bool {
+        hume_ops::search::parse_search_input(&self.pattern_str)
+            .0
+            .multi
+    }
 }
 
 /// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.

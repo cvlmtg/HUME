@@ -13,10 +13,14 @@
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
 
+use hume_editing::grapheme::next_grapheme_boundary;
+use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, WordChars};
 use hume_rope::grapheme::prev_str_boundary;
 use hume_rope::offset::{CharOffset, InclusiveRange};
+
+use crate::MotionMode;
 
 /// Direction for `search-forward` / `search-backward` and `search-next` / `search-prev`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,28 +108,29 @@ pub fn parse_search_input(input: &str) -> (SearchFlags, &str) {
 }
 
 /// Render `flags` and `pattern` back into the prompt input that
-/// `parse_search_input` recovers unchanged — the inverse of
-/// `parse_search_input`, over the range that grammar can represent. That
-/// range excludes a default-flags `pattern` that itself starts with a flag
-/// letter followed by `/` (e.g. `"m/s"`): `parse_search_input` has no way to
-/// tell that apart from an actual `m` flag, so no `SearchFlags`/`pattern`
-/// pair renders back to it. The `debug_assert!` below catches a producer
-/// that hands this function such a pattern rather than silently mangling it
-/// — every current caller is safe: `*`'s patterns are `\b`-anchored word
-/// runs or pure punctuation runs (never flag letters immediately followed by
-/// `/`), and Ctrl-`/` always sets `verbatim`, which puts a non-empty `v` run
-/// in front regardless of `pattern`'s own text.
+/// `parse_search_input` recovers unchanged — the inverse of `parse_search_input`,
+/// over the range that grammar can represent. A default-flags `pattern` that
+/// itself starts with a flag letter followed by `/` (e.g. `"m/s"`) is outside
+/// that range: `parse_search_input` cannot tell it apart from an actual `m`
+/// flag. The `debug_assert!` below catches a producer that hands this function
+/// such a pattern — `set_search_pattern` re-parses this function's own output
+/// to get the regex it stores, so an unrepresentable pair would silently
+/// compile the *wrong regex* in release, not just mangle the register text.
+/// Every current caller is safe: `*`'s patterns are `\b`-anchored word runs or
+/// pure punctuation runs (never flag letters immediately followed by `/`), and
+/// Ctrl-`/` always sets `verbatim`, which puts a non-empty `v` run in front
+/// regardless of `pattern`'s own text.
 pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
-    let rendered = if flags == SearchFlags::default() {
+    let mut prefix = String::new();
+    if flags.multi {
+        prefix.push('m');
+    }
+    if flags.verbatim {
+        prefix.push('v');
+    }
+    let rendered = if prefix.is_empty() {
         pattern.to_string()
     } else {
-        let mut prefix = String::new();
-        if flags.multi {
-            prefix.push('m');
-        }
-        if flags.verbatim {
-            prefix.push('v');
-        }
         format!("{prefix}/{pattern}")
     };
     debug_assert_eq!(
@@ -258,9 +263,8 @@ pub fn find_matches_in_range(
 /// Escape regex metacharacters so the string matches literally.
 ///
 /// Used by [`word_search_pattern`] (`*`, search-word-under-cursor) and by
-/// [`compile_search_input`]'s verbatim (`v`) arm — the path Ctrl-/
-/// (search-selection) now reaches indirectly, by setting `verbatim` rather
-/// than escaping its own pattern.
+/// [`compile_search_input`]'s verbatim (`v`) arm, which Ctrl-/
+/// (search-selection) reaches by setting `verbatim` on its pattern.
 fn escape_regex(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
@@ -359,9 +363,15 @@ pub fn search_match_info(
 /// pre-computed, sorted match list rather than re-scanning the buffer.
 ///
 /// This is O(log M) where M is the number of matches, vs O(buffer_size) for
-/// the regex-scan path. Use this on the `n`/`N` hot path when the cache is
-/// populated; fall back to [`find_next_match`] during live search when the
-/// cache may not yet reflect the current regex.
+/// the regex-scan path ([`find_next_match`]). [`MatchScan`] uses this
+/// whenever its `cached` list is warm — both live search and `n`/`N` warm it
+/// before scanning — falling back to [`find_next_match`] only when it isn't
+/// (a buffer whose match cache has never been built).
+///
+/// A cache-derived match is the leftmost non-overlapping one from offset 0,
+/// which can differ from a scan restarted mid-buffer for a self-overlapping
+/// pattern (`aa` over `aaa`). This is what makes live preview agree with
+/// where `n` lands right after confirm, rather than a discrepancy.
 ///
 /// # Direction
 ///
@@ -401,6 +411,127 @@ pub fn find_match_from_cache(
                 Some((matches[matches.len() - 1], true)) // non-empty guard above
             }
         }
+    }
+}
+
+// ── MatchScan ──────────────────────────────────────────────────────────────────
+
+/// Where a per-selection scan starts: at the selection itself (live preview —
+/// a selection already sitting on a match should stay put) or past it (`n`/`N`,
+/// which must not re-find the match a selection is already on).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchSeed {
+    AtSelection,
+    PastSelection,
+}
+
+/// The inputs a "move each selection to its next match" pass needs, bundled
+/// once so [`advance`](Self::advance)/[`advance_all`](Self::advance_all) take
+/// one argument instead of five. Live search (`m`-flag preview, every
+/// keystroke) and `n`/`N` (`m`-flag repeat) are the same operation over
+/// different seed/cache/count inputs, not two separate ones — this is their
+/// single implementation.
+pub struct MatchScan<'a> {
+    pub text: &'a BufferText,
+    pub regex: &'a Regex,
+    /// `Some(matches)` binary-searches that pre-computed, sorted list
+    /// ([`find_match_from_cache`], O(log M)); an empty slice means "cache
+    /// warm, zero matches", not "cache cold". `None` scans `regex` directly
+    /// ([`find_next_match`], O(buffer)) — the cold-cache fallback.
+    pub cached: Option<&'a [InclusiveRange<CharOffset>]>,
+    pub direction: SearchDirection,
+    pub mode: MotionMode,
+    pub seed: MatchSeed,
+}
+
+impl MatchScan<'_> {
+    /// Advance `sel` by `count` matches. A miss at any step fails the whole
+    /// hop atomically (`None`) rather than leaving `sel` part-advanced,
+    /// matching a count prefix's usual all-or-nothing semantics elsewhere in
+    /// the editor. `wrapped` is true iff the last hop in the chain wrapped
+    /// the buffer boundary.
+    pub fn advance(&self, sel: Selection, count: usize) -> Option<(Selection, bool)> {
+        let anchor = (self.mode == MotionMode::Extend).then(|| sel.anchor());
+        let mut from_char = match self.seed {
+            MatchSeed::AtSelection => match self.direction {
+                SearchDirection::Forward => sel.start(),
+                SearchDirection::Backward => sel.end_inclusive(self.text),
+            },
+            MatchSeed::PastSelection => match self.direction {
+                // Step past the current match so we don't re-find it.
+                SearchDirection::Forward => {
+                    next_grapheme_boundary(self.text, sel.end_inclusive(self.text))
+                }
+                SearchDirection::Backward => sel.start(),
+            },
+        };
+
+        let mut last_match = None;
+        let mut any_wrapped = false;
+        for _ in 0..count {
+            let hit = match self.cached {
+                Some(matches) => find_match_from_cache(matches, from_char, self.direction),
+                None => find_next_match(self.text, self.regex, from_char, self.direction),
+            };
+            match hit {
+                Some((span, wrapped)) => {
+                    any_wrapped |= wrapped;
+                    last_match = Some(span);
+                    from_char = match self.direction {
+                        SearchDirection::Forward => next_grapheme_boundary(self.text, span.end),
+                        SearchDirection::Backward => span.start,
+                    };
+                }
+                None => return None,
+            }
+        }
+
+        last_match.map(|span| (search_sel(span, anchor, self.direction), any_wrapped))
+    }
+
+    /// Advance every selection in `sels` independently, merging any that
+    /// converge on the same match ([`SelectionSet::map`]'s own canonicalize
+    /// pass). A selection with no match of its own keeps its prior position.
+    /// `None` when nothing matched at all; the returned `bool` is whether the
+    /// *primary* selection's own hop wrapped (`false` when the primary itself
+    /// had no match).
+    pub fn advance_all(&self, sels: SelectionSet, count: usize) -> Option<(SelectionSet, bool)> {
+        let primary_before = sels.primary();
+        let mut any_matched = false;
+        let mut primary_wrapped = false;
+        let new_sels = sels.map(|sel| match self.advance(sel, count) {
+            Some((new_sel, wrapped)) => {
+                any_matched = true;
+                if sel == primary_before {
+                    primary_wrapped = wrapped;
+                }
+                new_sel
+            }
+            None => sel,
+        });
+        any_matched.then_some((new_sels, primary_wrapped))
+    }
+}
+
+/// Build the primary selection after a search match.
+///
+/// `anchor = Some(a)` — extend mode: keep the caller's anchor, move head to
+/// the match edge that faces the search direction.
+/// `anchor = None` — move mode: cover the matched text exactly.
+fn search_sel(
+    span: InclusiveRange<CharOffset>,
+    anchor: Option<CharOffset>,
+    direction: SearchDirection,
+) -> Selection {
+    match anchor {
+        Some(a) => Selection::new(
+            a,
+            match direction {
+                SearchDirection::Forward => span.end,
+                SearchDirection::Backward => span.start,
+            },
+        ),
+        None => Selection::new(span.start, span.end),
     }
 }
 
