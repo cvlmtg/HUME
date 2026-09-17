@@ -35,6 +35,13 @@ impl Layer for DrawerLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
+    /// A `Drawer` is non-modal (`is_modal` below), so it can land directly
+    /// above a `Popup` the same way a `Menu` can — clear it first, keeping
+    /// `PopupLayer`'s "never buried" invariant true regardless of which of
+    /// the two opens second.
+    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
+        state.input.clear_popups();
+    }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Non-modal: the drawer is built to be worked over (a stray key falls
     /// through and it stays open), so an async opener's staleness check

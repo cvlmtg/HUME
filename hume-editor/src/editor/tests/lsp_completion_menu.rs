@@ -42,7 +42,78 @@ fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
         .map(|v| StoredCompletionItem::from_json(v).expect("test item"))
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state.input.push(CompletionLayer { session, ui: None });
+    ed.state
+        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+}
+
+// ── Interaction with the two popup homes ─────────────────────────────────────
+//
+// `show_popup` is called directly through `EditorHostImpl` rather than a
+// typed `:` command — `:` while already in Insert inserts a literal colon
+// instead of entering Command mode, and both real callers (hover,
+// signature help) reach `show_popup` the same way, via an async LSP
+// response landing outside the keymap dispatcher.
+
+/// A completion session opening while a `Scrollable` popup (hover, or the
+/// `gn`/`gp` diagnostic overlay) is up must retire the popup first —
+/// `CompletionLayer::setup` clears the pushed-layer popup home
+/// (`InputStack::clear_popup_layer`) before landing, keeping `PopupLayer`'s
+/// "never buried" invariant true.
+///
+/// Fail oracle: before the fix, the completion menu landed above the popup
+/// instead of clearing it — `ed.state.input.popup()` would still read
+/// `Some` here.
+#[test]
+fn completion_over_a_live_scrollable_popup_clears_it() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PopupKind, UiHost};
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
+        .expect("show-popup! must succeed");
+    assert!(ed.state.input.popup().is_some(), "sanity: popup open");
+
+    begin_session(&mut ed, &[("foo", None)]);
+
+    assert!(ed.state.input.completion().is_some(), "the session opened");
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the popup must be cleared, not buried, when completion lands above it"
+    );
+}
+
+/// A completion session opening while a `Sticky` popup (LSP signature help)
+/// sits in the mode layer's own slot must leave it alone —
+/// `CompletionLayer::setup` clears only the pushed-layer popup home, never
+/// the sticky slot, so signature help survives a completion menu opening or
+/// refreshing alongside it.
+///
+/// Fail oracle: a naive fix that called `InputStack::clear_popups` instead
+/// (clearing both homes) would fail this — `ed.state.input.popup()` would
+/// read `None` after the session opens.
+#[test]
+fn completion_over_a_sticky_popup_leaves_it_open() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PopupKind, UiHost};
+
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup("sig-help".to_string(), PopupKind::Sticky, false, None)
+        .expect("show-popup! must succeed");
+    assert!(ed.state.input.popup().is_some(), "sanity: sighelp open");
+
+    begin_session(&mut ed, &[("foo", None)]);
+
+    assert!(ed.state.input.completion().is_some(), "the session opened");
+    assert!(
+        ed.state.input.popup().is_some(),
+        "signature help must survive a completion session opening alongside it"
+    );
 }
 
 // ── Pane-fit clamp: menu must render (clamped), never vanish ────────────────

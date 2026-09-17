@@ -371,7 +371,8 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     let items =
         vec![StoredCompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state.input.push(CompletionLayer { session, ui: None });
+    ed.state
+        .push_layer(&ed.view, CompletionLayer { session, ui: None });
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(
@@ -566,14 +567,17 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
 #[test]
 fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     let mut ed = editor_from("-[a]>bc\n");
-    ed.state.input.push(crate::editor::input_stack::MenuLayer {
-        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
-            "m0".into(),
-            "m1".into(),
-        ])),
-        selected: 0,
-        callback: marker("menu-cb"),
-    });
+    ed.state.push_layer(
+        &ed.view,
+        crate::editor::input_stack::MenuLayer {
+            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
+                "m0".into(),
+                "m1".into(),
+            ])),
+            selected: 0,
+            callback: marker("menu-cb"),
+        },
+    );
 
     let mut session = PickerSession::new(marker("cb"), PickerOpts::default());
     session.push(vec![PickerItem {

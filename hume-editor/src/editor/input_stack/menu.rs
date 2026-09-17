@@ -34,6 +34,16 @@ impl Layer for MenuLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
+    /// A `Menu` can land directly above a `Popup` (non-modal, so
+    /// `is_stack_settled` doesn't treat it as the stack having moved) —
+    /// clear it first, keeping `PopupLayer`'s "never buried" invariant true.
+    /// Also retires a prior `Menu` on the self-replace path: `show_menu`
+    /// truncates it via `ref_of::<MenuLayer>()` before calling `push_layer`,
+    /// firing its callback with `#f` through ordinary teardown before this
+    /// runs.
+    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
+        state.input.clear_popups();
+    }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 

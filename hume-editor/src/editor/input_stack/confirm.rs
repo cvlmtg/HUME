@@ -94,6 +94,12 @@ impl Layer for ConfirmLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
+    /// Empty — never needs to evict a popup. `can_open_confirm` (`buffer/
+    /// disk.rs`) already requires `top()` to be `Base` before a confirm can
+    /// open at all, which is stricter than "no popup open": a `Scrollable`
+    /// popup pushed above `Base` makes `top()` the popup, not `Base`, so the
+    /// gate refuses before this ever runs.
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 

@@ -20,6 +20,8 @@ impl Layer for SiftLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }
+    /// Empty — see `InsertLayer::setup`'s doc.
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         let pid = state.focus.id();
         if let Some(sels) = state.panes.transient[pid].pre_sift_sels.take() {

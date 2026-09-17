@@ -14,6 +14,9 @@
 //! above which; `push` never refuses. The one gate that exists,
 //! [`InputStack::is_stack_settled`], answers a different question — whether
 //! an *async* opener's request has gone stale — not who outranks whom.
+//! [`Layer::setup`] is a third, orthogonal concern: what a layer clears out
+//! of its own way on entry (chiefly an open popup), never whether it may
+//! land at all.
 //!
 //! A layer is a *purpose*, not a widget: today each kind wraps at most one
 //! widget, but nothing in the stack's own API assumes that stays true.

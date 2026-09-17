@@ -36,6 +36,31 @@ impl Layer for PickerLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
+    /// Allowed from any mode and over any other open layer, key-triggered
+    /// like every synchronous opener: dispatch order already proves the
+    /// stack is wherever the key path left it, so there is nothing to gate.
+    /// Landing above a menu or drawer simply suspends it — its own
+    /// stray-input policy (`input_stack/{menu,drawer}.rs`) hands control
+    /// back to it once the picker retires, same as `Insert` suspending one
+    /// today. Three entry rules, in order:
+    ///
+    /// - Dismisses any open completion session first — a picker opening
+    ///   mid-completion (e.g. `picker!` bound to a key pressed while
+    ///   completing) must not leave a stale session behind it.
+    /// - Retires an already-open picker with `#f` before this one lands —
+    ///   the exactly-once callback contract must never have a window where
+    ///   a session can be silently dropped without firing.
+    /// - Clears any open popup (`InputStack::clear_popups`): unlike a menu
+    ///   or drawer, which stay open underneath and simply stop seeing
+    ///   input, a `Popup` layer left in place would be sandwiched between
+    ///   whatever was below it and the picker landing on top — the one case
+    ///   `PopupLayer`'s "never buried" invariant requires every opener that
+    ///   could land above it to close off itself.
+    fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
+        state.dismiss_completion(view);
+        close_picker(state, view, SteelVal::BoolV(false));
+        state.input.clear_popups();
+    }
     /// Fires `on_select` with `#f` — unlike every other layer's `tear_down`,
     /// which never fires a Steel callback (teardown *is* cancel, but the
     /// callback itself is queued only from an explicit accept/cancel arm
@@ -134,38 +159,19 @@ pub(in crate::editor) fn session_for_token(
 }
 
 /// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
-/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Allowed from any
-/// mode and over any other open layer, key-triggered like every synchronous
-/// opener: dispatch order already proves the stack is wherever the key path
-/// left it, so there is nothing to gate. Landing above a menu or drawer
-/// simply suspends it — its own stray-input policy (`input_stack/{menu,
-/// drawer}.rs`) hands control back to it once the picker retires, same as
-/// `Insert` suspending one today. The one identity rule that *does* apply:
-/// replacing an already-open picker fires *its* `on_select` with `#f`
-/// before installing the new one, via [`close_picker`] — the exactly-once
-/// callback contract must never have a window where a session can be
-/// silently dropped without firing.
-///
-/// A popup is the one thing this must clear rather than suspend
-/// (`InputStack::clear_popups`): unlike a menu or drawer, which stay open
-/// underneath and simply stop seeing input, a `Popup` layer left in place
-/// would be sandwiched between whatever was below it and the picker landing
-/// on top — the one case `PopupLayer`'s "never buried" invariant (its
-/// `Layer` doc, `input_stack/stack.rs`) requires every ungated, unconditional
-/// pusher to close off itself.
-///
-/// Takes `state`/`view` rather than `&mut Editor` because its production
-/// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
-/// not a whole `Editor` — it can never reach an `&mut Editor`.
+/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Entry policy
+/// (dismiss-completion, replace-a-live-picker, clear-popups) lives on
+/// [`PickerLayer::setup`], run by [`EditorState::push_layer`] — this
+/// function is just the named door to it. Takes `state`/`view` rather than
+/// `&mut Editor` because its production caller, `EditorHostImpl::open_picker`,
+/// holds those as disjoint borrows, not a whole `Editor` — it can never
+/// reach an `&mut Editor`.
 pub(in crate::editor) fn open_picker(
     state: &mut super::super::EditorState,
     view: &EngineView,
     session: PickerSession,
 ) {
-    state.dismiss_completion(view);
-    close_picker(state, view, SteelVal::BoolV(false));
-    state.input.clear_popups();
-    state.input.push(PickerLayer(session));
+    state.push_layer(view, PickerLayer(session));
 }
 
 /// Single close chokepoint for the picker: ends the session (if one is

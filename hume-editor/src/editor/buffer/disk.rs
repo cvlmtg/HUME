@@ -385,20 +385,23 @@ impl Editor {
         } else {
             format!("{name} has changed on disk.")
         };
-        self.state.input.push(ConfirmLayer {
-            prompt,
-            choices: vec![
-                ConfirmChoice {
-                    key: 'r',
-                    label: "reload",
-                },
-                ConfirmChoice {
-                    key: 'k',
-                    label: "keep",
-                },
-            ],
-            action: ConfirmAction::ReloadBuffer(bid),
-        });
+        self.state.push_layer(
+            &self.view,
+            ConfirmLayer {
+                prompt,
+                choices: vec![
+                    ConfirmChoice {
+                        key: 'r',
+                        label: "reload",
+                    },
+                    ConfirmChoice {
+                        key: 'k',
+                        label: "keep",
+                    },
+                ],
+                action: ConfirmAction::ReloadBuffer(bid),
+            },
+        );
     }
 
     /// Re-read `bid` from disk and reload it in place. Called by the

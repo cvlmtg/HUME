@@ -62,7 +62,8 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
         })
         .collect();
     let session = CompletionSession::begin(&ed.state, bid, items, false).unwrap();
-    ed.state.input.push(CompletionLayer { session, ui: None });
+    ed.state
+        .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }
 
 /// `tab`'s start column in the synced tabline view — computed the same way
@@ -927,11 +928,14 @@ fn mouse_release_with_confirm_open_leaves_it_open() {
 fn click_with_menu_open_cancels_it_and_falls_through() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
-    ed.state.input.push(MenuLayer {
-        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
-        selected: 0,
-        callback: marker("menu-cb"),
-    });
+    ed.state.push_layer(
+        &ed.view,
+        MenuLayer {
+            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
+            selected: 0,
+            callback: marker("menu-cb"),
+        },
+    );
 
     ed.handle_input(mouse_left_down(3, 0));
 
@@ -960,12 +964,15 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
-    ed.state.input.push(DrawerLayer {
-        items: std::sync::Arc::new(vec!["d0".to_string()]),
-        selected: 0,
-        scroll: 0,
-        callback: marker("drawer-cb"),
-    });
+    ed.state.push_layer(
+        &ed.view,
+        DrawerLayer {
+            items: std::sync::Arc::new(vec!["d0".to_string()]),
+            selected: 0,
+            scroll: 0,
+            callback: marker("drawer-cb"),
+        },
+    );
 
     ed.handle_input(mouse_left_down(3, 0));
 
@@ -986,12 +993,15 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
             hume_rope::line::ContentLine::new(2),
             0,
         ));
-    ed.state.input.push(DrawerLayer {
-        items: std::sync::Arc::new(vec!["d0".to_string()]),
-        selected: 0,
-        scroll: 0,
-        callback: marker("drawer-cb"),
-    });
+    ed.state.push_layer(
+        &ed.view,
+        DrawerLayer {
+            items: std::sync::Arc::new(vec!["d0".to_string()]),
+            selected: 0,
+            scroll: 0,
+            callback: marker("drawer-cb"),
+        },
+    );
 
     ed.handle_input(mouse_wheel(false));
 

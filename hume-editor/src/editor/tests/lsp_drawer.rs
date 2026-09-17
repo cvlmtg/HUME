@@ -35,6 +35,46 @@ fn show_drawer_list_populates_model_and_view() {
     assert_eq!(view.selected, 0);
 }
 
+/// A drawer opening while a `Scrollable` popup is up must retire the popup
+/// first — `DrawerLayer::setup` runs `InputStack::clear_popups` before
+/// landing, keeping `PopupLayer`'s "never buried" invariant true. A
+/// `Drawer` is non-modal, so nothing else in `show-drawer-list!`'s own gate
+/// (`is_stack_settled`) would otherwise stop it landing directly above the
+/// popup.
+///
+/// Calls `EditorHostImpl::show_drawer_list` directly rather than typing a
+/// `:` command to trigger it — entering Command mode for the keystroke
+/// itself would clear the popup via `push_mode_layer`'s own unconditional
+/// clear, before `show-drawer-list!` ever ran, masking exactly the
+/// behavior this test exists to pin.
+///
+/// Fail oracle: before the fix, the drawer landed above the popup instead
+/// of clearing it — `ed.state.input.popup()` would still read `Some` here.
+#[test]
+fn show_drawer_list_over_a_live_popup_clears_it() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::{PopupKind, UiHost};
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup("hi".to_string(), PopupKind::Scrollable, false, None)
+        .expect("show-popup! must succeed");
+    assert!(ed.state.input.popup().is_some(), "sanity: popup open");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_drawer_list(
+        vec!["one".to_string()],
+        steel::rvals::SteelVal::BoolV(false),
+    )
+    .expect("show-drawer-list! must succeed");
+
+    assert!(ed.state.input.drawer().is_some(), "the drawer opened");
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the popup must be cleared, not buried, when the drawer lands above it"
+    );
+}
+
 /// Same async-staleness rule as `show_drawer_list_from_insert_…` below,
 /// triggered the other way: the mode layer is still `Base`, but a picker
 /// landed on top of it while the references response was in flight.

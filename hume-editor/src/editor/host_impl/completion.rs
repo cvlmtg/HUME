@@ -98,7 +98,8 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             let r = self.state.input.top();
             self.state.truncate_layers(self.view, r);
         }
-        self.state.input.push(CompletionLayer { session, ui: None });
+        self.state
+            .push_layer(self.view, CompletionLayer { session, ui: None });
         Ok(())
     }
 

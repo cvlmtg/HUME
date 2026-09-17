@@ -25,6 +25,8 @@ impl Layer for SearchLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Search)
     }
+    /// Empty — see `InsertLayer::setup`'s doc.
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         let pid = state.focus.id();
         if let Some(sels) = state.panes.transient[pid].pre_search_sels.take() {

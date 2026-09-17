@@ -711,10 +711,11 @@ impl EditorState {
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
     /// a `prompt!` from Insert ends the insert session before the prompt
     /// lands), clears Extend and every popup (`InputStack::clear_popups`),
-    /// then pushes `layer` on top of whatever is left — any overlay that
-    /// sits *below* the outgoing mode layer (a drawer opened while still in
-    /// Normal) is untouched, since `truncate_layers` only removes the mode
-    /// layer's own ref and whatever was pushed above it.
+    /// then pushes `layer` on top of whatever is left via
+    /// [`Self::push_layer`] — any overlay that sits *below* the outgoing
+    /// mode layer (a drawer opened while still in Normal) is untouched,
+    /// since `truncate_layers` only removes the mode layer's own ref and
+    /// whatever was pushed above it.
     ///
     /// Clearing popups here — not just on the `Base` branch, though that's
     /// the only branch where it does anything `truncate_layers` wasn't
@@ -725,6 +726,9 @@ impl EditorState {
     /// a `Sticky` popup sitting in `Base`'s own slot, between `Base` and the
     /// incoming layer. This replaces the Steel `on-mode-change →
     /// close-popup!` hook the popup used to need for exactly this case.
+    /// Every mode layer's own `Layer::setup` stays empty — this call is the
+    /// uniform rule for all six of them, not per-type policy, so restating
+    /// it in each would be duplication rather than ownership.
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
@@ -746,55 +750,7 @@ impl EditorState {
         }
         self.input.clear_popups();
         self.input.set_extend(false);
-        self.input.push(layer);
-    }
-
-    /// Removes `r` and everything above it, running each removed layer's own
-    /// [`input_stack::Layer::tear_down`] top-first — the single teardown
-    /// path for both a mode-layer exit and a `close-*!`/Rust-internal
-    /// overlay retirement. What each layer's teardown does, for any reason
-    /// it leaves the stack, lives on that layer's own `Layer` impl — a
-    /// `Confirm` arm does its own accept work (recording history,
-    /// restoring/clearing a stash) *before* truncating, so by the time
-    /// teardown runs, every removal is already the "cancel" case; there is
-    /// no separate "cancel-specific work" split to make. Teardown never
-    /// fires a Steel callback — those are queued only from explicit
-    /// accept/cancel arms, before the truncate that reaches here.
-    pub(in crate::editor) fn truncate_layers(
-        &mut self,
-        view: &EngineView,
-        r: input_stack::LayerRef,
-    ) {
-        for mut layer in self.input.truncate(r) {
-            layer.tear_down(self, view);
-        }
-    }
-
-    /// [`Self::truncate_layers`]'s variant for a caller that needs `r`'s own
-    /// layer *by value* rather than merely retired — every accept/cancel
-    /// arm that reads a widget's payload before acting on it (a menu's
-    /// chosen index, a picker's selected payload, a completion session to
-    /// hand to the LSP client). Truncates the same way (top-first —
-    /// anything stacked above `r` gets ordinary teardown, since none of it
-    /// asked to be taken), but pulls `r`'s own layer out of the batch
-    /// instead of tearing it down, so its own accept-specific work runs
-    /// once instead of racing whatever `tear_down` would have done to the
-    /// same payload.
-    pub(in crate::editor) fn take_layer<L: input_stack::Layer>(
-        &mut self,
-        view: &EngineView,
-        r: input_stack::LayerRef,
-    ) -> Box<L> {
-        let mut removed = self.input.truncate(r);
-        let taken = removed
-            .pop()
-            .expect("r names a live layer, so truncate(r) removes at least one")
-            .downcast::<L>()
-            .expect("caller names r's own concrete type");
-        for mut layer in removed {
-            layer.tear_down(self, view);
-        }
-        taken
+        self.push_layer(view, layer);
     }
 
     /// Retires the completion layer wherever it is on the stack — truncates

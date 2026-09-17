@@ -57,12 +57,12 @@ pub(in crate::editor) enum InputEvent {
 pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
 
 /// What every concrete layer implements — its state, what mode (if any) it
-/// presents, what happens when it leaves the stack, and what handles one
-/// event while it's the dispatch target. `handler`/`mode`/`tear_down` are
-/// required, no default: a layer that hasn't stated all three hasn't
-/// stated its policy, mirroring the closed `enum` this trait replaces,
-/// whose every variant forced a match arm everywhere `kind()`/`dispatch_at`/
-/// `tear_down` touched it.
+/// presents, what happens when it enters and leaves the stack, and what
+/// handles one event while it's the dispatch target. `handler`/`mode`/
+/// `setup`/`tear_down` are required, no default: a layer that hasn't stated
+/// all four hasn't stated its policy, mirroring the closed `enum` this trait
+/// replaces, whose every variant forced a match arm everywhere `kind()`/
+/// `dispatch_at`/`tear_down` touched it.
 pub(in crate::editor) trait Layer: Any {
     /// The function that handles one event while this layer is the dispatch
     /// target — see [`LayerHandler`].
@@ -74,6 +74,22 @@ pub(in crate::editor) trait Layer: Any {
     /// "is this a mode layer" — the closed `enum`'s separate
     /// `is_mode_layer()` is gone because nothing needs it apart from this.
     fn mode(&self) -> Option<EditorMode>;
+
+    /// What happens before this layer lands on top of the stack — the
+    /// mirror of `tear_down`: `setup` sees what it is landing on (called
+    /// before `push`), `tear_down` sees what is left (called after
+    /// `truncate`). [`EditorState::push_layer`] is the only caller — it is
+    /// what makes this impossible to skip, the same way `truncate_layers`
+    /// makes `tear_down` impossible to skip. Most layers evict nothing and
+    /// leave this empty; `MenuLayer`/`PopupLayer`/`DrawerLayer` clear any
+    /// open popup (`InputStack::clear_popups`) so `PopupLayer`'s "never
+    /// buried" invariant holds regardless of which of them lands next;
+    /// `CompletionLayer` clears only the pushed-layer home
+    /// (`InputStack::clear_popup_layer`), since it must coexist with a
+    /// `Sticky` signature-help popup in the same mode layer's slot;
+    /// `PickerLayer` additionally dismisses any open completion session and
+    /// replaces a live picker.
+    fn setup(&mut self, state: &mut EditorState, view: &EngineView);
 
     /// What happens when this layer leaves the stack, for any reason —
     /// teardown of a mode layer *is* its cancel. Every implementation but
@@ -174,9 +190,18 @@ impl dyn Layer {
 /// `&mut dyn Layer`: either would let a caller overwrite a layer in place
 /// or remove one that isn't its own, bypassing the ordering this type
 /// exists to enforce. Structure changes only through [`Self::push`],
-/// [`Self::truncate`], and [`Self::truncate_to_base`]; a payload is only
-/// ever reached through a typed lookup (`find`, or a layer's own named
-/// sugar over it).
+/// [`Self::truncate`], and [`Self::truncate_to_base`] — the first two are
+/// `pub(in crate::editor::input_stack)`, one level narrower than everything
+/// else in this file, because each has a policy hook (`Layer::setup`,
+/// `Layer::tear_down`) that must run every time it's called: the named
+/// doors, [`EditorState::push_layer`]/[`EditorState::truncate_layers`]/
+/// [`EditorState::take_layer`] (below, in this same module), are what run
+/// it, and narrowing the raw ops keeps a caller elsewhere in `crate::editor`
+/// from reaching around them. `truncate_to_base` stays at the wider
+/// visibility: its one caller (`reload.rs`) deliberately drops every
+/// layer's callback rather than running teardown — a stated exception, not
+/// a hole a door could close. A payload is only ever reached through a
+/// typed lookup (`find`, or a layer's own named sugar over it).
 pub(in crate::editor) struct InputStack {
     /// Paired with a monotonic id per entry (see `LayerRef`) rather than a
     /// bare `Vec<Box<dyn Layer>>` — the id is what lets `is_live` tell a
@@ -319,15 +344,17 @@ impl InputStack {
         self.is_stack_settled() || self.is::<L>(self.top())
     }
 
-    /// Pushes `layer` on top, unconditionally — nothing is refused, since
-    /// precedence is push order and push order is only ever decided by
-    /// whoever's calling this. An async opener consults
+    /// Pushes `layer` on top, unconditionally — nothing is refused by
+    /// *precedence*, since precedence is push order and push order is only
+    /// ever decided by whoever's calling this. An async opener consults
     /// [`Self::is_stack_settled`] itself before calling this (a staleness
     /// check, not a permission check); a kind-specific replace rule (the
     /// picker's own "cancel and replace a live picker") runs first for the
     /// same reason. `push` itself enforces nothing about what's already
-    /// open.
-    pub(in crate::editor) fn push<L: Layer>(&mut self, layer: L) -> LayerRef {
+    /// open — that's `Layer::setup`'s job, run by this method's only
+    /// caller, [`EditorState::push_layer`]; the narrower-than-usual
+    /// visibility here is what makes that the *only* caller.
+    pub(in crate::editor::input_stack) fn push<L: Layer>(&mut self, layer: L) -> LayerRef {
         let id = self.next_id;
         self.next_id += 1;
         self.layers.push((id, Box::new(layer)));
@@ -341,8 +368,12 @@ impl InputStack {
     /// top-first (the former top layer is `removed[0]`; the layer that was
     /// at `r.depth` itself is `removed`'s last element). A no-op returning
     /// `vec![]` when `r` is already stale, or when `r` is `Base` — `Base`
-    /// is never removed.
-    pub(in crate::editor) fn truncate(&mut self, r: LayerRef) -> Vec<Box<dyn Layer>> {
+    /// is never removed. Runs no `Layer::tear_down` — that is
+    /// [`EditorState::truncate_layers`]/[`EditorState::take_layer`]'s job,
+    /// this method's only two callers (besides [`Self::clear_popups`],
+    /// sound only because the one layer it ever removes has an empty
+    /// `tear_down` by construction — see its own doc).
+    pub(in crate::editor::input_stack) fn truncate(&mut self, r: LayerRef) -> Vec<Box<dyn Layer>> {
         if r.depth == 0 || !self.is_live(r) {
             return Vec::new();
         }
@@ -474,21 +505,19 @@ impl InputStack {
         self.layers[mode_depth].1.sticky_popup_slot_mut()
     }
 
-    /// Clears every home a popup could occupy: a [`PopupLayer`] layer, if
-    /// one is open (always `top()` — see its own doc), and the current
-    /// mode layer's sticky slot. Shared by `show_popup` (so `(show-popup!
-    /// …)` replaces any popup already showing, regardless of which of the
-    /// two homes it used — the documented "no stacking" contract) and
-    /// `close_popup`, and called by `EditorState::push_mode_layer`,
-    /// `open_picker`, and `show_menu` before each takes over the stack —
-    /// `PopupLayer::is_modal() == false` means a `Menu` no longer treats an
-    /// open popup as "the stack moved" and so can land directly above one,
-    /// making `show_menu` the third ungated pusher this keeps honest. Takes
-    /// no `EditorState`/`view` (unlike `EditorState::truncate_layers`), so
-    /// this truncates `self` directly rather than running `tear_down` — sound
-    /// because the one layer this ever removes is a `PopupLayer`, whose
-    /// `tear_down` is empty by construction.
-    pub(in crate::editor) fn clear_popups(&mut self) {
+    /// Clears the pushed-layer popup home alone — a [`PopupLayer`] layer, if
+    /// one is open (always `top()`, enforced below), leaving the current
+    /// mode layer's sticky slot untouched. [`CompletionLayer::setup`]'s
+    /// narrower need than [`Self::clear_popups`]: a completion session must
+    /// evict a `Scrollable` popup (hover, the `gn`/`gp` diagnostic overlay —
+    /// both pushed layers) the same as any other opener, but must *not* dismiss
+    /// a `Sticky` signature-help popup, which lives in the slot and is meant
+    /// to coexist with an open completion menu. Takes no `EditorState`/`view`
+    /// (unlike `EditorState::truncate_layers`), so this truncates `self`
+    /// directly rather than running `tear_down` — sound because the one
+    /// layer this ever removes is a `PopupLayer`, whose `tear_down` is empty
+    /// by construction.
+    pub(in crate::editor) fn clear_popup_layer(&mut self) {
         if let Some(r) = self.ref_of::<PopupLayer>() {
             debug_assert_eq!(
                 r,
@@ -498,9 +527,82 @@ impl InputStack {
             );
             self.truncate(r);
         }
+    }
+
+    /// Clears every home a popup could occupy: [`Self::clear_popup_layer`]
+    /// plus the current mode layer's sticky slot. Shared by `show_popup` (so
+    /// `(show-popup! …)` replaces any popup already showing, regardless of
+    /// which of the two homes it used — the documented "no stacking"
+    /// contract), `close_popup`, and every `Layer::setup` that must evict
+    /// *any* open popup before landing (`MenuLayer`, `PopupLayer`,
+    /// `PickerLayer`, `DrawerLayer`, and every mode layer via
+    /// `EditorState::push_mode_layer`) — `PopupLayer::is_modal() == false`
+    /// means none of those pushers see an open popup as "the stack moved",
+    /// so each must retire it itself.
+    pub(in crate::editor) fn clear_popups(&mut self) {
+        self.clear_popup_layer();
         if let Some(slot) = self.sticky_popup_slot_mut() {
             *slot = None;
         }
+    }
+}
+
+impl EditorState {
+    /// The only way to push a layer — [`Layer::setup`] runs first, always,
+    /// because [`InputStack::push`] itself is narrowed to this module and
+    /// unreachable from anywhere else. Mirrors [`Self::truncate_layers`]:
+    /// `setup` sees what it is landing on (stack unchanged so far),
+    /// `tear_down` sees what is left (already removed).
+    pub(in crate::editor) fn push_layer<L: Layer>(
+        &mut self,
+        view: &EngineView,
+        mut layer: L,
+    ) -> LayerRef {
+        layer.setup(self, view);
+        self.input.push(layer)
+    }
+
+    /// Removes `r` and everything above it, running each removed layer's own
+    /// [`Layer::tear_down`] top-first — the single teardown path for both a
+    /// mode-layer exit and a `close-*!`/Rust-internal overlay retirement.
+    /// What each layer's teardown does, for any reason it leaves the stack,
+    /// lives on that layer's own `Layer` impl — a `Confirm` arm does its own
+    /// accept work (recording history, restoring/clearing a stash) *before*
+    /// truncating, so by the time teardown runs, every removal is already
+    /// the "cancel" case; there is no separate "cancel-specific work" split
+    /// to make. Teardown never fires a Steel callback — those are queued
+    /// only from explicit accept/cancel arms, before the truncate that
+    /// reaches here.
+    pub(in crate::editor) fn truncate_layers(&mut self, view: &EngineView, r: LayerRef) {
+        for mut layer in self.input.truncate(r) {
+            layer.tear_down(self, view);
+        }
+    }
+
+    /// [`Self::truncate_layers`]'s variant for a caller that needs `r`'s own
+    /// layer *by value* rather than merely retired — every accept/cancel arm
+    /// that reads a widget's payload before acting on it (a menu's chosen
+    /// index, a picker's selected payload, a completion session to hand to
+    /// the LSP client). Truncates the same way (top-first — anything stacked
+    /// above `r` gets ordinary teardown, since none of it asked to be
+    /// taken), but pulls `r`'s own layer out of the batch instead of tearing
+    /// it down, so its own accept-specific work runs once instead of racing
+    /// whatever `tear_down` would have done to the same payload.
+    pub(in crate::editor) fn take_layer<L: Layer>(
+        &mut self,
+        view: &EngineView,
+        r: LayerRef,
+    ) -> Box<L> {
+        let mut removed = self.input.truncate(r);
+        let taken = removed
+            .pop()
+            .expect("r names a live layer, so truncate(r) removes at least one")
+            .downcast::<L>()
+            .expect("caller names r's own concrete type");
+        for mut layer in removed {
+            layer.tear_down(self, view);
+        }
+        taken
     }
 }
 
@@ -690,6 +792,23 @@ mod tests {
         stack.clear_popups();
         assert!(stack.popup().is_none());
         assert!(stack.is::<BaseLayer>(stack.top()));
+    }
+
+    #[test]
+    fn clear_popup_layer_leaves_the_sticky_slot_intact() {
+        // `CompletionLayer::setup`'s narrower need than `clear_popups`: evict
+        // a pushed `Popup` layer without dismissing a `Sticky` popup sitting
+        // in the current mode layer's own slot.
+        let mut stack = InputStack::new();
+        *stack.sticky_popup_slot_mut().expect("Base has a slot") = Some(popup_model("sticky"));
+        stack.push(popup_model("scrollable"));
+        stack.clear_popup_layer();
+        assert!(stack.is::<BaseLayer>(stack.top()), "the layer home is gone");
+        assert_eq!(
+            stack.popup().map(|p| p.text.as_str()),
+            Some("sticky"),
+            "the sticky slot must survive"
+        );
     }
 
     #[test]

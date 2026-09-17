@@ -4,7 +4,6 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::input_stack::InsertLayer;
 use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
@@ -245,12 +244,7 @@ fn deferred_change_on_non_focused_buffer_prompts_on_buffer_enter() {
 #[test]
 fn change_detected_mid_insert_warns_instead_of_prompting() {
     let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
-    // Bare `push`, not `begin_insert_session` — this test only needs
-    // `mode()` to read `Insert` for the gate check below, not a real
-    // insert session (which would need a matching `end_insert_session` to
-    // avoid `commit_edit_group_current` panicking on a group that was
-    // never opened).
-    ed.state.input.push(InsertLayer { sticky_popup: None });
+    ed.handle_key(key('i'));
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
     let (_, warnings_before) = ed.state.message_log.totals();
@@ -268,10 +262,7 @@ fn change_detected_mid_insert_warns_instead_of_prompting() {
     // Back in Normal, only a buffer-enter check reopens the deferred prompt
     // — same deferral rule as a non-focused buffer's warning (see
     // `deferred_change_on_non_focused_buffer_prompts_on_buffer_enter`).
-    // Bare `truncate`, matching the bare `push` above — no teardown to run
-    // for a layer that was never really "entered".
-    let insert_layer = ed.state.input.top();
-    ed.state.input.truncate(insert_layer);
+    ed.handle_key(key_esc());
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     assert!(
         ed.state.input.confirm().is_some(),
@@ -818,7 +809,7 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
         .input
         .ref_of::<crate::editor::input_stack::PickerLayer>()
         .expect("sanity: the picker must still be open");
-    ed.state.input.truncate(picker_ref);
+    ed.state.truncate_layers(&ed.view, picker_ref);
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
     assert!(
         ed.state.input.confirm().is_some(),
@@ -863,7 +854,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
         .input
         .ref_of::<crate::editor::input_stack::PickerLayer>()
         .expect("sanity: the picker must still be open");
-    ed.state.input.truncate(picker_ref);
+    ed.state.truncate_layers(&ed.view, picker_ref);
 
     assert!(ed.state.input.picker().is_none(), "the picker closed");
     assert!(

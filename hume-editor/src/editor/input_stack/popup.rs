@@ -18,9 +18,11 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 /// until the next frame's `Editor::sync_popup_view`/`sync_popup_band_view`
 /// (per `layout`) resolves it into a positioned
 /// `hume_ui::popup::PopupState` or a `PopupBandState`. Never buried: every
-/// opener that could otherwise land above it retires it first
-/// (`show_popup`'s self-replace, `open_picker`, `show_menu`,
-/// `EditorState::push_mode_layer`) or is itself gated on the stack being
+/// layer's own `Layer::setup` retires it before landing (`PopupLayer`'s own,
+/// for its self-replace contract; `MenuLayer`/`DrawerLayer`/`PickerLayer`,
+/// which evict any open popup outright; `CompletionLayer`, which evicts only
+/// this home via `InputStack::clear_popup_layer`, leaving a `Sticky` popup
+/// in a mode layer's slot untouched) or is itself gated on the stack being
 /// settled, so `close-popup!`/`popup()` never need to look past `top()`.
 pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) text: String,
@@ -88,6 +90,13 @@ impl Layer for PopupLayer {
     }
     fn mode(&self) -> Option<EditorMode> {
         None
+    }
+    /// Gives `(show-popup! …)` its documented replace-not-stack contract:
+    /// clears whichever of the two popup homes (a pushed `PopupLayer`, or
+    /// the current mode layer's sticky slot) already holds one, regardless
+    /// of which kind is landing now.
+    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
+        state.input.clear_popups();
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Non-modal: a popup owns nothing but Ctrl-u/d and dies on the very

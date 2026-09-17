@@ -80,11 +80,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// `Base`/`Insert` are the only kinds with one (`sticky_popup_slot_mut`
     /// is the SSOT for that), so a `Sticky` `show-popup!` with any other
     /// layer on top drops silently (`Trace`, `Ok`), same shape as
-    /// `show_menu`'s own staleness drop. Either kind first
-    /// clears every home a popup could already occupy
-    /// (`InputStack::clear_popups`), which is what makes `(show-popup! …)`
-    /// replace rather than stack regardless of which of the two kinds was
-    /// showing before.
+    /// `show_menu`'s own staleness drop. `Scrollable` gets its
+    /// clear-every-home-first policy from `PopupLayer::setup`, run by
+    /// `push_layer`; the `Sticky` arm never pushes (it writes straight into
+    /// the slot), so it clears explicitly here instead — both kinds end up
+    /// clearing the same way, which is what makes `(show-popup! …)` replace
+    /// rather than stack regardless of which of the two was showing before.
     fn show_popup(
         &mut self,
         text: String,
@@ -124,8 +125,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                     .expect("slot presence checked above") = Some(model);
             }
             PopupKind::Scrollable => {
-                self.state.input.clear_popups();
-                self.state.input.push(model);
+                self.state.push_layer(self.view, model);
             }
         }
         Ok(())
@@ -172,20 +172,20 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        // A `Menu` can now land directly above a `Popup` (non-modal, so it
-        // no longer blocks this gate) — clear it first, the same way
-        // `open_picker` does, to keep `PopupLayer`'s "never buried"
-        // invariant true. Also retires a prior `Menu` on the self-replace
-        // path, firing its callback with `#f` via ordinary teardown.
+        // Retires a prior `Menu` on the self-replace path, firing its
+        // callback with `#f` via ordinary teardown. Any open popup is
+        // `MenuLayer::setup`'s concern, run by `push_layer` below.
         if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
             self.state.truncate_layers(self.view, r);
         }
-        self.state.input.clear_popups();
-        self.state.input.push(MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
-            selected: 0,
-            callback,
-        });
+        self.state.push_layer(
+            self.view,
+            MenuLayer {
+                rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
+                selected: 0,
+                callback,
+            },
+        );
         Ok(())
     }
 
@@ -234,12 +234,15 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
             self.state.truncate_layers(self.view, r);
         }
-        self.state.input.push(DrawerLayer {
-            items: std::sync::Arc::new(items),
-            selected: 0,
-            scroll: 0,
-            callback,
-        });
+        self.state.push_layer(
+            self.view,
+            DrawerLayer {
+                items: std::sync::Arc::new(items),
+                selected: 0,
+                scroll: 0,
+                callback,
+            },
+        );
         self.state.sync_drawer_view();
         Ok(())
     }

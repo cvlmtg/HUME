@@ -23,6 +23,10 @@ impl Layer for CommandLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
     }
+    /// Empty — see `InsertLayer::setup`'s doc: every mode layer's entry
+    /// policy (clearing popups, resetting Extend) is `push_mode_layer`'s
+    /// uniform rule, not per-type.
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.history.begin_session_all();
     }

@@ -25,6 +25,8 @@ impl Layer for PromptLayer {
         // crate.
         Some(EditorMode::Command)
     }
+    /// Empty — see `InsertLayer::setup`'s doc.
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.history.begin_session_all();
     }

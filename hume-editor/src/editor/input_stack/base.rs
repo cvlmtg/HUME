@@ -37,6 +37,11 @@ impl Layer for BaseLayer {
             EditorMode::Normal
         })
     }
+    /// `Base` is never pushed by `push_mode_layer` in practice (`InputStack::new`
+    /// and `truncate_to_base` construct it directly), so this never runs —
+    /// stated for the same reason every other mode layer's does: silence is
+    /// not a valid answer to "what does entering this layer do".
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
