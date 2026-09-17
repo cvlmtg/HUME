@@ -57,6 +57,32 @@ pub(super) enum MiniBufferEvent {
 }
 
 impl MiniBuffer {
+    /// A fresh minibuffer for `prompt`, with empty input and the cursor at
+    /// its start — the shape every opener but `prompt!` needs.
+    pub(in crate::editor) fn new(prompt: impl Into<String>) -> Self {
+        Self::with_prefill(prompt, String::new())
+    }
+
+    /// A minibuffer for `prompt` pre-populated with `input`, cursor parked
+    /// at its end — `(prompt! label prefill …)`'s shape.
+    pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
+        let mut mb = Self {
+            prompt: prompt.into(),
+            input: String::new(),
+            cursor: 0,
+        };
+        mb.set_input(input);
+        mb
+    }
+
+    /// Installs `text` as `input` and parks the cursor at its end — the
+    /// "just replaced the whole input" invariant shared by `with_prefill`
+    /// and history recall ([`recall_history`]).
+    pub(in crate::editor) fn set_input(&mut self, text: String) {
+        self.cursor = text.len();
+        self.input = text;
+    }
+
     /// Column offset of the cell at `byte_offset` into `input` within the
     /// rendered statusline: the 1-column `pad_left` space the statusline
     /// renderer prepends, plus the prompt's width, plus the display width of
@@ -260,8 +286,7 @@ pub(in crate::editor) fn recall_history(ed: &mut Editor, kind: HistoryKind, dir:
     if let Some(text) = text
         && let Some(mb) = ed.state.input.minibuf_mut()
     {
-        mb.input = text;
-        mb.cursor = mb.input.len();
+        mb.set_input(text);
     }
 }
 

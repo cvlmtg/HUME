@@ -54,16 +54,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Err("prompt!: a minibuffer session is already open".to_string());
         }
-        let cursor = prefill.len();
         self.state.history.begin_session_all();
         self.state.push_mode_layer(
             self.view,
             PromptLayer {
-                minibuf: crate::editor::MiniBuffer {
-                    prompt: label,
-                    input: prefill,
-                    cursor,
-                },
+                minibuf: crate::editor::MiniBuffer::with_prefill(label, prefill),
                 callback,
             },
         );

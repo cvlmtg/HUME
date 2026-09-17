@@ -355,22 +355,11 @@ impl Editor {
     /// no-other-overlay check. Retiring it (not declining it) leaves the
     /// old buffer's `disk_state` exactly as `Changed` as it was, so the
     /// "asked about on its own next buffer-enter" promise still holds next
-    /// time focus actually returns there. Uses `excise_layer`, not
-    /// `truncate_layers`: nothing guarantees the confirm is still `top()`
-    /// either — a `Prompt`/`Picker` opened after it (which
-    /// `push_mode_layer`'s own truncation never reaches, since an overlay on
-    /// `Base` isn't a mode layer) has nothing to do with the question this
-    /// confirm was answering and must survive the retirement untouched.
+    /// time focus actually returns there. See `EditorState::retire_stale_confirm`
+    /// for why this is a retirement (`excise_layer`), not a `truncate_layers`.
     pub(in crate::editor) fn enter_buffer_disk_check(&mut self, entered: BufferId) {
-        if self
-            .state
-            .input
-            .confirm()
-            .is_some_and(|c| !c.targets_buffer(entered))
-            && let Some(r) = self.state.input.ref_of::<ConfirmLayer>()
-        {
-            self.state.excise_layer(&self.view, r);
-        }
+        self.state
+            .retire_stale_confirm(&self.view, |c| !c.targets_buffer(entered));
         self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
     }
 

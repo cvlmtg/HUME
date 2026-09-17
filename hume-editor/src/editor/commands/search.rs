@@ -13,7 +13,7 @@ use hume_ops::search::{
 use hume_ops::text_object::inner_word_impl;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
-use super::super::input_stack::{SearchLayer, SiftLayer};
+use super::super::input_stack::{PaneSnapshot, SearchLayer, SiftLayer};
 use super::super::{EditorState, MiniBuffer};
 use super::{
     current_selections, doc, effective_word_chars, focused_buffer_id, search_pattern,
@@ -40,13 +40,8 @@ fn begin_search(
     state.push_mode_layer(
         view,
         SearchLayer {
-            minibuf: MiniBuffer {
-                prompt: prompt.to_string(),
-                input: String::new(),
-                cursor: 0,
-            },
-            pane,
-            pre_sels: None,
+            minibuf: MiniBuffer::new(prompt),
+            snap: PaneSnapshot::new(pane),
             extend,
         },
     );
@@ -303,13 +298,8 @@ pub(in crate::editor) fn cmd_sift_within(
     state.push_mode_layer(
         view,
         SiftLayer {
-            minibuf: MiniBuffer {
-                prompt: "⫽".to_string(),
-                input: String::new(),
-                cursor: 0,
-            },
-            pane,
-            pre_sels: None,
+            minibuf: MiniBuffer::new("⫽"),
+            snap: PaneSnapshot::new(pane),
         },
     );
     Ok(())

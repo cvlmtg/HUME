@@ -1,24 +1,23 @@
 //! The `Sift` layer — the `s`-prompt (sift-within) minibuffer mode.
 
-use hume_engine::pipeline::{EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_regex;
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::{Editor, EditorState, commands};
+use super::super::{Editor, EditorState};
+use super::snapshot::PaneSnapshot;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
-use hume_editing::selection::SelectionSet;
 
 pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
-    /// The pane this session opened in — same reasoning as
-    /// `SearchLayer::pane`: a mouse click always falls through under this
-    /// layer, so focus can move to a different pane while Sift stays open.
-    pub(in crate::editor) pane: PaneId,
-    /// Snapshot of `pane`'s selections before this session opened. `None`
-    /// once the `Confirm` arm has taken it.
-    pub(in crate::editor) pre_sels: Option<SelectionSet>,
+    /// This session's pane and its pre-entry selection snapshot — same
+    /// reasoning as `SearchLayer::snap`: a mouse click always falls through
+    /// under this layer, so focus can move to a different pane while Sift
+    /// stays open. See [`PaneSnapshot`]'s own doc for the capture/restore
+    /// rules.
+    pub(in crate::editor) snap: PaneSnapshot,
 }
 
 impl Layer for SiftLayer {
@@ -28,16 +27,13 @@ impl Layer for SiftLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }
-    /// Captures `pre_sels` here rather than at construction — see
+    /// Captures the snapshot here rather than at construction — see
     /// `SearchLayer::setup`'s doc for why the ordering matters.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
-        self.pre_sels = Some(commands::current_selections(state, view).clone());
+        self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
-        if let Some(sels) = self.pre_sels.take() {
-            let bid = view.panes[self.pane].buffer_id;
-            state.panes.state[self.pane][bid].set_selections(sels);
-        }
+        self.snap.take_restore(&mut state.panes.state, view);
         // Sift has no history ring of its own — `begin_session_all`
         // only touches the command/search rings, so this is a no-op
         // for Sift — but every other minibuf-backed mode's teardown
@@ -71,7 +67,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // teardown's `Sift` arm (which would otherwise restore it)
             // finds nothing to do.
             if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
-                sift.pre_sels = None;
+                sift.snap.take_selections();
             }
             // Do NOT write to the search register or clear search state —
             // sift-within is a selection op, not a search. The previous
@@ -111,8 +107,8 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
         return;
     };
     let result = sift
-        .pre_sels
-        .as_ref()
+        .snap
+        .selections()
         .and_then(|sels| sift_matches_within(ed.doc().text(), sels, &regex));
 
     match result {
@@ -124,15 +120,11 @@ fn update_live_sift(ed: &mut Editor, r: LayerRef) {
 // ── Snapshot restore helpers ────────────────────────────────────────────────
 
 /// Restore selections from the sift-mode snapshot without consuming it —
-/// always targets the session's own originating pane (`SiftLayer::pane`).
+/// always targets the session's own originating pane, not whatever's
+/// currently focused (see [`PaneSnapshot`]'s own doc).
 fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
     let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
-    let Some(sels) = sift.pre_sels.clone() else {
-        return;
-    };
-    let pane = sift.pane;
-    let bid = ed.view.panes[pane].buffer_id;
-    ed.state.panes.state[pane][bid].set_selections(sels);
+    sift.snap.restore(&mut ed.state.panes.state, &ed.view);
 }

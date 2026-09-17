@@ -203,11 +203,7 @@ pub(in crate::editor) fn cmd_command_mode(
     state.push_mode_layer(
         view,
         CommandLayer {
-            minibuf: MiniBuffer {
-                prompt: ":".to_string(),
-                input: String::new(),
-                cursor: 0,
-            },
+            minibuf: MiniBuffer::new(":"),
             completion: None,
         },
     );

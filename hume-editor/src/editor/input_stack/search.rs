@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use hume_engine::pipeline::{EngineView, PaneId};
+use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::search::{SearchDirection, compile_search_regex, find_next_match};
 
@@ -12,21 +12,19 @@ use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
+use super::snapshot::PaneSnapshot;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
-use hume_editing::selection::SelectionSet;
 
 pub(in crate::editor) struct SearchLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
-    /// The pane this session opened in — restore/clear always targets this,
-    /// never `state.focus.id()`, which may have moved on since: a mouse
-    /// click always falls through under this layer (`minibuf_input`'s
-    /// `Mouse` arm), so focus (and whatever it opens next) can move to a
-    /// different pane while Search stays open.
-    pub(in crate::editor) pane: PaneId,
-    /// Snapshot of `pane`'s selections before this session opened, for
-    /// cancel-restore. `None` once the `Confirm` arm has taken it — see its
-    /// own comment for why teardown must then no-op.
-    pub(in crate::editor) pre_sels: Option<SelectionSet>,
+    /// This session's pane and its pre-entry selection snapshot — restore
+    /// and clear always target `snap`'s own pane, never `state.focus.id()`,
+    /// which may have moved on since: a mouse click always falls through
+    /// under this layer (`minibuf_input`'s `Mouse` arm), so focus (and
+    /// whatever it opens next) can move to a different pane while Search
+    /// stays open. See [`PaneSnapshot`]'s own doc for the capture/restore
+    /// rules.
+    pub(in crate::editor) snap: PaneSnapshot,
     /// Whether Extend mode was active when this session opened. Captured so
     /// live-search can extend from the pre-search anchor even though `mode`
     /// is `Search` during the live preview.
@@ -40,20 +38,18 @@ impl Layer for SearchLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Search)
     }
-    /// Captures `pre_sels` here rather than at construction: `setup` runs
+    /// Captures the snapshot here rather than at construction: `setup` runs
     /// after the outgoing layer's own `tear_down` (see the `Layer::setup`
     /// doc), so a re-entrant `/`-search (`push_mode_layer` replaces rather
     /// than no-ops on same-kind re-entry for every mode layer but `Insert`)
-    /// snapshots the state the outgoing session's `tear_down` just restored
+    /// captures the state the outgoing session's `tear_down` just restored
     /// — the true pre-search selections — instead of the mid-search preview
     /// a construction-time capture would have caught.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
-        self.pre_sels = Some(commands::current_selections(state, view).clone());
+        self.snap.capture(state, view);
     }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
-        if let Some(sels) = self.pre_sels.take() {
-            let bid = view.panes[self.pane].buffer_id;
-            state.panes.state[self.pane][bid].set_selections(sels);
+        if let Some(bid) = self.snap.take_restore(&mut state.panes.state, view) {
             search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
         }
         state.history.begin_session_all();
@@ -100,7 +96,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .state
                 .input
                 .at_mut::<SearchLayer>(r)
-                .and_then(|s| s.pre_sels.take());
+                .and_then(|s| s.snap.take_selections());
             if let Some(sels) = pre_sels {
                 let bid = ed.focused_buffer_id();
                 let entry = JumpEntry::new(sels, ed.doc().text(), bid);
@@ -119,7 +115,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
                 return;
             };
-            let bid = ed.view.panes[search.pane].buffer_id;
+            let bid = search.snap.buffer_id(&ed.view);
             search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
         }
         MiniBufferEvent::BackspaceOnEmpty => {
@@ -191,12 +187,12 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
     // Read the two `CharOffset`s this function actually needs straight out
     // of the borrow — `ed.doc()` is a second, independent shared borrow of
     // `ed` (same shape as `update_live_sift`'s `ed.doc()` call inside its
-    // own `sift.pre_sels.as_ref()` closure), so it can run while `search`
+    // own `sift.snap.selections()` closure), so it can run while `search`
     // is still alive. Cloning the whole `SelectionSet` here, just to read
     // one or two of its offsets, would cost a `Vec` allocation on every
     // keystroke typed into the search prompt.
-    let anchor = search.pre_sels.as_ref().map(|s| s.primary().anchor());
-    let from_char = match search.pre_sels.as_ref() {
+    let anchor = search.snap.selections().map(|s| s.primary().anchor());
+    let from_char = match search.snap.selections() {
         Some(sels) => {
             let text = ed.doc().text();
             let primary = sels.primary();
@@ -230,16 +226,11 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
 // ── Snapshot restore helpers ────────────────────────────────────────────────
 
 /// Restore selections from the search-mode snapshot without consuming it —
-/// always targets the session's own originating pane (`SearchLayer::pane`),
-/// not whatever's currently focused.
+/// always targets the session's own originating pane, not whatever's
+/// currently focused (see [`PaneSnapshot`]'s own doc).
 fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
     let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
     };
-    let Some(sels) = search.pre_sels.clone() else {
-        return;
-    };
-    let pane = search.pane;
-    let bid = ed.view.panes[pane].buffer_id;
-    ed.state.panes.state[pane][bid].set_selections(sels);
+    search.snap.restore(&mut ed.state.panes.state, &ed.view);
 }

@@ -972,9 +972,10 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
 /// A picker sitting above a confirm must survive, untouched, when the
 /// confirm below it is retired for an unrelated reason (here,
 /// `enter_buffer_disk_check` finding it targets a buffer that's no longer
-/// focused) — `enter_buffer_disk_check` uses `EditorState::excise_layer`
-/// specifically because the picker has nothing to do with the question the
-/// confirm was answering and must not be taken as collateral.
+/// focused) — `enter_buffer_disk_check` calls
+/// `EditorState::retire_stale_confirm`, which excises rather than
+/// truncates, specifically because the picker has nothing to do with the
+/// question the confirm was answering and must not be taken as collateral.
 ///
 /// Fail oracle: before this fix, this retirement used `truncate_layers` at
 /// the confirm's own ref, which removes it *and everything above it* — the

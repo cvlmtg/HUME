@@ -5,7 +5,7 @@
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::BufferId;
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
@@ -132,10 +132,29 @@ impl EditorState {
     /// the same carve-out for the field that was `pub(crate)` directly on
     /// `EditorState` before it moved into a mode layer's payload.
     pub(crate) fn confirm(&self) -> Option<&ConfirmLayer> {
-        if self.input.is::<ConfirmLayer>(self.input.top()) {
-            self.input.confirm()
-        } else {
-            None
+        self.input.at(self.input.top())
+    }
+
+    /// Retires the open confirm (if any) when `stale` says it no longer
+    /// belongs — the shared body of `buffer::disk::enter_buffer_disk_check`
+    /// (stale because focus moved off the buffer it targets) and
+    /// `buffer::lifecycle::close_buffer_and_notify` (stale because its
+    /// target buffer is being freed). Uses `excise_layer`, not
+    /// `truncate_layers`: nothing guarantees the confirm is still `top()` —
+    /// a `Prompt`/`Picker` opened above it since (which `push_mode_layer`'s
+    /// own truncation never reaches, as an overlay on `Base` isn't a mode
+    /// layer) has nothing to do with the question this confirm was
+    /// answering and must survive the retirement untouched. A no-op when no
+    /// confirm is open, or `stale` says the open one still applies.
+    pub(in crate::editor) fn retire_stale_confirm(
+        &mut self,
+        view: &EngineView,
+        stale: impl FnOnce(&ConfirmLayer) -> bool,
+    ) {
+        if self.input.confirm().is_some_and(stale)
+            && let Some(r) = self.input.ref_of::<ConfirmLayer>()
+        {
+            self.excise_layer(view, r);
         }
     }
 }

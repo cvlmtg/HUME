@@ -14,11 +14,7 @@ use super::super::Editor;
 /// anchors at the session's token-start char instead, via a
 /// separately-computed `anchor_char`).
 pub(in crate::editor) fn focused_cursor_char(ed: &Editor) -> CharOffset {
-    let pid = ed.state.focus.id();
-    ed.state.panes.state[pid][ed.focused_buffer_id()]
-        .selections()
-        .primary()
-        .head()
+    ed.current_selections().primary().head()
 }
 
 /// Screen anchor (absolute cell) + containing pane + text-column budget for

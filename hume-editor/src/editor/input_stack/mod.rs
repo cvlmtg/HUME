@@ -31,11 +31,13 @@
 //! to keep live — a mode layer like `Search`/`Sift` has none), and its named
 //! lookup sugar over `InputStack` — lives in a file of its own, named by a
 //! `mod` line below. Adding another means adding one file and one `mod` line
-//! here, nothing else. `placement.rs` is the one exception: screen-placement
+//! here, nothing else. Two exceptions: `placement.rs` is screen-placement
 //! math shared by the three cursor/token-anchored overlays (`popup`, `menu`,
-//! `completion`), not itself a layer.
+//! `completion`), and `snapshot.rs` is the pre-entry pane-selection capture
+//! shared by `search`/`sift` — neither is itself a layer.
 
 mod placement;
+mod snapshot;
 mod stack;
 
 pub(in crate::editor) mod base;
@@ -71,3 +73,4 @@ pub(in crate::editor) use popup::PopupLayer;
 pub(in crate::editor) use prompt::PromptLayer;
 pub(in crate::editor) use search::SearchLayer;
 pub(in crate::editor) use sift::SiftLayer;
+pub(in crate::editor) use snapshot::PaneSnapshot;

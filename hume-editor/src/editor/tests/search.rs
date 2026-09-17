@@ -296,7 +296,8 @@ fn sift_within_enters_sift_mode() {
             .input
             .find::<crate::editor::input_stack::SiftLayer>()
             .unwrap()
-            .pre_sels
+            .snap
+            .selections()
             .is_some()
     );
     assert!(ed.state.minibuf().is_some());

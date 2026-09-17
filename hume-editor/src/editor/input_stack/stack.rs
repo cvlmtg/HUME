@@ -329,8 +329,10 @@ impl InputStack {
     /// accepts that rather than guarding against it, documented per call
     /// site (`close_drawer`/`close_menu` because a non-modal `Popup` can
     /// land above either by design; `enter_buffer_disk_check`/
-    /// `close_buffer_and_notify` use [`EditorState::excise_layer`] instead,
-    /// precisely to avoid this collateral for a stale `Confirm`). Every type
+    /// `close_buffer_and_notify` go through
+    /// [`EditorState::retire_stale_confirm`], which excises rather than
+    /// truncates, precisely to avoid this collateral for a stale `Confirm`).
+    /// Every type
     /// but `BaseLayer` occurs at most once on the stack today, so "topmost"
     /// and "only" coincide in practice.
     pub(in crate::editor) fn ref_of<L: Layer>(&self) -> Option<LayerRef> {
@@ -723,11 +725,11 @@ impl EditorState {
 
     /// Removes exactly `r` via [`InputStack::excise`], running its own
     /// `tear_down` but leaving everything stacked above it untouched — for
-    /// a stale `Confirm` retirement, where an unrelated session landing
-    /// above it since has nothing to do with the question the confirm was
-    /// answering. `ConfirmLayer::tear_down` is empty (a confirm never fires
-    /// a callback), so this can never double-fire one. A no-op when `r` is
-    /// already stale.
+    /// a stale `Confirm` retirement ([`Self::retire_stale_confirm`]), where
+    /// an unrelated session landing above it since has nothing to do with
+    /// the question the confirm was answering. `ConfirmLayer::tear_down` is
+    /// empty (a confirm never fires a callback), so this can never
+    /// double-fire one. A no-op when `r` is already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
         if let Some(mut layer) = self.input.excise(r) {
             layer.tear_down(self, view, Removal::Explicit);
@@ -973,11 +975,7 @@ mod tests {
     fn sticky_popup_slot_mut_is_none_under_a_minibuf_mode_layer() {
         let mut stack = InputStack::new();
         stack.push(CommandLayer {
-            minibuf: MiniBuffer {
-                prompt: String::new(),
-                input: String::new(),
-                cursor: 0,
-            },
+            minibuf: MiniBuffer::new(""),
             completion: None,
         });
         assert!(stack.sticky_popup_slot_mut().is_none());
