@@ -52,6 +52,9 @@ impl Layer for InsertLayer {
     fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         Some(&mut self.sticky_popup)
     }
+    fn reentry_is_noop(&self) -> bool {
+        true
+    }
 }
 
 pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {

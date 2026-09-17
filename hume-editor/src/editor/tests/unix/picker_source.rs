@@ -227,7 +227,7 @@ fn close_picker_kills_the_source_child() {
         .unwrap()
         .attach_source(source, vec![0]);
 
-    picker::close_picker(&mut ed.state, SteelVal::BoolV(false));
+    picker::close_picker(&mut ed.state, &ed.view, SteelVal::BoolV(false));
 
     assert!(
         !process_is_alive(pid),

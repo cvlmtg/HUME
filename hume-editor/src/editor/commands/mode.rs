@@ -12,7 +12,7 @@ use hume_ops::motion::{
 };
 use hume_ops::selection_cmd::{cmd_collapse_selection_to_anchor, cmd_collapse_selection_to_head};
 
-use super::super::input_stack::CommandLayer;
+use super::super::input_stack::{BaseLayer, CommandLayer};
 use super::super::replay::PendingRepeat;
 use super::super::{EditorState, MiniBuffer};
 use super::{
@@ -226,13 +226,23 @@ pub(in crate::editor) fn cmd_exit_insert(
 
 // ── Extend mode ───────────────────────────────────────────────────────────────
 
+/// No-op unless the mode layer is `Base` — `EditorMode::Extend` is only ever
+/// reported by `BaseLayer::mode()` (`input_stack/base.rs`), so
+/// `state.mode() != EditorMode::Extend` reads `true` from *any* other mode
+/// (Insert, a minibuf mode). `set_extend` itself "does not gate on the
+/// current mode layer" (its own doc) — it always writes `Base`'s flag
+/// directly — so without this guard, toggling from Insert would arm Extend
+/// on `Base` invisibly, with nothing to clear it before the next Esc lands
+/// there.
 pub(in crate::editor) fn cmd_toggle_extend(
     state: &mut EditorState,
     _view: &mut EngineView,
     _count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
-    state.input.set_extend(state.mode() != EditorMode::Extend);
+    if state.input.is::<BaseLayer>(state.input.mode_layer()) {
+        state.input.set_extend(state.mode() != EditorMode::Extend);
+    }
     Ok(())
 }
 

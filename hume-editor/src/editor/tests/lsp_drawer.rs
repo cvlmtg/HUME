@@ -239,6 +239,49 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
     );
 }
 
+/// `close-drawer!` while the drawer is buried under `Insert` (browsing while
+/// editing, `insert_above_an_open_drawer_…` above) is the drawer's *normal*
+/// state, not a "wrong widget is active" mistake — it must close the
+/// drawer wherever it sits on the stack, same as every Rust-internal
+/// retirement (`buffer::disk`/`buffer::lifecycle`'s confirm-on-close checks,
+/// `lsp_stop_one`'s own doc) already does, rather than erroring because it
+/// isn't `top()`. `truncate` is the only removal op, so this takes `Insert`
+/// with it too — same "closing a buried widget takes everything above it"
+/// contract `lsp_stop_one` already accepts for a `Completion` a picker has
+/// landed on; the collateral `Insert` layer still gets ordinary teardown
+/// (`tear_down_insert` commits its edit group), not a silent drop.
+///
+/// Fail oracle: before this fix, `close_drawer` returned `Err` whenever the
+/// drawer was present but not `top()` — `.unwrap()` below would panic.
+#[test]
+fn close_drawer_closes_a_drawer_buried_under_insert() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_three_items(&mut ed, tmp.path());
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert above drawer");
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer buried");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.close_drawer().unwrap();
+
+    assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "Insert goes with it — truncate is the only removal op"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "Xxabcdefgh\n",
+        "the typed char must have committed via ordinary Insert teardown"
+    );
+}
+
 // ── Esc: closes + calls back with #f ─────────────────────────────────────────
 
 #[test]

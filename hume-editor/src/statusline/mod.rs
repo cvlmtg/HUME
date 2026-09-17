@@ -400,10 +400,14 @@ impl hume_engine::providers::StatuslineProvider for HumeStatusline<'_> {
         let y = area.y;
 
         // An open confirm overlay (disk-change reload, …) owns the whole
-        // row unconditionally — `can_open_confirm` only ever opens one when
-        // the input stack is at `Base`, so a live confirm is always the
-        // topmost layer, and must also be the top-priority render, ahead of
-        // even the minibuffer.
+        // row when it's still the one driving the keyboard — `EditorState::
+        // confirm()` reads `Some` only while the confirm is `top()`: a
+        // Steel-initiated push (a timer's `prompt!`) can otherwise land
+        // above it without truncating it (`push_mode_layer` only truncates
+        // the outgoing *mode* layer, never an overlay sitting on `Base`),
+        // and rendering a buried confirm's row while the minibuffer above
+        // it owns the keys would show the wrong prompt for what's actually
+        // answerable right now.
         if let Some(confirm) = editor.state.confirm() {
             fill_row_colors(canvas, &colors, area, y);
             canvas.write_text_run(

@@ -697,8 +697,16 @@ impl EditorState {
     /// `Editor::detect_mode_change`'s observation-point diff at the next
     /// `settle()`).
     ///
-    /// No-op if the current mode layer is already the same kind (Insert
-    /// re-entry — matches `begin_insert_session`'s own open-group guard).
+    /// No-op if the current mode layer is already the same kind *and*
+    /// [`input_stack::Layer::reentry_is_noop`] says so for that kind — true
+    /// only for `Insert` (its payload is empty, and the no-op is
+    /// load-bearing for `begin_insert_session`'s own open-group guard).
+    /// Every other mode layer replaces itself on same-kind re-entry, since
+    /// its payload (a prompt string, a search direction) may have changed —
+    /// see each opener's own doc for why it stashes its pre-entry state
+    /// *after* this call rather than before, so teardown-is-cancel restores
+    /// the old session's stash, not the new one's.
+    ///
     /// Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
     /// a `prompt!` from Insert ends the insert session before the prompt
@@ -721,15 +729,16 @@ impl EditorState {
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
     /// key path; a Steel-initiated push (a timer's `prompt!` while a picker
-    /// is open) simply lands on top, where the picker's own key policy
-    /// governs what happens next.
+    /// is open) simply lands on top of it — the *incoming* layer's own key
+    /// policy governs what happens next, and the picker is suspended
+    /// (still painted, no longer reachable) until that layer retires.
     pub(in crate::editor) fn push_mode_layer<L: input_stack::Layer>(
         &mut self,
         view: &EngineView,
         layer: L,
     ) {
         let mode_layer = self.input.mode_layer();
-        if self.input.is::<L>(mode_layer) {
+        if self.input.is::<L>(mode_layer) && layer.reentry_is_noop() {
             return;
         }
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
@@ -761,6 +770,33 @@ impl EditorState {
         }
     }
 
+    /// [`Self::truncate_layers`]'s variant for a caller that needs `r`'s own
+    /// layer *by value* rather than merely retired — every accept/cancel
+    /// arm that reads a widget's payload before acting on it (a menu's
+    /// chosen index, a picker's selected payload, a completion session to
+    /// hand to the LSP client). Truncates the same way (top-first —
+    /// anything stacked above `r` gets ordinary teardown, since none of it
+    /// asked to be taken), but pulls `r`'s own layer out of the batch
+    /// instead of tearing it down, so its own accept-specific work runs
+    /// once instead of racing whatever `tear_down` would have done to the
+    /// same payload.
+    pub(in crate::editor) fn take_layer<L: input_stack::Layer>(
+        &mut self,
+        view: &EngineView,
+        r: input_stack::LayerRef,
+    ) -> Box<L> {
+        let mut removed = self.input.truncate(r);
+        let taken = removed
+            .pop()
+            .expect("r names a live layer, so truncate(r) removes at least one")
+            .downcast::<L>()
+            .expect("caller names r's own concrete type");
+        for mut layer in removed {
+            layer.tear_down(self, view);
+        }
+        taken
+    }
+
     /// Retires the completion layer wherever it is on the stack — truncates
     /// at its own ref rather than only if it's on top, since a `Completion`
     /// layer can sit under a `Popup`, and a pop-if-top rule would leave a
@@ -774,27 +810,17 @@ impl EditorState {
 
     /// [`Self::dismiss_completion`]'s variant for the two accept paths,
     /// which need the session *by value* rather than merely retired —
-    /// truncates the same way (top-first — anything pushed above
-    /// `Completion` gets ordinary teardown), but pulls the session itself
-    /// out of the batch instead of dropping it, clearing the menu view
-    /// directly rather than through `CompletionLayer::tear_down`.
-    /// `None` when no session is open.
+    /// [`Self::take_layer`] handles the truncate-and-pull-out; this clears
+    /// the menu view directly rather than through `CompletionLayer::tear_down`
+    /// (`take_layer` never runs `Completion`'s own teardown, only whatever
+    /// was pushed above it). `None` when no session is open.
     pub(in crate::editor) fn take_completion_session(
         &mut self,
         view: &EngineView,
     ) -> Option<lsp::completion::CompletionSession> {
         let r = self.input.ref_of::<input_stack::CompletionLayer>()?;
-        let mut removed = self.input.truncate(r);
-        let taken = removed
-            .pop()
-            .expect("ref_of(CompletionLayer) guarantees at least one removed layer");
-        let completion = taken
-            .downcast::<input_stack::CompletionLayer>()
-            .expect("ref_of(CompletionLayer) guarantees the last removed layer is CompletionLayer");
+        let completion = self.take_layer::<input_stack::CompletionLayer>(view, r);
         self.views.completion_menu.set(None);
-        for mut layer in removed {
-            layer.tear_down(self, view);
-        }
         Some(completion.session)
     }
 

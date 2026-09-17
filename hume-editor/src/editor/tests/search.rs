@@ -41,6 +41,53 @@ fn search_esc_restores_position() {
     assert_eq!(state(&ed), "-[h]>ello world\n");
 }
 
+/// Re-entering search (`search-backward` reached, e.g. via a hook or timer's
+/// `(call! "search-backward")`, while a `/` session is still open — there's
+/// no key path for this, since `?` typed into an open `/` prompt is just a
+/// literal character) must replace the session rather than no-op, and must
+/// stash the *true* pre-search state, not the mid-`/`-session preview
+/// selection: `push_mode_layer`'s truncate runs the outgoing `Search`
+/// layer's own `tear_down` first, restoring `pre_search_sels` to what it
+/// held before the first session, and only then does the new stash read
+/// `current_selections`.
+///
+/// Fail oracle: without `SearchLayer::reentry_is_noop() == false`,
+/// `push_mode_layer` would no-op on the same-kind re-entry, leaving the `/`
+/// prompt and its stash exactly as they were — the assertion on `?` below
+/// would fail. Stashing *before* the push instead of after would capture
+/// the mid-`/`-search preview selection, and cancelling would land on
+/// `"world"`, not the original pre-search position.
+#[test]
+fn search_backward_reentry_while_forward_search_open_replaces_and_restashes() {
+    use crate::editor::commands::cmd_search_backward;
+    use hume_ops::MotionMode;
+
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(
+        state(&ed),
+        "hello -[world]>\n",
+        "sanity: live `/` search moved the selection"
+    );
+
+    cmd_search_backward(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    assert_eq!(
+        ed.state.minibuf().unwrap().prompt,
+        "?",
+        "must replace the `/` session with a fresh `?` one, not no-op"
+    );
+
+    ed.handle_key(key_esc());
+    assert_eq!(
+        state(&ed),
+        "-[h]>ello world\n",
+        "cancel must restore the true pre-`/`-search position, not the mid-`/`-search preview"
+    );
+}
+
 /// `n` repeats the last confirmed forward search, advancing through matches in
 /// document order.
 #[test]

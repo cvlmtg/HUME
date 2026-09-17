@@ -45,6 +45,36 @@ fn extend_preserved_after_yank() {
     assert_eq!(ed.state.mode(), Mode::Extend, "yank preserves Extend");
 }
 
+/// `toggle-extend` reached from a non-`Base` mode layer (a hook, timer, or
+/// async callback calling `(call! "toggle-extend")` while Insert is open —
+/// unreachable via a key, since there's no `e` binding in the Insert
+/// keymap) must not arm Extend on `Base` invisibly. `set_extend` itself
+/// "does not gate on the current mode layer" and always writes `Base`'s
+/// flag directly, so without `cmd_toggle_extend`'s own guard, Esc out of
+/// Insert would land in Extend instead of Normal.
+///
+/// Fail oracle: without the `is::<BaseLayer>(mode_layer())` guard in
+/// `cmd_toggle_extend`, this arms `Base.extend` while Insert is current,
+/// and the assertion below (mode is Normal after Esc, not Extend) fails.
+#[test]
+fn toggle_extend_from_insert_is_a_no_op() {
+    use crate::editor::commands::cmd_toggle_extend;
+    use hume_ops::MotionMode;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert is open");
+
+    cmd_toggle_extend(&mut ed.state, &mut ed.view, 0, MotionMode::Move).unwrap();
+
+    ed.handle_key(key_esc());
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Normal,
+        "toggle-extend from Insert must not arm Extend on Base"
+    );
+}
+
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
 
 /// `o` must group the structural newline insertion and the subsequent insert

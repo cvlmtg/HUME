@@ -193,7 +193,7 @@ These are editor-builtin commands any completion plugin can drive — a source r
 | `(completion-update-filter! text)` | Re-filter the open session against `text` |
 | `(completion-top n)` | The top `n` ranked/filtered items |
 | `(completion-accept! idx)` | Accept item `idx` from `completion-top`'s (ranked) order — fires the `on-completion-accept` hook |
-| `(completion-dismiss!)` | Close the open session |
+| `(completion-dismiss!)` | Close the open session; a no-op if none is open |
 
 A completion source registers its trigger characters, then reacts to the `on-trigger-char` hook by fetching candidates and calling `completion-begin!`; `on-completion-refilter` fires as the user keeps typing, and `on-completion-accept` once they pick a result. See [Hooks](plugins.md#hooks) for those three hooks' lambda signatures.
 
@@ -221,9 +221,9 @@ Full walkthroughs — batch vs. streaming population, truncation direction, exit
 | `(show-popup! text #:anchor #:kind #:lang)` | Show a text popup — `#:anchor` `'cursor` (default, floats near the cursor) or `'bottom` (docks above the statusline); `#:lang` for syntax highlighting. `#:kind` also sets how long it lives: `'sticky` (default) closes on its own as soon as you leave whatever mode you opened it in; `'scrollable` stays open — Ctrl-u/Ctrl-d scroll it — until any other key, paste, or mouse input closes it |
 | `(close-popup!)` | Close the open popup; idempotent — a no-op if none is open |
 | `(show-menu! items on-select)` | Show a selection menu over `items`, a list of strings |
-| `(close-menu!)` | Close the open menu; a no-op if none is open, an error if a different widget is currently active |
+| `(close-menu!)` | Close the open menu; a no-op if none is open |
 | `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a list of strings |
-| `(close-drawer!)` | Close the open drawer; a no-op if none is open, an error if a different widget is currently active |
+| `(close-drawer!)` | Close the open drawer; a no-op if none is open |
 
 ## Timers
 

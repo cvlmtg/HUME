@@ -349,7 +349,7 @@ impl Editor {
             .is_some_and(|c| !c.targets_buffer(entered))
             && let Some(r) = self.state.input.ref_of::<ConfirmLayer>()
         {
-            self.state.input.truncate(r);
+            self.state.truncate_layers(&self.view, r);
         }
         self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
     }

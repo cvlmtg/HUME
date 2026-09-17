@@ -106,7 +106,17 @@ impl super::stack::InputStack {
 }
 
 impl EditorState {
-    /// The open disk-change confirm, if any — `crate::statusline`'s reader.
+    /// The confirm that owns the statusline row right now — `crate::statusline`'s
+    /// reader, and *not* the same query as `InputStack::confirm()`: a confirm
+    /// can be buried (a timer's `prompt!` lands above it — `push_mode_layer`
+    /// only truncates the outgoing *mode* layer, never an overlay sitting on
+    /// top of `Base`), in which case it's still on the stack and still the
+    /// right target for `buffer::disk`/`buffer::lifecycle`'s retire-on-close
+    /// checks (`InputStack::confirm()`, used there), but it no longer owns
+    /// the keyboard or this row — a buried confirm painted here would show
+    /// the wrong prompt while the minibuffer above it reads the keys.
+    /// `Some` only when the confirm is `top()`.
+    ///
     /// A plain wrapper rather than exposing `input` itself at `pub(crate)`:
     /// `InputStack`'s own API stays `pub(in crate::editor)` (see its own
     /// doc for why), and the statusline is a sibling of `crate::editor`,
@@ -116,7 +126,11 @@ impl EditorState {
     /// the same carve-out for the field that was `pub(crate)` directly on
     /// `EditorState` before it moved into a mode layer's payload.
     pub(crate) fn confirm(&self) -> Option<&ConfirmLayer> {
-        self.input.confirm()
+        if self.input.is::<ConfirmLayer>(self.input.top()) {
+            self.input.confirm()
+        } else {
+            None
+        }
     }
 }
 
@@ -159,17 +173,13 @@ pub(in crate::editor) fn confirm_input(ed: &mut Editor, r: LayerRef, ev: InputEv
         InputEvent::Paste(_) => return,
         InputEvent::Mouse(mouse) => {
             if is_fresh_gesture(mouse.kind) {
-                ed.state.input.truncate(r);
+                ed.state.truncate_layers(&ed.view, r);
             }
             ed.fall_through(r, InputEvent::Mouse(mouse));
             return;
         }
     };
-    let mut removed = ed.state.input.truncate(r);
-    let Some(confirm) = removed.pop().and_then(|l| l.downcast::<ConfirmLayer>()) else {
-        unreachable!("dispatch_at already checked kind(r) == ConfirmLayer");
-    };
-    let confirm = *confirm;
+    let confirm = *ed.state.take_layer::<ConfirmLayer>(&ed.view, r);
 
     let matched = (key.modifiers == Modifiers::NONE)
         .then(|| {

@@ -171,13 +171,9 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
 
 /// Take the menu at `r` off the stack, handing back its model so the
 /// caller can fire the one callback this layer owes
-/// (`.take()`-equivalent one-shot discipline via `truncate`) — shared by
-/// every `menu_input` retirement path (Enter, Escape, a stray key, a
-/// fresh mouse gesture).
+/// (`.take()`-equivalent one-shot discipline via `EditorState::take_layer`)
+/// — shared by every `menu_input` retirement path (Enter, Escape, a stray
+/// key, a fresh mouse gesture).
 fn take_menu(ed: &mut Editor, r: LayerRef) -> MenuLayer {
-    let mut removed = ed.state.input.truncate(r);
-    let Some(menu) = removed.pop().and_then(|l| l.downcast::<MenuLayer>()) else {
-        unreachable!("dispatch_at already checked kind(r) == MenuLayer");
-    };
-    *menu
+    *ed.state.take_layer::<MenuLayer>(&ed.view, r)
 }

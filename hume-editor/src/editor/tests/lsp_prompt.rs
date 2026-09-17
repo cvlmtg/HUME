@@ -225,6 +225,49 @@ fn prompt_from_search_restores_pre_search_selection_and_clears_the_pattern() {
     );
 }
 
+/// `exit-insert` reached from outside Insert (a queued `(after 0 …)` thunk,
+/// same as a hook or async LSP callback would) must be a no-op — it has no
+/// `Insert` layer to end, so it must not cancel an unrelated `Prompt`
+/// session that happens to be the current mode layer. `cmd_exit_insert` is
+/// a registered mappable command reachable via `(call! "exit-insert")` from
+/// any mode, not gated on Insert actually being current.
+///
+/// Fail oracle: if `end_insert_session` truncated `mode_layer()`
+/// unconditionally (whatever layer that happens to be) instead of looking
+/// up the `Insert` layer by kind, this call would truncate `Prompt` instead
+/// — running its `tear_down` (which never fires a Steel callback) instead
+/// of `finish_steel_prompt`, so `on-confirm` would never fire and the
+/// assertions below would fail.
+#[test]
+fn exit_insert_outside_insert_does_not_cancel_an_unrelated_prompt() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (after 0 (lambda () (call! "exit-insert")))
+             (prompt! "Name: " (lambda (s) (log! 'info (to-string s))))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.minibuf().is_some(), "sanity: prompt is open");
+    assert!(
+        ed.state.status_msg.is_none(),
+        "sanity: on-confirm hasn't fired yet"
+    );
+
+    ed.settle(); // drains the due timer, which calls exit-insert
+
+    assert!(
+        ed.state.minibuf().is_some(),
+        "exit-insert outside Insert must not cancel the open prompt"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "the prompt's on-confirm must not fire from an unrelated exit-insert"
+    );
+}
+
 // ── symbol-under-cursor ──────────────────────────────────────────────────────
 
 #[test]

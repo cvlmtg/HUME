@@ -76,9 +76,11 @@ pub(in crate::editor) trait Layer: Any {
     fn mode(&self) -> Option<EditorMode>;
 
     /// What happens when this layer leaves the stack, for any reason —
-    /// teardown of a mode layer *is* its cancel (`SPEC.md` D9). Never fires
-    /// a Steel callback: those are queued only from explicit accept/cancel
-    /// arms, before the truncate that reaches here.
+    /// teardown of a mode layer *is* its cancel. Every implementation but
+    /// one never fires a Steel callback from here: those are queued only
+    /// from explicit accept/cancel arms, before the truncate that reaches
+    /// this. `PickerLayer`'s is the one exception — see its own doc for why
+    /// the picker's "fires exactly once" contract needs this to fire.
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView);
 
     /// The minibuffer this layer owns, if it's one of the four
@@ -90,6 +92,31 @@ pub(in crate::editor) trait Layer: Any {
     }
     fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
         None
+    }
+
+    /// Whether an *async* opener's staleness check
+    /// ([`InputStack::is_stack_settled`]) should treat this layer as
+    /// something intervened, versus a widget the request landing underneath
+    /// it can simply ignore. `true` (the default) for every ordinary
+    /// overlay and mode layer; `DrawerLayer`/`PopupLayer` override to
+    /// `false` — the drawer is built to be worked over (§2.6: a stray key
+    /// falls through and it stays open) and a popup owns nothing but
+    /// Ctrl-u/d, so neither should make a `show-menu!`/`completion-begin!`
+    /// response read the stack as moved.
+    fn is_modal(&self) -> bool {
+        true
+    }
+
+    /// Whether [`EditorState::push_mode_layer`] should no-op when the
+    /// current mode layer is already the same concrete type as the one
+    /// about to be pushed — `true` only for `InsertLayer`, whose payload is
+    /// empty and whose re-entry no-op is load-bearing for dot-repeat replay
+    /// (see `begin_insert_session`'s own doc). Every other mode layer
+    /// carries a payload (a prompt string, a search direction) that a
+    /// same-kind re-entry must actually update, so the default is `false`:
+    /// replace, don't no-op.
+    fn reentry_is_noop(&self) -> bool {
+        false
     }
 
     /// The sticky-popup slot this layer owns, if it's `Base` or `Insert` —
@@ -259,23 +286,37 @@ impl InputStack {
         }
     }
 
-    /// Whether nothing sits above the current mode layer — the staleness
-    /// check an *async* opener (a Steel callback answering a request fired
-    /// earlier: `show-menu!`, `show-drawer-list!`, `completion-begin!`)
-    /// makes before landing, alongside its own mode-layer requirement. It
-    /// is not a precedence rule: a synchronous, key- or command-triggered
-    /// opener (`picker!`, `prompt!`) never calls this, because dispatch
-    /// order already proves the stack is exactly where the key path left
-    /// it — there is nothing left to check. An async response has no such
-    /// guarantee: the user may have opened a picker, a menu, or moved to a
-    /// different mode between the request going out and the response
-    /// landing, and this is what tells the two apart. `top() ==
-    /// mode_layer()` — an overlay already open (of any kind, including one
-    /// this same opener is mid-refreshing) makes this `false`; a caller
-    /// replacing its own prior instance checks for that case separately
-    /// rather than through this.
+    /// Whether nothing *modal* (see [`Layer::is_modal`]) sits above the
+    /// current mode layer — the staleness check an *async* opener (a Steel
+    /// callback answering a request fired earlier: `show-menu!`,
+    /// `show-drawer-list!`, `completion-begin!`) makes before landing,
+    /// alongside its own mode-layer requirement. It is not a precedence
+    /// rule: a synchronous, key- or command-triggered opener (`picker!`,
+    /// `prompt!`) never calls this, because dispatch order already proves
+    /// the stack is exactly where the key path left it — there is nothing
+    /// left to check. An async response has no such guarantee: the user may
+    /// have opened a picker, a menu, or moved to a different mode between
+    /// the request going out and the response landing, and this is what
+    /// tells the two apart. A non-modal overlay above the mode layer (a
+    /// `Drawer`, built to be worked over; a `Popup`, which owns nothing but
+    /// Ctrl-u/d) does not itself count as "the stack moved" — only a modal
+    /// one does, or a mode-layer change; a caller replacing its own prior
+    /// instance checks for that case separately rather than through this.
     pub(in crate::editor) fn is_stack_settled(&self) -> bool {
-        self.top() == self.mode_layer()
+        let mode_depth = self.mode_layer().depth;
+        self.layers[mode_depth + 1..]
+            .iter()
+            .all(|(_, layer)| !layer.is_modal())
+    }
+
+    /// [`Self::is_stack_settled`], with one more escape: also `true` when
+    /// `top()` is already a layer of type `L` — the "re-run while my own
+    /// instance is still open is a refresh, not staleness" case every async
+    /// opener with a self-replace path (`show_menu`, `show_drawer_list`,
+    /// `completion_begin`) needs, replacing what would otherwise be three
+    /// copies of the same `is_stack_settled() || is::<L>(top())` check.
+    pub(in crate::editor) fn is_settled_or_top_is<L: Layer>(&self) -> bool {
+        self.is_stack_settled() || self.is::<L>(self.top())
     }
 
     /// Pushes `layer` on top, unconditionally — nothing is refused, since
@@ -438,9 +479,15 @@ impl InputStack {
     /// mode layer's sticky slot. Shared by `show_popup` (so `(show-popup!
     /// …)` replaces any popup already showing, regardless of which of the
     /// two homes it used — the documented "no stacking" contract) and
-    /// `close_popup`, and called by `EditorState::push_mode_layer` and
-    /// `open_picker` before they take over the stack, which is what keeps
-    /// the "never buried" invariant true.
+    /// `close_popup`, and called by `EditorState::push_mode_layer`,
+    /// `open_picker`, and `show_menu` before each takes over the stack —
+    /// `PopupLayer::is_modal() == false` means a `Menu` no longer treats an
+    /// open popup as "the stack moved" and so can land directly above one,
+    /// making `show_menu` the third ungated pusher this keeps honest. Takes
+    /// no `EditorState`/`view` (unlike `EditorState::truncate_layers`), so
+    /// this truncates `self` directly rather than running `tear_down` — sound
+    /// because the one layer this ever removes is a `PopupLayer`, whose
+    /// `tear_down` is empty by construction.
     pub(in crate::editor) fn clear_popups(&mut self) {
         if let Some(r) = self.ref_of::<PopupLayer>() {
             debug_assert_eq!(

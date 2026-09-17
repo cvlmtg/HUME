@@ -54,9 +54,9 @@ impl Focus {
 ///
 /// The Insert-session half is usually already done by the time this runs —
 /// `tab::take_live` and `commands::tab::close_tab` both call
-/// `commands::end_insert_session_if_active` themselves before touching the
-/// layout (see `take_live`'s doc), and this call is then a no-op past the
-/// mode check. Kept here too rather than only at those two call sites,
+/// `commands::end_insert_session` themselves before touching the
+/// layout (see `take_live`'s doc), and this call is then a no-op — it has
+/// nothing to end. Kept here too rather than only at those two call sites,
 /// since `focus_in_direction`/`cmd_pane_focus_next`/`mouse_left_down`
 /// switch focus *within* a tab, where no layout displacement happens and no
 /// earlier teardown has run.
@@ -70,11 +70,12 @@ impl Focus {
 /// through the layout tree), so — unlike the Insert-session half — it has
 /// no matching earlier call in `take_live`/`close_tab`.
 ///
-/// Both calls are no-ops past their own guard (mode check; `paste_group`
-/// check) whenever nothing is open, so every writer above can route through
-/// this unconditionally instead of repeating either check itself.
+/// Both calls are no-ops past their own guard (no `Insert` layer open;
+/// `paste_group` check) whenever nothing is open, so every writer above can
+/// route through this unconditionally instead of repeating either check
+/// itself.
 pub(in crate::editor) fn focus_pane(state: &mut EditorState, view: &EngineView, pid: PaneId) {
-    super::commands::end_insert_session_if_active(state, view);
+    super::commands::end_insert_session(state, view);
     state.commit_paste_session(view);
     state.focus.0 = pid;
 }

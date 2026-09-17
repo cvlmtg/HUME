@@ -30,16 +30,15 @@ use crate::editor::EditorState;
 /// Ends the outgoing pane's open Insert session first, before reading:
 /// `view.layout()` names the outgoing tab and `state.focus.id()` names
 /// its focused pane together, right up to this point — the last moment
-/// either is true until `install_live` runs. `end_insert_session_if_active`'s
-/// own edit can shrink the outgoing pane's buffer (the blank-line indent
-/// trim), and any per-(pane, buffer) state it touches should resolve
-/// against a still-consistent (layout, focus) pair, not a half-installed
-/// incoming tab.
+/// either is true until `install_live` runs. `end_insert_session`'s own edit
+/// can shrink the outgoing pane's buffer (the blank-line indent trim), and
+/// any per-(pane, buffer) state it touches should resolve against a
+/// still-consistent (layout, focus) pair, not a half-installed incoming tab.
 pub(in crate::editor) fn take_live(
     state: &mut EditorState,
     view: &EngineView,
 ) -> (LayoutTree, PaneId) {
-    super::commands::end_insert_session_if_active(state, view);
+    super::commands::end_insert_session(state, view);
     (view.layout().clone(), state.focus.id())
 }
 

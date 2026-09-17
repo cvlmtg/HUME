@@ -266,7 +266,7 @@ pub(in crate::editor) fn close_buffer_and_notify(
     if state.input.confirm().is_some_and(|c| c.targets_buffer(id))
         && let Some(r) = state.input.ref_of::<ConfirmLayer>()
     {
-        state.input.truncate(r);
+        state.truncate_layers(ev, r);
     }
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;

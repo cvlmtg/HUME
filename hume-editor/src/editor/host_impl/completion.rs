@@ -63,7 +63,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             .state
             .input
             .is::<CompletionLayer>(self.state.input.top());
-        let stack_ok = self.state.input.is_stack_settled() || top_is_completion;
+        let stack_ok = self.state.input.is_settled_or_top_is::<CompletionLayer>();
         if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
@@ -138,13 +138,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_dismiss(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of::<CompletionLayer>() {
-            None => Ok(()),
-            Some(r) if r == self.state.input.top() => {
-                self.state.truncate_layers(self.view, r);
-                Ok(())
-            }
-            Some(_) => Err("completion-dismiss!: completion is not the active overlay".to_string()),
-        }
+        self.state.dismiss_completion(self.view);
+        Ok(())
     }
 }

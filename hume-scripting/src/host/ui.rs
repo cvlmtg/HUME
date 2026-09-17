@@ -170,7 +170,13 @@ pub trait UiHost {
     /// unmoved since the request that produced this call was fired (this is
     /// an async opener answering an earlier request, not a direct key/`:`
     /// response) — either failing drops the call silently rather than
-    /// erroring, since the mismatch is timing, not a plugin bug.
+    /// erroring, since the mismatch is timing, not a plugin bug. A
+    /// non-modal overlay (the drawer, a scrollable popup) already being
+    /// open does not itself count as "moved" — a menu can land above one,
+    /// same as a fresh popup can land above an open menu. Replaces a menu
+    /// already open (its callback fires `#f`, same as any other dismissal)
+    /// rather than being read as stale — a second response for the same
+    /// request is a refresh, not staleness.
     fn show_menu(
         &mut self,
         items: Vec<String>,
@@ -179,7 +185,10 @@ pub trait UiHost {
 
     /// `(close-menu!)` — dismisses the menu *without* invoking its callback
     /// (caller-initiated close, distinct from the key-driven dismissal paths
-    /// which do call back with `#f`).
+    /// which do call back with `#f`). Idempotent: a no-op if none is open.
+    /// Closes a buried menu too (a scrollable popup can land above one) —
+    /// there's no "wrong widget is active" error, since a menu is always
+    /// reachable to close regardless of what's currently on top of it.
     fn close_menu(&mut self) -> Result<(), String>;
 
     /// `(show-drawer-list! items on-select)` — opens a scrolling pick-list
@@ -198,7 +207,10 @@ pub trait UiHost {
 
     /// `(close-drawer!)` — dismisses the drawer *without* invoking its
     /// callback (caller-initiated close, distinct from `Esc`, which does
-    /// call back with `#f`).
+    /// call back with `#f`). Idempotent: a no-op if none is open. Closes a
+    /// buried drawer too — the drawer stays open across `Insert`/a popup/etc.
+    /// by design (browse-while-editing), so being buried is its normal
+    /// state, not a "wrong widget is active" error.
     fn close_drawer(&mut self) -> Result<(), String>;
 
     /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`

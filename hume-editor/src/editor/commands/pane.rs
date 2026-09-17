@@ -6,12 +6,11 @@ use hume_engine::pipeline::{
 };
 use slotmap::SecondaryMap;
 
-use super::end_insert_session;
+use crate::editor::EditorState;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
 use crate::editor::pane_state::PaneTransient;
 use crate::editor::tab::{TabId, install_live, take_live};
-use crate::editor::{EditorState, Mode};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
 /// id — but leave it outside every tab's layout (see `TabStore`'s own doc:
@@ -105,20 +104,6 @@ pub(in crate::editor) fn open_pane_as_new_tab(
     );
     install_live(state, view, LayoutTree::Leaf(new_pid), new_pid);
     (new_pid, tab_id)
-}
-
-/// End the focused pane's open Insert session, if any — a no-op past the
-/// mode check otherwise, so every caller can route through this
-/// unconditionally instead of repeating the check itself.
-///
-/// Split out of `focus::focus_pane` so `tab::take_live` can run it *before*
-/// `view.layout` is displaced, not just before focus is reassigned — see
-/// `take_live`'s own doc for why the layout has to stay the outgoing tab's
-/// for the duration of this call.
-pub(in crate::editor) fn end_insert_session_if_active(state: &mut EditorState, view: &EngineView) {
-    if state.mode() == Mode::Insert {
-        end_insert_session(state, view);
-    }
 }
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,

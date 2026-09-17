@@ -36,9 +36,24 @@ impl Layer for PickerLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {
-        // `PickerSession`'s own `Drop` kills a streaming source's child
-        // process — nothing further to do here.
+    /// Fires `on_select` with `#f` — unlike every other layer's `tear_down`,
+    /// which never fires a Steel callback (teardown *is* cancel, but the
+    /// callback itself is queued only from an explicit accept/cancel arm
+    /// before the truncate that reaches here). The picker's "fires exactly
+    /// once" contract has no such arm to rely on when it's removed
+    /// incidentally — buried under an `Insert`/`Prompt` session that a
+    /// close-*!`/Rust-internal retirement then truncates through — so this
+    /// is the one `tear_down` that fires, making the contract structural
+    /// rather than dependent on every caller routing through
+    /// `close_picker`/`close_picker_with`. The accept path (`Enter`,
+    /// `picker-close!`) never runs this: it takes the layer *by value* via
+    /// `EditorState::take_layer`, which tears down everything above the
+    /// target but not the target itself, and fires its own callback
+    /// explicitly instead. `truncate_to_base` (reload) is the one exit that
+    /// still drops the callback: `EditorState::truncate_layers` — this
+    /// method's only caller — never runs during a reload.
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
+        state.queue_steel_call(self.0.on_select().clone(), vec![SteelVal::BoolV(false)]);
     }
 }
 
@@ -148,7 +163,7 @@ pub(in crate::editor) fn open_picker(
     session: PickerSession,
 ) {
     state.dismiss_completion(view);
-    close_picker(state, SteelVal::BoolV(false));
+    close_picker(state, view, SteelVal::BoolV(false));
     state.input.clear_popups();
     state.input.push(PickerLayer(session));
 }
@@ -157,34 +172,40 @@ pub(in crate::editor) fn open_picker(
 /// open) and fires exactly one callback with `payload` — `on_select` unless
 /// `callback` overrides it. Shared by `Esc`, `Enter` (with the selected
 /// payload), a bound `#:actions` key, `picker-close!`, and `open_picker`'s
-/// replace-on-open path — one chokepoint, not one copy per caller.
+/// replace-on-open path — one chokepoint, not one copy per caller. Takes
+/// the layer *by value* via `EditorState::take_layer` (tearing down
+/// whatever was pushed above it, but not the picker itself) rather than
+/// `truncate_layers`, since `PickerLayer::tear_down` would otherwise fire
+/// its own `#f` callback right before this fires the real one.
 ///
 /// `Editor::reset_config_state` is a second, deliberate exit from this
 /// "fires exactly once" contract: its `input.truncate_to_base()` call drops
-/// a still-open picker layer directly (never calling this function) along
-/// with the `pending_work` queue this function would have pushed the
-/// callback onto — the outgoing engine that owns the callback is seconds
-/// from being dropped, so firing it would be observable to nothing.
+/// a still-open picker layer directly (never calling this function, and
+/// running no teardown at all) along with the `pending_work` queue this
+/// function would have pushed the callback onto — the outgoing engine that
+/// owns the callback is seconds from being dropped, so firing it would be
+/// observable to nothing.
 pub(in crate::editor) fn close_picker_with(
     state: &mut super::super::EditorState,
+    view: &EngineView,
     callback: Option<SteelVal>,
     payload: SteelVal,
 ) {
     let Some(r) = state.input.ref_of::<PickerLayer>() else {
         return;
     };
-    let mut removed = state.input.truncate(r);
-    let Some(session) = removed.pop().and_then(|l| l.downcast::<PickerLayer>()) else {
-        unreachable!("ref_of(PickerLayer) guarantees a PickerLayer at r");
-    };
-    let session = session.0;
+    let session = state.take_layer::<PickerLayer>(view, r).0;
     let callback = callback.unwrap_or_else(|| session.on_select().clone());
     state.queue_steel_call(callback, vec![payload]);
 }
 
 /// `close_picker_with`'s common case: fire `on_select` itself.
-pub(in crate::editor) fn close_picker(state: &mut super::super::EditorState, payload: SteelVal) {
-    close_picker_with(state, None, payload);
+pub(in crate::editor) fn close_picker(
+    state: &mut super::super::EditorState,
+    view: &EngineView,
+    payload: SteelVal,
+) {
+    close_picker_with(state, view, None, payload);
 }
 
 /// Handles one key while the picker is open. Always fully consumes —
@@ -262,7 +283,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
             close_picker_with_selection(ed, None);
         }
         KeyCode::Escape => {
-            close_picker(&mut ed.state, SteelVal::BoolV(false));
+            close_picker(&mut ed.state, &ed.view, SteelVal::BoolV(false));
         }
         KeyCode::Char(ch)
             if !key
@@ -334,5 +355,5 @@ fn close_picker_with_selection(ed: &mut Editor, callback: Option<SteelVal>) {
         .selected_payload()
         .cloned()
         .unwrap_or(SteelVal::BoolV(false));
-    close_picker_with(&mut ed.state, callback, payload);
+    close_picker_with(&mut ed.state, &ed.view, callback, payload);
 }

@@ -28,8 +28,10 @@ pub trait CompletionHost {
     /// session, success or failure.
     fn completion_accept(&mut self, idx: usize) -> Result<(), String>;
 
-    /// `(completion-dismiss!)` — clears any open session; no-op if none.
-    /// `Err` if a session is open but something else has taken over the
-    /// keyboard since (same contract every other `close-*!` builtin has).
+    /// `(completion-dismiss!)` — clears any open session, wherever it sits
+    /// on the stack; no-op if none is open. A session can be buried (a
+    /// picker opened mid-session, unrelated to Insert) without that being
+    /// an error — same "closes regardless of what's on top" contract every
+    /// other `close-*!` builtin has.
     fn completion_dismiss(&mut self) -> Result<(), String>;
 }

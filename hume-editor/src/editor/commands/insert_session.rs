@@ -206,10 +206,21 @@ pub(super) fn begin_insert_session_preserving_register(state: &mut EditorState, 
 }
 
 /// Exit Insert mode: truncates the `Insert` layer, running
-/// [`tear_down_insert`] via `EditorState::tear_down`.
+/// [`tear_down_insert`] via `EditorState::tear_down`. A no-op if no `Insert`
+/// layer is open — `cmd_exit_insert` is a registered mappable command, so
+/// `(call! "exit-insert")` can reach here from any mode (a hook, a timer, an
+/// async LSP callback), not only from a key path that already proved
+/// `Insert` is current. Truncating `state.input.mode_layer()` unconditionally
+/// used to cancel whatever mode layer happened to be current — a `prompt!`
+/// session reached this way lost its callback silently, since teardown never
+/// fires one.
 pub(in crate::editor) fn end_insert_session(state: &mut EditorState, view: &EngineView) {
-    let r = state.input.mode_layer();
-    state.truncate_layers(view, r);
+    if let Some(r) = state
+        .input
+        .ref_of::<crate::editor::input_stack::InsertLayer>()
+    {
+        state.truncate_layers(view, r);
+    }
 }
 
 /// The bookkeeping that runs when the `Insert` layer leaves the stack, for

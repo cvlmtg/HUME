@@ -132,11 +132,11 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     /// Idempotent — clears whichever home currently holds a popup, or does
-    /// nothing if neither does. There is no present-but-not-top error path
-    /// (unlike `close_menu`'s): a `Popup` layer is never buried (see
-    /// `PopupLayer`'s `Layer` doc, `input_stack/stack.rs`) and a `Sticky`
-    /// popup's slot never occupies `top()` at all, so this can never observe
-    /// one it isn't allowed to close.
+    /// nothing if neither does, same as `close_menu`/`close_drawer` below: a
+    /// `Popup` layer is never buried (see `PopupLayer`'s `Layer` doc,
+    /// `input_stack/stack.rs`) and a `Sticky` popup's slot never occupies
+    /// `top()` at all, so this can never observe one it isn't allowed to
+    /// close.
     fn close_popup(&mut self) -> Result<(), String> {
         self.state.input.clear_popups();
         Ok(())
@@ -150,17 +150,21 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     ) -> Result<(), String> {
         // Async staleness: the request that led here (a `codeAction`
         // response callback) fired against an earlier stack state, and
-        // either the mode layer or the stack above it may have moved since
-        // — the user left Normal, or opened a picker/drawer/another menu
-        // while the response was in flight. Both are timing, not a plugin
-        // bug, so this drops silently (`Trace`, `Ok`) rather than erroring,
-        // which would abort the whole `run_call_batch` this `Call` was
-        // batched into.
+        // either the mode layer or a *modal* overlay above it may have
+        // moved since — the user left Normal, or opened a picker while the
+        // response was in flight (a non-modal drawer/popup staying open
+        // doesn't count — `InputStack::is_modal`). Both are timing, not a
+        // plugin bug, so this drops silently (`Trace`, `Ok`) rather than
+        // erroring, which would abort the whole `run_call_batch` this
+        // `Call` was batched into. `top` `Menu` is the self-replace
+        // exception, same shape as `show_drawer_list`'s own `top_is_drawer`:
+        // a second `lsp-code-action` response while the first menu is still
+        // open replaces it rather than being read as stale.
         if !self
             .state
             .input
             .is::<BaseLayer>(self.state.input.mode_layer())
-            || !self.state.input.is_stack_settled()
+            || !self.state.input.is_settled_or_top_is::<MenuLayer>()
         {
             self.state.report(
                 Severity::Trace,
@@ -168,6 +172,15 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
+        // A `Menu` can now land directly above a `Popup` (non-modal, so it
+        // no longer blocks this gate) — clear it first, the same way
+        // `open_picker` does, to keep `PopupLayer`'s "never buried"
+        // invariant true. Also retires a prior `Menu` on the self-replace
+        // path, firing its callback with `#f` via ordinary teardown.
+        if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
+            self.state.truncate_layers(self.view, r);
+        }
+        self.state.input.clear_popups();
         self.state.input.push(MenuLayer {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
             selected: 0,
@@ -176,15 +189,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    /// Idempotent — a no-op if no menu is open. Truncates at the menu's own
+    /// ref rather than only when it's `top()`: a `Popup` (non-modal) can now
+    /// land above it, so being buried is an ordinary state, not a mistake —
+    /// same as `close_drawer` below.
     fn close_menu(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of::<MenuLayer>() {
-            None => Ok(()),
-            Some(r) if r == self.state.input.top() => {
-                self.state.input.truncate(r);
-                Ok(())
-            }
-            Some(_) => Err("close-menu!: menu is not the active overlay".to_string()),
-        }
+        let Some(r) = self.state.input.ref_of::<MenuLayer>() else {
+            return Ok(());
+        };
+        self.state.truncate_layers(self.view, r);
+        Ok(())
     }
 
     // ── Bottom drawer ──────────────────────────────────────────────────────
@@ -194,9 +208,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
         // Same async staleness as `show_menu` above (a references response
-        // landing after the user left Normal, or after some other overlay
-        // opened while it was in flight) — see its comment. `top`
-        // `Drawer` is the exception, same shape as `completion-begin!`'s
+        // landing after the user left Normal, or after a *modal* overlay
+        // opened while it was in flight) — see its comment. `top` `Drawer`
+        // is the self-replace exception, same shape as `completion-begin!`'s
         // own `top` `Completion` case below: a second `show-drawer-list!`
         // call while the first is still open (a `:refresh`-style re-run,
         // or a references response the user re-triggered before the first
@@ -204,13 +218,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         // the same way `close-drawer!` already closes one, without firing
         // its callback, since the new call is what Steel considers "done"
         // with the old drawer.
-        let mode_ok = self
+        if !self
             .state
             .input
-            .is::<BaseLayer>(self.state.input.mode_layer());
-        let top_is_drawer = self.state.input.is::<DrawerLayer>(self.state.input.top());
-        let stack_ok = self.state.input.is_stack_settled() || top_is_drawer;
-        if !mode_ok || !stack_ok {
+            .is::<BaseLayer>(self.state.input.mode_layer())
+            || !self.state.input.is_settled_or_top_is::<DrawerLayer>()
+        {
             self.state.report(
                 Severity::Trace,
                 "show-drawer-list!: the stack moved before the drawer could open — ignored"
@@ -218,9 +231,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        if top_is_drawer {
-            let r = self.state.input.top();
-            self.state.input.truncate(r);
+        if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
+            self.state.truncate_layers(self.view, r);
         }
         self.state.input.push(DrawerLayer {
             items: std::sync::Arc::new(items),
@@ -232,16 +244,17 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
+    /// Idempotent — a no-op if no drawer is open. Truncates at the drawer's
+    /// own ref rather than only when it's `top()`: since the drawer stays
+    /// open across `Insert`/a `Popup`/etc. by design, being buried is its
+    /// *normal* state, not a mistake — see `show_drawer_list`'s own doc.
     fn close_drawer(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of::<DrawerLayer>() {
-            None => Ok(()),
-            Some(r) if r == self.state.input.top() => {
-                self.state.input.truncate(r);
-                self.state.sync_drawer_view();
-                Ok(())
-            }
-            Some(_) => Err("close-drawer!: drawer is not the active overlay".to_string()),
-        }
+        let Some(r) = self.state.input.ref_of::<DrawerLayer>() else {
+            return Ok(());
+        };
+        self.state.truncate_layers(self.view, r);
+        self.state.sync_drawer_view();
+        Ok(())
     }
 
     // ── Fuzzy picker ──────────────────────────────────────────────────────
@@ -306,6 +319,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return;
         }
-        picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
+        picker::close_picker(self.state, self.view, steel::rvals::SteelVal::BoolV(false));
     }
 }

@@ -36,6 +36,14 @@ impl Layer for DrawerLayer {
         None
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// Non-modal: the drawer is built to be worked over (a stray key falls
+    /// through and it stays open), so an async opener's staleness check
+    /// (`InputStack::is_stack_settled`) must not read "a drawer is open" as
+    /// "the stack moved" — a code-action menu, or a fresh `completion-begin!`,
+    /// still needs to open while the user is browsing one.
+    fn is_modal(&self) -> bool {
+        false
+    }
 }
 
 impl EditorState {
@@ -146,10 +154,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             ed.state.queue_steel_call(callback, vec![idx]);
         }
         KeyCode::Escape => {
-            let mut removed = ed.state.input.truncate(r);
-            let Some(drawer) = removed.pop().and_then(|l| l.downcast::<DrawerLayer>()) else {
-                unreachable!("dispatch_at already checked kind(r) == DrawerLayer");
-            };
+            let drawer = ed.state.take_layer::<DrawerLayer>(&ed.view, r);
             ed.state
                 .queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
             ed.state.sync_drawer_view();

@@ -259,6 +259,78 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     assert!(ed.state.input.picker().is_some(), "the picker stays open");
 }
 
+/// A drawer is non-modal (`DrawerLayer::is_modal() == false`): it's built to
+/// be worked over (§2.6: a stray key falls through and it stays open), so
+/// an open drawer must not read as "the stack moved" the way a picker does
+/// above — a code-action menu must still open while the user is browsing
+/// diagnostics in the drawer.
+///
+/// Fail oracle: before this fix, `is_stack_settled()` was `top() ==
+/// mode_layer()`, so any overlay — including a non-modal drawer — made it
+/// `false`; the first assertion below would find no menu.
+#[test]
+fn show_menu_opens_over_an_open_drawer() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (show-drawer-list! (list "one.rs:1") (lambda (idx) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_menu(vec!["a".to_string()], steel::rvals::SteelVal::Void);
+
+    assert!(result.is_ok());
+    assert!(
+        ed.state.input.menu().is_some(),
+        "the menu must open over the non-modal drawer"
+    );
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "the drawer must survive underneath it"
+    );
+}
+
+/// A second `show-menu!` response while the first menu is still open (two
+/// `lsp-code-action` responses racing) must replace it — a refresh, not
+/// staleness — firing the outgoing menu's callback with `#f` via ordinary
+/// teardown, same shape `show-drawer-list!`'s own self-replace already has.
+///
+/// Fail oracle: before this fix, `show_menu` had no `top`-is-`Menu`
+/// exception, so the second call would be dropped as stale (`is_none()`
+/// would fail) and the first menu's callback would never fire.
+#[test]
+fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_menu(vec!["old".to_string()], steel::rvals::SteelVal::Void)
+        .unwrap();
+    assert!(ed.state.input.menu().is_some(), "sanity: first menu open");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_menu(
+        vec!["new-a".to_string(), "new-b".to_string()],
+        steel::rvals::SteelVal::Void,
+    );
+
+    assert!(result.is_ok());
+    assert_eq!(
+        ed.state.input.menu().unwrap().rows.len(),
+        2,
+        "the fresh item list must have replaced the old one"
+    );
+}
+
 // ── Render snapshot: highlighted row ──────────────────────────────────────────
 
 #[test]

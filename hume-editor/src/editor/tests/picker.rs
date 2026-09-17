@@ -391,6 +391,62 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     );
 }
 
+/// `close_picker` closing a picker with an `Insert` session stacked above it
+/// (a Steel timer entering Insert while the picker owns the keyboard —
+/// there's no key path for this, since the picker is full-modal) must run
+/// `Insert`'s own teardown on the way out (commit the edit group, clear
+/// `insert_session`) via `EditorState::take_layer`, and must still fire the
+/// picker's own `on_select` with `#f` exactly once — not twice, and not
+/// silently dropped by `Insert`'s teardown running first.
+///
+/// Fail oracle: before this fix (`close_picker_with`'s raw `truncate` +
+/// `removed.pop()`), only the *last* removed layer (the picker) was ever
+/// downcast and acted on — `Insert`'s own `tear_down` never ran, so
+/// `insert_session` would stay `Some` and the typed char's edit group would
+/// stay open.
+#[test]
+fn close_picker_tears_down_an_insert_session_stacked_above_it() {
+    use crate::editor::commands::cmd_insert_before;
+    use hume_ops::MotionMode;
+
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["one"]);
+    assert!(ed.state.input.picker().is_some(), "sanity: picker open");
+
+    // Lands above the picker the same ungated way a timer would.
+    cmd_insert_before(&mut ed.state, &mut ed.view, 1, MotionMode::Move).unwrap();
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Insert,
+        "sanity: Insert above the picker"
+    );
+    assert!(ed.state.insert_session.is_some(), "sanity: session open");
+    // Insert is `top()` now, so this reaches its own key handler, same as
+    // ordinary typing — not the picker's query.
+    ed.handle_key(key('X'));
+    assert_eq!(ed.doc().text().to_string(), "Xabc\n");
+
+    crate::editor::input_stack::picker::close_picker(
+        &mut ed.state,
+        &ed.view,
+        SteelVal::BoolV(false),
+    );
+
+    assert!(ed.state.input.picker().is_none(), "the picker must be gone");
+    assert!(
+        ed.state.insert_session.is_none(),
+        "Insert's own teardown must have run, clearing the session"
+    );
+    assert_eq!(
+        pending_calls(&ed).len(),
+        1,
+        "on_select must fire exactly once, not once per removed layer"
+    );
+    let (proc, args) = pending_calls(&ed)[0];
+    assert_eq!(callback_name(proc), "cb");
+    assert_eq!(args, &vec![SteelVal::BoolV(false)]);
+}
+
 // ── Replacing an open picker ─────────────────────────────────────────────────
 
 #[test]
