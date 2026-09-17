@@ -34,6 +34,37 @@ impl Layer for CommandLayer {
     }
 }
 
+impl Editor {
+    /// Write the current completion state into the shared `MinibufCompletionView`
+    /// so `MinibufCompletionOverlay` can render it during this frame.
+    ///
+    /// Called from `prepare_frame` after highlight data is synced.
+    pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
+        // Skip the write-lock when both sides are already None — common case
+        // while no popup is open.
+        if self.state.input.minibuf_completion().is_none()
+            && self.state.views.minibuf_completion.read().is_none()
+        {
+            return;
+        }
+        let view = self.state.input.minibuf_completion().map(|state| {
+            let anchor_x = self
+                .state
+                .input
+                .minibuf()
+                .map(|mb| mb.cursor_x_at(state.span_start))
+                .unwrap_or(0);
+            hume_ui::completion_overlay::MinibufCompletionView {
+                rows: state.rows.clone(),
+                selected: state.selected,
+                anchor_x,
+                border: self.state.settings.popup_border,
+            }
+        });
+        self.state.views.minibuf_completion.set(view);
+    }
+}
+
 impl super::stack::InputStack {
     /// The active completion session, flattened — `None` both when no
     /// `Command` layer is open and when one is open with no session. Reads

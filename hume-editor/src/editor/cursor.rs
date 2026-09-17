@@ -50,8 +50,8 @@ pub(in crate::editor) fn content_pos(
         // a row below the bottom (checked below via `distance`). Every
         // caller but one is the live cursor, which `Viewport::reveal_horizontal`
         // keeps `>= horizontal_offset`; the exception is the completion-menu
-        // anchor (`overlay_sync.rs`'s `session.anchor()`), fixed at the
-        // token's start while the cursor — and the scroll it drives — moves
+        // anchor (`input_stack/completion.rs`'s `session.anchor()`), fixed at
+        // the token's start while the cursor — and the scroll it drives — moves
         // on. `place`'s own subtraction saturates rather than relying on this
         // check alone, since `scroll.rs` calls it directly without going
         // through `content_pos` first.

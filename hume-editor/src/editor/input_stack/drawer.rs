@@ -1,6 +1,8 @@
 //! The bottom-drawer layer — `(show-drawer-list! items on-select)`'s raw
 //! state, browsed with Helix-style "stay open while editing" semantics.
 
+use std::sync::Arc;
+
 use termina::event::{KeyCode, Modifiers};
 
 use hume_engine::pipeline::EngineView;
@@ -34,6 +36,29 @@ impl Layer for DrawerLayer {
         None
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+}
+
+impl EditorState {
+    /// Mirror the open drawer layer into `self.views`' drawer slot for
+    /// `DrawerWidget` to read. Called directly at every drawer mutation site
+    /// (open, selection move, scroll, close) for immediacy, *and*
+    /// unconditionally every frame from `Editor::prepare_frame` (like the
+    /// popup/menu/picker `sync_*_view`s) so the view can never drift from
+    /// the model — in particular, so `reset_config_state`'s
+    /// `input.truncate_to_base()` call (which bypasses `close-drawer!`'s
+    /// callback queueing) can't leave a stale view painting a closed
+    /// drawer.
+    pub(in crate::editor) fn sync_drawer_view(&self) {
+        let resolved = self
+            .input
+            .drawer()
+            .map(|d| hume_ui::drawer::DrawerViewState {
+                rows: Arc::clone(&d.items),
+                selected: d.selected,
+                scroll: d.scroll,
+            });
+        self.views.drawer.set(resolved);
+    }
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites

@@ -4,7 +4,7 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 use hume_rope::offset::ExclusiveRange;
 
@@ -12,6 +12,7 @@ use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
 use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::{Editor, EditorState, Severity};
+use super::placement::popup_placement;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// An open LSP completion session, pushed above `Insert` — an overlay, not a
@@ -32,6 +33,62 @@ impl Layer for CompletionLayer {
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.views.completion_menu.set(None);
+    }
+}
+
+impl Editor {
+    /// Write the LSP completion menu into the shared `PopupState` Arc —
+    /// same widget as [`Self::sync_menu_view`] (unwrapped rows,
+    /// selected-row styling), but anchored at the completion session's
+    /// token-start char rather than the live cursor (which drifts as the
+    /// user types further into the token). Called every frame from
+    /// `prepare_frame`'s step 10, same as [`Self::sync_popup_view`]/
+    /// [`Self::sync_menu_view`] and for the same reason: it needs
+    /// `EngineView::pane_rect`, which reads `last_pane_area` — only current
+    /// after step 9 runs.
+    pub(in crate::editor) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
+        if self.state.input.completion().is_none()
+            && self.state.views.completion_menu.read().is_none()
+        {
+            return;
+        }
+
+        // `session.anchor()` is a char offset captured when the session
+        // began; it isn't remapped through edits, so an out-of-band shrink
+        // (LSP applyEdit, file reload) or a pane switch since can leave it
+        // pointing past the focused buffer's current end, or at a buffer
+        // that isn't even the one on screen. `DisplayLineMap::locate` (reached via
+        // `popup_placement`) has no way to tell a stale offset from a live
+        // one, so check both here.
+        //
+        // Sequential borrows rather than one closure over
+        // `self.state.input`: the session's shared borrow has to end
+        // before `popup_placement` and `menu_rows` each take `&mut self`.
+        let border = self.state.settings.popup_border;
+        let resolved = (|| -> Option<hume_ui::popup::PopupState> {
+            let session = self.state.input.completion()?;
+            if session.bid() != self.focused_buffer_id() {
+                return None;
+            }
+            let anchor_char = session.anchor();
+            let len = self.state.buffers.get(session.bid()).text().end();
+            if anchor_char >= len {
+                return None;
+            }
+            let placement = popup_placement(self, ctx, anchor_char)?;
+
+            let selected_idx = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
+            let session = self.state.input.completion_mut()?;
+            let rows = session.menu_rows();
+            Some(hume_ui::popup::resolve_menu(
+                rows,
+                selected_idx,
+                placement,
+                border,
+            ))
+        })();
+
+        self.state.views.completion_menu.set(resolved);
     }
 }
 

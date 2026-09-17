@@ -534,7 +534,7 @@ impl MappableCommand {
 /// Which argument completer a typed command's `:` command-line argument uses,
 /// if any. Declared alongside the command name in `typed_cmd!` so renaming a
 /// command can't silently desync it from the completion dispatch in
-/// `command_mode.rs`, which reads this instead of re-matching on the name.
+/// `input_stack/command.rs`, which reads this instead of re-matching on the name.
 pub(in crate::editor) enum ArgCompleter {
     /// Path completion. `dirs_only` restricts candidates to directories
     /// (`:change-directory`); `false` covers files too (`:edit`/`:write`).

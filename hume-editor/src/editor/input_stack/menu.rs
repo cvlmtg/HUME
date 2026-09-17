@@ -2,11 +2,12 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
+use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
@@ -34,6 +35,49 @@ impl Layer for MenuLayer {
         None
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+}
+
+impl Editor {
+    /// Write the current menu content into the shared `PopupState` Arc so
+    /// `PopupOverlay` can render it during this frame — same geometry rules
+    /// as [`Self::sync_popup_view`], but items are shown one-per-line as-is
+    /// (no word-wrap: menu entries are short labels, not prose) and
+    /// `selected` marks the highlighted row.
+    pub(in crate::editor) fn sync_menu_view(&mut self, ctx: &mut RenderContext) {
+        if self.state.input.menu().is_none() {
+            // Skip the write-lock when both sides are already None — common
+            // case while no menu is open.
+            if self.state.views.menu.read().is_none() {
+                return;
+            }
+            self.state.views.menu.set(None);
+            return;
+        }
+
+        // Hoisted out of the `and_then` below: resolving the anchor takes
+        // `&mut self` (it may walk the pane's display-line map), which cannot overlap
+        // the `&self.state.input` that closure's receiver holds.
+        let anchor_char = focused_cursor_char(self);
+        let placement = popup_placement(self, ctx, anchor_char);
+        let border = self.state.settings.popup_border;
+
+        let resolved = placement.and_then(|placement| {
+            let model = self.state.input.menu()?;
+            // `MenuRows::clone` is an `Arc` bump plus a `u16` copy, not a
+            // re-measure: `MenuLayer::rows` is pre-measured once at
+            // `show-menu!` time (labels never change during a menu's
+            // lifetime, only `selected` does), so there's nothing left for
+            // this per-frame snapshot to recompute.
+            Some(hume_ui::popup::resolve_menu(
+                model.rows.clone(),
+                model.selected,
+                placement,
+                border,
+            ))
+        });
+
+        self.state.views.menu.set(resolved);
+    }
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites

@@ -12,13 +12,14 @@ remaining work below ships.
 | User-facing behavior, keys, file-source chain | `user-manual/docs/pickers.md`, `core-plugins.md` |
 | Steel API (`picker!`, `live-picker!`, `picker-push!`, `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`) | `user-manual/docs/plugins.md` "Custom pickers" / "Live requery" |
 | Plugin internals (git/fd probing, config, path resolution) | `runtime/plugins/core/pickers/plugin.scm`, `README.md` |
-| Store, ranking, chokepoints | `hume-editor/src/editor/picker.rs` |
+| Store, ranking | `hume-editor/src/editor/input_stack/picker/session.rs` |
+| Layer, chokepoints (open/close) | `hume-editor/src/editor/input_stack/picker/mod.rs` |
 | Fuzzy matcher + budget | `hume-editor/src/editor/fuzzy.rs` |
 | Panel widget, theme scopes, geometry | `hume-ui/src/picker_panel.rs` |
 | Streaming external-command source | `hume-platform/src/process/line_source.rs`, `hume-editor/src/editor/picker_source.rs` |
 | Steel builtin semantics (tokens, kill-on-cancel, exactly-once) | `hume-scripting/src/builtins/mod.rs`, `builtins/ui.rs`, `host.rs` |
 | Frequency-cut / bulk-data guardrail (architecture this all follows) | `docs/LSP.md` Decisions table |
-| Why picker and completion stay separate session types | `hume-editor/src/editor/picker.rs` module doc |
+| Why picker and completion stay separate session types | `hume-editor/src/editor/input_stack/picker/session.rs` module doc |
 
 ## Remaining work
 
@@ -38,7 +39,7 @@ remaining work below ships.
   caller-supplied function instead: `(row budget) -> string`, run once per
   visible row. Stacks above `#:truncate` rather than superseding it — it must
   run on the write side (`Editor::sync_picker_view`, `hume-editor/src/editor/
-  overlay_sync.rs`, the only picker stage that can reach Steel; the paint
+  input_stack/picker/mod.rs`, the only picker stage that can reach Steel; the paint
   side holds a read guard and has `&self`), and the paint-side clip stays as
   the backstop for a formatter that returns something wider than the budget
   it was handed, so it still needs a direction. Main cost: `sync_picker_view`

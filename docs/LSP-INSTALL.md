@@ -295,7 +295,7 @@ the server, and languages sharing a server genuinely differ (javascript/jsx root
 
 All four are Steel commands in the `core:lsp` module — no Rust command work needed:
 `:`-line string arguments already reach Steel commands (arity marshalling in
-`command_mode.rs`), and `#:inline-output #t` displays listing output.
+`input_stack/command.rs`), and `#:inline-output #t` displays listing output.
 
 | Command | Behaviour |
 |---|---|

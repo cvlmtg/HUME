@@ -2,7 +2,7 @@
 //! small API so no caller names it directly (mirrors the `ropey`/`termina`
 //! wrapping precedent elsewhere in the editor).
 //!
-//! Consumed by `PickerSession` (`editor/picker.rs`) and `CompletionSession`
+//! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and `CompletionSession`
 //! (`editor/lsp/completion/mod.rs`), one instance per profile — see
 //! [`FuzzyProfile`].
 

@@ -24,10 +24,15 @@
 //! instead, which is exactly the coupling this trait replaces.
 //!
 //! Each concrete layer — its state, its `Layer` impl, its own
-//! key/paste/mouse handler, and its named lookup sugar over `InputStack` —
-//! lives in a file of its own, named by a `mod` line below. Adding another
-//! means adding one file and one `mod` line here, nothing else.
+//! key/paste/mouse handler, its per-frame render sync (where it has a view
+//! to keep live — a mode layer like `Search`/`Sift` has none), and its named
+//! lookup sugar over `InputStack` — lives in a file of its own, named by a
+//! `mod` line below. Adding another means adding one file and one `mod` line
+//! here, nothing else. `placement.rs` is the one exception: screen-placement
+//! math shared by the three cursor/token-anchored overlays (`popup`, `menu`,
+//! `completion`), not itself a layer.
 
+mod placement;
 mod stack;
 
 pub(in crate::editor) mod base;

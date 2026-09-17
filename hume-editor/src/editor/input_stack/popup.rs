@@ -5,12 +5,13 @@
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::{EditorMode, Scope};
 
 use super::super::{Editor, EditorState};
+use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
@@ -89,6 +90,94 @@ impl Layer for PopupLayer {
         None
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+}
+
+impl Editor {
+    /// Write the current *cursor-anchored* popup content into the shared
+    /// `PopupState` Arc so `PopupOverlay` can render it during this frame.
+    /// Geometry (wrap width, flip/clamp position) is resolved fresh every
+    /// frame against the focused pane's *current* rect — never pre-computed
+    /// at `show-popup!` call time — so a resize or scroll never leaves it
+    /// stale. A docked popup (`PopupLayout::Docked`) is handled by
+    /// [`Self::sync_popup_band_view`] instead — this clears the popup view
+    /// slot for that case, same as when no popup is open at all.
+    ///
+    /// Called from `prepare_frame` after `last_pane_area` is set (step 10):
+    /// `EngineView::pane_rect` reads that field, so calling this any earlier
+    /// would position against the previous frame's geometry.
+    pub(in crate::editor) fn sync_popup_view(&mut self, ctx: &mut RenderContext) {
+        let is_cursor = matches!(
+            self.state.input.popup().map(|m| &m.layout),
+            Some(hume_ui::popup::PopupLayout::Cursor)
+        );
+        if !is_cursor {
+            if self.state.views.popup.read().is_some() {
+                self.state.views.popup.set(None);
+            }
+            return;
+        }
+
+        let anchor_char = focused_cursor_char(self);
+        let Some(placement) = popup_placement(self, ctx, anchor_char) else {
+            self.state.views.popup.set(None);
+            return;
+        };
+        let border = self.state.settings.popup_border;
+        let theme = &self.view.theme;
+        let model = self
+            .state
+            .input
+            .popup_mut()
+            .expect("popup present: is_cursor checked above");
+        // Read before the `&mut` below — a second `self.state.input.popup()`
+        // borrow once `content` is live would conflict with it.
+        let scroll = model.scroll;
+        let content = model.content_mut(theme);
+        let resolved = hume_ui::popup::resolve_popup(content, placement, scroll, border);
+
+        self.state.views.popup.set(Some(resolved));
+    }
+
+    /// Write the current *docked* popup content into the shared
+    /// `PopupBandState` Arc so `PopupBandWidget` can render it during this
+    /// frame — the `PopupLayout::Docked` counterpart of
+    /// [`Self::sync_popup_view`]. Unlike the cursor layout, geometry isn't
+    /// resolved here: only content (wrapped lines + scroll clamp), mirroring
+    /// the drawer's chrome contract — the engine resolves the band's actual
+    /// position/height from `height(max)` at render time.
+    ///
+    /// Wraps against `last_terminal_area` (the raw, un-subtracted terminal
+    /// area), not `last_pane_area` — the band spans the full width the
+    /// engine will actually render into (`EngineView::render`'s bottom-band
+    /// block), same convention `drawer_visible_rows` already relies on for
+    /// its height ceiling.
+    pub(in crate::editor) fn sync_popup_band_view(&mut self) {
+        let is_docked = matches!(
+            self.state.input.popup().map(|m| &m.layout),
+            Some(hume_ui::popup::PopupLayout::Docked)
+        );
+        if !is_docked {
+            if self.state.views.popup_band.read().is_some() {
+                self.state.views.popup_band.set(None);
+            }
+            return;
+        }
+
+        let area = self.view.last_terminal_area;
+        let max_rows = hume_engine::pipeline::EngineView::bottom_band_max(area.height);
+        let border = self.state.settings.popup_border;
+        let theme = &self.view.theme;
+        let model = self
+            .state
+            .input
+            .popup_mut()
+            .expect("popup present: is_docked checked above");
+        let scroll = model.scroll;
+        let content = model.content_mut(theme);
+        let resolved = hume_ui::popup::resolve_band(content, area.width, max_rows, scroll, border);
+
+        self.state.views.popup_band.set(Some(resolved));
+    }
 }
 
 /// Handles one event while a `Scrollable` popup is open (a `PopupLayer` — a

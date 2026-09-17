@@ -42,6 +42,52 @@ impl Layer for PickerLayer {
     }
 }
 
+impl Editor {
+    /// Write the open picker session into the shared `PickerViewState` Arc
+    /// so `PickerOverlay` can paint it this frame. Same step-10 timing as
+    /// `sync_popup_view`/`sync_menu_view`/`sync_completion_menu_view` (needs
+    /// `last_pane_area`, set in step 9) but, unlike them, centers in the
+    /// panes region rather than anchoring at the cursor — no `RenderContext`
+    /// needed.
+    ///
+    /// Takes `&mut self`: before snapshotting the visible window, it calls
+    /// `PickerSession::move_selection(0, geo.list_rows)` — a delta-0 move is
+    /// a pure scroll-clamp against the *current* geometry, so a terminal
+    /// resize between the last keystroke and this frame self-heals here
+    /// rather than leaving a stale scroll offset from a taller frame.
+    pub(in crate::editor) fn sync_picker_view(&mut self) {
+        if self.state.input.picker().is_none() && self.state.views.picker.read().is_none() {
+            return;
+        }
+
+        let geo = hume_ui::picker_panel::panel_geometry(self.view.last_pane_area);
+        let resolved = match (self.state.input.picker_mut(), geo) {
+            (Some(session), Some(geo)) => {
+                session.move_selection(0, geo.list_rows);
+                let rows: Vec<String> = session.window(geo.list_rows).map(str::to_string).collect();
+                let selected_row =
+                    (!rows.is_empty()).then(|| session.selected() - session.scroll());
+                Some(hume_ui::picker_panel::PickerViewState {
+                    prompt: session.prompt().to_string(),
+                    query: session.query().to_string(),
+                    rows,
+                    selected_row,
+                    matched: session.matched_len(),
+                    total: session.total_len(),
+                    pending: session.is_pending(),
+                    rect: geo.rect,
+                    list_rows: geo.list_rows,
+                    border: self.state.settings.popup_border,
+                    truncate: session.truncate(),
+                })
+            }
+            _ => None,
+        };
+
+        self.state.views.picker.set(resolved);
+    }
+}
+
 /// Named sugar over the generic lookup — the ~350 existing call sites
 /// (`ed.state.input.picker()`) stay as they are, and `stack.rs` stays agnostic.
 impl super::stack::InputStack {

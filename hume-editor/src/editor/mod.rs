@@ -31,7 +31,6 @@ mod host_impl;
 mod inline_output;
 mod input_stack;
 mod lifecycle;
-mod overlay_sync;
 mod reload;
 mod scripting_setup;
 mod tui;
@@ -413,9 +412,11 @@ pub(crate) struct EditorState {
     pub(super) mouse_drag_anchor: Option<hume_rope::offset::CharOffset>,
     /// Current working directory. Set at startup; updated by `:cd`.
     pub(super) cwd: PathBuf,
-    /// Every overlay view shared between the per-frame write side below
-    /// (`overlay_sync.rs`) and the engine's render side — minibuf-completion,
-    /// popup (cursor + docked), menu, completion menu, drawer, picker. One
+    /// Every overlay view shared between the per-frame write side (each
+    /// layer's own `sync_*_view`, `input_stack/{command,popup,menu,
+    /// completion,drawer,picker}.rs`) and the engine's render side —
+    /// minibuf-completion, popup (cursor + docked), menu, completion menu,
+    /// drawer, picker. One
     /// `hume_ui::OverlayViews` instead of seven hand-allocated `Arc`s, each
     /// wired through `build_pane`'s parameter list and `Editor::open`'s
     /// bootstrap by hand; see that type's own doc for why.
@@ -667,29 +668,6 @@ impl EditorState {
     /// "quit all, no confirmation".
     pub(in crate::editor) fn request_quit(&mut self) {
         self.should_quit = true;
-    }
-
-    // ── Drawer ──────────────────────────────────────────────────────────
-
-    /// Mirror the open drawer layer into `self.views`' drawer slot for
-    /// `DrawerWidget` to read. Called directly at every drawer mutation site
-    /// (open, selection move, scroll, close) for immediacy, *and*
-    /// unconditionally every frame from `Editor::prepare_frame` (like the
-    /// popup/menu/picker `sync_*_view`s) so the view can never drift from
-    /// the model — in particular, so `reset_config_state`'s
-    /// `input.truncate_to_base()` call (which bypasses `close-drawer!`'s
-    /// callback queueing) can't leave a stale view painting a closed
-    /// drawer.
-    pub(in crate::editor) fn sync_drawer_view(&self) {
-        let resolved = self
-            .input
-            .drawer()
-            .map(|d| hume_ui::drawer::DrawerViewState {
-                rows: Arc::clone(&d.items),
-                selected: d.selected,
-                scroll: d.scroll,
-            });
-        self.views.drawer.set(resolved);
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire

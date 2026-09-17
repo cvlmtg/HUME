@@ -604,8 +604,8 @@ fn content_pos_cursor_below_viewport_returns_none() {
 /// horizontal axis, exactly as a row below the bottom is on the vertical
 /// axis — `content_pos`'s own doc already promises `None` for "outside the
 /// visible viewport" on either. The completion-menu anchor
-/// (`overlay_sync.rs`'s `session.anchor()`) is the one caller this matters
-/// for: it stays fixed at the token's start while the live cursor drives
+/// (`input_stack/completion.rs`'s `session.anchor()`) is the one caller this
+/// matters for: it stays fixed at the token's start while the live cursor drives
 /// `horizontal_offset` rightward as the user types further into the token.
 #[test]
 fn content_pos_anchor_left_of_horizontal_offset_returns_none() {
