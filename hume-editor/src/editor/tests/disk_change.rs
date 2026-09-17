@@ -1040,7 +1040,7 @@ fn multi_pane_quit_prompts_the_surviving_panes_buffer() {
 /// as a keymap `EditorCmd` with no `&mut Editor` at all to call the check on
 /// — pins that the post-dispatch chokepoint covers a keymap command with no
 /// per-command plumbing. Also pins that `pending_keys` is cleared before the
-/// `c` leaf runs (`mappings/normal.rs`'s Leaf arm), so `can_open_confirm`
+/// `c` leaf runs (`input_stack/base.rs`'s Leaf arm), so `can_open_confirm`
 /// isn't blocked by the still-just-consumed `Ctrl-p` prefix.
 #[test]
 fn ctrl_p_c_pane_close_prompts_the_surviving_panes_buffer() {

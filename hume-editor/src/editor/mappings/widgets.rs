@@ -9,6 +9,7 @@ use termina::event::{KeyCode, Modifiers};
 
 use super::super::Editor;
 use super::super::input_stack::{InputEvent, LayerRef};
+use super::super::minibuf::flatten_single_line;
 
 impl Editor {
     /// Handles one key while the picker is open. Always fully consumes —
@@ -39,9 +40,7 @@ impl Editor {
             // most one `on_query_change` callback, instead of one per
             // pasted char.
             InputEvent::Paste(text) => {
-                let cb = self
-                    .picker_mut()
-                    .insert_str(&super::bracketed_paste::flatten_single_line(&text));
+                let cb = self.picker_mut().insert_str(&flatten_single_line(&text));
                 self.queue_query_change(cb);
                 return;
             }

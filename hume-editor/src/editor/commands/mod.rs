@@ -402,7 +402,7 @@ pub(super) use typed_misc::*;
 // this file, and the registry glob) since nothing outside `commands` calls
 // them. pane.rs and pipeline.rs export nothing else siblings need, so both are
 // re-exported explicitly instead of via glob. The items below ARE called
-// directly by `dispatch.rs`, `replay.rs`, `mappings/insert.rs`, `host_impl.rs`,
+// directly by `dispatch.rs`, `replay.rs`, `input_stack/insert.rs`, `host_impl.rs`,
 // `editor/mod.rs`, and the `editor::tests` tree — they need `pub(in editor)`
 // breadth.
 pub(in crate::editor) use insert_session::{

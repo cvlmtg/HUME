@@ -684,7 +684,7 @@ impl Editor {
         extra_arg: Option<&str>,
     ) -> Result<(), crate::editor::error::CommandError> {
         let (cmd, force, inline_arg) =
-            super::mappings::command_mode::parse_typed_command(cmd_with_arg);
+            super::input_stack::command::parse_typed_command(cmd_with_arg);
         let arg = inline_arg.or(extra_arg);
         match self.state.config.registry.get_typed(cmd) {
             Some(tc) => match tc.body {

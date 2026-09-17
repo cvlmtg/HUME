@@ -1,14 +1,21 @@
+//! The `Insert` layer, plus [`Editor::handle_insert`] and
+//! [`Editor::apply_insert_mode_paste`] — kept as `impl Editor` methods
+//! rather than free functions like this crate's other layer handlers,
+//! because both have a second caller outside dispatch: `replay.rs`'s
+//! dot-repeat/macro replay calls them directly (`self.handle_insert(*key)`,
+//! `self.apply_insert_mode_paste(text)`) to replay a recorded insert
+//! session's keystrokes. Converting them to free functions would force that
+//! caller into a new qualified path for no benefit `insert_input` doesn't
+//! already provide.
+
 use hume_editing::changeset::ChangeSet;
 use hume_editing::lines::leading_whitespace_end;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use super::super::event::EditorEvent;
-use super::super::keymap::WalkResult;
-use super::super::registry::MappableCommand;
-use super::super::replay::InsertInput;
-use super::super::{Editor, commands, doc_ops};
+use hume_engine::pipeline::EngineView;
+use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::auto_pairs::{delete_pair, insert_pair_close};
 use hume_ops::edit::{
@@ -16,6 +23,49 @@ use hume_ops::edit::{
     insert_newline_indent, insert_tab,
 };
 use hume_ops::motion::cmd_move_right;
+
+use super::super::event::EditorEvent;
+use super::super::keymap::WalkResult;
+use super::super::registry::MappableCommand;
+use super::super::replay::InsertInput;
+use super::super::{Editor, EditorState, commands, doc_ops};
+use super::popup::PopupLayer;
+use super::stack::{InputEvent, Layer, LayerRef};
+
+pub(in crate::editor) struct InsertLayer {
+    pub(in crate::editor) sticky_popup: Option<PopupLayer>,
+}
+
+impl Layer for InsertLayer {
+    fn mode(&self) -> Option<EditorMode> {
+        Some(EditorMode::Insert)
+    }
+    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
+        commands::tear_down_insert(state, view);
+    }
+    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
+        Some(&self.sticky_popup)
+    }
+    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
+        Some(&mut self.sticky_popup)
+    }
+}
+
+pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
+    match ev {
+        InputEvent::Key(key) => ed.handle_insert(key),
+        InputEvent::Paste(text) => {
+            ed.apply_insert_mode_paste(&text);
+            if let Some(session) = ed.state.insert_session.as_mut() {
+                session.keystrokes.push(InsertInput::Paste(text));
+            }
+        }
+        // A click or a wheel notch is Base's own action to run — most
+        // visibly, a click's `focus_pane` ends this very Insert session
+        // before resolving the click (see `focus::focus_pane`'s doc).
+        InputEvent::Mouse(mouse) => ed.fall_through(r, InputEvent::Mouse(mouse)),
+    }
+}
 
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
@@ -63,7 +113,7 @@ impl Editor {
         }
     }
 
-    pub(in super::super) fn handle_insert(&mut self, key: KeyEvent) {
+    pub(in crate::editor) fn handle_insert(&mut self, key: KeyEvent) {
         // Walk the insert trie first: handles Esc, Ctrl-c, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
         // are NOT in the insert trie — they're handled below.
@@ -333,5 +383,28 @@ impl Editor {
                     chars,
                 )
         })
+    }
+
+    /// Bulk-insert `text` into the focused buffer as one grouped edit — the
+    /// Insert-mode paste path. Also used by dot-repeat replay so a replayed
+    /// paste re-runs as one edit rather than as synthesized per-char keys
+    /// (which would wrongly re-trigger auto-indent on an embedded newline).
+    ///
+    /// Deliberately bypasses auto-pairs, trigger-char hooks, and per-char LSP
+    /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
+    /// text, and refiltering a completion against a pasted blob is meaningless.
+    pub(in crate::editor) fn apply_insert_mode_paste(&mut self, text: &str) {
+        let focused = self.state.focus.id();
+        let buf = self.focused_buffer_id();
+        doc_ops::apply_doc_edit_grouped(
+            &mut self.state.buffers,
+            &self.state.config.decorations,
+            &mut self.state.panes.state,
+            &mut self.state.panes.jumps,
+            focused,
+            buf,
+            |b, s| hume_ops::edit::insert_str(b, s, text),
+        );
+        self.state.dismiss_completion(&self.view);
     }
 }

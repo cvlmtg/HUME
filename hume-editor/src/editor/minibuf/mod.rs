@@ -2,6 +2,10 @@ pub(in crate::editor) mod history;
 
 use hume_ui::width::text_width;
 
+use self::history::{HistoryDir, HistoryKind};
+use super::Editor;
+use super::input_stack::{InputEvent, LayerRef};
+
 // ── MiniBuffer ────────────────────────────────────────────────────────────────
 
 /// The command-line mini-buffer, active while the user is typing a command
@@ -201,3 +205,72 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
     }
     i
 }
+
+// ── Shared by every minibuf-backed mode layer ───────────────────────────────
+//
+// `Command`/`Search`/`Sift`/`Prompt` (`input_stack/{command,search,sift,
+// prompt}.rs`) all call these — homed here rather than in any one of those
+// files so none of the four has to own a helper the other three also need.
+
+/// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
+/// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching
+/// — the single place a key or a paste becomes an edit to the
+/// minibuffer, shared by all four so a paste runs the same `Edited`
+/// follow-up a typed character would (see each mode's own event match).
+/// A mouse event has no minibuffer edit to become — it falls through
+/// (the cursor still moves under an open `:`/`/`/`s` prompt) and
+/// returns `None` either way. `None` also covers
+/// the case where no minibuffer is live (dispatch reached this layer
+/// kind but its payload was already torn down mid-call — matches every
+/// other handler's own liveness discipline).
+pub(in crate::editor) fn minibuf_input(
+    ed: &mut Editor,
+    r: LayerRef,
+    ev: InputEvent,
+) -> Option<MiniBufferEvent> {
+    match ev {
+        InputEvent::Mouse(mouse) => {
+            ed.fall_through(r, InputEvent::Mouse(mouse));
+            None
+        }
+        InputEvent::Key(key) => Some(ed.state.input.minibuf_mut()?.handle_key(key)),
+        InputEvent::Paste(text) => Some(
+            ed.state
+                .input
+                .minibuf_mut()?
+                .insert_str(&flatten_single_line(&text)),
+        ),
+    }
+}
+
+/// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
+/// ring and install it in the minibuffer. No-op when there is no active
+/// minibuffer or when the ring has nowhere to go.
+pub(in crate::editor) fn recall_history(ed: &mut Editor, kind: HistoryKind, dir: HistoryDir) {
+    let current = ed
+        .state
+        .input
+        .minibuf()
+        .map(|m| m.input.as_str())
+        .unwrap_or("");
+    let text = match dir {
+        HistoryDir::Prev => ed.state.history.get_mut(kind).prev(current),
+        HistoryDir::Next => ed.state.history.get_mut(kind).next(),
+    };
+    if let Some(text) = text
+        && let Some(mb) = ed.state.input.minibuf_mut()
+    {
+        mb.input = text;
+        mb.cursor = mb.input.len();
+    }
+}
+
+/// Flatten already-newline-normalized text for a single-line input field
+/// (the minibuffer, a picker query): drop trailing newlines, turn any
+/// interior newline into a space.
+pub(in crate::editor) fn flatten_single_line(text: &str) -> String {
+    text.trim_end_matches('\n').replace('\n', " ")
+}
+
+#[cfg(test)]
+mod tests;

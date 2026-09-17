@@ -24,7 +24,7 @@
 //! (`InputEvent::Mouse` — `input_stack.rs`), via `Editor::dispatch_input`
 //! (`handle_input`'s caller, `lifecycle.rs`) — a `Popup` layer's own policy
 //! dismisses it unconditionally on any mouse event, same as any other input
-//! it doesn't recognize (`mappings/widgets.rs`'s `popup_input`).
+//! it doesn't recognize (`input_stack/popup.rs`'s `popup_input`).
 //! [`Editor::base_mouse`] is `Base`'s own policy, the `match mouse.kind`
 //! this module used to dispatch unconditionally before the stack could gate
 //! it.

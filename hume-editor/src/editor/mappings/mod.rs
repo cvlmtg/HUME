@@ -5,18 +5,13 @@ use super::input_stack::{
     BaseLayer, CommandLayer, CompletionLayer, ConfirmLayer, DrawerLayer, InputEvent, InsertLayer,
     LayerRef, MenuLayer, PickerLayer, PopupLayer, PromptLayer, SearchLayer, SiftLayer,
 };
-use super::input_stack::{completion, confirm, drawer, menu, popup};
-use super::minibuf::MiniBufferEvent;
-use super::replay::InsertInput;
+use super::input_stack::{
+    base, command, completion, confirm, drawer, insert, menu, popup, prompt, search, sift,
+};
 
 mod bracketed_paste;
-pub(super) mod command_mode;
 mod execute;
-mod insert;
 mod lazy;
-mod normal;
-mod search_mode;
-mod sift_mode;
 mod widgets;
 
 impl Editor {
@@ -85,27 +80,24 @@ impl Editor {
 
     /// Routes to whichever handler owns `r`'s concrete type. A chain of
     /// `is::<L>()` checks, not a match on a closed `enum`'s discriminant —
-    /// see `input_stack/stack.rs`'s own doc for why: the five overlay
-    /// layers below call into their own `input_stack::<name>` module now
-    /// that each has its own file, but `Picker` (still in `mappings::widgets`)
-    /// and the six mode layers (still in this very `impl` block) haven't
-    /// moved yet, so there's no `handler()` fn pointer to call uniformly.
-    /// This chain collapses to one as the rest move and start implementing
-    /// `handler()` instead.
+    /// see `input_stack/stack.rs`'s own doc for why: `Picker` (still in
+    /// `mappings::widgets`, called as an `Editor` method below) hasn't moved
+    /// yet, so there's no `handler()` fn pointer to call uniformly. This
+    /// chain collapses to one once it does.
     fn dispatch_at(&mut self, r: LayerRef, ev: InputEvent) {
         let input = &self.state.input;
         if input.is::<BaseLayer>(r) {
-            self.base_input(r, ev)
+            base::base_input(self, r, ev)
         } else if input.is::<InsertLayer>(r) {
-            self.insert_input(r, ev)
+            insert::insert_input(self, r, ev)
         } else if input.is::<CommandLayer>(r) {
-            self.command_input(r, ev)
+            command::command_input(self, r, ev)
         } else if input.is::<SearchLayer>(r) {
-            self.search_input(r, ev)
+            search::search_input(self, r, ev)
         } else if input.is::<SiftLayer>(r) {
-            self.sift_input(r, ev)
+            sift::sift_input(self, r, ev)
         } else if input.is::<PromptLayer>(r) {
-            self.prompt_input(r, ev)
+            prompt::prompt_input(self, r, ev)
         } else if input.is::<DrawerLayer>(r) {
             drawer::drawer_input(self, r, ev)
         } else if input.is::<MenuLayer>(r) {
@@ -137,87 +129,6 @@ impl Editor {
     pub(in crate::editor) fn fall_through(&mut self, r: LayerRef, ev: InputEvent) {
         let below = self.state.input.below(r);
         self.dispatch_at(below, ev);
-    }
-
-    /// The base layer's own policy. `r` is unused: `Base` never falls
-    /// through further (there is nothing below it) and never truncates
-    /// itself (it is never removed). Only ever runs for Normal/Extend —
-    /// every other mode is its own layer type, routed directly by
-    /// `dispatch_at`; `handle_normal` still reads `state.mode()` internally
-    /// to tell the two apart.
-    fn base_input(&mut self, _r: LayerRef, ev: InputEvent) {
-        match ev {
-            InputEvent::Key(key) => self.handle_normal(key),
-            InputEvent::Paste(text) => self.apply_normal_mode_paste(&text),
-            InputEvent::Mouse(mouse) => self.base_mouse(mouse),
-        }
-    }
-
-    fn insert_input(&mut self, r: LayerRef, ev: InputEvent) {
-        match ev {
-            InputEvent::Key(key) => self.handle_insert(key),
-            InputEvent::Paste(text) => {
-                self.apply_insert_mode_paste(&text);
-                if let Some(session) = self.state.insert_session.as_mut() {
-                    session.keystrokes.push(InsertInput::Paste(text));
-                }
-            }
-            // A click or a wheel notch is Base's own action to run — most
-            // visibly, a click's `focus_pane` ends this very Insert session
-            // before resolving the click (see `focus::focus_pane`'s doc).
-            InputEvent::Mouse(mouse) => self.fall_through(r, InputEvent::Mouse(mouse)),
-        }
-    }
-
-    /// Converts one `InputEvent` into a `MiniBufferEvent` for whichever
-    /// minibuf-mode layer (`Command`/`Search`/`Sift`/`Prompt`) is dispatching
-    /// — the single place a key or a paste becomes an edit to the
-    /// minibuffer, shared by all four so a paste runs the same `Edited`
-    /// follow-up a typed character would (see each mode's own event match).
-    /// A mouse event has no minibuffer edit to become — it falls through
-    /// (the cursor still moves under an open `:`/`/`/`s` prompt) and
-    /// returns `None` either way. `None` also covers
-    /// the case where no minibuffer is live (dispatch reached this layer
-    /// kind but its payload was already torn down mid-call — matches every
-    /// other handler's own liveness discipline).
-    fn minibuf_input(&mut self, r: LayerRef, ev: InputEvent) -> Option<MiniBufferEvent> {
-        match ev {
-            InputEvent::Mouse(mouse) => {
-                self.fall_through(r, InputEvent::Mouse(mouse));
-                None
-            }
-            InputEvent::Key(key) => Some(self.state.input.minibuf_mut()?.handle_key(key)),
-            InputEvent::Paste(text) => Some(
-                self.state
-                    .input
-                    .minibuf_mut()?
-                    .insert_str(&bracketed_paste::flatten_single_line(&text)),
-            ),
-        }
-    }
-
-    fn command_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(r, ev) {
-            self.handle_command_event(r, event);
-        }
-    }
-
-    fn search_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(r, ev) {
-            self.handle_search_event(r, event);
-        }
-    }
-
-    fn sift_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(r, ev) {
-            self.handle_sift_event(r, event);
-        }
-    }
-
-    fn prompt_input(&mut self, r: LayerRef, ev: InputEvent) {
-        if let Some(event) = self.minibuf_input(r, ev) {
-            self.handle_steel_prompt_event(r, event);
-        }
     }
 }
 

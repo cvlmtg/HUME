@@ -1,5 +1,5 @@
 // In-buffer completion menu + Insert-mode dispatch: `completion_input`
-// (`mappings/completion_menu.rs`), and `sync_completion_menu_view`'s write
+// (`input_stack/completion.rs`), and `sync_completion_menu_view`'s write
 // side (reusing the popup/selection-menu widgets' `PopupState`/`PopupOverlay`).
 //
 // Sessions are constructed directly via `CompletionSession::begin` (bypassing

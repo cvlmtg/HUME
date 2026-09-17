@@ -99,7 +99,7 @@ fn message_log_summary_ttl() {
 
 #[test]
 fn parse_typed_command_table() {
-    use super::command_mode::parse_typed_command;
+    use super::super::input_stack::command::parse_typed_command;
     let cases: &[(&str, &str, bool, Option<&str>)] = &[
         ("", "", false, None),                         // empty
         ("!", "", true, None),                         // lone bang

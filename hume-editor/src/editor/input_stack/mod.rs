@@ -25,33 +25,41 @@
 //!
 //! Each concrete layer — its state, its `Layer` impl, its own
 //! key/paste/mouse handler, and its named lookup sugar over `InputStack` —
-//! lives in a file of its own, named by a `mod` line below. `popup.rs`,
-//! `menu.rs`, `drawer.rs`, `confirm.rs`, and `completion.rs` are there
-//! already; the six mode layers and `Picker` still live inside `stack.rs`
-//! (see that file's own doc) pending the steps that move them the same way.
-//! Once every layer has its own file, adding another means adding one file
-//! and one `mod` line here, nothing else.
+//! lives in a file of its own, named by a `mod` line below. Eleven of the
+//! twelve are there already; only `Picker` still lives inside `stack.rs`
+//! (see that file's own doc), pending its own move alongside
+//! `editor/picker.rs`. Once it moves, adding another layer means adding one
+//! file and one `mod` line here, nothing else.
 
 mod stack;
 
+pub(in crate::editor) mod base;
+pub(in crate::editor) mod command;
 pub(in crate::editor) mod completion;
 pub(in crate::editor) mod confirm;
 pub(in crate::editor) mod drawer;
+pub(in crate::editor) mod insert;
 pub(in crate::editor) mod menu;
 pub(in crate::editor) mod popup;
+pub(in crate::editor) mod prompt;
+pub(in crate::editor) mod search;
+pub(in crate::editor) mod sift;
 
 pub(in crate::editor) use stack::{InputEvent, InputStack, Layer, LayerRef};
 
+pub(in crate::editor) use base::BaseLayer;
+pub(in crate::editor) use command::CommandLayer;
 pub(in crate::editor) use completion::CompletionLayer;
 pub(in crate::editor) use confirm::{ConfirmAction, ConfirmChoice, ConfirmLayer};
 pub(in crate::editor) use drawer::DrawerLayer;
+pub(in crate::editor) use insert::InsertLayer;
 pub(in crate::editor) use menu::MenuLayer;
 pub(in crate::editor) use popup::PopupLayer;
+pub(in crate::editor) use prompt::PromptLayer;
+pub(in crate::editor) use search::SearchLayer;
+pub(in crate::editor) use sift::SiftLayer;
 
-// The six mode-layer types plus `Picker`, still living inside `stack.rs`
-// for now (see that file's own doc) — re-exported flat, matching how the
-// closed `enum` this trait replaced used to read minus the `InputLayer::`
-// prefix.
-pub(in crate::editor) use stack::{
-    BaseLayer, CommandLayer, InsertLayer, PickerLayer, PromptLayer, SearchLayer, SiftLayer,
-};
+// `Picker` alone still lives inside `stack.rs` for now (see that file's own
+// doc) — re-exported flat, matching how the closed `enum` this trait
+// replaced used to read minus the `InputLayer::` prefix.
+pub(in crate::editor) use stack::PickerLayer;

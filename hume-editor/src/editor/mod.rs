@@ -694,7 +694,7 @@ impl EditorState {
     }
 
     /// Every source registered for `(ch, language)` — `OnTriggerChar`'s fire
-    /// site (mappings/insert.rs) fires once per entry, so two sources
+    /// site (input_stack/insert.rs) fires once per entry, so two sources
     /// registering the same char for the same language each get their own
     /// hook fire. A buffer with no language (`language: None`) never
     /// matches anything — trigger chars are always server-derived, and a

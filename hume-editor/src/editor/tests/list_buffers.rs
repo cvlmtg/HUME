@@ -495,7 +495,7 @@ fn read_only_buffer_blocks_change_kill() {
 /// populated, and must not leave the `"<reg>` prefix armed for the next
 /// command. `3`, not `a`: `a` is not a valid register name
 /// (`is_valid_register_name` accepts only `0`–`9`, `k`, `c`, `b`), so
-/// `mappings/normal.rs` would already have dropped the prefix on `"a` alone
+/// `input_stack/base.rs` would already have dropped the prefix on `"a` alone
 /// — a register that never armed can't tell this test whether the refusal
 /// itself cleared anything.
 ///

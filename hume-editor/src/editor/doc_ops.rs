@@ -199,7 +199,7 @@ pub(in crate::editor) fn apply_doc_edit(
 /// `apply_edit_grouped` is infallible, so no panic can leave the set in its
 /// default state.
 ///
-/// Returns the applied `ChangeSet` — `mappings/insert.rs`'s `apply_insert_edit`
+/// Returns the applied `ChangeSet` — `input_stack/insert.rs`'s `apply_insert_edit`
 /// uses it to remap an open LSP completion session's anchor through every
 /// keystroke, not just the primary cursor's own position.
 pub(in crate::editor) fn apply_doc_edit_grouped(

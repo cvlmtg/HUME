@@ -59,7 +59,7 @@ pub(in crate::editor::commands::insert_session) fn has_blank_line_cursor(
 /// "no record for this selection", same as an empty vec would.
 ///
 /// Owned rather than borrowed: every caller (`end_insert_session` here,
-/// `mappings/insert.rs`'s Enter handler) needs it cloned out of
+/// `input_stack/insert.rs`'s Enter handler) needs it cloned out of
 /// `PaneBufferState` before running the edit whose `ChangeSet` will remap —
 /// or, for Enter, replace — that same record.
 pub(in crate::editor) fn autoindent_owned(

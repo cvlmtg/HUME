@@ -22,7 +22,7 @@ pub(in crate::editor) enum HistoryKind {
     SearchBackward,
 }
 
-/// Direction for [`crate::editor::Editor::recall_history`].
+/// Direction for [`crate::editor::minibuf::recall_history`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::editor) enum HistoryDir {
     Prev,

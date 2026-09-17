@@ -1,5 +1,5 @@
 // Numeric count-prefix accumulation (`3w`, `12j`, …) — see
-// `Editor::handle_normal`'s "Count prefix accumulation" block.
+// `handle_normal`'s (`input_stack/base.rs`) "Count prefix accumulation" block.
 use super::*;
 
 #[test]

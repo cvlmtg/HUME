@@ -8,16 +8,16 @@
 //! `downcast_mut`/`downcast` (below `Layer`'s own definition) rather than
 //! matching a variant, so adding a layer never touches this file.
 //!
-//! The five overlay layers (`Popup`, `Menu`, `Drawer`, `Confirm`,
-//! `Completion`) have already moved into files of their own
-//! (`popup.rs`/`menu.rs`/`drawer.rs`/`confirm.rs`/`completion.rs`). The six
-//! mode layers (`Base` through `Prompt`) plus `Picker` still live in *this*
-//! file for now — the remaining steps move them the same way. `dispatch_at`
-//! (`mappings/mod.rs`) still calls each handler directly by name during
-//! that transition; `Layer` gains a `handler()` method (a `LayerHandler` fn
-//! pointer, replacing the chain) only once every layer's `impl` is
-//! co-located with its own handler fn — doing that before every layer has
-//! moved would need the not-yet-moved handlers widened to
+//! Eleven of the twelve layers have already moved into files of their own
+//! (`base.rs`, `insert.rs`, `command.rs`, `search.rs`, `sift.rs`,
+//! `prompt.rs`, `popup.rs`, `menu.rs`, `drawer.rs`, `confirm.rs`,
+//! `completion.rs`). `Picker` alone still lives in *this* file for now —
+//! its own move (alongside `editor/picker.rs`) is the remaining step.
+//! `dispatch_at` (`mappings/mod.rs`) still calls its handler directly by
+//! name during that transition; `Layer` gains a `handler()` method (a
+//! `LayerHandler` fn pointer, replacing the chain) only once `Picker`'s
+//! `impl` is co-located with its own handler fn too — doing that before
+//! then would need the not-yet-moved handler widened to
 //! `pub(in crate::editor)`, reachable by any code in the crate rather than
 //! only through `dispatch_at`'s liveness-checked call.
 
@@ -27,13 +27,11 @@ use termina::event::{KeyEvent, MouseEvent};
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use steel::rvals::SteelVal;
 
 use super::super::EditorState;
-use super::super::completion::MinibufCompletionState;
 use super::super::minibuf::MiniBuffer;
 use super::super::picker::PickerSession;
-use super::super::{commands, search};
+use super::base::BaseLayer;
 use super::popup::PopupLayer;
 
 /// Addresses one layer by position — minted only by [`InputStack::push`] and
@@ -139,142 +137,6 @@ impl dyn Layer {
 }
 
 // ── Layer types (temporary home — see this file's own doc) ─────────────────
-
-/// The always-present layer at index 0. Never removed. Carries `extend`
-/// (Extend is a flag on `Base`, never its own layer) and `sticky_popup` — the
-/// home for a `Sticky` popup shared with [`InsertLayer`], see
-/// [`Layer::sticky_popup_slot`]'s doc.
-pub(in crate::editor) struct BaseLayer {
-    pub(in crate::editor) extend: bool,
-    pub(in crate::editor) sticky_popup: Option<PopupLayer>,
-}
-
-impl Layer for BaseLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        Some(if self.extend {
-            EditorMode::Extend
-        } else {
-            EditorMode::Normal
-        })
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
-        Some(&self.sticky_popup)
-    }
-    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
-        Some(&mut self.sticky_popup)
-    }
-}
-
-pub(in crate::editor) struct InsertLayer {
-    pub(in crate::editor) sticky_popup: Option<PopupLayer>,
-}
-
-impl Layer for InsertLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        Some(EditorMode::Insert)
-    }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
-        commands::tear_down_insert(state, view);
-    }
-    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
-        Some(&self.sticky_popup)
-    }
-    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
-        Some(&mut self.sticky_popup)
-    }
-}
-
-pub(in crate::editor) struct CommandLayer {
-    pub(in crate::editor) minibuf: MiniBuffer,
-    pub(in crate::editor) completion: Option<MinibufCompletionState>,
-}
-
-impl Layer for CommandLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        Some(EditorMode::Command)
-    }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.history.begin_session_all();
-    }
-    fn minibuf(&self) -> Option<&MiniBuffer> {
-        Some(&self.minibuf)
-    }
-    fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
-        Some(&mut self.minibuf)
-    }
-}
-
-pub(in crate::editor) struct SearchLayer {
-    pub(in crate::editor) minibuf: MiniBuffer,
-}
-
-impl Layer for SearchLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        Some(EditorMode::Search)
-    }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
-        let pid = state.focus.id();
-        if let Some(sels) = state.panes.transient[pid].pre_search_sels.take() {
-            commands::set_current_selections(state, view, sels);
-            let bid = commands::focused_buffer_id(state, view);
-            search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.state, bid);
-        }
-        state.history.begin_session_all();
-    }
-    fn minibuf(&self) -> Option<&MiniBuffer> {
-        Some(&self.minibuf)
-    }
-    fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
-        Some(&mut self.minibuf)
-    }
-}
-
-pub(in crate::editor) struct SiftLayer {
-    pub(in crate::editor) minibuf: MiniBuffer,
-}
-
-impl Layer for SiftLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        Some(EditorMode::Sift)
-    }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
-        let pid = state.focus.id();
-        if let Some(sels) = state.panes.transient[pid].pre_sift_sels.take() {
-            commands::set_current_selections(state, view, sels);
-        }
-        state.history.begin_session_all();
-    }
-    fn minibuf(&self) -> Option<&MiniBuffer> {
-        Some(&self.minibuf)
-    }
-    fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
-        Some(&mut self.minibuf)
-    }
-}
-
-pub(in crate::editor) struct PromptLayer {
-    pub(in crate::editor) minibuf: MiniBuffer,
-    pub(in crate::editor) callback: SteelVal,
-}
-
-impl Layer for PromptLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        // The engine has no `Prompt` variant, and today's `(prompt! …)`
-        // session already runs as `Command` for every consumer outside this
-        // crate.
-        Some(EditorMode::Command)
-    }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.history.begin_session_all();
-    }
-    fn minibuf(&self) -> Option<&MiniBuffer> {
-        Some(&self.minibuf)
-    }
-    fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
-        Some(&mut self.minibuf)
-    }
-}
 
 /// A fuzzy-picker layer. Wraps `Box<PickerSession>`: `PickerSession` alone is
 /// several times the size of every other layer's own state (its own
@@ -543,9 +405,8 @@ impl InputStack {
     // rewriting every `input.picker()`/`input.confirm()`/… call site to
     // `input.find::<PickerLayer>()`) so the ~350 existing call sites are
     // untouched by this refactor. Each of these moves into its own layer's
-    // file alongside that layer's own `impl Layer` block — the ones that
-    // still name a not-yet-moved type (`Picker`, `Prompt`, `Command`) stay
-    // here for now.
+    // file alongside that layer's own `impl Layer` block — `picker()`/
+    // `picker_mut()` stay here until `Picker`'s own move.
 
     pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {
         self.find::<PickerLayer>().map(|l| l.0.as_ref())
@@ -553,33 +414,6 @@ impl InputStack {
 
     pub(in crate::editor) fn picker_mut(&mut self) -> Option<&mut PickerSession> {
         self.find_mut::<PickerLayer>().map(|l| l.0.as_mut())
-    }
-
-    /// The open `(prompt! …)` session's callback, if `Prompt` is on the
-    /// stack. Read-only — a caller finishing the prompt clones this out
-    /// (cheap: `SteelVal` is reference-counted) before truncating the
-    /// `Prompt` layer away, rather than taking ownership through this
-    /// lookup.
-    pub(in crate::editor) fn prompt_callback(&self) -> Option<&SteelVal> {
-        self.find::<PromptLayer>().map(|l| &l.callback)
-    }
-
-    /// The active completion session, flattened — `None` both when no
-    /// `Command` layer is open and when one is open with no session. Reads
-    /// only; see [`Self::minibuf_completion_mut`] to replace or clear it.
-    pub(in crate::editor) fn minibuf_completion(&self) -> Option<&MinibufCompletionState> {
-        self.find::<CommandLayer>()
-            .and_then(|l| l.completion.as_ref())
-    }
-
-    /// The `Command` layer's completion slot itself (not its content) —
-    /// `Some(&mut Option<..>)` whenever a `Command` layer is open, letting a
-    /// caller assign a fresh session or clear one (`*slot = None`), as
-    /// opposed to [`Self::minibuf_completion`]'s flattened read.
-    pub(in crate::editor) fn minibuf_completion_mut(
-        &mut self,
-    ) -> Option<&mut Option<MinibufCompletionState>> {
-        self.find_mut::<CommandLayer>().map(|l| &mut l.completion)
     }
 
     /// The active popup, whichever of its two homes holds it: a
@@ -660,8 +494,11 @@ impl Default for InputStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::input_stack::command::CommandLayer;
     use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmChoice, ConfirmLayer};
+    use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
+    use steel::rvals::SteelVal;
 
     fn menu(label: &str) -> MenuLayer {
         MenuLayer {

@@ -6,7 +6,7 @@
 //!   *names*; the registry resolves them to `MappableCommand` values at
 //!   dispatch time inside `execute_keymap_command` (`mappings/execute.rs`).
 //! - [`TypedCommand`] — invocable from the `:` command line. The dispatcher
-//!   in `execute_command` (`mappings/command_mode.rs`) calls
+//!   in `execute_command` (`input_stack/command.rs`) calls
 //!   [`CommandRegistry::get_typed`] to resolve name or alias to a
 //!   `TypedCommand`. `:` resolves *only* typed commands — a mappable
 //!   command's name is unreachable from the command line, and a typed
@@ -78,7 +78,7 @@ fn ci_get<'a, V>(map: &'a FxHashMap<Cow<'static, str>, V>, name: &str) -> Option
 ///   (`execute_keymap_command` in `mappings/execute.rs`) resolves them via
 ///   [`Self::get_mappable`].
 /// - **Typed commands** are invoked from the `:` command line. The dispatcher
-///   (`execute_command` in `mappings/command_mode.rs`) resolves them via
+///   (`execute_command` in `input_stack/command.rs`) resolves them via
 ///   [`Self::get_typed`]. Aliases are supported via [`Self::alias_map`].
 ///
 /// The two are strictly separate: `:` resolves only typed commands ([`Self::get_typed`]),
@@ -203,7 +203,7 @@ impl CommandRegistry {
     ///
     /// Returns `None` if the name is unknown or resolves to a mappable
     /// command — `:` never falls back to a mappable command; see
-    /// `execute_command` in `mappings/command_mode.rs`.
+    /// `execute_command` in `input_stack/command.rs`.
     pub(in crate::editor) fn get_typed(&self, name: &str) -> Option<&TypedCommand> {
         let canonical = ci_get(&self.alias_map, name)
             .map(|c| c.as_ref())

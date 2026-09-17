@@ -216,7 +216,7 @@ pub(in crate::editor::commands::pipeline) fn step_capture_pre_jump(
 ///
 /// Two routes into a native command bypass this pipeline entirely, and both
 /// are already safe without it: Insert mode's `Edit`-command short-circuit
-/// (`mappings/insert.rs`) has a meta that hardcodes all three motion flags
+/// (`input_stack/insert.rs`) has a meta that hardcodes all three motion flags
 /// `false`, so `moves_cursor()` would answer `false` here too; dot-repeat
 /// replay (`replay.rs`) calls `run_native_body` directly, but reopens an
 /// edit group first, which clears the pins itself

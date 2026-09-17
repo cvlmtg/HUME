@@ -538,7 +538,7 @@ fn lazy_lsp_plugin_registers_installed_servers_on_language_activation() {
 /// A `:`-typed command can activate a lazily-declared core:lsp when the
 /// command name is listed in the declaration's `#:commands` manifest —
 /// dispatch runs `activate_lazy_plugin` before arity marshalling (see
-/// mappings/command_mode.rs), so `:lsp-install` on a plugin that hasn't
+/// input_stack/command.rs), so `:lsp-install` on a plugin that hasn't
 /// loaded yet still works, no eager `(load-plugin "core:lsp")` required.
 #[test]
 fn lazy_lsp_plugin_activates_on_typed_lsp_install_command() {
