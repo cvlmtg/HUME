@@ -22,7 +22,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::minibuf::MiniBuffer;
-use super::super::{Editor, EditorState};
+use super::super::{Editor, EditorState, Severity};
 use super::base::BaseLayer;
 use super::popup::PopupLayer;
 
@@ -80,24 +80,27 @@ pub(in crate::editor) trait Layer: Any {
     /// before `push`), `tear_down` sees what is left (called after
     /// `truncate`). [`EditorState::push_layer`] is the only caller — it is
     /// what makes this impossible to skip, the same way `truncate_layers`
-    /// makes `tear_down` impossible to skip. Most layers evict nothing and
-    /// leave this empty; `MenuLayer`/`PopupLayer`/`DrawerLayer` clear any
-    /// open popup (`InputStack::clear_popups`) so `PopupLayer`'s "never
-    /// buried" invariant holds regardless of which of them lands next;
-    /// `CompletionLayer` clears only the pushed-layer home
+    /// makes `tear_down` impossible to skip. Empty by default: most layers
+    /// evict nothing on entry. `MenuLayer`/`PopupLayer`/`DrawerLayer`
+    /// override to clear any open popup (`InputStack::clear_popups`) so
+    /// `PopupLayer`'s "never buried" invariant holds regardless of which of
+    /// them lands next; `CompletionLayer` clears only the pushed-layer home
     /// (`InputStack::clear_popup_layer`), since it must coexist with a
     /// `Sticky` signature-help popup in the same mode layer's slot;
     /// `PickerLayer` additionally dismisses any open completion session and
-    /// replaces a live picker.
-    fn setup(&mut self, state: &mut EditorState, view: &EngineView);
+    /// replaces a live picker; `SearchLayer`/`SiftLayer` capture their own
+    /// pre-entry selection snapshot here (see each one's own doc for why
+    /// that must happen at this point rather than at construction).
+    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 
     /// What happens when this layer leaves the stack, for any reason —
-    /// teardown of a mode layer *is* its cancel. Every implementation but
-    /// one never fires a Steel callback from here: those are queued only
-    /// from explicit accept/cancel arms, before the truncate that reaches
-    /// this. `PickerLayer`'s is the one exception — see its own doc for why
-    /// the picker's "fires exactly once" contract needs this to fire.
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView);
+    /// teardown of a mode layer *is* its cancel. Empty by default. Every
+    /// override but one never fires a Steel callback from here: those are
+    /// queued only from explicit accept/cancel arms, before the truncate
+    /// that reaches this. `PickerLayer`'s is the one exception — see its
+    /// own doc for why the picker's "fires exactly once" contract needs
+    /// this to fire.
+    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 
     /// The minibuffer this layer owns, if it's one of the four
     /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`).
@@ -121,18 +124,6 @@ pub(in crate::editor) trait Layer: Any {
     /// the stack as moved.
     fn is_modal(&self) -> bool {
         true
-    }
-
-    /// Whether [`EditorState::push_mode_layer`] should no-op when the
-    /// current mode layer is already the same concrete type as the one
-    /// about to be pushed — `true` only for `InsertLayer`, whose payload is
-    /// empty and whose re-entry no-op is load-bearing for dot-repeat replay
-    /// (see `begin_insert_session`'s own doc). Every other mode layer
-    /// carries a payload (a prompt string, a search direction) that a
-    /// same-kind re-entry must actually update, so the default is `false`:
-    /// replace, don't no-op.
-    fn reentry_is_noop(&self) -> bool {
-        false
     }
 
     /// The sticky-popup slot this layer owns, if it's `Base` or `Insert` —
@@ -404,24 +395,20 @@ impl InputStack {
         Some(self.layers.remove(r.depth).1)
     }
 
-    /// Removes every layer above `Base`, top-first, same return contract as
-    /// [`Self::truncate`], and resets `Base` itself to a fresh, all-default
+    /// Removes every layer above `Base`, dropping each one — no
+    /// `Layer::tear_down` runs (same as [`Self::truncate`]'s own contract),
+    /// so a still-open mode layer or overlay's Steel callback is discarded,
+    /// not fired — and resets `Base` itself to a fresh, all-default
     /// [`BaseLayer`] — a reload must not leave Extend on, or a
     /// signature-help popup visible, for hooks that never saw either turned
-    /// on.
-    pub(in crate::editor) fn truncate_to_base(&mut self) -> Vec<Box<dyn Layer>> {
-        let removed = self
-            .layers
-            .split_off(1)
-            .into_iter()
-            .rev()
-            .map(|(_, layer)| layer)
-            .collect();
+    /// on. Returns nothing: its one caller (`reload.rs`) never reads what
+    /// was removed.
+    pub(in crate::editor) fn truncate_to_base(&mut self) {
+        self.layers.truncate(1);
         self.layers[0].1 = Box::new(BaseLayer {
             extend: false,
             sticky_popup: None,
         });
-        removed
     }
 
     /// The layer that determines `EditorMode` — the first mode layer found
@@ -676,6 +663,35 @@ impl EditorState {
             self.truncate_layers(view, r);
         }
     }
+
+    /// The async-staleness gate every opener whose Steel callback fires
+    /// after the key path that triggered it has already returned must
+    /// check before landing — `show-menu!`, `show-drawer-list!`,
+    /// `completion-begin!`. `M` is the mode layer the request requires
+    /// (`BaseLayer` for the first two, `InsertLayer` for completion); `L`
+    /// is the overlay it's about to push. `true` when the request should be
+    /// dropped: the mode layer changed, or a *modal* overlay landed on top
+    /// of it, since the request went out — the user left the required mode,
+    /// or opened something else, while the response was in flight. A prior
+    /// instance of `L` itself — buried or not — is not "the stack moved": a
+    /// second call while the first is still open is the normal refresh
+    /// path (`is_settled_for`'s own doc has the full reasoning), which each
+    /// caller still has to retire/replace itself.
+    ///
+    /// Reports the drop itself (`Severity::Trace`, since this is timing —
+    /// the user moved on — never a plugin bug) so a caller only needs
+    /// `if self.async_opener_stale::<M, L>(what) { return Ok(()); }`.
+    pub(in crate::editor) fn async_opener_stale<M: Layer, L: Layer>(&mut self, what: &str) -> bool {
+        let stale =
+            !self.input.is::<M>(self.input.mode_layer()) || !self.input.is_settled_for::<L>();
+        if stale {
+            self.report(
+                Severity::Trace,
+                format!("{what}: the stack moved before it could open — ignored"),
+            );
+        }
+        stale
+    }
 }
 
 impl Default for InputStack {
@@ -738,8 +754,7 @@ mod tests {
         let mut stack = InputStack::new();
         stack.push(menu("m"));
         stack.push(confirm());
-        let removed = stack.truncate_to_base();
-        assert_eq!(removed.len(), 2);
+        stack.truncate_to_base();
         assert_eq!(stack.top().depth, 0);
         assert!(stack.is::<BaseLayer>(stack.top()));
     }

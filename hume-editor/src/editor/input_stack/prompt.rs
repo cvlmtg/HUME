@@ -25,8 +25,6 @@ impl Layer for PromptLayer {
         // crate.
         Some(EditorMode::Command)
     }
-    /// Empty — see `InsertLayer::setup`'s doc.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Fires the callback with `#f` — unlike every other minibuf-mode
     /// layer's `tear_down`, which never fires a Steel callback (the file
     /// header's "exactly one call fires" contract otherwise has no arm to

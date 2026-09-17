@@ -42,29 +42,15 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 .report(Severity::Info, "no completions".to_string());
             return Ok(());
         }
-        // Async staleness, same principle as `show-menu!`/`show-drawer-list!`
-        // (`input_stack.rs`'s `is_settled_for` doc): the request that led
-        // here can land after the user left Insert, or after some *other*
-        // modal overlay (a picker opened mid-session — nothing about
-        // opening a picker requires Insert) landed on top of it. Either way
-        // this is timing, not a plugin bug, so every failure of this gate
-        // drops silently rather than erroring — an error here would abort
-        // the whole `run_call_batch` this `Call` was batched into. A prior
-        // `Completion` instance — buried or not — is the one exception
-        // `is_settled_for` tolerates: it's the *normal* refresh path, not an
+        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // A prior `Completion` instance — buried or not — is the one
+        // exception it tolerates: it's the *normal* refresh path, not an
         // edge — `on-completion-refilter` re-calls this while a session is
         // already open, and so does a trigger char typed with the menu up.
-        let mode_ok = self
+        if self
             .state
-            .input
-            .is::<InsertLayer>(self.state.input.mode_layer());
-        let stack_ok = self.state.input.is_settled_for::<CompletionLayer>();
-        if !mode_ok || !stack_ok {
-            self.state.report(
-                Severity::Trace,
-                "completion-begin!: the stack moved before the session could open — ignored"
-                    .to_string(),
-            );
+            .async_opener_stale::<InsertLayer, CompletionLayer>("completion-begin!")
+        {
             return Ok(());
         }
         let Some(session) = crate::editor::lsp::completion::CompletionSession::begin(

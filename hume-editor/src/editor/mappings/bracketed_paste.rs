@@ -4,6 +4,8 @@
 //! distinct from the register/kill-ring `p`/`P` "paste" commands in
 //! `editor::commands::paste`, which are an unrelated feature.
 
+use std::borrow::Cow;
+
 use super::super::Editor;
 use super::super::input_stack::InputEvent;
 use hume_editing::text::normalize_line_endings;
@@ -26,7 +28,14 @@ impl Editor {
         // behind that builder. Terminals commonly transmit CR or CRLF for a
         // newline in a bracketed paste regardless of the source's own
         // convention.
-        let text = normalize_line_endings(&text).into_owned();
+        //
+        // `text` is already owned, and the common case (no bare CR) returns
+        // `Cow::Borrowed` — reuse `text` itself rather than re-copying it via
+        // `into_owned()`, which would memcpy the whole paste a second time.
+        let text = match normalize_line_endings(&text) {
+            Cow::Borrowed(_) => text,
+            Cow::Owned(s) => s,
+        };
         if text.is_empty() {
             return;
         }

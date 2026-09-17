@@ -42,7 +42,11 @@ impl Layer for DrawerLayer {
     fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.input.clear_popups();
     }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    // `tear_down` stays at the trait's empty default — an explicit
+    // `close-drawer!` (routed through `EditorState::retire`, which reaches
+    // this) must stay silent; `drawer_input`'s own `Esc` arm takes the
+    // layer *by value* via `EditorState::take_layer` and fires its own
+    // callback explicitly instead.
     /// Non-modal: the drawer is built to be worked over (a stray key falls
     /// through and it stays open), so an async opener's staleness check
     /// (`InputStack::is_settled_for`) must not read "a drawer is open" as
@@ -112,44 +116,26 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             return;
         }
     };
-    match key.code {
-        KeyCode::Char('j') | KeyCode::Down => {
-            let drawer = ed
-                .state
-                .input
-                .drawer_mut()
-                .expect("dispatch_at already checked kind(r) == DrawerLayer");
-            if drawer.selected + 1 < drawer.items.len() {
-                drawer.selected += 1;
-                clamp_drawer_scroll(ed);
-            }
-        }
-        KeyCode::Char('k') | KeyCode::Up => {
-            let drawer = ed
-                .state
-                .input
-                .drawer_mut()
-                .expect("dispatch_at already checked kind(r) == DrawerLayer");
-            if drawer.selected > 0 {
-                drawer.selected -= 1;
-                clamp_drawer_scroll(ed);
-            }
-        }
+    // Every movement key differs only in the delta passed to
+    // `move_drawer_selection` — collapsed to one borrow instead of one per
+    // key, mirroring `picker_input`'s own step table.
+    let step: Option<isize> = match key.code {
+        KeyCode::Char('j') | KeyCode::Down => Some(1),
+        KeyCode::Char('k') | KeyCode::Up => Some(-1),
         KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
-            let half = (drawer_visible_rows(ed) / 2).max(1);
-            if let Some(drawer) = ed.state.input.drawer_mut() {
-                drawer.selected =
-                    (drawer.selected + half).min(drawer.items.len().saturating_sub(1));
-            }
-            clamp_drawer_scroll(ed);
+            Some((drawer_visible_rows(ed) / 2).max(1) as isize)
         }
         KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
-            let half = (drawer_visible_rows(ed) / 2).max(1);
-            if let Some(drawer) = ed.state.input.drawer_mut() {
-                drawer.selected = drawer.selected.saturating_sub(half);
-            }
-            clamp_drawer_scroll(ed);
+            Some(-((drawer_visible_rows(ed) / 2).max(1) as isize))
         }
+        _ => None,
+    };
+    if let Some(delta) = step {
+        move_drawer_selection(ed, delta);
+        return;
+    }
+
+    match key.code {
         KeyCode::Enter => {
             let drawer = ed
                 .state
@@ -187,6 +173,23 @@ fn drawer_visible_rows(ed: &Editor) -> usize {
         return 0;
     };
     hume_ui::drawer::visible_rows(drawer.items.len(), max)
+}
+
+/// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
+/// syncs the scroll/view — shared by every movement key (`j`/`k`/Ctrl-d/
+/// Ctrl-u) so each key site is just "which delta", not its own lookup.
+fn move_drawer_selection(ed: &mut Editor, delta: isize) {
+    let drawer = ed
+        .state
+        .input
+        .drawer_mut()
+        .expect("dispatch_at already checked kind(r) == DrawerLayer");
+    let len = drawer.items.len();
+    if len > 0 {
+        let new = (drawer.selected as isize + delta).clamp(0, len as isize - 1);
+        drawer.selected = new as usize;
+    }
+    clamp_drawer_scroll(ed);
 }
 
 /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible

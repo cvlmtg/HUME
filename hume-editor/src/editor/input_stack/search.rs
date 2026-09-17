@@ -40,8 +40,16 @@ impl Layer for SearchLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Search)
     }
-    /// Empty — see `InsertLayer::setup`'s doc.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// Captures `pre_sels` here rather than at construction: `setup` runs
+    /// after the outgoing layer's own `tear_down` (see the `Layer::setup`
+    /// doc), so a re-entrant `/`-search (`push_mode_layer` replaces rather
+    /// than no-ops on same-kind re-entry for every mode layer but `Insert`)
+    /// snapshots the state the outgoing session's `tear_down` just restored
+    /// — the true pre-search selections — instead of the mid-search preview
+    /// a construction-time capture would have caught.
+    fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
+        self.pre_sels = Some(commands::current_selections(state, view).clone());
+    }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         if let Some(sels) = self.pre_sels.take() {
             let bid = view.panes[self.pane].buffer_id;
@@ -132,30 +140,26 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             }
             update_live_search(ed);
         }
-        MiniBufferEvent::HistoryPrev => {
-            let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
-                return;
-            };
-            let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
-                return;
-            };
-            minibuf::recall_history(ed, kind, HistoryDir::Prev);
-            update_live_search(ed);
-        }
-        MiniBufferEvent::HistoryNext => {
-            let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
-                return;
-            };
-            let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
-                return;
-            };
-            minibuf::recall_history(ed, kind, HistoryDir::Next);
-            update_live_search(ed);
-        }
+        MiniBufferEvent::HistoryPrev => recall_search_history(ed, HistoryDir::Prev),
+        MiniBufferEvent::HistoryNext => recall_search_history(ed, HistoryDir::Next),
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
         | MiniBufferEvent::CompleteRequested { .. } => {}
     }
+}
+
+/// Recalls the previous/next entry from whichever ring `dir` names — shared
+/// by the `HistoryPrev`/`HistoryNext` arms above, which differ only in
+/// `dir` — then refreshes the live preview against the recalled pattern.
+fn recall_search_history(ed: &mut Editor, dir: HistoryDir) {
+    let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
+        return;
+    };
+    let Some(kind) = HistoryStore::kind_for_prompt(&prompt) else {
+        return;
+    };
+    minibuf::recall_history(ed, kind, dir);
+    update_live_search(ed);
 }
 
 /// Recompile the regex from the current mini-buffer input and jump to the
@@ -184,11 +188,15 @@ fn update_live_search(ed: &mut Editor) {
         return;
     };
     let extend = search.extend;
-    let pre_sels = search.pre_sels.clone();
-
-    // Start from the original pre-search position (not the current position),
-    // so each additional character refines from the same anchor point.
-    let from_char = match &pre_sels {
+    // Read the two `CharOffset`s this function actually needs straight out
+    // of the borrow — `ed.doc()` is a second, independent shared borrow of
+    // `ed` (same shape as `update_live_sift`'s `ed.doc()` call inside its
+    // own `sift.pre_sels.as_ref()` closure), so it can run while `search`
+    // is still alive. Cloning the whole `SelectionSet` here, just to read
+    // one or two of its offsets, would cost a `Vec` allocation on every
+    // keystroke typed into the search prompt.
+    let anchor = search.pre_sels.as_ref().map(|s| s.primary().anchor());
+    let from_char = match search.pre_sels.as_ref() {
         Some(sels) => {
             let text = ed.doc().text();
             let primary = sels.primary();
@@ -202,17 +210,8 @@ fn update_live_search(ed: &mut Editor) {
 
     match find_next_match(ed.doc().text(), &regex, from_char, direction) {
         Some((span, _wrapped)) => {
-            let anchor = if extend {
-                // Extend from the original anchor.
-                Some(
-                    pre_sels
-                        .as_ref()
-                        .map(|s| s.primary().anchor())
-                        .unwrap_or(span.start),
-                )
-            } else {
-                None
-            };
+            // Extend from the original anchor.
+            let anchor = extend.then(|| anchor.unwrap_or(span.start));
             ed.set_primary_selection(search_sel(span, anchor, direction));
         }
         None => {

@@ -6,7 +6,7 @@ use hume_ops::search::compile_search_regex;
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::{Editor, EditorState};
+use super::super::{Editor, EditorState, commands};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 use hume_editing::selection::SelectionSet;
 
@@ -28,8 +28,11 @@ impl Layer for SiftLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }
-    /// Empty — see `InsertLayer::setup`'s doc.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// Captures `pre_sels` here rather than at construction — see
+    /// `SearchLayer::setup`'s doc for why the ordering matters.
+    fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
+        self.pre_sels = Some(commands::current_selections(state, view).clone());
+    }
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         if let Some(sels) = self.pre_sels.take() {
             let bid = view.panes[self.pane].buffer_id;

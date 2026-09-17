@@ -90,7 +90,6 @@ impl Layer for PopupLayer {
     fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.input.clear_popups();
     }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Non-modal: a popup owns nothing but Ctrl-u/d and dies on the very
     /// next key, so an async opener's staleness check
     /// (`InputStack::is_settled_for`) must not treat one being open as "the

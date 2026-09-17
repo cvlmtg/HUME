@@ -103,7 +103,6 @@ impl Layer for ConfirmLayer {
     fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.input.clear_popups();
     }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites

@@ -165,28 +165,14 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Async staleness: the request that led here (a `codeAction`
-        // response callback) fired against an earlier stack state, and
-        // either the mode layer or a *modal* overlay above it may have
-        // moved since — the user left Normal, or opened a picker while the
-        // response was in flight (a non-modal drawer/popup staying open
-        // doesn't count — `InputStack::is_modal`). Both are timing, not a
-        // plugin bug, so this drops silently (`Trace`, `Ok`) rather than
-        // erroring, which would abort the whole `run_call_batch` this
-        // `Call` was batched into. `top` `Menu` is the self-replace
-        // exception, same shape as `show_drawer_list`'s own `top_is_drawer`:
-        // a second `lsp-code-action` response while the first menu is still
-        // open replaces it rather than being read as stale.
-        if !self
+        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // `top` `Menu` is the self-replace exception below: a second
+        // `lsp-code-action` response while the first menu is still open
+        // replaces it rather than being read as stale.
+        if self
             .state
-            .input
-            .is::<BaseLayer>(self.state.input.mode_layer())
-            || !self.state.input.is_settled_for::<MenuLayer>()
+            .async_opener_stale::<BaseLayer, MenuLayer>("show-menu!")
         {
-            self.state.report(
-                Severity::Trace,
-                "show-menu!: the stack moved before the menu could open — ignored".to_string(),
-            );
             return Ok(());
         }
         // Retires a prior `Menu` on the self-replace path, firing its
@@ -227,28 +213,18 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
-        // Same async staleness as `show_menu` above (a references response
-        // landing after the user left Normal, or after a *modal* overlay
-        // opened while it was in flight) — see its comment. `top` `Drawer`
-        // is the self-replace exception, same shape as `completion-begin!`'s
-        // own `top` `Completion` case below: a second `show-drawer-list!`
-        // call while the first is still open (a `:refresh`-style re-run,
-        // or a references response the user re-triggered before the first
-        // one closed) replaces it rather than being read as stale — closed
-        // the same way `close-drawer!` already closes one, without firing
-        // its callback, since the new call is what Steel considers "done"
-        // with the old drawer.
-        if !self
+        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // `top` `Drawer` is the self-replace exception below: a second
+        // `show-drawer-list!` call while the first is still open (a
+        // `:refresh`-style re-run, or a references response the user
+        // re-triggered before the first one closed) replaces it rather than
+        // being read as stale — closed the same way `close-drawer!` already
+        // closes one, without firing its callback, since the new call is
+        // what Steel considers "done" with the old drawer.
+        if self
             .state
-            .input
-            .is::<BaseLayer>(self.state.input.mode_layer())
-            || !self.state.input.is_settled_for::<DrawerLayer>()
+            .async_opener_stale::<BaseLayer, DrawerLayer>("show-drawer-list!")
         {
-            self.state.report(
-                Severity::Trace,
-                "show-drawer-list!: the stack moved before the drawer could open — ignored"
-                    .to_string(),
-            );
             return Ok(());
         }
         self.state.retire::<DrawerLayer>(self.view);

@@ -23,10 +23,6 @@ impl Layer for CommandLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
     }
-    /// Empty — see `InsertLayer::setup`'s doc: every mode layer's entry
-    /// policy (clearing popups, resetting Extend) is `push_mode_layer`'s
-    /// uniform rule, not per-type.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.history.begin_session_all();
     }
@@ -86,6 +82,16 @@ impl super::stack::InputStack {
     ) -> Option<&mut Option<MinibufCompletionState>> {
         self.find_mut::<CommandLayer>().map(|l| &mut l.completion)
     }
+
+    /// Clears the `Command` layer's completion slot, if one is open —
+    /// [`Self::minibuf_completion_mut`]'s common case, shared by every
+    /// event that dismisses the popup without closing the minibuffer
+    /// itself (an edit, a cursor move, a history recall).
+    pub(in crate::editor) fn clear_minibuf_completion(&mut self) {
+        if let Some(l) = self.find_mut::<CommandLayer>() {
+            l.completion = None;
+        }
+    }
 }
 
 pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
@@ -114,9 +120,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .and_then(|s| s.candidates.get(s.selected))
                 .is_some_and(|c| c.replacement.ends_with('/'))
             {
-                if let Some(slot) = ed.state.input.minibuf_completion_mut() {
-                    *slot = None;
-                }
+                ed.state.input.clear_minibuf_completion();
                 complete_minibuf(ed, false);
                 return;
             }
@@ -151,9 +155,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
         | MiniBufferEvent::CursorMoved => {
-            if let Some(slot) = ed.state.input.minibuf_completion_mut() {
-                *slot = None;
-            }
+            ed.state.input.clear_minibuf_completion();
             ed.state
                 .history
                 .get_mut(HistoryKind::Command)
@@ -163,15 +165,11 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             complete_minibuf(ed, reverse);
         }
         MiniBufferEvent::HistoryPrev => {
-            if let Some(slot) = ed.state.input.minibuf_completion_mut() {
-                *slot = None;
-            }
+            ed.state.input.clear_minibuf_completion();
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
         }
         MiniBufferEvent::HistoryNext => {
-            if let Some(slot) = ed.state.input.minibuf_completion_mut() {
-                *slot = None;
-            }
+            ed.state.input.clear_minibuf_completion();
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Next);
         }
         MiniBufferEvent::Ignored => {}

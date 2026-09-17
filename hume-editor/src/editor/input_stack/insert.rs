@@ -43,10 +43,6 @@ impl Layer for InsertLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }
-    /// `EditorState::push_mode_layer` clears any open popup uniformly for
-    /// every mode layer before this ever runs — nothing `Insert`-specific to
-    /// add.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         commands::tear_down_insert(state, view);
     }
@@ -55,9 +51,6 @@ impl Layer for InsertLayer {
     }
     fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         Some(&mut self.sticky_popup)
-    }
-    fn reentry_is_noop(&self) -> bool {
-        true
     }
 }
 

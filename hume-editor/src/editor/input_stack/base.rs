@@ -4,16 +4,15 @@
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::EngineView;
 use hume_engine::types::{EditorMode, MAX_COUNT};
 use hume_ops::MotionMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 
+use super::super::Editor;
 use super::super::commands::cmd_clear_search;
 use super::super::keymap::WalkResult;
 use super::super::register_ops::RegisterPrefix;
 use super::super::replay::MacroPending;
-use super::super::{Editor, EditorState};
 use super::popup::PopupLayer;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -37,12 +36,6 @@ impl Layer for BaseLayer {
             EditorMode::Normal
         })
     }
-    /// `Base` is never pushed by `push_mode_layer` in practice (`InputStack::new`
-    /// and `truncate_to_base` construct it directly), so this never runs —
-    /// stated for the same reason every other mode layer's does: silence is
-    /// not a valid answer to "what does entering this layer do".
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
     }

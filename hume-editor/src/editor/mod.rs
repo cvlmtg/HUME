@@ -705,15 +705,15 @@ impl EditorState {
     /// `Editor::detect_mode_change`'s observation-point diff at the next
     /// `settle()`).
     ///
-    /// No-op if the current mode layer is already the same kind *and*
-    /// [`input_stack::Layer::reentry_is_noop`] says so for that kind — true
-    /// only for `Insert` (its payload is empty, and the no-op is
-    /// load-bearing for `begin_insert_session`'s own open-group guard).
-    /// Every other mode layer replaces itself on same-kind re-entry, since
-    /// its payload (a prompt string, a search direction) may have changed —
-    /// see each opener's own doc for why it stashes its pre-entry state
-    /// *after* this call rather than before, so teardown-is-cancel restores
-    /// the old session's stash, not the new one's.
+    /// No-op if the current mode layer is already `Insert` *and* `layer` is
+    /// too — the one re-entry this call must not replace: `Insert`'s
+    /// payload is empty, and the no-op is load-bearing for
+    /// `begin_insert_session`'s own open-group guard. Every other mode
+    /// layer replaces itself on same-kind re-entry, since its payload (a
+    /// prompt string, a search direction) may have changed — see each
+    /// opener's own doc for why it captures its pre-entry state in
+    /// `Layer::setup` rather than before this call, so teardown-is-cancel
+    /// restores the old session's stash, not the new one's.
     ///
     /// Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
@@ -734,9 +734,12 @@ impl EditorState {
     /// a `Sticky` popup sitting in `Base`'s own slot, between `Base` and the
     /// incoming layer. This replaces the Steel `on-mode-change →
     /// close-popup!` hook the popup used to need for exactly this case.
-    /// Every mode layer's own `Layer::setup` stays empty — this call is the
-    /// uniform rule for all six of them, not per-type policy, so restating
-    /// it in each would be duplication rather than ownership.
+    /// Clearing popups and Extend is this call's own uniform rule, run once
+    /// here rather than restated in every mode layer's own `Layer::setup` —
+    /// `setup` is left for what's specific to that one layer instead
+    /// (`SearchLayer`/`SiftLayer` capture their pre-entry selections there;
+    /// `Base`/`Command`/`Insert`/`Prompt` need nothing beyond this call's
+    /// own rule, so their `setup` stays at the trait's empty default).
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
@@ -750,7 +753,7 @@ impl EditorState {
         layer: L,
     ) {
         let mode_layer = self.input.mode_layer();
-        if self.input.is::<L>(mode_layer) && layer.reentry_is_noop() {
+        if self.input.is::<L>(mode_layer) && self.input.is::<input_stack::InsertLayer>(mode_layer) {
             return;
         }
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
