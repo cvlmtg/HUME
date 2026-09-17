@@ -56,13 +56,28 @@ pub(in crate::editor) enum InputEvent {
 /// that borrow before the caller invokes it.
 pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
 
+/// Which popup home(s) landing here evicts — read by
+/// [`EditorState::push_layer`] right after [`Layer::setup`] runs, so no
+/// layer calls [`InputStack::clear_popups`]/[`InputStack::clear_popup_layer`]
+/// by hand. [`Both`](Self::Both) (the default) matches every layer but
+/// `CompletionLayer`: a completion session must coexist with a `Sticky`
+/// signature-help popup sitting in the current mode layer's own slot, so it
+/// evicts only the pushed-layer home.
+pub(in crate::editor) enum PopupEviction {
+    /// [`InputStack::clear_popups`] — a pushed `PopupLayer`, if any, and the
+    /// current mode layer's sticky slot.
+    Both,
+    /// [`InputStack::clear_popup_layer`] — a pushed `PopupLayer` alone,
+    /// leaving a `Sticky` popup in the mode layer's own slot untouched.
+    LayerOnly,
+}
+
 /// What every concrete layer implements — its state, what mode (if any) it
 /// presents, what happens when it enters and leaves the stack, and what
-/// handles one event while it's the dispatch target. `handler`/`mode`/
-/// `setup`/`tear_down` are required, no default: a layer that hasn't stated
-/// all four hasn't stated its policy, mirroring the closed `enum` this trait
-/// replaces, whose every variant forced a match arm everywhere `kind()`/
-/// `dispatch_at`/`tear_down` touched it.
+/// handles one event while it's the dispatch target. `handler`/`mode` are
+/// required, no default: a layer that hasn't stated either hasn't stated its
+/// policy, mirroring the closed `enum` this trait replaces, whose every
+/// variant forced a match arm everywhere `kind()`/`dispatch_at` touched it.
 pub(in crate::editor) trait Layer: Any {
     /// The function that handles one event while this layer is the dispatch
     /// target — see [`LayerHandler`].
@@ -80,17 +95,13 @@ pub(in crate::editor) trait Layer: Any {
     /// before `push`), `tear_down` sees what is left (called after
     /// `truncate`). [`EditorState::push_layer`] is the only caller — it is
     /// what makes this impossible to skip, the same way `truncate_layers`
-    /// makes `tear_down` impossible to skip. Empty by default: most layers
-    /// evict nothing on entry. `MenuLayer`/`PopupLayer`/`DrawerLayer`
-    /// override to clear any open popup (`InputStack::clear_popups`) so
-    /// `PopupLayer`'s "never buried" invariant holds regardless of which of
-    /// them lands next; `CompletionLayer` clears only the pushed-layer home
-    /// (`InputStack::clear_popup_layer`), since it must coexist with a
-    /// `Sticky` signature-help popup in the same mode layer's slot;
-    /// `PickerLayer` additionally dismisses any open completion session and
-    /// replaces a live picker; `SearchLayer`/`SiftLayer` capture their own
-    /// pre-entry selection snapshot here (see each one's own doc for why
-    /// that must happen at this point rather than at construction).
+    /// makes `tear_down` impossible to skip. Empty by default: popup
+    /// eviction is [`Self::popup_eviction`]'s job, not this one's, so most
+    /// layers have nothing left to say here. `PickerLayer` dismisses any
+    /// open completion session and replaces a live picker; `SearchLayer`/
+    /// `SiftLayer` capture their own pre-entry selection snapshot here (see
+    /// each one's own doc for why that must happen at this point rather
+    /// than at construction).
     fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 
     /// What happens when this layer leaves the stack, for any reason —
@@ -124,6 +135,13 @@ pub(in crate::editor) trait Layer: Any {
     /// the stack as moved.
     fn is_modal(&self) -> bool {
         true
+    }
+
+    /// Which popup home(s) [`EditorState::push_layer`] evicts on this
+    /// layer's behalf — see [`PopupEviction`]'s own doc for the default and
+    /// its one override.
+    fn popup_eviction(&self) -> PopupEviction {
+        PopupEviction::Both
     }
 
     /// The sticky-popup slot this layer owns, if it's `Base` or `Insert` —
@@ -536,10 +554,11 @@ impl InputStack {
 
     /// Clears the pushed-layer popup home alone — a [`PopupLayer`] layer, if
     /// one is open (always `top()`, enforced below), leaving the current
-    /// mode layer's sticky slot untouched. [`CompletionLayer::setup`]'s
-    /// narrower need than [`Self::clear_popups`]: a completion session must
-    /// evict a `Scrollable` popup (hover, the `gn`/`gp` diagnostic overlay —
-    /// both pushed layers) the same as any other opener, but must *not* dismiss
+    /// mode layer's sticky slot untouched. `CompletionLayer`'s
+    /// [`PopupEviction::LayerOnly`] override reaches this instead of
+    /// [`Self::clear_popups`]: a completion session must evict a
+    /// `Scrollable` popup (hover, the `gn`/`gp` diagnostic overlay — both
+    /// pushed layers) the same as any other opener, but must *not* dismiss
     /// a `Sticky` signature-help popup, which lives in the slot and is meant
     /// to coexist with an open completion menu. Takes no `EditorState`/`view`
     /// (unlike `EditorState::truncate_layers`), so this truncates `self`
@@ -559,15 +578,16 @@ impl InputStack {
     }
 
     /// Clears every home a popup could occupy: [`Self::clear_popup_layer`]
-    /// plus the current mode layer's sticky slot. Shared by `show_popup` (so
-    /// `(show-popup! …)` replaces any popup already showing, regardless of
-    /// which of the two homes it used — the documented "no stacking"
-    /// contract), `close_popup`, and every `Layer::setup` that must evict
-    /// *any* open popup before landing (`MenuLayer`, `PopupLayer`,
-    /// `PickerLayer`, `DrawerLayer`, and every mode layer via
-    /// `EditorState::push_mode_layer`) — `PopupLayer::is_modal() == false`
-    /// means none of those pushers see an open popup as "the stack moved",
-    /// so each must retire it itself.
+    /// plus the current mode layer's sticky slot. Called automatically by
+    /// [`EditorState::push_layer`] for every layer whose
+    /// [`Layer::popup_eviction`] is [`PopupEviction::Both`] (the default —
+    /// every layer but `CompletionLayer`) — no layer calls this by hand.
+    /// The two callers that reach it *without* going through `push_layer`
+    /// are `show_popup`'s `Sticky` arm (which writes straight into a mode
+    /// layer's slot rather than pushing anything, so `(show-popup! …)`
+    /// still replaces any popup already showing, regardless of which of the
+    /// two homes it used — the documented "no stacking" contract) and
+    /// `close_popup` (a direct clear with nothing to push).
     pub(in crate::editor) fn clear_popups(&mut self) {
         self.clear_popup_layer();
         if let Some(slot) = self.sticky_popup_slot_mut() {
@@ -581,13 +601,22 @@ impl EditorState {
     /// because [`InputStack::push`] itself is narrowed to this module and
     /// unreachable from anywhere else. Mirrors [`Self::truncate_layers`]:
     /// `setup` sees what it is landing on (stack unchanged so far),
-    /// `tear_down` sees what is left (already removed).
+    /// `tear_down` sees what is left (already removed). Popup eviction
+    /// ([`Layer::popup_eviction`]) runs after `setup`, not before — a
+    /// no-op ordering difference for every layer but `PickerLayer`, whose
+    /// own `setup` needs to run its dismiss-and-replace work first; eviction
+    /// only ever touches the two popup homes, never selections, completion,
+    /// or picker state, so nothing else can observe the difference.
     pub(in crate::editor) fn push_layer<L: Layer>(
         &mut self,
         view: &EngineView,
         mut layer: L,
     ) -> LayerRef {
         layer.setup(self, view);
+        match layer.popup_eviction() {
+            PopupEviction::Both => self.input.clear_popups(),
+            PopupEviction::LayerOnly => self.input.clear_popup_layer(),
+        }
         self.input.push(layer)
     }
 

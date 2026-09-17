@@ -13,7 +13,7 @@ use super::super::keymap::WalkResult;
 use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction};
 
 /// An open LSP completion session, pushed above `Insert` — an overlay, not a
 /// mode layer (`mode()` returns `None`; `InputStack::mode_layer()` skips it,
@@ -33,15 +33,14 @@ impl Layer for CompletionLayer {
     }
     /// A `Completion` menu can land directly above a `Popup` (hover, the
     /// `gn`/`gp` diagnostic overlay — both non-modal, so `is_settled_for`
-    /// doesn't treat one as the stack having moved) — clear it first,
-    /// keeping `PopupLayer`'s "never buried" invariant true. Evicts only
-    /// the *pushed-layer* popup home (`InputStack::clear_popup_layer`), not
-    /// `clear_popups`: a completion session must coexist with a `Sticky`
-    /// signature-help popup sitting in the same mode layer's slot — a bare
-    /// `clear_popups()` here would silently kill sighelp on every
-    /// completion open.
-    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.input.clear_popup_layer();
+    /// doesn't treat one as the stack having moved) — `push_layer` evicts
+    /// it on the way in, keeping `PopupLayer`'s "never buried" invariant
+    /// true. `LayerOnly`, not the default `Both`: a completion session must
+    /// coexist with a `Sticky` signature-help popup sitting in the same
+    /// mode layer's slot — evicting `Both` here would silently kill sighelp
+    /// on every completion open.
+    fn popup_eviction(&self) -> PopupEviction {
+        PopupEviction::LayerOnly
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.views.completion_menu.set(None);

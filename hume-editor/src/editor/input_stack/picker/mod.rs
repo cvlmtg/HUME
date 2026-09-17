@@ -42,7 +42,9 @@ impl Layer for PickerLayer {
     /// Landing above a menu or drawer simply suspends it — its own
     /// stray-input policy (`input_stack/{menu,drawer}.rs`) hands control
     /// back to it once the picker retires, same as `Insert` suspending one
-    /// today. Three entry rules, in order:
+    /// today. Three entry rules, in order — the first two here, the third
+    /// via the trait's default `popup_eviction` (`PopupEviction::Both`),
+    /// run automatically by `push_layer` right after this returns:
     ///
     /// - Dismisses any open completion session first — a picker opening
     ///   mid-completion (e.g. `picker!` bound to a key pressed while
@@ -50,16 +52,15 @@ impl Layer for PickerLayer {
     /// - Retires an already-open picker with `#f` before this one lands —
     ///   the exactly-once callback contract must never have a window where
     ///   a session can be silently dropped without firing.
-    /// - Clears any open popup (`InputStack::clear_popups`): unlike a menu
-    ///   or drawer, which stay open underneath and simply stop seeing
-    ///   input, a `Popup` layer left in place would be sandwiched between
-    ///   whatever was below it and the picker landing on top — the one case
-    ///   `PopupLayer`'s "never buried" invariant requires every opener that
-    ///   could land above it to close off itself.
+    /// - Clears any open popup: unlike a menu or drawer, which stay open
+    ///   underneath and simply stop seeing input, a `Popup` layer left in
+    ///   place would be sandwiched between whatever was below it and the
+    ///   picker landing on top — the one case `PopupLayer`'s "never buried"
+    ///   invariant requires every opener that could land above it to close
+    ///   off itself.
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         state.dismiss_completion(view);
         close_picker(state, view, SteelVal::BoolV(false));
-        state.input.clear_popups();
     }
     /// Fires `on_select` with `#f` — unlike every other layer's `tear_down`,
     /// which never fires a Steel callback (teardown *is* cancel, but the

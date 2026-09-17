@@ -2,11 +2,11 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::{EngineView, RenderContext};
+use hume_engine::pipeline::RenderContext;
 use hume_engine::types::EditorMode;
 
+use super::super::Editor;
 use super::super::mouse::is_fresh_gesture;
-use super::super::{Editor, EditorState};
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -34,15 +34,16 @@ impl Layer for MenuLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    /// A `Menu` can land directly above a `Popup` (non-modal, so
-    /// `is_settled_for` doesn't treat it as the stack having moved) — clear
-    /// it first, keeping `PopupLayer`'s "never buried" invariant true. Also
-    /// retires a prior `Menu` on the self-replace path: `show_menu` takes it
-    /// by value and fires its callback with `#f` explicitly before this runs
-    /// (`MenuLayer::tear_down` stays empty, so it can't do this itself).
-    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.input.clear_popups();
-    }
+    // No `setup`/`popup_eviction` override — the trait's own default
+    // (`PopupEviction::Both`) is exactly right: a `Menu` can land directly
+    // above a `Popup` (non-modal, so `is_settled_for` doesn't treat it as
+    // the stack having moved), and `push_layer` evicts it on the way in,
+    // keeping `PopupLayer`'s "never buried" invariant true. A prior `Menu`
+    // on the self-replace path is retired separately: `show_menu` takes it
+    // by value and fires its callback with `#f` explicitly before pushing
+    // the new one (`MenuLayer::tear_down` stays empty, so it can't do this
+    // itself).
+    //
     // `tear_down` stays at the trait's empty default — like `DrawerLayer`'s,
     // an explicit `close-menu!` (routed through `EditorState::retire`, which
     // reaches this) must stay silent, not fire `#f` on a widget its caller

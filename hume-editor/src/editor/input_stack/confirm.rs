@@ -5,7 +5,7 @@
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::{BufferId, EngineView};
+use hume_engine::pipeline::BufferId;
 use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
@@ -94,15 +94,13 @@ impl Layer for ConfirmLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    /// Clears any open popup — `can_open_confirm` (`buffer/disk.rs`)
-    /// deliberately does *not* gate on one being open (a `Scrollable` popup
-    /// owns no keys beyond Ctrl-u/d and dies on the next one anyway), so a
-    /// confirm can land directly above one. Clearing it here keeps
-    /// `PopupLayer`'s "never buried" invariant true, same as `MenuLayer`/
-    /// `DrawerLayer`/`PickerLayer`/`PopupLayer`'s own setup.
-    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.input.clear_popups();
-    }
+    // No `setup`/`popup_eviction` override — the trait's own default
+    // (`PopupEviction::Both`, evicted automatically by `push_layer`) is
+    // exactly right here: `can_open_confirm` (`buffer/disk.rs`) deliberately
+    // does *not* gate on a popup being open (a `Scrollable` one owns no keys
+    // beyond Ctrl-u/d and dies on the next one anyway), so a confirm lands
+    // directly above one and must evict it on the way in, same as every
+    // other opener that can land above one.
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites

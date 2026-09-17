@@ -718,28 +718,24 @@ impl EditorState {
     /// Otherwise tears down the
     /// current mode layer first, unless it's `Base` (teardown *is* cancel —
     /// a `prompt!` from Insert ends the insert session before the prompt
-    /// lands), clears Extend and every popup (`InputStack::clear_popups`),
-    /// then pushes `layer` on top of whatever is left via
-    /// [`Self::push_layer`] — any overlay that sits *below* the outgoing
-    /// mode layer (a drawer opened while still in Normal) is untouched,
-    /// since `truncate_layers` only removes the mode layer's own ref and
-    /// whatever was pushed above it.
+    /// lands), clears Extend, then pushes `layer` on top of whatever is
+    /// left via [`Self::push_layer`] — any overlay that sits *below* the
+    /// outgoing mode layer (a drawer opened while still in Normal) is
+    /// untouched, since `truncate_layers` only removes the mode layer's own
+    /// ref and whatever was pushed above it.
     ///
-    /// Clearing popups here — not just on the `Base` branch, though that's
-    /// the only branch where it does anything `truncate_layers` wasn't
-    /// about to do anyway — is what keeps a `Popup` layer from ever being
-    /// buried (`PopupLayer`'s `Layer` doc, `input_stack/stack.rs`): landing
-    /// a new mode layer directly on top of `Base` (the one case
-    /// `truncate_layers` skips) would otherwise sandwich a `Popup` layer, or
-    /// a `Sticky` popup sitting in `Base`'s own slot, between `Base` and the
-    /// incoming layer. This replaces the Steel `on-mode-change →
-    /// close-popup!` hook the popup used to need for exactly this case.
-    /// Clearing popups and Extend is this call's own uniform rule, run once
-    /// here rather than restated in every mode layer's own `Layer::setup` —
-    /// `setup` is left for what's specific to that one layer instead
-    /// (`SearchLayer`/`SiftLayer` capture their pre-entry selections there;
-    /// `Base`/`Command`/`Insert`/`Prompt` need nothing beyond this call's
-    /// own rule, so their `setup` stays at the trait's empty default).
+    /// `push_layer` itself is what keeps a `Popup` layer from ever being
+    /// buried (`PopupLayer`'s `Layer` doc, `input_stack/stack.rs`): every
+    /// mode layer's `Layer::popup_eviction` defaults to `PopupEviction::Both`,
+    /// so landing one directly on top of `Base` (the one case
+    /// `truncate_layers` skips, and so the one case nothing else here would
+    /// otherwise clear) still evicts whatever `Popup` layer or `Sticky`
+    /// popup was sitting in `Base`'s own slot before the incoming layer
+    /// lands, sandwiching neither between the two. This replaces the Steel
+    /// `on-mode-change → close-popup!` hook the popup used to need for
+    /// exactly this case. Extend is this call's own rule, since nothing
+    /// else resets it; `setup` is left for what's specific to one layer
+    /// (`SearchLayer`/`SiftLayer` capture their pre-entry selections there).
     ///
     /// Never gated: a mode key only ever reaches `Base` after every overlay
     /// above it has fallen through, so ordering is already settled by the
@@ -759,7 +755,6 @@ impl EditorState {
         if !self.input.is::<input_stack::BaseLayer>(mode_layer) {
             self.truncate_layers(view, mode_layer);
         }
-        self.input.clear_popups();
         self.input.set_extend(false);
         self.push_layer(view, layer);
     }

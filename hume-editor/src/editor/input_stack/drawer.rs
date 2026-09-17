@@ -35,13 +35,12 @@ impl Layer for DrawerLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    /// A `Drawer` is non-modal (`is_modal` below), so it can land directly
-    /// above a `Popup` the same way a `Menu` can — clear it first, keeping
-    /// `PopupLayer`'s "never buried" invariant true regardless of which of
-    /// the two opens second.
-    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.input.clear_popups();
-    }
+    // No `setup`/`popup_eviction` override — the trait's own default
+    // (`PopupEviction::Both`) is exactly right: a `Drawer` is non-modal
+    // (`is_modal` below), so it can land directly above a `Popup` the same
+    // way a `Menu` can, and `push_layer` evicts it on the way in regardless
+    // of which of the two opens second.
+    //
     // `tear_down` stays at the trait's empty default — an explicit
     // `close-drawer!` (routed through `EditorState::retire`, which reaches
     // this) must stay silent; `drawer_input`'s own `Esc` arm takes the

@@ -260,8 +260,9 @@ impl Editor {
     /// Deliberately **not** gated on a `Scrollable` popup: it owns no keys
     /// beyond Ctrl-u/d and dies on the very next one anyway, so it must not
     /// block the one prompt that actually needs the keyboard —
-    /// `ConfirmLayer::setup` clears any open popup before landing, same as
-    /// every other opener that can land above one.
+    /// `ConfirmLayer`'s default `Layer::popup_eviction` clears any open
+    /// popup before landing, same as every other opener that can land above
+    /// one.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting

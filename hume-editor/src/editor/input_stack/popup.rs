@@ -5,12 +5,12 @@
 
 use termina::event::{KeyCode, Modifiers};
 
-use hume_engine::pipeline::{EngineView, RenderContext};
+use hume_engine::pipeline::RenderContext;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::{EditorMode, Scope};
 
-use super::super::{Editor, EditorState};
+use super::super::Editor;
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -83,13 +83,12 @@ impl Layer for PopupLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    /// Gives `(show-popup! …)` its documented replace-not-stack contract:
-    /// clears whichever of the two popup homes (a pushed `PopupLayer`, or
-    /// the current mode layer's sticky slot) already holds one, regardless
-    /// of which kind is landing now.
-    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.input.clear_popups();
-    }
+    // No `setup`/`popup_eviction` override — the trait's own default
+    // (`PopupEviction::Both`, evicted automatically by `push_layer`) is
+    // exactly `(show-popup! …)`'s documented replace-not-stack contract:
+    // clears whichever of the two popup homes (a pushed `PopupLayer`, or
+    // the current mode layer's sticky slot) already holds one, regardless
+    // of which kind is landing now.
     /// Non-modal: a popup owns nothing but Ctrl-u/d and dies on the very
     /// next key, so an async opener's staleness check
     /// (`InputStack::is_settled_for`) must not treat one being open as "the
