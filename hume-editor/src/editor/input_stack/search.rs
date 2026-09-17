@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_ops::search::{SearchDirection, compile_search_regex, find_next_match};
+use hume_ops::search::{SearchDirection, compile_search_input, find_next_match};
+use regex_cursor::engines::meta::Regex;
 
 use super::super::commands::search_sel;
 use super::super::jump_list::JumpEntry;
@@ -159,7 +160,8 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 }
 
 /// Recompile the regex from the current mini-buffer input and jump to the
-/// first match from the pre-search position.
+/// first match from the pre-search position — every selection independently
+/// when the input's `m` flag is set, the primary alone otherwise.
 ///
 /// Called on every keystroke while in Search mode. Targets the *focused*
 /// pane/buffer, same as before this session's stash moved onto
@@ -172,7 +174,7 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         _ => return,
     };
 
-    let Some(regex) = compile_search_regex(&pattern) else {
+    let Some((flags, regex)) = compile_search_input(&pattern) else {
         // Invalid regex in progress — clear pattern so highlights disappear.
         let bid = ed.focused_buffer_id();
         search::ops::clear_buffer_search(&mut ed.state.buffers, &mut ed.state.panes.state, bid);
@@ -184,6 +186,37 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         return;
     };
     let extend = search.extend;
+
+    let matched = if flags.multi {
+        update_live_search_all(ed, r, &regex, direction, extend)
+    } else {
+        update_live_search_primary(ed, r, &regex, direction, extend)
+    };
+    if !matched {
+        // No match — restore position to pre-search.
+        restore_search_snapshot(ed, r);
+    }
+
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
+        regex: Arc::new(regex),
+        pattern_str: pattern,
+        flags,
+    });
+}
+
+/// Live preview for a primary-only search: jump the primary selection to its
+/// next match from the pre-search position. Returns whether a match was found.
+fn update_live_search_primary(
+    ed: &mut Editor,
+    r: LayerRef,
+    regex: &Regex,
+    direction: SearchDirection,
+    extend: bool,
+) -> bool {
+    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
+        return false;
+    };
     // Read the two `CharOffset`s this function actually needs straight out
     // of the borrow — `ed.doc()` is a second, independent shared borrow of
     // `ed` (same shape as `update_live_sift`'s `ed.doc()` call inside its
@@ -204,23 +237,56 @@ fn update_live_search(ed: &mut Editor, r: LayerRef) {
         None => hume_rope::offset::CharOffset::new(0),
     };
 
-    match find_next_match(ed.doc().text(), &regex, from_char, direction) {
+    match find_next_match(ed.doc().text(), regex, from_char, direction) {
         Some((span, _wrapped)) => {
             // Extend from the original anchor.
             let anchor = extend.then(|| anchor.unwrap_or(span.start));
             ed.set_primary_selection(search_sel(span, anchor, direction));
+            true
         }
-        None => {
-            // No match — restore position to pre-search.
-            restore_search_snapshot(ed, r);
-        }
+        None => false,
     }
+}
 
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
-        regex: Arc::new(regex),
-        pattern_str: pattern,
+/// Live preview for a multi (`m`-flag) search: every pre-search selection
+/// independently searches from its own pre-search position and moves to its
+/// own next match. Selections that converge on the same match are merged, same as
+/// `search_jump`'s multi path. Returns whether any selection matched.
+fn update_live_search_all(
+    ed: &mut Editor,
+    r: LayerRef,
+    regex: &Regex,
+    direction: SearchDirection,
+    extend: bool,
+) -> bool {
+    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
+        return false;
+    };
+    let Some(sels) = search.snap.selections().cloned() else {
+        return false;
+    };
+    // Borrowed, not cloned: `text` lives only through `sels.map`'s last use
+    // below, which ends before `ed.set_current_selections` takes `ed` mutably.
+    let text = ed.doc().text();
+    let mut any_matched = false;
+    let new_sels = sels.map(|sel| {
+        let anchor = extend.then(|| sel.anchor());
+        let from_char = match direction {
+            SearchDirection::Forward => sel.start(),
+            SearchDirection::Backward => sel.end_inclusive(text),
+        };
+        match find_next_match(text, regex, from_char, direction) {
+            Some((span, _wrapped)) => {
+                any_matched = true;
+                search_sel(span, anchor, direction)
+            }
+            None => sel,
+        }
     });
+    if any_matched {
+        ed.set_current_selections(new_sels);
+    }
+    any_matched
 }
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────

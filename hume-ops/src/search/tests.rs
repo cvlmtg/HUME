@@ -18,6 +18,139 @@ fn buf(text: &str) -> BufferText {
     BufferText::from(text)
 }
 
+// ── parse_search_input / render_search_input / compile_search_input ────────
+
+#[test]
+fn parse_no_flags() {
+    assert_eq!(parse_search_input("bar"), (SearchFlags::default(), "bar"));
+}
+
+#[test]
+fn parse_multi_flag() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: false,
+    };
+    assert_eq!(parse_search_input("m/bar"), (flags, "bar"));
+}
+
+#[test]
+fn parse_multi_verbatim_flags() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: true,
+    };
+    assert_eq!(parse_search_input("mv/.rs"), (flags, ".rs"));
+}
+
+#[test]
+fn parse_flag_order_independent() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: true,
+    };
+    assert_eq!(parse_search_input("vm/.rs"), (flags, ".rs"));
+}
+
+#[test]
+fn parse_leading_slash_is_literal() {
+    assert_eq!(
+        parse_search_input("/usr/bin"),
+        (SearchFlags::default(), "/usr/bin")
+    );
+    assert_eq!(parse_search_input("/m/s"), (SearchFlags::default(), "/m/s"));
+}
+
+#[test]
+fn parse_multi_flag_then_literal_leading_slash_pattern() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: false,
+    };
+    assert_eq!(parse_search_input("m//usr/bin"), (flags, "/usr/bin"));
+}
+
+#[test]
+fn parse_unknown_letter_falls_back_to_literal() {
+    assert_eq!(
+        parse_search_input("x/foo"),
+        (SearchFlags::default(), "x/foo")
+    );
+}
+
+#[test]
+fn parse_no_slash_at_all() {
+    assert_eq!(parse_search_input("mv"), (SearchFlags::default(), "mv"));
+}
+
+#[test]
+fn parse_duplicate_flag_letter() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: false,
+    };
+    assert_eq!(parse_search_input("mm/foo"), (flags, "foo"));
+}
+
+#[test]
+fn parse_empty_input() {
+    assert_eq!(parse_search_input(""), (SearchFlags::default(), ""));
+}
+
+#[test]
+fn render_round_trips_through_parse() {
+    let flags = SearchFlags {
+        multi: true,
+        verbatim: true,
+    };
+    let rendered = render_search_input(flags, ".rs");
+    assert_eq!(parse_search_input(&rendered), (flags, ".rs"));
+}
+
+#[test]
+fn render_no_flags_has_no_prefix() {
+    assert_eq!(render_search_input(SearchFlags::default(), "bar"), "bar");
+}
+
+#[test]
+fn render_leaves_leading_slash_pattern_untouched() {
+    // "//" is exactly what `*` renders for a punctuation run of two slashes
+    // (e.g. the "//" of a "// comment") — it must round-trip, not be read
+    // back as an (empty, thus literal-pattern) flag run plus "/".
+    assert_eq!(render_search_input(SearchFlags::default(), "//"), "//");
+    assert_eq!(parse_search_input("//"), (SearchFlags::default(), "//"));
+}
+
+#[test]
+fn compile_verbatim_dot_matches_literal_dot_only() {
+    let (flags, r) = compile_search_input("v/a.b").expect("valid pattern");
+    assert!(flags.verbatim);
+    let b = buf("a.b axb\n");
+    let matches = find_all_matches(&b, &r);
+    assert_eq!(matches, vec![ir(0, 2)]);
+}
+
+#[test]
+fn compile_non_verbatim_dot_matches_any_char() {
+    let (flags, r) = compile_search_input("a.b").expect("valid pattern");
+    assert!(!flags.verbatim);
+    let b = buf("a.b axb\n");
+    let matches = find_all_matches(&b, &r);
+    assert_eq!(matches.len(), 2);
+}
+
+#[test]
+fn compile_verbatim_reaches_a_pattern_that_looks_like_flags() {
+    // "m/s" typed bare would be read as the multi flag plus pattern "s" —
+    // `v/` is how a literal "m/s" is matched instead.
+    let (flags, r) = compile_search_input("v/m/s").expect("valid pattern");
+    assert!(flags.verbatim);
+    assert!(!flags.multi);
+    let b = buf("m/s other\n");
+    let matches = find_all_matches(&b, &r);
+    assert_eq!(matches, vec![ir(0, 2)]);
+}
+
 // ── compile_search_regex (smart case) ──────────────────────────────────────
 
 #[test]

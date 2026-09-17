@@ -160,6 +160,19 @@ Press `z` followed by a second key to reposition the view (the cursor itself sta
 - **No backreferences, no lookaround, no possessive quantifiers.** No Vim-style `\c` / `\C` case toggles either — they'd match the literal letters `c` / `C`.
 - **Invalid patterns** do nothing during live preview: the cursor stays put. Pressing `Enter` on one still stores it, so `n` and `N` will do nothing until you search for something valid again.
 
+### Flags
+
+Start a pattern typed at `/`, `?`, or `s` with one or more of these letters followed by `/` to change how it's matched:
+
+| Flag | Effect |
+|------|--------|
+| `m` | Move (or extend) every selection to its own next match, instead of only the primary. No effect at `s`, which already applies to every selection. |
+| `v` | Match the pattern literally — none of its characters are treated as regex syntax. |
+
+Flags combine in any order: `mv/.rs` moves every selection to its own next literal `.rs`. `n` and `N` keep repeating with whichever flags were last used, until you search again.
+
+A pattern that starts with a leading `/` of its own (a path, say) is read as plain text, not as an empty flag prefix — `/usr/bin` searches for `/usr/bin`. Only text that starts with `m` and/or `v` followed by `/` is read as flags; reach that text literally with `v/` — `v/m/s` searches for the literal text `m/s`.
+
 ## Search and replace
 
 HUME has no `:s/foo/bar/g` substitute command. Find-and-replace is done with multi-cursor selection:

@@ -8,6 +8,9 @@
 ### CLI
 - New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
 
+### Editing
+- `/`, `?`, and `s` (sift-within) now accept leading flags before the pattern: `m/pattern` moves (or extends) every selection to its own next match, instead of only the primary; `v/pattern` matches the pattern literally instead of as a regex. Flags combine (`mv/pattern`) and are inherited by `n`/`N` until the next search. `m` has no effect at `s`, which already applies to every selection. Text that would otherwise be read as flags (a flag letter run followed by `/`) is reached literally via `v/` — `v/m/s` searches for the literal text `m/s`. The `'s'` register (`n`/`N`, `"sp`, search history) now stores the pattern's flagged form, e.g. `v/ell` or `m/bar`, not the bare pattern.
+
 ### Panes & interface
 - New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl-p t`/`Ctrl-p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
 - New mappable `tab-new` command — the bindable equivalent of bare `:tabnew`.

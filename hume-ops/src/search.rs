@@ -33,7 +33,11 @@ pub enum SearchDirection {
 ///
 /// Explicit `(?i)`/`(?-i)` in the pattern wins: smart-case only prepends `(?i)`,
 /// so a later flag group in the pattern overrides it.
-pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
+///
+/// Private: [`compile_search_input`] is the crate's one compilation path from
+/// prompt input to a `Regex` — every producer of a `SearchPattern` goes
+/// through it rather than calling this directly.
+fn compile_search_regex(pattern: &str) -> Option<Regex> {
     let effective;
     let pat = if pattern.chars().any(|c| c.is_uppercase()) {
         pattern
@@ -43,6 +47,109 @@ pub fn compile_search_regex(pattern: &str) -> Option<Regex> {
         &effective
     };
     Regex::new(pat).ok()
+}
+
+// ── search input flags ────────────────────────────────────────────────────────
+
+/// Leading flags on a search/sift prompt's raw input (`m/bar`, `v/.rs`).
+///
+/// `multi`: every selection searches independently and moves to its own next
+/// match, instead of only the primary. Inert at the sift prompt — sift already
+/// operates on every selection.
+///
+/// `verbatim`: the pattern is matched literally (via [`escape_regex`]) instead
+/// of as a regex.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SearchFlags {
+    pub multi: bool,
+    pub verbatim: bool,
+}
+
+/// Split a raw prompt input into its leading flags and the pattern.
+///
+/// Grammar: if every character before the first `/` is a known flag letter
+/// (`m`, `v`) *and that run is non-empty*, it is the flag set and everything
+/// after the `/` — verbatim, including any further `/` — is the pattern.
+/// Otherwise there are no flags and `input` is the pattern as-is.
+///
+/// Only the first `/` after a non-empty flag run is ever a separator, so a
+/// pattern never needs escaping for `/`s of its own (`v/a/b/c` means literal
+/// `a/b/c`) — including a pattern that itself starts with `/`: `input`
+/// `"/usr/bin"` has an empty prefix before its first `/`, which is not a
+/// flag run, so the whole string is the pattern. There is no way to write a
+/// literal pattern that starts with a flag letter followed by `/` (e.g. the
+/// two characters `m/`) other than going through `v/`, which forces the
+/// question moot: `v/m/s` matches the literal text `m/s`. An unknown letter
+/// (`x/foo`) falls back to "no flags" rather than erroring — during live
+/// search every keystroke is parsed, so a typo or a pattern that happens to
+/// start with letters must resolve to *something* sensible, not a rejected
+/// input.
+pub fn parse_search_input(input: &str) -> (SearchFlags, &str) {
+    let Some(slash) = input.find('/') else {
+        return (SearchFlags::default(), input);
+    };
+    let prefix = &input[..slash];
+    if prefix.is_empty() {
+        return (SearchFlags::default(), input);
+    }
+    let mut flags = SearchFlags::default();
+    for c in prefix.chars() {
+        match c {
+            'm' => flags.multi = true,
+            'v' => flags.verbatim = true,
+            _ => return (SearchFlags::default(), input),
+        }
+    }
+    (flags, &input[slash + 1..])
+}
+
+/// Render `flags` and `pattern` back into the prompt input that
+/// `parse_search_input` recovers unchanged — the inverse of
+/// `parse_search_input`, over the range that grammar can represent. That
+/// range excludes a default-flags `pattern` that itself starts with a flag
+/// letter followed by `/` (e.g. `"m/s"`): `parse_search_input` has no way to
+/// tell that apart from an actual `m` flag, so no `SearchFlags`/`pattern`
+/// pair renders back to it. The `debug_assert!` below catches a producer
+/// that hands this function such a pattern rather than silently mangling it
+/// — every current caller is safe: `*`'s patterns are `\b`-anchored word
+/// runs or pure punctuation runs (never flag letters immediately followed by
+/// `/`), and Ctrl-`/` always sets `verbatim`, which puts a non-empty `v` run
+/// in front regardless of `pattern`'s own text.
+pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
+    let rendered = if flags == SearchFlags::default() {
+        pattern.to_string()
+    } else {
+        let mut prefix = String::new();
+        if flags.multi {
+            prefix.push('m');
+        }
+        if flags.verbatim {
+            prefix.push('v');
+        }
+        format!("{prefix}/{pattern}")
+    };
+    debug_assert_eq!(
+        parse_search_input(&rendered),
+        (flags, pattern),
+        "pattern {pattern:?} under flags {flags:?} is not representable by the flag grammar"
+    );
+    rendered
+}
+
+/// Parse `input` for leading flags, then compile the remaining pattern —
+/// literally (via [`escape_regex`]) when `verbatim` is set, as smart-case
+/// regex otherwise. `None` when the resulting pattern is not a valid regex.
+pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
+    let (flags, pattern) = parse_search_input(input);
+    let owned;
+    let effective = if flags.verbatim {
+        owned = escape_regex(pattern);
+        &owned
+    } else {
+        pattern
+    };
+    let regex = compile_search_regex(effective)?;
+    Some((flags, regex))
 }
 
 // ── find_next_match ───────────────────────────────────────────────────────────
@@ -150,9 +257,11 @@ pub fn find_matches_in_range(
 
 /// Escape regex metacharacters so the string matches literally.
 ///
-/// Used by `*` (search-word-under-cursor) and Ctrl-/ (search-selection) to
-/// turn arbitrary text into a pattern that matches exactly that text.
-pub fn escape_regex(s: &str) -> String {
+/// Used by [`word_search_pattern`] (`*`, search-word-under-cursor) and by
+/// [`compile_search_input`]'s verbatim (`v`) arm — the path Ctrl-/
+/// (search-selection) now reaches indirectly, by setting `verbatim` rather
+/// than escaping its own pattern.
+fn escape_regex(s: &str) -> String {
     let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
         if matches!(

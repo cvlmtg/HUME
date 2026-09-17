@@ -16,7 +16,7 @@ pub(in crate::editor) mod ops;
 use std::sync::Arc;
 
 use hume_editing::history::RevisionId;
-use hume_ops::search::SearchDirection;
+use hume_ops::search::{SearchDirection, SearchFlags};
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
@@ -29,8 +29,13 @@ use hume_rope::offset::{CharOffset, InclusiveRange};
 /// leave `Buffer.search_pattern = None`).
 pub(in crate::editor) struct SearchPattern {
     pub regex: Arc<regex_cursor::engines::meta::Regex>,
-    /// Raw pattern string — used as an invalidation key for `SearchMatches`.
+    /// Raw prompt input, flag prefix included (`"m/bar"`, not `"bar"`) — used
+    /// as an invalidation key for `SearchMatches`. Keeping the flags in the key
+    /// over-invalidates when only `multi` toggles (identical matches, new key,
+    /// one extra rescan), which is cheaper than a second key for a field that
+    /// never affects the match list itself.
     pub pattern_str: String,
+    pub flags: SearchFlags,
 }
 
 /// Per-buffer match cache. Stored on `Buffer`. Invalidated by revision or pattern change.

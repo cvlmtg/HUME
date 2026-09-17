@@ -615,6 +615,7 @@ impl Editor {
             self.state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
                 regex: Arc::new(regex),
                 pattern_str: pattern.to_string(),
+                flags: hume_ops::search::SearchFlags::default(),
             });
         }
         self.sync_search_cache();

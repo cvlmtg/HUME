@@ -194,6 +194,35 @@ fn star_punctuation_run_stays_literal() {
     assert_eq!(r, vec!["->"]);
 }
 
+/// `*` on a punctuation run that happens to look like the search-flag
+/// separator (`//`, as in a `// comment` marker) must search for that
+/// literal run, not be misread as an empty flag prefix plus "/".
+#[test]
+fn star_on_double_slash_punctuation_run_stays_literal() {
+    // Buffer: "a // b\n". Collapsed cursor on the first '/' (position 2).
+    let mut ed = editor_from("-[a]>b\n");
+    let text = hume_editing::text::BufferText::from("a // b\n");
+    let sels = hume_editing::selection::SelectionSet::single(
+        hume_editing::selection::Selection::collapsed(co(2)),
+    );
+    *ed.doc_mut() = crate::editor::buffer::Buffer::new(text, sels.clone());
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('*'));
+    assert_eq!(reg(&ed, 's'), vec!["//"]);
+
+    // Independent oracle: the compiled pattern must match the "//" run
+    // itself, not a single '/' (what an empty-flag-run misparse produces).
+    let sp = ed.search_pattern().expect("search pattern must be set");
+    let text = ed.doc().text();
+    let matches = hume_ops::search::find_all_matches(text, &sp.regex);
+    assert_eq!(
+        matches,
+        vec![hume_rope::offset::InclusiveRange::new(co(2), co(3))],
+        "pattern must match the full \"//\" run"
+    );
+}
+
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
 
 /// `Ctrl-/` on a partial-word selection searches the literal substring —
@@ -208,8 +237,9 @@ fn search_selection_uses_literal_text() {
 
     // Selection is untouched (no expansion).
     assert_eq!(state(&ed), "h-[ell]>o ell x\n");
-    // No \b anchors — literal substring pattern.
-    assert_eq!(reg(&ed, 's'), vec!["ell"]);
+    // No \b anchors — literal substring pattern. Register carries the `v`
+    // (verbatim) flag prefix Ctrl-/ now sets instead of hand-escaping.
+    assert_eq!(reg(&ed, 's'), vec!["v/ell"]);
 
     // Independent oracle: matches both the substring inside "hello" (1..4) and
     // the standalone "ell" (6..9) — proving it's substring, not whole-word, search.
@@ -244,7 +274,9 @@ fn search_selection_escapes_metacharacters() {
     // "a.b axb\n" — select "a.b".
     let mut ed = editor_from("-[a.b]> axb\n");
     ed.handle_key(key_ctrl('/'));
-    assert_eq!(reg(&ed, 's'), vec![r"a\.b"]);
+    // Register stores the raw, unescaped selection behind the `v` flag —
+    // escaping now happens at compile time, not at register-write time.
+    assert_eq!(reg(&ed, 's'), vec!["v/a.b"]);
 
     // Oracle: the escaped '.' must NOT match "axb" as a wildcard.
     let sp = ed.search_pattern().expect("search pattern must be set");
@@ -262,7 +294,7 @@ fn search_selection_escapes_metacharacters() {
 fn search_selection_on_collapsed_cursor_searches_char() {
     let mut ed = editor_from("-[a]>bc abc\n");
     ed.handle_key(key_ctrl('/'));
-    assert_eq!(reg(&ed, 's'), vec!["a"]);
+    assert_eq!(reg(&ed, 's'), vec!["v/a"]);
 }
 
 /// `Ctrl-/` on a collapsed cursor sitting on a structural `\n` is a no-op.

@@ -2,7 +2,7 @@
 
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_ops::search::compile_search_regex;
+use hume_ops::search::compile_search_input;
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
@@ -91,13 +91,18 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 
 /// Recompile the regex and replace selections with matches within the
 /// original selections. Called on every keystroke in Sift mode.
+///
+/// Shares `parse_search_input`'s flag grammar with the search prompt — `v`
+/// (verbatim) literalizes the pattern the same way it does in search. `m`
+/// (multi) parses but is inert here: sift already operates on every
+/// selection, so there is no second grammar to keep in sync.
 fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
     };
 
-    let Some(regex) = compile_search_regex(&pattern) else {
+    let Some((_flags, regex)) = compile_search_input(&pattern) else {
         // Invalid regex in progress — restore originals.
         restore_sift_snapshot(ed, r);
         return;

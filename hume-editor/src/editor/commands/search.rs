@@ -3,15 +3,17 @@ use std::sync::Arc;
 use super::super::search::SearchPattern;
 use hume_editing::grapheme::next_grapheme_boundary;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_editing::text::BufferText;
 use hume_editing::word::{CharClass, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::search::{
-    SearchDirection, compile_search_regex, escape_regex, find_all_matches, find_match_from_cache,
-    find_next_match, word_search_pattern,
+    SearchDirection, SearchFlags, compile_search_input, find_all_matches, find_match_from_cache,
+    find_next_match, render_search_input, word_search_pattern,
 };
 use hume_ops::text_object::inner_word_impl;
 use hume_rope::offset::{CharOffset, InclusiveRange};
+use regex_cursor::engines::meta::Regex;
 
 use super::super::input_stack::{PaneSnapshot, SearchLayer, SiftLayer};
 use super::super::{EditorState, MiniBuffer};
@@ -104,12 +106,13 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
     else {
         return false;
     };
-    match compile_search_regex(&pattern) {
-        Some(r) => {
+    match compile_search_input(&pattern) {
+        Some((flags, r)) => {
             let bid = focused_buffer_id(state, view);
             state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
                 regex: Arc::new(r),
                 pattern_str: pattern,
+                flags,
             });
             true
         }
@@ -117,12 +120,74 @@ fn ensure_search_regex(state: &mut EditorState, view: &EngineView) -> bool {
     }
 }
 
+/// The text/cache/regex/direction `advance_one` needs, factored out of its
+/// argument list because `search_jump` always passes all four together — once
+/// per selection in the multi path, where they're otherwise re-threaded
+/// through a closure on every call.
+struct SearchScan<'a> {
+    text: &'a BufferText,
+    cached_matches: &'a [InclusiveRange<CharOffset>],
+    regex: &'a Regex,
+    direction: SearchDirection,
+}
+
+/// Advance `sel` by `count` matches, from a compiled regex or (when
+/// `scan.cached_matches` is populated) a binary search of the buffer's match
+/// cache. Shared by `search_jump`'s single- and multi-selection (`m` flag)
+/// paths — the only difference between them is which selection(s) this runs
+/// on and how the result is written back.
+///
+/// A miss at any step of the `count` chain fails the whole hop atomically
+/// (`None`) rather than leaving `sel` part-advanced, matching a count prefix's
+/// usual all-or-nothing semantics elsewhere in the editor.
+fn advance_one(
+    scan: &SearchScan,
+    sel: Selection,
+    count: usize,
+    mode: MotionMode,
+) -> Option<(Selection, bool)> {
+    let anchor = (mode == MotionMode::Extend).then(|| sel.anchor());
+    let mut from_char = match scan.direction {
+        // Step past the current match so we don't re-find it on the first jump.
+        SearchDirection::Forward => next_grapheme_boundary(scan.text, sel.end_inclusive(scan.text)),
+        SearchDirection::Backward => sel.start(),
+    };
+
+    let mut last_match = None;
+    let mut any_wrapped = false;
+    for _ in 0..count {
+        // When the match cache is populated we binary-search it (O(log M) per
+        // jump). When it is empty — e.g. the very first `n` after startup
+        // before the cache is warmed — we fall back to the O(buffer)
+        // regex-scan path.
+        let hit = if scan.cached_matches.is_empty() {
+            find_next_match(scan.text, scan.regex, from_char, scan.direction)
+        } else {
+            find_match_from_cache(scan.cached_matches, from_char, scan.direction)
+        };
+        match hit {
+            Some((span, wrapped)) => {
+                any_wrapped |= wrapped;
+                last_match = Some(span);
+                from_char = match scan.direction {
+                    SearchDirection::Forward => next_grapheme_boundary(scan.text, span.end),
+                    SearchDirection::Backward => span.start,
+                };
+            }
+            None => return None,
+        }
+    }
+
+    last_match.map(|span| (search_sel(span, anchor, scan.direction), any_wrapped))
+}
+
 /// Shared body for `search-next` / `search-prev` / extend variants.
 ///
 /// Reads the cached `search_regex` (compiled during the search session), or
 /// recompiles from the `'s'` register if the cache is empty. Repeats `count`
 /// times (e.g. `3n` jumps 3 matches forward). Moves or extends the primary
-/// selection depending on `extend`.
+/// selection depending on `extend` — or, when the pattern's `m` flag is set,
+/// every selection independently.
 fn search_jump(
     state: &mut EditorState,
     view: &EngineView,
@@ -135,82 +200,52 @@ fn search_jump(
     }
 
     let bid = focused_buffer_id(state, view);
-    let regex = match state.buffers.get(bid).search_pattern.as_ref() {
-        Some(sp) => Arc::clone(&sp.regex),
+    let sp = match state.buffers.get(bid).search_pattern.as_ref() {
+        Some(sp) => sp,
         None => return Ok(()),
     };
-
-    // Capture anchor before the loop (extend mode keeps the original anchor fixed).
-    let (mut from_char, anchor) = {
-        let text = doc(state, view).text();
-        let primary = current_selections(state, view).primary();
-        let from = match direction {
-            // Step past the current match so we don't re-find it on the first jump.
-            SearchDirection::Forward => next_grapheme_boundary(text, primary.end_inclusive(text)),
-            SearchDirection::Backward => primary.start(),
-        };
-        (
-            from,
-            if mode == MotionMode::Extend {
-                Some(primary.anchor())
-            } else {
-                None
-            },
-        )
+    let regex = Arc::clone(&sp.regex);
+    let multi = sp.flags.multi;
+    // Borrowed, not cloned: both live only through `scan`'s last use below
+    // (inside `advance_one`), which ends before the `set_*_selection` calls
+    // take `state` mutably — an `n`/`N` hot-path allocation `update_live_search_primary`'s
+    // own doc comment already refuses for the single-selection case.
+    let scan = SearchScan {
+        text: doc(state, view).text(),
+        cached_matches: &state.buffers.get(bid).search_matches.matches,
+        regex: &regex,
+        direction,
     };
 
-    let mut last_match: Option<InclusiveRange<CharOffset>> = None;
-    let mut any_wrapped = false;
-
-    // When the match cache is populated we binary-search it (O(log M) per
-    // jump). When it is empty — e.g. the very first `n` after startup before
-    // the cache is warmed — we fall back to the O(buffer) regex-scan path.
-    if !state.buffers.get(bid).search_matches.matches.is_empty() {
-        let cached_matches = &state.buffers.get(bid).search_matches.matches;
-        for _ in 0..count {
-            match find_match_from_cache(cached_matches, from_char, direction) {
-                Some((span, wrapped)) => {
-                    any_wrapped |= wrapped;
-                    last_match = Some(span);
-                    from_char = match direction {
-                        SearchDirection::Forward => {
-                            next_grapheme_boundary(doc(state, view).text(), span.end)
-                        }
-                        SearchDirection::Backward => span.start,
-                    };
+    if multi {
+        let sels = current_selections(state, view).clone();
+        let primary_before = sels.primary();
+        let mut primary_wrapped = false;
+        let mut any_matched = false;
+        let new_sels = sels.map(|sel| match advance_one(&scan, sel, count, mode) {
+            Some((new_sel, wrapped)) => {
+                any_matched = true;
+                if sel == primary_before {
+                    primary_wrapped = wrapped;
                 }
-                None => {
-                    last_match = None;
-                    break;
-                }
+                new_sel
             }
+            None => sel,
+        });
+        if !any_matched {
+            return Err(CommandError::transient("no match"));
         }
-    } else {
-        for _ in 0..count {
-            match find_next_match(doc(state, view).text(), &regex, from_char, direction) {
-                Some((span, wrapped)) => {
-                    any_wrapped |= wrapped;
-                    last_match = Some(span);
-                    from_char = match direction {
-                        SearchDirection::Forward => {
-                            next_grapheme_boundary(doc(state, view).text(), span.end)
-                        }
-                        SearchDirection::Backward => span.start,
-                    };
-                }
-                None => {
-                    last_match = None;
-                    break;
-                }
-            }
-        }
+        let pid = state.focus.id();
+        state.panes.state[pid][bid].search_cursor.wrapped = primary_wrapped;
+        set_current_selections(state, view, new_sels);
+        return Ok(());
     }
 
-    match last_match {
-        Some(span) => {
+    let primary = current_selections(state, view).primary();
+    match advance_one(&scan, primary, count, mode) {
+        Some((new_sel, wrapped)) => {
             let pid = state.focus.id();
-            state.panes.state[pid][bid].search_cursor.wrapped = any_wrapped;
-            let new_sel = search_sel(span, anchor, direction);
+            state.panes.state[pid][bid].search_cursor.wrapped = wrapped;
             set_primary_selection(state, view, new_sel);
             Ok(())
         }
@@ -341,7 +376,7 @@ pub(in crate::editor) fn cmd_search_word_under_cursor(
 
     set_primary_selection(state, view, Selection::new(start, end_incl));
 
-    set_search_pattern(state, view, pattern)
+    set_search_pattern(state, view, SearchFlags::default(), &pattern)
 }
 
 // ── Search selection (Ctrl-/) ────────────────────────────────────────────────
@@ -370,29 +405,41 @@ pub(in crate::editor) fn cmd_search_selection(
         return Ok(());
     }
 
-    let pattern = escape_regex(&selected);
-    set_search_pattern(state, view, pattern)
+    let flags = SearchFlags {
+        multi: false,
+        verbatim: true,
+    };
+    set_search_pattern(state, view, flags, &selected)
 }
 
-/// Compile `pattern`, write it to the search register, and set it as the
-/// focused buffer's active search pattern (forward direction). Shared tail
-/// of `*` and Ctrl-/ — both set the same (register, direction, pattern)
-/// triple that live search sets on confirm; the match-cache/highlights are
-/// rebuilt lazily per-frame regardless of which path set the pattern.
+/// Compile `pattern` under `flags`, write the rendered flagged form to the
+/// search register, and set it as the focused buffer's active search pattern
+/// (forward direction). Shared tail of `*` and Ctrl-/ — both set the same
+/// (register, direction, pattern) triple that live search sets on confirm;
+/// the match-cache/highlights are rebuilt lazily per-frame regardless of
+/// which path set the pattern.
+///
+/// Renders through `render_search_input` and re-parses via
+/// `compile_search_input` rather than compiling `pattern` directly — this
+/// keeps a single compilation path (parse → escape-if-verbatim → regex) for
+/// every producer of a `SearchPattern`, `*`/Ctrl-/ included.
 fn set_search_pattern(
     state: &mut EditorState,
     view: &EngineView,
-    pattern: String,
+    flags: SearchFlags,
+    pattern: &str,
 ) -> Result<(), CommandError> {
-    let Some(regex) = compile_search_regex(&pattern) else {
+    let raw = render_search_input(flags, pattern);
+    let Some((flags, regex)) = compile_search_input(&raw) else {
         return Ok(());
     };
-    state.registers.set_search_register(pattern.clone());
+    state.registers.set_search_register(raw.clone());
     state.search.direction = SearchDirection::Forward;
     let bid = focused_buffer_id(state, view);
     state.buffers.get_mut(bid).search_pattern = Some(SearchPattern {
         regex: Arc::new(regex),
-        pattern_str: pattern,
+        pattern_str: raw,
+        flags,
     });
     Ok(())
 }

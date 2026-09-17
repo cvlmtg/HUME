@@ -680,6 +680,61 @@ fn search_n_after_sift_within_with_no_prior_search() {
     assert_eq!(state(&ed), before);
 }
 
+/// Sift shares the search prompt's flag grammar: `v` (verbatim) literalizes
+/// the pattern, so `.` matches only a literal dot within the selection.
+#[test]
+fn sift_within_verbatim_flag_matches_literal_dot() {
+    // "a.b axb\n" selected whole — non-verbatim "." would additionally match
+    // the "x" in "axb".
+    let mut ed = editor_from("-[a.b axb]>\n");
+    ed.handle_key(key('s'));
+    for ch in "v/a.b".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    assert_eq!(ed.current_selections().len(), 1);
+    let text = ed.doc().text();
+    let primary = ed.current_selections().primary();
+    assert_eq!(
+        (primary.start(), primary.end_inclusive(text)),
+        (co(0), co(2))
+    );
+}
+
+/// `m` (multi) parses at the sift prompt but is inert — sift already
+/// operates on every selection, so it changes nothing.
+#[test]
+fn sift_within_multi_flag_is_inert() {
+    // "aa bb aa\n" — same setup as
+    // `sift_within_multiple_selections_finds_matches_in_each`, but with the
+    // (meaningless here) `m` flag prefixed onto the pattern.
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[aa bb aa]>\n");
+    let two_sels = SelectionSet::from_vec(
+        vec![Selection::new(co(0), co(2)), Selection::new(co(6), co(7))],
+        0,
+    );
+    ed.set_current_selections(two_sels);
+
+    ed.handle_key(key('s'));
+    for ch in "m/aa".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.current_selections().len(), 2);
+    let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
+    let text = ed.doc().text();
+    assert_eq!(
+        (sels[0].start(), sels[0].end_inclusive(text)),
+        (co(0), co(1))
+    );
+    assert_eq!(
+        (sels[1].start(), sels[1].end_inclusive(text)),
+        (co(6), co(7))
+    );
+}
+
 // ── n merges overlapping selections ──────────────────────────────────────────
 
 /// When `n` moves the primary to a position already covered by a secondary
@@ -727,6 +782,382 @@ fn search_n_merges_with_overlapping_secondary() {
             .end_inclusive(ed.doc().text()),
         co(7)
     );
+}
+
+// ── Multi-selection (`m`) and verbatim (`v`) flags ─────────────────────────────
+
+/// `/m/bar` — every selection independently moves to its own next "bar",
+/// not just the primary.
+///
+/// "aaa bar bbb bar ccc bar\n" with collapsed selections on the first char of
+/// each "aaa"/"bbb"/"ccc" run — each has exactly one "bar" ahead of it before
+/// the next run's cursor, so the three results are distinguishable.
+#[test]
+fn multi_flag_moves_every_selection_to_its_own_next_match() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[a]>aa bar bbb bar ccc bar\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(0)),   // "aaa" — primary
+            Selection::new(co(8), co(8)),   // "bbb"
+            Selection::new(co(16), co(16)), // "ccc"
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "m/bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(reg(&ed, 's'), vec!["m/bar"]);
+    assert_eq!(ed.current_selections().len(), 3);
+    let sels: Vec<_> = ed.current_selections().iter_sorted().collect();
+    let text = ed.doc().text();
+    assert_eq!(
+        (sels[0].start(), sels[0].end_inclusive(text)),
+        (co(4), co(6))
+    );
+    assert_eq!(
+        (sels[1].start(), sels[1].end_inclusive(text)),
+        (co(12), co(14))
+    );
+    assert_eq!(
+        (sels[2].start(), sels[2].end_inclusive(text)),
+        (co(20), co(22))
+    );
+}
+
+/// Without `m`, a search (and a follow-up `n`) moves only the primary
+/// selection — secondaries keep their exact prior anchor and head.
+#[test]
+fn no_flags_search_and_n_move_only_primary() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[a]>aa bar bbb bar ccc bar\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(0)),   // "aaa" — primary
+            Selection::new(co(8), co(8)),   // "bbb" — untouched
+            Selection::new(co(16), co(16)), // "ccc" — untouched
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('r'));
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.current_selections().len(), 3);
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    let text = ed.doc().text();
+    assert_eq!(
+        (sorted[0].start(), sorted[0].end_inclusive(text)),
+        (co(4), co(6)),
+        "primary moved to first \"bar\""
+    );
+    assert_eq!(sorted[1].start(), co(8), "secondary untouched");
+    assert_eq!(sorted[2].start(), co(16), "secondary untouched");
+
+    // A follow-up `n` (no `m` flag stored) still moves only the primary —
+    // read it back via `.primary()`, since moving past a secondary's
+    // position changes document-order (`iter_sorted`) placement.
+    ed.handle_key(key('n'));
+    assert_eq!(ed.current_selections().len(), 3);
+    let text = ed.doc().text();
+    let primary = ed.current_selections().primary();
+    assert_eq!(
+        (primary.start(), primary.end_inclusive(text)),
+        (co(12), co(14)),
+        "n moved primary to second \"bar\""
+    );
+    let starts: Vec<_> = ed
+        .current_selections()
+        .iter_sorted()
+        .map(hume_editing::selection::Selection::start)
+        .collect();
+    assert_eq!(
+        starts,
+        vec![co(8), co(12), co(16)],
+        "the two untouched secondaries (8, 16) are unchanged; only the primary moved"
+    );
+}
+
+/// `n` after a multi search keeps moving every selection — the `m` flag is
+/// stored with the pattern and inherited by repeat, not a one-shot effect.
+#[test]
+fn multi_flag_persists_across_n() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[a]>aa bar bbb bar ccc bar\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(0)),
+            Selection::new(co(8), co(8)),
+            Selection::new(co(16), co(16)),
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "m/bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    // All three now sit on the three "bar" occurrences.
+    assert_eq!(ed.current_selections().len(), 3);
+
+    ed.handle_key(key('n'));
+    // Each selection independently steps to the buffer's next "bar",
+    // wrapping where needed — the cyclic permutation of the same three
+    // matches, still three distinct selections.
+    assert_eq!(ed.current_selections().len(), 3);
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    let text = ed.doc().text();
+    let ranges: Vec<_> = sorted
+        .iter()
+        .map(|s| (s.start(), s.end_inclusive(text)))
+        .collect();
+    assert_eq!(
+        ranges,
+        vec![(co(4), co(6)), (co(12), co(14)), (co(20), co(22))]
+    );
+}
+
+/// `N` after a multi search moves every selection backward independently —
+/// direction is not a one-shot property of the confirm keystroke either.
+#[test]
+fn multi_flag_backward_capital_n() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    // "bar aaa bar bbb bar\n" — three "bar" matches at (0,2), (8,10), (16,18).
+    let mut ed = editor_from("-[b]>ar aaa bar bbb bar\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(6), co(6)),   // inside "aaa" — primary
+            Selection::new(co(14), co(14)), // inside "bbb"
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "m/bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    // Forward multi search: co(6) -> (8,10), co(14) -> (16,18).
+    let text = ed.doc().text();
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    assert_eq!(
+        (sorted[0].start(), sorted[0].end_inclusive(text)),
+        (co(8), co(10))
+    );
+    assert_eq!(
+        (sorted[1].start(), sorted[1].end_inclusive(text)),
+        (co(16), co(18))
+    );
+
+    ed.handle_key(key('N'));
+    // Each selection independently steps backward to the previous "bar":
+    // (8,10) -> (0,2), (16,18) -> (8,10).
+    let text = ed.doc().text();
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    assert_eq!(sorted.len(), 2);
+    assert_eq!(
+        (sorted[0].start(), sorted[0].end_inclusive(text)),
+        (co(0), co(2))
+    );
+    assert_eq!(
+        (sorted[1].start(), sorted[1].end_inclusive(text)),
+        (co(8), co(10))
+    );
+}
+
+/// A count prefix on `n` (e.g. `2n`) chains that many hops per selection
+/// under the multi flag too, not just for the primary.
+#[test]
+fn multi_flag_count_prefix_on_n() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    // "x bar y bar z bar w bar\n" — four "bar" matches: (2,4),(8,10),(14,16),(20,22).
+    let mut ed = editor_from("-[x]> bar y bar z bar w bar\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(0)), // before the buffer's first "bar" — primary
+            Selection::new(co(6), co(6)), // on "y", before the second "bar"
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "m/bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    // Confirm (count 1): co(0) -> (2,4), co(6) -> (8,10).
+    let text = ed.doc().text();
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    assert_eq!(
+        (sorted[0].start(), sorted[0].end_inclusive(text)),
+        (co(2), co(4))
+    );
+    assert_eq!(
+        (sorted[1].start(), sorted[1].end_inclusive(text)),
+        (co(8), co(10))
+    );
+
+    ed.handle_key(key('2'));
+    ed.handle_key(key('n'));
+    // Each selection independently hops two matches forward:
+    // (2,4) -> (8,10) -> (14,16); (8,10) -> (14,16) -> (20,22).
+    let text = ed.doc().text();
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    assert_eq!(sorted.len(), 2);
+    assert_eq!(
+        (sorted[0].start(), sorted[0].end_inclusive(text)),
+        (co(14), co(16))
+    );
+    assert_eq!(
+        (sorted[1].start(), sorted[1].end_inclusive(text)),
+        (co(20), co(22))
+    );
+}
+
+/// When no selection has a match anywhere in the buffer under a multi
+/// search, `n` reports the same "no match" transient the single-selection
+/// path does, and leaves every selection untouched.
+#[test]
+fn multi_flag_no_selection_matches_reports_transient() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[a]>aa bbb\n");
+    let sels = SelectionSet::from_vec(
+        vec![Selection::new(co(0), co(0)), Selection::new(co(4), co(4))],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "m/zzz".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+    let before = state(&ed);
+
+    ed.handle_key(key('n'));
+    assert_eq!(ed.state.status_msg.as_deref(), Some("no match"));
+    assert_eq!(state(&ed), before, "selections must be left untouched");
+}
+
+/// A pattern typed with a leading `/` (e.g. a path) is not read as an empty
+/// flag run — the flag run must be non-empty, so `/usr` is the literal
+/// pattern "/usr", not flags "" + pattern "usr".
+#[test]
+fn leading_slash_is_part_of_the_pattern() {
+    let mut ed = editor_from("-[x]> /usr y\n");
+    ed.handle_key(key('/'));
+    for ch in "/usr".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "x -[/usr]> y\n");
+    ed.handle_key(key_enter());
+    assert_eq!(reg(&ed, 's'), vec!["/usr"]);
+}
+
+/// A pattern that reads as flags (a flag letter run followed by `/`) has no
+/// literal spelling of its own — `v/` reaches it instead: `v/m/s` matches
+/// the literal text "m/s", the same text a bare `m/s` would instead read as
+/// the multi flag plus pattern "s".
+#[test]
+fn verbatim_flag_reaches_a_pattern_that_looks_like_flags() {
+    let mut ed = editor_from("-[x]> m/s y\n");
+    ed.handle_key(key('/'));
+    for ch in "v/m/s".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "x -[m/s]> y\n");
+    ed.handle_key(key_enter());
+    assert_eq!(reg(&ed, 's'), vec!["v/m/s"]);
+}
+
+/// `mv` combines multi and verbatim: `.` must match only a literal dot (not
+/// any character), and every selection moves independently — selections that
+/// converge on the same literal match merge into one.
+///
+/// "axrs a.rs\n": without `verbatim`, the pattern `.rs` would match "xrs" as
+/// a wildcard-`.` hit at (1,3); `verbatim` forces both selections past it to
+/// the literal ".rs" at (6,8), where they converge.
+#[test]
+fn multi_verbatim_flags_combine_and_converging_selections_merge() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    let mut ed = editor_from("-[a]>xrs a.rs\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(0)), // "axrs" — primary
+            Selection::new(co(5), co(5)), // "a.rs"
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+
+    ed.handle_key(key('/'));
+    for ch in "mv/.rs".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(
+        ed.current_selections().len(),
+        1,
+        "both selections converge on the one literal \".rs\" match"
+    );
+    let text = ed.doc().text();
+    let primary = ed.current_selections().primary();
+    assert_eq!(
+        (primary.start(), primary.end_inclusive(text)),
+        (co(6), co(8))
+    );
+}
+
+/// Multi + Extend: each selection extends from its own anchor, not a shared one.
+#[test]
+fn multi_extend_extends_each_selection_from_its_own_anchor() {
+    use hume_editing::selection::{Selection, SelectionSet};
+    // "aa foo bb foo\n"
+    let mut ed = editor_from("-[a]>a foo bb foo\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::new(co(0), co(1)), // "aa" — anchor 0, primary
+            Selection::new(co(7), co(8)), // "bb" — anchor 7
+        ],
+        0,
+    );
+    ed.set_current_selections(sels);
+    ed.state.input.set_extend(true);
+
+    ed.handle_key(key('/'));
+    for ch in "m/foo".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_enter());
+
+    assert_eq!(ed.current_selections().len(), 2);
+    let sorted: Vec<_> = ed.current_selections().iter_sorted().collect();
+    assert_eq!(
+        sorted[0].anchor(),
+        co(0),
+        "first selection keeps its own anchor"
+    );
+    assert_eq!(sorted[0].head(), co(5));
+    assert_eq!(
+        sorted[1].anchor(),
+        co(7),
+        "second selection keeps its own, different anchor"
+    );
+    assert_eq!(sorted[1].head(), co(12));
 }
 
 // ── Search history ────────────────────────────────────────────────────────────
