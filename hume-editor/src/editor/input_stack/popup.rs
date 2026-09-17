@@ -26,14 +26,6 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 /// settled, so `close-popup!`/`popup()` never need to look past `top()`.
 pub(in crate::editor) struct PopupLayer {
     pub(in crate::editor) text: String,
-    /// Which of the two homes this popup used to get here (`Popup` layer vs.
-    /// a mode layer's `sticky_popup` slot) already encodes `kind` for every
-    /// production consumer — dismiss policy is entirely a function of
-    /// storage location now, not this field. Kept for tests, which still
-    /// assert on it directly rather than reaching for the storage location
-    /// as a proxy.
-    #[allow(dead_code)]
-    pub(in crate::editor) kind: hume_scripting::host::PopupKind,
     /// First visible wrapped row, for a `Scrollable` popup. Clamped against
     /// `max_scroll` in [`scroll_popup`] before each delta is applied, since
     /// content height (and so `max_scroll`) can shrink between key presses
@@ -101,8 +93,8 @@ impl Layer for PopupLayer {
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Non-modal: a popup owns nothing but Ctrl-u/d and dies on the very
     /// next key, so an async opener's staleness check
-    /// (`InputStack::is_stack_settled`) must not treat one being open as
-    /// "the stack moved" — same reasoning as `DrawerLayer::is_modal`.
+    /// (`InputStack::is_settled_for`) must not treat one being open as "the
+    /// stack moved" — same reasoning as `DrawerLayer::is_modal`.
     fn is_modal(&self) -> bool {
         false
     }

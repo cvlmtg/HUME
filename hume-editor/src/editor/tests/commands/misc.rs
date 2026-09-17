@@ -75,6 +75,46 @@ fn toggle_extend_from_insert_is_a_no_op() {
     );
 }
 
+/// A sticky popup shown from Normal must close when the user toggles into
+/// Extend. The deleted `on-mode-change` hook (`lib.scm`) covered every mode
+/// transition; `push_mode_layer`'s own `clear_popups()` call replaced it for
+/// every transition that goes through `push_mode_layer` — except
+/// Normal↔Extend, which never does, since both share the same `Base` mode
+/// layer.
+///
+/// Fail oracle: before this fix, `set_extend` never cleared a popup, so the
+/// assertion below would still find one open after the toggle.
+#[test]
+fn toggle_extend_closes_a_sticky_popup_shown_from_normal() {
+    use crate::editor::commands::cmd_toggle_extend;
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_ops::MotionMode;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup(
+        "hi".to_string(),
+        hume_scripting::host::PopupKind::Sticky,
+        false,
+        None,
+    )
+    .unwrap();
+    assert!(ed.state.input.popup().is_some(), "sanity: popup open");
+
+    cmd_toggle_extend(&mut ed.state, &mut ed.view, 0, MotionMode::Move).unwrap();
+
+    assert_eq!(
+        ed.state.mode(),
+        Mode::Extend,
+        "sanity: the toggle actually flipped"
+    );
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the popup must close on the Normal\u{2192}Extend transition"
+    );
+}
+
 // ── `o`/`O` undo grouping ─────────────────────────────────────────────────────
 
 /// `o` must group the structural newline insertion and the subsequent insert

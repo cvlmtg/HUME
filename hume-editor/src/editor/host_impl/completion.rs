@@ -43,27 +43,22 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             return Ok(());
         }
         // Async staleness, same principle as `show-menu!`/`show-drawer-list!`
-        // (`input_stack.rs`'s `is_stack_settled` doc): the request that led
+        // (`input_stack.rs`'s `is_settled_for` doc): the request that led
         // here can land after the user left Insert, or after some *other*
-        // overlay (a picker opened mid-session — nothing about opening a
-        // picker requires Insert) landed on top of it. Either way this is
-        // timing, not a plugin bug, so every failure of this gate drops
-        // silently rather than erroring — an error here would abort the
-        // whole `run_call_batch` this `Call` was batched into. A `top`
-        // `Completion` is the one exception, not covered by
-        // `is_stack_settled` (a `Completion` layer is itself the overlay
-        // sitting above `Insert`): it's the *normal* refresh path, not an
+        // modal overlay (a picker opened mid-session — nothing about
+        // opening a picker requires Insert) landed on top of it. Either way
+        // this is timing, not a plugin bug, so every failure of this gate
+        // drops silently rather than erroring — an error here would abort
+        // the whole `run_call_batch` this `Call` was batched into. A prior
+        // `Completion` instance — buried or not — is the one exception
+        // `is_settled_for` tolerates: it's the *normal* refresh path, not an
         // edge — `on-completion-refilter` re-calls this while a session is
         // already open, and so does a trigger char typed with the menu up.
         let mode_ok = self
             .state
             .input
             .is::<InsertLayer>(self.state.input.mode_layer());
-        let top_is_completion = self
-            .state
-            .input
-            .is::<CompletionLayer>(self.state.input.top());
-        let stack_ok = self.state.input.is_settled_or_top_is::<CompletionLayer>();
+        let stack_ok = self.state.input.is_settled_for::<CompletionLayer>();
         if !mode_ok || !stack_ok {
             self.state.report(
                 Severity::Trace,
@@ -94,10 +89,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.lsp.is_none() {
             return Err("completion-begin!: no LSP state available".to_string());
         }
-        if top_is_completion {
-            let r = self.state.input.top();
-            self.state.truncate_layers(self.view, r);
-        }
+        // Retires a prior `Completion` instance on the refresh path,
+        // wherever it sits — buried under a non-modal `Popup` counts too,
+        // now that `is_settled_for` tolerates that above.
+        self.state.retire::<CompletionLayer>(self.view);
         self.state
             .push_layer(self.view, CompletionLayer { session, ui: None });
         Ok(())

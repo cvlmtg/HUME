@@ -578,11 +578,19 @@ impl EditorState {
         self.input.mode()
     }
 
-    /// The active minibuffer, if any — `crate::statusline`'s reader. See
-    /// [`Self::confirm`] (`input_stack/confirm.rs`) for why this wrapper
-    /// exists instead of exposing `input` itself.
+    /// The minibuf that owns the statusline row and the hardware cursor
+    /// right now — `crate::statusline`'s reader and `Editor::run`'s cursor
+    /// placement. Not the same query as `InputStack::minibuf()`: a
+    /// minibuf-mode layer can be buried under a picker or menu (neither is a
+    /// mode layer, so `mode()` doesn't change, but `top()` does), in which
+    /// case it no longer owns the keyboard or this row — painting/placing
+    /// the cursor against it here would show a dead prompt while whatever's
+    /// on top reads the keys. `Some` only when the minibuf-owning layer is
+    /// `top()` — see [`Self::confirm`] (`input_stack/confirm.rs`) for the
+    /// identical carve-out and why this wrapper exists instead of exposing
+    /// `input` itself.
     pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
-        self.input.minibuf()
+        self.input.top_minibuf()
     }
 
     /// The document-mode cursor shape for the live mode — how the document's
@@ -753,15 +761,12 @@ impl EditorState {
         self.push_layer(view, layer);
     }
 
-    /// Retires the completion layer wherever it is on the stack — truncates
-    /// at its own ref rather than only if it's on top, since a `Completion`
-    /// layer can sit under a `Popup`, and a pop-if-top rule would leave a
-    /// stale session behind one.
-    /// A no-op when no session is open.
+    /// Retires the completion layer wherever it is on the stack — a
+    /// `Completion` layer can sit under a `Popup`, and a pop-if-top rule
+    /// would leave a stale session behind one. A no-op when no session is
+    /// open.
     pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
-        if let Some(r) = self.input.ref_of::<input_stack::CompletionLayer>() {
-            self.truncate_layers(view, r);
-        }
+        self.retire::<input_stack::CompletionLayer>(view);
     }
 
     /// [`Self::dismiss_completion`]'s variant for the two accept paths,

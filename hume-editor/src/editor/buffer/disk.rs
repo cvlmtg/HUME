@@ -229,31 +229,39 @@ impl Editor {
     /// `true` if opening a confirm right now would be safe, i.e. it can't
     /// steal a keystroke from something else already mid-interaction.
     ///
-    /// Top-is-`Base`: `Insert`/`Command`/`Search`/`Sift`/`Prompt` are each
-    /// their own layer type now, so "top of the stack is `Base`" already
-    /// means "Normal or Extend, no mode layer, no overlay" in one check —
-    /// it's both the mode gate and the overlay gate at once. That is the
-    /// difference between `:e`/`:b`/`:bn`/`:bp`/`:checktime` opening one as
-    /// their own direct result (safe: `execute_command` truncates the
-    /// `Command` layer *before* running the command body, so top is
-    /// already `Base` again by the time a native command like `:e` could
-    /// open a confirm) and an ambient check landing while the user is still
-    /// typing an unsubmitted `:`/`/` line (unsafe: top is still `Command`/
-    /// `Search`, would steal the next keystroke and hide the in-progress
-    /// line). The picker is mode-agnostic (opens from Normal, same as a
-    /// confirm) and the menu/drawer only open from Normal/Extend too — so
-    /// without this check an ambient trigger could silently steal every key
-    /// from a picker still on screen — one modal owner at a time. A confirm
-    /// already open is one of those owners itself: opening a second would
-    /// replace the first's model outright, retiring an unanswered question
-    /// and re-pointing the next keystroke at a different action than the one
-    /// on screen when the user started reaching for it. `Editor::enter_buffer_disk_check`
-    /// retires a confirm that no longer targets the buffer focus just landed
-    /// on before it ever reaches this check — for *every* switch, interactive
-    /// or not (a Steel/LSP `switch-to-buffer!` included, now that both run
-    /// through the same `OnBufferEnter` reaction) — so this guard only needs
-    /// to cover a *different* buffer's check racing a still-open, still-valid
-    /// confirm.
+    /// Mode gate: `mode_layer()` must be `Base` — `Insert`/`Command`/
+    /// `Search`/`Sift`/`Prompt` are each their own layer type now, so this
+    /// alone rules out an ambient check landing while the user is still
+    /// typing an unsubmitted `:`/`/` line (unsafe: the mode layer is still
+    /// `Command`/`Search`, would steal the next keystroke and hide the
+    /// in-progress line), while still allowing `:e`/`:b`/`:bn`/`:bp`/
+    /// `:checktime` to open one as their own direct result (safe:
+    /// `execute_command` truncates the `Command` layer *before* running the
+    /// command body, so the mode layer is already `Base` again by the time a
+    /// native command like `:e` could open a confirm).
+    ///
+    /// Other-overlay gate: `confirm`/`picker`/`menu`/`drawer` must all be
+    /// absent (anywhere on the stack, not just `top()` — a buried instance
+    /// still owns an unanswered question). The picker is mode-agnostic
+    /// (opens from Normal, same as a confirm) and the menu/drawer only open
+    /// from Normal/Extend too — so without this check an ambient trigger
+    /// could silently steal every key from a picker still on screen — one
+    /// modal owner at a time. A confirm already open is one of those owners
+    /// itself: opening a second would replace the first's model outright,
+    /// retiring an unanswered question and re-pointing the next keystroke at
+    /// a different action than the one on screen when the user started
+    /// reaching for it. `Editor::enter_buffer_disk_check` retires a confirm
+    /// that no longer targets the buffer focus just landed on before it ever
+    /// reaches this check — for *every* switch, interactive or not (a
+    /// Steel/LSP `switch-to-buffer!` included, now that both run through the
+    /// same `OnBufferEnter` reaction) — so this guard only needs to cover a
+    /// *different* buffer's check racing a still-open, still-valid confirm.
+    ///
+    /// Deliberately **not** gated on a `Scrollable` popup: it owns no keys
+    /// beyond Ctrl-u/d and dies on the very next one anyway, so it must not
+    /// block the one prompt that actually needs the keyboard —
+    /// `ConfirmLayer::setup` clears any open popup before landing, same as
+    /// every other opener that can land above one.
     ///
     /// Pending keys: a non-empty `pending_keys` (mid multi-key sequence, e.g.
     /// `d` waiting for its motion) or a pending `wait_char` (e.g. `f` waiting
@@ -289,7 +297,13 @@ impl Editor {
     /// `handle_input` even assigns the flag, so the trigger never observes
     /// it either way.
     fn can_open_confirm(&self, trigger: DiskCheckTrigger) -> bool {
-        self.state.input.is::<BaseLayer>(self.state.input.top())
+        self.state
+            .input
+            .is::<BaseLayer>(self.state.input.mode_layer())
+            && self.state.input.confirm().is_none()
+            && self.state.input.picker().is_none()
+            && self.state.input.menu().is_none()
+            && self.state.input.drawer().is_none()
             && self.state.pending_keys.is_empty()
             && self.state.wait_char.is_none()
             && !self.state.is_replaying
@@ -337,10 +351,15 @@ impl Editor {
     /// would be unanswerable —
     /// `reload_buffer_from_disk`'s focused-buffer guard would refuse it —
     /// and would block `entered`'s own prompt via `can_open_confirm`'s
-    /// stack-is-`Base` check. Retiring it (not declining it) leaves the
+    /// no-other-overlay check. Retiring it (not declining it) leaves the
     /// old buffer's `disk_state` exactly as `Changed` as it was, so the
     /// "asked about on its own next buffer-enter" promise still holds next
-    /// time focus actually returns there.
+    /// time focus actually returns there. Uses `excise_layer`, not
+    /// `truncate_layers`: nothing guarantees the confirm is still `top()`
+    /// either — a `Prompt`/`Picker` opened after it (which
+    /// `push_mode_layer`'s own truncation never reaches, since an overlay on
+    /// `Base` isn't a mode layer) has nothing to do with the question this
+    /// confirm was answering and must survive the retirement untouched.
     pub(in crate::editor) fn enter_buffer_disk_check(&mut self, entered: BufferId) {
         if self
             .state
@@ -349,7 +368,7 @@ impl Editor {
             .is_some_and(|c| !c.targets_buffer(entered))
             && let Some(r) = self.state.input.ref_of::<ConfirmLayer>()
         {
-            self.state.truncate_layers(&self.view, r);
+            self.state.excise_layer(&self.view, r);
         }
         self.check_buffer_disk_state(entered, DiskCheckTrigger::BufferEnter);
     }

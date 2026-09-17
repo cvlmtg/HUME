@@ -901,6 +901,65 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
     );
 }
 
+/// `completion-begin!`'s refresh path (an `isIncomplete` re-request, or a
+/// trigger char typed with the menu already up) must still land while a
+/// non-modal `Popup` (hover, the `gn`/`gp` diagnostic overlay) has opened
+/// above the completion session since — a `Popup` doesn't itself count as
+/// "the stack moved" anywhere else, and the refresh must not be the one
+/// place that disagrees.
+///
+/// Fail oracle: before this fix, `is_settled_or_top_is::<CompletionLayer>()`
+/// required either every layer above `Insert` to be non-modal (false, since
+/// `CompletionLayer` doesn't override `is_modal`) or `top()` to literally be
+/// `Completion` (false, since `Popup` sits on top) — the refresh below would
+/// Trace-drop and `len()` would stay `1`.
+#[test]
+fn completion_begin_refreshes_through_a_popup_landed_above_it() {
+    use hume_scripting::host::CompletionHost;
+
+    let mut ed = editor_from("-[a]>bcdef\n");
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    let bid = ed.focused_buffer_id();
+
+    let mut host = live_host!(ed);
+    host.completion_begin(bid, vec![serde_json::json!({"label": "x"})], true)
+        .unwrap();
+    assert_eq!(ed.state.input.completion().unwrap().len(), 1, "sanity");
+
+    ed.state.push_layer(
+        &ed.view,
+        crate::editor::input_stack::PopupLayer {
+            text: "hover text".to_string(),
+            scroll: 0,
+            syntax: None,
+            layout: hume_ui::popup::PopupLayout::Cursor,
+            content: None,
+        },
+    );
+    assert!(
+        ed.state.input.popup().is_some(),
+        "sanity: popup landed above it"
+    );
+
+    let mut host = live_host!(ed);
+    host.completion_begin(
+        bid,
+        vec![
+            serde_json::json!({"label": "x"}),
+            serde_json::json!({"label": "y"}),
+        ],
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(
+        ed.state.input.completion().unwrap().len(),
+        2,
+        "the session must have refreshed instead of being dropped as stale"
+    );
+}
+
 /// A malformed item (missing the spec-required `label`) must not take down
 /// the whole batch — the well-formed item next to it still survives.
 #[test]

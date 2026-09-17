@@ -45,7 +45,7 @@ impl Layer for DrawerLayer {
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     /// Non-modal: the drawer is built to be worked over (a stray key falls
     /// through and it stays open), so an async opener's staleness check
-    /// (`InputStack::is_stack_settled`) must not read "a drawer is open" as
+    /// (`InputStack::is_settled_for`) must not read "a drawer is open" as
     /// "the stack moved" — a code-action menu, or a fresh `completion-begin!`,
     /// still needs to open while the user is browsing one.
     fn is_modal(&self) -> bool {

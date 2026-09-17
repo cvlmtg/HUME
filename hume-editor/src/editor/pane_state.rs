@@ -5,10 +5,7 @@
 //! field later requires changing exactly one struct and one Default impl —
 //! not four parallel maps.
 //!
-//! [`PaneTransient`] holds per-pane-only transient state (search / select mode
-//! snapshots) that is not keyed by buffer.
-//!
-//! [`PaneView`] groups the three per-pane maps — `state`, `transient`, `jumps` —
+//! [`PaneView`] groups the three per-pane maps — `state`, `jumps`, `render` —
 //! so callers deal with one field on [`super::EditorState`] instead of three.
 //!
 //! [`EditGroup`] is the in-progress insert-session accumulator. It is stored on
@@ -322,46 +319,21 @@ pub(in crate::editor) fn park_cursor_at(
     write_cursor(pane_state, buffers, pid, bid, char_pos);
 }
 
-// ── PaneTransient ────────────────────────────────────────────────────────────
-
-/// Per-pane-only transient state (not keyed by buffer).
-///
-/// Stored in `Editor.pane_transient: SecondaryMap<PaneId, PaneTransient>`.
-/// Flat on each pane because this state is associated with the pane's current
-/// mode, not with any particular buffer. For example `pre_search_sels` is the
-/// state to restore if the user cancels Search mode — it belongs to the pane
-/// that entered Search mode, independent of which buffer that pane is viewing.
-#[derive(Default)]
-pub(in crate::editor) struct PaneTransient {
-    /// Snapshot of selections taken when this pane entered Search mode.
-    /// Restored on cancel; discarded on confirm. `None` when not in Search mode.
-    pub pre_search_sels: Option<SelectionSet>,
-    /// Snapshot of selections taken when this pane entered Sift mode.
-    /// Restored on cancel; discarded on confirm.
-    pub pre_sift_sels: Option<SelectionSet>,
-    /// Whether Extend mode was active when this pane entered Search mode.
-    /// Captured so live-search can extend from the pre-search anchor even
-    /// though `mode` is `Search` during the live preview.
-    pub search_extend: bool,
-}
-
 // ── PaneView ──────────────────────────────────────────────────────────────────
 
-/// Groups the four per-pane maps that live on [`super::EditorState`].
+/// Groups the three per-pane maps that live on [`super::EditorState`].
 ///
-/// Bundles `state` (per-(pane,buffer) selections/groups), `transient` (search/select
-/// snapshots), `jumps` (cursor history), and `render` (per-pane highlight/sign/
-/// inlay-hint/virtual-line handles, bundled in
-/// [`hume_decorations::PaneDecorationHandles`] since `build_pane` always
-/// allocates and `drop_pane_state` always drops them together) so
-/// `EditorState` exposes one field instead of four. The map types and
-/// keying are unchanged; NLL still allows simultaneous mutable borrows of
-/// different fields (e.g. `panes.state` and `panes.jumps` in
+/// Bundles `state` (per-(pane,buffer) selections/groups), `jumps` (cursor
+/// history), and `render` (per-pane highlight/sign/inlay-hint/virtual-line
+/// handles, bundled in [`hume_decorations::PaneDecorationHandles`] since
+/// `build_pane` always allocates and `drop_pane_state` always drops them
+/// together) so `EditorState` exposes one field instead of three. The map
+/// types and keying are unchanged; NLL still allows simultaneous mutable
+/// borrows of different fields (e.g. `panes.state` and `panes.jumps` in
 /// `buffer::lifecycle::switch_to_buffer_with_jump`).
 #[derive(Default)]
 pub(crate) struct PaneView {
     pub(in crate::editor) state: SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pub(in crate::editor) transient: SecondaryMap<PaneId, PaneTransient>,
     pub(in crate::editor) jumps: super::jump_list::JumpLists,
     pub(in crate::editor) render: SecondaryMap<PaneId, hume_decorations::PaneDecorationHandles>,
 }

@@ -47,8 +47,8 @@ fn search_esc_restores_position() {
 /// literal character) must replace the session rather than no-op, and must
 /// stash the *true* pre-search state, not the mid-`/`-session preview
 /// selection: `push_mode_layer`'s truncate runs the outgoing `Search`
-/// layer's own `tear_down` first, restoring `pre_search_sels` to what it
-/// held before the first session, and only then does the new stash read
+/// layer's own `tear_down` first, restoring `pre_sels` to what it held
+/// before the first session, and only then does the new stash read
 /// `current_selections`.
 ///
 /// Fail oracle: without `SearchLayer::reentry_is_noop() == false`,
@@ -291,8 +291,11 @@ fn sift_within_enters_sift_mode() {
     ed.handle_key(key('s'));
     assert_eq!(ed.state.mode(), Mode::Sift);
     assert!(
-        ed.state.panes.transient[ed.state.focus.id()]
-            .pre_sift_sels
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::SiftLayer>()
+            .unwrap()
+            .pre_sels
             .is_some()
     );
     assert!(ed.state.minibuf().is_some());
@@ -310,9 +313,11 @@ fn sift_within_confirm_replaces_selections() {
 
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(
-        ed.state.panes.transient[ed.state.focus.id()]
-            .pre_sift_sels
-            .is_none()
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::SiftLayer>()
+            .is_none(),
+        "the Sift layer itself is gone once Normal mode takes over"
     );
     // Two "ab" matches within the original selection.
     assert_eq!(ed.current_selections().len(), 2);

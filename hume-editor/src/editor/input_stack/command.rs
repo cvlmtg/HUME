@@ -44,14 +44,13 @@ impl Editor {
     ///
     /// Called from `prepare_frame` after highlight data is synced.
     pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
+        let completion = self.state.input.minibuf_completion();
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
-        if self.state.input.minibuf_completion().is_none()
-            && self.state.views.minibuf_completion.read().is_none()
-        {
+        if completion.is_none() && self.state.views.minibuf_completion.read().is_none() {
             return;
         }
-        let view = self.state.input.minibuf_completion().map(|state| {
+        let view = completion.map(|state| {
             let anchor_x = self
                 .state
                 .input

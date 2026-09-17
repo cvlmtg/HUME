@@ -32,7 +32,7 @@ impl Layer for CompletionLayer {
         None
     }
     /// A `Completion` menu can land directly above a `Popup` (hover, the
-    /// `gn`/`gp` diagnostic overlay — both non-modal, so `is_stack_settled`
+    /// `gn`/`gp` diagnostic overlay — both non-modal, so `is_settled_for`
     /// doesn't treat one as the stack having moved) — clear it first,
     /// keeping `PopupLayer`'s "never buried" invariant true. Evicts only
     /// the *pushed-layer* popup home (`InputStack::clear_popup_layer`), not

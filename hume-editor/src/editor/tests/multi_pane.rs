@@ -246,57 +246,95 @@ fn d5_insert_session_is_pane_buffer_scoped() {
     );
 }
 
-/// `panes.transient[pid]` snapshots are per-pane and never aliased.
+/// Cancelling a search whose stash lives on a pane that is no longer
+/// focused (a mouse click into another pane always falls through under a
+/// minibuf-mode layer — `minibuf_input`'s own `Mouse` arm — so Search stays
+/// open across the click) must still restore that pane's selection and
+/// clear *that pane's buffer's* search state, not whatever the click just
+/// focused.
+///
+/// Fail oracle: before this fix, every restore/clear site read
+/// `state.focus.id()`/`ed.focused_buffer_id()` instead of the session's own
+/// originating pane — the click moves focus to B, so `Esc` would restore
+/// nothing on A (B has no stash) and clear B's buffer's search state
+/// instead of A's, leaving A's matches highlighted and its cursor wherever
+/// live-search's last preview left it.
 #[test]
-fn d6_search_mode_snapshot_is_per_pane() {
-    use hume_editing::selection::{Selection, SelectionSet};
+fn d6_search_cancel_targets_the_originating_pane_not_the_focused_one() {
+    let tmp = safe_tempdir();
+    let path_b = tmp.path().join("b.txt");
+    std::fs::write(&path_b, "xyz\n").unwrap();
 
-    let mut ed = editor_from("-[h]>ello\n");
-    let bid = ed.focused_buffer_id();
+    let mut ed =
+        editor_from("-[0]>123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\n");
     let pid_a = ed.state.focus.id();
+    let bid_a = ed.focused_buffer_id();
     let pid_b = open_pane_in_layout(
         &mut ed.state,
         &mut ed.view,
         pid_a,
-        bid,
+        bid_a,
         hume_engine::pipeline::Direction::Horizontal,
     )
     .unwrap();
-
-    let sels_a = SelectionSet::single(Selection::collapsed(co(1)));
-    let sels_b = SelectionSet::single(Selection::collapsed(co(3)));
-
-    ed.state.panes.transient[pid_a].pre_search_sels = Some(sels_a.clone());
-    ed.state.panes.transient[pid_b].pre_search_sels = Some(sels_b.clone());
-
-    // Pane A snapshot is independent of pane B.
-    assert_eq!(
-        ed.state.panes.transient[pid_a]
-            .pre_search_sels
-            .as_ref()
-            .unwrap()
-            .primary()
-            .head(),
-        co(1),
-        "pane A pre_search_sels head"
+    ed.switch_focused_pane(pid_b);
+    ed.execute_typed("e", Some(path_b.to_str().unwrap()))
+        .unwrap();
+    assert_ne!(
+        ed.focused_buffer_id(),
+        bid_a,
+        "setup: pane B views a distinct buffer"
     );
-    assert_eq!(
-        ed.state.panes.transient[pid_b]
-            .pre_search_sels
-            .as_ref()
-            .unwrap()
-            .primary()
-            .head(),
-        co(3),
-        "pane B pre_search_sels head"
-    );
+    ed.switch_focused_pane(pid_a);
 
-    // Clearing pane A's snapshot does not affect pane B.
-    ed.state.panes.transient[pid_a].pre_search_sels = None;
-    assert!(ed.state.panes.transient[pid_a].pre_search_sels.is_none());
+    // `/1` on pane A: live preview jumps the cursor to the '1' at char 0
+    // (already there) — use a pattern further in so the preview actually
+    // moves the cursor and arms `search_pattern`.
+    ed.feed_key(key('/'));
+    ed.feed_key(key('7'));
     assert!(
-        ed.state.panes.transient[pid_b].pre_search_sels.is_some(),
-        "pane B unaffected"
+        ed.state.buffers.get(bid_a).search_pattern.is_some(),
+        "sanity: live search armed on A"
+    );
+    let head_during_preview = ed.state.panes.state[pid_a][bid_a]
+        .selections()
+        .primary()
+        .head();
+    assert_ne!(
+        head_during_preview,
+        co(0),
+        "sanity: preview moved the cursor"
+    );
+
+    let mut ctx = hume_engine::pipeline::RenderContext::new();
+    ed.sync_viewport_dims(100, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    // Click into pane B's half of the split (right half of a 100-wide
+    // horizontal — i.e. left/right — split). Falls through under the
+    // still-open Search layer.
+    ed.handle_input(mouse_left_down(70, 0));
+    assert_eq!(ed.state.focus.id(), pid_b, "sanity: click moved focus to B");
+    assert_eq!(
+        ed.state.mode(),
+        hume_engine::types::EditorMode::Search,
+        "sanity: Search stays open across the click"
+    );
+
+    ed.feed_key(key_esc());
+
+    assert_eq!(
+        ed.state.panes.state[pid_a][bid_a]
+            .selections()
+            .primary()
+            .head(),
+        co(0),
+        "pane A's pre-search position must be restored"
+    );
+    assert!(
+        ed.state.buffers.get(bid_a).search_pattern.is_none(),
+        "pane A's buffer search state must be cleared, not pane B's"
     );
 }
 

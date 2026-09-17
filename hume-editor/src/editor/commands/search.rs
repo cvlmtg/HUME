@@ -34,7 +34,7 @@ pub(in crate::editor) fn cmd_search_forward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    let pid = state.focus.id();
+    let pane = state.focus.id();
     state.search.direction = SearchDirection::Forward;
     state.history.begin_session_all();
     state.push_mode_layer(
@@ -45,17 +45,24 @@ pub(in crate::editor) fn cmd_search_forward(
                 input: String::new(),
                 cursor: 0,
             },
+            pane,
+            pre_sels: None,
+            extend,
         },
     );
     // Snapshot *after* the push, not before: re-entering `/`-search while
     // one is already open (`push_mode_layer`'s no-op guard no longer fires
     // for `SearchLayer` — see its `reentry_is_noop` doc) runs the outgoing
-    // session's own `tear_down` first, which restores `pre_search_sels` to
+    // session's own `tear_down` first, which restores `pre_sels` to
     // whatever it held before *that* session. Snapshotting now, not
     // before the push, stashes the true pre-search state instead of
     // clobbering it with the mid-search preview selections.
-    state.panes.transient[pid].pre_search_sels = Some(current_selections(state, view).clone());
-    state.panes.transient[pid].search_extend = extend;
+    let sels = current_selections(state, view).clone();
+    state
+        .input
+        .find_mut::<SearchLayer>()
+        .expect("just pushed")
+        .pre_sels = Some(sels);
     Ok(())
 }
 
@@ -67,7 +74,7 @@ pub(in crate::editor) fn cmd_search_backward(
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
     let extend = state.mode() == hume_engine::types::EditorMode::Extend;
-    let pid = state.focus.id();
+    let pane = state.focus.id();
     state.search.direction = SearchDirection::Backward;
     state.history.begin_session_all();
     state.push_mode_layer(
@@ -78,13 +85,20 @@ pub(in crate::editor) fn cmd_search_backward(
                 input: String::new(),
                 cursor: 0,
             },
+            pane,
+            pre_sels: None,
+            extend,
         },
     );
     // See `cmd_search_forward`'s comment: stashed after the push so a
     // `search-backward` reached while `/` is still open restores the true
     // pre-search state, not the mid-`/`-session preview.
-    state.panes.transient[pid].pre_search_sels = Some(current_selections(state, view).clone());
-    state.panes.transient[pid].search_extend = extend;
+    let sels = current_selections(state, view).clone();
+    state
+        .input
+        .find_mut::<SearchLayer>()
+        .expect("just pushed")
+        .pre_sels = Some(sels);
     Ok(())
 }
 
@@ -310,7 +324,7 @@ pub(in crate::editor) fn cmd_sift_within(
     {
         return Ok(());
     }
-    let pid = state.focus.id();
+    let pane = state.focus.id();
     state.push_mode_layer(
         view,
         SiftLayer {
@@ -319,13 +333,20 @@ pub(in crate::editor) fn cmd_sift_within(
                 input: String::new(),
                 cursor: 0,
             },
+            pane,
+            pre_sels: None,
         },
     );
     // Snapshot after the push — see `cmd_search_forward`'s comment: a
     // `sift-within` reached while one is already open restores the true
     // pre-sift state via the outgoing session's own `tear_down`, run by
     // `push_mode_layer` before this line, instead of being clobbered by it.
-    state.panes.transient[pid].pre_sift_sels = Some(current_selections(state, view).clone());
+    let sels = current_selections(state, view).clone();
+    state
+        .input
+        .find_mut::<SiftLayer>()
+        .expect("just pushed")
+        .pre_sels = Some(sels);
     Ok(())
 }
 

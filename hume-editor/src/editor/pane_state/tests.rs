@@ -12,14 +12,6 @@ fn pane_buffer_state_default_is_valid() {
 }
 
 #[test]
-fn pane_transient_default_is_empty() {
-    let t = PaneTransient::default();
-    assert!(t.pre_search_sels.is_none());
-    assert!(t.pre_sift_sels.is_none());
-    assert!(!t.search_extend);
-}
-
-#[test]
 fn fresh_from_buf_seeds_initial_sels() {
     use crate::editor::buffer::Buffer;
     let buf = Buffer::scratch();

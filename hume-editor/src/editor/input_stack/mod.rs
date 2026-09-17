@@ -12,7 +12,7 @@
 //! does, is entirely decided by each layer's own handler (handle / fall
 //! through / discard). There is no separate rule for which layer may open
 //! above which; `push` never refuses. The one gate that exists,
-//! [`InputStack::is_stack_settled`], answers a different question — whether
+//! [`InputStack::is_settled_for`], answers a different question — whether
 //! an *async* opener's request has gone stale — not who outranks whom.
 //! [`Layer::setup`] is a third, orthogonal concern: what a layer clears out
 //! of its own way on entry (chiefly an open popup), never whether it may

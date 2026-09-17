@@ -101,6 +101,88 @@ fn second_prompt_while_one_is_open_errors() {
     );
 }
 
+/// A `Prompt` buried under a `Drawer` (`show-drawer-list!` opens first,
+/// landing below — it isn't a mode layer, so `prompt!`'s `push_mode_layer`
+/// never truncates it; `prompt!` then lands above it) must still fire its
+/// callback with `#f` when `close-drawer!` truncates the drawer and takes
+/// the buried prompt with it as collateral — the same "exactly one call
+/// fires, on Confirm or on any cancel path" contract this file's header
+/// promises for every other retirement.
+///
+/// Fail oracle: before this fix, `PromptLayer::tear_down` only reset
+/// history — the callback was silently dropped and `pending_work` would be
+/// empty below.
+#[test]
+fn close_drawer_through_a_buried_prompt_still_fires_its_callback() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
+        .unwrap();
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.prompt(
+        "Name: ".to_string(),
+        String::new(),
+        steel::rvals::SteelVal::Void,
+    )
+    .unwrap();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+    assert!(ed.state.minibuf().is_some(), "sanity: prompt open above it");
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.close_drawer().unwrap();
+
+    assert!(ed.state.input.drawer().is_none());
+    assert!(ed.state.minibuf().is_none(), "the prompt is gone too");
+    assert!(
+        matches!(
+            ed.state.config.pending_work.front(),
+            Some(crate::editor::event::PendingWork::Call(_, args))
+                if matches!(args.as_slice(), [steel::rvals::SteelVal::BoolV(false)])
+        ),
+        "the buried prompt's callback must still fire with #f"
+    );
+}
+
+/// `EditorState::minibuf()` (the statusline row / hardware cursor's own
+/// reader) must not resolve a `Prompt` buried under a `Picker` — the picker
+/// owns the keyboard and paints over everything else, so painting a dead
+/// prompt row underneath it would show state nothing can act on.
+///
+/// Fail oracle: before this fix, `EditorState::minibuf()` delegated to
+/// `InputStack::minibuf()` (topmost-of-any-depth), so the first assertion
+/// below would still find the buried prompt.
+#[test]
+fn minibuf_does_not_resolve_a_prompt_buried_under_a_picker() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (prompt! "Name: " (lambda (s) (void)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    assert!(ed.state.minibuf().is_some(), "sanity: prompt owns the row");
+
+    let session = crate::editor::input_stack::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::host::PickerOpts::default(),
+    );
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+
+    assert!(
+        ed.state.minibuf().is_none(),
+        "the buried prompt must no longer own the row"
+    );
+    assert!(
+        ed.state.input.minibuf().is_some(),
+        "sanity: the prompt itself is still on the stack, merely buried"
+    );
+}
+
 #[test]
 fn prompt_mode_round_trips_and_fires_on_mode_change() {
     let tmp = safe_tempdir();

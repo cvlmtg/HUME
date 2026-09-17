@@ -9,7 +9,6 @@ use slotmap::SecondaryMap;
 use crate::editor::EditorState;
 use crate::editor::error::CommandError;
 use crate::editor::focus::focus_pane;
-use crate::editor::pane_state::PaneTransient;
 use crate::editor::tab::{TabId, install_live, take_live};
 
 /// Create a new pane viewing `buffer_id`, seed all per-pane maps, return its
@@ -41,7 +40,6 @@ fn open_pane(
     let pid = unattached.pane_id();
     state.panes.state.insert(pid, SecondaryMap::new());
     crate::editor::pane_state::ensure(&mut state.panes.state, &state.buffers, pid, buffer_id);
-    state.panes.transient.insert(pid, PaneTransient::default());
     state.panes.jumps.insert(
         pid,
         crate::editor::jump_list::JumpList::new(state.settings.jump_list_capacity),
@@ -107,18 +105,17 @@ pub(in crate::editor) fn open_pane_as_new_tab(
 }
 
 /// Remove every per-pane state map entry for a detached pane (`panes`,
-/// per-buffer state, transient state, jump list, render handles) — the
-/// inverse of `open_pane`'s seeding. Takes a `DetachedPane` rather than a
-/// bare `PaneId`: the token is proof the pane is already unreachable from
-/// every layout tree (see `DetachedPane`'s own doc), so this can never be
-/// called on a pane a tree still references. Shared by `close_focused_pane`
-/// and `commands::tab::close_tab` (once per token `LayoutTree::into_detached`
+/// per-buffer state, jump list, render handles) — the inverse of
+/// `open_pane`'s seeding. Takes a `DetachedPane` rather than a bare
+/// `PaneId`: the token is proof the pane is already unreachable from every
+/// layout tree (see `DetachedPane`'s own doc), so this can never be called
+/// on a pane a tree still references. Shared by `close_focused_pane` and
+/// `commands::tab::close_tab` (once per token `LayoutTree::into_detached`
 /// yields for the closing tab's tree).
 pub(super) fn drop_pane_state(state: &mut EditorState, view: &mut EngineView, pane: DetachedPane) {
     let pid = pane.pane_id();
     view.remove_pane(pane);
     state.panes.state.remove(pid);
-    state.panes.transient.remove(pid);
     state.panes.jumps.remove(pid);
     state.panes.render.remove(pid);
 }

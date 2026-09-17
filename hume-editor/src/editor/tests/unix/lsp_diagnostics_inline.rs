@@ -203,8 +203,11 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
          (unlike the inline summary and the :diagnostics drawer row)"
     );
     assert!(
-        matches!(popup.kind, hume_scripting::host::PopupKind::Scrollable),
-        "the gn/gp overlay must be a dismiss-on-any-key popup, same kind as hover"
+        ed.state
+            .input
+            .ref_of::<crate::editor::input_stack::PopupLayer>()
+            .is_some(),
+        "the gn/gp overlay must be a dismiss-on-any-key (scrollable) popup, same kind as hover"
     );
 }
 

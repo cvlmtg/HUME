@@ -27,25 +27,28 @@ impl Layer for PromptLayer {
     }
     /// Empty — see `InsertLayer::setup`'s doc.
     fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// Fires the callback with `#f` — unlike every other minibuf-mode
+    /// layer's `tear_down`, which never fires a Steel callback (the file
+    /// header's "exactly one call fires" contract otherwise has no arm to
+    /// rely on when this layer is removed incidentally: buried under a
+    /// `Confirm`/`Picker` that a `close-*!`/Rust-internal retirement then
+    /// truncates through, or replaced outright by `push_mode_layer`). Same
+    /// shape as `PickerLayer::tear_down` — see its own doc. The explicit
+    /// accept/cancel path (`finish_steel_prompt`) never runs this: it takes
+    /// the layer *by value* via `EditorState::take_layer`, firing its own
+    /// callback explicitly instead.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.history.begin_session_all();
+        state.queue_steel_call(
+            self.callback.clone(),
+            vec![steel::rvals::SteelVal::BoolV(false)],
+        );
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
         Some(&self.minibuf)
     }
     fn minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
         Some(&mut self.minibuf)
-    }
-}
-
-impl super::stack::InputStack {
-    /// The open `(prompt! …)` session's callback, if `Prompt` is on the
-    /// stack. Read-only — a caller finishing the prompt clones this out
-    /// (cheap: `SteelVal` is reference-counted) before truncating the
-    /// `Prompt` layer away, rather than taking ownership through this
-    /// lookup.
-    pub(in crate::editor) fn prompt_callback(&self) -> Option<&steel::rvals::SteelVal> {
-        self.find::<PromptLayer>().map(|l| &l.callback)
     }
 }
 
@@ -79,18 +82,18 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
     }
 }
 
-/// Queues exactly one `(callback text-or-#f)` call and truncates the
-/// `Prompt` layer (`r`) — the callback is cloned out (cheap: `SteelVal`
-/// is reference-counted) before truncating, since teardown never fires
-/// a Steel callback itself.
+/// Queues exactly one `(callback text-or-#f)` call — takes the `Prompt`
+/// layer *by value* via `EditorState::take_layer`, which skips its own
+/// `tear_down` (unlike `truncate_layers`), so this doesn't double-fire
+/// against `PromptLayer::tear_down`'s own `#f` fire for the incidental
+/// case. Keeps its own `history.begin_session_all()` call so this
+/// explicit path's behavior is unchanged by that split.
 fn finish_steel_prompt(ed: &mut Editor, r: LayerRef, text: Option<String>) {
-    let Some(callback) = ed.state.input.prompt_callback().cloned() else {
-        return;
-    };
+    let prompt = ed.state.take_layer::<PromptLayer>(&ed.view, r);
+    ed.state.history.begin_session_all();
     let arg = match text {
         Some(s) => steel::rvals::SteelVal::StringV(s.into()),
         None => steel::rvals::SteelVal::BoolV(false),
     };
-    ed.state.queue_steel_call(callback, vec![arg]);
-    ed.state.truncate_layers(&ed.view, r);
+    ed.state.queue_steel_call(prompt.callback, vec![arg]);
 }

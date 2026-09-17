@@ -123,6 +123,47 @@ fn show_popup_rejects_an_unknown_anchor() {
     );
 }
 
+/// `show-popup! #:kind 'scrollable` must not land above a full-modal picker
+/// — it would own the next Ctrl-u/Ctrl-d without ever being visible
+/// (`register_overlays`' fixed z-order paints the picker on top).
+///
+/// Fail oracle: before this fix, the `Scrollable` arm pushed unconditionally
+/// — `ed.state.input.popup()` below would be `Some` and the picker would
+/// have lost its own paging keys to the invisible popup.
+#[test]
+fn show_popup_scrollable_does_not_land_above_an_open_picker() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+
+    let session = crate::editor::input_stack::picker::PickerSession::new(
+        steel::rvals::SteelVal::BoolV(false),
+        hume_scripting::host::PickerOpts::default(),
+    );
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
+
+    // Direct host call, not a real `:` keystroke — the picker is
+    // full-modal and would swallow it before it ever reached Command mode.
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup(
+        "hi".to_string(),
+        hume_scripting::host::PopupKind::Scrollable,
+        false,
+        None,
+    )
+    .unwrap();
+
+    assert!(
+        ed.state.input.popup().is_none(),
+        "the popup must not land above the picker"
+    );
+    assert!(
+        ed.state.input.picker().is_some(),
+        "the picker must survive untouched"
+    );
+}
+
 // ── Docked layout (`#:anchor 'bottom`) ──────────────────────────────────────
 
 fn popup_band_lines(ed: &Editor) -> Option<Vec<String>> {
@@ -707,11 +748,13 @@ fn ctrl_d_on_a_non_scroll_popup_still_scrolls_the_buffer() {
     ed.feed_key(key_ctrl('d'));
 
     assert!(
-        matches!(
-            ed.state.input.popup().map(|p| p.kind),
-            Some(hume_scripting::host::PopupKind::Sticky)
-        ),
-        "a plain popup must be untouched by Ctrl-d"
+        ed.state.input.popup().is_some()
+            && ed
+                .state
+                .input
+                .ref_of::<crate::editor::input_stack::PopupLayer>()
+                .is_none(),
+        "a plain (sticky-slot) popup must be untouched by Ctrl-d"
     );
     assert_ne!(
         state(&ed),
@@ -806,21 +849,20 @@ fn a_sticky_popup_survives_mouse_input() {
     ed.sync_viewport_dims(80, 25);
     ed.settle();
     ed.prepare_frame(&mut ctx);
-    assert!(
-        matches!(
-            ed.state.input.popup().map(|p| p.kind),
-            Some(hume_scripting::host::PopupKind::Sticky)
-        ),
-        "sanity: sticky by default"
-    );
+    let in_sticky_slot = |ed: &Editor| {
+        ed.state.input.popup().is_some()
+            && ed
+                .state
+                .input
+                .ref_of::<crate::editor::input_stack::PopupLayer>()
+                .is_none()
+    };
+    assert!(in_sticky_slot(&ed), "sanity: sticky by default");
 
     ed.handle_input(mouse_wheel(true));
 
     assert!(
-        matches!(
-            ed.state.input.popup().map(|p| p.kind),
-            Some(hume_scripting::host::PopupKind::Sticky)
-        ),
+        in_sticky_slot(&ed),
         "a sticky popup must be untouched by mouse input"
     );
 }

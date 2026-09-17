@@ -39,7 +39,7 @@ fn show_drawer_list_populates_model_and_view() {
 /// first — `DrawerLayer::setup` runs `InputStack::clear_popups` before
 /// landing, keeping `PopupLayer`'s "never buried" invariant true. A
 /// `Drawer` is non-modal, so nothing else in `show-drawer-list!`'s own gate
-/// (`is_stack_settled`) would otherwise stop it landing directly above the
+/// (`is_settled_for`) would otherwise stop it landing directly above the
 /// popup.
 ///
 /// Calls `EditorHostImpl::show_drawer_list` directly rather than typing a

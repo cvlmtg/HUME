@@ -35,15 +35,22 @@ impl Layer for MenuLayer {
         None
     }
     /// A `Menu` can land directly above a `Popup` (non-modal, so
-    /// `is_stack_settled` doesn't treat it as the stack having moved) —
-    /// clear it first, keeping `PopupLayer`'s "never buried" invariant true.
-    /// Also retires a prior `Menu` on the self-replace path: `show_menu`
-    /// truncates it via `ref_of::<MenuLayer>()` before calling `push_layer`,
-    /// firing its callback with `#f` through ordinary teardown before this
-    /// runs.
+    /// `is_settled_for` doesn't treat it as the stack having moved) — clear
+    /// it first, keeping `PopupLayer`'s "never buried" invariant true. Also
+    /// retires a prior `Menu` on the self-replace path: `show_menu` takes it
+    /// by value and fires its callback with `#f` explicitly before this runs
+    /// (`MenuLayer::tear_down` stays empty, so it can't do this itself).
     fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
         state.input.clear_popups();
     }
+    /// Empty — like `DrawerLayer::tear_down`, an explicit `close-menu!`
+    /// (routed through `EditorState::retire`, which reaches this) must stay
+    /// silent, not fire `#f` on a widget its caller may already be
+    /// finishing its own way. `menu_input`'s own retirement arms (Enter/
+    /// Escape/a stray key/a fresh mouse gesture) and `show_menu`'s
+    /// self-replace path all take the layer *by value* via
+    /// `EditorState::take_layer` instead and fire their own callback
+    /// explicitly — this is never reached by anything that should fire one.
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 

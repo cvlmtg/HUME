@@ -260,8 +260,8 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
 }
 
 /// A drawer is non-modal (`DrawerLayer::is_modal() == false`): it's built to
-/// be worked over (§2.6: a stray key falls through and it stays open), so
-/// an open drawer must not read as "the stack moved" the way a picker does
+/// be worked over (a stray key falls through and it stays open), so an open
+/// drawer must not read as "the stack moved" the way a picker does
 /// above — a code-action menu must still open while the user is browsing
 /// diagnostics in the drawer.
 ///
@@ -328,6 +328,14 @@ fn show_menu_replaces_a_menu_already_open_and_fires_its_callback() {
         ed.state.input.menu().unwrap().rows.len(),
         2,
         "the fresh item list must have replaced the old one"
+    );
+    assert!(
+        matches!(
+            ed.state.config.pending_work.front(),
+            Some(crate::editor::event::PendingWork::Call(_, args))
+                if matches!(args.as_slice(), [steel::rvals::SteelVal::BoolV(false)])
+        ),
+        "the outgoing menu's callback must fire with #f"
     );
 }
 

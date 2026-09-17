@@ -1,16 +1,24 @@
 //! The `Sift` layer — the `s`-prompt (sift-within) minibuffer mode.
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::search::compile_search_regex;
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::{Editor, EditorState, commands};
+use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use hume_editing::selection::SelectionSet;
 
 pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
+    /// The pane this session opened in — same reasoning as
+    /// `SearchLayer::pane`: a mouse click always falls through under this
+    /// layer, so focus can move to a different pane while Sift stays open.
+    pub(in crate::editor) pane: PaneId,
+    /// Snapshot of `pane`'s selections before this session opened. `None`
+    /// once the `Confirm` arm has taken it.
+    pub(in crate::editor) pre_sels: Option<SelectionSet>,
 }
 
 impl Layer for SiftLayer {
@@ -23,9 +31,9 @@ impl Layer for SiftLayer {
     /// Empty — see `InsertLayer::setup`'s doc.
     fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
-        let pid = state.focus.id();
-        if let Some(sels) = state.panes.transient[pid].pre_sift_sels.take() {
-            commands::set_current_selections(state, view, sels);
+        if let Some(sels) = self.pre_sels.take() {
+            let bid = view.panes[self.pane].buffer_id;
+            state.panes.state[self.pane][bid].set_selections(sels);
         }
         // Sift has no history ring of its own — `begin_session_all`
         // only touches the command/search rings, so this is a no-op
@@ -59,8 +67,9 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // `Confirm` arm clears its own stash before truncating, so
             // teardown's `Sift` arm (which would otherwise restore it)
             // finds nothing to do.
-            let pid = ed.state.focus.id();
-            ed.state.panes.transient[pid].pre_sift_sels = None;
+            if let Some(sift) = ed.state.input.find_mut::<SiftLayer>() {
+                sift.pre_sels = None;
+            }
             // Do NOT write to the search register or clear search state —
             // sift-within is a selection op, not a search. The previous
             // search pattern and its highlights should be preserved so that
@@ -95,11 +104,11 @@ fn update_live_sift(ed: &mut Editor) {
         return;
     };
 
-    // Compute matches in a limited scope so the borrow on
-    // pre_sift_sels is released before we need to restore.
-    let pid = ed.state.focus.id();
-    let result = ed.state.panes.transient[pid]
-        .pre_sift_sels
+    let Some(sift) = ed.state.input.find::<SiftLayer>() else {
+        return;
+    };
+    let result = sift
+        .pre_sels
         .as_ref()
         .and_then(|sels| sift_matches_within(ed.doc().text(), sels, &regex));
 
@@ -111,12 +120,16 @@ fn update_live_sift(ed: &mut Editor) {
 
 // ── Snapshot restore helpers ────────────────────────────────────────────────
 
-/// Restore selections from the sift-mode snapshot without consuming it.
+/// Restore selections from the sift-mode snapshot without consuming it —
+/// always targets the session's own originating pane (`SiftLayer::pane`).
 fn restore_sift_snapshot(ed: &mut Editor) {
-    let pid = ed.state.focus.id();
-    let bid = ed.focused_buffer_id();
-    // pane_transient and pane_state are disjoint fields — no &mut ed needed.
-    if let Some(sels) = ed.state.panes.transient[pid].pre_sift_sels.as_ref() {
-        ed.state.panes.state[pid][bid].set_selections(sels.clone());
-    }
+    let Some(sift) = ed.state.input.find::<SiftLayer>() else {
+        return;
+    };
+    let Some(sels) = sift.pre_sels.clone() else {
+        return;
+    };
+    let pane = sift.pane;
+    let bid = ed.view.panes[pane].buffer_id;
+    ed.state.panes.state[pane][bid].set_selections(sels);
 }

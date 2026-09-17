@@ -71,12 +71,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     // ── Cursor-anchored / docked popup ───────────────────────────────────
-    /// `Scrollable` pushes its own `Popup` layer, ungated — unlike
-    /// `show_menu`/`show_drawer_list` below, a late hover response must
-    /// still open even while a references drawer is up (browse-while-editing
-    /// is the drawer's whole point), and a popup owns no input beyond
-    /// Ctrl-u/Ctrl-d, so it never conflicts with whatever else is open.
-    /// `Sticky` instead writes into the *current* mode layer's own slot —
+    /// `Scrollable` pushes its own `Popup` layer, gated only against a
+    /// full-modal `Picker` — unlike `show_menu`/`show_drawer_list` below, a
+    /// late hover response must still open even while a references drawer is
+    /// up (browse-while-editing is the drawer's whole point), and a popup
+    /// owns no input beyond Ctrl-u/Ctrl-d, so it never conflicts with
+    /// whatever else is open. A picker is the one exception: it's
+    /// full-modal and paints over everything else, so a popup landing above
+    /// it would own Ctrl-u/d without ever being visible — dropped the same
+    /// way a stale `show-menu!`/`show-drawer-list!` response is. `Sticky`
+    /// instead writes into the *current* mode layer's own slot —
     /// `Base`/`Insert` are the only kinds with one (`sticky_popup_slot_mut`
     /// is the SSOT for that), so a `Sticky` `show-popup!` with any other
     /// layer on top drops silently (`Trace`, `Ok`), same shape as
@@ -101,7 +105,6 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
         let model = PopupLayer {
             text,
-            kind,
             scroll: 0,
             syntax,
             layout,
@@ -125,6 +128,20 @@ impl<'a> UiHost for EditorHostImpl<'a> {
                     .expect("slot presence checked above") = Some(model);
             }
             PopupKind::Scrollable => {
+                // A picker is full-modal (owns every key) and paints over
+                // everything else (`register_overlays`'s fixed z-order) —
+                // a popup landing above it would own Ctrl-u/d without ever
+                // being visible. Dropped the same way a stale
+                // show-menu!/show-drawer-list! response is: the user moved
+                // on to something that occludes it before this had a
+                // chance to land.
+                if self.state.input.picker().is_some() {
+                    self.state.report(
+                        Severity::Trace,
+                        "show-popup!: a picker is open — ignored".to_string(),
+                    );
+                    return Ok(());
+                }
                 self.state.push_layer(self.view, model);
             }
         }
@@ -164,7 +181,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .state
             .input
             .is::<BaseLayer>(self.state.input.mode_layer())
-            || !self.state.input.is_settled_or_top_is::<MenuLayer>()
+            || !self.state.input.is_settled_for::<MenuLayer>()
         {
             self.state.report(
                 Severity::Trace,
@@ -173,10 +190,16 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             return Ok(());
         }
         // Retires a prior `Menu` on the self-replace path, firing its
-        // callback with `#f` via ordinary teardown. Any open popup is
-        // `MenuLayer::setup`'s concern, run by `push_layer` below.
+        // callback with `#f` explicitly — `take_layer`, not `retire`
+        // (`truncate_layers`)/`MenuLayer::tear_down` (empty by design, so an
+        // explicit `close-menu!` reaching a buried Menu some other way stays
+        // silent): only *this* path, a genuine refresh, should fire one.
+        // Any open popup is `MenuLayer::setup`'s concern, run by
+        // `push_layer` below.
         if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
-            self.state.truncate_layers(self.view, r);
+            let old = self.state.take_layer::<MenuLayer>(self.view, r);
+            self.state
+                .queue_steel_call(old.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
         }
         self.state.push_layer(
             self.view,
@@ -194,10 +217,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// land above it, so being buried is an ordinary state, not a mistake —
     /// same as `close_drawer` below.
     fn close_menu(&mut self) -> Result<(), String> {
-        let Some(r) = self.state.input.ref_of::<MenuLayer>() else {
-            return Ok(());
-        };
-        self.state.truncate_layers(self.view, r);
+        self.state.retire::<MenuLayer>(self.view);
         Ok(())
     }
 
@@ -222,7 +242,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .state
             .input
             .is::<BaseLayer>(self.state.input.mode_layer())
-            || !self.state.input.is_settled_or_top_is::<DrawerLayer>()
+            || !self.state.input.is_settled_for::<DrawerLayer>()
         {
             self.state.report(
                 Severity::Trace,
@@ -231,9 +251,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
-            self.state.truncate_layers(self.view, r);
-        }
+        self.state.retire::<DrawerLayer>(self.view);
         self.state.push_layer(
             self.view,
             DrawerLayer {
@@ -252,10 +270,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// open across `Insert`/a `Popup`/etc. by design, being buried is its
     /// *normal* state, not a mistake — see `show_drawer_list`'s own doc.
     fn close_drawer(&mut self) -> Result<(), String> {
-        let Some(r) = self.state.input.ref_of::<DrawerLayer>() else {
-            return Ok(());
-        };
-        self.state.truncate_layers(self.view, r);
+        self.state.retire::<DrawerLayer>(self.view);
         self.state.sync_drawer_view();
         Ok(())
     }

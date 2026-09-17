@@ -817,6 +817,110 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     );
 }
 
+/// `enter_buffer_disk_check` retiring a confirm that no longer targets the
+/// buffer being entered must not take collateral: a `Prompt` opened above
+/// the stale confirm since (nothing about `push_mode_layer` truncates an
+/// overlay sitting on `Base`, so this is a reachable stack) has nothing to
+/// do with the question the confirm was answering.
+///
+/// Fail oracle: before this fix, the retirement used `truncate_layers` at
+/// the confirm's own ref, which removes it *and everything above it* — the
+/// `minibuf().is_some()` assertion below would fail, and the prompt's
+/// callback would have fired with `#f` it was never supposed to fire.
+#[test]
+fn stale_confirm_retirement_does_not_take_a_prompt_above_it_with_it() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid_a = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+    ed.check_buffer_disk_state(bid_a, DiskCheckTrigger::Ambient);
+    assert!(
+        ed.state.input.confirm().is_some(),
+        "sanity: confirm open on A"
+    );
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.prompt(
+        "Name: ".to_string(),
+        String::new(),
+        steel::rvals::SteelVal::Void,
+    )
+    .unwrap();
+    assert!(ed.state.minibuf().is_some(), "sanity: prompt open above it");
+
+    let path_b = tmp.parent().unwrap().join("b.txt");
+    std::fs::write(&path_b, "b\n").unwrap();
+    ed.execute_typed("e", Some(path_b.to_str().unwrap()))
+        .unwrap();
+    let bid_b = ed.focused_buffer_id();
+    assert_ne!(bid_a, bid_b, "setup: distinct buffers");
+
+    ed.enter_buffer_disk_check(bid_b);
+
+    assert!(
+        ed.state
+            .input
+            .ref_of::<crate::editor::input_stack::ConfirmLayer>()
+            .is_none(),
+        "the stale confirm must be gone"
+    );
+    assert!(
+        ed.state.minibuf().is_some(),
+        "the unrelated prompt above it must survive untouched"
+    );
+    // `pending_work` isn't empty in general — `:e`'s own `OnBufferOpen`
+    // announcement is queued there too — so check specifically for the
+    // absence of a `Call`, the variant a fired Steel callback would be.
+    assert!(
+        !ed.state
+            .config
+            .pending_work
+            .iter()
+            .any(|w| matches!(w, crate::editor::event::PendingWork::Call(..))),
+        "the surviving prompt's callback must not have fired"
+    );
+}
+
+/// A disk-change confirm must still be able to open while a `Scrollable`
+/// popup (hover, the `gn`/`gp` diagnostic overlay) is showing — a popup owns
+/// no keys beyond Ctrl-u/d and dies on the very next one anyway, so it must
+/// not block the one prompt that actually needs the keyboard.
+///
+/// Fail oracle: before this fix, `can_open_confirm`'s gate was
+/// `is::<BaseLayer>(top())`, which a `Popup` layer landing above `Base` also
+/// fails — the confirm would never open and only the `Severity::Warning`
+/// fallback would fire.
+#[test]
+fn confirm_still_opens_over_an_open_scrollable_popup() {
+    let (mut ed, tmp) = editor_with_file("-[h]>ello\n", "hello\n");
+    let bid = ed.focused_buffer_id();
+    rewrite_externally(&tmp, "hello, externally changed!\n");
+
+    ed.state.push_layer(
+        &ed.view,
+        crate::editor::input_stack::PopupLayer {
+            text: "hello".to_string(),
+            scroll: 0,
+            syntax: None,
+            layout: hume_ui::popup::PopupLayout::Cursor,
+            content: None,
+        },
+    );
+
+    ed.check_buffer_disk_state(bid, DiskCheckTrigger::BufferEnter);
+
+    assert!(
+        ed.state.input.confirm().is_some(),
+        "the confirm must open even with a popup on top"
+    );
+    assert!(
+        ed.state.input.popup().is_none(),
+        "landing above it must clear the popup, matching every other opener"
+    );
+}
+
 /// The flip side of the test above: a picker opening while a confirm is
 /// already up lands above it, same as over a menu — `picker!` is
 /// key-triggered, so dispatch order already proves the stack is where the
@@ -865,21 +969,20 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     );
 }
 
-/// A picker sitting above a confirm can be taken with it when the confirm
-/// is retired for an unrelated reason (here, `enter_buffer_disk_check`
-/// finding it targets a buffer that's no longer focused) — `truncate` is
-/// the only removal op, so closing the confirm below it necessarily closes
-/// the picker too. `PickerLayer::tear_down` is what makes that safe: it
-/// fires `on_select` with `#f`, unlike every other layer's silent-drop
-/// teardown, since the picker has no explicit accept/cancel arm to rely on
-/// when it's removed incidentally like this.
+/// A picker sitting above a confirm must survive, untouched, when the
+/// confirm below it is retired for an unrelated reason (here,
+/// `enter_buffer_disk_check` finding it targets a buffer that's no longer
+/// focused) — `enter_buffer_disk_check` uses `EditorState::excise_layer`
+/// specifically because the picker has nothing to do with the question the
+/// confirm was answering and must not be taken as collateral.
 ///
-/// Fail oracle: before this fix, `PickerLayer::tear_down` did nothing (a
-/// comment noting only `PickerSession`'s `Drop` had anything to do) — the
-/// picker would vanish from the stack with its callback silently dropped,
-/// and `pending_calls` below would stay empty.
+/// Fail oracle: before this fix, this retirement used `truncate_layers` at
+/// the confirm's own ref, which removes it *and everything above it* — the
+/// `picker().is_some()` assertion below would fail, and the picker's own
+/// `tear_down` (its "fires exactly once" contract for an incidental
+/// removal) would have fired `on_select` with `#f` it was never supposed to.
 #[test]
-fn picker_above_a_retired_confirm_fires_its_own_callback_via_teardown() {
+fn picker_above_a_retired_confirm_survives_untouched() {
     let (mut ed, tmp_a) = editor_with_file("-[h]>ello\n", "hello\n");
     let bid_a = ed.focused_buffer_id();
     let (tmp_b, _tmp_b_guard) = temp_file("world\n");
@@ -914,21 +1017,18 @@ fn picker_above_a_retired_confirm_fires_its_own_callback_via_teardown() {
         "confirm must be retired"
     );
     assert!(
-        ed.state.input.picker().is_none(),
-        "picker must be gone with it"
+        ed.state.input.picker().is_some(),
+        "the picker above it must survive untouched"
     );
-    assert_eq!(
-        pending_calls(&ed).len(),
-        1,
-        "the picker's own tear_down must have fired its callback exactly once"
+    assert!(
+        pending_calls(&ed).is_empty(),
+        "the surviving picker's callback must not have fired"
     );
-    let (_, args) = pending_calls(&ed)[0];
-    assert_eq!(args, &vec![steel::rvals::SteelVal::BoolV(false)]);
 }
 
 /// `EditorState::confirm()` — the statusline's seam — must answer `None`
 /// once a `Prompt` lands above an open confirm: `push_mode_layer` only
-/// truncates the outgoing *mode* layer (§2.3), never an overlay sitting on
+/// truncates the outgoing *mode* layer, never an overlay sitting on
 /// `Base`, so a Steel-initiated `prompt!` (a timer here, standing in for a
 /// hook or async callback) buries the confirm without closing it. The
 /// confirm is still on the stack — `InputStack::confirm()`, the query
@@ -1272,21 +1372,22 @@ fn closing_a_buffer_retires_its_open_reload_confirm() {
     );
 }
 
-/// `enter_buffer_disk_check` retiring a mismatched confirm must tear down
-/// whatever else was stacked above it (top-first), not just drop it — a
-/// `Search` session landed there stands in for a `prompt!` a timer would
-/// push the same way (`push_mode_layer` only truncates the outgoing *mode*
-/// layer, never an overlay sitting on `Base`); `Search` is used here
-/// because its `tear_down` has an easily observed effect (restores
-/// selections, clears the live pattern), unlike `Prompt`'s (a history-nav
-/// reset with no externally visible signal).
+/// `enter_buffer_disk_check` retiring a mismatched confirm must leave
+/// whatever else was stacked above it completely untouched — a `Search`
+/// session landed there stands in for a `prompt!` a timer would push the
+/// same way (`push_mode_layer` only truncates the outgoing *mode* layer,
+/// never an overlay sitting on `Base`); `Search` is used here because its
+/// `tear_down` has an easily observed effect (restores selections, clears
+/// the live pattern) if it incorrectly ran, unlike `Prompt`'s (a
+/// history-nav reset with no externally visible signal).
 ///
-/// Fail oracle: before this fix, the retire call was a raw
-/// `state.input.truncate(r)` — `Search`'s own `tear_down` would never run,
-/// so `search_pattern()` would stay `Some` and the selection would stay at
-/// the live-search preview instead of being restored.
+/// Fail oracle: before this fix, the retirement used `truncate_layers` at
+/// the confirm's own ref, which removes it *and everything above it* — the
+/// `find::<SearchLayer>().is_some()` assertion below would fail, and
+/// Search's own `tear_down` would have run, clearing the live pattern and
+/// restoring the pre-search selection the user is still actively editing.
 #[test]
-fn enter_buffer_disk_check_tears_down_a_layer_stacked_above_the_confirm_it_retires() {
+fn enter_buffer_disk_check_leaves_a_layer_stacked_above_the_confirm_untouched() {
     use crate::editor::commands::cmd_search_forward;
     use hume_ops::MotionMode;
 
@@ -1332,17 +1433,17 @@ fn enter_buffer_disk_check_tears_down_a_layer_stacked_above_the_confirm_it_retir
         ed.state
             .input
             .find::<crate::editor::input_stack::SearchLayer>()
-            .is_none(),
-        "the layer stacked above it must be gone too"
+            .is_some(),
+        "the layer stacked above it must survive"
     );
     assert!(
-        ed.search_pattern().is_none(),
-        "Search's own tear_down must have run: the live pattern must be cleared"
+        ed.search_pattern().is_some(),
+        "Search's own tear_down must not have run: the live pattern must stay armed"
     );
     assert_eq!(
         state(&ed),
-        "-[h]>ello world\n",
-        "Search's own tear_down must have restored the pre-search selection"
+        "hello -[world]>\n",
+        "the live-search preview selection must be untouched"
     );
 }
 

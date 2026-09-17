@@ -94,12 +94,15 @@ impl Layer for ConfirmLayer {
     fn mode(&self) -> Option<EditorMode> {
         None
     }
-    /// Empty — never needs to evict a popup. `can_open_confirm` (`buffer/
-    /// disk.rs`) already requires `top()` to be `Base` before a confirm can
-    /// open at all, which is stricter than "no popup open": a `Scrollable`
-    /// popup pushed above `Base` makes `top()` the popup, not `Base`, so the
-    /// gate refuses before this ever runs.
-    fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// Clears any open popup — `can_open_confirm` (`buffer/disk.rs`)
+    /// deliberately does *not* gate on one being open (a `Scrollable` popup
+    /// owns no keys beyond Ctrl-u/d and dies on the next one anyway), so a
+    /// confirm can land directly above one. Clearing it here keeps
+    /// `PopupLayer`'s "never buried" invariant true, same as `MenuLayer`/
+    /// `DrawerLayer`/`PickerLayer`/`PopupLayer`'s own setup.
+    fn setup(&mut self, state: &mut EditorState, _view: &EngineView) {
+        state.input.clear_popups();
+    }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 

@@ -94,12 +94,10 @@ impl OverlayViews {
 /// then the selection menu, then the LSP completion menu (an in-progress
 /// completion is the most action-relevant overlay when more than one could
 /// theoretically be visible), then the picker last, since it's full-modal
-/// and every other synchronous opener clears or truncates it before landing
-/// above it. This registration order is fixed, unlike input precedence
-/// (which is push order on `InputStack`, decided per event) — the two
-/// normally agree, with one known exception: an ungated `show-popup!`
-/// `'scrollable` can still push a `Popup` layer above an open picker, where
-/// it would own the next input event but paint underneath it.
+/// and every other opener clears or truncates it before landing above it —
+/// `show-popup!`'s own `'scrollable` arm refuses to push above an open
+/// picker for exactly this reason, so this registration order and input
+/// precedence (push order on `InputStack`, decided per event) always agree.
 pub fn register_overlays(providers: &mut ProviderSet, views: &OverlayViews) {
     providers.add_overlay(Box::new(MinibufCompletionOverlay {
         data: views.minibuf_completion.clone(),

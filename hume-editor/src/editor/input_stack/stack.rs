@@ -111,14 +111,14 @@ pub(in crate::editor) trait Layer: Any {
     }
 
     /// Whether an *async* opener's staleness check
-    /// ([`InputStack::is_stack_settled`]) should treat this layer as
+    /// ([`InputStack::is_settled_for`]) should treat this layer as
     /// something intervened, versus a widget the request landing underneath
     /// it can simply ignore. `true` (the default) for every ordinary
     /// overlay and mode layer; `DrawerLayer`/`PopupLayer` override to
-    /// `false` — the drawer is built to be worked over (§2.6: a stray key
-    /// falls through and it stays open) and a popup owns nothing but
-    /// Ctrl-u/d, so neither should make a `show-menu!`/`completion-begin!`
-    /// response read the stack as moved.
+    /// `false` — the drawer is built to be worked over (a stray key falls
+    /// through and it stays open) and a popup owns nothing but Ctrl-u/d, so
+    /// neither should make a `show-menu!`/`completion-begin!` response read
+    /// the stack as moved.
     fn is_modal(&self) -> bool {
         true
     }
@@ -261,13 +261,17 @@ impl InputStack {
 
     /// The topmost layer of concrete type `L`, if one is open — the ref a
     /// `close-*!` builtin or a Rust-internal retirement needs to name a
-    /// widget it didn't itself just push. `truncate` is the only removal
-    /// op, so closing a widget that isn't on top would take everything
-    /// above it with it — every `close-*!` builtin instead errors when
-    /// `ref_of` finds the widget present but not `top()` (every
-    /// `confirm`-retirement site on buffer close/focus change reads this
-    /// the same way). Every type but `BaseLayer` occurs at most once on the
-    /// stack today, so "topmost" and "only" coincide in practice.
+    /// widget it didn't itself just push. `truncate` is the only removal op
+    /// (short of [`Self::excise`]'s own narrow exception), so closing a
+    /// widget that isn't on top takes everything above it with it as
+    /// collateral — every `close-*!` builtin and confirm-retirement site
+    /// accepts that rather than guarding against it, documented per call
+    /// site (`close_drawer`/`close_menu` because a non-modal `Popup` can
+    /// land above either by design; `enter_buffer_disk_check`/
+    /// `close_buffer_and_notify` use [`EditorState::excise_layer`] instead,
+    /// precisely to avoid this collateral for a stale `Confirm`). Every type
+    /// but `BaseLayer` occurs at most once on the stack today, so "topmost"
+    /// and "only" coincide in practice.
     pub(in crate::editor) fn ref_of<L: Layer>(&self) -> Option<LayerRef> {
         self.layers
             .iter()
@@ -312,42 +316,42 @@ impl InputStack {
     }
 
     /// Whether nothing *modal* (see [`Layer::is_modal`]) sits above the
-    /// current mode layer — the staleness check an *async* opener (a Steel
-    /// callback answering a request fired earlier: `show-menu!`,
-    /// `show-drawer-list!`, `completion-begin!`) makes before landing,
-    /// alongside its own mode-layer requirement. It is not a precedence
-    /// rule: a synchronous, key- or command-triggered opener (`picker!`,
-    /// `prompt!`) never calls this, because dispatch order already proves
-    /// the stack is exactly where the key path left it — there is nothing
-    /// left to check. An async response has no such guarantee: the user may
-    /// have opened a picker, a menu, or moved to a different mode between
-    /// the request going out and the response landing, and this is what
-    /// tells the two apart. A non-modal overlay above the mode layer (a
-    /// `Drawer`, built to be worked over; a `Popup`, which owns nothing but
-    /// Ctrl-u/d) does not itself count as "the stack moved" — only a modal
-    /// one does, or a mode-layer change; a caller replacing its own prior
-    /// instance checks for that case separately rather than through this.
-    pub(in crate::editor) fn is_stack_settled(&self) -> bool {
+    /// current mode layer, tolerating a layer of type `L` specifically —
+    /// the staleness check an *async* opener (a Steel callback answering a
+    /// request fired earlier: `show-menu!`, `show-drawer-list!`,
+    /// `completion-begin!`) makes before landing, alongside its own
+    /// mode-layer requirement. It is not a precedence rule: a synchronous,
+    /// key- or command-triggered opener (`picker!`, `prompt!`) never calls
+    /// this, because dispatch order already proves the stack is exactly
+    /// where the key path left it — there is nothing left to check. An
+    /// async response has no such guarantee: the user may have opened a
+    /// picker, a menu, or moved to a different mode between the request
+    /// going out and the response landing, and this is what tells the two
+    /// apart. A non-modal overlay above the mode layer (a `Drawer`, built
+    /// to be worked over; a `Popup`, which owns nothing but Ctrl-u/d) does
+    /// not itself count as "the stack moved" regardless of `L` — only a
+    /// modal one does, or a mode-layer change.
+    ///
+    /// The `L` parameter is what lets a self-replacing opener
+    /// (`show_menu`, `show_drawer_list`, `completion_begin`) tolerate its
+    /// own prior instance too, wherever it landed relative to a later
+    /// non-modal overlay (e.g. a `Popup` that opened once the first
+    /// instance was already up) — a plain `top() == L` check misses exactly
+    /// that case, since `L` buried under a later non-modal overlay would
+    /// still read as unsettled. A caller with no such instance to tolerate
+    /// (there is none today) would pass a type nothing on the stack can
+    /// ever be.
+    pub(in crate::editor) fn is_settled_for<L: Layer>(&self) -> bool {
         let mode_depth = self.mode_layer().depth;
         self.layers[mode_depth + 1..]
             .iter()
-            .all(|(_, layer)| !layer.is_modal())
-    }
-
-    /// [`Self::is_stack_settled`], with one more escape: also `true` when
-    /// `top()` is already a layer of type `L` — the "re-run while my own
-    /// instance is still open is a refresh, not staleness" case every async
-    /// opener with a self-replace path (`show_menu`, `show_drawer_list`,
-    /// `completion_begin`) needs, replacing what would otherwise be three
-    /// copies of the same `is_stack_settled() || is::<L>(top())` check.
-    pub(in crate::editor) fn is_settled_or_top_is<L: Layer>(&self) -> bool {
-        self.is_stack_settled() || self.is::<L>(self.top())
+            .all(|(_, layer)| !layer.is_modal() || layer.is::<L>())
     }
 
     /// Pushes `layer` on top, unconditionally — nothing is refused by
     /// *precedence*, since precedence is push order and push order is only
     /// ever decided by whoever's calling this. An async opener consults
-    /// [`Self::is_stack_settled`] itself before calling this (a staleness
+    /// [`Self::is_settled_for`] itself before calling this (a staleness
     /// check, not a permission check); a kind-specific replace rule (the
     /// picker's own "cancel and replace a live picker") runs first for the
     /// same reason. `push` itself enforces nothing about what's already
@@ -383,6 +387,21 @@ impl InputStack {
             .rev()
             .map(|(_, layer)| layer)
             .collect()
+    }
+
+    /// Removes exactly `r`, leaving every layer above it in place
+    /// (re-indexed down by one) — the one removal that must not take
+    /// collateral with it: a Rust-internal retirement of a `Confirm` that no
+    /// longer targets anything live, while an unrelated session (a
+    /// `Prompt`, a `Picker`) may have landed above it since. Runs no
+    /// `Layer::tear_down` itself, same contract as [`Self::truncate`] — that
+    /// is [`EditorState::excise_layer`]'s job. A no-op returning `None` when
+    /// `r` is already stale, or is `Base` — `Base` is never removed.
+    pub(in crate::editor::input_stack) fn excise(&mut self, r: LayerRef) -> Option<Box<dyn Layer>> {
+        if r.depth == 0 || !self.is_live(r) {
+            return None;
+        }
+        Some(self.layers.remove(r.depth).1)
     }
 
     /// Removes every layer above `Base`, top-first, same return contract as
@@ -432,15 +451,28 @@ impl InputStack {
 
     /// Sets `Base`'s `extend` flag directly — `Base` is always at index 0,
     /// so this never needs a lookup. Does not gate on the current mode
-    /// layer or clear it on push; `push_mode_layer` clears it on every push
-    /// separately, and a toggle reads `mode()` first to decide the target
-    /// value.
+    /// layer; a toggle reads `mode()` first to decide the target value.
+    ///
+    /// Clears any open popup when the flag actually flips — the deleted
+    /// `lib.scm` hook (`on-mode-change → close-popup!`) covered every mode
+    /// transition; `push_mode_layer`'s own `clear_popups()` call replaced it
+    /// for every transition that goes through `push_mode_layer`, except
+    /// Normal↔Extend, which never does (this is the one write site for
+    /// that transition). Gated on an observed diff, not unconditional, so a
+    /// same-value call (the two collapse-and-exit-extend commands call this
+    /// with `false` even when already Normal) doesn't spuriously kill an
+    /// unrelated popup — mirrors `detect_mode_change`'s own "only on a
+    /// diff" contract for the same hook this replaces.
     pub(in crate::editor) fn set_extend(&mut self, extend: bool) {
         let base = self.layers[0]
             .1
             .downcast_mut::<BaseLayer>()
             .expect("index 0 is always Base");
+        if base.extend == extend {
+            return;
+        }
         base.extend = extend;
+        self.clear_popups();
     }
 
     /// The active minibuffer, topmost-wins across the four minibuf-backed
@@ -458,6 +490,20 @@ impl InputStack {
             .iter_mut()
             .rev()
             .find_map(|(_, layer)| layer.minibuf_mut())
+    }
+
+    /// The minibuf owned by `top()` specifically — `None` if `top()` isn't
+    /// one of the four minibuf-backed mode layers, even if one is open
+    /// buried beneath a picker or menu (a mouse click always falls through
+    /// under a minibuf-mode layer, so focus and the picker/menu it opens can
+    /// land above one without ever closing it). Distinct from
+    /// [`Self::minibuf`] (topmost-of-any-depth), which every minibuf-mode
+    /// layer's *own* handler uses safely — dispatch only ever reaches it
+    /// while it's already `top()`. [`EditorState::minibuf`] is the gated
+    /// reader every external (non-owning-layer) consumer — the statusline,
+    /// the hardware-cursor placement — must use instead.
+    pub(in crate::editor) fn top_minibuf(&self) -> Option<&MiniBuffer> {
+        self.layers.last().and_then(|(_, layer)| layer.minibuf())
     }
 
     /// The active popup, whichever of its two homes holds it: a
@@ -482,12 +528,8 @@ impl InputStack {
     }
 
     pub(in crate::editor) fn popup_mut(&mut self) -> Option<&mut PopupLayer> {
-        let has_popup_layer = self
-            .layers
-            .iter()
-            .any(|(_, layer)| layer.is::<PopupLayer>());
-        if has_popup_layer {
-            return self.find_mut::<PopupLayer>();
+        if let Some(r) = self.ref_of::<PopupLayer>() {
+            return self.layers[r.depth].1.downcast_mut::<PopupLayer>();
         }
         let mode_depth = self.mode_layer().depth;
         self.layers[mode_depth]
@@ -604,6 +646,36 @@ impl EditorState {
         }
         taken
     }
+
+    /// Removes exactly `r` via [`InputStack::excise`], running its own
+    /// `tear_down` but leaving everything stacked above it untouched — for
+    /// a stale `Confirm` retirement, where an unrelated session landing
+    /// above it since has nothing to do with the question the confirm was
+    /// answering. `ConfirmLayer::tear_down` is empty (a confirm never fires
+    /// a callback), so this can never double-fire one. A no-op when `r` is
+    /// already stale.
+    pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
+        if let Some(mut layer) = self.input.excise(r) {
+            layer.tear_down(self, view);
+        }
+    }
+
+    /// Retires the topmost layer of type `L`, if one is open, via ordinary
+    /// (top-down) teardown — the `ref_of::<L>()` + `truncate_layers` shape
+    /// shared by every `close-*!` builtin and internal dismissal
+    /// (`show_drawer_list`'s/`completion_begin`'s own self-replace,
+    /// `close_menu`, `close_drawer`, `dismiss_completion`; `show_menu`'s own
+    /// self-replace takes the layer by value instead, since it must fire the
+    /// outgoing menu's callback and `MenuLayer::tear_down` stays empty by
+    /// design — see its own doc). Unlike [`Self::excise_layer`], this takes
+    /// any collateral above `L` with it — the right shape when what's above
+    /// `L` (if anything) genuinely depends on it, rather than being merely
+    /// stacked over it by coincidence.
+    pub(in crate::editor) fn retire<L: Layer>(&mut self, view: &EngineView) {
+        if let Some(r) = self.input.ref_of::<L>() {
+            self.truncate_layers(view, r);
+        }
+    }
 }
 
 impl Default for InputStack {
@@ -615,8 +687,10 @@ impl Default for InputStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::input_stack::PickerLayer;
     use crate::editor::input_stack::command::CommandLayer;
     use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmChoice, ConfirmLayer};
+    use crate::editor::input_stack::drawer::DrawerLayer;
     use crate::editor::input_stack::insert::InsertLayer;
     use crate::editor::input_stack::menu::MenuLayer;
     use steel::rvals::SteelVal;
@@ -643,7 +717,6 @@ mod tests {
     fn popup_model(text: &str) -> PopupLayer {
         PopupLayer {
             text: text.to_string(),
-            kind: hume_scripting::host::PopupKind::Scrollable,
             scroll: 0,
             syntax: None,
             layout: hume_ui::popup::PopupLayout::Cursor,
@@ -704,31 +777,52 @@ mod tests {
     }
 
     #[test]
-    fn is_stack_settled_true_on_a_fresh_stack() {
+    fn is_settled_for_true_on_a_fresh_stack() {
+        // `PickerLayer` is never pushed in this group — an arbitrary witness
+        // type, standing in for `is_settled_for`'s base case (nothing modal
+        // open at all), same contract the deleted `is_stack_settled` tested
+        // directly.
         let stack = InputStack::new();
-        assert!(stack.is_stack_settled());
+        assert!(stack.is_settled_for::<PickerLayer>());
     }
 
     #[test]
-    fn is_stack_settled_false_with_an_overlay_above_the_mode_layer() {
+    fn is_settled_for_false_with_an_unrelated_modal_overlay_above_the_mode_layer() {
         let mut stack = InputStack::new();
         stack.push(menu("m"));
-        assert!(!stack.is_stack_settled());
+        assert!(!stack.is_settled_for::<PickerLayer>());
     }
 
     #[test]
-    fn is_stack_settled_true_again_once_the_overlay_is_truncated() {
+    fn is_settled_for_true_again_once_the_overlay_is_truncated() {
         let mut stack = InputStack::new();
         let r = stack.push(menu("m"));
         stack.truncate(r);
-        assert!(stack.is_stack_settled());
+        assert!(stack.is_settled_for::<PickerLayer>());
     }
 
     #[test]
-    fn is_stack_settled_true_with_a_mode_layer_alone_on_top() {
+    fn is_settled_for_true_with_a_mode_layer_alone_on_top() {
         let mut stack = InputStack::new();
         stack.push(InsertLayer { sticky_popup: None });
-        assert!(stack.is_stack_settled());
+        assert!(stack.is_settled_for::<PickerLayer>());
+    }
+
+    #[test]
+    fn is_settled_for_tolerates_its_own_type_buried_under_a_non_modal_overlay() {
+        // The case `is_settled_for` exists for, beyond `is_stack_settled`'s
+        // old all-or-nothing contract: a prior `Menu` instance still counts
+        // as settled for `Menu` even with a later non-modal `Drawer` on top
+        // of it.
+        let mut stack = InputStack::new();
+        stack.push(menu("m"));
+        stack.push(DrawerLayer {
+            items: std::sync::Arc::new(vec!["d".to_string()]),
+            selected: 0,
+            scroll: 0,
+            callback: SteelVal::BoolV(false),
+        });
+        assert!(stack.is_settled_for::<MenuLayer>());
     }
 
     #[test]

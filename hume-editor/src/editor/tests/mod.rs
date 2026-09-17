@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::editor::EditorState;
 use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
+use crate::editor::pane_state::{PaneBufferState, PaneView};
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
 use hume_editing::selection::SelectionSet;
@@ -572,15 +572,12 @@ impl Editor {
                 panes: {
                     let mut jumps = super::jump_list::JumpLists::default();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
-                    let mut transient = SecondaryMap::new();
-                    transient.insert(pane_id, PaneTransient::default());
                     // No render entry: this pane is built via `Pane::new`
                     // directly (not `build_pane`), so it has no `ScopedHighlighter`/
                     // `SignSource` providers to feed — the write sides skip panes
                     // with no entry.
                     PaneView {
                         state: pane_buf_state,
-                        transient,
                         jumps,
                         render: SecondaryMap::new(),
                     }
@@ -639,12 +636,6 @@ impl Editor {
             self.state.mode(),
         );
         self.state.focus.set_for_test(target);
-        if !self.state.panes.transient.contains_key(target) {
-            self.state
-                .panes
-                .transient
-                .insert(target, PaneTransient::default());
-        }
         if !self.state.panes.jumps.contains_key(target) {
             self.state.panes.jumps.insert(
                 target,

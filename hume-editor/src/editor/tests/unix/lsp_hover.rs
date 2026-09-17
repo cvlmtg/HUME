@@ -242,11 +242,12 @@ fn popup_is_scrollable_and_closes_on_any_key_except_ctrl_u_d() {
         "sanity: docked popup shown"
     );
     assert!(
-        matches!(
-            ed.state.input.popup().map(|p| p.kind),
-            Some(hume_scripting::host::PopupKind::Scrollable)
-        ),
-        "hover must open a scrollable popup (`#:kind 'scrollable`), not the sticky mode-change-only one"
+        ed.state
+            .input
+            .ref_of::<crate::editor::input_stack::PopupLayer>()
+            .is_some(),
+        "hover must open a scrollable popup (`#:kind 'scrollable`, its own pushed layer), \
+         not the sticky mode-change-only one (the mode layer's own slot)"
     );
 
     // Ctrl-d/Ctrl-u scroll the popup instead of closing it.

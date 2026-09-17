@@ -26,7 +26,7 @@
 ### Plugins & scripting
 - `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
 - A code-action menu or references list whose response arrives after you've moved on — left Normal mode, or opened something else — is discarded instead of opening.
-- `close-menu!`, `close-drawer!`, `picker-close!` and `completion-dismiss!` now error when the widget they name isn't the active one; `close-popup!` stays idempotent.
+- `close-menu!` and `close-drawer!` now retire the widget wherever it sits on the stack, even buried under something else (a `close-drawer!` while browsing it mid-edit, for instance); `picker-close!`, `completion-dismiss!`, and `close-popup!` stay idempotent no-ops when nothing's open.
 - `on-mode-change` no longer fires for the mode transitions a `.` repeat replays internally.
 
 ### Fixes

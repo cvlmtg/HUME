@@ -260,13 +260,16 @@ pub(in crate::editor) fn close_buffer_and_notify(
     // for a fresh scratch, so `reload_buffer_from_disk` would bail on
     // `try_get` or on the scratch's missing path and the user's `r` would do
     // nothing. Retire the question rather than leave one that can't be
-    // answered; with `can_open_confirm`'s stack-is-`Base` guard, leaving it
+    // answered; with `can_open_confirm`'s no-other-overlay guard, leaving it
     // would also block every later prompt until some stray key happened to
-    // dismiss it.
+    // dismiss it. `excise_layer`, not `truncate_layers`: an unrelated
+    // session opened above this confirm since (a `Prompt`, a `Picker` —
+    // neither is a mode layer, so nothing else would have truncated it) has
+    // nothing to do with the buffer being closed and must survive.
     if state.input.confirm().is_some_and(|c| c.targets_buffer(id))
         && let Some(r) = state.input.ref_of::<ConfirmLayer>()
     {
-        state.truncate_layers(ev, r);
+        state.excise_layer(ev, r);
     }
     // Read before the slot is freed by `close_buffer` below.
     let open_announced = !state.buffers.get(id).open_hook_pending;

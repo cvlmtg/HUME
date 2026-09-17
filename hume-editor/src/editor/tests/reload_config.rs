@@ -560,14 +560,20 @@ fn reset_tears_down_an_open_prompt_session_completely() {
         "sanity: the minibuf must be open"
     );
     assert!(
-        ed.state.input.prompt_callback().is_some(),
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::PromptLayer>()
+            .is_some(),
         "sanity: the callback must be armed"
     );
 
     ed.reset_config_state();
 
     assert!(
-        ed.state.input.prompt_callback().is_none(),
+        ed.state
+            .input
+            .find::<crate::editor::input_stack::PromptLayer>()
+            .is_none(),
         "the callback (rooted in the outgoing engine) must be dropped"
     );
     assert_eq!(

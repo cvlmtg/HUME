@@ -53,7 +53,7 @@ impl Editor {
         use crate::editor::buffer::Buffer;
         use crate::editor::buffer::store::BufferStore;
         use crate::editor::pane_state::build_pane;
-        use crate::editor::pane_state::{PaneBufferState, PaneTransient, PaneView};
+        use crate::editor::pane_state::{PaneBufferState, PaneView};
         use crate::editor::settings::EditorSettings;
         use hume_editing::selection::{Selection, SelectionSet};
         use hume_editing::text::BufferText;
@@ -137,13 +137,10 @@ impl Editor {
                 panes: {
                     let mut jumps = super::jump_list::JumpLists::default();
                     jumps.insert(pane_id, super::jump_list::JumpList::new(jump_list_capacity));
-                    let mut transient = SecondaryMap::new();
-                    transient.insert(pane_id, PaneTransient::default());
                     let mut render = SecondaryMap::new();
                     render.insert(pane_id, render_handles);
                     PaneView {
                         state: pane_buf_state,
-                        transient,
                         jumps,
                         render,
                     }
@@ -413,7 +410,7 @@ impl Editor {
             // Compute terminal cursor position before the draw closure to avoid
             // split-borrow conflicts: pane borrows and rope borrows must end
             // before `&mut self.view` is captured by the closure.
-            let cursor_screen = if let Some(mb) = self.state.input.minibuf() {
+            let cursor_screen = if let Some(mb) = self.state.minibuf() {
                 // Minibuf active (Command / Search / Select): place the terminal
                 // cursor in the statusline at the minibuf edit position. Always a
                 // bar — HUME's prompt modes have no cursor-shape option of their
@@ -490,7 +487,7 @@ impl Editor {
             // The write is best-effort: a terminal that doesn't understand
             // DECSCUSR ignores it, and a genuine I/O failure here would
             // already have surfaced from `screen.present` above.
-            let shape = if self.state.input.minibuf().is_some() {
+            let shape = if self.state.minibuf().is_some() {
                 crate::editor::settings::CursorShape::Bar
             } else {
                 self.state.cursor_shape()
