@@ -10,7 +10,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// One key the user can press while a [`ConfirmLayer`] is open, and its
 /// display label (e.g. `"reload"` for key `'r'`).
@@ -88,6 +88,9 @@ impl ConfirmLayer {
 }
 
 impl Layer for ConfirmLayer {
+    fn handler(&self) -> LayerHandler {
+        confirm_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }

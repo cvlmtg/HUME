@@ -8,18 +8,11 @@
 //! `downcast_mut`/`downcast` (below `Layer`'s own definition) rather than
 //! matching a variant, so adding a layer never touches this file.
 //!
-//! Eleven of the twelve layers have already moved into files of their own
-//! (`base.rs`, `insert.rs`, `command.rs`, `search.rs`, `sift.rs`,
-//! `prompt.rs`, `popup.rs`, `menu.rs`, `drawer.rs`, `confirm.rs`,
-//! `completion.rs`). `Picker` alone still lives in *this* file for now —
-//! its own move (alongside `editor/picker.rs`) is the remaining step.
-//! `dispatch_at` (`mappings/mod.rs`) still calls its handler directly by
-//! name during that transition; `Layer` gains a `handler()` method (a
-//! `LayerHandler` fn pointer, replacing the chain) only once `Picker`'s
-//! `impl` is co-located with its own handler fn too — doing that before
-//! then would need the not-yet-moved handler widened to
-//! `pub(in crate::editor)`, reachable by any code in the crate rather than
-//! only through `dispatch_at`'s liveness-checked call.
+//! Every layer now has a file of its own — `Picker`'s move
+//! (`input_stack/picker/`) was the last one — so `Layer::handler` is a
+//! required method like `mode`/`tear_down`, and `dispatch_at`
+//! (`mappings/mod.rs`) is the one-line vtable call the whole split was
+//! building toward: `let f = input.handler(r); f(editor, r, ev);`.
 
 use std::any::Any;
 
@@ -28,9 +21,8 @@ use termina::event::{KeyEvent, MouseEvent};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::EditorState;
 use super::super::minibuf::MiniBuffer;
-use super::super::picker::PickerSession;
+use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
 use super::popup::PopupLayer;
 
@@ -56,16 +48,26 @@ pub(in crate::editor) enum InputEvent {
     Mouse(MouseEvent),
 }
 
+/// The function that handles one event at a layer — a fn pointer, not a
+/// `&self`/`&mut self` method on [`Layer`]: the handler needs `&mut Editor`,
+/// which transitively owns the very stack this layer sits in, so a receiver
+/// borrowing the layer itself would alias it. [`Layer::handler`] reads the
+/// pointer out of the layer's vtable and hands it back by value, ending
+/// that borrow before the caller invokes it.
+pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
+
 /// What every concrete layer implements — its state, what mode (if any) it
-/// presents, and what happens when it leaves the stack. `mode`/`tear_down`
-/// are required, no default: a layer that hasn't stated both hasn't stated
-/// its policy, mirroring the closed `enum` this trait replaces, whose every
-/// variant forced a match arm everywhere `kind()`/`tear_down` touched it.
-///
-/// A `handler` method (a `LayerHandler` fn pointer) joins this trait once a
-/// layer's own file exists — see this module's own doc for why it isn't
-/// here yet.
+/// presents, what happens when it leaves the stack, and what handles one
+/// event while it's the dispatch target. `handler`/`mode`/`tear_down` are
+/// required, no default: a layer that hasn't stated all three hasn't
+/// stated its policy, mirroring the closed `enum` this trait replaces,
+/// whose every variant forced a match arm everywhere `kind()`/`dispatch_at`/
+/// `tear_down` touched it.
 pub(in crate::editor) trait Layer: Any {
+    /// The function that handles one event while this layer is the dispatch
+    /// target — see [`LayerHandler`].
+    fn handler(&self) -> LayerHandler;
+
     /// `Some` naming the [`EditorMode`] this layer presents when it is a
     /// *mode* layer (`Base`, and the five editing modes); `None` for a
     /// transient overlay. Single source of both `InputStack::mode()` and
@@ -136,29 +138,6 @@ impl dyn Layer {
     }
 }
 
-// ── Layer types (temporary home — see this file's own doc) ─────────────────
-
-/// A fuzzy-picker layer. Wraps `Box<PickerSession>`: `PickerSession` alone is
-/// several times the size of every other layer's own state (its own
-/// fuzzy-match scoring buffers, picked items, `#:actions` table, …); the
-/// closed `enum` this replaces boxed it for the same reason
-/// (`clippy::large_enum_variant`), sizing every *other* variant to the
-/// picker's own footprint otherwise. Unlike the enum, `Box<dyn Layer>`
-/// already indirects every layer uniformly, so this inner box becomes
-/// redundant once `PickerSession` moves into its own file — dropped there,
-/// not here, to keep this step a pure mechanism change.
-pub(in crate::editor) struct PickerLayer(pub(in crate::editor) Box<PickerSession>);
-
-impl Layer for PickerLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {
-        // `PickerSession`'s own `Drop` kills a streaming source's child
-        // process — nothing further to do here.
-    }
-}
-
 // ── The stack ────────────────────────────────────────────────────────────
 
 /// The stack itself: `Base` at index 0, always, plus whatever overlay
@@ -216,6 +195,16 @@ impl InputStack {
             .get(r.depth)
             .filter(|(id, _)| *id == r.id)
             .is_some_and(|(_, layer)| layer.is::<L>())
+    }
+
+    /// `r`'s handler, or `None` if `r` is stale (see [`Self::is_live`]) —
+    /// what `dispatch_at` calls through to reach whichever layer `r` names,
+    /// without needing to know its concrete type.
+    pub(in crate::editor) fn handler(&self, r: LayerRef) -> Option<LayerHandler> {
+        self.layers
+            .get(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .map(|(_, layer)| layer.handler())
     }
 
     /// The topmost layer of concrete type `L`, if one is open — the ref a
@@ -397,23 +386,6 @@ impl InputStack {
             .iter_mut()
             .rev()
             .find_map(|(_, layer)| layer.minibuf_mut())
-    }
-
-    // ── Named lookup sugar ───────────────────────────────────────────────
-    //
-    // One-line wrappers over `find`/`find_mut` — kept by name (rather than
-    // rewriting every `input.picker()`/`input.confirm()`/… call site to
-    // `input.find::<PickerLayer>()`) so the ~350 existing call sites are
-    // untouched by this refactor. Each of these moves into its own layer's
-    // file alongside that layer's own `impl Layer` block — `picker()`/
-    // `picker_mut()` stay here until `Picker`'s own move.
-
-    pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {
-        self.find::<PickerLayer>().map(|l| l.0.as_ref())
-    }
-
-    pub(in crate::editor) fn picker_mut(&mut self) -> Option<&mut PickerSession> {
-        self.find_mut::<PickerLayer>().map(|l| l.0.as_mut())
     }
 
     /// The active popup, whichever of its two homes holds it: a

@@ -12,13 +12,16 @@ use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 pub(in crate::editor) struct SearchLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
 }
 
 impl Layer for SearchLayer {
+    fn handler(&self) -> LayerHandler {
+        search_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Search)
     }

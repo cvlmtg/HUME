@@ -5,7 +5,8 @@
 
 use super::*;
 
-use crate::editor::picker::{self, PickerSession, item};
+use crate::editor::input_stack::PickerSession;
+use crate::editor::input_stack::picker::{self, item};
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::spawn_line_source;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};

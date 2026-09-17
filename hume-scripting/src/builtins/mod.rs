@@ -182,7 +182,7 @@ macro_rules! builtins {
 // existing site needs no further change.
 //
 // picker!/live-picker! — two constructors over one Rust store
-// (hume-editor::editor::picker::PickerSession): picker! stays a plain
+// (hume-editor::editor::input_stack::picker::PickerSession): picker! stays a plain
 // items-plus-fuzzy-filter picker; live-picker! always drives an external
 // #:command builder and disables local fuzzy filtering entirely (see
 // PickerSession::rebuild_filtered's doc) — so "is this session live" is a
@@ -205,7 +205,7 @@ macro_rules! builtins {
 // moved, into `spawn-for`'s #f branch, so it fires solely when a query
 // settles on nothing to search rather than on every intermediate keystroke.
 // The swap itself lives in `PickerSession::attach_source`/`push`
-// (hume-editor::editor::picker): a live session's attached source is
+// (hume-editor::editor::input_stack::picker): a live session's attached source is
 // marked to replace `items` wholesale on its own first batch, instead of
 // this wrapper clearing ahead of time — see `AttachedSource::supersedes_rows`'s
 // doc for why that has to be scoped to the source, not the session, to stay

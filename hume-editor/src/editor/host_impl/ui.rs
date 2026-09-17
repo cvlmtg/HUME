@@ -3,7 +3,10 @@
 
 use super::EditorHostImpl;
 use crate::editor::Severity;
-use crate::editor::input_stack::{BaseLayer, DrawerLayer, MenuLayer, PopupLayer, PromptLayer};
+use crate::editor::input_stack::picker;
+use crate::editor::input_stack::{
+    BaseLayer, DrawerLayer, MenuLayer, PickerSession, PopupLayer, PromptLayer,
+};
 use hume_scripting::host::{
     LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };
@@ -248,10 +251,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: PickerOpts,
     ) -> Result<u64, String> {
-        let mut session = crate::editor::picker::PickerSession::new(on_select, opts);
+        let mut session = PickerSession::new(on_select, opts);
         let token = session.token();
-        session.seed(crate::editor::picker::picker_items(items));
-        crate::editor::picker::open_picker(self.state, self.view, session);
+        session.seed(picker::picker_items(items));
+        picker::open_picker(self.state, self.view, session);
         Ok(token)
     }
 
@@ -260,9 +263,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         on_select: steel::rvals::SteelVal,
         opts: LivePickerOpts,
     ) -> Result<u64, String> {
-        let session = crate::editor::picker::PickerSession::new_live(on_select, opts);
+        let session = PickerSession::new_live(on_select, opts);
         let token = session.token();
-        crate::editor::picker::open_picker(self.state, self.view, session);
+        picker::open_picker(self.state, self.view, session);
         Ok(token)
     }
 
@@ -272,10 +275,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<(String, steel::rvals::SteelVal)>,
         mode: PickerFeedMode,
     ) -> bool {
-        let Some(session) = crate::editor::picker::session_for_token(self.state, token) else {
+        let Some(session) = picker::session_for_token(self.state, token) else {
             return false;
         };
-        let items = crate::editor::picker::picker_items(items);
+        let items = picker::picker_items(items);
         match mode {
             PickerFeedMode::Append => session.push(items),
             PickerFeedMode::Replace => session.replace(items),
@@ -299,10 +302,10 @@ impl<'a> UiHost for EditorHostImpl<'a> {
 
     fn picker_close(&mut self, token: Option<u64>) {
         if let Some(token) = token
-            && crate::editor::picker::session_for_token(self.state, token).is_none()
+            && picker::session_for_token(self.state, token).is_none()
         {
             return;
         }
-        crate::editor::picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
+        picker::close_picker(self.state, steel::rvals::SteelVal::BoolV(false));
     }
 }

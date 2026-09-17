@@ -651,15 +651,15 @@ fn reset_clears_extend_and_does_not_fire_a_phantom_mode_change() {
 #[test]
 fn reset_tears_down_an_open_picker_session_without_firing_its_callback() {
     let mut ed = editor_from("-[a]>b\n");
-    let mut session = crate::editor::picker::PickerSession::new(
+    let mut session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::StringV("cb".into()),
         hume_scripting::host::PickerOpts::default(),
     );
-    session.push(vec![crate::editor::picker::PickerItem {
+    session.push(vec![crate::editor::input_stack::picker::PickerItem {
         display: "one".to_string(),
         payload: steel::rvals::SteelVal::StringV("one".into()),
     }]);
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
     assert!(
         ed.state.input.picker().is_some(),
         "sanity: the picker must be open"

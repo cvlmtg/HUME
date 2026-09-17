@@ -53,7 +53,6 @@ mod message_log;
 mod minibuf;
 mod mouse;
 mod pane_state;
-mod picker;
 mod picker_source;
 mod popup_syntax;
 mod register_ops;

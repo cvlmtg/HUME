@@ -12,7 +12,7 @@ use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
 use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::{Editor, EditorState, Severity};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// An open LSP completion session, pushed above `Insert` — an overlay, not a
 /// mode layer (`mode()` returns `None`; `InputStack::mode_layer()` skips it,
@@ -24,6 +24,9 @@ pub(in crate::editor) struct CompletionLayer {
 }
 
 impl Layer for CompletionLayer {
+    fn handler(&self) -> LayerHandler {
+        completion_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }

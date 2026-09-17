@@ -5,27 +5,18 @@
 //! over six axes for two call sites — not worth it unless the bodies
 //! converge later. Mirrors completion's `rank_scratch` reuse and
 //! reset-on-rerank patterns.
-//!
-//! Wired onto `EditorState.input` as a `Picker` layer; opened through the
-//! [`open_picker`] free fn below, via [`PickerSession::new`] (Steel's
-//! `picker!` builtin, `hume-scripting`'s `ui::picker`) or
-//! [`PickerSession::new_live`] (`live-picker!`, `ui::live_picker`) — and
-//! driven per-frame by `Editor::sync_picker_view` and per-key by
-//! `Editor::picker_input` (`editor/mappings/widgets.rs`).
 
 use std::cmp::Reverse;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use hume_engine::pipeline::EngineView;
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use steel::rvals::SteelVal;
 use termina::event::KeyEvent;
 
-use super::fuzzy::{FuzzyMatcher, FuzzyProfile};
-use super::input_stack::PickerLayer;
-use super::keymap::CanonicalKey;
+use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use super::super::super::keymap::CanonicalKey;
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -145,8 +136,8 @@ pub(in crate::editor) struct PickerSession {
     /// Which end of an over-long row the panel clips — `#:truncate`, see
     /// [`TruncateEnd`].
     truncate: TruncateEnd,
-    /// Identifies this session to Steel and to [`session_for_token`], the
-    /// shared guard every token-scoped picker mutation checks before
+    /// Identifies this session to Steel and to [`super::session_for_token`],
+    /// the shared guard every token-scoped picker mutation checks before
     /// reaching a `&mut PickerSession` at all.
     token: u64,
     /// Whether results are still arriving, and how — see [`Population`].
@@ -294,8 +285,8 @@ impl PickerSession {
 
     /// Appends `items` and reranks. No token guard here — every
     /// *token-scoped* caller (`picker-push!`, via `EditorHostImpl::picker_feed`)
-    /// has already gone through [`session_for_token`] before reaching this;
-    /// the other two callers, [`seed`](Self::seed) and
+    /// has already gone through [`super::session_for_token`] before reaching
+    /// this; the other two callers, [`seed`](Self::seed) and
     /// `Editor::drain_picker_source`, hold the session directly (at
     /// construction, and via the frame's own `&mut EditorState`, respectively)
     /// and so have no token to check in the first place.
@@ -323,8 +314,8 @@ impl PickerSession {
     }
 
     /// Replaces the item list wholesale and reranks — same
-    /// [`session_for_token`]-guarded and `pending`-clearing contract as
-    /// `push`, but always lands on row `0` (`rerank`, not `push`'s
+    /// [`super::session_for_token`]-guarded and `pending`-clearing contract
+    /// as `push`, but always lands on row `0` (`rerank`, not `push`'s
     /// keep-the-same-item `rerank_keeping_selection`): every index the
     /// pre-replace `filtered` held names a *different* item (or nothing)
     /// once `items` is cleared, so there is no selection worth trying to
@@ -365,7 +356,11 @@ impl PickerSession {
     /// `picker-source-spawn!` itself may legitimately spawn a second source
     /// to *add* rows to an already-seeded list, so it keeps `push`'s
     /// ordinary append behavior.
-    pub(super) fn attach_source(&mut self, source: SpawnedLineSource, ok_exit_codes: Vec<i32>) {
+    pub(in crate::editor) fn attach_source(
+        &mut self,
+        source: SpawnedLineSource,
+        ok_exit_codes: Vec<i32>,
+    ) {
         let supersedes_rows = self.mode.is_live();
         self.population = Population::Streaming(AttachedSource {
             source,
@@ -460,10 +455,10 @@ impl PickerSession {
     ///
     /// Returns the mode's `on_query_change` callback to fire (`None` for a
     /// non-live session) — the caller, not this method, queues it via
-    /// `queue_steel_call` (see `Editor::picker_input`), since firing a Steel
-    /// callback needs `&mut EditorState`, which a pure data store
-    /// deliberately has no access to. Bundling the mutation with the
-    /// callback it produces, rather than a caller calling a separate
+    /// `queue_steel_call` (see `picker_input`, `input_stack/picker/mod.rs`),
+    /// since firing a Steel callback needs `&mut EditorState`, which a pure
+    /// data store deliberately has no access to. Bundling the mutation with
+    /// the callback it produces, rather than a caller calling a separate
     /// `fire_query_change` afterward on its own, is what makes forgetting
     /// to fire it (or firing it after a mutator that shouldn't, like
     /// `set_query`) a type error instead of a silent desync between the
@@ -594,9 +589,9 @@ impl PickerSession {
     }
 
     /// The `#:actions` proc bound to `key`, if any — tried only after every
-    /// built-in picker key, so an entry for a key `Editor::picker_input`
-    /// already matches (movement, `Backspace`, `Enter`, `Escape`, query
-    /// input) can never be reached from here.
+    /// built-in picker key, so an entry for a key `picker_input`
+    /// (`input_stack/picker/mod.rs`) already matches (movement, `Backspace`,
+    /// `Enter`, `Escape`, query input) can never be reached from here.
     pub(in crate::editor) fn action_for(&self, key: KeyEvent) -> Option<&SteelVal> {
         let key = CanonicalKey::from(key);
         self.actions
@@ -694,93 +689,6 @@ impl PickerSession {
     }
 }
 
-/// The open picker's session, but only if its token is `token` — the shared
-/// guard for every token-scoped picker mutation (`picker-push!`,
-/// `picker-replace!`, `picker-source-spawn!`, `picker-source-stop!`, a
-/// scoped `picker-close!`). A mismatch, or no picker open at all, is
-/// expected-normal — a late callback racing a picker the user already
-/// closed or replaced — so callers treat `None` as a silent no-op, never an
-/// error; none of `PickerSession`'s own mutators re-check the token
-/// themselves once a caller has reached one through here.
-pub(in crate::editor) fn session_for_token(
-    state: &mut super::EditorState,
-    token: u64,
-) -> Option<&mut PickerSession> {
-    state
-        .input
-        .picker_mut()
-        .filter(|session| session.token() == token)
-}
-
-/// Single open chokepoint for the picker — `hume-scripting`'s `picker!`
-/// builtin (`ui::picker`) calls this via `EditorHostImpl`. Allowed from any
-/// mode and over any other open layer, key-triggered like every synchronous
-/// opener: dispatch order already proves the stack is wherever the key path
-/// left it, so there is nothing to gate. Landing above a menu or drawer
-/// simply suspends it — its own stray-input policy (`mappings/widgets.rs`)
-/// hands control back to it once the picker retires, same as `Insert`
-/// suspending one today. The one identity rule that *does* apply: replacing
-/// an already-open picker fires *its* `on_select` with `#f` before
-/// installing the new one, via [`close_picker`] — the exactly-once callback
-/// contract must never have a window where a session can be silently
-/// dropped without firing.
-///
-/// A popup is the one thing this must clear rather than suspend
-/// (`InputStack::clear_popups`): unlike a menu or drawer, which stay open
-/// underneath and simply stop seeing input, a `Popup` layer left in place
-/// would be sandwiched between whatever was below it and the picker landing
-/// on top — the one case `PopupLayer`'s "never buried" invariant (its
-/// `Layer` doc, `input_stack/stack.rs`) requires every ungated, unconditional
-/// pusher to close off itself.
-///
-/// Takes `state`/`view` rather than `&mut Editor` because its production
-/// caller, `EditorHostImpl::open_picker`, holds those as disjoint borrows,
-/// not a whole `Editor` — it can never reach an `&mut Editor`.
-pub(in crate::editor) fn open_picker(
-    state: &mut super::EditorState,
-    view: &EngineView,
-    session: PickerSession,
-) {
-    state.dismiss_completion(view);
-    close_picker(state, SteelVal::BoolV(false));
-    state.input.clear_popups();
-    state.input.push(PickerLayer(Box::new(session)));
-}
-
-/// Single close chokepoint for the picker: ends the session (if one is
-/// open) and fires exactly one callback with `payload` — `on_select` unless
-/// `callback` overrides it. Shared by `Esc`, `Enter` (with the selected
-/// payload), a bound `#:actions` key, `picker-close!`, and `open_picker`'s
-/// replace-on-open path — one chokepoint, not one copy per caller.
-///
-/// `Editor::reset_config_state` is a second, deliberate exit from this
-/// "fires exactly once" contract: its `input.truncate_to_base()` call drops
-/// a still-open picker layer directly (never calling this function) along
-/// with the `pending_work` queue this function would have pushed the
-/// callback onto — the outgoing engine that owns the callback is seconds
-/// from being dropped, so firing it would be observable to nothing.
-pub(in crate::editor) fn close_picker_with(
-    state: &mut super::EditorState,
-    callback: Option<SteelVal>,
-    payload: SteelVal,
-) {
-    let Some(r) = state.input.ref_of::<PickerLayer>() else {
-        return;
-    };
-    let mut removed = state.input.truncate(r);
-    let Some(session) = removed.pop().and_then(|l| l.downcast::<PickerLayer>()) else {
-        unreachable!("ref_of(PickerLayer) guarantees a PickerLayer at r");
-    };
-    let session = session.0;
-    let callback = callback.unwrap_or_else(|| session.on_select().clone());
-    state.queue_steel_call(callback, vec![payload]);
-}
-
-/// `close_picker_with`'s common case: fire `on_select` itself.
-pub(in crate::editor) fn close_picker(state: &mut super::EditorState, payload: SteelVal) {
-    close_picker_with(state, None, payload);
-}
-
 /// One `PickerItem` from a display string, its own payload — shared by this
 /// module's own tests and `tests/unix/picker_source.rs`, which spawns real
 /// child processes and so can't live in this (non-unix-gated) module.
@@ -791,8 +699,6 @@ pub(in crate::editor) fn item(display: &str) -> PickerItem {
         payload: SteelVal::StringV(display.into()),
     }
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests;

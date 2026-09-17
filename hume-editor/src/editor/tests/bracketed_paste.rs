@@ -5,9 +5,10 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::CompletionLayer;
+use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
+use crate::editor::input_stack::{PickerItem, PickerSession};
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
-use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_engine::types::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use pretty_assertions::assert_eq;

@@ -8,7 +8,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 pub(in crate::editor) struct PromptLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -16,6 +16,9 @@ pub(in crate::editor) struct PromptLayer {
 }
 
 impl Layer for PromptLayer {
+    fn handler(&self) -> LayerHandler {
+        prompt_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         // The engine has no `Prompt` variant, and today's `(prompt! …)`
         // session already runs as `Command` for every consumer outside this

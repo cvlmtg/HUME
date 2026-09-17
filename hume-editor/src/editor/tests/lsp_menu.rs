@@ -224,11 +224,11 @@ fn show_menu_drops_silently_when_a_picker_is_open() {
     use hume_scripting::host::{PickerOpts, UiHost};
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let session = crate::editor::picker::PickerSession::new(
+    let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
         PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
 
     let traces_before = ed
         .state

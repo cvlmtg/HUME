@@ -792,11 +792,11 @@ fn confirm_does_not_open_over_a_live_picker_but_defers_to_next_buffer_enter() {
     let bid = ed.focused_buffer_id();
     rewrite_externally(&tmp, "hello, externally changed!\n");
 
-    let session = crate::editor::picker::PickerSession::new(
+    let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
 
     let (_, warnings_before) = ed.state.message_log.totals();
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
@@ -840,11 +840,11 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     ed.check_buffer_disk_state(bid, DiskCheckTrigger::Ambient);
     assert!(ed.state.input.confirm().is_some(), "sanity: confirm open");
 
-    let session = crate::editor::picker::PickerSession::new(
+    let session = crate::editor::input_stack::picker::PickerSession::new(
         steel::rvals::SteelVal::BoolV(false),
         hume_scripting::host::PickerOpts::default(),
     );
-    crate::editor::picker::open_picker(&mut ed.state, &ed.view, session);
+    crate::editor::input_stack::picker::open_picker(&mut ed.state, &ed.view, session);
 
     assert!(ed.state.input.picker().is_some(), "the picker opened");
     assert!(

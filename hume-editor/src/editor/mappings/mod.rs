@@ -1,18 +1,11 @@
 use termina::event::KeyEvent;
 
 use super::Editor;
-use super::input_stack::{
-    BaseLayer, CommandLayer, CompletionLayer, ConfirmLayer, DrawerLayer, InputEvent, InsertLayer,
-    LayerRef, MenuLayer, PickerLayer, PopupLayer, PromptLayer, SearchLayer, SiftLayer,
-};
-use super::input_stack::{
-    base, command, completion, confirm, drawer, insert, menu, popup, prompt, search, sift,
-};
+use super::input_stack::{InputEvent, LayerRef};
 
 mod bracketed_paste;
 mod execute;
 mod lazy;
-mod widgets;
 
 impl Editor {
     // ── Input dispatch ────────────────────────────────────────────────────────
@@ -78,41 +71,21 @@ impl Editor {
         self.dispatch_at(top, ev);
     }
 
-    /// Routes to whichever handler owns `r`'s concrete type. A chain of
-    /// `is::<L>()` checks, not a match on a closed `enum`'s discriminant —
-    /// see `input_stack/stack.rs`'s own doc for why: `Picker` (still in
-    /// `mappings::widgets`, called as an `Editor` method below) hasn't moved
-    /// yet, so there's no `handler()` fn pointer to call uniformly. This
-    /// chain collapses to one once it does.
+    /// Routes to whichever handler owns `r`'s concrete type — a vtable
+    /// read (`Layer::handler`), ending the borrow on `self.state.input`
+    /// before the handler itself runs, since every handler needs the whole
+    /// `&mut Editor` (which transitively owns the stack `r` names a layer
+    /// on). Every layer states its own policy for the event it's handed
+    /// (handle / fall through / discard) — this dispatcher has no
+    /// per-layer knowledge at all, which is the point: adding a layer
+    /// never touches this function.
     fn dispatch_at(&mut self, r: LayerRef, ev: InputEvent) {
-        let input = &self.state.input;
-        if input.is::<BaseLayer>(r) {
-            base::base_input(self, r, ev)
-        } else if input.is::<InsertLayer>(r) {
-            insert::insert_input(self, r, ev)
-        } else if input.is::<CommandLayer>(r) {
-            command::command_input(self, r, ev)
-        } else if input.is::<SearchLayer>(r) {
-            search::search_input(self, r, ev)
-        } else if input.is::<SiftLayer>(r) {
-            sift::sift_input(self, r, ev)
-        } else if input.is::<PromptLayer>(r) {
-            prompt::prompt_input(self, r, ev)
-        } else if input.is::<DrawerLayer>(r) {
-            drawer::drawer_input(self, r, ev)
-        } else if input.is::<MenuLayer>(r) {
-            menu::menu_input(self, r, ev)
-        } else if input.is::<PickerLayer>(r) {
-            self.picker_input(r, ev)
-        } else if input.is::<ConfirmLayer>(r) {
-            confirm::confirm_input(self, r, ev)
-        } else if input.is::<CompletionLayer>(r) {
-            completion::completion_input(self, r, ev)
-        } else if input.is::<PopupLayer>(r) {
-            popup::popup_input(self, r, ev)
-        } else {
-            unreachable!("dispatch target is live: top(), or below(r) under the index invariant")
-        }
+        let f = self
+            .state
+            .input
+            .handler(r)
+            .expect("dispatch target is live: top(), or below(r) under the index invariant");
+        f(self, r, ev);
     }
 
     /// Hand `ev` to the layer directly below `r`. The caller never inspects

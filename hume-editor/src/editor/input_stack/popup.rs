@@ -11,7 +11,7 @@ use hume_engine::theme::ui_scopes;
 use hume_engine::types::{EditorMode, Scope};
 
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-popup! text)`'s raw, unwrapped content — held on `EditorState`
 /// until the next frame's `Editor::sync_popup_view`/`sync_popup_band_view`
@@ -82,6 +82,9 @@ impl PopupLayer {
 }
 
 impl Layer for PopupLayer {
+    fn handler(&self) -> LayerHandler {
+        popup_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }

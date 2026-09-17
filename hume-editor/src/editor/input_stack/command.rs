@@ -9,7 +9,7 @@ use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::registry::TypedBody;
 use super::super::{Editor, EditorState, commands};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -17,6 +17,9 @@ pub(in crate::editor) struct CommandLayer {
 }
 
 impl Layer for CommandLayer {
+    fn handler(&self) -> LayerHandler {
+        command_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
     }

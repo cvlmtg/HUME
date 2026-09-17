@@ -7,7 +7,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
@@ -27,6 +27,9 @@ pub(in crate::editor) struct MenuLayer {
 }
 
 impl Layer for MenuLayer {
+    fn handler(&self) -> LayerHandler {
+        menu_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }

@@ -8,7 +8,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::Editor;
 use super::super::EditorState;
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// `(show-drawer-list! items on-select)`'s raw state, including the
 /// not-yet-exhausted Steel callback — cleared by `Esc` or `close-drawer!`,
@@ -27,6 +27,9 @@ pub(in crate::editor) struct DrawerLayer {
 }
 
 impl Layer for DrawerLayer {
+    fn handler(&self) -> LayerHandler {
+        drawer_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         None
     }

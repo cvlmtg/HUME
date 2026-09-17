@@ -30,13 +30,16 @@ use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
 }
 
 impl Layer for InsertLayer {
+    fn handler(&self) -> LayerHandler {
+        insert_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }

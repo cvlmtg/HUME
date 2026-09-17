@@ -7,13 +7,16 @@ use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::{Editor, EditorState, commands};
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 pub(in crate::editor) struct SiftLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
 }
 
 impl Layer for SiftLayer {
+    fn handler(&self) -> LayerHandler {
+        sift_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Sift)
     }

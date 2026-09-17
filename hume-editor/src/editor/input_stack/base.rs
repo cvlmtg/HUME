@@ -15,7 +15,7 @@ use super::super::register_ops::RegisterPrefix;
 use super::super::replay::MacroPending;
 use super::super::{Editor, EditorState};
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, Layer, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
 /// The always-present layer at index 0. Never removed. Carries `extend`
 /// (Extend is a flag on `Base`, never its own layer) and `sticky_popup` — the
@@ -27,6 +27,9 @@ pub(in crate::editor) struct BaseLayer {
 }
 
 impl Layer for BaseLayer {
+    fn handler(&self) -> LayerHandler {
+        base_input
+    }
     fn mode(&self) -> Option<EditorMode> {
         Some(if self.extend {
             EditorMode::Extend

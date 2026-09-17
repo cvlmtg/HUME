@@ -15,8 +15,9 @@ use hume_platform::process::line_source::SpawnedLineSource;
 use hume_scripting::host::PickerSourceOpts;
 use steel::rvals::SteelVal;
 
+use super::input_stack::PickerItem;
+use super::input_stack::picker::session_for_token;
 use super::message_log::Severity;
-use super::picker::{PickerItem, session_for_token};
 use super::{Editor, EditorState};
 
 /// `EditorHostImpl::picker_source_spawn`'s body: attaches a streaming
