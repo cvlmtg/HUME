@@ -10,7 +10,6 @@
 - [ ] Wire remaining bottom-drawer clients — `:ls`, `:messages`, notifications, command/search history pagers onto the existing bottom-drawer primitive.
 - [ ] Wrap indicator — configurable char prepended to continuation display lines in soft-wrap mode.
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
-- [ ] `:e <new-path>` touch-or-open — create empty buffer bound to path when file doesn't exist; first `:w` writes it.
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ConfirmLayer`, `hume-editor/src/editor/input_stack/confirm.rs`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
 - [ ] File-size statusline element + cached size metadata.
