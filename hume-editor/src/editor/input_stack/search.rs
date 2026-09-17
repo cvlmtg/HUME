@@ -12,7 +12,7 @@ use super::super::minibuf::history::{HistoryDir, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 use hume_editing::selection::SelectionSet;
 
 pub(in crate::editor) struct SearchLayer {
@@ -50,7 +50,7 @@ impl Layer for SearchLayer {
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.pre_sels = Some(commands::current_selections(state, view).clone());
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
         if let Some(sels) = self.pre_sels.take() {
             let bid = view.panes[self.pane].buffer_id;
             state.panes.state[self.pane][bid].set_selections(sels);
@@ -99,7 +99,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             let pre_sels = ed
                 .state
                 .input
-                .find_mut::<SearchLayer>()
+                .at_mut::<SearchLayer>(r)
                 .and_then(|s| s.pre_sels.take());
             if let Some(sels) = pre_sels {
                 let bid = ed.focused_buffer_id();
@@ -115,8 +115,8 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::EmptiedByBackspace => {
             // First Backspace cleared the last character — restore position but
             // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
-            restore_search_snapshot(ed);
-            let Some(search) = ed.state.input.find::<SearchLayer>() else {
+            restore_search_snapshot(ed, r);
+            let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
                 return;
             };
             let bid = ed.view.panes[search.pane].buffer_id;
@@ -138,10 +138,10 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             {
                 ed.state.history.get_mut(k).demote_to_scratch();
             }
-            update_live_search(ed);
+            update_live_search(ed, r);
         }
-        MiniBufferEvent::HistoryPrev => recall_search_history(ed, HistoryDir::Prev),
-        MiniBufferEvent::HistoryNext => recall_search_history(ed, HistoryDir::Next),
+        MiniBufferEvent::HistoryPrev => recall_search_history(ed, r, HistoryDir::Prev),
+        MiniBufferEvent::HistoryNext => recall_search_history(ed, r, HistoryDir::Next),
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
         | MiniBufferEvent::CompleteRequested { .. } => {}
@@ -151,7 +151,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// Recalls the previous/next entry from whichever ring `dir` names — shared
 /// by the `HistoryPrev`/`HistoryNext` arms above, which differ only in
 /// `dir` — then refreshes the live preview against the recalled pattern.
-fn recall_search_history(ed: &mut Editor, dir: HistoryDir) {
+fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
     let Some(prompt) = ed.state.input.minibuf().map(|m| m.prompt.clone()) else {
         return;
     };
@@ -159,7 +159,7 @@ fn recall_search_history(ed: &mut Editor, dir: HistoryDir) {
         return;
     };
     minibuf::recall_history(ed, kind, dir);
-    update_live_search(ed);
+    update_live_search(ed, r);
 }
 
 /// Recompile the regex from the current mini-buffer input and jump to the
@@ -170,7 +170,7 @@ fn recall_search_history(ed: &mut Editor, dir: HistoryDir) {
 /// `SearchLayer` — a live preview while typing has always followed focus,
 /// unlike cancel-restore/clear below, which must target the session's own
 /// originating pane instead (see `SearchLayer::pane`'s doc).
-fn update_live_search(ed: &mut Editor) {
+fn update_live_search(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
@@ -184,7 +184,7 @@ fn update_live_search(ed: &mut Editor) {
     };
 
     let direction = ed.state.search.direction;
-    let Some(search) = ed.state.input.find::<SearchLayer>() else {
+    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
     };
     let extend = search.extend;
@@ -216,7 +216,7 @@ fn update_live_search(ed: &mut Editor) {
         }
         None => {
             // No match — restore position to pre-search.
-            restore_search_snapshot(ed);
+            restore_search_snapshot(ed, r);
         }
     }
 
@@ -232,8 +232,8 @@ fn update_live_search(ed: &mut Editor) {
 /// Restore selections from the search-mode snapshot without consuming it —
 /// always targets the session's own originating pane (`SearchLayer::pane`),
 /// not whatever's currently focused.
-fn restore_search_snapshot(ed: &mut Editor) {
-    let Some(search) = ed.state.input.find::<SearchLayer>() else {
+fn restore_search_snapshot(ed: &mut Editor, r: LayerRef) {
+    let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
         return;
     };
     let Some(sels) = search.pre_sels.clone() else {

@@ -322,6 +322,54 @@ fn close_drawer_closes_a_drawer_buried_under_insert() {
     );
 }
 
+/// A code-action menu opened above an open references drawer (explicitly
+/// supported — `DrawerLayer::is_modal` returning `false` is exactly what
+/// lets a menu open while the user browses one) is collateral, not the
+/// named target, when `close-drawer!` closes the drawer beneath it.
+///
+/// Fail oracle: before `Layer::tear_down` gained its `Removal` reason,
+/// `MenuLayer::tear_down` was unconditionally silent — the menu's callback
+/// was dropped forever, neither an index nor `#f`. `ed.state.status_msg`
+/// would stay `None` below.
+#[test]
+fn close_drawer_fires_the_menu_s_callback_when_a_menu_sits_above_it() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go-drawer" "" (lambda ()
+             (show-drawer-list! (list "one.rs:1") (lambda (idx) (log! 'info (to-string idx))))))
+           (define-typed-command! "go-menu" "" (lambda ()
+             (show-menu! (list "Extract function") (lambda (idx) (log! 'info (to-string idx))))))"#,
+    );
+    type_cmd(&mut ed, ":go-drawer");
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+    type_cmd(&mut ed, ":go-menu");
+    assert!(
+        ed.state.input.menu().is_some(),
+        "sanity: menu open above the drawer"
+    );
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.close_drawer().unwrap();
+    ed.settle();
+
+    assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
+    assert!(
+        ed.state.input.menu().is_none(),
+        "the menu goes with it — collateral"
+    );
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "#false",
+        "the menu's callback must fire with #f, not be dropped silently"
+    );
+}
+
 // ── Esc: closes + calls back with #f ─────────────────────────────────────────
 
 #[test]

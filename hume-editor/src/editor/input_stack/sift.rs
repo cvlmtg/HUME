@@ -7,7 +7,7 @@ use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::{Editor, EditorState, commands};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 use hume_editing::selection::SelectionSet;
 
 pub(in crate::editor) struct SiftLayer {
@@ -33,7 +33,7 @@ impl Layer for SiftLayer {
     fn setup(&mut self, state: &mut EditorState, view: &EngineView) {
         self.pre_sels = Some(commands::current_selections(state, view).clone());
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
         if let Some(sels) = self.pre_sels.take() {
             let bid = view.panes[self.pane].buffer_id;
             state.panes.state[self.pane][bid].set_selections(sels);
@@ -70,7 +70,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // `Confirm` arm clears its own stash before truncating, so
             // teardown's `Sift` arm (which would otherwise restore it)
             // finds nothing to do.
-            if let Some(sift) = ed.state.input.find_mut::<SiftLayer>() {
+            if let Some(sift) = ed.state.input.at_mut::<SiftLayer>(r) {
                 sift.pre_sels = None;
             }
             // Do NOT write to the search register or clear search state —
@@ -81,9 +81,9 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         }
         MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
             // Restore original selections when pattern is fully erased.
-            restore_sift_snapshot(ed);
+            restore_sift_snapshot(ed, r);
         }
-        MiniBufferEvent::Edited => update_live_sift(ed),
+        MiniBufferEvent::Edited => update_live_sift(ed, r),
         // Up/Down are reserved for minibuffer history — no-op in sift-within.
         MiniBufferEvent::CursorMoved
         | MiniBufferEvent::Ignored
@@ -95,7 +95,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 
 /// Recompile the regex and replace selections with matches within the
 /// original selections. Called on every keystroke in Sift mode.
-fn update_live_sift(ed: &mut Editor) {
+fn update_live_sift(ed: &mut Editor, r: LayerRef) {
     let pattern = match ed.state.input.minibuf() {
         Some(mb) if !mb.input.is_empty() => mb.input.clone(),
         _ => return,
@@ -103,11 +103,11 @@ fn update_live_sift(ed: &mut Editor) {
 
     let Some(regex) = compile_search_regex(&pattern) else {
         // Invalid regex in progress — restore originals.
-        restore_sift_snapshot(ed);
+        restore_sift_snapshot(ed, r);
         return;
     };
 
-    let Some(sift) = ed.state.input.find::<SiftLayer>() else {
+    let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
     let result = sift
@@ -117,7 +117,7 @@ fn update_live_sift(ed: &mut Editor) {
 
     match result {
         Some(new_sels) => ed.set_current_selections(new_sels),
-        None => restore_sift_snapshot(ed),
+        None => restore_sift_snapshot(ed, r),
     }
 }
 
@@ -125,8 +125,8 @@ fn update_live_sift(ed: &mut Editor) {
 
 /// Restore selections from the sift-mode snapshot without consuming it —
 /// always targets the session's own originating pane (`SiftLayer::pane`).
-fn restore_sift_snapshot(ed: &mut Editor) {
-    let Some(sift) = ed.state.input.find::<SiftLayer>() else {
+fn restore_sift_snapshot(ed: &mut Editor, r: LayerRef) {
+    let Some(sift) = ed.state.input.at::<SiftLayer>(r) else {
         return;
     };
     let Some(sels) = sift.pre_sels.clone() else {

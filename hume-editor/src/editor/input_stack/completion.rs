@@ -13,7 +13,7 @@ use super::super::keymap::WalkResult;
 use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
 
 /// An open LSP completion session, pushed above `Insert` — an overlay, not a
 /// mode layer (`mode()` returns `None`; `InputStack::mode_layer()` skips it,
@@ -42,7 +42,7 @@ impl Layer for CompletionLayer {
     fn popup_eviction(&self) -> PopupEviction {
         PopupEviction::LayerOnly
     }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.views.completion_menu.set(None);
     }
 }
@@ -122,11 +122,16 @@ impl super::stack::InputStack {
         self.find::<CompletionLayer>().and_then(|l| l.ui.as_ref())
     }
 
-    /// The `Completion` layer's UI slot itself (not its content) — same
-    /// shape as [`Self::minibuf_completion_mut`], for
-    /// [`move_completion_selection`]'s `get_or_insert`.
-    pub(in crate::editor) fn completion_ui_mut(&mut self) -> Option<&mut Option<CompletionMenuUi>> {
-        self.find_mut::<CompletionLayer>().map(|l| &mut l.ui)
+    /// The `Completion` layer's UI slot itself (not its content) at `r` —
+    /// same shape as [`Self::minibuf_completion_mut`], for
+    /// [`move_completion_selection`]'s `get_or_insert`. Address-based, not
+    /// `find_mut`-based: both callers already know `r` from their own
+    /// dispatch.
+    pub(in crate::editor) fn completion_ui_mut(
+        &mut self,
+        r: LayerRef,
+    ) -> Option<&mut Option<CompletionMenuUi>> {
+        self.at_mut::<CompletionLayer>(r).map(|l| &mut l.ui)
     }
 }
 
@@ -167,20 +172,20 @@ pub(in crate::editor) fn completion_input(ed: &mut Editor, r: LayerRef, ev: Inpu
     let non_empty = ed
         .state
         .input
-        .completion()
-        .is_some_and(|session| !session.is_empty());
+        .at::<CompletionLayer>(r)
+        .is_some_and(|l| !l.session.is_empty());
     if non_empty {
         match key.code {
             KeyCode::Tab | KeyCode::Down => {
-                move_completion_selection(ed, true);
+                move_completion_selection(ed, r, true);
                 return;
             }
             KeyCode::BackTab | KeyCode::Up => {
-                move_completion_selection(ed, false);
+                move_completion_selection(ed, r, false);
                 return;
             }
             KeyCode::Enter => {
-                accept_completion_selection(ed);
+                accept_completion_selection(ed, r);
                 return;
             }
             KeyCode::Escape => {
@@ -197,8 +202,9 @@ pub(in crate::editor) fn completion_input(ed: &mut Editor, r: LayerRef, ev: Inpu
                 let anchor = ed
                     .state
                     .input
-                    .completion()
+                    .at::<CompletionLayer>(r)
                     .expect("non_empty implies a session")
+                    .session
                     .anchor();
                 if head <= anchor {
                     ed.state.dismiss_completion(&ed.view);
@@ -227,20 +233,20 @@ pub(in crate::editor) fn completion_input(ed: &mut Editor, r: LayerRef, ev: Inpu
         ed.state.dismiss_completion(&ed.view);
         return;
     }
-    refilter_lsp_completion_after_edit(ed, key);
+    refilter_lsp_completion_after_edit(ed, r, key);
 }
 
 /// Moves the completion menu's selection by one row. The popup scrolls
 /// to keep the selection visible, so the bound is the full ranked
 /// candidate list, not just the visible window.
-fn move_completion_selection(ed: &mut Editor, forward: bool) {
-    let Some(session) = ed.state.input.completion() else {
+fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
+    let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
     // `completion_input`'s empty-session guard already returned before
     // dispatching here, so `n` is always positive.
-    let n = session.len();
-    let Some(ui_slot) = ed.state.input.completion_ui_mut() else {
+    let n = layer.session.len();
+    let Some(ui_slot) = ed.state.input.completion_ui_mut(r) else {
         return;
     };
     let ui = ui_slot.get_or_insert(CompletionMenuUi { selected: 0 });
@@ -255,8 +261,13 @@ fn move_completion_selection(ed: &mut Editor, forward: bool) {
 /// gen-checked edit path as `completion-accept!` — the session ends
 /// either way (success or failure), matching `EditorHostImpl`'s own
 /// `completion_accept`.
-fn accept_completion_selection(ed: &mut Editor) {
-    let selected = ed.state.input.completion_ui().map_or(0, |ui| ui.selected);
+fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
+    let selected = ed
+        .state
+        .input
+        .at::<CompletionLayer>(r)
+        .and_then(|l| l.ui.as_ref())
+        .map_or(0, |ui| ui.selected);
     let Some(session) = ed.state.take_completion_session(&ed.view) else {
         return;
     };
@@ -268,7 +279,7 @@ fn accept_completion_selection(ed: &mut Editor) {
 /// Re-ranks the open completion session against the token text between
 /// its anchor and the current cursor — called after a printable char or
 /// Backspace has already landed in the buffer.
-fn refilter_lsp_completion_after_edit(ed: &mut Editor, key: KeyEvent) {
+fn refilter_lsp_completion_after_edit(ed: &mut Editor, r: LayerRef, key: KeyEvent) {
     let is_char =
         matches!(key.code, KeyCode::Char(_)) && !key.modifiers.contains(Modifiers::CONTROL);
     if !is_char && key.code != KeyCode::Backspace {
@@ -276,11 +287,11 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, key: KeyEvent) {
     }
     // Phase 1 — shared reads only: peek the anchor/bid without taking
     // the session, so no put-back is ever needed.
-    let Some(session) = ed.state.input.completion() else {
+    let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    let anchor = session.anchor();
-    let bid = session.bid();
+    let anchor = layer.session.anchor();
+    let bid = layer.session.bid();
     let head = ed.current_selections().primary().head();
     // Backspace crossing the anchor already dismissed the session
     // above, before the edit ran. But `head` can still land before
@@ -305,11 +316,11 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, key: KeyEvent) {
     // the session lives inside `state.input`, so a `&mut` on it and a
     // second borrow of `state` as a whole cannot coexist.
     let text_gen = ed.state.buffers.get(bid).text_gen;
-    let Some(session) = ed.state.input.completion_mut() else {
+    let Some(layer) = ed.state.input.at_mut::<CompletionLayer>(r) else {
         return; // can't happen (checked above), but never assume it
     };
-    session.update_filter(text_gen, text.clone());
-    let incomplete = session.incomplete();
+    layer.session.update_filter(text_gen, text.clone());
+    let incomplete = layer.session.incomplete();
 
     // Phase 3 — borrows from phase 2 have ended; back to whole-`ed`.
     // `on-completion-refilter` fires only while the server said
@@ -321,7 +332,7 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, key: KeyEvent) {
             filter_text: text,
         });
     }
-    if let Some(slot) = ed.state.input.completion_ui_mut() {
+    if let Some(slot) = ed.state.input.completion_ui_mut(r) {
         *slot = None;
     }
 }

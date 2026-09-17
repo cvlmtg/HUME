@@ -9,7 +9,7 @@ use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::registry::TypedBody;
 use super::super::{Editor, EditorState, commands};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -23,7 +23,7 @@ impl Layer for CommandLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
     }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.history.begin_session_all();
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
@@ -74,21 +74,24 @@ impl super::stack::InputStack {
     }
 
     /// The `Command` layer's completion slot itself (not its content) —
-    /// `Some(&mut Option<..>)` whenever a `Command` layer is open, letting a
-    /// caller assign a fresh session or clear one (`*slot = None`), as
-    /// opposed to [`Self::minibuf_completion`]'s flattened read.
+    /// `Some(&mut Option<..>)` when `r` names the (live) `Command` layer,
+    /// letting a caller assign a fresh session or clear one (`*slot =
+    /// None`), as opposed to [`Self::minibuf_completion`]'s flattened read.
+    /// Address-based, not `find_mut`-based: both callers already know `r`
+    /// from their own dispatch.
     pub(in crate::editor) fn minibuf_completion_mut(
         &mut self,
+        r: LayerRef,
     ) -> Option<&mut Option<MinibufCompletionState>> {
-        self.find_mut::<CommandLayer>().map(|l| &mut l.completion)
+        self.at_mut::<CommandLayer>(r).map(|l| &mut l.completion)
     }
 
-    /// Clears the `Command` layer's completion slot, if one is open —
-    /// [`Self::minibuf_completion_mut`]'s common case, shared by every
-    /// event that dismisses the popup without closing the minibuffer
+    /// Clears the `Command` layer's completion slot at `r`, if it's still
+    /// live — [`Self::minibuf_completion_mut`]'s common case, shared by
+    /// every event that dismisses the popup without closing the minibuffer
     /// itself (an edit, a cursor move, a history recall).
-    pub(in crate::editor) fn clear_minibuf_completion(&mut self) {
-        if let Some(l) = self.find_mut::<CommandLayer>() {
+    pub(in crate::editor) fn clear_minibuf_completion(&mut self, r: LayerRef) {
+        if let Some(l) = self.at_mut::<CommandLayer>(r) {
             l.completion = None;
         }
     }
@@ -116,12 +119,13 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             if ed
                 .state
                 .input
-                .minibuf_completion()
+                .at::<CommandLayer>(r)
+                .and_then(|l| l.completion.as_ref())
                 .and_then(|s| s.candidates.get(s.selected))
                 .is_some_and(|c| c.replacement.ends_with('/'))
             {
-                ed.state.input.clear_minibuf_completion();
-                complete_minibuf(ed, false);
+                ed.state.input.clear_minibuf_completion(r);
+                complete_minibuf(ed, r, false);
                 return;
             }
             // Record into history and extract the input before
@@ -155,21 +159,21 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::EmptiedByBackspace
         | MiniBufferEvent::Edited
         | MiniBufferEvent::CursorMoved => {
-            ed.state.input.clear_minibuf_completion();
+            ed.state.input.clear_minibuf_completion(r);
             ed.state
                 .history
                 .get_mut(HistoryKind::Command)
                 .demote_to_scratch();
         }
         MiniBufferEvent::CompleteRequested { reverse } => {
-            complete_minibuf(ed, reverse);
+            complete_minibuf(ed, r, reverse);
         }
         MiniBufferEvent::HistoryPrev => {
-            ed.state.input.clear_minibuf_completion();
+            ed.state.input.clear_minibuf_completion(r);
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
         }
         MiniBufferEvent::HistoryNext => {
-            ed.state.input.clear_minibuf_completion();
+            ed.state.input.clear_minibuf_completion(r);
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Next);
         }
         MiniBufferEvent::Ignored => {}
@@ -185,9 +189,9 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 ///
 /// On subsequent Tab presses (state already Some): rotate `selected`
 /// forward (or backward when `reverse`) and apply the new candidate.
-fn complete_minibuf(ed: &mut Editor, reverse: bool) {
+fn complete_minibuf(ed: &mut Editor, r: LayerRef, reverse: bool) {
     // If completion is already open, cycle to the next candidate.
-    if let Some(slot) = ed.state.input.minibuf_completion_mut()
+    if let Some(slot) = ed.state.input.minibuf_completion_mut(r)
         && let Some(completion) = slot.as_mut()
     {
         let n = completion.candidates.len();
@@ -306,7 +310,7 @@ fn complete_minibuf(ed: &mut Editor, reverse: bool) {
     let rows = hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
         candidates.iter().map(|c| c.display.clone()).collect(),
     ));
-    if let Some(slot) = ed.state.input.minibuf_completion_mut() {
+    if let Some(slot) = ed.state.input.minibuf_completion_mut(r) {
         *slot = Some(MinibufCompletionState {
             candidates,
             selected: 0,

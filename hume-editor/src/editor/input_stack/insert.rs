@@ -30,7 +30,7 @@ use super::super::registry::MappableCommand;
 use super::super::replay::InsertInput;
 use super::super::{Editor, EditorState, commands, doc_ops};
 use super::popup::PopupLayer;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct InsertLayer {
     pub(in crate::editor) sticky_popup: Option<PopupLayer>,
@@ -43,7 +43,7 @@ impl Layer for InsertLayer {
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Insert)
     }
-    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, view: &EngineView, _why: Removal) {
         commands::tear_down_insert(state, view);
     }
     fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {

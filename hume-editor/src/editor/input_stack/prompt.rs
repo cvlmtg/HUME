@@ -8,7 +8,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 pub(in crate::editor) struct PromptLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -25,17 +25,23 @@ impl Layer for PromptLayer {
         // crate.
         Some(EditorMode::Command)
     }
-    /// Fires the callback with `#f` — unlike every other minibuf-mode
-    /// layer's `tear_down`, which never fires a Steel callback (the file
-    /// header's "exactly one call fires" contract otherwise has no arm to
-    /// rely on when this layer is removed incidentally: buried under a
-    /// `Confirm`/`Picker` that a `close-*!`/Rust-internal retirement then
-    /// truncates through, or replaced outright by `push_mode_layer`). Same
-    /// shape as `PickerLayer::tear_down` — see its own doc. The explicit
-    /// accept/cancel path (`finish_steel_prompt`) never runs this: it takes
-    /// the layer *by value* via `EditorState::take_layer`, firing its own
+    /// Fires the callback with `#f` unconditionally, ignoring `why` —
+    /// unlike every other minibuf-mode layer's `tear_down`, which never
+    /// fires a Steel callback (the file header's "exactly one call fires"
+    /// contract otherwise has no arm to rely on when this layer is removed
+    /// incidentally: buried under a `Confirm`/`Picker` that a
+    /// `close-*!`/Rust-internal retirement then truncates through). Unlike
+    /// `PickerLayer::tear_down` (see its own doc), this one *is* also
+    /// reached with `why == Removal::Explicit` — `push_mode_layer` replaces
+    /// the current mode layer outright when a `:`/`/`/sift/`i` key (or the
+    /// Steel/hook/timer path behind any of those commands) lands while a
+    /// `prompt!` session is open, naming this layer as `truncate_layers`'s
+    /// own target. `#f` is the right answer either way, so `why` doesn't
+    /// change what fires, only how it was reached. The explicit accept/
+    /// cancel path (`finish_steel_prompt`) never runs this: it takes the
+    /// layer *by value* via `EditorState::take_layer`, firing its own
     /// callback explicitly instead.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.history.begin_session_all();
         state.queue_steel_call(
             self.callback.clone(),

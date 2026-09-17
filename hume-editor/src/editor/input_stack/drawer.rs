@@ -10,7 +10,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::Editor;
 use super::super::EditorState;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 /// `(show-drawer-list! items on-select)`'s raw state, including the
 /// not-yet-exhausted Steel callback — cleared by `Esc` or `close-drawer!`,
@@ -41,11 +41,29 @@ impl Layer for DrawerLayer {
     // way a `Menu` can, and `push_layer` evicts it on the way in regardless
     // of which of the two opens second.
     //
-    // `tear_down` stays at the trait's empty default — an explicit
-    // `close-drawer!` (routed through `EditorState::retire`, which reaches
-    // this) must stay silent; `drawer_input`'s own `Esc` arm takes the
-    // layer *by value* via `EditorState::take_layer` and fires its own
-    // callback explicitly instead.
+    /// Fires `#f` when `why` is [`Removal::Incidental`] — swept up as
+    /// collateral above some other target. No concrete path reaches this
+    /// today: a `Drawer` only ever lands directly on `Base` (every entry
+    /// gate that pushes one requires the mode layer to be `Base`, and
+    /// `push_layer`'s eviction clears the one non-modal layer, `Popup`,
+    /// that could otherwise sit beneath a fresh one), and `Base` is never a
+    /// truncate target. Still branches on `why`, matching `MenuLayer`'s own
+    /// fix for the same bug class, rather than leaving "silent unless
+    /// swept as collateral" true only by that accident of what happens to
+    /// land where today. Stays silent on [`Removal::Explicit`]: an
+    /// explicit `close-drawer!` (routed through `EditorState::retire`,
+    /// which reaches this as the named target) must stay silent;
+    /// `drawer_input`'s own `Esc` arm takes the layer *by value* via
+    /// `EditorState::take_layer` and fires its own callback explicitly
+    /// instead.
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
+        if let Removal::Incidental = why {
+            state.queue_steel_call(
+                self.callback.clone(),
+                vec![steel::rvals::SteelVal::BoolV(false)],
+            );
+        }
+    }
     /// Non-modal: the drawer is built to be worked over (a stray key falls
     /// through and it stays open), so an async opener's staleness check
     /// (`InputStack::is_settled_for`) must not read "a drawer is open" as
@@ -80,14 +98,15 @@ impl EditorState {
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites
-/// (`ed.state.input.drawer()`) stay as they are, and `stack.rs` stays agnostic.
+/// (`ed.state.input.drawer()`) stay as they are, and `stack.rs` stays
+/// agnostic. Read-only: every handler-side mutation now addresses its own
+/// dispatched-to layer via `at_mut::<DrawerLayer>(r)` instead, so there is
+/// no `drawer_mut()` sibling — this one's only remaining caller is
+/// render-sync (`sync_drawer_view`, independent of dispatch), which never
+/// needs `&mut`.
 impl super::stack::InputStack {
     pub(in crate::editor) fn drawer(&self) -> Option<&DrawerLayer> {
         self.find()
-    }
-
-    pub(in crate::editor) fn drawer_mut(&mut self) -> Option<&mut DrawerLayer> {
-        self.find_mut()
     }
 }
 
@@ -122,15 +141,15 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         KeyCode::Char('j') | KeyCode::Down => Some(1),
         KeyCode::Char('k') | KeyCode::Up => Some(-1),
         KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some((drawer_visible_rows(ed) / 2).max(1) as isize)
+            Some((drawer_visible_rows(ed, r) / 2).max(1) as isize)
         }
         KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some(-((drawer_visible_rows(ed) / 2).max(1) as isize))
+            Some(-((drawer_visible_rows(ed, r) / 2).max(1) as isize))
         }
         _ => None,
     };
     if let Some(delta) = step {
-        move_drawer_selection(ed, delta);
+        move_drawer_selection(ed, r, delta);
         return;
     }
 
@@ -139,7 +158,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             let drawer = ed
                 .state
                 .input
-                .drawer()
+                .at::<DrawerLayer>(r)
                 .expect("dispatch_at already checked kind(r) == DrawerLayer");
             let idx = steel::rvals::SteelVal::IntV(drawer.selected as isize);
             let callback = drawer.callback.clone();
@@ -166,9 +185,9 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// next paint. Shared by [`clamp_drawer_scroll`] and the Ctrl-u/Ctrl-d
 /// half-page handlers so "half a page" always agrees with what's on
 /// screen.
-fn drawer_visible_rows(ed: &Editor) -> usize {
+fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
     let max = EngineView::bottom_band_max(ed.view.last_terminal_area.height);
-    let Some(drawer) = ed.state.input.drawer() else {
+    let Some(drawer) = ed.state.input.at::<DrawerLayer>(r) else {
         return 0;
     };
     hume_ui::drawer::visible_rows(drawer.items.len(), max)
@@ -177,26 +196,26 @@ fn drawer_visible_rows(ed: &Editor) -> usize {
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
 /// syncs the scroll/view — shared by every movement key (`j`/`k`/Ctrl-d/
 /// Ctrl-u) so each key site is just "which delta", not its own lookup.
-fn move_drawer_selection(ed: &mut Editor, delta: isize) {
+fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
     let drawer = ed
         .state
         .input
-        .drawer_mut()
+        .at_mut::<DrawerLayer>(r)
         .expect("dispatch_at already checked kind(r) == DrawerLayer");
     let len = drawer.items.len();
     if len > 0 {
         let new = (drawer.selected as isize + delta).clamp(0, len as isize - 1);
         drawer.selected = new as usize;
     }
-    clamp_drawer_scroll(ed);
+    clamp_drawer_scroll(ed, r);
 }
 
 /// Clamps `drawer.scroll` so `drawer.selected` stays within the visible
 /// window (`clamp_scroll_to_window`, shared with `PickerSession::
 /// move_selection`), then syncs the view.
-fn clamp_drawer_scroll(ed: &mut Editor) {
-    let visible_rows = drawer_visible_rows(ed);
-    let Some(drawer) = ed.state.input.drawer_mut() else {
+fn clamp_drawer_scroll(ed: &mut Editor, r: LayerRef) {
+    let visible_rows = drawer_visible_rows(ed, r);
+    let Some(drawer) = ed.state.input.at_mut::<DrawerLayer>(r) else {
         return;
     };
     drawer.scroll =

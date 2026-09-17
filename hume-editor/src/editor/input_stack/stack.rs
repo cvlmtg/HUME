@@ -4,9 +4,10 @@
 //!
 //! Storage is `Vec<(u64, Box<dyn Layer>)>` rather than `Vec<InputLayer>` for
 //! a closed enum: every generic lookup below (`find`, `find_mut`, `ref_of`,
-//! `is`) downcasts through `dyn Layer`'s own `is`/`downcast_ref`/
-//! `downcast_mut`/`downcast` (below `Layer`'s own definition) rather than
-//! matching a variant, so adding a layer never touches this file.
+//! `is`, `at`, `at_mut`) downcasts through `dyn Layer`'s own `is`/
+//! `downcast_ref`/`downcast_mut`/`downcast` (below `Layer`'s own definition)
+//! rather than matching a variant, so adding a layer never touches this
+//! file.
 //!
 //! Every layer now has a file of its own — `Picker`'s move
 //! (`input_stack/picker/`) was the last one — so `Layer::handler` is a
@@ -72,6 +73,25 @@ pub(in crate::editor) enum PopupEviction {
     LayerOnly,
 }
 
+/// Why this layer is leaving the stack — the caller's own answer, not
+/// something the layer infers. [`EditorState::truncate_layers`]/
+/// [`EditorState::take_layer`] are the only two callers of
+/// [`Layer::tear_down`] that ever see collateral (anything stacked above
+/// the layer the caller actually named); both already separate "the named
+/// target" from "the collateral above it" internally
+/// ([`InputStack::truncate`]'s own top-first/target-last split) — this
+/// reason is that same split, handed to the layer instead of silently
+/// discarded.
+pub(in crate::editor) enum Removal {
+    /// This is the layer the caller asked to remove: [`EditorState::retire`]'s
+    /// own `L`, [`EditorState::excise_layer`]'s own `r`, or the outgoing mode
+    /// layer [`EditorState::push_mode_layer`] is replacing.
+    Explicit,
+    /// This layer merely sat above the one the caller asked to remove, and
+    /// is being swept away as a side effect.
+    Incidental,
+}
+
 /// What every concrete layer implements — its state, what mode (if any) it
 /// presents, what happens when it enters and leaves the stack, and what
 /// handles one event while it's the dispatch target. `handler`/`mode` are
@@ -105,13 +125,20 @@ pub(in crate::editor) trait Layer: Any {
     fn setup(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 
     /// What happens when this layer leaves the stack, for any reason —
-    /// teardown of a mode layer *is* its cancel. Empty by default. Every
-    /// override but one never fires a Steel callback from here: those are
-    /// queued only from explicit accept/cancel arms, before the truncate
-    /// that reaches this. `PickerLayer`'s is the one exception — see its
-    /// own doc for why the picker's "fires exactly once" contract needs
-    /// this to fire.
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
+    /// teardown of a mode layer *is* its cancel. Empty by default. Most
+    /// overrides never fire a Steel callback from here regardless of `why`:
+    /// an explicit accept/cancel arm already queues one, before the
+    /// truncate that reaches this, via `EditorState::take_layer` rather
+    /// than `truncate_layers`/`retire` — so by the time `tear_down` runs on
+    /// *that* layer's own removal, the callback question is already
+    /// answered. `why` exists for the two (`MenuLayer`/`DrawerLayer`) whose
+    /// explicit path answers it themselves but whose *incidental* removal
+    /// (swept up as collateral above some other target) would otherwise
+    /// drop their callback forever — see [`Removal`]'s own doc.
+    /// `PickerLayer`/`PromptLayer` fire unconditionally, ignoring `why`:
+    /// both are only ever reached here when nothing has fired their
+    /// callback yet, regardless of which reason applies.
+    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView, _why: Removal) {}
 
     /// The minibuffer this layer owns, if it's one of the four
     /// minibuf-backed mode layers (`Command`/`Search`/`Sift`/`Prompt`).
@@ -210,7 +237,8 @@ impl dyn Layer {
 /// visibility: its one caller (`reload.rs`) deliberately drops every
 /// layer's callback rather than running teardown — a stated exception, not
 /// a hole a door could close. A payload is only ever reached through a
-/// typed lookup (`find`, or a layer's own named sugar over it).
+/// typed lookup — `find` (topmost of a type), `at` (the layer at a specific
+/// `LayerRef`), or a layer's own named sugar over either.
 pub(in crate::editor) struct InputStack {
     /// Paired with a monotonic id per entry (see `LayerRef`) rather than a
     /// bare `Vec<Box<dyn Layer>>` — the id is what lets `is_live` tell a
@@ -256,6 +284,30 @@ impl InputStack {
             .get(r.depth)
             .filter(|(id, _)| *id == r.id)
             .is_some_and(|(_, layer)| layer.is::<L>())
+    }
+
+    /// The layer at `r`, downcast to `L` — `None` if `r` is stale (see
+    /// [`Self::is_live`]) or doesn't name a layer of type `L`. The
+    /// address-based counterpart to [`Self::find`]/[`Self::find_mut`]
+    /// ("topmost of type `L`, wherever it is"): a handler dispatched to `r`
+    /// uses this to reach its own payload directly, instead of re-searching
+    /// the stack by type and trusting that `L` occurs only once. Still
+    /// returns a typed `&L`/`&mut L`, never a bare `&mut dyn Layer` — the
+    /// same "payload only through a typed lookup" contract `find` already
+    /// has, not the structure-mutating handle this type's own doc explains
+    /// why there's no `get`/`get_mut` for.
+    pub(in crate::editor) fn at<L: Layer>(&self, r: LayerRef) -> Option<&L> {
+        self.layers
+            .get(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .and_then(|(_, layer)| layer.downcast_ref())
+    }
+
+    pub(in crate::editor) fn at_mut<L: Layer>(&mut self, r: LayerRef) -> Option<&mut L> {
+        self.layers
+            .get_mut(r.depth)
+            .filter(|(id, _)| *id == r.id)
+            .and_then(|(_, layer)| layer.downcast_mut())
     }
 
     /// `r`'s handler, or `None` if `r` is stale (see [`Self::is_live`]) —
@@ -628,12 +680,18 @@ impl EditorState {
     /// accept work (recording history, restoring/clearing a stash) *before*
     /// truncating, so by the time teardown runs, every removal is already
     /// the "cancel" case; there is no separate "cancel-specific work" split
-    /// to make. Teardown never fires a Steel callback — those are queued
-    /// only from explicit accept/cancel arms, before the truncate that
-    /// reaches here.
+    /// to make. `r`'s own layer — the one this call was actually asked to
+    /// remove — gets [`Removal::Explicit`]; anything stacked above it, swept
+    /// up as collateral, gets [`Removal::Incidental`] — `InputStack::truncate`
+    /// already returns them in target-last order, so splitting them here is
+    /// just reading that order rather than folding it into one loop.
     pub(in crate::editor) fn truncate_layers(&mut self, view: &EngineView, r: LayerRef) {
-        for mut layer in self.input.truncate(r) {
-            layer.tear_down(self, view);
+        let mut removed = self.input.truncate(r);
+        if let Some(mut target) = removed.pop() {
+            for mut layer in removed {
+                layer.tear_down(self, view, Removal::Incidental);
+            }
+            target.tear_down(self, view, Removal::Explicit);
         }
     }
 
@@ -658,7 +716,7 @@ impl EditorState {
             .downcast::<L>()
             .expect("caller names r's own concrete type");
         for mut layer in removed {
-            layer.tear_down(self, view);
+            layer.tear_down(self, view, Removal::Incidental);
         }
         taken
     }
@@ -672,7 +730,7 @@ impl EditorState {
     /// already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
         if let Some(mut layer) = self.input.excise(r) {
-            layer.tear_down(self, view);
+            layer.tear_down(self, view, Removal::Explicit);
         }
     }
 
@@ -681,9 +739,12 @@ impl EditorState {
     /// shared by every `close-*!` builtin and internal dismissal
     /// (`show_drawer_list`'s/`completion_begin`'s own self-replace,
     /// `close_menu`, `close_drawer`, `dismiss_completion`; `show_menu`'s own
-    /// self-replace takes the layer by value instead, since it must fire the
-    /// outgoing menu's callback and `MenuLayer::tear_down` stays empty by
-    /// design — see its own doc). Unlike [`Self::excise_layer`], this takes
+    /// self-replace takes the layer by value instead, via `take_layer`,
+    /// since it must fire the outgoing menu's callback itself — `take_layer`
+    /// never runs `tear_down` on its own target regardless of `Removal`, so
+    /// this path is what keeps `MenuLayer::tear_down`'s own conditional fire
+    /// (`Removal::Incidental` only — see its own doc) from double-firing
+    /// here). Unlike [`Self::excise_layer`], this takes
     /// any collateral above `L` with it — the right shape when what's above
     /// `L` (if anything) genuinely depends on it, rather than being merely
     /// stacked over it by coincidence.

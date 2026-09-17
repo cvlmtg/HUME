@@ -2,13 +2,13 @@
 
 use termina::event::KeyCode;
 
-use hume_engine::pipeline::RenderContext;
+use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::super::Editor;
 use super::super::mouse::is_fresh_gesture;
+use super::super::{Editor, EditorState};
 use super::placement::{focused_cursor_char, popup_placement};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
@@ -41,17 +41,30 @@ impl Layer for MenuLayer {
     // keeping `PopupLayer`'s "never buried" invariant true. A prior `Menu`
     // on the self-replace path is retired separately: `show_menu` takes it
     // by value and fires its callback with `#f` explicitly before pushing
-    // the new one (`MenuLayer::tear_down` stays empty, so it can't do this
-    // itself).
-    //
-    // `tear_down` stays at the trait's empty default — like `DrawerLayer`'s,
-    // an explicit `close-menu!` (routed through `EditorState::retire`, which
-    // reaches this) must stay silent, not fire `#f` on a widget its caller
-    // may already be finishing its own way. `menu_input`'s own retirement
-    // arms (Enter/Escape/a stray key/a fresh mouse gesture) and `show_menu`'s
-    // self-replace path all take the layer *by value* via
-    // `EditorState::take_layer` instead and fire their own callback
-    // explicitly — this is never reached by anything that should fire one.
+    // the new one (`take_layer` never runs `tear_down` on its own target,
+    // so this can't double-fire against it).
+    /// Fires `#f` when `why` is [`Removal::Incidental`] — swept up as
+    /// collateral above some other target, most concretely a `Drawer` this
+    /// menu opened above (`drawer.rs`'s own doc: a code-action menu is
+    /// explicitly allowed to open while a references drawer stays up) that
+    /// then gets closed via `close-drawer!`, which has no gate against
+    /// taking a `Menu` above it along for the ride. Stays silent on
+    /// [`Removal::Explicit`]: an explicit `close-menu!` (routed through
+    /// `EditorState::retire`, which reaches this as the named target) must
+    /// stay silent, not fire `#f` on a widget its caller may already be
+    /// finishing its own way. `menu_input`'s own retirement arms (Enter/
+    /// Escape/a stray key/a fresh mouse gesture) and `show_menu`'s
+    /// self-replace path all take the layer *by value* via
+    /// `EditorState::take_layer` instead and fire their own callback
+    /// explicitly — neither ever reaches this at all.
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
+        if let Removal::Incidental = why {
+            state.queue_steel_call(
+                self.callback.clone(),
+                vec![steel::rvals::SteelVal::BoolV(false)],
+            );
+        }
+    }
 }
 
 impl Editor {
@@ -98,14 +111,14 @@ impl Editor {
 }
 
 /// Named sugar over the generic lookup — the ~350 existing call sites
-/// (`ed.state.input.menu()`) stay as they are, and `stack.rs` stays agnostic.
+/// (`ed.state.input.menu()`) stay as they are, and `stack.rs` stays
+/// agnostic. Read-only: every handler-side mutation now addresses its own
+/// dispatched-to layer via `at_mut::<MenuLayer>(r)` instead, so there is no
+/// `menu_mut()` sibling — this one's only remaining caller is render-sync
+/// (`sync_menu_view`, independent of dispatch), which never needs `&mut`.
 impl super::stack::InputStack {
     pub(in crate::editor) fn menu(&self) -> Option<&MenuLayer> {
         self.find()
-    }
-
-    pub(in crate::editor) fn menu_mut(&mut self) -> Option<&mut MenuLayer> {
-        self.find_mut()
     }
 }
 
@@ -153,7 +166,7 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
             let menu = ed
                 .state
                 .input
-                .menu_mut()
+                .at_mut::<MenuLayer>(r)
                 .expect("dispatch_at already checked kind(r) == MenuLayer");
             if menu.selected + 1 < menu.rows.len() {
                 menu.selected += 1;
@@ -163,7 +176,7 @@ pub(in crate::editor) fn menu_input(ed: &mut Editor, r: LayerRef, ev: InputEvent
             let menu = ed
                 .state
                 .input
-                .menu_mut()
+                .at_mut::<MenuLayer>(r)
                 .expect("dispatch_at already checked kind(r) == MenuLayer");
             menu.selected = menu.selected.saturating_sub(1);
         }

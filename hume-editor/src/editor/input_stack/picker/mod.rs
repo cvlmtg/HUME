@@ -15,7 +15,7 @@ use steel::rvals::SteelVal;
 
 use super::super::minibuf::flatten_single_line;
 use super::super::{Editor, EditorState};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
 
 #[cfg(test)]
 pub(in crate::editor) use session::item;
@@ -62,23 +62,27 @@ impl Layer for PickerLayer {
         state.dismiss_completion(view);
         close_picker(state, view, SteelVal::BoolV(false));
     }
-    /// Fires `on_select` with `#f` — unlike every other layer's `tear_down`,
-    /// which never fires a Steel callback (teardown *is* cancel, but the
-    /// callback itself is queued only from an explicit accept/cancel arm
-    /// before the truncate that reaches here). The picker's "fires exactly
-    /// once" contract has no such arm to rely on when it's removed
-    /// incidentally — buried under an `Insert`/`Prompt` session that a
-    /// close-*!`/Rust-internal retirement then truncates through — so this
-    /// is the one `tear_down` that fires, making the contract structural
-    /// rather than dependent on every caller routing through
-    /// `close_picker`/`close_picker_with`. The accept path (`Enter`,
-    /// `picker-close!`) never runs this: it takes the layer *by value* via
-    /// `EditorState::take_layer`, which tears down everything above the
-    /// target but not the target itself, and fires its own callback
-    /// explicitly instead. `truncate_to_base` (reload) is the one exit that
-    /// still drops the callback: `EditorState::truncate_layers` — this
-    /// method's only caller — never runs during a reload.
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
+    /// Fires `on_select` with `#f` unconditionally, ignoring `why` — unlike
+    /// every other layer's `tear_down`, which never fires a Steel callback
+    /// (teardown *is* cancel, but the callback itself is queued only from
+    /// an explicit accept/cancel arm before the truncate that reaches
+    /// here). The picker's "fires exactly once" contract has no such arm to
+    /// rely on when it's removed incidentally — buried under an `Insert`/
+    /// `Prompt` session that a close-*!`/Rust-internal retirement then
+    /// truncates through — so this is the one `tear_down` that fires,
+    /// making the contract structural rather than dependent on every
+    /// caller routing through `close_picker`/`close_picker_with`. Today
+    /// `why` is always `Removal::Incidental` here — nothing ever names a
+    /// picker as `truncate_layers`/`retire`'s own target — but firing
+    /// regardless of which one it is stays correct either way: reaching
+    /// this at all already means nothing has fired the callback yet. The
+    /// accept path (`Enter`, `picker-close!`) never runs this: it takes the
+    /// layer *by value* via `EditorState::take_layer`, which tears down
+    /// everything above the target but not the target itself, and fires
+    /// its own callback explicitly instead. `truncate_to_base` (reload) is
+    /// the one exit that still drops the callback: `EditorState::truncate_layers`
+    /// — this method's only caller — never runs during a reload.
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         state.queue_steel_call(self.0.on_select().clone(), vec![SteelVal::BoolV(false)]);
     }
 }
@@ -220,10 +224,11 @@ pub(in crate::editor) fn close_picker(
 /// drawer (a stray key falls through untouched), the picker is
 /// full-modal: it owns the entire interaction, so an unrecognized key
 /// (Left/Right/Home/Tab/…) is simply consumed and ignored rather than
-/// leaking through to whatever mode sits underneath. `r` is unused —
-/// every retirement path goes through [`close_picker`]/[`close_picker_with`],
-/// which finds the picker's own ref itself rather than needing this
-/// call's.
+/// leaking through to whatever mode sits underneath. `r` addresses this
+/// layer's own session via [`picker_mut`]/[`queue_query_change`]/
+/// [`close_picker_with_selection`] — but not retirement: every retirement
+/// path goes through [`close_picker`]/[`close_picker_with`], which finds
+/// the picker's own ref itself rather than needing this call's.
 ///
 /// `on_select` fires exactly once via `.take()`-equivalent truncate +
 /// `queue_steel_call` (never invoked inline) — same one-shot discipline
@@ -235,7 +240,7 @@ pub(in crate::editor) fn close_picker(
 /// wheel — is swallowed the same way: full-modal means the picker owns
 /// the pointer too, not just the keyboard, so a click can't move the
 /// cursor in the buffer underneath it.
-pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEvent) {
+pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let key = match ev {
         InputEvent::Key(key) => key,
         // Flattened to one line, same as a minibuffer paste, then
@@ -243,8 +248,8 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
         // most one `on_query_change` callback, instead of one per
         // pasted char.
         InputEvent::Paste(text) => {
-            let cb = picker_mut(ed).insert_str(&flatten_single_line(&text));
-            queue_query_change(ed, cb);
+            let cb = picker_mut(ed, r).insert_str(&flatten_single_line(&text));
+            queue_query_change(ed, r, cb);
             return;
         }
         InputEvent::Mouse(_) => return,
@@ -273,7 +278,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
         _ => None,
     };
     if let Some(delta) = step {
-        picker_mut(ed).move_selection(delta, visible_rows);
+        picker_mut(ed, r).move_selection(delta, visible_rows);
         return;
     }
 
@@ -281,13 +286,13 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
         KeyCode::Backspace => {
             // `None` (and so no fire) both on an already-empty query and
             // on a non-live session — see `pop_grapheme`'s doc.
-            let cb = picker_mut(ed).pop_grapheme();
-            queue_query_change(ed, cb);
+            let cb = picker_mut(ed, r).pop_grapheme();
+            queue_query_change(ed, r, cb);
         }
         KeyCode::Enter => {
             // No match (or nothing pushed yet) behaves like Esc — Enter
             // is always a terminal action, never a silent no-op.
-            close_picker_with_selection(ed, None);
+            close_picker_with_selection(ed, r, None);
         }
         KeyCode::Escape => {
             close_picker(&mut ed.state, &ed.view, SteelVal::BoolV(false));
@@ -297,16 +302,16 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
                 .modifiers
                 .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
         {
-            let cb = picker_mut(ed).insert_char(ch);
-            queue_query_change(ed, cb);
+            let cb = picker_mut(ed, r).insert_char(ch);
+            queue_query_change(ed, r, cb);
         }
         _ => {
             // `#:actions` — tried only here, after every built-in key
             // above has already had first refusal, so a declared action
             // can never override movement/Backspace/Enter/Escape/query
             // input (see `PickerSession::action_for`'s doc).
-            if let Some(proc) = picker_mut(ed).action_for(key).cloned() {
-                close_picker_with_selection(ed, Some(proc));
+            if let Some(proc) = picker_mut(ed, r).action_for(key).cloned() {
+                close_picker_with_selection(ed, r, Some(proc));
             }
         }
     }
@@ -329,11 +334,11 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, _r: LayerRef, ev: InputEv
 /// `debounce_viewport_change`'s fire site (`timer_bridge.rs`), which is
 /// every scroll step of every frame and so earns its own Rust-side
 /// coalescer.
-fn queue_query_change(ed: &mut Editor, cb: Option<SteelVal>) {
+fn queue_query_change(ed: &mut Editor, r: LayerRef, cb: Option<SteelVal>) {
     let Some(cb) = cb else {
         return;
     };
-    let session = picker_mut(ed);
+    let session = picker_mut(ed, r);
     let token = session.token();
     let query = session.query().to_string();
     ed.state.queue_steel_call(
@@ -345,20 +350,25 @@ fn queue_query_change(ed: &mut Editor, cb: Option<SteelVal>) {
     );
 }
 
-/// The open picker session — only ever called from `picker_input`, which
-/// `dispatch_at` only reaches while a `Picker` layer is on top.
-fn picker_mut(ed: &mut Editor) -> &mut PickerSession {
-    ed.state
+/// The open picker session at `r` — only ever called from `picker_input`,
+/// which `dispatch_at` only reaches while a `Picker` layer is on top, so
+/// `r` always names it. Address-based, not the `InputStack::picker_mut`
+/// sugar (`find_mut`-based, and still used as-is by render-sync): every
+/// caller here already has `r` from its own dispatch.
+fn picker_mut(ed: &mut Editor, r: LayerRef) -> &mut PickerSession {
+    &mut ed
+        .state
         .input
-        .picker_mut()
+        .at_mut::<PickerLayer>(r)
         .expect("picker_input is only called while a Picker layer is on top of the stack")
+        .0
 }
 
 /// Close the picker, firing `callback` (or `on_select` when `None`) with
 /// the selected payload — `#f` when nothing matches, so accepting is
 /// always a terminal action rather than a silent no-op.
-fn close_picker_with_selection(ed: &mut Editor, callback: Option<SteelVal>) {
-    let payload = picker_mut(ed)
+fn close_picker_with_selection(ed: &mut Editor, r: LayerRef, callback: Option<SteelVal>) {
+    let payload = picker_mut(ed, r)
         .selected_payload()
         .cloned()
         .unwrap_or(SteelVal::BoolV(false));
