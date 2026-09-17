@@ -11,7 +11,7 @@ use hume_engine::theme::Theme;
 use hume_engine::types::ResolvedStyle;
 
 /// Synchronously-parsed highlight state for a popup's read-only text, keyed
-/// by grammar name (`#:lang`). `None` where `PopupModel::syntax` would go
+/// by grammar name (`#:lang`). `None` where `PopupLayer::syntax` would go
 /// when no grammar by that name is registered, or `#:lang` wasn't
 /// requested — the plain-text fallback.
 ///

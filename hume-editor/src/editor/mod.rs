@@ -7,7 +7,6 @@ use termina::event::KeyEvent;
 
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 
-use self::overlay_models::ConfirmModel;
 use self::registry::CommandRegistry;
 use self::replay::{InsertSession, MacroPending, PendingRepeat, RepeatableAction, SelectionStep};
 use crate::editor::buffer::Buffer;
@@ -32,7 +31,6 @@ mod host_impl;
 mod inline_output;
 mod input_stack;
 mod lifecycle;
-mod overlay_models;
 mod overlay_sync;
 mod reload;
 mod scripting_setup;
@@ -580,22 +578,9 @@ impl EditorState {
         self.input.mode()
     }
 
-    /// The open disk-change confirm, if any — `crate::statusline`'s reader.
-    /// A plain wrapper rather than exposing `input` itself at `pub(crate)`:
-    /// `InputStack`'s own API stays `pub(in crate::editor)` (see its own
-    /// doc for why), and the statusline is a sibling of `crate::editor`,
-    /// not a descendant of it, so it needs a seam drawn somewhere — this is
-    /// the narrowest one, mirroring `ConfirmModel`'s own `pub(crate)`
-    /// carve-out for the same reader. [`Self::minibuf`] below is the same
-    /// carve-out for the field that was `pub(crate)` directly on
-    /// `EditorState` before it moved into a mode layer's payload.
-    pub(crate) fn confirm(&self) -> Option<&ConfirmModel> {
-        self.input.confirm()
-    }
-
     /// The active minibuffer, if any — `crate::statusline`'s reader. See
-    /// [`Self::confirm`]'s doc for why this wrapper exists instead of
-    /// exposing `input` itself.
+    /// [`Self::confirm`] (`input_stack/confirm.rs`) for why this wrapper
+    /// exists instead of exposing `input` itself.
     pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.input.minibuf()
     }
@@ -749,7 +734,7 @@ impl EditorState {
     /// Clearing popups here — not just on the `Base` branch, though that's
     /// the only branch where it does anything `truncate_layers` wasn't
     /// about to do anyway — is what keeps a `Popup` layer from ever being
-    /// buried (`PopupModel`'s `Layer` doc, `input_stack/stack.rs`): landing
+    /// buried (`PopupLayer`'s `Layer` doc, `input_stack/stack.rs`): landing
     /// a new mode layer directly on top of `Base` (the one case
     /// `truncate_layers` skips) would otherwise sandwich a `Popup` layer, or
     /// a `Sticky` popup sitting in `Base`'s own slot, between `Base` and the

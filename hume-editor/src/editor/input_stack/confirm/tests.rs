@@ -9,7 +9,7 @@ fn dummy_bid() -> BufferId {
 
 #[test]
 fn render_line_lists_prompt_then_each_choice_bracketed() {
-    let model = ConfirmModel {
+    let model = ConfirmLayer {
         prompt: "foo.rs has changed on disk.".to_string(),
         choices: vec![
             ConfirmChoice {
@@ -31,7 +31,7 @@ fn render_line_lists_prompt_then_each_choice_bracketed() {
 
 #[test]
 fn render_line_with_a_single_choice_has_no_trailing_separator() {
-    let model = ConfirmModel {
+    let model = ConfirmLayer {
         prompt: "proceed?".to_string(),
         choices: vec![ConfirmChoice {
             key: 'y',

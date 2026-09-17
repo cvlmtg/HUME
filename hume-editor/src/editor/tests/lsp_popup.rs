@@ -26,7 +26,7 @@ fn popup_view(ed: &Editor) -> Option<(Vec<String>, u16, u16)> {
 }
 
 /// The `Arc` handle itself, not a deref-cloned copy — for `Arc::ptr_eq`
-/// identity checks that pin `PopupModel::content`'s per-`max_width` cache.
+/// identity checks that pin `PopupLayer::content`'s per-`max_width` cache.
 fn popup_view_lines_arc(ed: &Editor) -> Option<Arc<Vec<String>>> {
     ed.state
         .views
@@ -477,7 +477,7 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
     );
 }
 
-/// A theme reload must invalidate `PopupModel::content` (the per-`show-popup!`
+/// A theme reload must invalidate `PopupLayer::content` (the per-`show-popup!`
 /// baked-style cache `content_mut` builds once and reuses), not just the
 /// per-width wrap cache inside it: `content_mut`'s bake reads the theme, but
 /// nothing re-ran it on a theme swap, so a `#:lang` popup would keep
@@ -587,7 +587,7 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
 
 #[test]
 fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
-    // Regression: `PopupModel::scroll` is clamped for *rendering* every
+    // Regression: `PopupLayer::scroll` is clamped for *rendering* every
     // frame, but that clamp writes only into the view copy, never back into
     // the model. If the popup's visible window grows without a scroll key
     // touching the model (e.g. the terminal resizes taller), the model can

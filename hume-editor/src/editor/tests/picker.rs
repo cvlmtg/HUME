@@ -509,16 +509,14 @@ fn picker_feed_replace_mode_rejects_a_stale_token_and_leaves_items_untouched() {
 #[test]
 fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     let mut ed = editor_from("-[a]>bc\n");
-    ed.state
-        .input
-        .push(crate::editor::overlay_models::MenuModel {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
-                "m0".into(),
-                "m1".into(),
-            ])),
-            selected: 0,
-            callback: marker("menu-cb"),
-        });
+    ed.state.input.push(crate::editor::input_stack::MenuLayer {
+        rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
+            "m0".into(),
+            "m1".into(),
+        ])),
+        selected: 0,
+        callback: marker("menu-cb"),
+    });
 
     let mut session = PickerSession::new(marker("cb"), PickerOpts::default());
     session.push(vec![PickerItem {

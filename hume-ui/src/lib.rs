@@ -4,8 +4,8 @@
 //! No type here references `Editor` or `EditorState` — each is a value
 //! object or a provider that reads from a handle it was given, not from
 //! live editor state. The raw, not-yet-resolved model behind each overlay
-//! (`PopupModel`, `MenuModel`, `DrawerModel`, and the confirm prompt's
-//! `ConfirmModel`, which has no view-side counterpart here at all — it's
+//! (`PopupLayer`, `MenuLayer`, `DrawerLayer`, and the confirm prompt's
+//! `ConfirmLayer`, which has no view-side counterpart here at all — it's
 //! rendered directly by `hume-editor`'s statusline) lives in `hume-editor`
 //! instead, alongside `PickerSession`: those hold editor-owned input state
 //! (a not-yet-fired Steel callback, a `BufferId` to act on), not a value

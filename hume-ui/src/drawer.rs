@@ -35,7 +35,7 @@ use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
 
 /// Read-side snapshot for `DrawerWidget` — the same shape as
-/// `DrawerModel` (`hume-editor`'s raw `(show-drawer-list! …)` state) minus
+/// `DrawerLayer` (`hume-editor`'s raw `(show-drawer-list! …)` state) minus
 /// the callback, which the render side never needs.
 pub struct DrawerViewState {
     pub rows: Arc<Vec<String>>,

@@ -2,16 +2,15 @@ use termina::event::KeyEvent;
 
 use super::Editor;
 use super::input_stack::{
-    BaseLayer, CommandLayer, CompletionLayer, InputEvent, InsertLayer, LayerRef, PickerLayer,
-    PromptLayer, SearchLayer, SiftLayer,
+    BaseLayer, CommandLayer, CompletionLayer, ConfirmLayer, DrawerLayer, InputEvent, InsertLayer,
+    LayerRef, MenuLayer, PickerLayer, PopupLayer, PromptLayer, SearchLayer, SiftLayer,
 };
+use super::input_stack::{completion, confirm, drawer, menu, popup};
 use super::minibuf::MiniBufferEvent;
-use super::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
 use super::replay::InsertInput;
 
 mod bracketed_paste;
 pub(super) mod command_mode;
-mod completion_menu;
 mod execute;
 mod insert;
 mod lazy;
@@ -86,12 +85,13 @@ impl Editor {
 
     /// Routes to whichever handler owns `r`'s concrete type. A chain of
     /// `is::<L>()` checks, not a match on a closed `enum`'s discriminant —
-    /// see `input_stack/stack.rs`'s own doc for why: each handler still
-    /// lives beside its old neighbors (`mappings::widgets`,
-    /// `mappings::completion_menu`, this very `impl` block) rather than
-    /// beside its own `Layer` impl, so there is no `handler()` fn pointer to
-    /// call yet. This chain collapses to one as each layer's handler moves
-    /// into its own file and starts implementing `handler()` instead.
+    /// see `input_stack/stack.rs`'s own doc for why: the five overlay
+    /// layers below call into their own `input_stack::<name>` module now
+    /// that each has its own file, but `Picker` (still in `mappings::widgets`)
+    /// and the six mode layers (still in this very `impl` block) haven't
+    /// moved yet, so there's no `handler()` fn pointer to call uniformly.
+    /// This chain collapses to one as the rest move and start implementing
+    /// `handler()` instead.
     fn dispatch_at(&mut self, r: LayerRef, ev: InputEvent) {
         let input = &self.state.input;
         if input.is::<BaseLayer>(r) {
@@ -106,18 +106,18 @@ impl Editor {
             self.sift_input(r, ev)
         } else if input.is::<PromptLayer>(r) {
             self.prompt_input(r, ev)
-        } else if input.is::<DrawerModel>(r) {
-            self.drawer_input(r, ev)
-        } else if input.is::<MenuModel>(r) {
-            self.menu_input(r, ev)
+        } else if input.is::<DrawerLayer>(r) {
+            drawer::drawer_input(self, r, ev)
+        } else if input.is::<MenuLayer>(r) {
+            menu::menu_input(self, r, ev)
         } else if input.is::<PickerLayer>(r) {
             self.picker_input(r, ev)
-        } else if input.is::<ConfirmModel>(r) {
-            self.confirm_input(r, ev)
+        } else if input.is::<ConfirmLayer>(r) {
+            confirm::confirm_input(self, r, ev)
         } else if input.is::<CompletionLayer>(r) {
-            self.completion_input(r, ev)
-        } else if input.is::<PopupModel>(r) {
-            self.popup_input(r, ev)
+            completion::completion_input(self, r, ev)
+        } else if input.is::<PopupLayer>(r) {
+            popup::popup_input(self, r, ev)
         } else {
             unreachable!("dispatch target is live: top(), or below(r) under the index invariant")
         }

@@ -209,7 +209,7 @@ impl Editor {
         let resolved = placement.and_then(|placement| {
             let model = self.state.input.menu()?;
             // `MenuRows::clone` is an `Arc` bump plus a `u16` copy, not a
-            // re-measure: `MenuModel::rows` is pre-measured once at
+            // re-measure: `MenuLayer::rows` is pre-measured once at
             // `show-menu!` time (labels never change during a menu's
             // lifetime, only `selected` does), so there's nothing left for
             // this per-frame snapshot to recompute.

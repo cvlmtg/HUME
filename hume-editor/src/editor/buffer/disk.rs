@@ -10,8 +10,7 @@
 
 use hume_engine::pipeline::BufferId;
 
-use crate::editor::input_stack::BaseLayer;
-use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice, ConfirmModel};
+use crate::editor::input_stack::{BaseLayer, ConfirmAction, ConfirmChoice, ConfirmLayer};
 use crate::editor::{Editor, Severity};
 
 use super::Buffer;
@@ -348,7 +347,7 @@ impl Editor {
             .input
             .confirm()
             .is_some_and(|c| !c.targets_buffer(entered))
-            && let Some(r) = self.state.input.ref_of::<ConfirmModel>()
+            && let Some(r) = self.state.input.ref_of::<ConfirmLayer>()
         {
             self.state.input.truncate(r);
         }
@@ -386,7 +385,7 @@ impl Editor {
         } else {
             format!("{name} has changed on disk.")
         };
-        self.state.input.push(ConfirmModel {
+        self.state.input.push(ConfirmLayer {
             prompt,
             choices: vec![
                 ConfirmChoice {

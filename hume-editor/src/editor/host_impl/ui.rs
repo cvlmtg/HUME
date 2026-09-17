@@ -3,8 +3,7 @@
 
 use super::EditorHostImpl;
 use crate::editor::Severity;
-use crate::editor::input_stack::{BaseLayer, PromptLayer};
-use crate::editor::overlay_models::{DrawerModel, MenuModel};
+use crate::editor::input_stack::{BaseLayer, DrawerLayer, MenuLayer, PopupLayer, PromptLayer};
 use hume_scripting::host::{
     LivePickerOpts, PickerFeedMode, PickerOpts, PickerSourceOpts, PopupKind, UiHost,
 };
@@ -96,7 +95,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             hume_ui::popup::PopupLayout::Cursor
         };
         let syntax = lang.and_then(|lang| self.build_markup_syntax(&lang, &text));
-        let model = crate::editor::overlay_models::PopupModel {
+        let model = PopupLayer {
             text,
             kind,
             scroll: 0,
@@ -132,7 +131,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// Idempotent — clears whichever home currently holds a popup, or does
     /// nothing if neither does. There is no present-but-not-top error path
     /// (unlike `close_menu`'s): a `Popup` layer is never buried (see
-    /// `PopupModel`'s `Layer` doc, `input_stack/stack.rs`) and a `Sticky`
+    /// `PopupLayer`'s `Layer` doc, `input_stack/stack.rs`) and a `Sticky`
     /// popup's slot never occupies `top()` at all, so this can never observe
     /// one it isn't allowed to close.
     fn close_popup(&mut self) -> Result<(), String> {
@@ -166,7 +165,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             );
             return Ok(());
         }
-        self.state.input.push(MenuModel {
+        self.state.input.push(MenuLayer {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
             selected: 0,
             callback,
@@ -175,7 +174,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn close_menu(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of::<MenuModel>() {
+        match self.state.input.ref_of::<MenuLayer>() {
             None => Ok(()),
             Some(r) if r == self.state.input.top() => {
                 self.state.input.truncate(r);
@@ -206,7 +205,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .state
             .input
             .is::<BaseLayer>(self.state.input.mode_layer());
-        let top_is_drawer = self.state.input.is::<DrawerModel>(self.state.input.top());
+        let top_is_drawer = self.state.input.is::<DrawerLayer>(self.state.input.top());
         let stack_ok = self.state.input.is_stack_settled() || top_is_drawer;
         if !mode_ok || !stack_ok {
             self.state.report(
@@ -220,7 +219,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             let r = self.state.input.top();
             self.state.input.truncate(r);
         }
-        self.state.input.push(DrawerModel {
+        self.state.input.push(DrawerLayer {
             items: std::sync::Arc::new(items),
             selected: 0,
             scroll: 0,
@@ -231,7 +230,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     }
 
     fn close_drawer(&mut self) -> Result<(), String> {
-        match self.state.input.ref_of::<DrawerModel>() {
+        match self.state.input.ref_of::<DrawerLayer>() {
             None => Ok(()),
             Some(r) if r == self.state.input.top() => {
                 self.state.input.truncate(r);

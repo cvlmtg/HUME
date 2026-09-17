@@ -3,12 +3,12 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::theme::loader::load_theme;
 
+use crate::editor::input_stack::PopupLayer;
 use crate::editor::message_log::{MessageLog, Severity};
-use crate::editor::overlay_models::PopupModel;
 
 /// Replace `view.theme` and invalidate everything that caches against its
 /// baked colors — currently just an open popup's per-width/style cache
-/// (`PopupModel::content`), the one input to that cache besides `text`/
+/// (`PopupLayer::content`), the one input to that cache besides `text`/
 /// `syntax` (which never change during a popup's lifetime) that can change
 /// out from under it. The single chokepoint for replacing a *live*
 /// `view.theme`, so a future third replacement site can't forget the
@@ -17,7 +17,7 @@ use crate::editor::overlay_models::PopupModel;
 /// purpose — there is no popup yet to invalidate.
 pub(in crate::editor) fn set_theme(
     view: &mut EngineView,
-    popup: Option<&mut PopupModel>,
+    popup: Option<&mut PopupLayer>,
     theme: hume_engine::theme::Theme,
 ) {
     view.theme = theme;
@@ -55,7 +55,7 @@ pub(in crate::editor) fn load_theme_by_name(
     engine_view: &mut EngineView,
     message_log: &mut MessageLog,
     status_msg: &mut Option<String>,
-    popup: Option<&mut PopupModel>,
+    popup: Option<&mut PopupLayer>,
     name: &str,
 ) -> bool {
     match load_theme(name, &super::theme_search_paths()) {

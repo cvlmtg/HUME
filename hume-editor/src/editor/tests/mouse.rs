@@ -1,8 +1,8 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::CompletionLayer;
+use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
-use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_editing::selection::Selection;
 use hume_grid::Rect;
@@ -926,7 +926,7 @@ fn mouse_release_with_confirm_open_leaves_it_open() {
 fn click_with_menu_open_cancels_it_and_falls_through() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
-    ed.state.input.push(MenuModel {
+    ed.state.input.push(MenuLayer {
         rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
         selected: 0,
         callback: marker("menu-cb"),
@@ -959,7 +959,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 fn click_under_drawer_falls_through_leaving_it_open() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
-    ed.state.input.push(DrawerModel {
+    ed.state.input.push(DrawerLayer {
         items: std::sync::Arc::new(vec!["d0".to_string()]),
         selected: 0,
         scroll: 0,
@@ -985,7 +985,7 @@ fn wheel_under_drawer_scrolls_the_pane_leaving_it_open() {
             hume_rope::line::ContentLine::new(2),
             0,
         ));
-    ed.state.input.push(DrawerModel {
+    ed.state.input.push(DrawerLayer {
         items: std::sync::Arc::new(vec!["d0".to_string()]),
         selected: 0,
         scroll: 0,

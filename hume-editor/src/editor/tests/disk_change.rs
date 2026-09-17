@@ -869,7 +869,7 @@ fn picker_opens_over_a_live_confirm_and_the_confirm_resumes_once_it_closes() {
     assert!(
         ed.state
             .input
-            .is::<crate::editor::overlay_models::ConfirmModel>(ed.state.input.top()),
+            .is::<crate::editor::input_stack::ConfirmLayer>(ed.state.input.top()),
         "the confirm must drive input again once the picker is gone"
     );
 }
@@ -1211,7 +1211,7 @@ fn a_second_confirm_never_replaces_a_live_one() {
     assert!(
         matches!(
             ed.state.input.confirm().unwrap().action,
-            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
+            crate::editor::input_stack::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "A's confirm must survive B's check untouched"
     );
@@ -1668,7 +1668,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     assert!(
         matches!(
             ed.state.input.confirm().unwrap().action,
-            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_b
+            crate::editor::input_stack::ConfirmAction::ReloadBuffer(id) if id == bid_b
         ),
         "setup: B's own confirm is open"
     );
@@ -1686,7 +1686,7 @@ fn mouse_click_into_another_pane_retires_a_stale_confirm() {
     assert!(
         matches!(
             ed.state.input.confirm().unwrap().action,
-            crate::editor::overlay_models::ConfirmAction::ReloadBuffer(id) if id == bid_a
+            crate::editor::input_stack::ConfirmAction::ReloadBuffer(id) if id == bid_a
         ),
         "B's orphaned confirm must be retired and A's own prompt opened in its place"
     );

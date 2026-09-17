@@ -8,20 +8,18 @@
 //! `downcast_mut`/`downcast` (below `Layer`'s own definition) rather than
 //! matching a variant, so adding a layer never touches this file.
 //!
-//! Every concrete layer type still lives in *this* file for now (`BaseLayer`
-//! through `PopupModel`/`ConfirmModel` below) — the per-file split (`base.rs`,
-//! `menu.rs`, …) happens over the steps that follow, moving one layer's
-//! state, `Layer` impl, and key/paste/mouse handler together into its own
-//! file. `dispatch_at` (`mappings/mod.rs`) still calls each handler directly
-//! by name during that transition; `Layer` gains a `handler()` method (a
-//! `LayerHandler` fn pointer, replacing the match) only once a layer's `impl`
-//! is co-located with its own handler fn — doing that from here, while the
-//! handler bodies still live in `mappings`, would need those methods widened
-//! to `pub(in crate::editor)`, reachable by any code in the crate rather than
-//! only through `dispatch_at`'s liveness-checked call. `mode`/`tear_down`
-//! have no such problem — `EditorState`'s fields and the free functions they
-//! call are already `pub(in crate::editor)` or wider — so this file converts
-//! them fully now.
+//! The five overlay layers (`Popup`, `Menu`, `Drawer`, `Confirm`,
+//! `Completion`) have already moved into files of their own
+//! (`popup.rs`/`menu.rs`/`drawer.rs`/`confirm.rs`/`completion.rs`). The six
+//! mode layers (`Base` through `Prompt`) plus `Picker` still live in *this*
+//! file for now — the remaining steps move them the same way. `dispatch_at`
+//! (`mappings/mod.rs`) still calls each handler directly by name during
+//! that transition; `Layer` gains a `handler()` method (a `LayerHandler` fn
+//! pointer, replacing the chain) only once every layer's `impl` is
+//! co-located with its own handler fn — doing that before every layer has
+//! moved would need the not-yet-moved handlers widened to
+//! `pub(in crate::editor)`, reachable by any code in the crate rather than
+//! only through `dispatch_at`'s liveness-checked call.
 
 use std::any::Any;
 
@@ -33,11 +31,10 @@ use steel::rvals::SteelVal;
 
 use super::super::EditorState;
 use super::super::completion::MinibufCompletionState;
-use super::super::lsp::completion::{CompletionMenuUi, CompletionSession};
 use super::super::minibuf::MiniBuffer;
-use super::super::overlay_models::{ConfirmModel, DrawerModel, MenuModel, PopupModel};
 use super::super::picker::PickerSession;
 use super::super::{commands, search};
+use super::popup::PopupLayer;
 
 /// Addresses one layer by position — minted only by [`InputStack::push`] and
 /// [`InputStack::top`], read back by every other method. `depth` alone would
@@ -99,10 +96,10 @@ pub(in crate::editor) trait Layer: Any {
     /// the home for a `Sticky` popup (signature help), which belongs to
     /// whichever mode owns it rather than to its own layer. See
     /// [`InputStack::popup`]'s doc for the two homes a popup can occupy.
-    fn sticky_popup_slot(&self) -> Option<&Option<PopupModel>> {
+    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         None
     }
-    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupModel>> {
+    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         None
     }
 }
@@ -149,7 +146,7 @@ impl dyn Layer {
 /// [`Layer::sticky_popup_slot`]'s doc.
 pub(in crate::editor) struct BaseLayer {
     pub(in crate::editor) extend: bool,
-    pub(in crate::editor) sticky_popup: Option<PopupModel>,
+    pub(in crate::editor) sticky_popup: Option<PopupLayer>,
 }
 
 impl Layer for BaseLayer {
@@ -161,16 +158,16 @@ impl Layer for BaseLayer {
         })
     }
     fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-    fn sticky_popup_slot(&self) -> Option<&Option<PopupModel>> {
+    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
     }
-    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupModel>> {
+    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         Some(&mut self.sticky_popup)
     }
 }
 
 pub(in crate::editor) struct InsertLayer {
-    pub(in crate::editor) sticky_popup: Option<PopupModel>,
+    pub(in crate::editor) sticky_popup: Option<PopupLayer>,
 }
 
 impl Layer for InsertLayer {
@@ -180,10 +177,10 @@ impl Layer for InsertLayer {
     fn tear_down(&mut self, state: &mut EditorState, view: &EngineView) {
         commands::tear_down_insert(state, view);
     }
-    fn sticky_popup_slot(&self) -> Option<&Option<PopupModel>> {
+    fn sticky_popup_slot(&self) -> Option<&Option<PopupLayer>> {
         Some(&self.sticky_popup)
     }
-    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupModel>> {
+    fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         Some(&mut self.sticky_popup)
     }
 }
@@ -279,24 +276,6 @@ impl Layer for PromptLayer {
     }
 }
 
-/// An open LSP completion session, pushed above `Insert` — an overlay, not a
-/// mode layer (`mode()` returns `None`; `InputStack::mode_layer()` skips it,
-/// reading `Insert` from the layer beneath). `ui` is `None` until the first
-/// Tab/Down/BackTab/Up moves the selection off its implicit default of 0.
-pub(in crate::editor) struct CompletionLayer {
-    pub(in crate::editor) session: CompletionSession,
-    pub(in crate::editor) ui: Option<CompletionMenuUi>,
-}
-
-impl Layer for CompletionLayer {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView) {
-        state.views.completion_menu.set(None);
-    }
-}
-
 /// A fuzzy-picker layer. Wraps `Box<PickerSession>`: `PickerSession` alone is
 /// several times the size of every other layer's own state (its own
 /// fuzzy-match scoring buffers, picked items, `#:actions` table, …); the
@@ -316,42 +295,6 @@ impl Layer for PickerLayer {
         // `PickerSession`'s own `Drop` kills a streaming source's child
         // process — nothing further to do here.
     }
-}
-
-impl Layer for DrawerModel {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-}
-
-impl Layer for MenuModel {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-}
-
-impl Layer for ConfirmModel {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
-}
-
-/// A `Scrollable` popup only (hover, `gn`/`gp`'s diagnostic overlay) — a
-/// `Sticky` popup (signature help) lives in a mode layer's `sticky_popup`
-/// slot instead, never its own layer (see [`Layer::sticky_popup_slot`]'s
-/// doc), so it never implements `Layer` itself. Never buried: every opener
-/// that could otherwise land above it retires it first (`show_popup`'s
-/// self-replace, `open_picker`, `EditorState::push_mode_layer`) or is itself
-/// gated on the stack being settled, so `close-popup!`/`popup()` never need
-/// to look past `top()`.
-impl Layer for PopupModel {
-    fn mode(&self) -> Option<EditorMode> {
-        None
-    }
-    fn tear_down(&mut self, _state: &mut EditorState, _view: &EngineView) {}
 }
 
 // ── The stack ────────────────────────────────────────────────────────────
@@ -600,8 +543,9 @@ impl InputStack {
     // rewriting every `input.picker()`/`input.confirm()`/… call site to
     // `input.find::<PickerLayer>()`) so the ~350 existing call sites are
     // untouched by this refactor. Each of these moves into its own layer's
-    // file alongside that layer's own `impl Layer` block, not touched again
-    // otherwise.
+    // file alongside that layer's own `impl Layer` block — the ones that
+    // still name a not-yet-moved type (`Picker`, `Prompt`, `Command`) stay
+    // here for now.
 
     pub(in crate::editor) fn picker(&self) -> Option<&PickerSession> {
         self.find::<PickerLayer>().map(|l| l.0.as_ref())
@@ -609,48 +553,6 @@ impl InputStack {
 
     pub(in crate::editor) fn picker_mut(&mut self) -> Option<&mut PickerSession> {
         self.find_mut::<PickerLayer>().map(|l| l.0.as_mut())
-    }
-
-    pub(in crate::editor) fn confirm(&self) -> Option<&ConfirmModel> {
-        self.find()
-    }
-
-    pub(in crate::editor) fn menu(&self) -> Option<&MenuModel> {
-        self.find()
-    }
-
-    pub(in crate::editor) fn menu_mut(&mut self) -> Option<&mut MenuModel> {
-        self.find_mut()
-    }
-
-    pub(in crate::editor) fn drawer(&self) -> Option<&DrawerModel> {
-        self.find()
-    }
-
-    pub(in crate::editor) fn drawer_mut(&mut self) -> Option<&mut DrawerModel> {
-        self.find_mut()
-    }
-
-    pub(in crate::editor) fn completion(&self) -> Option<&CompletionSession> {
-        self.find::<CompletionLayer>().map(|l| &l.session)
-    }
-
-    pub(in crate::editor) fn completion_mut(&mut self) -> Option<&mut CompletionSession> {
-        self.find_mut::<CompletionLayer>().map(|l| &mut l.session)
-    }
-
-    /// The completion session's UI selection, flattened — same shape as
-    /// [`Self::minibuf_completion`]. Reads only; see
-    /// [`Self::completion_ui_mut`] to assign or clear it.
-    pub(in crate::editor) fn completion_ui(&self) -> Option<&CompletionMenuUi> {
-        self.find::<CompletionLayer>().and_then(|l| l.ui.as_ref())
-    }
-
-    /// The `Completion` layer's UI slot itself (not its content) — same
-    /// shape as [`Self::minibuf_completion_mut`], for
-    /// `move_completion_selection`'s `get_or_insert`.
-    pub(in crate::editor) fn completion_ui_mut(&mut self) -> Option<&mut Option<CompletionMenuUi>> {
-        self.find_mut::<CompletionLayer>().map(|l| &mut l.ui)
     }
 
     /// The open `(prompt! …)` session's callback, if `Prompt` is on the
@@ -680,17 +582,18 @@ impl InputStack {
         self.find_mut::<CommandLayer>().map(|l| &mut l.completion)
     }
 
-    /// The active popup, whichever of its two homes holds it: a `PopupModel`
-    /// layer (checked first — see its own "never buried" doc, which is what
-    /// makes checking it independently of `mode_layer()` sound) or the
-    /// *current* mode layer's own sticky-popup slot. Reading only the
-    /// current mode layer's slot — not any slot buried below it — matters
-    /// when `Base`'s slot holds a value that a later mode-layer push left
-    /// behind: `push_mode_layer` clears it before taking over as mode layer
-    /// for exactly this reason, but this lookup would still be wrong to
-    /// read past `mode_layer()` even if it didn't.
-    pub(in crate::editor) fn popup(&self) -> Option<&PopupModel> {
-        if let Some(popup) = self.find::<PopupModel>() {
+    /// The active popup, whichever of its two homes holds it: a
+    /// [`PopupLayer`] layer (checked first — see its own "never buried"
+    /// doc, which is what makes checking it independently of
+    /// `mode_layer()` sound) or the *current* mode layer's own
+    /// sticky-popup slot. Reading only the current mode layer's slot — not
+    /// any slot buried below it — matters when `Base`'s slot holds a value
+    /// that a later mode-layer push left behind: `push_mode_layer` clears
+    /// it before taking over as mode layer for exactly this reason, but
+    /// this lookup would still be wrong to read past `mode_layer()` even if
+    /// it didn't.
+    pub(in crate::editor) fn popup(&self) -> Option<&PopupLayer> {
+        if let Some(popup) = self.find::<PopupLayer>() {
             return Some(popup);
         }
         let mode_depth = self.mode_layer().depth;
@@ -700,13 +603,13 @@ impl InputStack {
             .and_then(|slot| slot.as_ref())
     }
 
-    pub(in crate::editor) fn popup_mut(&mut self) -> Option<&mut PopupModel> {
+    pub(in crate::editor) fn popup_mut(&mut self) -> Option<&mut PopupLayer> {
         let has_popup_layer = self
             .layers
             .iter()
-            .any(|(_, layer)| layer.is::<PopupModel>());
+            .any(|(_, layer)| layer.is::<PopupLayer>());
         if has_popup_layer {
-            return self.find_mut::<PopupModel>();
+            return self.find_mut::<PopupLayer>();
         }
         let mode_depth = self.mode_layer().depth;
         self.layers[mode_depth]
@@ -719,21 +622,21 @@ impl InputStack {
     /// one — `Base`/`Insert` only; the four minibuf mode layers do not. The
     /// SSOT `show_popup` gates a `Sticky` popup against, rather than
     /// re-listing which mode kinds may hold one.
-    pub(in crate::editor) fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupModel>> {
+    pub(in crate::editor) fn sticky_popup_slot_mut(&mut self) -> Option<&mut Option<PopupLayer>> {
         let mode_depth = self.mode_layer().depth;
         self.layers[mode_depth].1.sticky_popup_slot_mut()
     }
 
-    /// Clears every home a popup could occupy: a `PopupModel` layer, if one
-    /// is open (always `top()` — see its own doc), and the current mode
-    /// layer's sticky slot. Shared by `show_popup` (so `(show-popup! …)`
-    /// replaces any popup already showing, regardless of which of the two
-    /// homes it used — the documented "no stacking" contract) and
+    /// Clears every home a popup could occupy: a [`PopupLayer`] layer, if
+    /// one is open (always `top()` — see its own doc), and the current
+    /// mode layer's sticky slot. Shared by `show_popup` (so `(show-popup!
+    /// …)` replaces any popup already showing, regardless of which of the
+    /// two homes it used — the documented "no stacking" contract) and
     /// `close_popup`, and called by `EditorState::push_mode_layer` and
     /// `open_picker` before they take over the stack, which is what keeps
     /// the "never buried" invariant true.
     pub(in crate::editor) fn clear_popups(&mut self) {
-        if let Some(r) = self.ref_of::<PopupModel>() {
+        if let Some(r) = self.ref_of::<PopupLayer>() {
             debug_assert_eq!(
                 r,
                 self.top(),
@@ -757,18 +660,19 @@ impl Default for InputStack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::overlay_models::{ConfirmAction, ConfirmChoice};
+    use crate::editor::input_stack::confirm::{ConfirmAction, ConfirmChoice, ConfirmLayer};
+    use crate::editor::input_stack::menu::MenuLayer;
 
-    fn menu(label: &str) -> MenuModel {
-        MenuModel {
+    fn menu(label: &str) -> MenuLayer {
+        MenuLayer {
             rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![label.to_string()])),
             selected: 0,
             callback: SteelVal::BoolV(false),
         }
     }
 
-    fn confirm() -> ConfirmModel {
-        ConfirmModel {
+    fn confirm() -> ConfirmLayer {
+        ConfirmLayer {
             prompt: "test?".to_string(),
             choices: vec![ConfirmChoice {
                 key: 'y',
@@ -778,8 +682,8 @@ mod tests {
         }
     }
 
-    fn popup_model(text: &str) -> PopupModel {
-        PopupModel {
+    fn popup_model(text: &str) -> PopupLayer {
+        PopupLayer {
             text: text.to_string(),
             kind: hume_scripting::host::PopupKind::Scrollable,
             scroll: 0,
@@ -817,8 +721,8 @@ mod tests {
         stack.push(confirm());
         let removed = stack.truncate(r);
         assert_eq!(removed.len(), 2);
-        assert!(removed[0].is::<ConfirmModel>());
-        assert!(removed[1].is::<MenuModel>());
+        assert!(removed[0].is::<ConfirmLayer>());
+        assert!(removed[1].is::<MenuLayer>());
     }
 
     #[test]
@@ -836,9 +740,9 @@ mod tests {
     #[test]
     fn ref_of_finds_topmost_of_kind() {
         let mut stack = InputStack::new();
-        assert_eq!(stack.ref_of::<MenuModel>(), None);
+        assert_eq!(stack.ref_of::<MenuLayer>(), None);
         let r = stack.push(menu("only"));
-        assert_eq!(stack.ref_of::<MenuModel>(), Some(r));
+        assert_eq!(stack.ref_of::<MenuLayer>(), Some(r));
     }
 
     #[test]

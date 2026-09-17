@@ -51,7 +51,7 @@ const MAX_POPUP_WIDTH: u16 = 60;
 
 /// Where a popup renders — same widget, same model, two placements.
 /// `show-popup!`'s `#:anchor` kwarg selects between them (`hume-editor`'s
-/// `PopupModel::layout`).
+/// `PopupLayer::layout`).
 pub enum PopupLayout {
     /// Floating, anchored near the focused pane's cursor (`#:anchor
     /// 'cursor`, the default) — painted by `PopupOverlay`.
@@ -170,7 +170,7 @@ pub struct PopupState {
     /// The highlighted row index, for menus. `None` for a plain popup.
     pub selected: Option<usize>,
     /// First visible row, for a plain popup (`selected.is_none()`) — the
-    /// resolved counterpart of `PopupModel::scroll`. Ignored by menus, which
+    /// resolved counterpart of `PopupLayer::scroll`. Ignored by menus, which
     /// window around `selected` instead.
     pub scroll: usize,
     /// Whether to draw box-drawing border glyphs around the popup (vs. a

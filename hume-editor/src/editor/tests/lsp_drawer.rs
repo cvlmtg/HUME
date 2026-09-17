@@ -171,7 +171,7 @@ fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
 /// there would reallocate all of them every frame for as long as the drawer
 /// stays open.
 ///
-/// Sabotage oracle: revert `DrawerModel::items` and `DrawerViewState::rows`
+/// Sabotage oracle: revert `DrawerLayer::items` and `DrawerViewState::rows`
 /// to a bare `Vec<String>` (with `sync_drawer_view` deep-cloning it, as
 /// before) — this test fails to compile, since there is no `Arc` left on
 /// either side for `Arc::ptr_eq` to compare.

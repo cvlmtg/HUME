@@ -1517,8 +1517,8 @@ fn is_single_pane_true_for_a_leaf_false_for_a_split() {
 // ── Bottom band partition ──────────────────────────────────────────────
 
 /// A band that always reports a fixed height, regardless of `max` — lets
-/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerModel`/
-/// `PopupModel`.
+/// tests probe `pane_area`'s chrome arithmetic without a real `DrawerLayer`/
+/// `PopupLayer`.
 struct FixedHeightDrawer(u16);
 
 impl crate::providers::BottomBandProvider for FixedHeightDrawer {

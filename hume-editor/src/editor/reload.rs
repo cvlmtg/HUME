@@ -142,7 +142,7 @@ impl Editor {
         // to touch them directly either. `confirm` has no view/Steel
         // callback of its own (its action is a plain Rust enum, not a
         // rooted `SteelVal`), so it needs even less than the others —
-        // dropping it is the entire teardown. `PopupModel` likewise carries
+        // dropping it is the entire teardown. `PopupLayer` likewise carries
         // no Steel callback.
         self.lsp.reset_config();
         // Only the Steel `after` thunks — native `ViewportDebounce` timers

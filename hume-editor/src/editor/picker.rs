@@ -729,7 +729,7 @@ pub(in crate::editor) fn session_for_token(
 /// (`InputStack::clear_popups`): unlike a menu or drawer, which stay open
 /// underneath and simply stop seeing input, a `Popup` layer left in place
 /// would be sandwiched between whatever was below it and the picker landing
-/// on top — the one case `PopupModel`'s "never buried" invariant (its
+/// on top — the one case `PopupLayer`'s "never buried" invariant (its
 /// `Layer` doc, `input_stack/stack.rs`) requires every ungated, unconditional
 /// pusher to close off itself.
 ///

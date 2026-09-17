@@ -5,8 +5,8 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
 use crate::editor::input_stack::CompletionLayer;
+use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::lsp::completion::{CompletionSession, StoredCompletionItem};
-use crate::editor::overlay_models::{DrawerModel, MenuModel};
 use crate::editor::picker::{self, PickerItem, PickerSession};
 use hume_engine::types::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
@@ -280,7 +280,7 @@ fn confirm_paste_is_swallowed_and_the_confirm_stays_open() {
 fn menu_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.status_msg = Some("previous message".to_string());
-    ed.state.input.push(MenuModel {
+    ed.state.input.push(MenuLayer {
         rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
         selected: 0,
         callback: marker("menu-cb"),
@@ -297,7 +297,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
 fn drawer_paste_is_swallowed_but_clears_the_status_message() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.state.status_msg = Some("previous message".to_string());
-    ed.state.input.push(DrawerModel {
+    ed.state.input.push(DrawerLayer {
         items: std::sync::Arc::new(vec!["d0".to_string()]),
         selected: 0,
         scroll: 0,
