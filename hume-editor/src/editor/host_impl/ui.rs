@@ -204,6 +204,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
     ) -> Result<(), String> {
+        // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
+        // row behind it, so `Enter` would fire `0` to a callback that can't
+        // index anything. Callers close (or never open) instead.
+        if items.is_empty() {
+            return Err("show-drawer-list!: items must not be empty".to_string());
+        }
         // Async staleness — see `EditorState::async_opener_stale`'s own doc.
         // `top` `Drawer` is the self-replace exception below: a second
         // `show-drawer-list!` call while the first is still open (a

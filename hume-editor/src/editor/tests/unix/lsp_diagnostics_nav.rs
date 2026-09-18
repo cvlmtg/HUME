@@ -392,6 +392,61 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
     );
 }
 
+/// Raising `lsp.diagnostics-severity-floor` must refresh the open drawer,
+/// not just future opens and the decorations — the drawer snapshots
+/// `diagnostics-for-buffer` (which defaults to the floor) at open time.
+///
+/// Fail oracle: before the fix the drawer kept both rows after the floor
+/// hid the warning.
+#[test]
+fn drawer_refreshes_rows_when_the_severity_floor_changes() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert_eq!(drawer_rows(&ed).len(), 2, "sanity: both rows listed");
+
+    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    ed.settle();
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 1, "the below-floor warning must disappear");
+    assert!(
+        rows[0].contains("problem A"),
+        "the surviving error must remain: {rows:?}"
+    );
+}
+
+/// Raising the floor past every visible diagnostic closes the drawer, the
+/// same as fixing the last diagnostic does.
+#[test]
+fn drawer_closes_when_the_severity_floor_hides_everything() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let warning_only: DiagFixture = ((1, 0), (1, 2), 2, "just a warning");
+    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[warning_only]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    ed.settle();
+
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "hiding every row must close the drawer"
+    );
+    assert!(
+        ed.state.views.drawer.read().is_none(),
+        "the view must follow the closed model"
+    );
+}
+
 /// A foreign replace must kill tracking: another owner's
 /// `show-drawer-list!` fires `#f` to our callback at the current
 /// generation, so the next publish for our buffer must leave the foreign

@@ -514,6 +514,66 @@ fn update_and_selected_index_with_none_open_report_false() {
     assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
 }
 
+/// An empty `show-drawer-list!` is rejected — a 0-row drawer would leave
+/// `Enter` firing `0` with no row behind it.
+///
+/// Fail oracle: before the fix the empty drawer opened with `selected` 0.
+#[test]
+fn show_with_empty_items_errors_and_opens_nothing() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let result = host.show_drawer_list(Vec::new(), steel::rvals::SteelVal::BoolV(false));
+    assert!(
+        result.is_err(),
+        "empty show must fail fast instead of opening a 0-row drawer"
+    );
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "a rejected open must leave no drawer behind"
+    );
+    assert!(
+        ed.state.views.drawer.read().is_none(),
+        "the view must stay empty too"
+    );
+}
+
+/// An empty `update-drawer-list!` is a no-op `#f` — callers close instead
+/// of clearing through an update.
+///
+/// Fail oracle: before the fix the update applied (`#true`) and wiped the
+/// rows, leaving a 0-row drawer where `Enter` would fire `0`.
+#[test]
+fn update_with_empty_items_is_a_noop_false() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (show-drawer-list! (list "a" "b") (lambda (idx) (void)))))
+           (define-typed-command! "upd" "" (lambda ()
+             (log! 'info (to-string (update-drawer-list! (list)
+               (lambda (idx) (void)) 0)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    type_cmd(&mut ed, ":upd");
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(
+        *drawer.items,
+        vec!["a".to_string(), "b".to_string()],
+        "the old rows must survive a rejected update"
+    );
+    assert_eq!(drawer.selected, 0);
+}
+
 // ── Esc: closes + calls back with #f ─────────────────────────────────────────
 
 #[test]

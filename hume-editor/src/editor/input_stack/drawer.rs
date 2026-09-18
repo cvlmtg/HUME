@@ -103,7 +103,9 @@ impl EditorState {
     /// the scroll re-clamped into the visible window, the same
     /// `clamp_scroll_to_window` the keys get. Returns whether the update
     /// applied (`false` when no drawer is open — an expected-normal race,
-    /// never an error).
+    /// never an error — or when `items` is empty, so a 0-row drawer with an
+    /// `Enter` that would fire `0` can never be built from either entry
+    /// point; callers close instead).
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
         terminal_height: u16,
@@ -111,13 +113,16 @@ impl EditorState {
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool {
+        if items.is_empty() {
+            return false;
+        }
         let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
             return false;
         };
         drawer.items = Arc::new(items);
         drawer.callback = callback;
         let len = drawer.items.len();
-        drawer.selected = if len == 0 { 0 } else { selected.min(len - 1) };
+        drawer.selected = selected.min(len - 1);
         let visible = drawer_visible_for(terminal_height, drawer.items.len());
         drawer.scroll =
             hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible);

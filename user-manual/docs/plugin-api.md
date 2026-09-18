@@ -223,9 +223,9 @@ Full walkthroughs — batch vs. streaming population, truncation direction, exit
 | `(close-popup!)` | Close the open popup; idempotent — a no-op if none is open |
 | `(show-menu! items on-select)` | Show a selection menu over `items`, a list of strings |
 | `(close-menu!)` | Close the open menu; a no-op if none is open |
-| `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a list of strings. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` so its owner knows the drawer is gone |
+| `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a non-empty list of strings. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` so its owner knows the drawer is gone. Errors on empty `items` — close (or never open) instead |
 | `(close-drawer!)` | Close the open drawer; a no-op if none is open |
-| `(update-drawer-list! items on-select selected)` | Replace the open drawer's rows in place, keeping the current selection unless `selected` names another row; returns `#t` when applied, `#f` when no drawer is open |
+| `(update-drawer-list! items on-select selected)` | Replace the open drawer's rows in place, keeping the current selection unless `selected` names another row; returns `#t` when applied, `#f` when no drawer is open or `items` is empty — close instead of clearing through an update |
 | `(drawer-selected-index)` | The open drawer's selected row, or `#f` when no drawer is open |
 
 ## Timers

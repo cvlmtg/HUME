@@ -224,4 +224,7 @@
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.diagnostics-severity-floor")
-      (for-each lsp/refresh-diagnostic-decorations (buffers)))))
+      (for-each (lambda (bid)
+                  (lsp/refresh-diagnostic-decorations bid)
+                  (lsp/refresh-diagnostics-drawer bid))
+                (buffers)))))

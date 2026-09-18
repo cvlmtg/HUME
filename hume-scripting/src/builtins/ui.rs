@@ -86,7 +86,8 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
 }
 
 /// `(show-drawer-list! items on-select)` — no keyword defaults, so this
-/// registers directly (no `%`-prefix wrapper needed).
+/// registers directly (no `%`-prefix wrapper needed). Errors on empty
+/// `items`; callers close (or never open) instead.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,
@@ -112,7 +113,8 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
 /// keeping the browse session; `selected` is clamped into the new list.
 /// Returns whether the update applied — `#f` when no drawer is open (the
 /// caller's drawer was closed or replaced: an expected-normal race, never
-/// an error, same contract as `picker-replace!`'s stale token).
+/// an error, same contract as `picker-replace!`'s stale token) or when
+/// `items` is empty (callers close instead).
 pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,

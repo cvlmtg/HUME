@@ -198,7 +198,9 @@ pub trait UiHost {
     /// `on-select` receives the chosen index and, unlike the popup/menu's
     /// one-shot callback, may fire more than once: the drawer stays open
     /// across `Enter` (Helix-style browse) until `Esc` or `close-drawer!`.
-    /// Replaces any drawer already open (no stacking).
+    /// Replaces any drawer already open (no stacking). Errors on empty
+    /// `items` — a 0-row drawer would leave `Enter` firing `0` with no row
+    /// behind it, so callers close (or never open) instead.
     fn show_drawer_list(
         &mut self,
         items: Vec<String>,
@@ -219,7 +221,7 @@ pub trait UiHost {
     /// would. `selected` names the row to select, clamped into the new
     /// list. Returns whether the update applied: `#f` when no drawer is
     /// open (expected-normal race — the caller's drawer was closed or
-    /// replaced), never an error. Owner-blind like the rest of the drawer:
+    /// replaced), or when `items` is empty, never an error. Owner-blind like the rest of the drawer:
     /// Rust never checks *whose* drawer is open, so a caller must only
     /// refresh a drawer it opened itself — it learns a replace killed its
     /// own via its callback's `#f` (fired by `show_drawer_list`'s
@@ -227,9 +229,9 @@ pub trait UiHost {
     /// owners: a refresh queued before another owner's `show-drawer-list!`
     /// lands on the foreign rows before that replace's `#f` drains — a
     /// one-frame window, reachable when publishes arrive on nearly every
-    /// edit. Callers must close, not update, on empty: `selected` stays `0`
-    /// on 0 rows (same as `show_drawer_list`), and `Enter` there would fire
-    /// `0` with no row behind it.
+    /// edit. An empty `items` is a no-op `#f` (same as `show_drawer_list`
+    /// erroring on empty) — callers close instead of clearing through an
+    /// update.
     fn update_drawer_list(
         &mut self,
         items: Vec<String>,
