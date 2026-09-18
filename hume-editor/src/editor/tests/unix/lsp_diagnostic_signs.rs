@@ -245,10 +245,9 @@ fn gutter_width_auto_2_expands_when_signs_exist() {
 // suite, so it depends on heap-reuse state built up by the ~2900 tests that
 // ran before it. steel-core's `sync` feature (its only cross-thread GC code,
 // `ParallelMarker`/`MARKER`) isn't even enabled in this build — `im` isn't in
-// Cargo.lock — so this is a single-threaded steel-core bug, not a race:
-// `--test-threads=1` for hume-editor (commit d7397242) mitigated the
-// symptom without addressing that, and CI run 34270941797 hit the same
-// panic again despite it — so that workaround was dropped.
+// Cargo.lock — so this is a single-threaded steel-core bug, not a race.
+// Serial test-thread runs only mitigated the symptom, so no such
+// workaround is kept.
 #[test]
 #[ignore = "flaky: steel-core 0.8.2 HeapRef::get() panics on heap-slot reuse, see comment above"]
 fn diagnostic_and_plugin_sign_share_a_line_and_both_survive_the_merge() {

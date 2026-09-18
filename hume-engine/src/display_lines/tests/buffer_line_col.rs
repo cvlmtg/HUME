@@ -146,8 +146,7 @@ fn char_at_line_display_col_clamps_to_last_char_on_a_shorter_line() {
     // Line 1 ("ab") is shorter than the column target (5) carried over from a
     // longer line — clamps to the last real character rather than landing on
     // the '\n', matching `NearestContent`'s own EOL-exclusion (the "9j onto a
-    // shorter line" rule the retired `place_display_column` used to encode
-    // by hand).
+    // shorter line" rule).
     let rope = Rope::from_str("hello\nab\n");
     let providers = ProviderSet::new();
     let mut s = PaneLineStore::new();
@@ -189,8 +188,7 @@ fn char_at_line_display_col_matches_char_at_in_no_wrap() {
     // everywhere — `char_at` is the oracle here, pinned independently by the
     // `char_at_*` tests above. Covers, via that agreement rather than by
     // duplicating hardcoded expectations, the same tab/CJK/width-boundary
-    // cases the retired `hume_rope::lines::place_display_column`'s test
-    // suite once pinned by hand: a tab or wide grapheme before the target,
+    // cases: a tab or wide grapheme before the target,
     // and the boundary exactly at a line's display width.
     let ropes = [
         Rope::from_str("hello\nworld\n"),

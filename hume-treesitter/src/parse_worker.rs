@@ -137,9 +137,9 @@ fn coalesce_one(batch: &mut FxHashMap<BufferId, ParseRequest>, req: ParseRequest
 /// into the rope's immutable B-tree nodes.
 ///
 /// Shared by the root parse and every injected-layer parse — injected layers
-/// always pass `old_tree: None` (Phase 3 decision: only the root is
-/// incremental; injected regions are typically small enough that a full
-/// parse is cheap and avoids tracking per-layer identity across edits).
+/// always pass `old_tree: None` (only the root is incremental; injected
+/// regions are typically small enough that a full parse is cheap and avoids
+/// tracking per-layer identity across edits).
 pub(crate) fn run_parse(
     parser: &mut tree_sitter::Parser,
     rope: &ropey::Rope,

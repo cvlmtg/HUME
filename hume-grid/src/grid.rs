@@ -23,9 +23,7 @@ use crate::style::ResolvedStyle;
 /// continuation carries its head's style, a continuation differs between two
 /// frames only when its head does too — so a run of changed cells can never
 /// begin at a continuation, and repainting a run can never start in the
-/// middle of a glyph. Callers used to blank the trailing column of a wide
-/// glyph by hand at each write site; enforcing it here instead means a new
-/// write site cannot forget.
+/// middle of a glyph. Enforced here so a new write site cannot forget.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Grid {
     width: u16,

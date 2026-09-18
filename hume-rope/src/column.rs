@@ -1,8 +1,9 @@
 //! Domain-typed line-relative columns.
 //!
-//! "Column" means four different things in this codebase, and mixing them up
+//! "Column" means five different things in this codebase, and mixing them up
 //! silently produces the wrong char position or the wrong screen cell: a
-//! **display column** (terminal cells, tab-expanded), a **char column** (char
+//! **display column** (terminal cells, tab-expanded, from either the display
+//! line or the buffer line — hence two types), a **char column** (char
 //! index within a line), a **grapheme column** (grapheme-cluster index within
 //! a line), and a **byte column** (byte offset within a line). The five types
 //! below give each its own type — [`DisplayLineCol`]/[`BufferLineCol`] for

@@ -24,8 +24,6 @@ use super::event::EditorEvent;
 /// — `EditorHostImpl::attach_grammar` for a command-mode call, and
 /// `apply_pending_language_regs` for the init-mode effect — so the
 /// `QueryPaths` conversion and the user-facing error prefix exist once.
-/// They previously had a copy each, which is two implementations of one
-/// action.
 ///
 /// Free function over `(&mut EditorState, &mut EngineView)` rather than an
 /// `Editor` method because `EditorHostImpl` borrows those two fields

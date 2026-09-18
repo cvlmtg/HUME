@@ -648,8 +648,8 @@ fn tabline_always_shows_even_with_one_tab() {
     assert!(ed.state.tabline_view.read().visible);
 }
 
-/// Characterization (behavior unchanged, no red run needed — code review
-/// fix #5, commit range 48c11211..ebc3b2e0): `close_tab`'s Insert-session
+/// Characterization (behavior unchanged: no red run needed):
+/// `close_tab`'s Insert-session
 /// teardown reads and writes exclusively through pool-based lookups
 /// (`focused_buffer_id` indexes `view.panes` directly by id, never through
 /// `view.layout`), so it already resolved correctly regardless of whether
@@ -719,7 +719,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
 /// terminal geometry then matched that stale entry and never re-armed
 /// `on-viewport-change`, so a viewport-driven consumer (LSP inlay hints)
 /// stayed pinned to whatever it last saw before the tab went to the
-/// background (code review fix #1, commit range 48c11211..ebc3b2e0).
+/// background.
 #[test]
 fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_change() {
     let tmp = safe_tempdir();
@@ -763,8 +763,8 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 /// Regression: `last_viewport_key`'s key used to be `(top_line, height)`
 /// alone, with no `buffer_id` — so a pane switching buffers (`:e`, `:b#`)
 /// at unchanged geometry matched its own stale entry and never re-armed
-/// `on-viewport-change` for the newly-shown buffer (code review fix #1,
-/// commit range 48c11211..ebc3b2e0). Single pane, single tab — this is the
+/// `on-viewport-change` for the newly-shown buffer. Single pane, single
+/// tab — this is the
 /// same-tab twin of `returning_to_a_background_tab_...` above, which covers
 /// the pane-dropped-from-the-active-set cause instead.
 #[test]

@@ -31,11 +31,11 @@ pub(in crate::editor) fn popup_placement(
     let pane_rect = ed.view.pane_rect(focused)?;
     let gutter_w = ed.pane_gutter_width(focused);
     let content_width = pane_rect.width.saturating_sub(gutter_w);
-    // Step 6 (`scroll_into_view`) already resolved the focused cursor's
+    // The scroll step (`scroll_into_view`) already resolved the focused cursor's
     // screen cell this frame, via the same locate/distance walk
-    // `content_pos` runs below — nothing between steps 6 and 10 moves the
-    // cursor or the viewport, so the two callers anchored at the live
-    // cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
+    // `content_pos` runs below — nothing between the scroll step and this
+    // overlay sync moves the cursor or the viewport, so the two callers anchored
+    // at the live cursor (`sync_popup_view`, `sync_menu_view`) can reuse it instead of
     // re-walking the display-line list (a full per-line format in wrap mode).
     let (content_x, row) = match ctx.cursor_content_pos {
         Some(cell) if anchor_char == focused_cursor_char(ed) => cell,

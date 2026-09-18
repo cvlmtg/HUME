@@ -1,4 +1,4 @@
-//! Phase 1 lazy plugin loading — editor-level tests.
+//! Lazy plugin loading — editor-level tests.
 
 use super::*;
 use crate::editor::event::EditorEvent;

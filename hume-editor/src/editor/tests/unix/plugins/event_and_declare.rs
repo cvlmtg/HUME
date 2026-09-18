@@ -1,11 +1,11 @@
-//! Phase 2 lazy plugin loading — event activations, and load-plugin /
+//! Lazy plugin loading — event activations, and load-plugin /
 //! declare-plugin interaction (editor-level).
 
 use super::*;
 use crate::editor::registry::MappableCommand;
 use hume_scripting::PluginStatus;
 
-// ── Phase 2 lazy plugin loading — event activations ──────────────────────────
+// ── Lazy plugin loading — event activations ──────────────────────────
 
 /// `#:events` plugin activates on first matching hook fire; its handler
 /// runs in the same fire that caused activation.
@@ -259,7 +259,7 @@ fn event_plugin_failure_marks_failed_no_retry() {
     );
 }
 
-// ── Phase 2 — load-plugin / declare-plugin interaction (editor-level) ────────
+// ── load-plugin / declare-plugin interaction (editor-level) ────────
 
 /// `(declare-plugin "name")` with no activation entries is a hard error — the plugin
 /// could never activate at runtime.

@@ -680,8 +680,8 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// `init_scripting`'s unconditional `scheme/grammars.scm` eval is the only
 /// place a grammar gets registered, and `:reload-config` re-enters it after
 /// `reset_config_state` tears down the previous `LanguageRegistry`
-/// (`clear_languages_all`). Regression coverage for `130d0e4e`, which fixed
-/// `clear_languages_all` leaving `Buffer.syntax` pointed at an
+/// (`clear_languages_all`). Regression coverage: `clear_languages_all`
+/// once left `Buffer.syntax` pointed at an
 /// `Arc<GrammarBundle>` from the discarded registry when a buffer's
 /// language failed to re-detect after reload.
 ///
@@ -691,7 +691,7 @@ fn reload_config_restores_an_explicit_buffer_language_detection_cannot_recover()
 /// `init.scm` at all — proving the survival is core's doing, not a reload
 /// re-running an install command.
 ///
-/// Flip: revert `130d0e4e`'s `buf.syntax = None` addition to
+/// Flip: revert the `buf.syntax = None` addition to
 /// `clear_languages_all` and the final `syntax.is_some()` assertion fails —
 /// the buffer keeps reparsing forever against a registry that no longer
 /// exists.

@@ -795,9 +795,9 @@ fn crossed_out_is_accepted_as_strikethrough() {
     assert!(kw.modifiers.contains(Modifiers::STRIKETHROUGH));
 }
 
-/// HUME used to also accept its own "strikethrough" name alongside Helix's
-/// "crossed_out" — dropped: Helix compatibility beats a HUME-only alias with
-/// no reason to exist once the real name works everywhere.
+/// Only Helix's "crossed_out" is accepted — Helix compatibility beats a
+/// HUME-only "strikethrough" alias with no reason to exist once the real
+/// name works everywhere.
 #[test]
 fn strikethrough_is_no_longer_accepted_as_a_modifier_name() {
     let dir = TempDir::new().unwrap();
@@ -845,8 +845,7 @@ fn bad_underline_becomes_a_warning() {
     assert_eq!(kw.underline, UnderlineStyle::None);
 }
 
-/// HUME used to also accept "solid"/"wavy"/"undercurl" alongside Helix's own
-/// "line"/"curl" — dropped for the same reason as `strikethrough` above.
+/// Only Helix's "line"/"curl" are accepted — same reason as `strikethrough` above.
 #[test]
 fn hume_only_underline_aliases_are_no_longer_accepted() {
     let dir = TempDir::new().unwrap();

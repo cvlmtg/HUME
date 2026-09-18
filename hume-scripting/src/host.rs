@@ -69,9 +69,8 @@ pub(crate) fn unsupported(builtin: &str) -> String {
 /// `EditorHost` itself declares no domain methods.
 ///
 /// Implemented by `EditorHostImpl<'a>` in the editor crate (or `MockHost` in
-/// tests). `SteelCtx` holds `host: &'a mut dyn EditorHost`; builtins call
-/// `ctx.host.<accessor>().<method>(...)` rather than borrowing editor-domain
-/// fields directly.
+/// tests). Builtins call `ctx.host.<accessor>().<method>(...)` rather than
+/// borrowing editor-domain fields directly.
 ///
 /// All methods (on `EditorHost` and every capability trait) take/return only
 /// `'static` types (owned `String`/`PathBuf`/`Vec`, `Copy` ids, scripting-owned

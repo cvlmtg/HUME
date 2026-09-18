@@ -418,14 +418,14 @@ impl Editor {
     /// Reports `Severity::Warning` for a command name that failed to
     /// resolve the way the caller needed. If the registry recognizes `name`
     /// under the *other* kind, names it and explains how it's actually
-    /// reachable instead of `fallback` — the dead end `601b27e1`'s split
-    /// would otherwise leave unexplained at every site that only resolves
-    /// one kind: the keymap dispatcher, Insert mode's trie leaf, the
+    /// reachable instead of `fallback` — a split that resolves only one
+    /// kind would otherwise leave the other kind unexplained at every
+    /// single-kind site: the keymap dispatcher, Insert mode's trie leaf, the
     /// post-init keymap lint, and the `:` dispatcher.
     ///
     /// Stays `Warning`, not `Info`, despite two of its four callers
     /// (`:` dispatch, Insert mode) being live-typo cases that would
-    /// otherwise fit this change's transient rule: the post-init keymap lint
+    /// otherwise fit the transient rule: the post-init keymap lint
     /// caller (`scripting_setup.rs`) is a config-time diagnostic the user
     /// won't see the moment it fires and needs to find later in
     /// `:messages` — the shared function can't carry two severities, so it

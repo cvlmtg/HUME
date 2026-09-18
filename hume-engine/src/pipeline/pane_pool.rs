@@ -46,9 +46,8 @@ impl UnattachedPane {
 /// specific pane by id (`Index`/`get`/`get_mut`, the common case — nothing
 /// below changes for the ~200 sites that already spell `view.panes[pid]`),
 /// or every pane regardless of tab visibility
-/// ([`Self::every_pane_across_all_tabs`], named so a call site states the
-/// same thing a `// pane-pool-safe: <reason>` comment used to state in
-/// prose). There is deliberately no `iter`/`values`/`values_mut`/`keys`/
+/// ([`Self::every_pane_across_all_tabs`], named so a call site states that
+/// scope in prose). There is deliberately no `iter`/`values`/`values_mut`/`keys`/
 /// `drain`/`IntoIterator` — the frame's own working set is
 /// `EngineView::active_pane_ids()` (the active tab's leaves only); a bare
 /// walk of the whole pool is right for buffer-lifecycle cleanup and wrong

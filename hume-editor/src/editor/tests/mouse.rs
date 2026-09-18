@@ -88,9 +88,9 @@ fn tab_start_x(ed: &Editor, tab: crate::editor::tab::TabId) -> u16 {
 }
 
 /// Regression: `end_insert_session` can mutate the buffer (the blank-line
-/// indent trim, code review fix #3) — a mouse click that exits Insert mode
+/// indent trim) — a mouse click that exits Insert mode
 /// must recompute its char offset AFTER that mutation, not before, or a
-/// stale offset can land past the shrunk buffer's end (fix #2).
+/// stale offset can land past the shrunk buffer's end.
 #[test]
 fn click_after_blank_line_trim_lands_on_correct_char() {
     // "  x\ncd\n": enter Insert with the cursor on line 0's own trailing '\n'.
@@ -730,8 +730,7 @@ fn clicking_another_tab_while_in_insert_exits_insert_and_commits_the_outgoing_pa
 /// outgoing pane, same as every keyboard-dispatched focus switch does via
 /// `step_paste_commit` — `tabline_click` reaches `switch_to_tab` directly,
 /// bypassing dispatch entirely, so `focus_pane` is the only remaining place
-/// that can close the gap (code review fix #2, commit range
-/// 48c11211..ebc3b2e0). Left uncommitted, `commit_paste_session`'s own
+/// that can close the gap. Left uncommitted, `commit_paste_session`'s own
 /// debug assert fires on the very next dispatched command.
 #[test]
 fn clicking_another_tab_commits_the_outgoing_pane_s_open_paste_session() {

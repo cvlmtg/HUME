@@ -147,7 +147,7 @@ const HANGUP_EXIT_CODE: i32 = 130;
 /// Two signals of the same event, one per platform's read primitive:
 /// - `UnexpectedEof` — termina's own error (≥0.4.0) for a zero-byte read on
 ///   a blocking tty fd `poll` reported ready
-///   (`UnixEventSource::try_read`, upstream commit `309350ba54`): what a pty
+///   (`UnixEventSource::try_read`): what a pty
 ///   slave read produces on macOS/BSD once the master closes.
 /// - Raw `EIO`/`ENXIO` on Unix — what a Linux pty slave surfaces directly.
 ///   `EIO` is the documented case; `ENXIO` covers losing the device out from

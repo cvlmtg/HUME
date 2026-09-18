@@ -1,7 +1,7 @@
 use super::*;
 use pretty_assertions::assert_eq;
 
-// ── Phase 7: per-pane pane_jumps ─────────────────────────────────────────────
+// ── Per-pane pane_jumps ─────────────────────────────────────────────
 
 /// Ctrl-o navigates backward in the per-pane jump list (not a global list).
 #[test]

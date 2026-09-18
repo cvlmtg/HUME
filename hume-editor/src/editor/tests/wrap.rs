@@ -49,7 +49,7 @@ fn typed_set_garbage_scope_on_real_key_errors() {
     );
 }
 
-/// `complete_set` tolerates a stray double space before the key (a6e5adc), so
+/// `complete_set` tolerates a stray double space before the key, so
 /// `typed_set` must accept the same input on Enter — otherwise Tab-completing
 /// through a double space produces a command line that errors.
 #[test]

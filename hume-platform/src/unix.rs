@@ -71,8 +71,8 @@ impl super::ProbeChannel for TtyChannel {
 // `UnixEventSource::try_read` mapped the resulting tty EOF to `Ok(None)`
 // rather than an error, so the main loop's event wait spun forever without
 // ever returning. termina ≥0.4.0 fixes this at the source (`try_read` now
-// returns `Err(io::ErrorKind::UnexpectedEof)` on that same zero-byte read;
-// upstream commit `309350ba54`), so the main loop's own reader now surfaces
+// returns `Err(io::ErrorKind::UnexpectedEof)` on that same zero-byte read),
+// so the main loop's own reader now surfaces
 // a hangup as an ordinary error and returns on its own — see
 // `hume_platform::hangup_exit_code` for how the exit code that used to come
 // from this thread's tty watch is now derived from that error instead. Do

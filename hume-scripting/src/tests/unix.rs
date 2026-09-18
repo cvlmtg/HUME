@@ -3,7 +3,7 @@
 
 use super::*;
 
-/// Pins a real gotcha `plum/run!` (Phase 1 helper) depends on: `child-stderr`
+/// Pins a real gotcha `plum/run!` depends on: `child-stderr`
 /// (and by extension `child-stdin`/`child-stdout`) must be captured
 /// *before* calling `wait` — calling it after returns `#f` even though the
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed

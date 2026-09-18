@@ -758,9 +758,8 @@ fn lsp_position_params_resolves_a_buffer_shown_in_a_non_focused_pane() {
     );
 }
 
-/// Regression: `pane_showing_buffer`'s active-tab restriction (code review
-/// fix #3, commit range 48c11211..ebc3b2e0) used to be `shown_buffer_state`'s
-/// only resolver too — but none of `shown_buffer_state`'s callers
+/// Regression: `pane_showing_buffer`'s active-tab restriction used to be
+/// `shown_buffer_state`'s only resolver too — but none of its callers
 /// (`lsp-position-params` among them) ever read a viewport, only a cursor,
 /// which stays live no matter which tab is active. A buffer shown only in a
 /// *background* tab's pane must still resolve, the same as one shown in a

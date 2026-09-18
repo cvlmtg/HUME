@@ -929,7 +929,7 @@ fn explicit_count_first_press_resolves_column_through_a_preceding_hint() {
 /// following `2j` crosses families (`DisplayLine` → `BufferLine`), so it
 /// can't reuse that latch (see `StickyDisplayCol`) and must re-derive from
 /// `head` instead — on a line with a hint before `head`, that re-derivation
-/// is exactly where the retired rope-only mirror went blind.
+/// must go through the hint, not around it.
 #[test]
 fn buffer_line_family_switch_rederives_through_a_hint_not_around_it() {
     // line 0: "xyz" (plain). line 1: hint "HHH" before "abc" — bare j lands

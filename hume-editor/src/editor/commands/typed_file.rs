@@ -174,7 +174,7 @@ pub(in crate::editor) fn typed_set(
         return Err(CommandError::transient(USAGE));
     };
     // Tolerate stray extra whitespace before the key, matching
-    // `complete_set`'s tolerance (a6e5adc) — otherwise Tab can complete
+    // `complete_set`'s tolerance — otherwise Tab can complete
     // through a double space into a command line that errors on Enter.
     let rest = rest.trim_start();
     let Some((key, value)) = rest.split_once('=') else {

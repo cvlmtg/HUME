@@ -127,7 +127,7 @@ fn line_hunks_normalizes_bare_cr_to_a_line_break() {
     );
 }
 
-// ── word_hunks (Phase 2b) ────────────────────────────────────────────────
+// ── word_hunks ────────────────────────────────────────────────
 
 /// Fail oracle: swap `old_start`/`old_end` for a pure-insert side (or emit a
 /// non-empty `old_text`) — a plugin anchoring a `set-virtual-lines!` insert

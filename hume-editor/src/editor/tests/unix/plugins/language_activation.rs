@@ -1,10 +1,10 @@
-//! Phase 3b lazy plugin loading — language/filetype activations, and
-//! Phase 4 Polish — load-time activation reporting.
+//! Lazy plugin loading — language/filetype activations, and
+//! load-time activation reporting.
 
 use super::*;
 use hume_scripting::PluginStatus;
 
-// ── Phase 3b lazy plugin loading — language/filetype activations ──────────────
+// ── Lazy plugin loading — language/filetype activations ──────────────
 
 /// `#:languages` plugin activates on first matching language set; its
 /// `on-language-set` handler runs in the same call that caused activation.
@@ -357,7 +357,7 @@ fn language_wildcard_and_specific_entry_coexist() {
     );
 }
 
-// ── Phase 4 Polish — load-time activation reporting ──────────────────────────
+// ── Load-time activation reporting ──────────────────────────
 
 /// Command activation: first dispatch of a lazy command logs a Trace entry naming
 /// the activating command.

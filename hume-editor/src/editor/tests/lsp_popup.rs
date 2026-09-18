@@ -526,10 +526,9 @@ fn wrap_is_cached_per_width_and_invalidated_only_when_width_changes() {
 /// forced a re-wrap. Checked here via `PopupContent` object identity (a
 /// fresh `content_mut` build always allocates a fresh `Arc`, styled or
 /// plain alike), not by comparing colors, so it doesn't need a `#:lang`
-/// grammar fixture. Regression test for commit ece649a2's
-/// `resolve_popup_text` → `content_mut` migration, which dropped the
-/// per-width re-resolve that used to double as the theme's only
-/// invalidation trigger.
+/// grammar fixture. Regression test: the `resolve_popup_text` →
+/// `content_mut` migration dropped the per-width re-resolve that doubled as
+/// the theme's only invalidation trigger.
 #[test]
 fn popup_content_is_rebuilt_after_a_theme_reload() {
     let _guard = crate::editor::tests::settings_effects::RealThemeRuntimeGuard::new();

@@ -26,8 +26,7 @@
 //! dismisses it unconditionally on any mouse event, same as any other input
 //! it doesn't recognize (`input_stack/popup.rs`'s `popup_input`).
 //! [`Editor::base_mouse`] is `Base`'s own policy, the `match mouse.kind`
-//! this module used to dispatch unconditionally before the stack could gate
-//! it.
+//! reached only after the stack has gated the event.
 
 use hume_engine::pipeline::PaneId;
 use hume_grid::{Position, Rect};

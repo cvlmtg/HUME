@@ -1,11 +1,11 @@
-//! Phase 4 Polish — post-init keymap lint, and post-init
+//! Post-init keymap lint, and post-init
 //! language-activation lint.
 
 use super::*;
 use crate::editor::registry::MappableCommand;
 use hume_scripting::PluginStatus;
 
-// ── Phase 4 Polish — post-init keymap lint ────────────────────────────────────
+// ── Post-init keymap lint ────────────────────────────────────
 
 /// Keymap lint warns when a bind-key! targets a name not in the command registry.
 ///
@@ -35,7 +35,7 @@ fn keymap_lint_warns_on_unknown_command() {
 /// A `bind-key!` targeting a real typed-only command's name (`:`-only, never
 /// key-bindable) must warn with a hint naming the actual kind, not the bare
 /// "unknown command" the lint gives a truly unregistered name — the same
-/// mistake `601b27e1` closed for keypress dispatch, here caught at init time
+/// kind confusion keypress dispatch guards against, here caught at init time
 /// instead of silently waiting for the first press.
 ///
 /// Flip: a name genuinely absent from the registry (`bogus-unknown-cmd`,

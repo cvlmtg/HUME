@@ -613,7 +613,7 @@ macro_rules! define_settings {
             /// hand-written `"statusline"` arm is its only legal writer, so
             /// keeping the field itself private (rather than merely
             /// `pub(crate)`) makes a raw assignment from anywhere else in
-            /// this crate — the theme bug commit 3c97bd44 hit — a compile
+            /// this crate — a raw assignment from anywhere else is a compile
             /// error instead of a bug. Read through [`EditorSettings::statusline`].
             statusline: StatusLineConfig,
         }

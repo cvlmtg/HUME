@@ -47,7 +47,7 @@ fn dot_repeats_change_with_insert() {
 ///
 /// `step_stamp_repeatable` (`commands/pipeline.rs`) fires unconditionally
 /// whenever `meta.repeatable`, with no "did the body actually do anything"
-/// gate — unlike `step_update_recipe`, which the `018a27c8` commit gated on
+/// gate — unlike `step_update_recipe`, which is gated on
 /// `selection_changed` for exactly this reason. `cmd_delete` refuses via
 /// `refuse_if_read_only` and returns `Ok(())` without touching the buffer,
 /// but the pipeline stamps `last_repeatable_action = "delete"` anyway,

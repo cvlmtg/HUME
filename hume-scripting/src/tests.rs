@@ -30,7 +30,7 @@ fn process_and_fs_globals_are_available_unrequired() {
                  (function? Err?)
                  (function? Ok->value)
                  (function? Err->value)
-                 ; needed by stdlib/list-subdirs (Phase 1 helper): sort takes
+                 ; needed by stdlib/list-subdirs: sort takes
                  ; an explicit comparator ((sort lst less?)), not 1-arg.
                  (function? sort)
                  (function? string<?)
@@ -41,7 +41,7 @@ fn process_and_fs_globals_are_available_unrequired() {
     host.eval_source(src, &mut null_host)
         .expect("steel stdlib availability pin failed");
 
-    // string-downcase, needed by lsp/verify-sha256! (Phase 4 helper).
+    // string-downcase, needed by lsp/verify-sha256!.
     let mut host3 = ScriptingHost::new();
     let mut null_host3 = NullHost;
     let downcase_src = r#"
@@ -104,7 +104,7 @@ fn spawn_process_round_trip_with_fs_ops_and_piped_stdout() {
 }
 
 /// Pins the file read/write port round trip `plum/read-file`/`plum/write-file`
-/// (Phase 1 helpers) depend on.
+/// depend on.
 #[test]
 fn file_write_read_port_round_trip() {
     let dir = tempfile::tempdir().unwrap();

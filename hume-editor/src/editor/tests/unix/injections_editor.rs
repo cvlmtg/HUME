@@ -108,12 +108,11 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} in {dir:?} failed");
 }
 
-/// `:plum-update-plugins` exercises `plum/run!` (Phase 1 helper, now backing
-/// `git-pull`'s replacement) against a REAL local git repo — no network. A
-/// local "origin" gets a second commit after the "installed" clone is made,
-/// then `:plum-update-plugins` must actually run `git pull` (via Steel's
-/// `spawn-process` + `with-current-dir`, not the removed `git-pull`
-/// builtin) and fast-forward the clone to match.
+/// `:plum-update-plugins` exercises `plum/run!` against a REAL local git
+/// repo — no network. A local "origin" gets a second commit after the
+/// "installed" clone is made, then `:plum-update-plugins` must actually
+/// run `git pull` (via Steel's `spawn-process` + `with-current-dir`)
+/// and fast-forward the clone to match.
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
     let _lock = lock();
@@ -168,10 +167,9 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     );
 }
 
-/// `:plum-cleanup-plugins` exercises `plum/delete-dir` (Phase 1 helper, now backing
-/// `delete-dir`'s replacement) against a real on-disk orphan plugin — no
-/// network. Nothing in `init.scm` declares it, so it's an orphan by
-/// definition; `:plum-cleanup-plugins` must remove its directory.
+/// `:plum-cleanup-plugins` exercises `plum/delete-dir` against a real
+/// on-disk orphan plugin — no network. Nothing in `init.scm` declares it, so
+/// it's an orphan by definition; `:plum-cleanup-plugins` must remove its directory.
 #[test]
 fn plum_cleanup_removes_orphan_plugin_directory() {
     let _lock = lock();

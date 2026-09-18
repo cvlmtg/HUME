@@ -487,11 +487,9 @@ fn wire_pos_to_grapheme_col(
 /// proportion to the value — so it reports the location's own wire
 /// `character` verbatim instead. That number is an offset in the server's
 /// negotiated encoding (a byte offset under `utf-8`, UTF-16 code units
-/// otherwise), not a grapheme count: on a line that is
-/// ASCII up to the target position — nearly all code — the two coincide
-/// exactly; they diverge only when non-ASCII text sits earlier on the same
-/// line, and then by more than one (a 3-byte CJK character counts 3, a ZWJ
-/// emoji family counts roughly 25). This is the *only* place in HUME a wire
+/// otherwise), not a grapheme count: on an ASCII-up-to-the-target line —
+/// nearly all code — the two coincide; they diverge only when non-ASCII
+/// text sits earlier on the same line. This is the *only* place in HUME a wire
 /// unit is rendered directly — everywhere else the "never render `char_col`
 /// or a wire position" rule holds without exception. A future refinement is
 /// to render an unmeasured column visually distinctly (e.g. italic) once the
