@@ -57,18 +57,22 @@
                  (lsp/first-line (hash-ref d "message"))))
 
 ;; The drawer freezes its rows at open time, so this plugin owns refreshing
-;; its own drawer: it tracks the open drawer itself (flag + generation +
-;; buffer + last snapshot) and rebuilds rows on every
-;; `on-diagnostics-changed` for its buffer. The flag clears through the
-;; callback's `#f` — `Esc`, or a replace by another drawer's
-;; `show-drawer-list!`, which fires `#f` to the outgoing callback — and
-;; through `update-drawer-list!` reporting `#f` (drawer closed or replaced
-;; before its `#f` drained: an expected-normal race, never an error). The
+;; its own drawer: it tracks the open drawer itself (buffer + generation +
+;; last snapshot) and rebuilds rows on every `on-diagnostics-changed` for
+;; its buffer. Openness is the buffer alone (`#f` = closed) — no separate
+;; flag to keep in sync with it. Tracking clears through the callback's
+;; `#f` — `Esc`, or a replace by another drawer's `show-drawer-list!`,
+;; which fires `#f` to the outgoing callback — and through
+;; `update-drawer-list!` reporting `#f` (drawer closed or replaced before
+;; its `#f` drained: an expected-normal race, never an error). The
 ;; generation keeps a replace's own stale `#f` from killing the fresh
-;; drawer: only the current generation may clear the flag.
-(define lsp/*diagnostics-drawer-open* #f)
-(define lsp/*diagnostics-drawer-gen* 0)
+;; drawer: only the current generation may clear. A pure liveness check
+;; (`drawer-selected-index` answering non-`#f`) can't replace the
+;; generation: a *foreign* replace's `#f` drains while that foreign drawer
+;; is open, so liveness would keep tracking alive and the next publish
+;; would refresh someone else's rows.
 (define lsp/*diagnostics-drawer-bid* #f)
+(define lsp/*diagnostics-drawer-gen* 0)
 (define lsp/*diagnostics-drawer-diags* '())
 
 (define (lsp/diag-select-callback gen diags)
@@ -76,7 +80,7 @@
     (if idx
         (lsp/diag-jump-to! (list-ref diags idx))
         (when (= gen lsp/*diagnostics-drawer-gen*)
-          (set! lsp/*diagnostics-drawer-open* #f)))))
+          (set! lsp/*diagnostics-drawer-bid* #f)))))
 
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
   (lambda ()
@@ -89,7 +93,6 @@
                   (bid (current-buffer)))
               (show-drawer-list! (map lsp/diag-row diags)
                                  (lsp/diag-select-callback gen diags))
-              (set! lsp/*diagnostics-drawer-open* #t)
               (set! lsp/*diagnostics-drawer-bid* bid)
               (set! lsp/*diagnostics-drawer-diags* diags)))))))
 
@@ -112,25 +115,24 @@
                     (let ((d (car rest)))
                       (if (and (equal? (hash-ref d "message") (hash-ref old "message"))
                                (equal? (hash-ref d "severity") (hash-ref old "severity")))
-                          (let ((dist (- (max (hash-ref d "line") (hash-ref old "line"))
-                                         (min (hash-ref d "line") (hash-ref old "line")))))
+                          (let ((dist (abs (- (hash-ref d "line") (hash-ref old "line")))))
                             (if (or (not best-dist) (< dist best-dist))
                                 (loop (cdr rest) (+ i 1) i dist)
                                 (loop (cdr rest) (+ i 1) best best-dist)))
                           (loop (cdr rest) (+ i 1) best best-dist))))))))))
 
 (define (lsp/refresh-diagnostics-drawer bid)
-  (when (and lsp/*diagnostics-drawer-open*
+  ;; `lsp/diag-refresh-index` and `update-drawer-list!` both clamp into the
+  ;; new list, so `sel` passes through raw — no Scheme-side clamp.
+  (when (and lsp/*diagnostics-drawer-bid*
              (equal? bid lsp/*diagnostics-drawer-bid*))
     (let ((diags (diagnostics-for-buffer bid)))
       (if (null? diags)
-          (begin (close-drawer!) (set! lsp/*diagnostics-drawer-open* #f))
+          (begin (close-drawer!) (set! lsp/*diagnostics-drawer-bid* #f))
           (let ((sel (drawer-selected-index)))
             (if (not sel)
-                (set! lsp/*diagnostics-drawer-open* #f)
-                (let ((idx (if (< sel (length lsp/*diagnostics-drawer-diags*))
-                               (lsp/diag-refresh-index lsp/*diagnostics-drawer-diags* sel diags)
-                               (- (length diags) 1))))
+                (set! lsp/*diagnostics-drawer-bid* #f)
+                (let ((idx (lsp/diag-refresh-index lsp/*diagnostics-drawer-diags* sel diags)))
                   ;; An update replaces the callback silently (no `#f`), so
                   ;; no generation bump: the new closure is current by
                   ;; construction.
@@ -138,7 +140,7 @@
                                            (lsp/diag-select-callback lsp/*diagnostics-drawer-gen* diags)
                                            idx)
                       (set! lsp/*diagnostics-drawer-diags* diags)
-                      (set! lsp/*diagnostics-drawer-open* #f)))))))))
+                      (set! lsp/*diagnostics-drawer-bid* #f)))))))))
 
 ;; ── Diagnostic decorations: EOL summary + gutter signs ──────────────────────
 ;; See docs/decorations.md.

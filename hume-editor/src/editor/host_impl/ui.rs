@@ -171,16 +171,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             return Ok(());
         }
         // Retires a prior `Menu` on the self-replace path, firing its
-        // callback with `#f` explicitly — `take_layer`, not `retire`
-        // (`truncate_layers`)/`MenuLayer::tear_down` (empty by design, so an
-        // explicit `close-menu!` reaching a buried Menu some other way stays
-        // silent): only *this* path, a genuine refresh, should fire one.
-        // Any open popup is `MenuLayer::setup`'s concern, run by
+        // callback with `#f` explicitly (`take_firing_false`, shared with
+        // the drawer): only *this* path, a genuine refresh, should fire
+        // one. Any open popup is `MenuLayer::setup`'s concern, run by
         // `push_layer` below.
         if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
-            let old = self.state.take_layer::<MenuLayer>(self.view, r);
-            self.state
-                .queue_steel_call(old.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            self.state.take_firing_false::<MenuLayer>(self.view, r);
         }
         self.state.push_layer(
             self.view,
@@ -221,16 +217,12 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             return Ok(());
         }
         // Retires a prior `Drawer` on the self-replace path, firing its
-        // callback with `#f` explicitly — `take_layer`, not `retire`
-        // (`truncate_layers`)/`DrawerLayer::tear_down` (silent on
-        // `Removal::Explicit` by design, so an explicit `close-drawer!`
-        // stays silent): only *this* path, a genuine replace, should fire
-        // one, so the outgoing drawer owner learns its drawer is gone and
-        // can drop its own open-tracking. Same shape as `show_menu` above.
+        // callback with `#f` explicitly (`take_firing_false`, shared with
+        // the menu): only *this* path, a genuine replace, should fire one,
+        // so the outgoing drawer owner learns its drawer is gone and can
+        // drop its own open-tracking.
         if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
-            let old = self.state.take_layer::<DrawerLayer>(self.view, r);
-            self.state
-                .queue_steel_call(old.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            self.state.take_firing_false::<DrawerLayer>(self.view, r);
         }
         self.state.push_layer(
             self.view,
@@ -255,34 +247,24 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// In-place refresh — same clamping the selection keys (`Ctrl-d`/`Ctrl-u`)
-    /// get via `clamp_drawer_scroll`, so a refresh can never leave `selected`
-    /// outside the new list or scrolled out of view. A buried drawer refreshes
-    /// the same way: browse-while-editing is its normal state, and the model
-    /// is what `sync_drawer_view` mirrors, not its stack position.
+    /// In-place refresh — clamping lives in `EditorState::set_drawer_items`,
+    /// shared with the selection keys, so a refresh can never leave
+    /// `selected` outside the new list or scrolled out of view. A buried
+    /// drawer refreshes the same way: browse-while-editing is its normal
+    /// state, and the model is what `sync_drawer_view` mirrors, not its
+    /// stack position.
     fn update_drawer_list(
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool {
-        let Some(r) = self.state.input.ref_of::<DrawerLayer>() else {
-            return false;
-        };
-        let Some(drawer) = self.state.input.at_mut::<DrawerLayer>(r) else {
-            return false;
-        };
-        drawer.items = std::sync::Arc::new(items);
-        drawer.callback = callback;
-        let len = drawer.items.len();
-        drawer.selected = if len == 0 { 0 } else { selected.min(len - 1) };
-        let max =
-            hume_engine::pipeline::EngineView::bottom_band_max(self.view.last_terminal_area.height);
-        let visible = hume_ui::drawer::visible_rows(drawer.items.len(), max);
-        drawer.scroll =
-            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible);
-        self.state.sync_drawer_view();
-        true
+        self.state.set_drawer_items(
+            self.view.last_terminal_area.height,
+            items,
+            callback,
+            selected,
+        )
     }
 
     fn drawer_selected_index(&self) -> Option<usize> {

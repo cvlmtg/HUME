@@ -184,6 +184,16 @@ pub(in crate::editor) trait Layer: Any {
     }
 }
 
+/// A layer whose self-replace path takes the outgoing layer by value and
+/// fires its callback with `#f` explicitly — `take_layer` never runs
+/// `tear_down` on its own target, so the fire can't double against the
+/// `Removal::Incidental`-only fire in `tear_down`. Implemented by
+/// `MenuLayer`/`DrawerLayer` (the two self-replacing widgets); read by
+/// [`EditorState::take_firing_false`](super::super::EditorState::take_firing_false).
+pub(in crate::editor) trait FiresFalseOnReplace: Layer {
+    fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal;
+}
+
 // Type-erasing plumbing behind `InputStack::find`/`find_mut`/`is` and the
 // owned extraction `downcast` performs — inherent methods on `dyn Layer`
 // itself, not trait methods, so no layer writes any of this by hand. Each
@@ -732,6 +742,27 @@ impl EditorState {
         taken
     }
 
+    /// Takes `r`'s own layer by value and fires its callback with `#f`
+    /// explicitly — the self-replace path shared by `show_menu`/
+    /// `show_drawer_list` (a second open while one is still showing replaces
+    /// it, so the outgoing owner learns its widget is gone) and the drawer's
+    /// own `Esc` arm. `take_layer` never runs `tear_down` on its own target,
+    /// so this can't double-fire against the `Removal::Incidental`-only fire
+    /// there; an explicit `close-*!` stays silent by routing through
+    /// [`Self::retire`] instead, which is exactly why that path must not
+    /// come here.
+    pub(in crate::editor) fn take_firing_false<L: FiresFalseOnReplace>(
+        &mut self,
+        view: &EngineView,
+        r: LayerRef,
+    ) {
+        let old: Box<L> = self.take_layer(view, r);
+        self.queue_steel_call(
+            old.into_callback(),
+            vec![steel::rvals::SteelVal::BoolV(false)],
+        );
+    }
+
     /// Removes exactly `r` via [`InputStack::excise`], running its own
     /// `tear_down` but leaving everything stacked above it untouched — for
     /// a stale `Confirm` retirement ([`Self::retire_stale_confirm`]), where
@@ -748,14 +779,10 @@ impl EditorState {
     /// Retires the topmost layer of type `L`, if one is open, via ordinary
     /// (top-down) teardown — the `ref_of::<L>()` + `truncate_layers` shape
     /// shared by every `close-*!` builtin and internal dismissal
-    /// (`show_drawer_list`'s/`completion_begin`'s own self-replace,
-    /// `close_menu`, `close_drawer`, `dismiss_completion`; `show_menu`'s own
-    /// self-replace takes the layer by value instead, via `take_layer`,
-    /// since it must fire the outgoing menu's callback itself — `take_layer`
-    /// never runs `tear_down` on its own target regardless of `Removal`, so
-    /// this path is what keeps `MenuLayer::tear_down`'s own conditional fire
-    /// (`Removal::Incidental` only — see its own doc) from double-firing
-    /// here). Unlike [`Self::excise_layer`], this takes
+    /// (`completion_begin`'s own self-replace, `close_menu`, `close_drawer`,
+    /// `dismiss_completion`; both menus' self-replace paths take by value
+    /// instead, via [`Self::take_firing_false`], since they must fire the
+    /// outgoing callback themselves). Unlike [`Self::excise_layer`], this takes
     /// any collateral above `L` with it — the right shape when what's above
     /// `L` (if anything) genuinely depends on it, rather than being merely
     /// stacked over it by coincidence.

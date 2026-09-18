@@ -39,10 +39,8 @@ impl Layer for MenuLayer {
     // above a `Popup` (non-modal, so `is_settled_for` doesn't treat it as
     // the stack having moved), and `push_layer` evicts it on the way in,
     // keeping `PopupLayer`'s "never buried" invariant true. A prior `Menu`
-    // on the self-replace path is retired separately: `show_menu` takes it
-    // by value and fires its callback with `#f` explicitly before pushing
-    // the new one (`take_layer` never runs `tear_down` on its own target,
-    // so this can't double-fire against it).
+    // on the self-replace path is retired separately (`take_firing_false`,
+    // shared with the drawer) before pushing the new one.
     /// Fires `#f` when `why` is [`Removal::Incidental`] — swept up as
     /// collateral above some other target, most concretely a `Drawer` this
     /// menu opened above (`drawer.rs`'s own doc: a code-action menu is
@@ -64,6 +62,12 @@ impl Layer for MenuLayer {
                 vec![steel::rvals::SteelVal::BoolV(false)],
             );
         }
+    }
+}
+
+impl super::stack::FiresFalseOnReplace for MenuLayer {
+    fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal {
+        self.callback
     }
 }
 

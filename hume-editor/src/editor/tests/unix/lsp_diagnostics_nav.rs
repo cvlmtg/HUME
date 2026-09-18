@@ -16,15 +16,31 @@ use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
 use hume_scripting::ScriptingHost;
 
+/// Everything `setup` builds and keeps alive for the test's duration — a
+/// struct, not a tuple, so the next field added doesn't churn every call
+/// site (the same reason `super::DiagSetup` is a struct). `_guard` must
+/// stay explicitly bound (it holds the env lock); `sid` is `Copy`, so a
+/// caller that doesn't need it may drop it with `..`.
+struct NavSetup {
+    ed: Editor,
+    _guard: RealRuntimeGuard,
+    sid: hume_lsp::backend::ServerId,
+}
+
+/// Builds the `publishDiagnostics` notification for `file` — shared by
+/// `setup` (pushed at the backend, drained via `drain_lsp`) and `republish`
+/// (dispatched straight through the production single-shot path), so the
+/// two can't drift on params shape.
+fn publish_msg(file: &Path, diags: &[DiagFixture]) -> hume_lsp::codec::Message {
+    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
+    publish_diagnostics_notification(uri.as_str(), diags)
+}
+
 /// Fixture buffer: "aa\nbb\ncc\ndd\n" — char offsets: line0 'aa' = 0..2,
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
 /// leaves line0 genuinely "before A" and line2 genuinely "between A and B".
-fn setup(
-    file: &Path,
-    tmp: &Path,
-    diags: &[DiagFixture],
-) -> (Editor, RealRuntimeGuard, hume_lsp::backend::ServerId) {
+fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
     let guard = RealRuntimeGuard::new();
     std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
 
@@ -32,9 +48,8 @@ fn setup(
     let sid = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
         .unwrap();
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
     if !diags.is_empty() {
-        backend.push_from_server(sid, publish_diagnostics_notification(uri.as_str(), diags));
+        backend.push_from_server(sid, publish_msg(file, diags));
     }
 
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -53,7 +68,18 @@ fn setup(
     );
     ed.scripting = Some(host);
 
-    (ed, guard, sid)
+    NavSetup {
+        ed,
+        _guard: guard,
+        sid,
+    }
+}
+
+/// The open drawer's rows — every drawer assertion reads through this, so
+/// none reaches into `views.drawer` by hand.
+fn drawer_rows(ed: &Editor) -> Vec<String> {
+    let guard = ed.state.views.drawer.read();
+    guard.as_ref().expect("drawer must be open").rows.to_vec()
 }
 
 /// Republishes diagnostics for `file` through the production single-shot
@@ -67,11 +93,8 @@ fn republish(
     file: &Path,
     diags: &[DiagFixture],
 ) {
-    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
-    let hume_lsp::codec::Message::Notification { params, .. } =
-        publish_diagnostics_notification(uri.as_str(), diags)
-    else {
-        panic!("publish_diagnostics_notification must build a Notification");
+    let hume_lsp::codec::Message::Notification { params, .. } = publish_msg(file, diags) else {
+        panic!("publish_msg must build a Notification");
     };
     let params: lsp_types::PublishDiagnosticsParams = serde_json::from_value(params).unwrap();
     ed.dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(params));
@@ -94,7 +117,7 @@ const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 fn next_from_before_a_jumps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -114,7 +137,7 @@ fn next_from_before_a_jumps_to_a() {
 fn next_from_as_start_of_a_jumps_to_b_not_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -134,7 +157,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 fn next_from_after_b_wraps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -154,7 +177,7 @@ fn next_from_after_b_wraps_to_a() {
 fn prev_from_after_b_jumps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -174,7 +197,7 @@ fn prev_from_after_b_jumps_to_b() {
 fn prev_from_before_a_wraps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -194,7 +217,7 @@ fn prev_from_before_a_wraps_to_b() {
 fn empty_buffer_reports_no_diagnostics() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
+    let NavSetup { mut ed, _guard, .. } = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
     let before = state(&ed);
 
     run(&mut ed, "goto-next-diagnostic");
@@ -211,7 +234,7 @@ fn empty_buffer_reports_no_diagnostics() {
 fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard, _) = setup(
+    let NavSetup { mut ed, _guard, .. } = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -220,10 +243,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard.as_ref().expect("drawer must open").rows.clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 2);
     assert!(
         rows[0].contains("problem A"),
@@ -257,11 +277,6 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
 
 const DIAG_C: DiagFixture = ((2, 0), (2, 2), 1, "problem C");
 
-fn drawer_rows(ed: &Editor) -> Vec<String> {
-    let guard = ed.state.views.drawer.read();
-    guard.as_ref().expect("drawer must be open").rows.to_vec()
-}
-
 /// The reported bug: fixing an error updated the statusline count but left
 /// the open drawer showing the stale list.
 #[test]
@@ -269,7 +284,11 @@ fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
-    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -293,7 +312,11 @@ fn drawer_keeps_selection_on_the_surviving_diagnostic() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
-    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -318,7 +341,11 @@ fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
-    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -343,7 +370,11 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
-    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
@@ -361,6 +392,48 @@ fn drawer_closes_when_all_diagnostics_are_fixed() {
     );
 }
 
+/// A foreign replace must kill tracking: another owner's
+/// `show-drawer-list!` fires `#f` to our callback at the current
+/// generation, so the next publish for our buffer must leave the foreign
+/// rows alone instead of refreshing them.
+#[test]
+fn foreign_replace_kills_refresh_tracking() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+
+    // Evaled against the live host, not a fresh one: `run` would replace
+    // `ed.scripting` and drop the refresh hook under test itself.
+    let mut scripting = ed.scripting.take().expect("setup installs scripting");
+    eval_with_real_host(
+        &mut ed,
+        &mut scripting,
+        r#"(define-typed-command! "foreign" "" (lambda ()
+             (show-drawer-list! (list "foreign") (lambda (idx) (void)))))"#,
+        tmp.path(),
+    );
+    ed.scripting = Some(scripting);
+    type_cmd(&mut ed, ":foreign");
+    ed.settle();
+    assert_eq!(drawer_rows(&ed), vec!["foreign".to_string()]);
+
+    republish(&mut ed, sid, &file, &[DIAG_B]);
+
+    assert_eq!(
+        drawer_rows(&ed),
+        vec!["foreign".to_string()],
+        "tracking died with the replace — our publish must not refresh foreign rows"
+    );
+}
+
 /// Re-running `:diagnostics` replaces the drawer — the replace fires `#f`
 /// to the outgoing callback, but with a stale generation, so the plugin's
 /// open-tracking must survive it and the next publish must still refresh.
@@ -369,7 +442,11 @@ fn rerunning_diagnostics_keeps_refresh_tracking_alive() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
     let file = file_dir.path().join("main.rs");
-    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let NavSetup {
+        mut ed,
+        _guard,
+        sid,
+    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();

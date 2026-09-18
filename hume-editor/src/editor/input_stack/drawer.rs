@@ -54,8 +54,8 @@ impl Layer for DrawerLayer {
     /// explicit `close-drawer!` (routed through `EditorState::retire`,
     /// which reaches this as the named target) must stay silent;
     /// `drawer_input`'s own `Esc` arm takes the layer *by value* via
-    /// `EditorState::take_layer` and fires its own callback explicitly
-    /// instead.
+    /// `EditorState::take_firing_false` and fires its own callback
+    /// explicitly instead.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let Removal::Incidental = why {
             state.queue_steel_call(
@@ -94,6 +94,41 @@ impl EditorState {
                 scroll: d.scroll,
             });
         self.views.drawer.set(resolved);
+    }
+
+    /// Replaces the open drawer's rows in place, keeping the browse session
+    /// — the single writer behind `update-drawer-list!`, so that builtin and
+    /// the selection keys (`move_drawer_selection`/`clamp_drawer_scroll`)
+    /// can't drift on clamping. `selected` is clamped into the new list and
+    /// the scroll re-clamped into the visible window, the same
+    /// `clamp_scroll_to_window` the keys get. Returns whether the update
+    /// applied (`false` when no drawer is open — an expected-normal race,
+    /// never an error).
+    pub(in crate::editor) fn set_drawer_items(
+        &mut self,
+        terminal_height: u16,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+        selected: usize,
+    ) -> bool {
+        let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
+            return false;
+        };
+        drawer.items = Arc::new(items);
+        drawer.callback = callback;
+        let len = drawer.items.len();
+        drawer.selected = if len == 0 { 0 } else { selected.min(len - 1) };
+        let visible = drawer_visible_for(terminal_height, drawer.items.len());
+        drawer.scroll =
+            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible);
+        self.sync_drawer_view();
+        true
+    }
+}
+
+impl super::stack::FiresFalseOnReplace for DrawerLayer {
+    fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal {
+        self.callback
     }
 }
 
@@ -161,9 +196,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             ed.state.queue_steel_call(callback, vec![idx]);
         }
         KeyCode::Escape => {
-            let drawer = ed.state.take_layer::<DrawerLayer>(&ed.view, r);
-            ed.state
-                .queue_steel_call(drawer.callback, vec![steel::rvals::SteelVal::BoolV(false)]);
+            ed.state.take_firing_false::<DrawerLayer>(&ed.view, r);
             ed.state.sync_drawer_view();
         }
         _ => {
@@ -172,20 +205,26 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
-/// Number of drawer rows visible at once — computed via
-/// `hume_ui::drawer::visible_rows`, the same arithmetic
-/// `DrawerWidget::height` uses to size what it paints next frame. `max`
-/// is `EngineView::bottom_band_max` of the last-rendered *terminal*
-/// height (not the already-chrome-reduced pane height) — the same call
-/// the engine itself makes, so this can never drift from what it will
-/// next paint. Read by [`clamp_drawer_scroll`] so the scroll window always
-/// agrees with what's on screen.
+/// Rows visible at once for a drawer holding `len` items on a terminal
+/// `terminal_height` tall — `hume_ui::drawer::visible_rows`, the same
+/// arithmetic `DrawerWidget::height` uses to size what it paints next
+/// frame. The height is the last-rendered *terminal* height (not the
+/// already-chrome-reduced pane height) — the same call the engine itself
+/// makes, so this can never drift from what it will next paint. Shared by
+/// the selection keys (via `drawer_visible_rows`) and the in-place refresh
+/// (`EditorState::set_drawer_items`), so the scroll window always agrees
+/// with what's on screen on both paths.
+fn drawer_visible_for(terminal_height: u16, len: usize) -> usize {
+    hume_ui::drawer::visible_rows(len, EngineView::bottom_band_max(terminal_height))
+}
+
+/// Number of drawer rows visible at once — read by [`clamp_drawer_scroll`]
+/// so the scroll window always agrees with what's on screen.
 fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
-    let max = EngineView::bottom_band_max(ed.view.last_terminal_area.height);
     let Some(drawer) = ed.state.input.at::<DrawerLayer>(r) else {
         return 0;
     };
-    hume_ui::drawer::visible_rows(drawer.items.len(), max)
+    drawer_visible_for(ed.view.last_terminal_area.height, drawer.items.len())
 }
 
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
