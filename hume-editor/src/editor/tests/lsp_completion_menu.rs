@@ -654,17 +654,28 @@ fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_anchor() {
 #[test]
 fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
     let tmp = safe_tempdir();
-    let file_path = tmp.path().join("hello.rs");
-    std::fs::write(&file_path, "").unwrap();
+    std::fs::write(tmp.path().join("hello.rs"), "").unwrap();
+    std::fs::write(tmp.path().join("world.rs"), "").unwrap();
 
     let mut ed = editor_from("-[x]>\n");
-    type_cmd(&mut ed, &format!(":e {}", tmp.path().display()));
-    ed.feed_key(key_tab());
+    ed.handle_key(key(':'));
+    for ch in format!("e {}/", tmp.path().display()).chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
 
-    // Whatever the minibuffer's own completion produces, dispatch must not
-    // have been intercepted or altered by the LSP completion guard (no
-    // session exists in Command mode at all).
-    assert!(ed.state.input.completion().is_none());
+    // Two files means a popup opens — and it must be the minibuffer's own
+    // `Minibuf`-target session, never a `Buffer`-target (LSP) one: dispatch
+    // must not have been intercepted or altered by the LSP completion guard.
+    let session = ed
+        .state
+        .input
+        .completion()
+        .expect("2+ path candidates must open a popup");
+    assert!(
+        session.minibuf_span_start().is_some(),
+        "the open session must be Minibuf-target, not the LSP guard's Buffer-target"
+    );
 }
 
 // ── Regression: stale anchor after an out-of-band buffer change ─────────────

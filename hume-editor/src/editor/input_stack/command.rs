@@ -257,8 +257,7 @@ pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse:
             .insert_text()
             .to_owned();
         if let Some(mb) = ed.state.input.minibuf_mut() {
-            mb.input.replace_range(span_start..cursor, &insert_text);
-            mb.cursor = span_start + insert_text.len();
+            mb.splice(span_start, &insert_text);
         }
         return;
     }

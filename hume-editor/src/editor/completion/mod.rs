@@ -79,8 +79,20 @@ pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str)
 /// Shared by `:theme` ([`complete_theme`], called with an empty prefix — a
 /// `String`-kind source's full universe) and `:set global theme=`'s value
 /// phase ([`set::complete_set`], `Delegated`, called with the real typed
-/// prefix) so the candidate set stays in sync between the two.
-fn theme_name_candidates(prefix: &str) -> Vec<CompletionItem> {
+/// prefix) so the candidate set stays in sync between the two — but the two
+/// callers' `MatchKind`s disagree on who does the sorting, so `delegated`
+/// picks the right one: `false` (`complete_theme`) sets `sort_text = stem`
+/// and leaves the list in scan order, so the session's own `String`-kind
+/// tiebreak (`sort_text` ascending) alphabetizes it; `true` (`complete_set`)
+/// sorts alphabetically here and gives every item an empty `sort_text`, so
+/// the rank key's index-ascending tiebreak preserves *this* order — the
+/// contract every other `Delegated` source's own item constructor follows
+/// (see `MatchKind::Delegated`'s doc). Leaving `sort_text = stem` for the
+/// `Delegated` caller would violate that contract while still looking
+/// alphabetized by accident (`sort_text` ascending happens to equal what an
+/// explicit sort produces) — this makes the alphabetizing the source's own
+/// doing instead of a side effect nothing enforces.
+fn theme_name_candidates(prefix: &str, delegated: bool) -> Vec<CompletionItem> {
     let mut seen: rustc_hash::FxHashSet<String> = rustc_hash::FxHashSet::default();
     let mut candidates = Vec::new();
 
@@ -102,15 +114,23 @@ fn theme_name_candidates(prefix: &str) -> Vec<CompletionItem> {
                 continue;
             }
             if stem.starts_with(prefix) && stem != prefix {
+                let sort_text = if delegated {
+                    String::new()
+                } else {
+                    stem.to_owned()
+                };
                 candidates.push(CompletionItem::plain(
                     stem.to_owned(),
                     stem.to_owned(),
-                    stem.to_owned(),
+                    sort_text,
                 ));
             }
         }
     }
 
+    if delegated {
+        candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
+    }
     candidates
 }
 
@@ -136,7 +156,7 @@ mod testing {
         (reg, store, dir)
     }
 
-    pub(in crate::editor) fn ctx<'a>(
+    pub(in crate::editor::completion) fn ctx<'a>(
         registry: &'a CommandRegistry,
         buffers: &'a BufferStore,
         cwd: &'a Path,
@@ -167,15 +187,15 @@ mod testing {
         EMPTY.get_or_init(LanguageRegistry::new)
     }
 
-    pub(in crate::editor) fn ev() -> EngineView {
+    pub(in crate::editor::completion) fn ev() -> EngineView {
         EngineView::new(Theme::default())
     }
 
-    pub(in crate::editor) fn make_id(ev: &mut EngineView) -> BufferId {
+    pub(in crate::editor::completion) fn make_id(ev: &mut EngineView) -> BufferId {
         ev.buffers.insert(())
     }
 
-    pub(in crate::editor) fn make_buf() -> Buffer {
+    pub(in crate::editor::completion) fn make_buf() -> Buffer {
         Buffer::new(BufferText::from("a\n"), SelectionSet::default())
     }
 

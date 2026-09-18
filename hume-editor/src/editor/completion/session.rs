@@ -82,7 +82,7 @@ pub(in crate::editor) enum Interaction {
 /// behind the variant rather than left flat on [`CompletionSession`], since a
 /// [`CompletionTarget::Minibuf`] session has no buffer, pane, or generation
 /// to track at all.
-pub(in crate::editor) struct BufferTarget {
+struct BufferTarget {
     bid: BufferId,
     /// Pane the session began in — `accept` only proceeds while this pane is
     /// still focused. A completion resolved against a pane the user has
@@ -120,7 +120,7 @@ pub(in crate::editor) struct BufferTarget {
 /// Where an accepted item lands — the one axis `accept()` itself branches
 /// on; unrelated to how a source's items were matched ([`MatchKind`]) or
 /// what further typing does ([`Interaction`]).
-pub(in crate::editor) enum CompletionTarget {
+enum CompletionTarget {
     Buffer(BufferTarget),
     /// Byte offset in the minibuffer's own input where the completed token
     /// starts — the anchor `accept` splices `insert_text` from, over
@@ -563,7 +563,42 @@ fn prefix_matches(haystack: &str, prefix: &str, case_sensitive: bool) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::prefix_matches;
+    use super::{CompletionItem, CompletionSession, MatchKind, prefix_matches};
+
+    /// Regression for the cache the `menu_cache` field doc describes:
+    /// `update_filter` must invalidate it, not just populate it once. A
+    /// deleted `self.menu_cache = None` (session.rs's own `update_filter`)
+    /// would leave `after` below still showing both items.
+    #[test]
+    fn menu_rows_cache_is_invalidated_by_update_filter() {
+        let mut session = CompletionSession::begin_minibuf(
+            0,
+            "test".into(),
+            MatchKind::String {
+                case_sensitive: false,
+            },
+            vec![
+                CompletionItem::plain("apple".into(), "apple".into(), "apple".into()),
+                CompletionItem::plain("banana".into(), "banana".into(), "banana".into()),
+            ],
+        );
+        let before_rows = session.menu_rows();
+        let before: Vec<&str> = before_rows.labels().iter().map(String::as_str).collect();
+        assert_eq!(
+            before,
+            vec!["apple", "banana"],
+            "sanity: both items visible unfiltered"
+        );
+
+        session.update_filter(0, "ban".into());
+        let after_rows = session.menu_rows();
+        let after: Vec<&str> = after_rows.labels().iter().map(String::as_str).collect();
+        assert_eq!(
+            after,
+            vec!["banana"],
+            "menu_rows' cache must be invalidated by update_filter"
+        );
+    }
 
     #[test]
     fn prefix_matches_case_sensitive() {

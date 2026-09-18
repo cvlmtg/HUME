@@ -264,6 +264,51 @@ fn tab_on_cd_arg_completes_dirs_only() {
     );
 }
 
+// ── Buffer-name completion ───────────────────────────────────────────────────
+
+/// `:b <Tab>` — `BUFFER_NAME_SOURCE`'s own `complete_buffer_name`, a
+/// `MatchKind::String { case_sensitive: true }` source. Previously the only
+/// registered source with no end-to-end Tab coverage at all.
+#[test]
+fn tab_on_buffer_arg_completes_buffer_names() {
+    let dir = safe_tempdir();
+    let path_a = dir.path().join("alpha-notes.rs");
+    let path_b = dir.path().join("alpha-utils.rs");
+    std::fs::write(&path_a, "a\n").unwrap();
+    std::fs::write(&path_b, "b\n").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let mut buf_a = Buffer::new(BufferText::from("a\n"), SelectionSet::default());
+    buf_a.set_path(Some(path_a));
+    ed.open_buffer(buf_a);
+    let mut buf_b = Buffer::new(BufferText::from("b\n"), SelectionSet::default());
+    buf_b.set_path(Some(path_b));
+    ed.open_buffer(buf_b);
+
+    ed.handle_key(key(':'));
+    for ch in "b alpha".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
+
+    let session = ed
+        .state
+        .input
+        .completion()
+        .expect(":b <Tab> should open a popup for 2+ matching buffer names");
+    let names: Vec<String> = (0..session.len())
+        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
+        .collect();
+    assert!(
+        names.iter().any(|n| n.ends_with("alpha-notes.rs")),
+        "buffer candidate missing: {names:?}"
+    );
+    assert!(
+        names.iter().any(|n| n.ends_with("alpha-utils.rs")),
+        "buffer candidate missing: {names:?}"
+    );
+}
+
 // ── Directory descent on Enter ────────────────────────────────────────────────
 
 #[test]

@@ -421,16 +421,16 @@ pub fn resolve_menu(
     border: bool,
 ) -> PopupState {
     let (outer_w, outer_h) = super::menu_box::outer_dims_from_width(
-        rows.inner_width,
-        rows.labels.len(),
+        rows.inner_width(),
+        rows.len(),
         super::menu_box::MAX_MENU_ROWS,
     );
     let (x, y, outer_w, outer_h) =
         resolve_popup_geometry(outer_w, outer_h, placement.anchor, placement.pane_rect);
-    let selected = if rows.labels.is_empty() {
+    let selected = if rows.is_empty() {
         None
     } else {
-        Some(selected.min(rows.labels.len() - 1))
+        Some(selected.min(rows.len() - 1))
     };
     PopupState {
         lines: rows.labels,

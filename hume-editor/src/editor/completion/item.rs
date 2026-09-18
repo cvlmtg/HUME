@@ -61,7 +61,7 @@ impl CompletionItem {
     /// instead of re-sorting it. Every LSP-only field defaults inert:
     /// `kind`/`detail`/`text_edit` absent, no `additionalTextEdits`, `raw`
     /// null — nothing here is a wire concern.
-    pub(in crate::editor) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
+    pub(super) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
         Self {
             filter_text: label.clone(),
             label,

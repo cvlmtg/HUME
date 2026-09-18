@@ -57,7 +57,17 @@ impl Layer for CompletionLayer {
         PopupEviction::LayerOnly
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        state.views.completion_menu.set(None);
+        // Both targets share this one layer type, but each renders into its
+        // own slot (`Buffer` → `completion_menu`, `Minibuf` →
+        // `minibuf_completion`) — clearing the wrong one leaves a stale
+        // `PopupState` in the other until the next frame's sync silently
+        // clears it for us (see `sync_minibuf_completion_view`'s own
+        // is-open check), which is a lucky accident, not a guarantee.
+        if self.session.minibuf_span_start().is_some() {
+            state.views.minibuf_completion.set(None);
+        } else {
+            state.views.completion_menu.set(None);
+        }
     }
 }
 
@@ -152,16 +162,16 @@ impl super::stack::InputStack {
         self.find_mut::<CompletionLayer>().map(|l| &mut l.session)
     }
 
-    /// The completion session's UI selection, flattened — same shape as
-    /// [`Self::minibuf_completion`]. Reads only; see
-    /// [`Self::completion_ui_mut`] to assign or clear it.
+    /// The completion session's UI selection, flattened (`Option<&
+    /// CompletionMenuUi>`, not `Option<&mut Option<CompletionMenuUi>>`).
+    /// Reads only; see [`Self::completion_ui_mut`] to assign or clear it.
     pub(in crate::editor) fn completion_ui(&self) -> Option<&CompletionMenuUi> {
         self.find::<CompletionLayer>().and_then(|l| l.ui.as_ref())
     }
 
-    /// The `Completion` layer's UI slot itself (not its content) at `r` —
-    /// same shape as [`Self::minibuf_completion_mut`], for
-    /// [`move_completion_selection`]'s `get_or_insert`. Address-based, not
+    /// The `Completion` layer's UI slot itself (not its content) at `r`,
+    /// unflattened so a caller can `get_or_insert` into it — see
+    /// [`move_completion_selection`]'s own use. Address-based, not
     /// `find_mut`-based: both callers already know `r` from their own
     /// dispatch.
     pub(in crate::editor) fn completion_ui_mut(
@@ -360,9 +370,7 @@ pub(in crate::editor) fn apply_selected_minibuf_candidate(ed: &mut Editor, r: La
     let Some(mb) = ed.state.input.minibuf_mut() else {
         return;
     };
-    let cursor = mb.cursor;
-    mb.input.replace_range(span_start..cursor, &insert_text);
-    mb.cursor = span_start + insert_text.len();
+    mb.splice(span_start, &insert_text);
 }
 
 /// Moves the completion menu's selection by one row. The popup scrolls

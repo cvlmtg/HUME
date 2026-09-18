@@ -14,7 +14,7 @@ pub(in crate::editor) const COMMAND_SOURCE: &str = "command";
 /// `:` can't dispatch editor commands anyway; see `registry/mod.rs`'s
 /// module doc — and only canonical names are offered, so the popup doesn't
 /// get cluttered with shorthand like `w` alongside `write`).
-pub(in crate::editor) fn complete_command(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+pub(super) fn complete_command(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
     let mut names: Vec<&str> = ctx.registry.typed_names().collect();
     names.sort_unstable();
     names.dedup();
@@ -38,7 +38,7 @@ pub(in crate::editor) const BUFFER_NAME_SOURCE: &str = "buffer-name";
 /// When two open buffers share the same basename, a shortened parent-directory
 /// suffix is appended to the label (e.g. `foo.rs  (~/a/)`) so the user can
 /// distinguish them in the popup without accepting the wrong one.
-pub(in crate::editor) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+pub(super) fn complete_buffer_name(ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
     // (display-basename, full-path insert text).
     let entry_for = |buf: &crate::editor::buffer::Buffer| -> (String, String) {
         let base = buf.display_name();
@@ -85,8 +85,8 @@ pub(in crate::editor) const THEME_SOURCE: &str = "theme";
 /// Every installed theme name for `:theme` — see [`super::theme_name_candidates`]
 /// (called here with an empty prefix — an unfiltered universe, narrowed
 /// generically by the session's own `MatchKind::String`).
-pub(in crate::editor) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
-    super::theme_name_candidates("")
+pub(super) fn complete_theme(_ctx: &CompletionCtx<'_>) -> Vec<CompletionItem> {
+    super::theme_name_candidates("", false)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

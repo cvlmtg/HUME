@@ -195,6 +195,21 @@ impl MiniBuffer {
         self.cursor += s.len();
         MiniBufferEvent::Edited
     }
+
+    /// Replaces `input[span_start..cursor]` with `text` and parks the
+    /// cursor at the end of the inserted text — the one minibuffer mutation
+    /// a completion-apply performs, whether cycling the popup
+    /// (`apply_selected_minibuf_candidate`, `input_stack/completion.rs`) or
+    /// applying a silently-completed single match (`complete_minibuf`,
+    /// `input_stack/command.rs`). Reads `self.cursor` fresh rather than
+    /// taking it as a parameter, so a caller holding an earlier-captured
+    /// cursor value can't splice against a position the minibuffer has
+    /// since moved past.
+    pub(in crate::editor) fn splice(&mut self, span_start: usize, text: &str) {
+        let cursor = self.cursor;
+        self.input.replace_range(span_start..cursor, text);
+        self.cursor = span_start + text.len();
+    }
 }
 
 /// Walk back from `cursor` over trailing whitespace, then over one run of

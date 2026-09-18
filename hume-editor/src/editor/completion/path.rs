@@ -15,7 +15,7 @@ pub(in crate::editor) const PATH_DIRS_ONLY_SOURCE: &str = "path-dirs-only";
 /// `Delegated`: the candidate universe (a directory's own listing) depends
 /// entirely on the live input, so this takes it directly rather than
 /// enumerating a stable universe for the session to filter.
-pub(in crate::editor) fn complete_path(
+pub(super) fn complete_path(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
@@ -24,7 +24,7 @@ pub(in crate::editor) fn complete_path(
 }
 
 /// `:cd`'s variant — non-directory entries are filtered out.
-pub(in crate::editor) fn complete_path_dirs_only(
+pub(super) fn complete_path_dirs_only(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,

@@ -107,7 +107,7 @@ fn complete_set_value(
     } else if let Some(values) = static_value_candidates(key) {
         prefix_completions(values.iter().copied(), value_prefix)
     } else if key == THEME_KEY {
-        theme_name_candidates(value_prefix)
+        theme_name_candidates(value_prefix, true)
     } else {
         Vec::new()
     };
@@ -133,7 +133,7 @@ fn complete_set_value(
 /// Value lists are completion *hints* mirrored from each setting's parser;
 /// `write_global`/`write_buffer` remain the validation SSOT, so the two can
 /// drift only in what's offered, never in what's accepted.
-pub(in crate::editor) fn complete_set(
+pub(super) fn complete_set(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
