@@ -108,11 +108,14 @@ fn git_ok(dir: &std::path::Path, args: &[&str]) {
     assert!(status.success(), "git {args:?} in {dir:?} failed");
 }
 
-/// `:plum-update-plugins` exercises `plum/run!` against a REAL local git
-/// repo — no network. A local "origin" gets a second commit after the
-/// "installed" clone is made, then `:plum-update-plugins` must actually
-/// run `git pull` (via Steel's `spawn-process` + `with-current-dir`)
-/// and fast-forward the clone to match.
+/// `:plum-update-plugins` exercises `plum/clone-github!`'s sibling,
+/// `run-inline-output!`'s `git pull`, against a REAL local git repo — no
+/// network. A local "origin" gets a second commit after the "installed"
+/// clone is made, then `:plum-update-plugins` must actually run `git pull`
+/// and fast-forward the clone to match, having actually entered the
+/// inline-output terminal bracket to do it (the command is `#:inline-output`,
+/// so `Tui::OnHeadless` is required for `inline_output_enter_count` to move
+/// at all — see that method's own doc).
 #[test]
 fn plum_update_runs_real_git_pull_against_local_origin() {
     let _lock = lock();
@@ -145,6 +148,7 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     git_ok(origin_dir, &["commit", "-q", "-m", "v2"]);
 
     let mut ed = editor_from("-[x]>\n");
+    ed.tui = crate::editor::tui::Tui::OnHeadless;
     load_plum(&mut ed, data_tmp.path());
 
     type_cmd(&mut ed, ":plum-update-plugins");
@@ -163,7 +167,13 @@ fn plum_update_runs_real_git_pull_against_local_origin() {
     let content = std::fs::read_to_string(clone_dir.join("plugin.scm")).unwrap();
     assert_eq!(
         content, "; v2\n",
-        "plum/run!-backed git pull must fast-forward the clone to origin's latest commit"
+        "run-inline-output!-backed git pull must fast-forward the clone to origin's latest commit"
+    );
+    assert!(
+        ed.inline_output_enter_count() > 0,
+        ":plum-update-plugins is #:inline-output, so a real update must have entered \
+         the terminal bracket for git's progress to be visible, not just returned \
+         successfully with nothing shown"
     );
 }
 

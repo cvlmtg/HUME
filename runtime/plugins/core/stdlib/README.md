@@ -63,8 +63,7 @@ that ever changes.
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`
 commands (process-group safety for Ctrl-c), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
-the TUI's raw mode still on. `core:plum` (`plum/run!`) builds its raise-on-failure policy on
-top of `stdlib/run`, and the git probes below build their `#f`-on-failure policy on it. stdin
+the TUI's raw mode still on. The git probes below build their `#f`-on-failure policy on it. stdin
 is piped and closed immediately — never inherited from HUME's own terminal, or the child's
 reads would race the editor's key reads. Ports are grabbed before `wait` (a Steel gotcha
 pinned by a permanent `hume-scripting` test: `child-stderr` returns `#f` afterwards even on a

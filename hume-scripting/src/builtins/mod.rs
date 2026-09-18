@@ -229,8 +229,8 @@ macro_rules! builtins {
 // its doc for why.
 //
 // run-inline-output! — the Scheme wrapper (see bootstrap.scm) blocks and
-// raises on nonzero exit or a signal-killed child. Same contract as
-// plum/run!, so call sites need no manual exit-code checks. `%run-inline-output!`
+// raises on nonzero exit or a signal-killed child, so call sites (e.g.
+// core:plum's plum/clone-github!) need no manual exit-code checks. `%run-inline-output!`
 // below is the process-group-isolated spawn behind it (see
 // hume-platform::process::run_inline_output for why this can't be Steel's
 // own spawn-process).

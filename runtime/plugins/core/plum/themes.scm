@@ -93,7 +93,8 @@
           (plum/clone-github! slug src-dir)
           (let ((names (plum/sync-theme-files! slug old-names)))
             (log! 'info (string-append "PLUM: installed " slug ": " (string-join names ", ")))
-            (log! 'info (string-append "PLUM: run :theme " (car names) " to try it"))))))))
+            (log! 'info (string-append "PLUM: run :theme " (car names) " to try it")))))))
+  #:inline-output #t)
 
 (define-typed-command! "plum-update-themes"
   "Run git pull in every installed theme repo and re-sync its themes/*.toml."
@@ -104,8 +105,9 @@
           (plum/batch-run "updated theme repo" installed
             (lambda (slug)
               (let ((old-names (plum/repo-theme-names slug)))
-                (plum/run! "git" (list "pull") #:cwd (plum/theme-src-dir slug))
-                (plum/sync-theme-files! slug old-names))))))))
+                (run-inline-output! "git" (list "pull") #:cwd (plum/theme-src-dir slug))
+                (plum/sync-theme-files! slug old-names)))))))
+  #:inline-output #t)
 
 (define-typed-command! "plum-list-themes"
   "Log installed theme repos and the theme names each provides, plus any unmanaged .toml files in <data>/themes/."

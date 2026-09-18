@@ -49,6 +49,12 @@ compiled — is not in the table above: it's a plain editor command, not a `:` c
 takes a list argument, so it's for `init.scm` (`(call! "plum-ensure-grammars" '("rust" "json"))`),
 not the command mode prompt.
 
+Every command that reaches the network (`plum-install-plugins`, `plum-update-plugins`,
+`plum-install-grammar`, `plum-install-theme`, `plum-update-themes`) is `#:inline-output` —
+it leaves the alt-screen on its first real write, so `git`'s own progress prints live
+instead of vanishing behind a frozen-looking screen, and returns to the editor on a
+keypress once the run finishes.
+
 LSP language servers are `core:lsp`'s own responsibility (`:lsp-install`, `:lsp-uninstall`,
 `:lsp-servers`) — see that plugin's README and `docs/LSP-INSTALL.md` in the repository. PLUM
 never touches `<data>/servers/` or the LSP catalogs.
@@ -66,15 +72,16 @@ PLUM bundles three independent subsystems:
   sources and the Helix pin" below).
 - `themes.scm` — third-party **theme** install/update/list/remove (`:plum-install-theme`
   etc); see "Theme install" below.
-- `lib.scm` — shared utilities: `plum/read-file`, `plum/run!` (a `core:stdlib`
-  `stdlib/run` wrapper that raises instead of returning a status), `plum/batch-run`
-  (batch installs), and `plum/two-level-repos` (the `<root>/<user>/<repo>/` discovery
-  walk shared by plugin and theme-repo discovery) — used by `plugins.scm`,
-  `grammars.scm`, and `themes.scm` as needed. Directory listing, filesystem cleanup,
-  list search, and path-segment validation live in `core:stdlib`
-  (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`, `stdlib/delete-dir`,
-  `stdlib/delete-file`, `stdlib/safe-path-segment?` — see "Path safety" below) —
-  reached via `call!`, not local wrappers.
+- `lib.scm` — shared utilities: `plum/read-file`, `plum/clone-github!` (a
+  `run-inline-output!` wrapper for the one GitHub-clone URL shape every install
+  command shares), `plum/batch-run` (batch installs/updates, `#:inline-output`
+  callers only — see "Commands" below), and `plum/two-level-repos` (the
+  `<root>/<user>/<repo>/` discovery walk shared by plugin and theme-repo
+  discovery) — used by `plugins.scm`, `grammars.scm`, and `themes.scm` as needed.
+  Directory listing, filesystem cleanup, list search, and path-segment validation
+  live in `core:stdlib` (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`,
+  `stdlib/delete-dir`, `stdlib/delete-file`, `stdlib/safe-path-segment?` — see
+  "Path safety" below) — reached via `call!`, not local wrappers.
 
 #### Path safety
 
@@ -203,8 +210,8 @@ which doubles as the repair path. If the clone succeeds but the repo turns out t
 leftover, overwritten by the same purge on the next `:plum-install-theme` attempt for
 that slug. This is deliberate, not an oversight: catching that failure to clean up
 immediately would mean wrapping a call that raises via a native-backed builtin
-(`plum/run!`, ultimately `stdlib/run`) in an inner `with-handler` that catches and
-re-raises — exactly the shape that corrupts Steel 0.8.2's VM continuation stack when it
+(`plum/clone-github!`, ultimately `run-inline-output!`) in an inner `with-handler` that
+catches and re-raises — exactly the shape that corrupts Steel 0.8.2's VM continuation stack when it
 runs somewhere an outer handler also sits (hit for real once already, in this same
 plugin — see `plum/fetch-raw-query`'s own doc comment in `grammars.scm`). Letting the
 purge-on-next-attempt do the cleanup avoids the footgun entirely.
