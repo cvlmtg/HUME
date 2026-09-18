@@ -51,18 +51,94 @@
   "Jump to the previous diagnostic before the cursor (wraps to the last)."
   (lambda () (lsp/diag-jump -1)))
 
+(define (lsp/diag-row d)
+  (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
+                 (lsp/format-position (hash-ref d "line") (hash-ref d "grapheme-col")) " "
+                 (lsp/first-line (hash-ref d "message"))))
+
+;; The drawer freezes its rows at open time, so this plugin owns refreshing
+;; its own drawer: it tracks the open drawer itself (flag + generation +
+;; buffer + last snapshot) and rebuilds rows on every
+;; `on-diagnostics-changed` for its buffer. The flag clears through the
+;; callback's `#f` — `Esc`, or a replace by another drawer's
+;; `show-drawer-list!`, which fires `#f` to the outgoing callback — and
+;; through `update-drawer-list!` reporting `#f` (drawer closed or replaced
+;; before its `#f` drained: an expected-normal race, never an error). The
+;; generation keeps a replace's own stale `#f` from killing the fresh
+;; drawer: only the current generation may clear the flag.
+(define lsp/*diagnostics-drawer-open* #f)
+(define lsp/*diagnostics-drawer-gen* 0)
+(define lsp/*diagnostics-drawer-bid* #f)
+(define lsp/*diagnostics-drawer-diags* '())
+
+(define (lsp/diag-select-callback gen diags)
+  (lambda (idx)
+    (if idx
+        (lsp/diag-jump-to! (list-ref diags idx))
+        (when (= gen lsp/*diagnostics-drawer-gen*)
+          (set! lsp/*diagnostics-drawer-open* #f)))))
+
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
   (lambda ()
     (let ((diags (diagnostics-for-buffer (current-buffer))))
       (if (null? diags)
           (log! 'info "No diagnostics")
-          (show-drawer-list!
-            (map (lambda (d)
-                   (string-append (lsp/severity-glyph (hash-ref d "severity")) " "
-                                  (lsp/format-position (hash-ref d "line") (hash-ref d "grapheme-col")) " "
-                                  (lsp/first-line (hash-ref d "message"))))
-                 diags)
-            (lambda (idx) (when idx (lsp/diag-jump-to! (list-ref diags idx)))))))))
+          (begin
+            (set! lsp/*diagnostics-drawer-gen* (+ lsp/*diagnostics-drawer-gen* 1))
+            (let ((gen lsp/*diagnostics-drawer-gen*)
+                  (bid (current-buffer)))
+              (show-drawer-list! (map lsp/diag-row diags)
+                                 (lsp/diag-select-callback gen diags))
+              (set! lsp/*diagnostics-drawer-open* #t)
+              (set! lsp/*diagnostics-drawer-bid* bid)
+              (set! lsp/*diagnostics-drawer-diags* diags)))))))
+
+;; Same diagnostic across a refresh, by message + severity — position stays
+;; out of the key on purpose, since the fix's own edit can shift other
+;; diagnostics' lines. Ties (the same message twice) break toward the
+;; nearest line. Returns the index into NEW-DIAGS to select: the surviving
+;; diagnostic, or the old position clamped — the item now at that position,
+;; i.e. the next one when the selected diagnostic itself was fixed.
+(define (lsp/diag-refresh-index old-diags old-idx new-diags)
+  (let ((n (length new-diags)))
+    (if (= n 0)
+        0
+        (let ((old (if (< old-idx (length old-diags)) (list-ref old-diags old-idx) #f)))
+          (if (not old)
+              (min old-idx (- n 1))
+              (let loop ((rest new-diags) (i 0) (best #f) (best-dist #f))
+                (if (null? rest)
+                    (if best best (min old-idx (- n 1)))
+                    (let ((d (car rest)))
+                      (if (and (equal? (hash-ref d "message") (hash-ref old "message"))
+                               (equal? (hash-ref d "severity") (hash-ref old "severity")))
+                          (let ((dist (- (max (hash-ref d "line") (hash-ref old "line"))
+                                         (min (hash-ref d "line") (hash-ref old "line")))))
+                            (if (or (not best-dist) (< dist best-dist))
+                                (loop (cdr rest) (+ i 1) i dist)
+                                (loop (cdr rest) (+ i 1) best best-dist)))
+                          (loop (cdr rest) (+ i 1) best best-dist))))))))))
+
+(define (lsp/refresh-diagnostics-drawer bid)
+  (when (and lsp/*diagnostics-drawer-open*
+             (equal? bid lsp/*diagnostics-drawer-bid*))
+    (let ((diags (diagnostics-for-buffer bid)))
+      (if (null? diags)
+          (begin (close-drawer!) (set! lsp/*diagnostics-drawer-open* #f))
+          (let ((sel (drawer-selected-index)))
+            (if (not sel)
+                (set! lsp/*diagnostics-drawer-open* #f)
+                (let ((idx (if (< sel (length lsp/*diagnostics-drawer-diags*))
+                               (lsp/diag-refresh-index lsp/*diagnostics-drawer-diags* sel diags)
+                               (- (length diags) 1))))
+                  ;; An update replaces the callback silently (no `#f`), so
+                  ;; no generation bump: the new closure is current by
+                  ;; construction.
+                  (if (update-drawer-list! (map lsp/diag-row diags)
+                                           (lsp/diag-select-callback lsp/*diagnostics-drawer-gen* diags)
+                                           idx)
+                      (set! lsp/*diagnostics-drawer-diags* diags)
+                      (set! lsp/*diagnostics-drawer-open* #f)))))))))
 
 ;; ── Diagnostic decorations: EOL summary + gutter signs ──────────────────────
 ;; See docs/decorations.md.
@@ -132,13 +208,16 @@
     (set-signs! "lsp-diagnostics" bid (lsp/diagnostic-signs diags))))
 
 (register-hook! 'on-diagnostics-changed
-  (lambda (bid) (lsp/refresh-diagnostic-decorations bid)))
+  (lambda (bid)
+    (lsp/refresh-diagnostic-decorations bid)
+    (lsp/refresh-diagnostics-drawer bid)))
 
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name)
     (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
     (set-eol-text! "lsp-diagnostics" bid '())
-    (set-signs! "lsp-diagnostics" bid '())))
+    (set-signs! "lsp-diagnostics" bid '())
+    (lsp/refresh-diagnostics-drawer bid)))
 
 (register-hook! 'on-option-change
   (lambda (key value)

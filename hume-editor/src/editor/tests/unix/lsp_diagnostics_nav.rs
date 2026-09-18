@@ -20,7 +20,11 @@ use hume_scripting::ScriptingHost;
 /// line1 'bb' = 3..5, line2 'cc' = 6..8, line3 'dd' = 9..11. Diagnostic A
 /// covers 'bb' (char start 3); diagnostic B covers 'dd' (char start 9) —
 /// leaves line0 genuinely "before A" and line2 genuinely "between A and B".
-fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntimeGuard) {
+fn setup(
+    file: &Path,
+    tmp: &Path,
+    diags: &[DiagFixture],
+) -> (Editor, RealRuntimeGuard, hume_lsp::backend::ServerId) {
     let guard = RealRuntimeGuard::new();
     std::fs::write(file, "aa\nbb\ncc\ndd\n").unwrap();
 
@@ -49,7 +53,29 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> (Editor, RealRuntime
     );
     ed.scripting = Some(host);
 
-    (ed, guard)
+    (ed, guard, sid)
+}
+
+/// Republishes diagnostics for `file` through the production single-shot
+/// path (`dispatch_lsp_action`, the same ingest + `queue_diagnostics_changed`
+/// pair `drain_lsp`'s batch loop runs) and settles, so the queued
+/// `on-diagnostics-changed` hook — including the drawer's own refresh —
+/// has run by the time this returns.
+fn republish(
+    ed: &mut Editor,
+    sid: hume_lsp::backend::ServerId,
+    file: &Path,
+    diags: &[DiagFixture],
+) {
+    let uri = hume_lsp::uri::path_to_uri(file).unwrap();
+    let hume_lsp::codec::Message::Notification { params, .. } =
+        publish_diagnostics_notification(uri.as_str(), diags)
+    else {
+        panic!("publish_diagnostics_notification must build a Notification");
+    };
+    let params: lsp_types::PublishDiagnosticsParams = serde_json::from_value(params).unwrap();
+    ed.dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(params));
+    ed.settle();
 }
 
 /// Dispatches `goto-next-diagnostic`/`goto-prev-diagnostic` — key-bindable,
@@ -68,7 +94,7 @@ const DIAG_B: DiagFixture = ((3, 0), (3, 2), 2, "problem B");
 fn next_from_before_a_jumps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -88,7 +114,7 @@ fn next_from_before_a_jumps_to_a() {
 fn next_from_as_start_of_a_jumps_to_b_not_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -108,7 +134,7 @@ fn next_from_as_start_of_a_jumps_to_b_not_a() {
 fn next_from_after_b_wraps_to_a() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -128,7 +154,7 @@ fn next_from_after_b_wraps_to_a() {
 fn prev_from_after_b_jumps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -148,7 +174,7 @@ fn prev_from_after_b_jumps_to_b() {
 fn prev_from_before_a_wraps_to_b() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -168,7 +194,7 @@ fn prev_from_before_a_wraps_to_b() {
 fn empty_buffer_reports_no_diagnostics() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
+    let (mut ed, _guard, _) = setup(&file_dir.path().join("main.rs"), tmp.path(), &[]);
     let before = state(&ed);
 
     run(&mut ed, "goto-next-diagnostic");
@@ -185,7 +211,7 @@ fn empty_buffer_reports_no_diagnostics() {
 fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let (mut ed, _guard) = setup(
+    let (mut ed, _guard, _) = setup(
         &file_dir.path().join("main.rs"),
         tmp.path(),
         &[DIAG_A, DIAG_B],
@@ -221,4 +247,142 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         co(9),
         "selecting row 2 (B) in the drawer must jump to B's start"
     );
+}
+
+// ── Live refresh: the drawer follows corrected publishes ────────────────────
+// The drawer freezes its rows at open time; the plugin rebuilds them on
+// every `on-diagnostics-changed` for its buffer (see
+// `runtime/plugins/core/lsp/diagnostics.scm`). These tests drive the whole
+// path: scripted publish → store → hook → `update-drawer-list!`.
+
+const DIAG_C: DiagFixture = ((2, 0), (2, 2), 1, "problem C");
+
+fn drawer_rows(ed: &Editor) -> Vec<String> {
+    let guard = ed.state.views.drawer.read();
+    guard.as_ref().expect("drawer must be open").rows.to_vec()
+}
+
+/// The reported bug: fixing an error updated the statusline count but left
+/// the open drawer showing the stale list.
+#[test]
+fn drawer_refreshes_rows_when_a_diagnostic_is_fixed() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert_eq!(drawer_rows(&ed).len(), 2, "sanity: both rows listed");
+
+    republish(&mut ed, sid, &file, &[DIAG_B]);
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 1, "the fixed diagnostic must disappear");
+    assert!(
+        rows[0].contains("problem B"),
+        "the surviving diagnostic must remain: {rows:?}"
+    );
+}
+
+/// Three rows, middle one selected, first one fixed: the selection must
+/// follow the surviving diagnostic by identity (message + severity), not by
+/// index — a plain index clamp would land on B here instead of C.
+#[test]
+fn drawer_keeps_selection_on_the_surviving_diagnostic() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    ed.handle_key(key_ctrl('d')); // select C (row 1 of [A, C, B])
+
+    republish(&mut ed, sid, &file, &[DIAG_C, DIAG_B]);
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 2);
+    assert!(rows[0].contains("problem C"), "C must still lead: {rows:?}");
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        0,
+        "selection must follow C to its new index, not stay at 1 (B)"
+    );
+}
+
+/// The selected diagnostic itself fixed: the selection moves to the item now
+/// at that position — the next one — rather than tracking a stale index.
+#[test]
+fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    ed.handle_key(key_ctrl('d')); // select C (row 1 of [A, C, B])
+
+    republish(&mut ed, sid, &file, &[DIAG_A, DIAG_B]);
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        1,
+        "C is gone — selection must sit on B, the next item: {rows:?}"
+    );
+    assert!(rows[1].contains("problem B"), "row 1 must be B: {rows:?}");
+}
+
+/// Fixing the last error auto-closes the drawer instead of leaving an empty
+/// (or stale) list behind.
+#[test]
+fn drawer_closes_when_all_diagnostics_are_fixed() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+
+    republish(&mut ed, sid, &file, &[]);
+
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "an empty publish must close the drawer"
+    );
+    assert!(
+        ed.state.views.drawer.read().is_none(),
+        "the view must follow the closed model"
+    );
+}
+
+/// Re-running `:diagnostics` replaces the drawer — the replace fires `#f`
+/// to the outgoing callback, but with a stale generation, so the plugin's
+/// open-tracking must survive it and the next publish must still refresh.
+#[test]
+fn rerunning_diagnostics_keeps_refresh_tracking_alive() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let (mut ed, _guard, sid) = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+
+    republish(&mut ed, sid, &file, &[DIAG_B]);
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(
+        rows.len(),
+        1,
+        "the replace's own stale #f must not have killed tracking: {rows:?}"
+    );
+    assert!(rows[0].contains("problem B"));
 }

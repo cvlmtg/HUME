@@ -370,6 +370,150 @@ fn close_drawer_fires_the_menu_s_callback_when_a_menu_sits_above_it() {
     );
 }
 
+// ── Self-replace fires #f to the outgoing callback ───────────────────────────
+
+/// A second `show-drawer-list!` while one is open replaces it — and the
+/// outgoing drawer owner must learn its drawer is gone via `#f` (the same
+/// shape as `show-menu!`'s own self-replace). The `:diagnostics` drawer
+/// refresh relies on this to drop its open-tracking instead of refreshing a
+/// dead drawer over someone else's list.
+///
+/// Fail oracle: before the fix the replace was silent — `status_msg` would
+/// still be `None` below instead of `"#false"`.
+#[test]
+fn replace_fires_false_to_the_outgoing_callback() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (show-drawer-list! (list "a" "b") (lambda (idx) (log! 'info (to-string idx))))))
+           (define-typed-command! "other" "" (lambda ()
+             (show-drawer-list! (list "c") (lambda (idx) (log! 'info "second")))))"#,
+    );
+    // No settle between the two opens: back-to-back shows are the normal
+    // self-replace path (see the `Arc` test above). (The second command is
+    // named `other`, not `go2`: a trailing digit on a typed command is
+    // parsed as a count, which would just re-run `go`.)
+    type_cmd(&mut ed, ":go");
+    assert!(
+        ed.state.status_msg.is_none(),
+        "opening must not fire the callback"
+    );
+
+    type_cmd(&mut ed, ":other");
+    ed.settle();
+
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "#false",
+        "the outgoing drawer's callback must fire with #f on replace"
+    );
+    {
+        let guard = ed.state.views.drawer.read();
+        assert_eq!(*guard.as_ref().unwrap().rows, vec!["c"]);
+    }
+}
+
+// ── update-drawer-list! / drawer-selected-index ──────────────────────────────
+
+/// `update-drawer-list!` replaces rows + callback in place (no reset to row
+/// 0, no `#f` to the outgoing callback — it is a refresh, not a replace),
+/// clamps an out-of-range selection, and reports whether it applied.
+#[test]
+fn update_replaces_rows_callback_and_selection_in_place() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "go" "" (lambda ()
+             (show-drawer-list! (list "a" "b" "c") (lambda (idx) (log! 'info "old")))))
+           (define-typed-command! "sel" "" (lambda ()
+             (log! 'info (to-string (drawer-selected-index)))))
+           (define-typed-command! "upd" "" (lambda ()
+             (log! 'info (to-string (update-drawer-list! (list "x" "y")
+               (lambda (idx) (log! 'info (to-string idx))) 1)))))
+           (define-typed-command! "upd-big" "" (lambda ()
+             (log! 'info (to-string (update-drawer-list! (list "x" "y")
+               (lambda (idx) (log! 'info (to-string idx))) 99)))))"#,
+    );
+    type_cmd(&mut ed, ":go");
+    ed.settle();
+
+    ed.feed_key(key_ctrl('d'));
+    type_cmd(&mut ed, ":sel");
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        1,
+        "typing a command must not disturb the drawer selection"
+    );
+
+    type_cmd(&mut ed, ":upd");
+    ed.settle();
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "#true",
+        "update must report it applied"
+    );
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(*drawer.items, vec!["x", "y"]);
+    assert_eq!(
+        drawer.selected, 1,
+        "caller's selection must be kept, not reset"
+    );
+    {
+        let guard = ed.state.views.drawer.read();
+        assert_eq!(*guard.as_ref().unwrap().rows, vec!["x", "y"]);
+        assert_eq!(guard.as_ref().unwrap().selected, 1);
+    }
+
+    // The new callback is live: Enter fires it with the kept selection, and
+    // the drawer stays open.
+    ed.feed_key(key_enter());
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
+    assert!(ed.state.input.drawer().is_some());
+
+    // Out-of-range selection clamps to the last row, same as the Ctrl-d keys.
+    type_cmd(&mut ed, ":upd-big");
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#true");
+    assert_eq!(ed.state.input.drawer().unwrap().selected, 1);
+}
+
+/// With no drawer open both new builtins degrade to `#f`: the update applies
+/// nothing (and opens nothing), the getter reports no selection. Never an
+/// error — a closed-or-replaced drawer is an expected-normal race.
+#[test]
+fn update_and_selected_index_with_none_open_report_false() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "upd" "" (lambda ()
+             (log! 'info (to-string (update-drawer-list! (list "x")
+               (lambda (idx) (void)) 0)))))
+           (define-typed-command! "sel" "" (lambda ()
+             (log! 'info (to-string (drawer-selected-index)))))"#,
+    );
+    type_cmd(&mut ed, ":upd");
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+    assert!(
+        ed.state.input.drawer().is_none(),
+        "an update must never open a drawer"
+    );
+
+    type_cmd(&mut ed, ":sel");
+    ed.settle();
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "#false");
+}
+
 // ── Esc: closes + calls back with #f ─────────────────────────────────────────
 
 #[test]

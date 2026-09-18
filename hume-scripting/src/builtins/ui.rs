@@ -107,6 +107,34 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
+/// `(update-drawer-list! items on-select selected)` — no keyword defaults,
+/// so this registers directly. Replaces the open drawer's rows in place,
+/// keeping the browse session; `selected` is clamped into the new list.
+/// Returns whether the update applied — `#f` when no drawer is open (the
+/// caller's drawer was closed or replaced: an expected-normal race, never
+/// an error, same contract as `picker-replace!`'s stale token).
+pub(crate) fn update_drawer_list(
+    ctx: &mut SteelCtx,
+    items: SteelVal,
+    on_select: SteelVal,
+    selected: SteelVal,
+) -> SteelResult {
+    let items = list_to_strings(items, "update-drawer-list! items")?;
+    let selected = usize_arg(selected, "update-drawer-list! selected")?;
+    let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
+        .update_drawer_list(items, on_select, selected);
+    Ok(SteelVal::BoolV(applied))
+}
+
+/// `(drawer-selected-index)` — the open drawer's selected row, or `#f`
+/// when no drawer is open.
+pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx) -> SteelResult {
+    match require_cap(ctx.host.ui(), "drawer-selected-index")?.drawer_selected_index() {
+        Some(idx) => Ok(SteelVal::IntV(idx as isize)),
+        None => Ok(SteelVal::BoolV(false)),
+    }
+}
+
 /// `(%prompt! label prefill on-confirm)` — the `prompt!` Scheme wrapper
 /// supplies `#:prefill`'s default. `on-confirm` fires exactly once, later
 /// (queued, never inline) — with the confirmed text, or `#f` on cancel.

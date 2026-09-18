@@ -83,7 +83,7 @@ hume_globals_scm_matches_generated_host_names`), which a drift test enforces.
 
 | Host | New Rust needed | Trade-off |
 |---|---|---|
-| Bottom drawer (`show-drawer-list!`) | None | Capped height, flat unstyled rows, re-showing to refresh resets the selection to 0 |
+| Bottom drawer (`show-drawer-list!`) | None | Capped height, flat unstyled rows; re-showing to refresh resets the selection to 0, refreshing in place via `update-drawer-list!` keeps it |
 | `set-virtual-lines!` with `'segments` | None | The only per-line styling primitive Steel has today, but it paints into an existing buffer rather than living in its own pane |
 | Docked pane (the real undotree shape) | Docked-pane layout variant; a builtin to mint a non-file view buffer; per-buffer keymaps | Correct shape, but blocked on three separate pieces of infrastructure — see [Roadmap](#roadmap) |
 

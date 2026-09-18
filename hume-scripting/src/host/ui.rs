@@ -213,6 +213,37 @@ pub trait UiHost {
     /// state, not a "wrong widget is active" error.
     fn close_drawer(&mut self) -> Result<(), String>;
 
+    /// `(update-drawer-list! items on-select selected)` — replaces the open
+    /// drawer's rows in place, keeping the browse session (selection,
+    /// scroll) instead of resetting it the way a second `show-drawer-list!`
+    /// would. `selected` names the row to select, clamped into the new
+    /// list. Returns whether the update applied: `#f` when no drawer is
+    /// open (expected-normal race — the caller's drawer was closed or
+    /// replaced), never an error. Owner-blind like the rest of the drawer:
+    /// Rust never checks *whose* drawer is open, so a caller must only
+    /// refresh a drawer it opened itself — it learns a replace killed its
+    /// own via its callback's `#f` (fired by `show_drawer_list`'s
+    /// self-replace, the same shape as `show-menu!`). Still racy across
+    /// owners: a refresh queued before another owner's `show-drawer-list!`
+    /// lands on the foreign rows before that replace's `#f` drains — a
+    /// one-frame window, reachable when publishes arrive on nearly every
+    /// edit. Callers must close, not update, on empty: `selected` stays `0`
+    /// on 0 rows (same as `show_drawer_list`), and `Enter` there would fire
+    /// `0` with no row behind it.
+    fn update_drawer_list(
+        &mut self,
+        items: Vec<String>,
+        callback: steel::rvals::SteelVal,
+        selected: usize,
+    ) -> bool;
+
+    /// `(drawer-selected-index)` — the open drawer's selected row index, or
+    /// `None` (`#f`) when no drawer is open. Read-only; pairs with
+    /// [`Self::update_drawer_list`] so an owner can map its own selection
+    /// identity across a refresh (Rust holds opaque display strings — only
+    /// the owner knows what a row *is*).
+    fn drawer_selected_index(&self) -> Option<usize>;
+
     /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
     /// — opens the fuzzy-finder panel, always fuzzy-filtered over `items`
     /// (query-change never leaves the local filter — for a source whose
