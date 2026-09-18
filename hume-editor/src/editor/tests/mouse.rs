@@ -964,7 +964,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
 
 /// A click under the bottom drawer falls through untouched — same
 /// Helix-style "browse while editing" treatment `drawer_input` gives any key
-/// it doesn't bind to movement/scroll/Enter/Esc. Characterization, not a red
+/// it doesn't bind (Ctrl-d/Ctrl-u/Enter/Esc). Characterization, not a red
 /// test: mouse dispatch already bypassed every overlay outright before this
 /// layer existed, so this pins the pre-existing behavior rather than a
 /// newly introduced one.

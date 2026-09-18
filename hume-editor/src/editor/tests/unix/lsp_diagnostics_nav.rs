@@ -213,7 +213,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         "severity 2 (Warning) must render as the warning glyph: {rows:?}"
     );
 
-    ed.handle_key(key('j'));
+    ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
     assert_eq!(

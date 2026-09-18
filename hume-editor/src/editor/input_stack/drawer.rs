@@ -110,13 +110,15 @@ impl super::stack::InputStack {
     }
 }
 
-/// Handles one key while the bottom drawer is open. Movement, half-page
-/// scroll, and `Enter` (which fires `on-select` repeatedly across a
-/// browse session, unlike the menu, without closing the drawer) are
-/// handled in place; `Esc` retires the layer and fires `#f`; any other
-/// key falls through completely untouched (no close, no callback),
-/// leaving the drawer open while focus moves to whatever the fallen-
-/// through key does (Helix-style browse-while-editing).
+/// Handles one key while the bottom drawer is open. Ctrl-d/Ctrl-u move
+/// the selection one line at a time, and `Enter` (which fires `on-select`
+/// repeatedly across a browse session, unlike the menu, without closing
+/// the drawer) is handled in place; `Esc` retires the layer and fires
+/// `#f`; any other key — including `j`/`k` and the arrow keys — falls
+/// through completely untouched (no close, no callback), leaving the
+/// drawer open while focus moves to whatever the fallen-through key does
+/// (Helix-style browse-while-editing, so vertical motion in the source
+/// buffer keeps working).
 ///
 /// No mode gate of its own — same reasoning as [`super::menu::menu_input`].
 /// A mouse event falls through untouched, same as any other key the
@@ -125,7 +127,7 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     let key = match ev {
         InputEvent::Key(key) => key,
         // Swallowed like every other key the drawer doesn't bind to
-        // movement/scroll/Enter/Esc — stays open, same as today's
+        // single-line selection/Enter/Esc — stays open, same as today's
         // `Paste` handling under a drawer (`mappings/bracketed_paste.rs`'s
         // old menu/drawer guard).
         InputEvent::Paste(_) => return,
@@ -134,18 +136,12 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             return;
         }
     };
-    // Every movement key differs only in the delta passed to
+    // Both selection keys differ only in the delta passed to
     // `move_drawer_selection` — collapsed to one borrow instead of one per
     // key, mirroring `picker_input`'s own step table.
     let step: Option<isize> = match key.code {
-        KeyCode::Char('j') | KeyCode::Down => Some(1),
-        KeyCode::Char('k') | KeyCode::Up => Some(-1),
-        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some((drawer_visible_rows(ed, r) / 2).max(1) as isize)
-        }
-        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some(-((drawer_visible_rows(ed, r) / 2).max(1) as isize))
-        }
+        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(1),
+        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
         _ => None,
     };
     if let Some(delta) = step {
@@ -182,9 +178,8 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// is `EngineView::bottom_band_max` of the last-rendered *terminal*
 /// height (not the already-chrome-reduced pane height) — the same call
 /// the engine itself makes, so this can never drift from what it will
-/// next paint. Shared by [`clamp_drawer_scroll`] and the Ctrl-u/Ctrl-d
-/// half-page handlers so "half a page" always agrees with what's on
-/// screen.
+/// next paint. Read by [`clamp_drawer_scroll`] so the scroll window always
+/// agrees with what's on screen.
 fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
     let max = EngineView::bottom_band_max(ed.view.last_terminal_area.height);
     let Some(drawer) = ed.state.input.at::<DrawerLayer>(r) else {
@@ -194,8 +189,8 @@ fn drawer_visible_rows(ed: &Editor, r: LayerRef) -> usize {
 }
 
 /// Moves the drawer's selection by `delta` (clamped to `[0, len - 1]`), then
-/// syncs the scroll/view — shared by every movement key (`j`/`k`/Ctrl-d/
-/// Ctrl-u) so each key site is just "which delta", not its own lookup.
+/// syncs the scroll/view — shared by both selection keys (Ctrl-d/Ctrl-u)
+/// so each key site is just "which delta", not its own lookup.
 fn move_drawer_selection(ed: &mut Editor, r: LayerRef, delta: isize) {
     let drawer = ed
         .state

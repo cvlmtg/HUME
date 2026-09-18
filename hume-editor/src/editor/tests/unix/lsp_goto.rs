@@ -233,7 +233,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
     assert_eq!(rows.len(), 3);
 
     // Select row index 1 (the second entry, line 1).
-    ed.handle_key(key('j'));
+    ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
 
@@ -326,7 +326,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
     );
 
     // Select row index 1 (the second entry, line 1).
-    ed.handle_key(key('j'));
+    ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
 

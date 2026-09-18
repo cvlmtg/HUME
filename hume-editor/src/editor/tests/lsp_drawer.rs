@@ -1,6 +1,6 @@
 // Bottom drawer: (show-drawer-list!
-// items on-select) / (close-drawer!), the Normal/Extend-only input handling
-// in `Editor::drawer_input`, and the engine chrome band (see `hume-engine`'s
+// items on-select) / (close-drawer!), the Ctrl-d/Ctrl-u single-step input
+// handling in `drawer_input`, and the engine chrome band (see `hume-engine`'s
 // `pane_area_*` tests for the partition math itself).
 
 use hume_grid::Rect;
@@ -126,8 +126,8 @@ fn show_drawer_list_drops_silently_when_a_picker_is_open() {
 /// already sits on `Base` — so `i` while a drawer is open lands `Insert`
 /// on top of it (dispatch reaches `Insert`, not the drawer, for every key
 /// typed), and `Esc` ending Insert truncates only its own layer, leaving
-/// the drawer exactly where it was: still open, still driving `j`/`k` and
-/// the rest of its own keys.
+/// the drawer exactly where it was: still open, still driving Ctrl-d/
+/// Ctrl-u and the rest of its own keys.
 #[test]
 fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
     let tmp = safe_tempdir();
@@ -152,11 +152,11 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
     );
 
     // The drawer must still be driving its own keys, not just present.
-    ed.feed_key(key_down());
+    ed.feed_key(key_ctrl('d'));
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
         1,
-        "j/Down must still move the drawer's selection"
+        "Ctrl-d must still move the drawer's selection"
     );
 }
 
@@ -404,7 +404,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
 
     // Move selection and fire again — the callback must still be usable
     // (cloned, not consumed by the first Enter).
-    ed.feed_key(key_down());
+    ed.feed_key(key_ctrl('d'));
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "1");
@@ -419,8 +419,8 @@ fn selection_clamps_at_the_top() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
 
-    ed.feed_key(key_up());
-    ed.feed_key(key_up());
+    ed.feed_key(key_ctrl('u'));
+    ed.feed_key(key_ctrl('u'));
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
@@ -433,7 +433,7 @@ fn selection_clamps_at_the_bottom() {
     arm_three_items(&mut ed, tmp.path());
 
     for _ in 0..5 {
-        ed.feed_key(key_down());
+        ed.feed_key(key_ctrl('d'));
     }
     ed.feed_key(key_enter());
     ed.settle();
@@ -471,6 +471,68 @@ fn stray_key_leaves_the_drawer_open_and_uninvoked_but_still_executes() {
     );
 }
 
+/// `j`/`k` and the arrow keys are not drawer keys — they fall through to
+/// the source buffer (so vertical motion keeps working while browsing),
+/// leaving the drawer open with its selection untouched.
+#[test]
+fn vertical_motion_keys_fall_through_leaving_the_drawer_selection_untouched() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\ndef\nghi\n");
+    arm_three_items(&mut ed, tmp.path());
+
+    let cursor_line = |ed: &Editor| {
+        let head = ed.current_selections().primary().head();
+        let bid = ed.focused_buffer_id();
+        ed.state.buffers.get(bid).text().char_to_line(head)
+    };
+
+    ed.feed_key(key('j'));
+    ed.settle();
+    assert_eq!(
+        cursor_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "j must move the source cursor down"
+    );
+
+    ed.feed_key(key('k'));
+    ed.settle();
+    assert_eq!(
+        cursor_line(&ed),
+        hume_rope::line::ContentLine::new(0),
+        "k must move the source cursor back up"
+    );
+
+    ed.feed_key(key_down());
+    ed.settle();
+    assert_eq!(
+        cursor_line(&ed),
+        hume_rope::line::ContentLine::new(1),
+        "Down must move the source cursor down"
+    );
+
+    ed.feed_key(key_up());
+    ed.settle();
+    assert_eq!(
+        cursor_line(&ed),
+        hume_rope::line::ContentLine::new(0),
+        "Up must move the source cursor back up"
+    );
+
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "vertical motion must not close the drawer"
+    );
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        0,
+        "vertical motion must not move the drawer's selection"
+    );
+    assert!(
+        ed.state.status_msg.is_none(),
+        "vertical motion must not invoke the callback"
+    );
+}
+
 #[test]
 fn long_list_auto_scrolls_to_keep_selection_visible() {
     let tmp = safe_tempdir();
@@ -499,7 +561,7 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
 
     // capacity = min(20 items + 1, 10 rows / 2 = 5) = 5; visible_rows = 4.
     for _ in 0..6 {
-        ed.feed_key(key_down());
+        ed.feed_key(key_ctrl('d'));
     }
 
     let drawer = ed.state.input.drawer().unwrap();
@@ -516,11 +578,12 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     );
 }
 
-// ── Ctrl-d/Ctrl-u: half-page scroll ───────────────────────────────────────────
+// ── Ctrl-d/Ctrl-u: single-line step ───────────────────────────────────────────
 
 /// Arms the same 20-item / 40×10 fixture as
 /// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =
-/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4 and a half-page = 2.
+/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4 and each Ctrl-d/Ctrl-u
+/// moves exactly one row.
 fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -545,7 +608,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
 }
 
 #[test]
-fn ctrl_d_pages_down_by_half_the_visible_window() {
+fn ctrl_d_steps_down_one_row() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
@@ -553,15 +616,24 @@ fn ctrl_d_pages_down_by_half_the_visible_window() {
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
-        2,
-        "half of the 4 visible rows"
+        1,
+        "a single row, not a half-page"
     );
 
-    // A second half-page crosses the visible window (0..4), so scroll must
-    // advance to keep the new selection in view.
+    // A second step stays inside the first visible window (0..4), so
+    // scroll must not advance yet.
     ed.feed_key(key_ctrl('d'));
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(drawer.selected, 4);
+    assert_eq!(drawer.selected, 2);
+    assert_eq!(drawer.scroll, 0, "still inside the first window");
+
+    // Stepping past the window (selected = 5) must scroll to keep the new
+    // selection in view.
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    ed.feed_key(key_ctrl('d'));
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(drawer.selected, 5);
     assert!(
         drawer.scroll > 0,
         "scroll must advance once selection leaves the first window"
@@ -574,7 +646,7 @@ fn ctrl_d_clamps_at_the_last_item() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
-    for _ in 0..15 {
+    for _ in 0..25 {
         ed.feed_key(key_ctrl('d'));
     }
     assert_eq!(
@@ -585,18 +657,18 @@ fn ctrl_d_clamps_at_the_last_item() {
 }
 
 #[test]
-fn ctrl_u_pages_up_by_half_the_visible_window() {
+fn ctrl_u_steps_up_one_row() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('d'));
-    ed.feed_key(key_ctrl('d')); // selected = 4, scroll > 0 (see above)
+    ed.feed_key(key_ctrl('d')); // selected = 2
     ed.feed_key(key_ctrl('u'));
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
-        2,
-        "half of the 4 visible rows, back down from 4"
+        1,
+        "one row back up from 2"
     );
 }
 

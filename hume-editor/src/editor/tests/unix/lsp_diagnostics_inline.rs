@@ -261,7 +261,7 @@ fn diagnostics_drawer_selection_does_not_open_a_popup() {
         "opening the drawer itself must not show a popup"
     );
 
-    ed.handle_key(key('j'));
+    ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
 

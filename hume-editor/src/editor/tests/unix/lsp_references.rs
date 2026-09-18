@@ -124,7 +124,7 @@ fn enter_jumps_and_drawer_stays_open() {
     });
 
     run_references(&mut ed);
-    ed.handle_key(key('j'));
+    ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
 
