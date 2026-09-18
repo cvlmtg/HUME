@@ -10,8 +10,8 @@
 //!
 //! [`spawn_line_source`](crate::process::line_source::spawn_line_source) is
 //! the other half: spawns `cmd` with piped stdio, closes stdin immediately
-//! (same non-inherited-stdin contract as PLUM's `plum/run!`), and bridges
-//! stdout/stderr to `mpsc` channels via two reader threads — mirrors
+//! (same non-inherited-stdin contract as [`crate::process::run_capture`]),
+//! and bridges stdout/stderr to `mpsc` channels via two reader threads — mirrors
 //! `hume-lsp`'s `transport.rs` (thread/channel ownership, the bounded-channel
 //! backpressure, `Drop` = kill+wait). No writer thread: this is a one-shot
 //! streaming source, not a bidirectional protocol.

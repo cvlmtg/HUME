@@ -3,6 +3,56 @@
 
 use super::*;
 
+// ── run_capture ────────────────────────────────────────────────────────────
+
+/// Regression test for the deadlock `run_capture`'s own doc comment
+/// documents: reading stdout to EOF, then waiting, then reading stderr (the
+/// Steel `spawn-process`/`wait`/`child-stdout`/`child-stderr` shape
+/// `stdlib/run` used before) blocks forever once a child fills its stderr
+/// pipe before exiting. `Command::output` drains both concurrently, so this
+/// must return well under any reasonable test timeout rather than hang.
+#[test]
+fn run_capture_does_not_deadlock_on_large_stderr() {
+    let out = run_capture(
+        "sh",
+        &["-c".to_string(), "yes | head -c 200000 1>&2".to_string()],
+        None,
+    )
+    .expect("run_capture");
+    assert_eq!(out.stderr.len(), 200_000);
+}
+
+/// `run_capture`'s stdout counterpart to the stderr deadlock test above —
+/// pins that a large stdout stream is captured whole, not truncated at
+/// whatever a pipe's OS buffer happens to hold.
+#[test]
+fn run_capture_captures_large_stdout_whole() {
+    let out = run_capture(
+        "sh",
+        &["-c".to_string(), "yes | head -c 200000".to_string()],
+        None,
+    )
+    .expect("run_capture");
+    assert_eq!(out.stdout.len(), 200_000);
+}
+
+/// `run_capture` must deny git a credential prompt — this call has no
+/// terminal to put one on (stdin is closed), so left unset, `git` would try
+/// `/dev/tty` directly and hang instead of failing fast.
+#[test]
+fn run_capture_sets_git_terminal_prompt_to_deny_credential_prompts() {
+    let out = run_capture(
+        "sh",
+        &[
+            "-c".to_string(),
+            "printf %s \"$GIT_TERMINAL_PROMPT\"".to_string(),
+        ],
+        None,
+    )
+    .expect("run_capture");
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "0");
+}
+
 // ── run_inline_output ─────────────────────────────────────────────────────
 
 #[test]

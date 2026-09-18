@@ -7,15 +7,22 @@
 //! ones owned elsewhere (`hume-lsp`'s LSP transport, this crate's own
 //! `line_source`). General-purpose process spawning for plugin code goes
 //! through Steel's own `steel/process` stdlib instead (full-trust plugin
-//! model — see `user-manual/docs/plugins.md`'s "Filesystem and processes"); what
-//! remains here beyond the above is a handful of utility functions wrapping
-//! genuinely platform-conditional logic (Windows compiler selection, sha256
-//! tool selection, archive unpacking with chmod) that a Scheme rewrite would
-//! only make worse.
+//! model — see `user-manual/docs/plugins.md`'s "Filesystem and processes"),
+//! with one carve-out: [`run_capture`] backs the `stdlib/run` Steel builtin
+//! (`%run-capture!`) because Steel's own `spawn-process`/`wait`/`child-stdout`/
+//! `child-stderr` read stdout to EOF, then wait, then read stderr — a child
+//! that fills its stderr pipe before exiting blocks forever, the same
+//! deadlock `job.rs`'s doc explains by name. `std::process::Command::output`
+//! drains both pipes concurrently, closing it. What remains here beyond the
+//! above is a handful of utility functions wrapping genuinely
+//! platform-conditional logic (Windows compiler selection, sha256 tool
+//! selection, archive unpacking with chmod) that a Scheme rewrite would only
+//! make worse.
 //!
 //! ## Captured vs inherited stdio
 //!
-//! - **Captured** (`sha256_file`): returns parsed stdout.
+//! - **Captured** (`sha256_file`, [`run_capture`]): returns parsed/raw stdout
+//!   (and, for `run_capture`, stderr too).
 //! - **Inherited** (`run_inline_output`, `tree_sitter_build`, `unpack_zip`):
 //!   subprocess output flows directly to the terminal so the user sees live
 //!   progress; returns `ExitStatus` only.
@@ -80,6 +87,39 @@ pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::
         command.current_dir(strip_unc_prefix(dir.to_path_buf()));
     }
     command.new_process_group().status()
+}
+
+/// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
+/// closed immediately (`Stdio::null()` — the child sees EOF on read rather
+/// than racing the editor's own key reads on the terminal). Backs the
+/// `stdlib/run` Steel builtin (`%run-capture!`).
+///
+/// Built on `Command::output`, which drains both pipes concurrently rather
+/// than one after the other — see this module's doc for the deadlock that
+/// closes. No process-group isolation: the caller is always blocked inside
+/// this call with raw mode still on, so there is no live Ctrl-c to isolate
+/// the child from.
+///
+/// `GIT_TERMINAL_PROMPT=0` denies git a credential prompt — this call has
+/// no terminal to put one on (stdin is closed), so left unset, a private
+/// repo or expired token would try to open `/dev/tty` directly and hang
+/// forever instead of failing fast. `run_inline_output`, by contrast, hands
+/// the child a real terminal on purpose, so it does not set this: there, a
+/// prompt is visible and answerable.
+pub fn run_capture(
+    cmd: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+) -> io::Result<std::process::Output> {
+    let mut command = Command::new(cmd);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .env("GIT_TERMINAL_PROMPT", "0");
+    if let Some(dir) = cwd {
+        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
+    }
+    command.output()
 }
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`

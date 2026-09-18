@@ -63,13 +63,17 @@ that ever changes.
 Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inline-output`
 commands (process-group safety for Ctrl-c), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
-the TUI's raw mode still on. The git probes below build their `#f`-on-failure policy on it. stdin
-is piped and closed immediately — never inherited from HUME's own terminal, or the child's
-reads would race the editor's key reads. Ports are grabbed before `wait` (a Steel gotcha
-pinned by a permanent `hume-scripting` test: `child-stderr` returns `#f` afterwards even on a
-piped stream) and drained stdout-then-stderr — stdout before `wait` so a large stdout stream
-doesn't sit in the pipe past `wait`'s own block, stderr after since a small diagnostic tail
-costs nothing extra once the child has already exited.
+the TUI's raw mode still on. The git probes below build their `#f`-on-failure policy on it.
+`stdlib/run` is `%run-capture!` (native, `hume_platform::process::run_capture`), not Steel's
+own `spawn-process`/`wait`/`child-stdout`/`child-stderr` — that shape reads stdout to EOF, then
+waits, then reads stderr, which deadlocks forever on a child that fills its stderr pipe before
+exiting; `std::process::Command::output` drains both concurrently instead. Stdin is closed
+immediately (`Stdio::null()`) — never inherited from HUME's own terminal, or the child's reads
+would race the editor's key reads — and `GIT_TERMINAL_PROMPT=0` is set, since this call has no
+terminal to put a credential prompt on: left unset, a private repo or expired token would have
+`git` try `/dev/tty` directly and hang instead of failing fast. `run-inline-output!` does *not*
+set it — there the child owns a real terminal with raw mode off, so a prompt is visible and
+answerable, and denying it would remove a working capability.
 
 ### Git
 

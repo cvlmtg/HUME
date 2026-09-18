@@ -84,21 +84,15 @@
 
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 
-(define (stdlib/run cmd args cwd)
-  (let* ([base (with-stdin-piped (with-stderr-piped (with-stdout-piped (command cmd args))))]
-         [builder (if cwd (with-current-dir base cwd) base)]
-         [spawned (spawn-process builder)])
-    (if (Ok? spawned)
-        (let* ([child (Ok->value spawned)]
-               [stdout-port (child-stdout child)]
-               [stderr-port (child-stderr child)])
-          (close-output-port (child-stdin child))
-          (let ([stdout (read-port-to-string stdout-port)])
-            (let ([wait-result (wait child)])
-              (if (Ok? wait-result)
-                  (list stdout (read-port-to-string stderr-port) (Ok->value wait-result))
-                  (list stdout (to-string (Err->value wait-result)) #f)))))
-        (list "" (to-string (Err->value spawned)) #f))))
+;;; `%run-capture!` (native, `hume_platform::process::run_capture`) rather
+;;; than Steel's own `spawn-process`/`wait`/`child-stdout`/`child-stderr`:
+;;; that shape reads stdout to EOF, then waits, then reads stderr, which
+;;; deadlocks forever on a child that fills its stderr pipe before exiting —
+;;; `std::process::Command::output` drains both concurrently instead. Same
+;;; `(stdout stderr exit-code)` contract this used to build by hand:
+;;; `exit-code` is `#f` for a spawn failure or a signal-killed child, an int
+;;; otherwise — `stdlib/run-stdout` and the git probes below rely on that.
+(define stdlib/run %run-capture!)
 
 ;; ── Git probes ───────────────────────────────────────────────────────────────
 

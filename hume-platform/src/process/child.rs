@@ -49,18 +49,23 @@ pub(crate) const JOB_STDOUT_CAP: usize = 64 * 1024 * 1024;
 /// Spawns `cmd` with `args` (direct argv, no shell) in its own process
 /// group, all three stdio streams piped, and stdin closed immediately — the
 /// child sees EOF on read rather than racing the editor's own key reads on
-/// the terminal (same contract as PLUM's `plum/run!`). Returns the
-/// kill-on-early-return guard plus the piped stdout/stderr handles; the
-/// caller starts its bridging threads before converting the guard into a
-/// [`crate::process::tracked::TrackedChild`] — a thread failing to spawn
-/// leaves nothing for the process to leak.
+/// the terminal (same contract as `hume_platform::process::run_capture`).
+/// `GIT_TERMINAL_PROMPT=0` for the same reason `run_capture` sets it: this
+/// path has no terminal to put a credential prompt on, so left unset git
+/// would try `/dev/tty` directly and hang instead of failing fast — true of
+/// both [`super::job`]'s `spawn-async!` and [`super::line_source`]'s
+/// `picker-source-spawn!`, so it belongs here rather than duplicated in
+/// each caller. Returns the kill-on-early-return guard plus the piped
+/// stdout/stderr handles; the caller starts its bridging threads before
+/// converting the guard into a [`crate::process::tracked::TrackedChild`] —
+/// a thread failing to spawn leaves nothing for the process to leak.
 pub(crate) fn spawn_piped(
     cmd: &str,
     args: &[String],
     cwd: Option<&Path>,
 ) -> io::Result<(ReapOnDrop, ChildStdout, ChildStderr)> {
     let mut command = Command::new(cmd);
-    command.args(args);
+    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(dir) = cwd {
         command.current_dir(strip_unc_prefix(dir.to_path_buf()));
     }

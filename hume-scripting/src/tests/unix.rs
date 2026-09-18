@@ -3,11 +3,16 @@
 
 use super::*;
 
-/// Pins a real gotcha `plum/run!` depends on: `child-stderr`
+/// Pins a real gotcha in Steel's own `steel/process` stdlib: `child-stderr`
 /// (and by extension `child-stdin`/`child-stdout`) must be captured
 /// *before* calling `wait` — calling it after returns `#f` even though the
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
-/// since stdin is not inherited by default.
+/// since stdin is not inherited by default. No in-tree Scheme calls
+/// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run` is now
+/// `%run-capture!`, a native builtin closing the exact deadlock this shape
+/// invites — see its own doc), but the full-trust plugin model leaves
+/// `spawn-process` reachable from any user plugin, so the gotcha stays live
+/// and worth pinning.
 #[test]
 fn child_stderr_must_be_captured_before_wait() {
     let mut host = ScriptingHost::new();
@@ -35,7 +40,7 @@ fn child_stderr_must_be_captured_before_wait() {
             (error (to-string (Err->value spawned))))
     "#;
     host.eval_source(src, &mut null_host)
-        .expect("plum/run! shape probe failed");
+        .expect("spawn-process shape probe failed");
 }
 
 /// **Known steel-core 0.8.2 limitation, not a HUME bug**: re-raising a
