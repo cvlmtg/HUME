@@ -1,5 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use super::search::{SearchMatches, SearchPattern};
 use crate::editor::pane_state::EditGroup;
@@ -729,6 +730,18 @@ impl Buffer {
 
     pub(in crate::editor) fn can_redo(&self) -> bool {
         self.history.can_redo()
+    }
+
+    /// Undo steps back to the state as of `age` ago, for `:earlier` — narrow
+    /// delegate so the typed layer never touches `History` itself. The flag
+    /// reports an unsatisfied clamp at the root (still younger than `age`).
+    pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> (usize, bool) {
+        self.history.undo_steps_older_than(age)
+    }
+
+    /// Redo steps forward to the state as of `age` ago, for `:later`.
+    pub(in crate::editor) fn redo_steps_newer_than(&self, age: Duration) -> (usize, bool) {
+        self.history.redo_steps_newer_than(age)
     }
 
     /// Jump to an arbitrary revision in the undo tree.

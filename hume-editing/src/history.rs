@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use rustc_hash::FxHashMap;
 
@@ -45,8 +45,9 @@ struct Revision {
     /// Child revisions — branches created from this state.
     /// The last entry is the most recently created child (default redo target).
     children: Vec<RevisionId>,
-    /// When this revision was created. Reserved for `:earlier`/`:later` time travel.
-    #[allow(dead_code)]
+    /// When this revision was created. Read by the `:earlier`/`:later`
+    /// step-resolution queries below — "N minutes ago" is `elapsed()` on
+    /// these stamps, so no wall-clock field is needed.
     timestamp: Instant,
 }
 
@@ -326,6 +327,60 @@ impl History {
     /// True if the current revision has at least one child.
     pub fn can_redo(&self) -> bool {
         !self.revisions[&self.current].children.is_empty()
+    }
+
+    /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
+    ///
+    /// Walks up toward the root while the revision underfoot is still younger
+    /// than `age`, clamping at the root. The caller steps the returned count
+    /// through the ordinary per-step undo path, so the count — not a revision
+    /// id — is what crosses the crate boundary and the tree stays unenumerable.
+    ///
+    /// The flag reports an unsatisfied clamp: the walk hit the root while the
+    /// root is still younger than `age`. Strict `<` keeps an exact hit silent —
+    /// landing on a revision exactly `age` old is a hit, not an over-travel.
+    pub fn undo_steps_older_than(&self, age: Duration) -> (usize, bool) {
+        let mut steps = 0;
+        let mut id = self.current;
+        while self.revisions[&id].timestamp.elapsed() < age {
+            match self.revisions[&id].parent {
+                Some(parent) => {
+                    id = parent;
+                    steps += 1;
+                }
+                None => break,
+            }
+        }
+        let past_end =
+            self.revisions[&id].parent.is_none() && self.revisions[&id].timestamp.elapsed() < age;
+        (steps, past_end)
+    }
+
+    /// Redo steps needed to reach the state as of `age` ago, for `:later`.
+    ///
+    /// Walks down the most-recent-child chain (the same path [`Self::redo`]
+    /// takes) while the next child is still at least `age` old, stopping
+    /// before the first child young enough to postdate it. Mirrors
+    /// [`Self::undo_steps_older_than`]: returns a step count, not an id.
+    ///
+    /// `>=` mirrors the undo side's `<`: both treat an exact `elapsed() == age`
+    /// hit as landed, not over-traveled. The flag is the strict mirror of the
+    /// undo one — tip still strictly older than `age` — so an exact hit on the
+    /// tip stays silent too.
+    pub fn redo_steps_newer_than(&self, age: Duration) -> (usize, bool) {
+        let mut steps = 0;
+        let mut id = self.current;
+        while let Some(&child) = self.revisions[&id].children.last() {
+            if self.revisions[&child].timestamp.elapsed() >= age {
+                id = child;
+                steps += 1;
+            } else {
+                break;
+            }
+        }
+        let past_end = self.revisions[&id].children.is_empty()
+            && self.revisions[&id].timestamp.elapsed() > age;
+        (steps, past_end)
     }
 
     /// Total number of revisions in the tree (including the root).

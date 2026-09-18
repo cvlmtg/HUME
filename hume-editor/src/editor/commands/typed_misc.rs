@@ -1,10 +1,13 @@
+use std::time::Duration;
+
 use hume_engine::pipeline::{BufferId, Direction};
 use hume_grid::Rgb;
 use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
-use super::super::Severity;
-use super::{current_jump_entry, record_jump_if_moved};
+use super::super::{Severity, doc_ops};
+use super::{current_jump_entry, focused_buffer_id, history_step, record_jump_if_moved};
+use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::editor::settings::THEME_KEY;
@@ -598,5 +601,127 @@ pub(in crate::editor) fn typed_sort(
         );
         triple
     });
+    Ok(())
+}
+
+// ── :earlier / :later ─────────────────────────────────────────────────────────
+
+/// Time-travel spec shared by `:earlier` and `:later`: a revision count or a
+/// relative age (`5s`/`5m`/`1h`/`2d`). Direction comes from which command runs
+/// it — `:earlier` walks back, `:later` walks forward.
+enum TravelSpec {
+    Steps(usize),
+    Age(Duration),
+}
+
+/// Parse `:earlier`/`:later`'s single argument: a bare number is a revision
+/// count, a number with an `s`/`m`/`h`/`d` suffix is a relative age.
+fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
+    let invalid = || CommandError::transient(format!("invalid time-travel spec: {raw}"));
+    let mut tokens = raw.split_whitespace();
+    let (token, extra) = (tokens.next(), tokens.next());
+    let Some(token) = token else {
+        return Err(invalid());
+    };
+    if extra.is_some() {
+        return Err(invalid());
+    }
+    let (digits, unit) = match token.strip_suffix(|c: char| c.is_ascii_alphabetic()) {
+        Some(digits) => (digits, token.chars().next_back().expect("suffix exists")),
+        None => (token, '\0'),
+    };
+    let n: usize = digits.parse().map_err(|_| invalid())?;
+    let n64 = n as u64;
+    match unit {
+        '\0' => Ok(TravelSpec::Steps(n)),
+        's' => Ok(TravelSpec::Age(Duration::from_secs(n64))),
+        'm' => Ok(TravelSpec::Age(Duration::from_secs(n64.saturating_mul(60)))),
+        'h' => Ok(TravelSpec::Age(Duration::from_secs(
+            n64.saturating_mul(3_600),
+        ))),
+        'd' => Ok(TravelSpec::Age(Duration::from_secs(
+            n64.saturating_mul(86_400),
+        ))),
+        _ => Err(invalid()),
+    }
+}
+
+/// `:earlier [N|age]` — step back `N` revisions (default 1), or back to the
+/// state as of `age` ago (`:earlier 5m`). Clamps at the root with an Info
+/// report, traveling the same per-step undo loop as `u` so every step
+/// propagates to panes, tree-sitter, LSP, decorations, and jumps.
+pub(in crate::editor) fn typed_earlier(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    if force {
+        return Err(CommandError::transient("`:earlier` takes no `!`"));
+    }
+    if ed.focused_buffer_read_only() {
+        return Err(CommandError::transient("Buffer is read-only"));
+    }
+    let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
+        TravelSpec::Steps(n) => (n, false),
+        TravelSpec::Age(age) => {
+            let buf = focused_buffer_id(&ed.state, &ed.view);
+            ed.state.buffers.get(buf).undo_steps_older_than(age)
+        }
+    };
+    history_step(
+        &mut ed.state,
+        &mut ed.view,
+        steps,
+        Buffer::can_undo,
+        doc_ops::apply_doc_undo,
+        "Already at oldest change",
+    )?;
+    // Count over-travel reports inside `history_step`; an age clamp resolves to
+    // exactly the root depth, so the loop never exhausts — report here instead
+    // when the root is still younger than the requested age.
+    if past_end {
+        ed.state
+            .report(Severity::Info, "Already at oldest change".to_string());
+    }
+    Ok(())
+}
+
+/// `:later [N|age]` — the mirror of `:earlier`, forward along the
+/// most-recent-child chain (the same path redo takes). An age means the state
+/// as of that age ago, reached by stepping forward while the next revision is
+/// still older than it.
+pub(in crate::editor) fn typed_later(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    if force {
+        return Err(CommandError::transient("`:later` takes no `!`"));
+    }
+    if ed.focused_buffer_read_only() {
+        return Err(CommandError::transient("Buffer is read-only"));
+    }
+    let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
+        TravelSpec::Steps(n) => (n, false),
+        TravelSpec::Age(age) => {
+            let buf = focused_buffer_id(&ed.state, &ed.view);
+            ed.state.buffers.get(buf).redo_steps_newer_than(age)
+        }
+    };
+    history_step(
+        &mut ed.state,
+        &mut ed.view,
+        steps,
+        Buffer::can_redo,
+        doc_ops::apply_doc_redo,
+        "Already at newest change",
+    )?;
+    // Same age-clamp gap as `:earlier`: the resolved count ends exactly at the
+    // tip, so the loop never exhausts — report when it is still older than
+    // the requested age.
+    if past_end {
+        ed.state
+            .report(Severity::Info, "Already at newest change".to_string());
+    }
     Ok(())
 }

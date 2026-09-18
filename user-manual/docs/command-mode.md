@@ -91,6 +91,8 @@ Cycling is also bound to `Ctrl-p t`/`Ctrl-p T` — see the [Default Keys](defaul
 | `:sort` | Sort adjacent rows by their selected text |
 | `:sort -r` | Sort in reverse |
 | `:sort -i` | Sort case-insensitively |
+| `:earlier [n\|5m]` | Step back `n` revisions (`:earlier`, `:earlier 3`), or back to how the buffer looked an age ago (`:earlier 5m`) |
+| `:later [n\|5m]` | Step forward again after `:earlier`, same argument forms |
 
 `:sort` groups your selections into runs of adjacent rows and sorts each run
 independently, keyed by whatever text you selected on that row — not
@@ -105,6 +107,11 @@ line isn't what `:sort` does.
 A single selection that spans several rows keeps its place in the buffer —
 the rows underneath it reorder, but the selection itself still covers the
 same stretch of text afterward.
+
+`:earlier` and `:later` step through the undo history: back, then forward
+again along the most recent path. A bare number counts revisions; a number
+with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 90s`, `:later 2h`).
+Traveling past either end stops at the oldest/newest revision with a message.
 
 <div class="key-demo">
 <strong>Select the count on each row, then run <code>:sort</code></strong><br>

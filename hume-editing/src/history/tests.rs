@@ -454,3 +454,104 @@ fn promotion_reports_last_promoted_only() {
     assert_eq!(promoted_c, Some(RevisionId(2))); // b, not a
     assert_eq!(h.len(), 2);
 }
+
+// ── Time-travel step resolution (:earlier/:later) ────────────────────────────
+
+use std::time::{Duration, Instant};
+
+/// Backdate revision `id` so it reads as `age` old.
+fn backdate(h: &mut History, id: RevisionId, age: Duration) {
+    h.revisions.get_mut(&id).expect("revision exists").timestamp = Instant::now() - age;
+}
+
+fn mins(n: u64) -> Duration {
+    Duration::from_secs(n * 60)
+}
+
+/// Linear chain root(20m) → rev1(15m) → rev2(8m) → rev3(1m, current).
+fn aged_chain() -> History {
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1)); // rev1
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2)); // rev2
+    h.record(insert_cs(8, "c"), delete_cs(9, 1), sel_at(2), sel_at(3)); // rev3
+    backdate(&mut h, RevisionId(0), mins(20));
+    backdate(&mut h, RevisionId(1), mins(15));
+    backdate(&mut h, RevisionId(2), mins(8));
+    backdate(&mut h, RevisionId(3), mins(1));
+    h
+}
+
+#[test]
+fn undo_steps_older_than_walks_to_state_as_of_age() {
+    let h = aged_chain();
+    assert_eq!(
+        h.undo_steps_older_than(mins(5)),
+        (1, false),
+        ":earlier 5m from 1m-old tip must step once onto rev2 (8m)"
+    );
+    assert_eq!(
+        h.undo_steps_older_than(mins(10)),
+        (2, false),
+        ":earlier 10m must step twice onto rev1 (15m)"
+    );
+    assert_eq!(
+        h.undo_steps_older_than(mins(30)),
+        (3, true),
+        ":earlier older than the root must clamp at the root (depth 3) with the flag set"
+    );
+    assert_eq!(
+        h.undo_steps_older_than(Duration::ZERO),
+        (0, false),
+        ":earlier 0s is already satisfied — no steps"
+    );
+}
+
+#[test]
+fn redo_steps_newer_than_walks_last_child_chain() {
+    let mut h = aged_chain();
+    h.undo();
+    h.undo(); // back to rev1 (15m)
+    assert_eq!(
+        h.redo_steps_newer_than(mins(5)),
+        (1, false),
+        ":later 5m from rev1 must step once onto rev2 (8m), stopping before rev3 (1m)"
+    );
+    assert_eq!(
+        h.redo_steps_newer_than(Duration::ZERO),
+        (2, true),
+        ":later 0s walks the whole last-child chain to the tip, which is still older than now"
+    );
+    assert_eq!(
+        h.redo_steps_newer_than(mins(30)),
+        (0, false),
+        ":later older than every descendant is already satisfied — no steps"
+    );
+}
+
+#[test]
+fn redo_steps_newer_than_follows_most_recent_child() {
+    let mut h = aged_chain();
+    h.undo();
+    h.undo(); // back to rev1
+    h.record(insert_cs(7, "d"), delete_cs(8, 1), sel_at(1), sel_at(9)); // rev4, last child of rev1
+    backdate(&mut h, RevisionId(4), mins(2));
+    h.undo(); // back to rev1 — the fork point the queries run from
+    // Sibling rev2 is 8m old but no longer the redo target — the count must
+    // follow rev4 (2m), so `:later 5m` takes no steps.
+    assert_eq!(
+        h.redo_steps_newer_than(mins(5)),
+        (0, false),
+        ":later must follow the most-recent child (rev4, 2m), not the older sibling"
+    );
+    assert_eq!(
+        h.redo_steps_newer_than(Duration::ZERO),
+        (1, true),
+        ":later 0s steps once along the rev4 branch, whose tip is still older than now"
+    );
+    h.redo();
+    assert_eq!(
+        h.current,
+        RevisionId(4),
+        "the counted step must land on the most-recent child"
+    );
+}

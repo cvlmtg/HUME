@@ -206,5 +206,17 @@ impl CommandRegistry {
             &[],
             typed_sort
         );
+        typed_cmd!(
+            "earlier",
+            "Step back N revisions (:earlier 3) or to the state as of an age ago (:earlier 5m).",
+            &[],
+            typed_earlier
+        );
+        typed_cmd!(
+            "later",
+            "Step forward N revisions (:later 3) or to the state as of an age ago (:later 5m).",
+            &[],
+            typed_later
+        );
     }
 }

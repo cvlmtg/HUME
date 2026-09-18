@@ -12,13 +12,12 @@
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ConfirmLayer`, `hume-editor/src/editor/input_stack/confirm.rs`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
-- [ ] File-size statusline element + cached size metadata.
 - [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.
 - [ ] Scriptable insert-mode completion sources — see `docs/COMPLETION-PICKER.md` (additive, nothing blocks on current work).
 - [ ] Styled spans in `show-popup!` — the popup takes one flat string today, so signature help marks the active parameter as `⟨…⟩` on a second line instead of highlighting it in place. Wants a `(start end scope)` span list over the popup text, the shape `set-virtual-lines!`'s `'segments` already uses. Its input already arrives: HUME declares `labelOffsetSupport`, so a server sends each parameter's offsets into the signature label.
 - [ ] Styled spans in the drawer — `lsp-locations->display-parts` shows an unopened target's column as the location's own wire unit rather than a measured grapheme column (see `docs/LSP.md`'s "User-facing column unit" decision row); once a drawer row can style part of itself, render that unmeasured column visually distinctly (e.g. italic) instead of identically to a measured one. Wants the same per-row span support as the `show-popup!` item above.
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
-- [ ] `:earlier` / `:later` undo-tree time travel — the substrate already exists (`History::goto_revision`, `Revision::timestamp`); wants only the typed commands and, longer-term, a history-browsing UI.
+- [x] `:earlier` / `:later` undo-tree time travel — count + relative-age specs over the linear undo/redo path; cross-branch jumps and history-browsing UI remain future work.
 - [ ] Steel-side picker row display formatter — `#:truncate 'head|'tail` only picks which end of an over-long row is clipped; see `docs/FUZZY-FINDERS.md`'s "Remaining work" for the general per-row formatter this doesn't cover.
 
 ### Editor — fixes & optimizations

@@ -180,8 +180,14 @@ pub(in crate::editor) fn cmd_yank(
 
 /// Step the undo/redo history `count` times, stopping (with a status report)
 /// as soon as `can` returns false — shared by `cmd_undo`/`cmd_redo`, which
-/// differ only in direction.
-fn history_step(
+/// differ only in direction, and by `:earlier`/`:later`, which resolve their
+/// spec to a step count first and then travel the same per-step path.
+/// Widened to `pub(super)` for those typed callers: the `(can, apply)` pair
+/// must always match direction (undo-back / redo-forward) — a mismatch would
+/// travel the wrong way, caught by the roundtrip tests, not silent.
+/// Duplicating the loop instead would split the exhaustion message and the
+/// per-step propagation contract in two.
+pub(super) fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
