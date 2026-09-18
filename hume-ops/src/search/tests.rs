@@ -830,7 +830,7 @@ fn word_search_pattern_skips_boundary_hume_does_not_consider_a_word_char() {
 fn word_search_pattern_over_matches_a_wider_word_chars_run() {
     let chars = hume_editing::word::WordChars::new("-");
     let pattern = word_search_pattern("foo-bar", chars);
-    assert_eq!(pattern, r"\bfoo-bar\b");
+    assert_eq!(pattern, r"\bfoo\-bar\b");
 
     let r = re(&pattern);
     let b = buf("foo-bar-baz\n");

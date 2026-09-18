@@ -265,18 +265,12 @@ pub fn find_matches_in_range(
 /// Used by [`word_search_pattern`] (`*`, search-word-under-cursor) and by
 /// [`compile_search_input`]'s verbatim (`v`) arm, which Ctrl-/
 /// (search-selection) reaches by setting `verbatim` on its pattern.
+///
+/// `regex_syntax::escape` escapes a few characters (`-`, `#`, `&`, `~`) that
+/// only have meaning inside `[...]` classes — harmless here since none of
+/// this module's patterns are ever spliced into one.
 fn escape_regex(s: &str) -> String {
-    let mut escaped = String::with_capacity(s.len() * 2);
-    for c in s.chars() {
-        if matches!(
-            c,
-            '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$'
-        ) {
-            escaped.push('\\');
-        }
-        escaped.push(c);
-    }
-    escaped
+    regex_syntax::escape(s)
 }
 
 /// Build a `*` (search-word-under-cursor) pattern: `word`, escaped, with

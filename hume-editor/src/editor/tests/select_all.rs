@@ -191,7 +191,9 @@ fn star_punctuation_run_stays_literal() {
     ed.handle_key(key('*'));
     let r = reg(&ed, 's');
     // '-' and '>' are both Punctuation — no \b boundaries should be added.
-    assert_eq!(r, vec!["->"]);
+    // '-' is escaped as a regex-syntax meta char (superfluous outside `[...]`,
+    // matches the same literal '-').
+    assert_eq!(r, vec![r"\->"]);
 }
 
 /// `*` on a punctuation run that happens to look like the search-flag

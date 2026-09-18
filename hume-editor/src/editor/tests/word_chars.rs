@@ -68,7 +68,7 @@ fn star_anchors_hyphenated_word_on_both_sides() {
     let mut ed = editor_from("-[f]>oo-bar baz\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('*'));
-    assert_eq!(ed.state.registers.search_register(), Some(r"\bfoo-bar\b"));
+    assert_eq!(ed.state.registers.search_register(), Some(r"\bfoo\-bar\b"));
 }
 
 #[test]
@@ -78,7 +78,7 @@ fn star_omits_leading_anchor_for_leading_hyphen() {
     let mut ed = editor_from("-[-]>-foo bar\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('*'));
-    assert_eq!(ed.state.registers.search_register(), Some(r"--foo\b"));
+    assert_eq!(ed.state.registers.search_register(), Some(r"\-\-foo\b"));
 }
 
 #[test]
