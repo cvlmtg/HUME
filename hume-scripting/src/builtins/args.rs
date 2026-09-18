@@ -62,6 +62,43 @@ pub(crate) fn optional_symbol_arg(
     }
 }
 
+/// Maps an already-decoded keyword string to one of a fixed set of enum
+/// values via a `(spelling, value)` table — the "must be 'a, 'b, or 'c, got
+/// 'x" shape shared by every Steel enum-keyword decoder (`#:match`,
+/// `#:interaction`, `#:truncate`, `#:anchor`, `#:kind`, bind-mode). Callers
+/// extract the string themselves first (`string_arg` for a string-or-symbol
+/// argument, a stricter symbol-only check where the wire contract insists on
+/// a bare symbol) — this helper is only about the mapping and the error
+/// message, so those extraction strictness differences aren't flattened.
+pub(crate) fn symbol_enum_arg<T: Copy>(
+    s: &str,
+    ctx_name: &str,
+    variants: &[(&str, T)],
+) -> Result<T, SteelErr> {
+    for (name, value) in variants {
+        if *name == s {
+            return Ok(*value);
+        }
+    }
+    let names: Vec<&str> = variants.iter().map(|(name, _)| *name).collect();
+    steel::stop!(Generic => "{}: must be {}, got '{}'", ctx_name, format_symbol_choices(&names), s)
+}
+
+/// Renders `["a", "b", "c"]` as `"'a, 'b, or 'c"` (or `"'a or 'b"` for two,
+/// `"'a"` for one) — the quoted, Oxford-comma phrasing every enum-keyword
+/// error message already used before this helper existed.
+fn format_symbol_choices(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [a] => format!("'{a}"),
+        [a, b] => format!("'{a} or '{b}"),
+        [rest @ .., last] => {
+            let rest: Vec<String> = rest.iter().map(|name| format!("'{name}")).collect();
+            format!("{}, or '{last}", rest.join(", "))
+        }
+    }
+}
+
 /// A filesystem path, from a Steel string.
 pub(crate) fn path_arg(val: SteelVal, ctx_name: &str) -> Result<PathBuf, SteelErr> {
     match val {

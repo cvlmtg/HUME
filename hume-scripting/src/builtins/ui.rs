@@ -19,7 +19,7 @@ use crate::keys::parse_key_sequence;
 use super::SteelResult;
 use super::args::{
     bool_arg, callable_arg, list_items, list_to_i32s, list_to_strings, optional_path_arg,
-    optional_string_arg, optional_usize_arg, pair_fields, string_arg, usize_arg,
+    optional_string_arg, optional_usize_arg, pair_fields, string_arg, symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -38,21 +38,20 @@ pub(crate) fn show_popup(
 ) -> SteelResult {
     let text = string_arg(text, "show-popup! text")?;
     let anchor = string_arg(anchor, "show-popup! #:anchor")?;
-    let docked = match anchor.as_str() {
-        "cursor" => false,
-        "bottom" => true,
-        other => {
-            steel::stop!(Generic => "show-popup!: #:anchor must be 'cursor or 'bottom, got '{}'", other)
-        }
-    };
+    let docked = symbol_enum_arg(
+        &anchor,
+        "show-popup! #:anchor",
+        &[("cursor", false), ("bottom", true)],
+    )?;
     let kind = string_arg(kind, "show-popup! #:kind")?;
-    let kind = match kind.as_str() {
-        "sticky" => PopupKind::Sticky,
-        "scrollable" => PopupKind::Scrollable,
-        other => {
-            steel::stop!(Generic => "show-popup!: #:kind must be 'sticky or 'scrollable, got '{}'", other)
-        }
-    };
+    let kind = symbol_enum_arg(
+        &kind,
+        "show-popup! #:kind",
+        &[
+            ("sticky", PopupKind::Sticky),
+            ("scrollable", PopupKind::Scrollable),
+        ],
+    )?;
     let lang = optional_string_arg(lang, "show-popup! #:lang")?;
     require_cap(ctx.host.ui(), "show-popup!")?
         .show_popup(text, kind, docked, lang)
@@ -176,13 +175,11 @@ fn picker_actions(
 /// (default, drop the front) or `'tail` (drop the back). Shared so the two
 /// builtins can't drift on the accepted spelling or the error message.
 fn truncate_end_arg(val: SteelVal, ctx_name: &str) -> Result<TruncateEnd, SteelErr> {
-    match string_arg(val, ctx_name)?.as_str() {
-        "head" => Ok(TruncateEnd::Head),
-        "tail" => Ok(TruncateEnd::Tail),
-        other => {
-            steel::stop!(Generic => "{}: must be 'head or 'tail, got '{}'", ctx_name, other)
-        }
-    }
+    symbol_enum_arg(
+        string_arg(val, ctx_name)?.as_str(),
+        ctx_name,
+        &[("head", TruncateEnd::Head), ("tail", TruncateEnd::Tail)],
+    )
 }
 
 /// `(%picker! items on-select prompt pending query truncate actions)` — the

@@ -8,7 +8,9 @@ use crate::host::{Interaction, MatchKind};
 use crate::json::{json_to_steel, steel_to_json};
 
 use super::SteelResult;
-use super::args::{BidArg, bool_arg, chars_arg, int_arg, list_items, string_arg, usize_arg};
+use super::args::{
+    BidArg, bool_arg, chars_arg, int_arg, list_items, string_arg, symbol_enum_arg, usize_arg,
+};
 use super::errors::{generic_err, require_cap};
 
 /// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`) — a `String` source
@@ -16,27 +18,32 @@ use super::errors::{generic_err, require_cap};
 /// matching yet, so there's no second keyword for it (the native minibuffer
 /// registry sets this directly in Rust, bypassing this decode entirely).
 fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, steel::rerrs::SteelErr> {
-    match string_arg(val, ctx_name)?.as_str() {
-        "fuzzy" => Ok(MatchKind::Fuzzy),
-        "string" => Ok(MatchKind::String {
-            case_sensitive: true,
-        }),
-        "delegated" => Ok(MatchKind::Delegated),
-        other => {
-            steel::stop!(Generic => "{}: must be 'fuzzy, 'string, or 'delegated, got '{}'", ctx_name, other)
-        }
-    }
+    symbol_enum_arg(
+        string_arg(val, ctx_name)?.as_str(),
+        ctx_name,
+        &[
+            ("fuzzy", MatchKind::Fuzzy),
+            (
+                "string",
+                MatchKind::String {
+                    case_sensitive: true,
+                },
+            ),
+            ("delegated", MatchKind::Delegated),
+        ],
+    )
 }
 
 /// Decodes `#:interaction` (`'select`/`'cycle`).
 fn interaction_arg(val: SteelVal, ctx_name: &str) -> Result<Interaction, steel::rerrs::SteelErr> {
-    match string_arg(val, ctx_name)?.as_str() {
-        "select" => Ok(Interaction::SelectAccept),
-        "cycle" => Ok(Interaction::CycleApply),
-        other => {
-            steel::stop!(Generic => "{}: must be 'select or 'cycle, got '{}'", ctx_name, other)
-        }
-    }
+    symbol_enum_arg(
+        string_arg(val, ctx_name)?.as_str(),
+        ctx_name,
+        &[
+            ("select", Interaction::SelectAccept),
+            ("cycle", Interaction::CycleApply),
+        ],
+    )
 }
 
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of

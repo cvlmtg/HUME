@@ -9,6 +9,7 @@ use crate::keys::parse_key_sequence;
 use crate::{Effect, SteelCtx};
 
 use super::SteelResult;
+use super::args::symbol_enum_arg;
 use super::errors::generic_err;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -19,13 +20,15 @@ fn mode_from_symbol(mode: &SteelVal, fn_name: &str) -> Result<BindMode, SteelErr
         _ => steel::stop!(TypeMismatch =>
             "{fn_name}: expected a mode symbol like 'normal, got {:?}", mode),
     };
-    match mode_str.as_str() {
-        "normal" => Ok(BindMode::Normal),
-        "extend" => Ok(BindMode::Extend),
-        "insert" => Ok(BindMode::Insert),
-        _ => steel::stop!(Generic =>
-            "{fn_name}: unknown mode '{}'; expected normal, extend, or insert", mode_str),
-    }
+    symbol_enum_arg(
+        &mode_str,
+        &format!("{fn_name} mode"),
+        &[
+            ("normal", BindMode::Normal),
+            ("extend", BindMode::Extend),
+            ("insert", BindMode::Insert),
+        ],
+    )
 }
 
 /// A WaitChar bind has no `force_extend` notion (see `Effect::BindWaitChar`'s

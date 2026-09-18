@@ -13,7 +13,7 @@ use crate::types::VirtualLineSpec;
 use super::SteelResult;
 use super::args::{
     BidArg, cons_pair, int_arg, list_items, optional_pair_fields, optional_symbol_arg, string_arg,
-    tuple_list, usize_arg,
+    symbol_enum_arg, tuple_list, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -40,11 +40,13 @@ pub(crate) fn set_inlay_hints(
             let pos = usize_arg(fields[0].clone(), "set-inlay-hints! offset")?;
             let text = string_arg(fields[1].clone(), "set-inlay-hints! text")?;
             let before = match &fields[2] {
-                SteelVal::SymbolV(s) if s.as_str() == "before" => true,
-                SteelVal::SymbolV(s) if s.as_str() == "after" => false,
-                _ => {
-                    steel::stop!(Generic => "set-inlay-hints!: third element must be 'before or 'after")
-                }
+                SteelVal::SymbolV(s) => symbol_enum_arg(
+                    s.as_str(),
+                    "set-inlay-hints! third element",
+                    &[("before", true), ("after", false)],
+                )?,
+                _ => steel::stop!(Generic =>
+                    "set-inlay-hints!: third element must be a symbol"),
             };
             Ok((pos, text, before))
         },
@@ -209,10 +211,12 @@ fn virtual_line_spec(entry: SteelVal) -> Result<VirtualLineSpec, SteelErr> {
 
     let before = match field("anchor") {
         None => false,
-        Some(SteelVal::SymbolV(s)) if s.as_str() == "before" => true,
-        Some(SteelVal::SymbolV(s)) if s.as_str() == "after" => false,
-        Some(_) => steel::stop!(Generic =>
-            "set-virtual-lines!: 'anchor must be 'before or 'after"),
+        Some(SteelVal::SymbolV(s)) => symbol_enum_arg(
+            &s,
+            "set-virtual-lines! #:anchor",
+            &[("before", true), ("after", false)],
+        )?,
+        Some(_) => steel::stop!(Generic => "set-virtual-lines!: #:anchor must be a symbol"),
     };
 
     let scope = field("scope")

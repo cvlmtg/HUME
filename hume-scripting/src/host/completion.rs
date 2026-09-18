@@ -10,6 +10,7 @@ use hume_engine::pipeline::BufferId;
 /// exist for a future Steel-registered source to declare, same as this
 /// crate's `PickerFeedMode`/`TruncateEnd` mirror editor-side concepts at this
 /// same boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchKind {
     Fuzzy,
     String { case_sensitive: bool },
@@ -19,6 +20,7 @@ pub enum MatchKind {
 /// What further typing does while the popup is open — decoded from
 /// `#:interaction` (`'select`/`'cycle`). Only `SelectAccept` has a real
 /// Steel caller today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Interaction {
     CycleApply,
     SelectAccept,
