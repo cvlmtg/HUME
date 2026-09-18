@@ -6,7 +6,7 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::{Severity, doc_ops};
-use super::{current_jump_entry, focused_buffer_id, history_step, record_jump_if_moved};
+use super::{current_jump_entry, history_step, record_jump_if_moved};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
@@ -626,37 +626,86 @@ fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
     if extra.is_some() {
         return Err(invalid());
     }
-    let (digits, unit) = match token.strip_suffix(|c: char| c.is_ascii_alphabetic()) {
-        Some(digits) => (digits, token.chars().next_back().expect("suffix exists")),
-        None => (token, '\0'),
+    // The suffix is ASCII, so one byte — splitting it off can't cut a codepoint.
+    let (digits, unit) = match token.chars().last() {
+        Some(c) if c.is_ascii_alphabetic() => (&token[..token.len() - 1], c),
+        _ => (token, '\0'),
     };
     let n: usize = digits.parse().map_err(|_| invalid())?;
-    let n64 = n as u64;
-    match unit {
-        '\0' => Ok(TravelSpec::Steps(n)),
-        's' => Ok(TravelSpec::Age(Duration::from_secs(n64))),
-        'm' => Ok(TravelSpec::Age(Duration::from_secs(n64.saturating_mul(60)))),
-        'h' => Ok(TravelSpec::Age(Duration::from_secs(
-            n64.saturating_mul(3_600),
-        ))),
-        'd' => Ok(TravelSpec::Age(Duration::from_secs(
-            n64.saturating_mul(86_400),
-        ))),
-        _ => Err(invalid()),
+    if unit == '\0' {
+        return Ok(TravelSpec::Steps(n));
+    }
+    let mult = match unit {
+        's' => 1,
+        'm' => 60,
+        'h' => 3_600,
+        'd' => 86_400,
+        _ => return Err(invalid()),
+    };
+    Ok(TravelSpec::Age(Duration::from_secs(
+        (n as u64).saturating_mul(mult),
+    )))
+}
+
+/// Direction of `:earlier`/`:later` travel — everything the two commands
+/// differ in, so the shared `travel` core below stays straight-line.
+#[derive(Clone, Copy)]
+enum TravelDir {
+    Earlier,
+    Later,
+}
+
+impl TravelDir {
+    fn cmd_name(self) -> &'static str {
+        match self {
+            TravelDir::Earlier => "earlier",
+            TravelDir::Later => "later",
+        }
+    }
+
+    fn exhausted_msg(self) -> &'static str {
+        match self {
+            TravelDir::Earlier => "Already at oldest change",
+            TravelDir::Later => "Already at newest change",
+        }
+    }
+
+    fn can(self) -> fn(&Buffer) -> bool {
+        match self {
+            TravelDir::Earlier => Buffer::can_undo,
+            TravelDir::Later => Buffer::can_redo,
+        }
+    }
+
+    fn apply(self) -> doc_ops::ApplyDocFn {
+        match self {
+            TravelDir::Earlier => doc_ops::apply_doc_undo,
+            TravelDir::Later => doc_ops::apply_doc_redo,
+        }
+    }
+
+    fn resolve_age(self) -> fn(&Buffer, Duration) -> (usize, bool) {
+        match self {
+            TravelDir::Earlier => Buffer::undo_steps_older_than,
+            TravelDir::Later => Buffer::redo_steps_newer_than,
+        }
     }
 }
 
-/// `:earlier [N|age]` — step back `N` revisions (default 1), or back to the
-/// state as of `age` ago (`:earlier 5m`). Clamps at the root with an Info
-/// report, traveling the same per-step undo loop as `u` so every step
-/// propagates to panes, tree-sitter, LSP, decorations, and jumps.
-pub(in crate::editor) fn typed_earlier(
+/// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
+/// travel the same per-step loop as `u`/`Ctrl-r` so every step propagates to
+/// panes, tree-sitter, LSP, decorations, and jumps.
+fn travel(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
+    dir: TravelDir,
 ) -> Result<(), CommandError> {
     if force {
-        return Err(CommandError::transient("`:earlier` takes no `!`"));
+        return Err(CommandError::transient(format!(
+            "`:{}` takes no `!`",
+            dir.cmd_name()
+        )));
     }
     if ed.focused_buffer_read_only() {
         return Err(CommandError::transient("Buffer is read-only"));
@@ -664,26 +713,36 @@ pub(in crate::editor) fn typed_earlier(
     let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
         TravelSpec::Steps(n) => (n, false),
         TravelSpec::Age(age) => {
-            let buf = focused_buffer_id(&ed.state, &ed.view);
-            ed.state.buffers.get(buf).undo_steps_older_than(age)
+            let buf = ed.focused_buffer_id();
+            dir.resolve_age()(ed.state.buffers.get(buf), age)
         }
     };
     history_step(
         &mut ed.state,
         &mut ed.view,
         steps,
-        Buffer::can_undo,
-        doc_ops::apply_doc_undo,
-        "Already at oldest change",
+        dir.can(),
+        dir.apply(),
+        dir.exhausted_msg(),
     )?;
     // Count over-travel reports inside `history_step`; an age clamp resolves to
-    // exactly the root depth, so the loop never exhausts — report here instead
-    // when the root is still younger than the requested age.
+    // exactly the end depth, so the loop never exhausts — report here instead
+    // when the end is still on the wrong side of the requested age.
     if past_end {
         ed.state
-            .report(Severity::Info, "Already at oldest change".to_string());
+            .report(Severity::Info, dir.exhausted_msg().to_string());
     }
     Ok(())
+}
+
+/// `:earlier [N|age]` — step back `N` revisions (default 1), or back to the
+/// state as of `age` ago (`:earlier 5m`). Clamps at the root with an Info report.
+pub(in crate::editor) fn typed_earlier(
+    ed: &mut Editor,
+    arg: Option<&str>,
+    force: bool,
+) -> Result<(), CommandError> {
+    travel(ed, arg, force, TravelDir::Earlier)
 }
 
 /// `:later [N|age]` — the mirror of `:earlier`, forward along the
@@ -695,33 +754,5 @@ pub(in crate::editor) fn typed_later(
     arg: Option<&str>,
     force: bool,
 ) -> Result<(), CommandError> {
-    if force {
-        return Err(CommandError::transient("`:later` takes no `!`"));
-    }
-    if ed.focused_buffer_read_only() {
-        return Err(CommandError::transient("Buffer is read-only"));
-    }
-    let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
-        TravelSpec::Steps(n) => (n, false),
-        TravelSpec::Age(age) => {
-            let buf = focused_buffer_id(&ed.state, &ed.view);
-            ed.state.buffers.get(buf).redo_steps_newer_than(age)
-        }
-    };
-    history_step(
-        &mut ed.state,
-        &mut ed.view,
-        steps,
-        Buffer::can_redo,
-        doc_ops::apply_doc_redo,
-        "Already at newest change",
-    )?;
-    // Same age-clamp gap as `:earlier`: the resolved count ends exactly at the
-    // tip, so the loop never exhausts — report when it is still older than
-    // the requested age.
-    if past_end {
-        ed.state
-            .report(Severity::Info, "Already at newest change".to_string());
-    }
-    Ok(())
+    travel(ed, arg, force, TravelDir::Later)
 }

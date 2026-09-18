@@ -342,17 +342,18 @@ impl History {
     pub fn undo_steps_older_than(&self, age: Duration) -> (usize, bool) {
         let mut steps = 0;
         let mut id = self.current;
+        let mut past_end = false;
+        // One `elapsed()` per visited revision: the flag is set on the break
+        // itself, never via a second clock read on the final node, so an
+        // exact `== age` hit can't flip between the walk and the report.
         while self.revisions[&id].timestamp.elapsed() < age {
-            match self.revisions[&id].parent {
-                Some(parent) => {
-                    id = parent;
-                    steps += 1;
-                }
-                None => break,
-            }
+            let Some(parent) = self.revisions[&id].parent else {
+                past_end = true;
+                break;
+            };
+            id = parent;
+            steps += 1;
         }
-        let past_end =
-            self.revisions[&id].parent.is_none() && self.revisions[&id].timestamp.elapsed() < age;
         (steps, past_end)
     }
 
@@ -361,25 +362,27 @@ impl History {
     /// Walks down the most-recent-child chain (the same path [`Self::redo`]
     /// takes) while the next child is still at least `age` old, stopping
     /// before the first child young enough to postdate it. Mirrors
-    /// [`Self::undo_steps_older_than`]: returns a step count, not an id.
-    ///
-    /// `>=` mirrors the undo side's `<`: both treat an exact `elapsed() == age`
-    /// hit as landed, not over-traveled. The flag is the strict mirror of the
-    /// undo one — tip still strictly older than `age` — so an exact hit on the
-    /// tip stays silent too.
+    /// [`Self::undo_steps_older_than`]: returns a step count, not an id, and
+    /// the `<`/`>=` boundary treats an exact `elapsed() == age` hit as landed
+    /// on both sides.
     pub fn redo_steps_newer_than(&self, age: Duration) -> (usize, bool) {
         let mut steps = 0;
         let mut id = self.current;
+        let mut past_end = false;
         while let Some(&child) = self.revisions[&id].children.last() {
-            if self.revisions[&child].timestamp.elapsed() >= age {
-                id = child;
-                steps += 1;
-            } else {
+            // Single `elapsed()` per child: doubles as the step decision and,
+            // when this turns out to be the final step, the over-travel flag.
+            let elapsed = self.revisions[&child].timestamp.elapsed();
+            if elapsed < age {
                 break;
             }
+            id = child;
+            steps += 1;
+            past_end = self.revisions[&id].children.is_empty() && elapsed > age;
         }
-        let past_end = self.revisions[&id].children.is_empty()
-            && self.revisions[&id].timestamp.elapsed() > age;
+        if steps == 0 && self.revisions[&id].children.is_empty() {
+            past_end = self.revisions[&id].timestamp.elapsed() > age;
+        }
         (steps, past_end)
     }
 
