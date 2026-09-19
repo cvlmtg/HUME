@@ -21,10 +21,43 @@ tar xzf hume-*.tar.gz
 ./hume-*/bin/hume
 ```
 
+Or copy it into `~/.local` for a single-user install (no sudo needed):
+
+```sh
+mkdir -p ~/.local && cp -R hume-*/bin hume-*/share ~/.local/
+```
+
+Then make sure `~/.local/bin` is on your `$PATH`:
+
+::: code-group
+
+```sh [bash]
+# Add to ~/.profile if not already there
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+```
+
+```sh [zsh]
+# Add to ~/.zshrc if not already there
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+```
+
+```fish [fish]
+# fish_add_path skips duplicates
+fish_add_path $HOME/.local/bin
+```
+
+:::
+
 Or copy it into `/usr/local/` for a system-wide install:
 
 ```sh
-cp -R hume-*/* /usr/local/
+cp -R hume-*/bin hume-*/share /usr/local/
 ```
 
 ### Windows
