@@ -59,7 +59,7 @@
       (if (null? installed)
           (log! 'info "PLUM: no installed plugins to update")
           (let ((n (plum/batch-run "updated" installed
-                     (lambda (name) (run-inline-output! "git" (list "pull") #:cwd (plum/plugin-dir name))))))
+                     (lambda (name) (plum/git-pull! (plum/plugin-dir name))))))
             (when (> n 0)
               (log! 'info "PLUM: run :reload-config to pick up the updated plugins"))))))
   #:inline-output #t)

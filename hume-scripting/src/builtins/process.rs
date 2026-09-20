@@ -88,20 +88,21 @@ pub(crate) fn run_capture(
         format!("run-capture!: running {cmd} {args:?}"),
     );
 
-    let result = match hume_platform::process::run_capture(&cmd, &args, cwd.as_deref()) {
-        Ok(output) => vec![
-            SteelVal::StringV(String::from_utf8_lossy(&output.stdout).into_owned().into()),
-            SteelVal::StringV(String::from_utf8_lossy(&output.stderr).into_owned().into()),
-            match output.status.code() {
-                Some(code) => SteelVal::IntV(code as isize),
-                None => SteelVal::BoolV(false),
-            },
-        ],
-        Err(e) => vec![
-            SteelVal::StringV(String::new().into()),
-            SteelVal::StringV(format!("{cmd}: {e}").into()),
-            SteelVal::BoolV(false),
-        ],
-    };
-    Ok(SteelVal::ListV(result.into()))
+    let (stdout, stderr, code) =
+        match hume_platform::process::run_capture(&cmd, &args, cwd.as_deref()) {
+            Ok(output) => (
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+                String::from_utf8_lossy(&output.stderr).into_owned(),
+                output.status.code(),
+            ),
+            Err(e) => (String::new(), format!("{cmd}: {e}"), None),
+        };
+    Ok(SteelVal::ListV(
+        vec![
+            SteelVal::StringV(stdout.into()),
+            SteelVal::StringV(stderr.into()),
+            code.map_or(SteelVal::BoolV(false), |c| SteelVal::IntV(c as isize)),
+        ]
+        .into(),
+    ))
 }

@@ -105,7 +105,7 @@
           (plum/batch-run "updated theme repo" installed
             (lambda (slug)
               (let ((old-names (plum/repo-theme-names slug)))
-                (run-inline-output! "git" (list "pull") #:cwd (plum/theme-src-dir slug))
+                (plum/git-pull! (plum/theme-src-dir slug))
                 (plum/sync-theme-files! slug old-names)))))))
   #:inline-output #t)
 

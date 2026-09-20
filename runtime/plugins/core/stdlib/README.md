@@ -64,19 +64,10 @@ Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inlin
 commands (process-group safety for Ctrl-c), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
 the TUI's raw mode still on. The git probes below build their `#f`-on-failure policy on it.
-`stdlib/run` is `run-capture!` (native, `hume_platform::process::run_capture`), not Steel's
-own `spawn-process`/`wait`/`child-stdout`/`child-stderr` — that shape reads stdout to EOF, then
-waits, then reads stderr, which deadlocks forever on a child that fills its stderr pipe before
-exiting; `std::process::Command::output` drains both concurrently instead. Stdin is closed
-immediately (`Stdio::null()`) — never inherited from HUME's own terminal, or the child's reads
-would race the editor's key reads — and `GIT_TERMINAL_PROMPT=0` is set, since this call has no
-terminal to put a credential prompt on: left unset, a private repo or expired token would have
-`git` try `/dev/tty` directly and hang instead of failing fast. `run-inline-output!` sets the
-same variable for a related but distinct reason: its child inherits HUME's own terminal, but
-in its own *background* process group (for Ctrl-c safety, above) rather than the terminal's
-foreground one, so a credential prompt there is not actually answerable either — the read that
-follows it takes `SIGTTIN` and hangs the child (and HUME, since raw mode is already off)
-instead of the prompt ever reaching the screen.
+`stdlib/run` is `run-capture!` (native, `hume_platform::process::run_capture`) — see its own
+Rust doc for why it exists instead of Steel's own `spawn-process`/`wait`/`child-stdout`/
+`child-stderr`, and `hume_platform::process::base_command`'s doc for the `GIT_TERMINAL_PROMPT=0`
+policy it shares with `run-inline-output!`.
 
 ### Git
 

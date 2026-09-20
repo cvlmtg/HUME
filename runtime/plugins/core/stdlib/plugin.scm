@@ -84,17 +84,8 @@
 
 ;; ── Subprocess helper ────────────────────────────────────────────────────────
 
-;;; `run-capture!` (native, `hume_platform::process::run_capture`) rather
-;;; than Steel's own `spawn-process`/`wait`/`child-stdout`/`child-stderr`:
-;;; that shape reads stdout to EOF, then waits, then reads stderr, which
-;;; deadlocks forever on a child that fills its stderr pipe before exiting —
-;;; `std::process::Command::output` drains both concurrently instead. Same
-;;; `(stdout stderr exit-code)` contract this used to build by hand:
-;;; `exit-code` is `#f` for a spawn failure or a signal-killed child, an int
-;;; otherwise — `stdlib/run-stdout` and the git probes below rely on that.
-;;; No `%` prefix, unlike most native primitives: it takes no keyword
-;;; arguments to flatten, so it needs no `bootstrap.scm` wrapper of the same
-;;; name minus the `%` — this `define` is that direct alias instead.
+;;; See `hume_platform::process::run_capture`'s own doc and this plugin's
+;;; README (Subprocess) for why `stdlib/run` is `run-capture!` directly.
 (define stdlib/run run-capture!)
 
 ;; ── Git probes ───────────────────────────────────────────────────────────────

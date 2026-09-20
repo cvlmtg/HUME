@@ -69,6 +69,30 @@ pub mod job;
 /// Process-wide tracking so a force-exit can still reap long-lived children.
 pub mod tracked;
 
+/// `Command::new(cmd)` with `args`, `cwd` (via `strip_unc_prefix` — a no-op
+/// on non-Windows), and `GIT_TERMINAL_PROMPT=0` already applied — the
+/// preamble every spawn site in this crate shares. Each caller layers its
+/// own remaining stdio/process-group setup on top.
+///
+/// Denying git a credential prompt is a blanket policy here, not a
+/// git-specific carve-out: every spawn path in this crate has left the
+/// child with no *answerable* terminal, by one of two routes —
+/// [`run_inline_output`] backgrounds it into its own process group while
+/// inheriting the terminal, so a prompt it wrote would be followed by a
+/// read that takes `SIGTTIN` and stops the child cold; [`run_capture`] and
+/// [`child::spawn_piped`] close the child's stdin outright, so a prompt
+/// would instead open `/dev/tty` directly and hang there. Left unset,
+/// either shape turns a private repo or an expired token into a hang
+/// instead of a fast, readable git error.
+fn base_command(cmd: &str, args: &[String], cwd: Option<&Path>) -> Command {
+    let mut command = Command::new(cmd);
+    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    if let Some(dir) = cwd {
+        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
+    }
+    command
+}
+
 /// Run `cmd` with `args`, inherited stdio, in its own process group.
 ///
 /// Used for `#:inline-output` Steel commands — terminal raw mode is
@@ -81,24 +105,13 @@ pub mod tracked;
 /// safety property calls the `run-inline-output!` builtin (backed by this
 /// function) instead of Steel's stdlib directly.
 ///
-/// `GIT_TERMINAL_PROMPT=0`, for the same reason [`run_capture`] sets it:
-/// `process_group(0)` puts the child in a *background* process group, not
-/// the terminal's foreground one — nothing here hands it the foreground via
-/// `tcsetpgrp`. A credential prompt the child writes to the inherited
-/// terminal would therefore be followed by a read that takes `SIGTTIN` and
-/// stops the child cold, hanging `Command::status()` (and HUME, since raw
-/// mode is already off) forever instead of returning. Denying the prompt
-/// turns that hang into a fast, readable git error. A genuinely interactive
-/// child (an editor, a pager) still can't be run this way regardless — it
-/// would hit the same background-process-group `SIGTTIN`/`SIGTTOU` wall on
-/// its own reads/writes the moment it touched the terminal.
+/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set. A
+/// genuinely interactive child (an editor, a pager) still can't be run this
+/// way regardless — it would hit the same background-process-group
+/// `SIGTTIN`/`SIGTTOU` wall on its own reads/writes the moment it touched
+/// the terminal.
 pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::Result<ExitStatus> {
-    let mut command = Command::new(cmd);
-    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
-    if let Some(dir) = cwd {
-        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
-    }
-    command.new_process_group().status()
+    base_command(cmd, args, cwd).new_process_group().status()
 }
 
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
@@ -112,25 +125,13 @@ pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::
 /// this call with raw mode still on, so there is no live Ctrl-c to isolate
 /// the child from.
 ///
-/// `GIT_TERMINAL_PROMPT=0` denies git a credential prompt — this call has
-/// no terminal to put one on (stdin is closed), so left unset, a private
-/// repo or expired token would try to open `/dev/tty` directly and hang
-/// forever instead of failing fast. `run_inline_output` sets the same
-/// variable for a related but distinct reason — see its own doc.
+/// See `base_command`'s own doc for why `GIT_TERMINAL_PROMPT=0` is set.
 pub fn run_capture(
     cmd: &str,
     args: &[String],
     cwd: Option<&Path>,
 ) -> io::Result<std::process::Output> {
-    let mut command = Command::new(cmd);
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .env("GIT_TERMINAL_PROMPT", "0");
-    if let Some(dir) = cwd {
-        command.current_dir(strip_unc_prefix(dir.to_path_buf()));
-    }
-    command.output()
+    base_command(cmd, args, cwd).stdin(Stdio::null()).output()
 }
 
 /// Compile a tree-sitter grammar source at `src` to a shared library at `out`

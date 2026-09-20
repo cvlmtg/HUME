@@ -1,7 +1,7 @@
 ;;; core:plum/lib.scm
 
 (provide plum/batch-run plum/read-file plum/two-level-repos
-         plum/clone-github!)
+         plum/clone-github! plum/git-pull!)
 
 ;; ── Two-level repo discovery ──────────────────────────────────────────────────
 
@@ -22,20 +22,21 @@
                   (call! "stdlib/list-subdirs" root)))))
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
-;; All of PLUM's network commands are `#:inline-output` — git's own progress
-;; prints live instead of vanishing into a captured-but-unread stdout.
-;; `run-inline-output!` denies git a credential prompt outright
-;; (`GIT_TERMINAL_PROMPT=0`, same as `stdlib/run`): the child's own process
-;; group isn't the terminal's foreground one, so a prompt it wrote would be
-;; followed by a read that hangs instead of an answerable question — see
-;; `hume_platform::process::run_inline_output`'s own doc. `run-inline-output!`
-;; (core builtin) already raises on nonzero exit, naming `cmd` and the exit
-;; code — no wrapper needed here.
+;; All of PLUM's network commands are `#:inline-output` — see this plugin's
+;; README (Commands). `run-inline-output!` (core builtin) already raises on
+;; nonzero exit, naming `cmd` and the exit code, and denies git a credential
+;; prompt outright — see `hume_platform::process::run_inline_output`'s own
+;; doc — so no wrapper is needed here.
 
 ;;; git clone the GitHub repo named by "user/repo" `slug` into `dest`. `--`
 ;;; guards against a slug-derived URL `git` might otherwise read as a flag.
 (define (plum/clone-github! slug dest)
   (run-inline-output! "git" (list "clone" "--" (string-append "https://github.com/" slug ".git") dest)))
+
+;;; git pull in `dir` — the update-side shape every install command's
+;;; refresh path shares (`plum-update-plugins`, `plum-update-themes`).
+(define (plum/git-pull! dir)
+  (run-inline-output! "git" (list "pull") #:cwd dir))
 
 ;; ── Filesystem helpers ────────────────────────────────────────────────────────
 ;; Thin wrappers over Steel's `steel/filesystem`/`steel/ports`.

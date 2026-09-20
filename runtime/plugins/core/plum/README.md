@@ -74,10 +74,12 @@ PLUM bundles three independent subsystems:
   etc); see "Theme install" below.
 - `lib.scm` — shared utilities: `plum/read-file`, `plum/clone-github!` (a
   `run-inline-output!` wrapper for the one GitHub-clone URL shape every install
-  command shares), `plum/batch-run` (batch installs/updates, `#:inline-output`
-  callers only — see "Commands" below), and `plum/two-level-repos` (the
-  `<root>/<user>/<repo>/` discovery walk shared by plugin and theme-repo
-  discovery) — used by `plugins.scm`, `grammars.scm`, and `themes.scm` as needed.
+  command shares), `plum/git-pull!` (its update-side counterpart, shared by
+  `plum-update-plugins`/`plum-update-themes`), `plum/batch-run` (batch
+  installs/updates, `#:inline-output` callers only — see "Commands" below), and
+  `plum/two-level-repos` (the `<root>/<user>/<repo>/` discovery walk shared by
+  plugin and theme-repo discovery) — used by `plugins.scm`, `grammars.scm`, and
+  `themes.scm` as needed.
   Directory listing, filesystem cleanup, list search, and path-segment validation
   live in `core:stdlib` (`stdlib/list-subdirs`, `stdlib/find`, `stdlib/write-file`,
   `stdlib/delete-dir`, `stdlib/delete-file`, `stdlib/safe-path-segment?` — see
