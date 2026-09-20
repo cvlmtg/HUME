@@ -316,10 +316,10 @@ fn ls_does_not_pollute_jump_list() {
 
 /// `u` and `Ctrl-r` on a read-only buffer must be no-ops.
 /// Validity: remove `cmd_undo`/`cmd_redo`'s `refuse_if_read_only` guard *and*
-/// `apply_doc_undo`/`apply_doc_redo`'s own `is_read_only()` check (the
-/// layered second guard `:earlier`/`:later` also runs through, since both
-/// commands share this same path) and this test fails (undo reverts the
-/// edit, changing the buffer text).
+/// `apply_doc_history_walk`'s own `is_read_only()` check (the layered second
+/// guard `:earlier`/`:later` also runs through, since both commands share
+/// this same path) and this test fails (undo reverts the edit, changing the
+/// buffer text).
 #[test]
 fn read_only_buffer_blocks_undo_and_redo() {
     let mut ed = editor_from("-[h]>ello\n");

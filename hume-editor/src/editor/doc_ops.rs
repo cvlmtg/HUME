@@ -12,6 +12,7 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
+use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
@@ -21,17 +22,13 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-/// Shared signature of [`apply_doc_undo`] and [`apply_doc_redo`] — lets a
-/// caller (e.g. `commands/edit.rs`'s `history_step`) pick one by function
-/// pointer instead of duplicating the call site per direction.
-pub(in crate::editor) type ApplyDocFn = fn(
-    &mut BufferStore,
-    &DecorationStores,
-    &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    &mut JumpLists,
-    PaneId,
-    BufferId,
-);
+/// `Buffer::undo_n`/`redo_n` — lets [`apply_doc_history_walk`] pick a
+/// direction by function pointer instead of duplicating the call site per
+/// direction. Returns the restored selections, the net ChangeSet, and how
+/// many steps were actually taken (short of the requested count at the
+/// root/leaf).
+pub(in crate::editor) type HistoryWalkFn =
+    fn(&mut Buffer, usize) -> Option<(SelectionSet, ChangeSet, usize)>;
 
 /// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
 /// Called immediately after every text mutation.
@@ -293,77 +290,57 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     );
 }
 
-/// Apply undo to the focused buffer and propagate the inverse `ChangeSet` to
-/// all other panes viewing the same buffer.
-pub(in crate::editor) fn apply_doc_undo(
+/// Walk the focused buffer's undo history up to `count` steps in one
+/// direction (`Buffer::undo_n` or `Buffer::redo_n`) and propagate the net
+/// `ChangeSet` to all other panes viewing the same buffer.
+///
+/// A single `finish_edit` call for the whole walk, however many revisions it
+/// crosses — `walk` itself already composed those into one net transform
+/// (see `Buffer::apply_transactions`), so panes, jump lists, tree-sitter, and
+/// LSP each see one edit instead of `count` of them. This is what makes an
+/// age-resolved `:earlier`/`:later` (an unbounded step count) as cheap as a
+/// single `u`.
+///
+/// Returns the number of steps actually taken — short of `count` when the
+/// walk hit the root/leaf, so the caller can report exhaustion.
+pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
     pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
     pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-) {
+    walk: HistoryWalkFn,
+    count: usize,
+) -> usize {
     if buffers.get(buf_id).is_read_only() {
-        return;
+        return 0;
     }
     debug_assert!(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
-        "apply_doc_undo called while an edit group is open on this buffer"
+        "apply_doc_history_walk called while an edit group is open on this buffer"
     );
-    // text_pre/rope_pre are the current (post-edit) text: undo's CS maps
+    // text_pre/rope_pre are the current (pre-walk) text: undo's CS maps
     // post-edit positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
-    if let Some((new_sels, cs)) = buffers.get_mut(buf_id).undo() {
-        finish_edit(
-            buffers,
-            decorations,
-            pane_state,
-            pane_jumps,
-            focused_pane_id,
-            buf_id,
-            new_sels,
-            &cs,
-            &text_pre,
-            &rope_pre,
-        );
-    }
-}
-
-/// Apply redo to the focused buffer and propagate the forward `ChangeSet` to
-/// all other panes viewing the same buffer.
-pub(in crate::editor) fn apply_doc_redo(
-    buffers: &mut BufferStore,
-    decorations: &DecorationStores,
-    pane_state: &mut SecondaryMap<PaneId, SecondaryMap<BufferId, PaneBufferState>>,
-    pane_jumps: &mut JumpLists,
-    focused_pane_id: PaneId,
-    buf_id: BufferId,
-) {
-    if buffers.get(buf_id).is_read_only() {
-        return;
-    }
-    debug_assert!(
-        pane_state[focused_pane_id][buf_id].edit_group.is_none(),
-        "apply_doc_redo called while an edit group is open on this buffer"
+    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), count) else {
+        return 0;
+    };
+    finish_edit(
+        buffers,
+        decorations,
+        pane_state,
+        pane_jumps,
+        focused_pane_id,
+        buf_id,
+        new_sels,
+        &cs,
+        &text_pre,
+        &rope_pre,
     );
-    let text_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = text_pre.rope().clone();
-    if let Some((new_sels, cs)) = buffers.get_mut(buf_id).redo() {
-        finish_edit(
-            buffers,
-            decorations,
-            pane_state,
-            pane_jumps,
-            focused_pane_id,
-            buf_id,
-            new_sels,
-            &cs,
-            &text_pre,
-            &rope_pre,
-        );
-    }
+    steps
 }
 
 /// Apply a motion function and store the resulting selection in `pane_state`.

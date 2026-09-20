@@ -9,6 +9,7 @@ use hume_editing::changeset::{ChangeSet, changesets_from_line_diff};
 use hume_editing::history::{History, RevisionId};
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
+use hume_editing::transaction::Transaction;
 use hume_platform::io::FileMeta;
 use hume_rope::offset::{CharOffset, InclusiveRange};
 
@@ -688,30 +689,84 @@ impl Buffer {
         }
     }
 
+    /// Apply an ordered Transaction list — from `History::undo_n`/`redo_n`/
+    /// `goto_revision` — as one composed transform: fold every ChangeSet
+    /// together with `ChangeSet::compose` (sound because each Transaction in
+    /// the list maps the state the previous one produced, see
+    /// `History::goto_revision`'s doc) and apply the result once. `None` when
+    /// `txns` is empty (nothing to do — already at the target).
+    ///
+    /// Always validates the landing selections via `Transaction::apply`
+    /// (length + bounds check, `merge_overlapping_in_place`), but skips
+    /// `set_text` when the composed ChangeSet is identity — a walk that
+    /// undoes an insert and its own later delete nets to no text change, and
+    /// `apply_edit`/`commit_edit_group` use the same guard so `text_gen`
+    /// never moves for a mutation that never happened.
+    fn apply_transactions(&mut self, txns: Vec<Transaction>) -> Option<(SelectionSet, ChangeSet)> {
+        let landing_sels = txns.last()?.selection().clone();
+        let cs = txns
+            .into_iter()
+            .map(Transaction::into_changes)
+            .reduce(ChangeSet::compose)
+            .expect("non-empty — `last()` above returned Some");
+        let txn = Transaction::new(cs, landing_sels);
+        let (new_text, new_sels) = txn
+            .apply(&self.text)
+            .expect("composed history transaction failed — history is corrupt");
+        let cs = txn.into_changes();
+        if !cs.is_identity() {
+            self.set_text(new_text);
+        }
+        Some((new_sels, cs))
+    }
+
     /// Undo the last edit. Returns `(restored_sels, inverse_cs)` on success,
     /// or `None` if already at the root.
     ///
     /// The returned CS maps post-edit positions → pre-edit positions — pass it
     /// to `propagate_cs_to_panes` so non-acting panes' cursors ride the undo.
+    /// Thin single-step convenience over `undo_n` — see its doc. Production
+    /// always travels through `undo_n` directly (`doc_ops::apply_doc_history_walk`
+    /// takes a step count); this exists for tests that only need "one step".
+    #[cfg(test)]
     pub(crate) fn undo(&mut self) -> Option<(SelectionSet, ChangeSet)> {
-        let txn = self.history.undo()?;
-        let (new_text, new_sels) = txn
-            .apply(&self.text)
-            .expect("inverse transaction failed — history is corrupt");
-        self.set_text(new_text);
-        Some((new_sels, txn.into_changes()))
+        let (sels, cs, _steps) = self.undo_n(1)?;
+        Some((sels, cs))
     }
 
     /// Redo the most recent undone edit. Returns `(restored_sels, forward_cs)`.
     ///
     /// The returned CS maps pre-edit positions → post-edit positions.
+    /// Thin single-step convenience over `redo_n` — see [`Self::undo`]'s doc
+    /// for why this is test-only.
+    #[cfg(test)]
     pub(crate) fn redo(&mut self) -> Option<(SelectionSet, ChangeSet)> {
-        let txn = self.history.redo()?;
-        let (new_text, new_sels) = txn
-            .apply(&self.text)
-            .expect("forward transaction failed — history is corrupt");
-        self.set_text(new_text);
-        Some((new_sels, txn.into_changes()))
+        let (sels, cs, _steps) = self.redo_n(1)?;
+        Some((sels, cs))
+    }
+
+    /// Undo up to `count` steps as one composed transform — the production
+    /// path for `5u` and an age-resolved `:earlier`, so a multi-step travel
+    /// pays for one `set_text`/`finish_edit` cycle instead of `count` of
+    /// them. Returns the restored selections, the net inverse ChangeSet
+    /// (post-edit positions → pre-edit positions), and how many steps were
+    /// actually taken — short of `count` at the root, so the caller can tell
+    /// exhaustion apart from a full walk. `None` when no step could be taken
+    /// (already at the root).
+    pub(crate) fn undo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
+        let txns = self.history.undo_n(count);
+        let steps = txns.len();
+        let (sels, cs) = self.apply_transactions(txns)?;
+        Some((sels, cs, steps))
+    }
+
+    /// Redo up to `count` steps forward as one composed transform. See
+    /// `undo_n`'s doc — same contract, redo direction.
+    pub(crate) fn redo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
+        let txns = self.history.redo_n(count);
+        let steps = txns.len();
+        let (sels, cs) = self.apply_transactions(txns)?;
+        Some((sels, cs, steps))
     }
 
     /// The current buffer contents.
@@ -724,19 +779,21 @@ impl Buffer {
         self.history.current_id()
     }
 
+    /// Test-only: production no longer branches on this — `undo_n`/`redo_n`
+    /// (via `History::goto_revision`) clamp at the root/leaf themselves and
+    /// report `taken < requested` instead of checking `can_undo` up front.
+    /// No `can_redo` counterpart: it lost its one caller (the old `cmd_redo`
+    /// exhaustion check) in the same change and nothing else ever needed it.
+    #[cfg(test)]
     pub(in crate::editor) fn can_undo(&self) -> bool {
         self.history.can_undo()
-    }
-
-    pub(in crate::editor) fn can_redo(&self) -> bool {
-        self.history.can_redo()
     }
 
     /// Undo steps back to the state as of `age` ago, for `:earlier` — narrow
     /// delegate so the typed layer never touches `History` itself. An
     /// unsatisfiable request (still younger than `age` at the root) counts
-    /// one step past the root, so the shared undo/redo loop's own exhaustion
-    /// check reports it — see `History::undo_steps_older_than`'s own doc.
+    /// one step past the root, so `history_step`'s own `taken < requested`
+    /// comparison reports it — see `History::undo_steps_older_than`'s own doc.
     pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> usize {
         self.history.undo_steps_older_than(age)
     }
@@ -753,14 +810,10 @@ impl Buffer {
         sels: &mut SelectionSet,
         target: hume_editing::history::RevisionId,
     ) {
-        if let Some(transactions) = self.history.goto_revision(target) {
-            for txn in transactions {
-                let (new_text, new_sels) = txn
-                    .apply(&self.text)
-                    .expect("goto_revision transaction failed — history is corrupt");
-                self.set_text(new_text);
-                *sels = new_sels;
-            }
+        if let Some(transactions) = self.history.goto_revision(target)
+            && let Some((new_sels, _cs)) = self.apply_transactions(transactions)
+        {
+            *sels = new_sels;
         }
     }
 }

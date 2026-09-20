@@ -60,6 +60,30 @@ impl DocHelper {
         }
     }
 
+    /// Returns the number of steps actually taken (short of `count` at the
+    /// root).
+    fn undo_n(&mut self, count: usize) -> usize {
+        match self.buf.undo_n(count) {
+            Some((new_sels, _cs, steps)) => {
+                self.sels = new_sels;
+                steps
+            }
+            None => 0,
+        }
+    }
+
+    /// Returns the number of steps actually taken (short of `count` at the
+    /// tip).
+    fn redo_n(&mut self, count: usize) -> usize {
+        match self.buf.redo_n(count) {
+            Some((new_sels, _cs, steps)) => {
+                self.sels = new_sels;
+                steps
+            }
+            None => 0,
+        }
+    }
+
     fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
         self.buf.goto_revision(&mut self.sels, target);
     }
@@ -269,6 +293,108 @@ fn redo_at_latest_is_noop() {
     d.apply_edit(|b, s| insert_char(b, s, 'x'));
     d.redo();
     assert_eq!(state(&d), "x-[h]>ello\n");
+}
+
+// ── undo_n / redo_n (composed multi-step walk) ─────────────────────────────
+
+#[test]
+fn undo_n_matches_stepping_one_at_a_time() {
+    let mut stepped = doc("-[h]>ello\n");
+    stepped.apply_edit(|b, s| insert_char(b, s, 'a'));
+    stepped.apply_edit(|b, s| insert_char(b, s, 'b'));
+    stepped.apply_edit(|b, s| insert_char(b, s, 'c'));
+    stepped.undo();
+    stepped.undo();
+    stepped.undo();
+
+    let mut composed = doc("-[h]>ello\n");
+    composed.apply_edit(|b, s| insert_char(b, s, 'a'));
+    composed.apply_edit(|b, s| insert_char(b, s, 'b'));
+    composed.apply_edit(|b, s| insert_char(b, s, 'c'));
+    let steps = composed.undo_n(3);
+
+    assert_eq!(steps, 3);
+    assert_eq!(state(&composed), state(&stepped));
+}
+
+#[test]
+fn redo_n_matches_stepping_one_at_a_time() {
+    let mut stepped = doc("-[h]>ello\n");
+    stepped.apply_edit(|b, s| insert_char(b, s, 'a'));
+    stepped.apply_edit(|b, s| insert_char(b, s, 'b'));
+    stepped.apply_edit(|b, s| insert_char(b, s, 'c'));
+    stepped.undo();
+    stepped.undo();
+    stepped.undo();
+    stepped.redo();
+    stepped.redo();
+    stepped.redo();
+
+    let mut composed = doc("-[h]>ello\n");
+    composed.apply_edit(|b, s| insert_char(b, s, 'a'));
+    composed.apply_edit(|b, s| insert_char(b, s, 'b'));
+    composed.apply_edit(|b, s| insert_char(b, s, 'c'));
+    composed.undo_n(3);
+    let steps = composed.redo_n(3);
+
+    assert_eq!(steps, 3);
+    assert_eq!(state(&composed), state(&stepped));
+}
+
+#[test]
+fn undo_n_clamps_at_root_and_reports_short_count() {
+    let mut d = doc("-[h]>ello\n");
+    d.apply_edit(|b, s| insert_char(b, s, 'a'));
+    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    let steps = d.undo_n(10);
+    assert_eq!(steps, 2, "only 2 revisions exist above the root");
+    assert_eq!(state(&d), "-[h]>ello\n");
+    assert!(!d.can_undo());
+}
+
+#[test]
+fn redo_n_clamps_at_tip_and_reports_short_count() {
+    let mut d = doc("-[h]>ello\n");
+    d.apply_edit(|b, s| insert_char(b, s, 'a'));
+    d.apply_edit(|b, s| insert_char(b, s, 'b'));
+    d.undo_n(2);
+    let steps = d.redo_n(10);
+    assert_eq!(steps, 2, "only 2 revisions exist below the tip");
+    assert_eq!(state(&d), "ab-[h]>ello\n");
+}
+
+#[test]
+fn undo_n_zero_count_is_noop() {
+    let mut d = doc("-[h]>ello\n");
+    d.apply_edit(|b, s| insert_char(b, s, 'a'));
+    let before_gen = d.buf.text_gen;
+    let steps = d.undo_n(0);
+    assert_eq!(steps, 0);
+    assert_eq!(d.buf.text_gen, before_gen);
+    assert_eq!(state(&d), "a-[h]>ello\n");
+}
+
+/// Undoing an insert and its own later backspace in one composed walk nets
+/// to no text change — `text_gen` must not move, matching `apply_edit`'s own
+/// identity guard for a single edit.
+#[test]
+fn undo_n_net_identity_walk_does_not_bump_text_gen() {
+    let mut d = doc("-[h]>ello\n");
+    d.apply_edit(|b, s| insert_char(b, s, 'x')); // "x-[h]>ello\n"
+    d.apply_edit(delete_char_backward); // removes the 'x' — back to "-[h]>ello\n"
+    let before_gen = d.buf.text_gen;
+    let steps = d.undo_n(2);
+    assert_eq!(steps, 2);
+    assert_eq!(
+        d.buf.text_gen, before_gen,
+        "net-identity composed walk must not bump text_gen"
+    );
+    assert_eq!(
+        state(&d),
+        "-[h]>ello\n",
+        "root's text is already identical to rev2's, so the walk changes no bytes"
+    );
+    assert!(!d.can_undo(), "current must still land on the root");
 }
 
 // ── branching ─────────────────────────────────────────────────────────────

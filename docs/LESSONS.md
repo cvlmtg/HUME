@@ -209,8 +209,8 @@ session closed) and never drove another keystroke through it.
    invisible to every other caller and every reviewer who didn't write that
    branch. `apply_doc_edit` now checks `edit_group.is_some()` itself and
    routes to the grouped path — no caller can bypass it again, by
-   construction, not by discipline. Backed by `debug_assert!`s in
-   `apply_doc_undo`/`apply_doc_redo` so any remaining bypass is loud instead
+   construction, not by discipline. Backed by a `debug_assert!` in
+   `apply_doc_history_walk` so any remaining bypass is loud instead
    of a silent corruption three calls later.
 2. **Modal-flow tests must not stop at the terminal action.** After every
    accept/apply/dismiss in a stateful multi-keystroke flow (completion,

@@ -288,39 +288,64 @@ impl History {
         }
     }
 
-    /// Undo: return the inverse Transaction for the current revision and move
-    /// to the parent. Returns `None` if already at the root (nothing to undo).
+    /// Undo one step: return the inverse Transaction for the current revision
+    /// and move to the parent. Returns `None` if already at the root (nothing
+    /// to undo).
     ///
-    /// The returned Transaction carries the pre-edit buffer transform and the
-    /// pre-edit selections. The caller applies it to the current buffer to
-    /// restore the previous state and selections.
-    ///
-    /// Returns an owned `Transaction` (cloned from the arena) rather than a
-    /// reference, to avoid lifetime conflicts when the caller also holds a
-    /// reference to other fields of the owning struct (e.g. `Buffer::text`).
-    /// `Transaction` is cheap to clone: its ChangeSet is a `Vec<Operation>`.
+    /// Thin single-step convenience over [`Self::undo_n`] — see its doc for
+    /// why a multi-step walk must go through there instead of calling this in
+    /// a loop.
     pub fn undo(&mut self) -> Option<Transaction> {
-        let old_current = self.current;
-        // Copy out the parent id before mutating current.
-        let parent = self.revisions[&old_current].parent?;
-        self.current = parent;
-        // Clone the inverse from the revision we just stepped out of.
-        Some(self.revisions[&old_current].inverse.clone())
+        self.undo_n(1).pop()
     }
 
-    /// Redo: return the forward Transaction of the most recent child and move
-    /// to it. Returns `None` if the current revision has no children.
+    /// Redo one step: return the forward Transaction of the most recent child
+    /// and move to it. Returns `None` if the current revision has no
+    /// children.
     ///
-    /// The most recent child (last in `children`) is chosen to match
-    /// Vim/Helix behaviour: after undoing and making a new edit, redo goes
-    /// to the most recent edit, not the historically first one.
-    ///
-    /// Returns an owned `Transaction` for the same reason as [`Self::undo`].
+    /// Thin single-step convenience over [`Self::redo_n`] — see its doc for
+    /// why a multi-step walk must go through there instead of calling this in
+    /// a loop.
     pub fn redo(&mut self) -> Option<Transaction> {
-        // Copy out child_id before mutating current.
-        let child_id = *self.revisions[&self.current].children.last()?;
-        self.current = child_id;
-        Some(self.revisions[&child_id].forward.clone())
+        self.redo_n(1).pop()
+    }
+
+    /// Walk up to `count` revisions toward the root, returning the
+    /// Transactions to apply — **already composed into the same
+    /// LCA-walk-then-compose path [`Self::goto_revision`] uses**, not a
+    /// per-step list, so a caller replaying an age-resolved `:earlier` still
+    /// pays for one transaction, not one per revision crossed. Short of
+    /// `count` when the walk reaches the root; empty when `count == 0` or
+    /// already at the root.
+    ///
+    /// Resolves the target by walking `parent` links `count` times (without
+    /// mutating `self.current`), then delegates the actual path-building to
+    /// [`Self::goto_revision`] — the one place that turns "from here to
+    /// there" into a Transaction list and advances `current`.
+    pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
+        let mut id = self.current;
+        for _ in 0..count {
+            match self.revisions[&id].parent {
+                Some(parent) => id = parent,
+                None => break,
+            }
+        }
+        self.goto_revision(id).unwrap_or_default()
+    }
+
+    /// Redo up to `count` steps forward along the most-recent-child chain —
+    /// the same path [`Self::redo`] takes one step of. See [`Self::undo_n`]
+    /// for why this composes through [`Self::goto_revision`] rather than
+    /// walking one revision at a time.
+    pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
+        let mut id = self.current;
+        for _ in 0..count {
+            match self.revisions[&id].children.last() {
+                Some(&child) => id = child,
+                None => break,
+            }
+        }
+        self.goto_revision(id).unwrap_or_default()
     }
 
     /// True if there is at least one revision above the current position.
@@ -349,19 +374,20 @@ impl History {
     }
 
     /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
-    /// The caller steps the returned count through the ordinary per-step
-    /// undo path (`history_step`), so the count — not a revision id — is
-    /// what crosses the crate boundary and the tree stays unenumerable.
+    /// The caller feeds the returned count into [`Self::undo_n`], so the
+    /// count — not a revision id — is what crosses the crate boundary and the
+    /// tree stays unenumerable.
     ///
     /// Walks up toward the root while the revision underfoot is still
     /// younger than `age`. An unsatisfiable request (the walk reaches the
     /// root while it is still younger than `age`) counts that last,
     /// un-taken hop too — one more than the real number of ancestors above
-    /// the root — so `history_step`'s own `can_undo` check fails naturally
-    /// on the walk's final iteration and reports the exhaustion there,
-    /// rather than this function reporting a second time itself. Strict `<`
-    /// keeps an exact hit un-counted as unsatisfiable — landing on a
-    /// revision exactly `age` old is a hit, not an over-travel.
+    /// the root — so the count this returns exceeds what `undo_n` can
+    /// actually take, and the caller's own `taken < requested` comparison
+    /// reports the exhaustion there, rather than this function reporting a
+    /// second time itself. Strict `<` keeps an exact hit un-counted as
+    /// unsatisfiable — landing on a revision exactly `age` old is a hit, not
+    /// an over-travel.
     pub fn undo_steps_older_than(&self, age: Duration) -> usize {
         let mut steps = 0;
         let mut id = self.current;
@@ -376,17 +402,19 @@ impl History {
     }
 
     /// Redo steps needed to reach the state as of `age` ago, for `:later`.
+    /// The caller feeds the returned count into [`Self::redo_n`].
     ///
-    /// Walks down the most-recent-child chain (the same path [`Self::redo`]
+    /// Walks down the most-recent-child chain (the same path [`Self::redo_n`]
     /// takes) while the next child is still at least `age` old, stopping
     /// before the first child young enough to postdate it. Mirrors
     /// [`Self::undo_steps_older_than`]: an unsatisfiable request (the walk
     /// reaches a leaf that is still older than `age`) counts one extra step
-    /// there, so `history_step`'s own `can_redo` check fails naturally on
-    /// the walk's final iteration — the leaf's empty child list ends the
-    /// `while let` regardless, so the extra count can't cause another lap.
-    /// Strict `>` keeps an exact hit un-counted as unsatisfiable, same
-    /// boundary as `undo_steps_older_than`'s `<`.
+    /// there, so the count this returns exceeds what `redo_n` can actually
+    /// take, and the caller's own `taken < requested` comparison reports the
+    /// exhaustion — the leaf's empty child list ends the `while let`
+    /// regardless, so the extra count can't cause another lap. Strict `>`
+    /// keeps an exact hit un-counted as unsatisfiable, same boundary as
+    /// `undo_steps_older_than`'s `<`.
     pub fn redo_steps_newer_than(&self, age: Duration) -> usize {
         let mut steps = 0;
         let mut id = self.current;
@@ -459,11 +487,16 @@ impl History {
 
     /// Jump to an arbitrary revision in the undo tree.
     ///
-    /// Returns the sequence of [`Transaction`]s that must be applied
-    /// **in order** to transform the current buffer into the target state.
-    /// The caller is responsible for applying each transaction sequentially —
-    /// do **not** try to compose them, since each was computed against the
-    /// buffer state at its specific point in history.
+    /// Returns the sequence of [`Transaction`]s that transform the current
+    /// buffer into the target state, **in order**: txn₁ maps state A→B, txn₂
+    /// maps B→C, and so on — exactly [`ChangeSet::compose`]'s contract
+    /// (`self.len_after == other.len_before`). A caller applying them one at
+    /// a time (as [`Self::undo`]/[`Self::redo`] do internally, and as this
+    /// module's tests do to keep assertions per-hop) is free to; a caller
+    /// walking many revisions in one logical step (`:earlier <age>`,
+    /// [`Self::undo_n`]/[`Self::redo_n`]) instead folds the list with
+    /// `ChangeSet::compose` into one net transform and applies that once —
+    /// same end state, one text mutation instead of N.
     ///
     /// Returns `None` if `target` equals the current revision (no-op) or is
     /// out of bounds.

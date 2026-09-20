@@ -518,8 +518,8 @@ fn undo_after_delete_invalidates_ring_stamp() {
 }
 
 /// Same as `undo_after_delete_invalidates_ring_stamp`, but through redo:
-/// `apply_doc_redo` bumps `edit_seq` too (see `doc_ops.rs`), and nothing
-/// re-stamps after a redo, so the stamp stays stale.
+/// `apply_doc_history_walk` bumps `edit_seq` too (see `doc_ops.rs`), and
+/// nothing re-stamps after a redo, so the stamp stays stale.
 #[test]
 fn redo_after_undo_keeps_ring_stamp_stale() {
     use hume_ops::register::CLIPBOARD_REGISTER;

@@ -644,8 +644,7 @@ fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
 
 /// `cmd_undo`/`cmd_redo` themselves — the same function `u`/`Ctrl-r` dispatch
 /// to, `refuse_if_read_only` guard and `history_step`'s own exhaustion report
-/// included, rather than a second hand-copied `(can, apply, exhausted_msg)`
-/// triple.
+/// included, rather than a second hand-copied `(walk, exhausted_msg)` pair.
 type TravelStepFn =
     fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
 
@@ -676,13 +675,15 @@ impl TravelDir {
 
 /// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
 /// travel through the same `cmd_undo`/`cmd_redo` `u`/`Ctrl-r` dispatch to, so
-/// every step propagates to panes, tree-sitter, LSP, decorations, and jumps,
-/// a read-only buffer is refused identically on both paths, and exhaustion
-/// (an age older than the root, or newer than the tip) is reported exactly
-/// once, by `history_step` itself — see `History::undo_steps_older_than`'s
-/// own doc for how an unsatisfiable age resolves to a step count that makes
-/// `history_step`'s own `can`/report fire naturally, with no second
-/// exhaustion check needed here.
+/// the whole walk (however many revisions an age spans) propagates to panes,
+/// tree-sitter, LSP, decorations, and jumps as one composed change — see
+/// `Buffer::apply_transactions` — a read-only buffer is refused identically
+/// on both paths, and exhaustion (an age older than the root, or newer than
+/// the tip) is reported exactly once, by `history_step` itself — see
+/// `History::undo_steps_older_than`'s own doc for how an unsatisfiable age
+/// resolves to a step count that makes `history_step`'s own
+/// `taken < requested` comparison fire naturally, with no second exhaustion
+/// check needed here.
 fn travel(
     ed: &mut Editor,
     arg: Option<&str>,

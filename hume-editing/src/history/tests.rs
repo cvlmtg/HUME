@@ -141,6 +141,111 @@ fn branching_preserves_old_path() {
     assert!(h.can_redo());
 }
 
+// ── undo_n / redo_n (composed multi-step walk) ───────────────────────────
+
+#[test]
+fn undo_n_walks_multiple_steps_and_lands_on_target() {
+    let mut h = History::new(sel_at(0), 6);
+    for i in 0..5 {
+        h.record(
+            insert_cs(6 + i, "x"),
+            delete_cs(7 + i, 1),
+            sel_at(i),
+            sel_at(i + 1),
+        );
+    }
+    assert_eq!(h.current, RevisionId(5));
+
+    let txns = h.undo_n(3);
+    assert_eq!(txns.len(), 3, "three real ancestors are available");
+    assert_eq!(h.current, RevisionId(2));
+    // The last transaction in the up-path is rev3's own inverse, whose
+    // selection is rev3's pre-edit selection.
+    assert_eq!(*txns.last().expect("non-empty").selection(), sel_at(2));
+}
+
+#[test]
+fn undo_n_clamps_at_root_short_of_the_requested_count() {
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2));
+
+    let txns = h.undo_n(10);
+    assert_eq!(txns.len(), 2, "only 2 ancestors exist above the root");
+    assert_eq!(h.current, RevisionId(0));
+}
+
+#[test]
+fn undo_n_zero_count_is_empty_and_current_unmoved() {
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    let before = h.current;
+
+    assert!(h.undo_n(0).is_empty());
+    assert_eq!(h.current, before);
+}
+
+#[test]
+fn undo_n_at_root_is_empty() {
+    let mut h = History::new(sel_at(0), 6);
+    assert!(h.undo_n(3).is_empty());
+    assert_eq!(h.current, RevisionId(0));
+}
+
+#[test]
+fn redo_n_walks_multiple_steps_and_lands_on_target() {
+    let mut h = History::new(sel_at(0), 6);
+    for i in 0..4 {
+        h.record(
+            insert_cs(6 + i, "x"),
+            delete_cs(7 + i, 1),
+            sel_at(i),
+            sel_at(i + 1),
+        );
+    }
+    for _ in 0..4 {
+        h.undo();
+    }
+    assert_eq!(h.current, RevisionId(0));
+
+    let txns = h.redo_n(3);
+    assert_eq!(txns.len(), 3);
+    assert_eq!(h.current, RevisionId(3));
+    assert_eq!(*txns.last().expect("non-empty").selection(), sel_at(3));
+}
+
+#[test]
+fn redo_n_clamps_at_leaf_short_of_the_requested_count() {
+    let mut h = History::new(sel_at(0), 6);
+    h.record(insert_cs(6, "a"), delete_cs(7, 1), sel_at(0), sel_at(1));
+    h.record(insert_cs(7, "b"), delete_cs(8, 1), sel_at(1), sel_at(2));
+    h.undo();
+    h.undo();
+
+    let txns = h.redo_n(10);
+    assert_eq!(txns.len(), 2, "only 2 descendants exist below the root");
+    assert_eq!(h.current, RevisionId(2));
+}
+
+#[test]
+fn redo_n_follows_most_recent_child_through_multiple_hops() {
+    // branching_history: root → rev1 → rev2 → rev3, then rev1 gains a second
+    // child rev4 (the most recent, so the default redo target). Current is
+    // rev4 after construction.
+    let mut h = branching_history();
+    h.undo(); // rev4 -> rev1
+    h.undo(); // rev1 -> root
+    assert_eq!(h.current, RevisionId(0));
+
+    let txns = h.redo_n(2);
+    assert_eq!(txns.len(), 2);
+    assert_eq!(
+        h.current,
+        RevisionId(4),
+        "must follow rev1's most-recent child (rev4), not the older rev2"
+    );
+}
+
 // ── goto_revision ─────────────────────────────────────────────────────────
 
 /// Build a branching tree for goto tests:

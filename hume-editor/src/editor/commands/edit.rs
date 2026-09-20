@@ -187,33 +187,32 @@ pub(in crate::editor) fn cmd_yank(
 const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
 const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 
-/// Step the undo/redo history `count` times, stopping (with a status report)
-/// as soon as `can` returns false — shared by `cmd_undo`/`cmd_redo`, which
-/// differ only in direction. Duplicating the loop instead would split the
-/// exhaustion message and the per-step propagation contract in two.
+/// Walk the undo/redo history `count` steps as one composed transform,
+/// reporting exhaustion when the walk fell short — shared by `cmd_undo`/
+/// `cmd_redo`, which differ only in direction. Duplicating this instead would
+/// split the exhaustion message and the one-`finish_edit`-per-walk contract
+/// in two.
 fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
-    can: fn(&Buffer) -> bool,
-    apply: doc_ops::ApplyDocFn,
+    walk: doc_ops::HistoryWalkFn,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
     let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
-    for _ in 0..count {
-        if !can(state.buffers.get(buf)) {
-            state.report(Severity::Info, exhausted_msg.to_string());
-            break;
-        }
-        apply(
-            &mut state.buffers,
-            &state.config.decorations,
-            &mut state.panes.state,
-            &mut state.panes.jumps,
-            focused,
-            buf,
-        );
+    let taken = doc_ops::apply_doc_history_walk(
+        &mut state.buffers,
+        &state.config.decorations,
+        &mut state.panes.state,
+        &mut state.panes.jumps,
+        focused,
+        buf,
+        walk,
+        count,
+    );
+    if taken < count {
+        state.report(Severity::Info, exhausted_msg.to_string());
     }
     Ok(())
 }
@@ -231,14 +230,7 @@ pub(in crate::editor) fn cmd_undo(
     if super::refuse_if_read_only(state, view) {
         return Ok(());
     }
-    history_step(
-        state,
-        view,
-        count,
-        Buffer::can_undo,
-        doc_ops::apply_doc_undo,
-        UNDO_EXHAUSTED_MSG,
-    )
+    history_step(state, view, count, Buffer::undo_n, UNDO_EXHAUSTED_MSG)
 }
 
 /// See [`cmd_undo`]'s doc — same sharing, redo direction.
@@ -251,14 +243,7 @@ pub(in crate::editor) fn cmd_redo(
     if super::refuse_if_read_only(state, view) {
         return Ok(());
     }
-    history_step(
-        state,
-        view,
-        count,
-        Buffer::can_redo,
-        doc_ops::apply_doc_redo,
-        REDO_EXHAUSTED_MSG,
-    )
+    history_step(state, view, count, Buffer::redo_n, REDO_EXHAUSTED_MSG)
 }
 
 // ── Replace / surround ────────────────────────────────────────────────────────

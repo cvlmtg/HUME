@@ -29,8 +29,8 @@ The Rust substrate is largely there:
 - The save point (the dirty/clean oracle) is tracked outside the tree as
   `Buffer::saved_revision` (`hume-editor/src/editor/buffer/mod.rs`).
 - The propagation path `undo`/`redo` already use —
-  `doc_ops::apply_doc_undo`/`apply_doc_redo` → `finish_edit` — is what any new
-  tree navigation must reuse: it re-syncs other panes' selections, tree-sitter,
+  `doc_ops::apply_doc_history_walk` → `finish_edit` — is what any new tree
+  navigation must reuse: it re-syncs other panes' selections, tree-sitter,
   LSP, decorations, and jump lists after the buffer changes underneath them.
 
 ## What is missing, by layer
@@ -51,19 +51,19 @@ children, and timestamp, plus a `RevisionId` accessor/reconstructor.
 
 ### `hume-editor`
 
-`Buffer::goto_revision` exists but is `#[cfg(test)]`-only and bypasses
-everything a production mutation must go through: no read-only guard, no
-`finish_edit`, so no pane propagation, no tree-sitter reparse, no LSP sync, no
-decoration remap, no jump-list entry.
-
-This means `docs/ROADMAP.md`'s `:earlier`/`:later` item, which says "the
-substrate already exists (`History::goto_revision`, `Revision::timestamp`)",
-is accurate only at the `hume-editing` layer — at the `hume-editor` layer, the
-production path does not exist yet.
+`Buffer::goto_revision` exists but is `#[cfg(test)]`-only. It now shares its
+application logic with production — `undo_n`/`redo_n` (the composed walks
+`:earlier`/`:later` and counted `u`/`Ctrl-r` use) and `goto_revision` all fold
+their transaction list through the same private `Buffer::apply_transactions`
+(one `ChangeSet::compose` chain, one `set_text`) — but it still bypasses the
+read-only guard and `finish_edit` a production mutation must go through: no
+pane propagation, no tree-sitter reparse, no LSP sync, no decoration remap,
+no jump-list entry.
 
 Needed: a `doc_ops::apply_doc_goto_revision` mirroring
-`apply_doc_undo`/`apply_doc_redo` (loop the transaction list, `finish_edit`
-per step), and a `Buffer::saved_revision()` accessor for the "this is the
+`apply_doc_history_walk` (read-only guard, one `finish_edit` call for the
+whole jump) — a thin wrapper now that `apply_transactions` already does the
+composition — and a `Buffer::saved_revision()` accessor for the "this is the
 saved node" marker.
 
 ### `hume-scripting`
@@ -109,10 +109,10 @@ for the vocabulary a docked pane sits between.
 
 ## Constraints that shape the feature
 
-- **No absolute timestamps.** `Revision::timestamp` is `std::time::Instant` —
-  monotonic, not wall-clock, not serializable. "5 minutes ago" is free via
-  `elapsed()`; "saved at 14:02" would need a `SystemTime` field added
-  alongside it.
+- **No absolute timestamps, only relative ones.** `Revision::timestamp` is a
+  wall-clock `std::time::SystemTime`, not serializable across sessions — "5
+  minutes ago" is free via `duration_since`; "saved at 14:02" would need
+  formatting support, not a new field.
 - **Per-node diff is a real lift, not a small one.** Each node stores its
   forward/inverse `ChangeSet`, but there is no way to obtain a revision's full
   *text* without actually navigating to it — there's no snapshot cache. A
@@ -134,7 +134,11 @@ undo graph reads well in a terminal, and whether jump-by-node feels good.
 - [ ] Public read-only enumeration API on `History` (`hume-editing`)
 - [ ] `RevisionId` accessor + reconstructor (`hume-editing`)
 - [ ] `Buffer::saved_revision()` accessor (`hume-editor`)
-- [ ] Production `doc_ops::apply_doc_goto_revision` (`hume-editor`)
+- [ ] Production `doc_ops::apply_doc_goto_revision` (`hume-editor`) — a thin
+      wrapper now that `Buffer::apply_transactions` already does the
+      composition `undo_n`/`redo_n` and (test-only) `goto_revision` share;
+      needs only the read-only guard and `finish_edit` call
+      `apply_doc_history_walk` already has
 - [ ] `BufferHost`/`EditHost` methods backing the above (`hume-scripting`)
 - [ ] `(buffer-undo-tree bid)` and `(goto-revision! bid id)` builtins, plus
       regenerated `hume-globals.scm` (`hume-scripting`)

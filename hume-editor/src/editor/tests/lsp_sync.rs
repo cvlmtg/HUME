@@ -296,6 +296,59 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
     );
 }
 
+/// The load-bearing case for the composed-walk fix: a counted `u` that
+/// crosses several revisions must reach an INCREMENTAL-sync server as one
+/// `didChange` for the net change, not one per revision it walked. Before
+/// the fix, `3u` queued three separate `LspPendingChange` entries and this
+/// count would have been 3.
+#[test]
+fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk() {
+    let tmp = safe_tempdir();
+    let (mut ed, bid, log) = attached_editor(&tmp);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('X'));
+    ed.feed_key(key_esc()); // rev 1: insert "X"
+    ed.feed_key(key('i'));
+    ed.feed_key(key('Y'));
+    ed.feed_key(key_esc()); // rev 2: insert "Y"
+    ed.feed_key(key('i'));
+    ed.feed_key(key('Z'));
+    ed.feed_key(key_esc()); // rev 3: insert "Z"
+    ed.drain_lsp(); // flush the three per-edit changes before the counted undo
+    let before = log.borrow().len();
+
+    ed.feed_key(key('3'));
+    ed.feed_key(key('u')); // one composed walk back across all three revisions
+    ed.drain_lsp();
+
+    let did_changes_after: Vec<_> = log
+        .borrow()
+        .iter()
+        .skip(before)
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .cloned()
+        .collect();
+    assert_eq!(
+        did_changes_after.len(),
+        1,
+        "a 3-step composed undo must send exactly one didChange, got: {did_changes_after:?}"
+    );
+
+    let real_text = ed.state.buffers.get(bid).text().to_string();
+    let real_version = ed.state.buffers.get(bid).text_gen as i64;
+    let (mirrored, last_version) = replay(&log.borrow());
+    assert_eq!(
+        mirrored, real_text,
+        "replaying the full didOpen+didChange stream must still reproduce the buffer"
+    );
+    assert_eq!(
+        last_version,
+        Some(real_version),
+        "the composed didChange's version must equal the buffer's real text_gen"
+    );
+}
+
 #[test]
 fn did_save_and_did_close_each_fire_once() {
     let tmp = safe_tempdir();

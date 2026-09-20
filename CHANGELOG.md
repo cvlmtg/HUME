@@ -48,6 +48,7 @@
 - The bottom drawer no longer left blank rows below a shorter list — a severity-floor change hiding most diagnostics, for instance — when its scroll position was left over from a longer one.
 - Selecting a row in the `:diagnostics` drawer after switching to a different buffer now jumps into the buffer the diagnostics were listed for, instead of whichever buffer is currently focused.
 - `:plum-install-plugins`/`:plum-update-plugins` no longer hang indefinitely when git needs to prompt for credentials (a private repository, an expired token) — the prompt is now denied outright, and the command fails fast with git's own error instead.
+- A counted undo/redo (`5u`, `3 Ctrl-r`) or an age-resolved `:earlier`/`:later` (`:earlier 1h`) now applies as a single change instead of replaying each revision individually — much faster over a long history, and a connected language server sees one update instead of one per revision crossed.
 
 ## [0.12.0] - 2026-09-08
 
