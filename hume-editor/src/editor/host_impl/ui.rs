@@ -243,12 +243,19 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         Ok(())
     }
 
-    /// Idempotent — a no-op if no drawer is open. Truncates at the drawer's
+    /// Idempotent — a no-op if no drawer is open. Excises the drawer at its
     /// own ref rather than only when it's `top()`: since the drawer stays
     /// open across `Insert`/a `Popup`/etc. by design, being buried is its
     /// *normal* state, not a mistake — see `show_drawer_list`'s own doc.
+    /// Excise, not retire: whatever sits above the drawer (an `Insert`
+    /// session typing the fix that just cleared the last diagnostic, a
+    /// code-action `Menu`) is browsing over it by coincidence, not because
+    /// it depends on the drawer being open, so closing the drawer must not
+    /// take it down too.
     fn close_drawer(&mut self) -> Result<(), String> {
-        self.state.retire::<DrawerLayer>(self.view);
+        if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
+            self.state.excise_layer(self.view, r);
+        }
         self.state.sync_drawer_view();
         Ok(())
     }

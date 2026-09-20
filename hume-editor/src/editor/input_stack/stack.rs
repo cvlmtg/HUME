@@ -333,19 +333,16 @@ impl InputStack {
 
     /// The topmost layer of concrete type `L`, if one is open — the ref a
     /// `close-*!` builtin or a Rust-internal retirement needs to name a
-    /// widget it didn't itself just push. `truncate` is the only removal op
-    /// (short of [`Self::excise`]'s own narrow exception), so closing a
-    /// widget that isn't on top takes everything above it with it as
-    /// collateral — every `close-*!` builtin and confirm-retirement site
-    /// accepts that rather than guarding against it, documented per call
-    /// site (`close_drawer`/`close_menu` because a non-modal `Popup` can
-    /// land above either by design; `enter_buffer_disk_check`/
-    /// `close_buffer_and_notify` go through
-    /// [`EditorState::retire_stale_confirm`], which excises rather than
-    /// truncates, precisely to avoid this collateral for a stale `Confirm`).
-    /// Every type
-    /// but `BaseLayer` occurs at most once on the stack today, so "topmost"
-    /// and "only" coincide in practice.
+    /// widget it didn't itself just push. `truncate` takes everything above
+    /// the target with it as collateral; most `close-*!` builtins accept
+    /// that rather than guarding against it (`close_menu`, because a
+    /// non-modal `Popup` can land above it by design). `close_drawer` and
+    /// `enter_buffer_disk_check`/`close_buffer_and_notify` (via
+    /// [`EditorState::retire_stale_confirm`]) excise instead, precisely to
+    /// avoid that collateral — a `Drawer`'s browse session and a stale
+    /// `Confirm` both have something unrelated stacked above them by design,
+    /// not by mistake. Every type but `BaseLayer` occurs at most once on the
+    /// stack today, so "topmost" and "only" coincide in practice.
     pub(in crate::editor) fn ref_of<L: Layer>(&self) -> Option<LayerRef> {
         self.layers
             .iter()
@@ -464,13 +461,16 @@ impl InputStack {
     }
 
     /// Removes exactly `r`, leaving every layer above it in place
-    /// (re-indexed down by one) — the one removal that must not take
-    /// collateral with it: a Rust-internal retirement of a `Confirm` that no
-    /// longer targets anything live, while an unrelated session (a
-    /// `Prompt`, a `Picker`) may have landed above it since. Runs no
-    /// `Layer::tear_down` itself, same contract as [`Self::truncate`] — that
-    /// is [`EditorState::excise_layer`]'s job. A no-op returning `None` when
-    /// `r` is already stale, or is `Base` — `Base` is never removed.
+    /// (re-indexed down by one) — the removal that must not take collateral
+    /// with it: a Rust-internal retirement of a `Confirm` that no longer
+    /// targets anything live, while an unrelated session (a `Prompt`, a
+    /// `Picker`) may have landed above it since; or an explicit
+    /// `close-drawer!`, whose browse-while-editing design means something
+    /// unrelated (an `Insert` session, a code-action `Menu`) is routinely
+    /// stacked above it. Runs no `Layer::tear_down` itself, same contract as
+    /// [`Self::truncate`] — that is [`EditorState::excise_layer`]'s job. A
+    /// no-op returning `None` when `r` is already stale, or is `Base` —
+    /// `Base` is never removed.
     pub(in crate::editor::input_stack) fn excise(&mut self, r: LayerRef) -> Option<Box<dyn Layer>> {
         if r.depth == 0 || !self.is_live(r) {
             return None;
@@ -764,12 +764,15 @@ impl EditorState {
     }
 
     /// Removes exactly `r` via [`InputStack::excise`], running its own
-    /// `tear_down` but leaving everything stacked above it untouched — for
-    /// a stale `Confirm` retirement ([`Self::retire_stale_confirm`]), where
-    /// an unrelated session landing above it since has nothing to do with
-    /// the question the confirm was answering. `ConfirmLayer::tear_down` is
-    /// empty (a confirm never fires a callback), so this can never
-    /// double-fire one. A no-op when `r` is already stale.
+    /// `tear_down` but leaving everything stacked above it untouched. Two
+    /// callers: a stale `Confirm` retirement ([`Self::retire_stale_confirm`]),
+    /// where an unrelated session landing above it since has nothing to do
+    /// with the question the confirm was answering (`ConfirmLayer::tear_down`
+    /// is empty, so this can never double-fire a callback there); and
+    /// `close_drawer`, where the drawer stays open under an `Insert`/`Menu`
+    /// session by design, so closing it must not take that session with it —
+    /// `DrawerLayer::tear_down` stays silent on `Removal::Explicit` for
+    /// exactly this reason. A no-op when `r` is already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
         if let Some(mut layer) = self.input.excise(r) {
             layer.tear_down(self, view, Removal::Explicit);

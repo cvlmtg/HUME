@@ -288,13 +288,16 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
 /// isn't `top()`. `truncate` is the only removal op, so this takes `Insert`
 /// with it too — same "closing a buried widget takes everything above it"
 /// contract `lsp_stop_one` already accepts for a `Completion` a picker has
-/// landed on; the collateral `Insert` layer still gets ordinary teardown
-/// (`tear_down_insert` commits its edit group), not a silent drop.
+/// landed on — but unlike that case, an `Insert` session above a drawer is
+/// browsing it by coincidence, not depending on it, so `close-drawer!` must
+/// excise the drawer and leave the session running rather than take it down
+/// as collateral.
 ///
-/// Fail oracle: before this fix, `close_drawer` returned `Err` whenever the
-/// drawer was present but not `top()` — `.unwrap()` below would panic.
+/// Fail oracle: before the excise fix, `close_drawer` truncated at the
+/// drawer's own ref, sweeping the `Insert` layer above it — `mode()` below
+/// would read `Normal` and the second keystroke would be lost.
 #[test]
-fn close_drawer_closes_a_drawer_buried_under_insert() {
+fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -312,27 +315,34 @@ fn close_drawer_closes_a_drawer_buried_under_insert() {
     assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
     assert_eq!(
         ed.state.mode(),
-        Mode::Normal,
-        "Insert goes with it — truncate is the only removal op"
+        Mode::Insert,
+        "excise leaves the Insert session running — it never asked to depend on the drawer"
     );
+
+    // The session must still be live, not merely un-truncated: typing and
+    // leaving Insert normally should commit both characters.
+    ed.feed_key(key('Y'));
+    ed.feed_key(key_esc());
+    assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(
         ed.doc().text().to_string(),
-        "Xxabcdefgh\n",
-        "the typed char must have committed via ordinary Insert teardown"
+        "XYxabcdefgh\n",
+        "both keystrokes typed before and after close-drawer! must have committed"
     );
 }
 
 /// A code-action menu opened above an open references drawer (explicitly
 /// supported — `DrawerLayer::is_modal` returning `false` is exactly what
-/// lets a menu open while the user browses one) is collateral, not the
-/// named target, when `close-drawer!` closes the drawer beneath it.
+/// lets a menu open while the user browses one) is unrelated to, not
+/// dependent on, the drawer beneath it — `close-drawer!` must excise the
+/// drawer and leave the menu open and unfired.
 ///
-/// Fail oracle: before `Layer::tear_down` gained its `Removal` reason,
-/// `MenuLayer::tear_down` was unconditionally silent — the menu's callback
-/// was dropped forever, neither an index nor `#f`. `ed.state.status_msg`
-/// would stay `None` below.
+/// Fail oracle: before the excise fix, `close_drawer` truncated at the
+/// drawer's own ref, sweeping the menu above it and firing its callback
+/// with `#f` as collateral — `ed.state.input.menu()` below would be `None`
+/// and `status_msg` would read `"#false"`.
 #[test]
-fn close_drawer_fires_the_menu_s_callback_when_a_menu_sits_above_it() {
+fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -360,13 +370,12 @@ fn close_drawer_fires_the_menu_s_callback_when_a_menu_sits_above_it() {
 
     assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
     assert!(
-        ed.state.input.menu().is_none(),
-        "the menu goes with it — collateral"
+        ed.state.input.menu().is_some(),
+        "the menu must stay open — it is unrelated to the drawer beneath it, not collateral"
     );
     assert_eq!(
-        ed.state.status_msg.clone().unwrap(),
-        "#false",
-        "the menu's callback must fire with #f, not be dropped silently"
+        ed.state.status_msg, None,
+        "the menu's callback must not fire — it has not been answered"
     );
 }
 

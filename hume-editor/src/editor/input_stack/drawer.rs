@@ -51,11 +51,12 @@ impl Layer for DrawerLayer {
     /// fix for the same bug class, rather than leaving "silent unless
     /// swept as collateral" true only by that accident of what happens to
     /// land where today. Stays silent on [`Removal::Explicit`]: an
-    /// explicit `close-drawer!` (routed through `EditorState::retire`,
-    /// which reaches this as the named target) must stay silent;
-    /// `drawer_input`'s own `Esc` arm takes the layer *by value* via
-    /// `EditorState::take_firing_false` and fires its own callback
-    /// explicitly instead.
+    /// explicit `close-drawer!` (routed through `EditorState::excise_layer`,
+    /// which reaches this as the named target without touching whatever
+    /// else is stacked above it — an `Insert` session browsing the drawer,
+    /// say) must stay silent; `drawer_input`'s own `Esc` arm takes the layer
+    /// *by value* via `EditorState::take_firing_false` and fires its own
+    /// callback explicitly instead.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
         if let Removal::Incidental = why {
             state.queue_steel_call(
