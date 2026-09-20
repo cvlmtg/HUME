@@ -27,8 +27,12 @@
   (let ((before (filter (lambda (d) (< (hash-ref d "start") head)) diags)))
     (if (null? before) (car (reverse diags)) (car (reverse before)))))
 
-(define (lsp/diag-jump-to! d)
-  (goto-location! (list (current-buffer) (hash-ref d "line") (hash-ref d "char-col"))))
+;; `bid` is explicit rather than `(current-buffer)` — the diagnostics drawer
+;; stays open across a buffer switch by design (browse-while-editing), so a
+;; row selected there must jump into the buffer it was listed for, not
+;; whichever buffer happens to be focused when Enter is pressed.
+(define (lsp/diag-jump-to! bid d)
+  (goto-location! (list bid (hash-ref d "line") (hash-ref d "char-col"))))
 
 (define (lsp/diag-jump direction)
   (let ((diags (diagnostics-for-buffer (current-buffer))))
@@ -38,7 +42,7 @@
                (target (if (> direction 0)
                            (lsp/first-after diags head)
                            (lsp/last-before diags head))))
-          (lsp/diag-jump-to! target)
+          (lsp/diag-jump-to! (current-buffer) target)
           (show-popup! (hash-ref target "message") #:kind 'scrollable)))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
@@ -75,10 +79,10 @@
 (define lsp/*diagnostics-drawer-gen* 0)
 (define lsp/*diagnostics-drawer-diags* '())
 
-(define (lsp/diag-select-callback gen diags)
+(define (lsp/diag-select-callback gen bid diags)
   (lambda (idx)
     (if idx
-        (lsp/diag-jump-to! (list-ref diags idx))
+        (lsp/diag-jump-to! bid (list-ref diags idx))
         (when (= gen lsp/*diagnostics-drawer-gen*)
           (set! lsp/*diagnostics-drawer-bid* #f)))))
 
@@ -92,7 +96,7 @@
             (let ((gen lsp/*diagnostics-drawer-gen*)
                   (bid (current-buffer)))
               (show-drawer-list! (map lsp/diag-row diags)
-                                 (lsp/diag-select-callback gen diags))
+                                 (lsp/diag-select-callback gen bid diags))
               (set! lsp/*diagnostics-drawer-bid* bid)
               (set! lsp/*diagnostics-drawer-diags* diags)))))))
 
@@ -137,7 +141,7 @@
                   ;; no generation bump: the new closure is current by
                   ;; construction.
                   (if (update-drawer-list! (map lsp/diag-row diags)
-                                           (lsp/diag-select-callback lsp/*diagnostics-drawer-gen* diags)
+                                           (lsp/diag-select-callback lsp/*diagnostics-drawer-gen* bid diags)
                                            idx)
                       (set! lsp/*diagnostics-drawer-diags* diags)
                       (set! lsp/*diagnostics-drawer-bid* #f)))))))))

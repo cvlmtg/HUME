@@ -269,6 +269,56 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
     );
 }
 
+/// The drawer stays open across a buffer switch (browse-while-editing), so
+/// selecting a row must jump into the buffer the drawer was opened for, not
+/// whatever buffer happens to be focused when Enter is pressed.
+///
+/// Fail oracle: before `lsp/diag-jump-to!` took an explicit `bid`, it
+/// resolved against `(current-buffer)` — `focused_buffer_id()` below would
+/// still read `other_bid`, and the selection would land clamped inside
+/// `other.rs`'s two short lines instead of at A's start in `main.rs`.
+#[test]
+fn enter_jumps_into_the_drawer_s_buffer_even_after_switching_away() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let main_file = file_dir.path().join("main.rs");
+    let NavSetup { mut ed, _guard, .. } = setup(&main_file, tmp.path(), &[DIAG_A, DIAG_B]);
+    let main_bid = ed.focused_buffer_id();
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert_eq!(drawer_rows(&ed).len(), 2, "sanity: both rows listed");
+
+    let other_file = file_dir.path().join("other.rs");
+    std::fs::write(&other_file, "xx\nyy\n").unwrap();
+    ed.execute_typed("e", Some(other_file.to_str().unwrap()))
+        .unwrap();
+    ed.settle();
+    assert_ne!(
+        ed.focused_buffer_id(),
+        main_bid,
+        "sanity: focus actually moved to the other buffer"
+    );
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "sanity: the drawer survives the buffer switch by design"
+    );
+
+    ed.handle_key(key_enter());
+    ed.settle();
+
+    assert_eq!(
+        ed.focused_buffer_id(),
+        main_bid,
+        "Enter must jump back into the drawer's own buffer"
+    );
+    assert_eq!(
+        ed.current_selections().primary().head(),
+        co(3),
+        "selecting row 1 (A, still selected) must jump to A's start inside main.rs"
+    );
+}
+
 // ── Live refresh: the drawer follows corrected publishes ────────────────────
 // The drawer freezes its rows at open time; the plugin rebuilds them on
 // every `on-diagnostics-changed` for its buffer (see
