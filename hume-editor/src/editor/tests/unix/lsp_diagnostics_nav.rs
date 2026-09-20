@@ -420,6 +420,78 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
     );
 }
 
+/// A refresh that shrinks the row list must also pull a stale, deep `scroll`
+/// back into range — `lsp/refresh-diagnostics-drawer` goes through
+/// `update-drawer-list!` -> `EditorState::set_drawer_items`, which is where
+/// that clamp lives. Uses 3 diagnostics shrinking to 2 (not 2 shrinking to
+/// 1) so the surviving selection lands at a *nonzero* new index — a
+/// selection of `0` would already zero the scroll through the ordinary
+/// "selected < scroll" arm regardless of the `len` cap this test targets.
+///
+/// Fail oracle: before `clamp_scroll_to_window` gained its `len` cap, `scroll`
+/// would have stayed at `1` here (the ordinary arm's answer, `selected`
+/// itself) instead of `0`, and `DrawerWidget::render`'s
+/// `.skip(scroll).take(visible)` would have painted one blank row above the
+/// two surviving diagnostics on a band sized to show both.
+#[test]
+fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
+    use crate::editor::input_stack::DrawerLayer;
+    use hume_engine::pipeline::RenderContext;
+
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = file_dir.path().join("main.rs");
+    let NavSetup { mut ed, _guard, .. } = setup(&file, tmp.path(), &[DIAG_A, DIAG_C, DIAG_B]);
+
+    // Populate `last_terminal_area` before opening the drawer — the scroll
+    // clamp reads it to agree with what the engine will next paint (same
+    // setup `lsp_drawer.rs`'s own scroll tests use). 40x10 gives a 5-row
+    // band, so both survivors (2 rows) fit inside `visible_rows` once B (the
+    // one below-floor diagnostic) is filtered out — the shape that requires
+    // the `len` cap rather than the ordinary in-window formula.
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(40, 10);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+
+    type_cmd(&mut ed, ":diagnostics");
+    ed.settle();
+    assert_eq!(
+        drawer_rows(&ed).len(),
+        3,
+        "sanity: all three rows listed, ascending by line (A, C, B)"
+    );
+
+    // Select the last row (B, the only warning — dropped by the floor
+    // change below) and set a scroll deep enough that, once B is gone,
+    // "the item at B's old position" (`lsp/diag-refresh-index`'s no-survivor
+    // fallback) lands on row 1 (C) rather than row 0.
+    {
+        let drawer = ed
+            .state
+            .input
+            .find_mut::<DrawerLayer>()
+            .expect("sanity: drawer open");
+        drawer.selected = 2;
+        drawer.scroll = 12;
+    }
+
+    type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
+    ed.settle();
+
+    let rows = drawer_rows(&ed);
+    assert_eq!(rows.len(), 2, "sanity: only the warning (B) drops");
+    let drawer = ed.state.input.drawer().expect("drawer still open");
+    assert_eq!(
+        drawer.selected, 1,
+        "sanity: refresh-index falls back to B's old row, now naming C"
+    );
+    assert_eq!(
+        drawer.scroll, 0,
+        "scroll must be pulled back in range, not left pointing past the shrunken list"
+    );
+}
+
 /// Raising the floor past every visible diagnostic closes the drawer, the
 /// same as fixing the last diagnostic does.
 #[test]

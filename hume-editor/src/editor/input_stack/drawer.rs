@@ -124,9 +124,9 @@ impl EditorState {
         drawer.callback = callback;
         let len = drawer.items.len();
         drawer.selected = selected.min(len - 1);
-        let visible = drawer_visible_for(terminal_height, drawer.items.len());
+        let visible = drawer_visible_for(terminal_height, len);
         drawer.scroll =
-            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible);
+            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, len, visible);
         self.sync_drawer_view();
         true
     }
@@ -258,7 +258,12 @@ fn clamp_drawer_scroll(ed: &mut Editor, r: LayerRef) {
     let Some(drawer) = ed.state.input.at_mut::<DrawerLayer>(r) else {
         return;
     };
-    drawer.scroll =
-        hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible_rows);
+    let len = drawer.items.len();
+    drawer.scroll = hume_ui::menu_box::clamp_scroll_to_window(
+        drawer.selected,
+        drawer.scroll,
+        len,
+        visible_rows,
+    );
     ed.state.sync_drawer_view();
 }
