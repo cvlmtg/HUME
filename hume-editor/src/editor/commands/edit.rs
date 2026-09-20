@@ -178,11 +178,14 @@ pub(in crate::editor) fn cmd_yank(
     Ok(())
 }
 
-/// Exhaustion messages shared by `cmd_undo`/`cmd_redo` and, via those same
-/// functions, `:earlier`/`:later` (`commands::typed_misc::TravelDir`) — one
-/// undo command, one message, regardless of which key or typed name reached it.
-pub(in crate::editor::commands) const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
-pub(in crate::editor::commands) const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
+/// Exhaustion messages `history_step` reports below — shared by `cmd_undo`/
+/// `cmd_redo` and, via those same functions, `:earlier`/`:later`
+/// (`commands::typed_misc::travel`, which calls `cmd_undo`/`cmd_redo`
+/// directly rather than a second copy of this reporting), so one undo
+/// command means one message regardless of which key or typed name reached
+/// it.
+const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
+const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
 
 /// Step the undo/redo history `count` times, stopping (with a status report)
 /// as soon as `can` returns false — shared by `cmd_undo`/`cmd_redo`, which

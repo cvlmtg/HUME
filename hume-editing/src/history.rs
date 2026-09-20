@@ -349,31 +349,30 @@ impl History {
     }
 
     /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
+    /// The caller steps the returned count through the ordinary per-step
+    /// undo path (`history_step`), so the count — not a revision id — is
+    /// what crosses the crate boundary and the tree stays unenumerable.
     ///
-    /// Walks up toward the root while the revision underfoot is still younger
-    /// than `age`, clamping at the root. The caller steps the returned count
-    /// through the ordinary per-step undo path, so the count — not a revision
-    /// id — is what crosses the crate boundary and the tree stays unenumerable.
-    ///
-    /// The flag reports an unsatisfied clamp: the walk hit the root while the
-    /// root is still younger than `age`. Strict `<` keeps an exact hit silent —
-    /// landing on a revision exactly `age` old is a hit, not an over-travel.
-    pub fn undo_steps_older_than(&self, age: Duration) -> (usize, bool) {
+    /// Walks up toward the root while the revision underfoot is still
+    /// younger than `age`. An unsatisfiable request (the walk reaches the
+    /// root while it is still younger than `age`) counts that last,
+    /// un-taken hop too — one more than the real number of ancestors above
+    /// the root — so `history_step`'s own `can_undo` check fails naturally
+    /// on the walk's final iteration and reports the exhaustion there,
+    /// rather than this function reporting a second time itself. Strict `<`
+    /// keeps an exact hit un-counted as unsatisfiable — landing on a
+    /// revision exactly `age` old is a hit, not an over-travel.
+    pub fn undo_steps_older_than(&self, age: Duration) -> usize {
         let mut steps = 0;
         let mut id = self.current;
-        let mut past_end = false;
-        // One `age()` call per visited revision: the flag is set on the break
-        // itself, never via a second clock read on the final node, so an
-        // exact `== age` hit can't flip between the walk and the report.
         while self.age(id) < age {
+            steps += 1;
             let Some(parent) = self.revisions[&id].parent else {
-                past_end = true;
                 break;
             };
             id = parent;
-            steps += 1;
         }
-        (steps, past_end)
+        steps
     }
 
     /// Redo steps needed to reach the state as of `age` ago, for `:later`.
@@ -381,31 +380,31 @@ impl History {
     /// Walks down the most-recent-child chain (the same path [`Self::redo`]
     /// takes) while the next child is still at least `age` old, stopping
     /// before the first child young enough to postdate it. Mirrors
-    /// [`Self::undo_steps_older_than`]: returns a step count, not an id, and
-    /// the `<`/`>=` boundary treats an exact `age() == age` hit as landed on
-    /// both sides. `past_end` comes only from the in-loop assignment, once a
-    /// step actually lands on a leaf still older than requested — a request
-    /// already satisfied at zero steps (including the tip itself, which has
-    /// no children to compare against) is not over-travel, the same as
-    /// `undo_steps_older_than` reports nothing for a satisfied request at the
-    /// root.
-    pub fn redo_steps_newer_than(&self, age: Duration) -> (usize, bool) {
+    /// [`Self::undo_steps_older_than`]: an unsatisfiable request (the walk
+    /// reaches a leaf that is still older than `age`) counts one extra step
+    /// there, so `history_step`'s own `can_redo` check fails naturally on
+    /// the walk's final iteration — the leaf's empty child list ends the
+    /// `while let` regardless, so the extra count can't cause another lap.
+    /// Strict `>` keeps an exact hit un-counted as unsatisfiable, same
+    /// boundary as `undo_steps_older_than`'s `<`.
+    pub fn redo_steps_newer_than(&self, age: Duration) -> usize {
         let mut steps = 0;
         let mut id = self.current;
-        let mut past_end = false;
         while let Some(&child) = self.revisions[&id].children.last() {
             // Single `age()` call per child: doubles as the step decision
-            // and, when this turns out to be the final step, the
-            // over-travel flag.
+            // and, when this turns out to be the final step, the extra
+            // count for an unsatisfiable end.
             let child_age = self.age(child);
             if child_age < age {
                 break;
             }
             id = child;
             steps += 1;
-            past_end = self.revisions[&id].children.is_empty() && child_age > age;
+            if self.revisions[&id].children.is_empty() && child_age > age {
+                steps += 1;
+            }
         }
-        (steps, past_end)
+        steps
     }
 
     /// Total number of revisions in the tree (including the root).

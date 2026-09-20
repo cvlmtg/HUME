@@ -6,10 +6,7 @@ use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
 use super::super::{EditorState, Severity};
-use super::{
-    REDO_EXHAUSTED_MSG, UNDO_EXHAUSTED_MSG, cmd_redo, cmd_undo, current_jump_entry,
-    record_jump_if_moved,
-};
+use super::{cmd_redo, cmd_undo, current_jump_entry, record_jump_if_moved};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
@@ -623,36 +620,43 @@ enum TravelSpec {
 fn parse_travel_spec(raw: &str) -> Result<TravelSpec, CommandError> {
     let invalid = || CommandError::transient(format!("invalid time-travel spec: {raw}"));
     let mut tokens = raw.split_whitespace();
-    let (token, extra) = (tokens.next(), tokens.next());
-    let Some(token) = token else {
+    let (Some(token), None) = (tokens.next(), tokens.next()) else {
         return Err(invalid());
     };
-    if extra.is_some() {
-        return Err(invalid());
-    }
-    // The suffix is ASCII, so one byte — splitting it off can't cut a codepoint.
-    let (digits, unit) = match token.chars().last() {
-        Some(c) if c.is_ascii_alphabetic() => (&token[..token.len() - 1], c),
-        _ => (token, '\0'),
+    // `as_bytes().last()` (not `.chars().last()`) makes "the suffix is
+    // ASCII, so one byte" structural rather than asserted: any non-ASCII
+    // final byte falls through to the bare-number arm below and fails to
+    // parse as a digit, the same as any other non-digit trailing character.
+    let (digits, mult) = match token.as_bytes().last() {
+        Some(b's') => (&token[..token.len() - 1], Some(1)),
+        Some(b'm') => (&token[..token.len() - 1], Some(60)),
+        Some(b'h') => (&token[..token.len() - 1], Some(3_600)),
+        Some(b'd') => (&token[..token.len() - 1], Some(86_400)),
+        Some(c) if c.is_ascii_alphabetic() => return Err(invalid()),
+        _ => (token, None),
     };
     let n: usize = digits.parse().map_err(|_| invalid())?;
-    if unit == '\0' {
-        return Ok(TravelSpec::Steps(n));
-    }
-    let mult = match unit {
-        's' => 1,
-        'm' => 60,
-        'h' => 3_600,
-        'd' => 86_400,
-        _ => return Err(invalid()),
-    };
-    Ok(TravelSpec::Age(Duration::from_secs(
-        (n as u64).saturating_mul(mult),
-    )))
+    Ok(match mult {
+        Some(mult) => TravelSpec::Age(Duration::from_secs((n as u64).saturating_mul(mult))),
+        None => TravelSpec::Steps(n),
+    })
 }
 
+/// `cmd_undo`/`cmd_redo` themselves — the same function `u`/`Ctrl-r` dispatch
+/// to, `refuse_if_read_only` guard and `history_step`'s own exhaustion report
+/// included, rather than a second hand-copied `(can, apply, exhausted_msg)`
+/// triple.
+type TravelStepFn =
+    fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
+
+/// `Buffer::undo_steps_older_than`/`redo_steps_newer_than` — resolves a
+/// `TravelSpec::Age` to the step count [`TravelStepFn`] takes.
+type TravelResolveAgeFn = fn(&Buffer, Duration) -> usize;
+
 /// Direction of `:earlier`/`:later` travel — everything the two commands
-/// differ in, so the shared `travel` core below stays straight-line.
+/// differ in, so the shared `travel` core below stays straight-line: a
+/// single match binding the three per-direction values, rather than three
+/// separate one-caller-each methods.
 #[derive(Clone, Copy)]
 enum TravelDir {
     Earlier,
@@ -660,36 +664,12 @@ enum TravelDir {
 }
 
 impl TravelDir {
-    fn cmd_name(self) -> &'static str {
+    /// `(name, step, resolve_age)` — `name` is `:earlier`/`:later`'s own
+    /// command word, for the `!`-rejection error message below.
+    fn parts(self) -> (&'static str, TravelStepFn, TravelResolveAgeFn) {
         match self {
-            TravelDir::Earlier => "earlier",
-            TravelDir::Later => "later",
-        }
-    }
-
-    fn exhausted_msg(self) -> &'static str {
-        match self {
-            TravelDir::Earlier => UNDO_EXHAUSTED_MSG,
-            TravelDir::Later => REDO_EXHAUSTED_MSG,
-        }
-    }
-
-    /// `cmd_undo`/`cmd_redo` themselves — the same function `u`/`Ctrl-r`
-    /// dispatch to, `refuse_if_read_only` guard included, rather than a
-    /// second copy of the `(can, apply)` pair and its own read-only check.
-    fn step(
-        self,
-    ) -> fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError> {
-        match self {
-            TravelDir::Earlier => cmd_undo,
-            TravelDir::Later => cmd_redo,
-        }
-    }
-
-    fn resolve_age(self) -> fn(&Buffer, Duration) -> (usize, bool) {
-        match self {
-            TravelDir::Earlier => Buffer::undo_steps_older_than,
-            TravelDir::Later => Buffer::redo_steps_newer_than,
+            TravelDir::Earlier => ("earlier", cmd_undo, Buffer::undo_steps_older_than),
+            TravelDir::Later => ("later", cmd_redo, Buffer::redo_steps_newer_than),
         }
     }
 }
@@ -697,41 +677,37 @@ impl TravelDir {
 /// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
 /// travel through the same `cmd_undo`/`cmd_redo` `u`/`Ctrl-r` dispatch to, so
 /// every step propagates to panes, tree-sitter, LSP, decorations, and jumps,
-/// and a read-only buffer is refused identically on both paths.
+/// a read-only buffer is refused identically on both paths, and exhaustion
+/// (an age older than the root, or newer than the tip) is reported exactly
+/// once, by `history_step` itself — see `History::undo_steps_older_than`'s
+/// own doc for how an unsatisfiable age resolves to a step count that makes
+/// `history_step`'s own `can`/report fire naturally, with no second
+/// exhaustion check needed here.
 fn travel(
     ed: &mut Editor,
     arg: Option<&str>,
     force: bool,
     dir: TravelDir,
 ) -> Result<(), CommandError> {
+    let (name, step, resolve_age) = dir.parts();
     if force {
-        return Err(CommandError::transient(format!(
-            "`:{}` takes no `!`",
-            dir.cmd_name()
-        )));
+        return Err(CommandError::transient(format!("`:{name}` takes no `!`")));
     }
-    // Read once, before `dir.step()` may itself refuse and report why — a
-    // read-only buffer's own report must not be overwritten by the
-    // over-travel report below, computed from a (harmless to read) age query
-    // against the same read-only buffer's history.
-    let read_only = ed.focused_buffer_read_only();
-    let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
-        TravelSpec::Steps(n) => (n, false),
+    let spec = parse_travel_spec(arg.unwrap_or("1"))?;
+    // Checked before resolving `spec` into a step count: an age spec walks
+    // the buffer's whole history, work `step` below would refuse anyway on
+    // a read-only buffer.
+    if super::refuse_if_read_only(&mut ed.state, &ed.view) {
+        return Ok(());
+    }
+    let steps = match spec {
+        TravelSpec::Steps(n) => n,
         TravelSpec::Age(age) => {
             let buf = ed.focused_buffer_id();
-            dir.resolve_age()(ed.state.buffers.get(buf), age)
+            resolve_age(ed.state.buffers.get(buf), age)
         }
     };
-    dir.step()(&mut ed.state, &mut ed.view, steps, MotionMode::Move)?;
-    // Count over-travel reports inside `cmd_undo`/`cmd_redo`'s shared
-    // `history_step`; an age clamp resolves to exactly the end depth, so the
-    // loop never exhausts — report here instead when the end is still on the
-    // wrong side of the requested age.
-    if past_end && !read_only {
-        ed.state
-            .report(Severity::Info, dir.exhausted_msg().to_string());
-    }
-    Ok(())
+    step(&mut ed.state, &mut ed.view, steps, MotionMode::Move)
 }
 
 /// `:earlier [N|age]` — step back `N` revisions (default 1), or back to the

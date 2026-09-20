@@ -486,22 +486,23 @@ fn undo_steps_older_than_walks_to_state_as_of_age() {
     let h = aged_chain();
     assert_eq!(
         h.undo_steps_older_than(mins(5)),
-        (1, false),
+        1,
         ":earlier 5m from 1m-old tip must step once onto rev2 (8m)"
     );
     assert_eq!(
         h.undo_steps_older_than(mins(10)),
-        (2, false),
+        2,
         ":earlier 10m must step twice onto rev1 (15m)"
     );
     assert_eq!(
         h.undo_steps_older_than(mins(30)),
-        (3, true),
-        ":earlier older than the root must clamp at the root (depth 3) with the flag set"
+        4,
+        ":earlier older than the root must count one step past the root (depth 3, so 4) \
+         so the shared undo loop's own exhaustion check reports it"
     );
     assert_eq!(
         h.undo_steps_older_than(Duration::ZERO),
-        (0, false),
+        0,
         ":earlier 0s is already satisfied — no steps"
     );
 }
@@ -513,17 +514,18 @@ fn redo_steps_newer_than_walks_last_child_chain() {
     h.undo(); // back to rev1 (15m)
     assert_eq!(
         h.redo_steps_newer_than(mins(5)),
-        (1, false),
+        1,
         ":later 5m from rev1 must step once onto rev2 (8m), stopping before rev3 (1m)"
     );
     assert_eq!(
         h.redo_steps_newer_than(Duration::ZERO),
-        (2, true),
-        ":later 0s walks the whole last-child chain to the tip, which is still older than now"
+        3,
+        ":later 0s walks the whole last-child chain to the tip (2 real hops), still \
+         older than now, plus the one extra step that reports the exhaustion"
     );
     assert_eq!(
         h.redo_steps_newer_than(mins(30)),
-        (0, false),
+        0,
         ":later older than every descendant is already satisfied — no steps"
     );
 }
@@ -536,14 +538,14 @@ fn redo_steps_newer_than_walks_last_child_chain() {
 ///
 /// Fail oracle: before the fix, the zero-step tail compared the *current*
 /// revision's own age against `age` whenever it had no children, so this
-/// would have returned `(0, true)` — a false "Already at newest change" —
-/// instead of `(0, false)`.
+/// would have returned `1` (a false "Already at newest change" extra step)
+/// instead of `0`.
 #[test]
 fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age() {
     let h = aged_chain(); // current = rev3 (tip), backdated to 1m, no children
     assert_eq!(
         h.redo_steps_newer_than(Duration::from_secs(5)),
-        (0, false),
+        0,
         ":later 5s at the tip is already satisfied — there is nothing newer to redo \
          onto, no matter how old the tip itself is relative to the requested age"
     );
@@ -561,13 +563,14 @@ fn redo_steps_newer_than_follows_most_recent_child() {
     // follow rev4 (2m), so `:later 5m` takes no steps.
     assert_eq!(
         h.redo_steps_newer_than(mins(5)),
-        (0, false),
+        0,
         ":later must follow the most-recent child (rev4, 2m), not the older sibling"
     );
     assert_eq!(
         h.redo_steps_newer_than(Duration::ZERO),
-        (1, true),
-        ":later 0s steps once along the rev4 branch, whose tip is still older than now"
+        2,
+        ":later 0s steps once along the rev4 branch (1 real hop), whose tip is still \
+         older than now, plus the one extra step that reports the exhaustion"
     );
     h.redo();
     assert_eq!(
