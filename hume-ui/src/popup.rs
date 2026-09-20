@@ -256,7 +256,7 @@ pub(crate) struct PopupBandWidget {
 const POPUP_FRAME_ROWS: u16 = 2;
 
 /// Rows a docked popup shows at once, given `lines` wrapped lines and the
-/// band's row ceiling `max` (half the last-rendered *terminal* height,
+/// band's row ceiling `max` (35% of the last-rendered *terminal* height,
 /// mirroring `PopupBandWidget::height`'s own `max`) — the number
 /// `Editor::scroll_popup` pages against, agreeing with what the engine will
 /// next paint by construction (both derive from

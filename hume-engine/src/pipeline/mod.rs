@@ -352,16 +352,17 @@ impl EngineView {
         }
     }
 
-    /// The row ceiling every [`BottomBandProvider`] is called against — half
-    /// the terminal's current height. Single source of truth for this policy:
-    /// [`Self::pane_area`] and [`Self::render`] both call this rather than
-    /// each dividing `area.height` by 2 inline, and `hume-editor`'s own
-    /// band-height *predictors* (`Editor::sync_popup_band_view`,
+    /// The row ceiling every [`BottomBandProvider`] is called against — 35%
+    /// of the terminal's current height. Single source of truth for this
+    /// policy: [`Self::pane_area`] and [`Self::render`] both call this
+    /// rather than each computing the fraction inline, and `hume-editor`'s
+    /// own band-height *predictors* (`Editor::sync_popup_band_view`,
     /// `drawer_visible_rows`/`scroll_popup`) call it too, so the number a
     /// write side pages against can never drift from what this crate will
-    /// next paint.
+    /// next paint. Widened to `u32` for the multiply so a `u16::MAX`-tall
+    /// area can't overflow before the divide narrows it back.
     pub fn bottom_band_max(area_height: u16) -> u16 {
-        area_height / 2
+        (u32::from(area_height) * 35 / 100) as u16
     }
 
     /// Partition `area` into the tab bar's own rect — `self.tabbar`'s

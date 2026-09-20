@@ -352,9 +352,9 @@ pub trait TabBarProvider {
 /// `EngineView` carries both as a flat list rather than special-casing
 /// mutual exclusion.
 pub trait BottomBandProvider {
-    /// Rows to reserve this frame, given `max` (the caller's ceiling — half
-    /// the terminal height). Content-driven (e.g. `min(rows + 1, max)`), not
-    /// a fixed constant, so a short list doesn't reserve a half-screen band.
+    /// Rows to reserve this frame, given `max` (the caller's ceiling — 35%
+    /// of the terminal height). Content-driven (e.g. `min(rows + 1, max)`),
+    /// not a fixed constant, so a short list doesn't reserve a large band.
     fn height(&self, max: u16) -> u16;
 
     fn render(&self, area: Rect, theme: &crate::theme::Theme, canvas: &mut Canvas);

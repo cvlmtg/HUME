@@ -54,7 +54,7 @@ pub(crate) struct DrawerWidget {
 const DRAWER_PAD_ROWS: u16 = 1;
 
 /// Rows a drawer shows at once, given `items` rows and the band's row
-/// ceiling `max` (half the last-rendered *terminal* height, mirroring
+/// ceiling `max` (35% of the last-rendered *terminal* height, mirroring
 /// `DrawerWidget::height`'s own `max`) — the number `Editor::
 /// drawer_visible_rows` pages against, agreeing with what the engine will
 /// next paint by construction (both derive from

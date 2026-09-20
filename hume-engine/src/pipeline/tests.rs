@@ -1569,25 +1569,27 @@ fn pane_area_folds_tabbar_and_drawer_together() {
 }
 
 #[test]
-fn pane_area_drawer_height_is_capped_by_half_the_terminal_height() {
+fn pane_area_drawer_height_is_capped_by_35_percent_of_the_terminal_height() {
     let mut view = EngineView::new(Theme::default());
-    // Wants 50 rows — way more than half of a 20-row terminal (max = 10).
+    // Wants 50 rows — way more than 35% of a 20-row terminal (max = 7).
     view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
     let area = view.pane_area(rect(0, 0, 40, 20));
 
-    // 20 - 1 (statusline) - 10 (capped drawer) = 9.
-    assert_eq!(area.height, 9);
+    // 20 - 1 (statusline) - 7 (capped drawer) = 12.
+    assert_eq!(area.height, 12);
 }
 
 #[test]
 fn pane_area_degenerate_when_terminal_too_small_for_chrome_plus_drawer() {
     let mut view = EngineView::new(Theme::default());
-    view.bottom_bands = vec![Box::new(FixedHeightDrawer(3))];
+    view.tabbar = Some(Box::new(NoopTabBar));
+    view.bottom_bands = vec![Box::new(FixedHeightDrawer(50))];
 
-    // chrome_height = 1 (statusline) + 3 (drawer, capped at height/2=1) = 2,
-    // which is NOT less than a 2-row terminal — degenerate.
-    let area = view.pane_area(rect(0, 0, 40, 2));
+    // chrome_height = 1 (tab bar) + 1 (statusline) + 1 (drawer, capped at
+    // 35% of 3 = 1) = 3, which is NOT less than a 3-row terminal —
+    // degenerate.
+    let area = view.pane_area(rect(0, 0, 40, 3));
 
     assert_eq!(area.height, 0);
 }

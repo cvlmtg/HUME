@@ -220,7 +220,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
-    ed.sync_viewport_dims(40, 10);
+    ed.sync_viewport_dims(40, 12);
 
     {
         let drawer = ed
@@ -238,7 +238,7 @@ fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
     assert_eq!(
         ed.state.input.drawer().unwrap().scroll,
         0,
-        "all 3 items fit inside a 40x10 terminal's band, so scroll must be \
+        "all 3 items fit inside a 40x12 terminal's band, so scroll must be \
          pulled back to 0, not left pointing past the list"
     );
 }
@@ -883,12 +883,12 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     // Populate `last_terminal_area` before any key handling needs it — the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.sync_viewport_dims(40, 15);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     type_cmd(&mut ed, ":go");
 
-    // capacity = min(20 items + 1, 10 rows / 2 = 5) = 5; visible_rows = 4.
+    // capacity = min(20 items + 1, 15 rows * 0.35 = 5) = 5; visible_rows = 4.
     // Shift-Down, not Ctrl-d, so each press moves exactly one row — this
     // test is about the scroll-follows-selection mechanism, not paging.
     for _ in 0..6 {
@@ -911,11 +911,11 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
 
 // ── Ctrl-d/Ctrl-u: half-page step; Shift-Down/Up: single-row step ────────────
 
-/// Arms the same 20-item / 40×10 fixture as
+/// Arms the same 20-item / 40×15 fixture as
 /// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =
-/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4, each Ctrl-d/Ctrl-u moves by
-/// half that (`(4 / 2).max(1)` = 2 rows), and each Shift-Down/Shift-Up moves
-/// by exactly 1.
+/// min(20+1, 15*0.35=5) = 5, so `visible_rows` = 4, each Ctrl-d/Ctrl-u moves
+/// by half that (`(4 / 2).max(1)` = 2 rows), and each Shift-Down/Shift-Up
+/// moves by exactly 1.
 fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -933,7 +933,7 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     // Populate `last_terminal_area` before any key handling needs it — the
     // scroll clamp reads it to agree with what the engine will next paint.
     let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 10);
+    ed.sync_viewport_dims(40, 15);
     ed.settle();
     ed.prepare_frame(&mut ctx);
     type_cmd(ed, ":go");
