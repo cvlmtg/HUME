@@ -203,7 +203,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<(), String> {
+    ) -> Result<u64, String> {
         // Fail fast on empty: a 0-row drawer leaves `selected` at 0 with no
         // row behind it, so `Enter` would fire `0` to a callback that can't
         // index anything. Callers close (or never open) instead.
@@ -220,7 +220,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
             .state
             .async_opener_stale::<BaseLayer, DrawerLayer>("show-drawer-list!")
         {
-            return Ok(());
+            // `0` is never minted (`DrawerLayer::new`'s `NEXT_TOKEN` starts
+            // at `1`), so this dead token can never match a real drawer —
+            // any later `update-drawer-list!`/`close-drawer!`/
+            // `drawer-selected-index` a caller mistakenly makes with it stays
+            // the same silent no-op `async_opener_stale`'s own Trace report
+            // already named this whole request as.
+            return Ok(0);
         }
         // Retires a prior `Drawer` on the self-replace path, firing its
         // callback with `#f` explicitly (`take_firing_false`, shared with
@@ -230,30 +236,32 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
             self.state.take_firing_false::<DrawerLayer>(self.view, r);
         }
-        self.state.push_layer(
-            self.view,
-            DrawerLayer {
-                items: std::sync::Arc::new(items),
-                selected: 0,
-                scroll: 0,
-                callback,
-            },
-        );
+        let drawer = DrawerLayer::new(items, callback);
+        let token = drawer.token();
+        self.state.push_layer(self.view, drawer);
         self.state.sync_drawer_view();
-        Ok(())
+        Ok(token)
     }
 
-    /// Idempotent — a no-op if no drawer is open. Excises the drawer at its
-    /// own ref rather than only when it's `top()`: since the drawer stays
-    /// open across `Insert`/a `Popup`/etc. by design, being buried is its
-    /// *normal* state, not a mistake — see `show_drawer_list`'s own doc.
-    /// Excise, not retire: whatever sits above the drawer (an `Insert`
-    /// session typing the fix that just cleared the last diagnostic, a
-    /// code-action `Menu`) is browsing over it by coincidence, not because
-    /// it depends on the drawer being open, so closing the drawer must not
-    /// take it down too.
-    fn close_drawer(&mut self) -> Result<(), String> {
-        if let Some(r) = self.state.input.ref_of::<DrawerLayer>() {
+    /// Idempotent — a no-op if no drawer is open, or if `token` doesn't
+    /// match the open drawer's own (an expected-normal race, the same shape
+    /// `update_drawer_list` already has — the caller's drawer was closed or
+    /// replaced since). Excises the drawer at its own ref rather than only
+    /// when it's `top()`: since the drawer stays open across `Insert`/a
+    /// `Popup`/etc. by design, being buried is its *normal* state, not a
+    /// mistake — see `show_drawer_list`'s own doc. Excise, not retire:
+    /// whatever sits above the drawer (an `Insert` session typing the fix
+    /// that just cleared the last diagnostic, a code-action `Menu`) is
+    /// browsing over it by coincidence, not because it depends on the
+    /// drawer being open, so closing the drawer must not take it down too.
+    fn close_drawer(&mut self, token: u64) -> Result<(), String> {
+        if let Some(r) = self.state.input.ref_of::<DrawerLayer>()
+            && self
+                .state
+                .input
+                .at::<DrawerLayer>(r)
+                .is_some_and(|d| d.token() == token)
+        {
             self.state.excise_layer(self.view, r);
         }
         self.state.sync_drawer_view();
@@ -265,23 +273,30 @@ impl<'a> UiHost for EditorHostImpl<'a> {
     /// `selected` outside the new list or scrolled out of view. A buried
     /// drawer refreshes the same way: browse-while-editing is its normal
     /// state, and the model is what `sync_drawer_view` mirrors, not its
-    /// stack position.
+    /// stack position. `token` must match the open drawer's own — see
+    /// `set_drawer_items`'s own doc for the no-op contract on a mismatch.
     fn update_drawer_list(
         &mut self,
+        token: u64,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool {
         self.state.set_drawer_items(
             self.view.last_terminal_area.height,
+            token,
             items,
             callback,
             selected,
         )
     }
 
-    fn drawer_selected_index(&self) -> Option<usize> {
-        self.state.input.drawer().map(|d| d.selected)
+    fn drawer_selected_index(&self, token: u64) -> Option<usize> {
+        self.state
+            .input
+            .drawer()
+            .filter(|d| d.token() == token)
+            .map(|d| d.selected)
     }
 
     // ── Fuzzy picker ──────────────────────────────────────────────────────

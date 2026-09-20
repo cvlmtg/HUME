@@ -2,6 +2,7 @@
 //! state, browsed with Helix-style "stay open while editing" semantics.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use termina::event::{KeyCode, Modifiers};
 
@@ -11,6 +12,12 @@ use hume_engine::types::EditorMode;
 use super::super::Editor;
 use super::super::EditorState;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+
+/// Mints a fresh, process-unique token per opened drawer — mirrors
+/// `picker::session`'s own `NEXT_TOKEN`. Starts at `1` so `0` stays free as
+/// a sentinel, matching the picker's convention, though nothing here reads
+/// meaning into the value beyond equality.
+static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// `(show-drawer-list! items on-select)`'s raw state, including the
 /// not-yet-exhausted Steel callback — cleared by `Esc` or `close-drawer!`,
@@ -26,6 +33,37 @@ pub(in crate::editor) struct DrawerLayer {
     /// whenever the selection moves ([`clamp_drawer_scroll`]).
     pub(in crate::editor) scroll: usize,
     pub(in crate::editor) callback: steel::rvals::SteelVal,
+    /// Identifies which `show-drawer-list!` call opened this drawer — see
+    /// [`Self::token`]'s doc.
+    token: u64,
+}
+
+impl DrawerLayer {
+    /// Mints a fresh token for this drawer — the constructor is the only
+    /// minting site, so every `DrawerLayer` in existence carries a token no
+    /// other one has (or ever had): `show_drawer_list`'s self-replace still
+    /// takes the outgoing drawer by value and drops it, rather than mutating
+    /// an existing one's token in place, so a stale token a plugin is still
+    /// holding can never alias a *different*, later drawer that happens to
+    /// reuse the same stack slot.
+    pub(in crate::editor) fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
+        Self {
+            items: Arc::new(items),
+            selected: 0,
+            scroll: 0,
+            callback,
+            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+
+    /// Identifies this drawer to Steel — `show-drawer-list!`'s return value,
+    /// and the shared guard every token-scoped drawer mutation
+    /// (`close-drawer!`, `update-drawer-list!`, `drawer-selected-index`)
+    /// checks before touching the open drawer. Mirrors
+    /// `PickerSession::token`.
+    pub(in crate::editor) fn token(&self) -> u64 {
+        self.token
+    }
 }
 
 impl Layer for DrawerLayer {
@@ -103,13 +141,15 @@ impl EditorState {
     /// can't drift on clamping. `selected` is clamped into the new list and
     /// the scroll re-clamped into the visible window, the same
     /// `clamp_scroll_to_window` the keys get. Returns whether the update
-    /// applied (`false` when no drawer is open — an expected-normal race,
-    /// never an error — or when `items` is empty, so a 0-row drawer with an
+    /// applied (`false` when no drawer is open, `token` doesn't match the
+    /// open drawer's own — an expected-normal race, never an error, in
+    /// either case — or when `items` is empty, so a 0-row drawer with an
     /// `Enter` that would fire `0` can never be built from either entry
     /// point; callers close instead).
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
         terminal_height: u16,
+        token: u64,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
@@ -117,7 +157,11 @@ impl EditorState {
         if items.is_empty() {
             return false;
         }
-        let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
+        let Some(drawer) = self
+            .input
+            .find_mut::<DrawerLayer>()
+            .filter(|d| d.token == token)
+        else {
             return false;
         };
         drawer.items = Arc::new(items);

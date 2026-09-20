@@ -223,10 +223,10 @@ Full walkthroughs — batch vs. streaming population, truncation direction, exit
 | `(close-popup!)` | Close the open popup; idempotent — a no-op if none is open |
 | `(show-menu! items on-select)` | Show a selection menu over `items`, a list of strings |
 | `(close-menu!)` | Close the open menu; a no-op if none is open |
-| `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a non-empty list of strings. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` so its owner knows the drawer is gone. Errors on empty `items` — close (or never open) instead |
-| `(close-drawer!)` | Close the open drawer; a no-op if none is open |
-| `(update-drawer-list! items on-select selected)` | Replace the open drawer's rows in place, keeping the current selection unless `selected` names another row; returns `#t` when applied, `#f` when no drawer is open or `items` is empty — close instead of clearing through an update |
-| `(drawer-selected-index)` | The open drawer's selected row, or `#f` when no drawer is open |
+| `(show-drawer-list! items on-select)` | Show a list in the bottom drawer, over `items`, a non-empty list of strings. Replaces any drawer already open, and the outgoing drawer's `on-select` fires with `#f` so its owner knows the drawer is gone. Errors on empty `items` — close (or never open) instead. Returns a token scoping `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this drawer — hold onto it |
+| `(close-drawer! token)` | Close the open drawer; a no-op if none is open or `token` doesn't match its own |
+| `(update-drawer-list! token items on-select selected)` | Replace the open drawer's rows in place, keeping the current selection unless `selected` names another row; returns `#t` when applied, `#f` when no drawer is open, `token` doesn't match its own, or `items` is empty — close instead of clearing through an update |
+| `(drawer-selected-index token)` | The open drawer's selected row, or `#f` when no drawer is open or `token` doesn't match its own |
 
 ## Timers
 

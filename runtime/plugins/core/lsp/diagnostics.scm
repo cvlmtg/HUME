@@ -61,29 +61,36 @@
                  (lsp/first-line (hash-ref d "message"))))
 
 ;; The drawer freezes its rows at open time, so this plugin owns refreshing
-;; its own drawer: it tracks the open drawer itself (buffer + generation +
-;; last snapshot) and rebuilds rows on every `on-diagnostics-changed` for
-;; its buffer. Openness is the buffer alone (`#f` = closed) — no separate
-;; flag to keep in sync with it. Tracking clears through the callback's
-;; `#f` — `Esc`, or a replace by another drawer's `show-drawer-list!`,
-;; which fires `#f` to the outgoing callback — and through
-;; `update-drawer-list!` reporting `#f` (drawer closed or replaced before
-;; its `#f` drained: an expected-normal race, never an error). The
-;; generation keeps a replace's own stale `#f` from killing the fresh
-;; drawer: only the current generation may clear. A pure liveness check
-;; (`drawer-selected-index` answering non-`#f`) can't replace the
-;; generation: a *foreign* replace's `#f` drains while that foreign drawer
-;; is open, so liveness would keep tracking alive and the next publish
-;; would refresh someone else's rows.
+;; its own drawer: it tracks the open drawer itself (buffer + token + last
+;; snapshot) and rebuilds rows on every `on-diagnostics-changed` for its
+;; buffer. Openness is the buffer alone (`#f` = closed) — no separate flag to
+;; keep in sync with it. Tracking clears through the callback's `#f` —
+;; `Esc`, or a replace by another drawer's `show-drawer-list!`, which fires
+;; `#f` to the outgoing callback — and through `update-drawer-list!`/
+;; `close-drawer!` no-oping (drawer closed, replaced, or belonging to
+;; someone else — Rust checks the token before touching anything, so this
+;; plugin can never reach a foreign drawer even by mistake). The token is
+;; what keeps a replace's own stale `#f` from killing the fresh drawer: only
+;; the current token may clear tracking. A pure liveness check
+;; (`drawer-selected-index` answering non-`#f`) can't replace it: it would
+;; answer non-`#f` for *any* open drawer, our own or not, so liveness alone
+;; couldn't tell a stale `#f` apart from a live one the way an exact token
+;; match does.
 (define lsp/*diagnostics-drawer-bid* #f)
-(define lsp/*diagnostics-drawer-gen* 0)
+(define lsp/*diagnostics-drawer-tok* #f)
 (define lsp/*diagnostics-drawer-diags* '())
 
-(define (lsp/diag-select-callback gen bid diags)
+;; `tok-box` holds the drawer's own token — a `box`, not the value directly,
+;; because `show-drawer-list!` returns the token only *after* this callback
+;; has already been built and handed to it. `set-box!` right after that call
+;; returns makes the token visible here from then on; the `#f` arm never
+;; fires before that (it needs Esc, a replace, or a refresh's `close-drawer!`
+;; — none of which the caller could trigger before its own call returns).
+(define (lsp/diag-select-callback tok-box bid diags)
   (lambda (idx)
     (if idx
         (lsp/diag-jump-to! bid (list-ref diags idx))
-        (when (= gen lsp/*diagnostics-drawer-gen*)
+        (when (equal? (unbox tok-box) lsp/*diagnostics-drawer-tok*)
           (set! lsp/*diagnostics-drawer-bid* #f)))))
 
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
@@ -91,14 +98,14 @@
     (let ((diags (diagnostics-for-buffer (current-buffer))))
       (if (null? diags)
           (log! 'info "No diagnostics")
-          (begin
-            (set! lsp/*diagnostics-drawer-gen* (+ lsp/*diagnostics-drawer-gen* 1))
-            (let ((gen lsp/*diagnostics-drawer-gen*)
-                  (bid (current-buffer)))
-              (show-drawer-list! (map lsp/diag-row diags)
-                                 (lsp/diag-select-callback gen bid diags))
-              (set! lsp/*diagnostics-drawer-bid* bid)
-              (set! lsp/*diagnostics-drawer-diags* diags)))))))
+          (let* ((bid (current-buffer))
+                 (tok-box (box #f))
+                 (tok (show-drawer-list! (map lsp/diag-row diags)
+                                         (lsp/diag-select-callback tok-box bid diags))))
+            (set-box! tok-box tok)
+            (set! lsp/*diagnostics-drawer-bid* bid)
+            (set! lsp/*diagnostics-drawer-tok* tok)
+            (set! lsp/*diagnostics-drawer-diags* diags))))))
 
 ;; Same diagnostic across a refresh, by message + severity — position stays
 ;; out of the key on purpose, since the fix's own edit can shift other
@@ -127,21 +134,27 @@
 
 (define (lsp/refresh-diagnostics-drawer bid)
   ;; `lsp/diag-refresh-index` and `update-drawer-list!` both clamp into the
-  ;; new list, so `sel` passes through raw — no Scheme-side clamp.
+  ;; new list, so `sel` passes through raw — no Scheme-side clamp. `tok`
+  ;; passes to every call below — Rust ignores any of them the moment `tok`
+  ;; no longer names the open drawer (closed, replaced, or never ours), so
+  ;; `close-drawer!` here can never reach a foreign drawer the way it could
+  ;; before the token existed.
   (when (and lsp/*diagnostics-drawer-bid*
              (equal? bid lsp/*diagnostics-drawer-bid*))
-    (let ((diags (diagnostics-for-buffer bid)))
+    (let ((diags (diagnostics-for-buffer bid))
+          (tok lsp/*diagnostics-drawer-tok*))
       (if (null? diags)
-          (begin (close-drawer!) (set! lsp/*diagnostics-drawer-bid* #f))
-          (let ((sel (drawer-selected-index)))
+          (begin (close-drawer! tok) (set! lsp/*diagnostics-drawer-bid* #f))
+          (let ((sel (drawer-selected-index tok)))
             (if (not sel)
                 (set! lsp/*diagnostics-drawer-bid* #f)
                 (let ((idx (lsp/diag-refresh-index lsp/*diagnostics-drawer-diags* sel diags)))
-                  ;; An update replaces the callback silently (no `#f`), so
-                  ;; no generation bump: the new closure is current by
-                  ;; construction.
-                  (if (update-drawer-list! (map lsp/diag-row diags)
-                                           (lsp/diag-select-callback lsp/*diagnostics-drawer-gen* bid diags)
+                  ;; An update replaces the callback silently (no `#f`), and
+                  ;; keeps the drawer's existing token — the new closure is
+                  ;; current by construction, so it can just close over `tok`
+                  ;; directly rather than needing the open path's box.
+                  (if (update-drawer-list! tok (map lsp/diag-row diags)
+                                           (lsp/diag-select-callback (box tok) bid diags)
                                            idx)
                       (set! lsp/*diagnostics-drawer-diags* diags)
                       (set! lsp/*diagnostics-drawer-bid* #f)))))))))

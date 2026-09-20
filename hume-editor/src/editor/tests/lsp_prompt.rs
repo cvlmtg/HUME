@@ -123,7 +123,8 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
+    let token = host
+        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
         .unwrap();
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
@@ -136,7 +137,7 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     assert!(ed.state.minibuf().is_some(), "sanity: prompt open above it");
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer().unwrap();
+    host.close_drawer(token).unwrap();
 
     assert!(ed.state.input.drawer().is_none());
     assert!(

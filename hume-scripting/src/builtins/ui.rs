@@ -87,51 +87,57 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
 
 /// `(show-drawer-list! items on-select)` — no keyword defaults, so this
 /// registers directly (no `%`-prefix wrapper needed). Errors on empty
-/// `items`; callers close (or never open) instead.
+/// `items`; callers close (or never open) instead. Returns a token scoping
+/// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
+/// drawer, same shape as `picker!`'s own return.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
-    require_cap(ctx.host.ui(), "show-drawer-list!")?
+    let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
         .show_drawer_list(items, on_select)
-        .map(|()| SteelVal::Void)
-        .map_err(generic_err)
+        .map_err(generic_err)?;
+    Ok(SteelVal::IntV(token as isize))
 }
 
-/// `(close-drawer!)`.
-pub(crate) fn close_drawer(ctx: &mut SteelCtx) -> SteelResult {
+/// `(close-drawer! token)`.
+pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = usize_arg(token, "close-drawer! token")? as u64;
     require_cap(ctx.host.ui(), "close-drawer!")?
-        .close_drawer()
+        .close_drawer(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }
 
-/// `(update-drawer-list! items on-select selected)` — no keyword defaults,
-/// so this registers directly. Replaces the open drawer's rows in place,
-/// keeping the browse session; `selected` is clamped into the new list.
-/// Returns whether the update applied — `#f` when no drawer is open (the
-/// caller's drawer was closed or replaced: an expected-normal race, never
-/// an error, same contract as `picker-replace!`'s stale token) or when
+/// `(update-drawer-list! token items on-select selected)` — no keyword
+/// defaults, so this registers directly. Replaces the open drawer's rows in
+/// place, keeping the browse session; `selected` is clamped into the new
+/// list. Returns whether the update applied — `#f` when no drawer is open
+/// or `token` doesn't match the open drawer's own (an expected-normal race,
+/// never an error, same contract as `picker-replace!`'s stale token) or when
 /// `items` is empty (callers close instead).
 pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
+    token: SteelVal,
     items: SteelVal,
     on_select: SteelVal,
     selected: SteelVal,
 ) -> SteelResult {
+    let token = usize_arg(token, "update-drawer-list! token")? as u64;
     let items = list_to_strings(items, "update-drawer-list! items")?;
     let selected = usize_arg(selected, "update-drawer-list! selected")?;
     let applied = require_cap(ctx.host.ui(), "update-drawer-list!")?
-        .update_drawer_list(items, on_select, selected);
+        .update_drawer_list(token, items, on_select, selected);
     Ok(SteelVal::BoolV(applied))
 }
 
-/// `(drawer-selected-index)` — the open drawer's selected row, or `#f`
-/// when no drawer is open.
-pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx) -> SteelResult {
-    match require_cap(ctx.host.ui(), "drawer-selected-index")?.drawer_selected_index() {
+/// `(drawer-selected-index token)` — the open drawer's selected row, or
+/// `#f` when no drawer is open or `token` doesn't match its own.
+pub(crate) fn drawer_selected_index(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
+    let token = usize_arg(token, "drawer-selected-index token")? as u64;
+    match require_cap(ctx.host.ui(), "drawer-selected-index")?.drawer_selected_index(token) {
         Some(idx) => Ok(SteelVal::IntV(idx as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }

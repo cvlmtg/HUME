@@ -261,21 +261,110 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.show_drawer_list(
-        vec!["a".to_string(), "b".to_string()],
-        steel::rvals::SteelVal::Void,
-    )
-    .unwrap();
+    let token = host
+        .show_drawer_list(
+            vec!["a".to_string(), "b".to_string()],
+            steel::rvals::SteelVal::Void,
+        )
+        .unwrap();
     assert!(ed.state.input.drawer().is_some());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer().unwrap();
+    host.close_drawer(token).unwrap();
 
     assert!(ed.state.input.drawer().is_none());
     assert!(ed.state.views.drawer.read().is_none());
     assert!(
         ed.state.config.pending_work.is_empty(),
         "close_drawer must not queue the callback"
+    );
+}
+
+/// A token that doesn't name the open drawer must leave it completely
+/// untouched — the mechanism that stops a diagnostics refresh from reaching
+/// a references drawer that has since replaced it (or vice versa): each
+/// plugin only ever calls with the token *its own* `show-drawer-list!`
+/// returned, and Rust checks it before acting.
+#[test]
+fn close_drawer_with_a_mismatched_token_leaves_it_open() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
+        .unwrap();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.close_drawer(token.wrapping_add(1)).unwrap();
+
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "a foreign token must not close someone else's drawer"
+    );
+    assert!(
+        ed.state.config.pending_work.is_empty(),
+        "a no-op close must not queue anything either"
+    );
+}
+
+/// Same mismatch guard for `update-drawer-list!` — must report `#f` and
+/// leave the open drawer's rows/callback/selection untouched.
+#[test]
+fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .show_drawer_list(
+            vec!["a".to_string(), "b".to_string()],
+            steel::rvals::SteelVal::Void,
+        )
+        .unwrap();
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let applied = host.update_drawer_list(
+        token.wrapping_add(1),
+        vec!["x".to_string()],
+        steel::rvals::SteelVal::Void,
+        0,
+    );
+
+    assert!(!applied, "a foreign token must not apply");
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(
+        *drawer.items,
+        vec!["a".to_string(), "b".to_string()],
+        "rows must be untouched by a mismatched-token update"
+    );
+}
+
+/// Same mismatch guard for `drawer-selected-index` — must report `#f` even
+/// though a drawer genuinely is open, since it isn't the caller's own.
+#[test]
+fn drawer_selected_index_with_a_mismatched_token_reports_none() {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    let token = host
+        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
+        .unwrap();
+
+    let host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    assert_eq!(
+        host.drawer_selected_index(token.wrapping_add(1)),
+        None,
+        "a foreign token must read as no selection, even though a drawer is open"
+    );
+    assert_eq!(
+        host.drawer_selected_index(token),
+        Some(0),
+        "sanity: the real token still reads the real selection"
     );
 }
 
@@ -307,10 +396,15 @@ fn close_drawer_closes_a_drawer_buried_under_insert_leaving_insert_intact() {
     ed.feed_key(key('i'));
     ed.feed_key(key('X'));
     assert_eq!(ed.state.mode(), Mode::Insert, "sanity: Insert above drawer");
-    assert!(ed.state.input.drawer().is_some(), "sanity: drawer buried");
+    let token = ed
+        .state
+        .input
+        .drawer()
+        .expect("sanity: drawer buried")
+        .token();
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer().unwrap();
+    host.close_drawer(token).unwrap();
 
     assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
     assert_eq!(
@@ -357,7 +451,12 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
              (show-menu! (list "Extract function") (lambda (idx) (log! 'info (to-string idx))))))"#,
     );
     type_cmd(&mut ed, ":go-drawer");
-    assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
+    let token = ed
+        .state
+        .input
+        .drawer()
+        .expect("sanity: drawer open")
+        .token();
     type_cmd(&mut ed, ":go-menu");
     assert!(
         ed.state.input.menu().is_some(),
@@ -365,7 +464,7 @@ fn close_drawer_leaves_a_menu_open_when_one_sits_above_it() {
     );
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    host.close_drawer().unwrap();
+    host.close_drawer(token).unwrap();
     ed.settle();
 
     assert!(ed.state.input.drawer().is_none(), "the drawer must be gone");
@@ -437,15 +536,16 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-drawer-list! (list "a" "b" "c") (lambda (idx) (log! 'info "old")))))
+        r#"(define *tok* #f)
+           (define-typed-command! "go" "" (lambda ()
+             (set! *tok* (show-drawer-list! (list "a" "b" "c") (lambda (idx) (log! 'info "old"))))))
            (define-typed-command! "sel" "" (lambda ()
-             (log! 'info (to-string (drawer-selected-index)))))
+             (log! 'info (to-string (drawer-selected-index *tok*)))))
            (define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! (list "x" "y")
+             (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
                (lambda (idx) (log! 'info (to-string idx))) 1)))))
            (define-typed-command! "upd-big" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! (list "x" "y")
+             (log! 'info (to-string (update-drawer-list! *tok* (list "x" "y")
                (lambda (idx) (log! 'info (to-string idx))) 99)))))"#,
     );
     type_cmd(&mut ed, ":go");
@@ -505,10 +605,10 @@ fn update_and_selected_index_with_none_open_report_false() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! (list "x")
+             (log! 'info (to-string (update-drawer-list! 0 (list "x")
                (lambda (idx) (void)) 0)))))
            (define-typed-command! "sel" "" (lambda ()
-             (log! 'info (to-string (drawer-selected-index)))))"#,
+             (log! 'info (to-string (drawer-selected-index 0)))))"#,
     );
     type_cmd(&mut ed, ":upd");
     ed.settle();
@@ -561,10 +661,11 @@ fn update_with_empty_items_is_a_noop_false() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "go" "" (lambda ()
-             (show-drawer-list! (list "a" "b") (lambda (idx) (void)))))
+        r#"(define *tok* #f)
+           (define-typed-command! "go" "" (lambda ()
+             (set! *tok* (show-drawer-list! (list "a" "b") (lambda (idx) (void))))))
            (define-typed-command! "upd" "" (lambda ()
-             (log! 'info (to-string (update-drawer-list! (list)
+             (log! 'info (to-string (update-drawer-list! *tok* (list)
                (lambda (idx) (void)) 0)))))"#,
     );
     type_cmd(&mut ed, ":go");

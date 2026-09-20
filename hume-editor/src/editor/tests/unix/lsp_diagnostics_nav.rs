@@ -570,9 +570,9 @@ fn drawer_closes_when_the_severity_floor_hides_everything() {
 }
 
 /// A foreign replace must kill tracking: another owner's
-/// `show-drawer-list!` fires `#f` to our callback at the current
-/// generation, so the next publish for our buffer must leave the foreign
-/// rows alone instead of refreshing them.
+/// `show-drawer-list!` fires `#f` to our callback with our own (still
+/// current) token, so the next publish for our buffer must leave the
+/// foreign rows alone instead of refreshing them.
 #[test]
 fn foreign_replace_kills_refresh_tracking() {
     let tmp = safe_tempdir();
@@ -612,8 +612,10 @@ fn foreign_replace_kills_refresh_tracking() {
 }
 
 /// Re-running `:diagnostics` replaces the drawer — the replace fires `#f`
-/// to the outgoing callback, but with a stale generation, so the plugin's
-/// open-tracking must survive it and the next publish must still refresh.
+/// to the outgoing callback, but with a stale token (the outgoing drawer's
+/// own, read from its `box` after the fresh one already overwrote the
+/// tracking var), so the plugin's open-tracking must survive it and the
+/// next publish must still refresh.
 #[test]
 fn rerunning_diagnostics_keeps_refresh_tracking_alive() {
     let tmp = safe_tempdir();

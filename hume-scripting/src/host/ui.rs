@@ -201,50 +201,54 @@ pub trait UiHost {
     /// Replaces any drawer already open (no stacking). Errors on empty
     /// `items` — a 0-row drawer would leave `Enter` firing `0` with no row
     /// behind it, so callers close (or never open) instead.
+    ///
+    /// Returns a token scoping [`Self::close_drawer`]/
+    /// [`Self::update_drawer_list`]/[`Self::drawer_selected_index`] to *this*
+    /// drawer, mirroring [`Self::open_picker`]'s own token — a caller must
+    /// hold onto it to touch the drawer it opened again, rather than
+    /// whichever drawer happens to be open when it gets around to it.
     fn show_drawer_list(
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<(), String>;
+    ) -> Result<u64, String>;
 
-    /// `(close-drawer!)` — dismisses the drawer *without* invoking its
+    /// `(close-drawer! token)` — dismisses the drawer *without* invoking its
     /// callback (caller-initiated close, distinct from `Esc`, which does
-    /// call back with `#f`). Idempotent: a no-op if none is open. Closes a
-    /// buried drawer too — the drawer stays open across `Insert`/a popup/etc.
-    /// by design (browse-while-editing), so being buried is its normal
-    /// state, not a "wrong widget is active" error.
-    fn close_drawer(&mut self) -> Result<(), String>;
+    /// call back with `#f`). Idempotent: a no-op if none is open, or if
+    /// `token` doesn't match the open drawer's own (someone else's drawer
+    /// has since taken over — the same expected-normal race
+    /// [`Self::update_drawer_list`] already has). Closes a buried drawer
+    /// too — the drawer stays open across `Insert`/a popup/etc. by design
+    /// (browse-while-editing), so being buried is its normal state, not a
+    /// "wrong widget is active" error.
+    fn close_drawer(&mut self, token: u64) -> Result<(), String>;
 
-    /// `(update-drawer-list! items on-select selected)` — replaces the open
-    /// drawer's rows in place, keeping the browse session (selection,
+    /// `(update-drawer-list! token items on-select selected)` — replaces the
+    /// open drawer's rows in place, keeping the browse session (selection,
     /// scroll) instead of resetting it the way a second `show-drawer-list!`
     /// would. `selected` names the row to select, clamped into the new
     /// list. Returns whether the update applied: `#f` when no drawer is
-    /// open (expected-normal race — the caller's drawer was closed or
-    /// replaced), or when `items` is empty, never an error. Owner-blind like the rest of the drawer:
-    /// Rust never checks *whose* drawer is open, so a caller must only
-    /// refresh a drawer it opened itself — it learns a replace killed its
-    /// own via its callback's `#f` (fired by `show_drawer_list`'s
-    /// self-replace, the same shape as `show-menu!`). Still racy across
-    /// owners: a refresh queued before another owner's `show-drawer-list!`
-    /// lands on the foreign rows before that replace's `#f` drains — a
-    /// one-frame window, reachable when publishes arrive on nearly every
-    /// edit. An empty `items` is a no-op `#f` (same as `show_drawer_list`
-    /// erroring on empty) — callers close instead of clearing through an
-    /// update.
+    /// open, `token` doesn't match the open drawer's own (an expected-normal
+    /// race — the caller's drawer was closed or replaced, by `Esc` or by a
+    /// second `show-drawer-list!`, either of which the caller learns of via
+    /// its callback's `#f`, the same shape as `show-menu!`'s own
+    /// self-replace), or `items` is empty — never an error. An empty `items`
+    /// callers close instead of clearing through an update.
     fn update_drawer_list(
         &mut self,
+        token: u64,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
         selected: usize,
     ) -> bool;
 
-    /// `(drawer-selected-index)` — the open drawer's selected row index, or
-    /// `None` (`#f`) when no drawer is open. Read-only; pairs with
-    /// [`Self::update_drawer_list`] so an owner can map its own selection
-    /// identity across a refresh (Rust holds opaque display strings — only
-    /// the owner knows what a row *is*).
-    fn drawer_selected_index(&self) -> Option<usize>;
+    /// `(drawer-selected-index token)` — the open drawer's selected row
+    /// index, or `None` (`#f`) when no drawer is open or `token` doesn't
+    /// match its own. Read-only; pairs with [`Self::update_drawer_list`] so
+    /// an owner can map its own selection identity across a refresh (Rust
+    /// holds opaque display strings — only the owner knows what a row *is*).
+    fn drawer_selected_index(&self, token: u64) -> Option<usize>;
 
     /// `(picker! items on-select #:prompt "…" #:pending [#f] #:query [""])`
     /// — opens the fuzzy-finder panel, always fuzzy-filtered over `items`

@@ -962,12 +962,10 @@ mod tests {
         // of it.
         let mut stack = InputStack::new();
         stack.push(menu("m"));
-        stack.push(DrawerLayer {
-            items: std::sync::Arc::new(vec!["d".to_string()]),
-            selected: 0,
-            scroll: 0,
-            callback: SteelVal::BoolV(false),
-        });
+        stack.push(DrawerLayer::new(
+            vec!["d".to_string()],
+            SteelVal::BoolV(false),
+        ));
         assert!(stack.is_settled_for::<MenuLayer>());
     }
 

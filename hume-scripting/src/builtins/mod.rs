@@ -502,9 +502,9 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Bottom drawer.
         cmd "show-drawer-list!" ui::show_drawer_list(items: SteelVal, on_select: SteelVal);
-        cmd "close-drawer!" ui::close_drawer();
-        cmd "update-drawer-list!" ui::update_drawer_list(items: SteelVal, on_select: SteelVal, selected: SteelVal);
-        cmd "drawer-selected-index" ui::drawer_selected_index();
+        cmd "close-drawer!" ui::close_drawer(token: SteelVal);
+        cmd "update-drawer-list!" ui::update_drawer_list(token: SteelVal, items: SteelVal, on_select: SteelVal, selected: SteelVal);
+        cmd "drawer-selected-index" ui::drawer_selected_index(token: SteelVal);
 
         // Fuzzy-picker widget.
         cmd "%picker!" ui::picker(items: SteelVal, on_select: SteelVal, prompt: SteelVal, pending: SteelVal, query: SteelVal, truncate: SteelVal, actions: SteelVal);
