@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use rustc_hash::FxHashMap;
 
@@ -46,9 +46,13 @@ struct Revision {
     /// The last entry is the most recently created child (default redo target).
     children: Vec<RevisionId>,
     /// When this revision was created. Read by the `:earlier`/`:later`
-    /// step-resolution queries below — "N minutes ago" is `elapsed()` on
-    /// these stamps, so no wall-clock field is needed.
-    timestamp: Instant,
+    /// step-resolution queries below via [`History::age`] — a wall-clock
+    /// [`SystemTime`], not a monotonic [`std::time::Instant`], because
+    /// `:earlier 30m` means thirty minutes of wall-clock time, including
+    /// any span the machine spent suspended; `Instant` is `CLOCK_MONOTONIC`
+    /// (Linux) / `CLOCK_UPTIME_RAW` (macOS), both of which stop advancing
+    /// across sleep.
+    timestamp: SystemTime,
 }
 
 // ── History ───────────────────────────────────────────────────────────────────
@@ -111,7 +115,7 @@ impl History {
             forward: Transaction::new(identity_cs, initial_sels),
             parent: None,
             children: Vec::new(),
-            timestamp: Instant::now(),
+            timestamp: SystemTime::now(),
         };
 
         let mut revisions = FxHashMap::default();
@@ -183,7 +187,7 @@ impl History {
             forward: Transaction::new(forward_cs, post_edit_sels),
             parent: Some(parent_id),
             children: Vec::new(),
-            timestamp: Instant::now(),
+            timestamp: SystemTime::now(),
         };
 
         self.revisions.insert(new_id, revision);
@@ -329,6 +333,21 @@ impl History {
         !self.revisions[&self.current].children.is_empty()
     }
 
+    /// Wall-clock age of revision `id` — every step-resolution query below
+    /// measures through this rather than reading `timestamp` directly, so
+    /// they can't drift on how the clock read is taken. `unwrap_or_default`
+    /// (age `0`) is deliberate for a `SystemTime` that moved backwards since
+    /// the revision was stamped (a manual clock set, an NTP step): reading
+    /// that revision as "just now" is the safe direction to round a clock
+    /// glitch, since it makes the revision look *younger*, never older —
+    /// `undo_steps_older_than`/`redo_steps_newer_than` can then only under-,
+    /// never over-, travel as a result.
+    fn age(&self, id: RevisionId) -> Duration {
+        SystemTime::now()
+            .duration_since(self.revisions[&id].timestamp)
+            .unwrap_or_default()
+    }
+
     /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
     ///
     /// Walks up toward the root while the revision underfoot is still younger
@@ -343,10 +362,10 @@ impl History {
         let mut steps = 0;
         let mut id = self.current;
         let mut past_end = false;
-        // One `elapsed()` per visited revision: the flag is set on the break
+        // One `age()` call per visited revision: the flag is set on the break
         // itself, never via a second clock read on the final node, so an
         // exact `== age` hit can't flip between the walk and the report.
-        while self.revisions[&id].timestamp.elapsed() < age {
+        while self.age(id) < age {
             let Some(parent) = self.revisions[&id].parent else {
                 past_end = true;
                 break;
@@ -363,25 +382,28 @@ impl History {
     /// takes) while the next child is still at least `age` old, stopping
     /// before the first child young enough to postdate it. Mirrors
     /// [`Self::undo_steps_older_than`]: returns a step count, not an id, and
-    /// the `<`/`>=` boundary treats an exact `elapsed() == age` hit as landed
-    /// on both sides.
+    /// the `<`/`>=` boundary treats an exact `age() == age` hit as landed on
+    /// both sides. `past_end` comes only from the in-loop assignment, once a
+    /// step actually lands on a leaf still older than requested — a request
+    /// already satisfied at zero steps (including the tip itself, which has
+    /// no children to compare against) is not over-travel, the same as
+    /// `undo_steps_older_than` reports nothing for a satisfied request at the
+    /// root.
     pub fn redo_steps_newer_than(&self, age: Duration) -> (usize, bool) {
         let mut steps = 0;
         let mut id = self.current;
         let mut past_end = false;
         while let Some(&child) = self.revisions[&id].children.last() {
-            // Single `elapsed()` per child: doubles as the step decision and,
-            // when this turns out to be the final step, the over-travel flag.
-            let elapsed = self.revisions[&child].timestamp.elapsed();
-            if elapsed < age {
+            // Single `age()` call per child: doubles as the step decision
+            // and, when this turns out to be the final step, the
+            // over-travel flag.
+            let child_age = self.age(child);
+            if child_age < age {
                 break;
             }
             id = child;
             steps += 1;
-            past_end = self.revisions[&id].children.is_empty() && elapsed > age;
-        }
-        if steps == 0 && self.revisions[&id].children.is_empty() {
-            past_end = self.revisions[&id].timestamp.elapsed() > age;
+            past_end = self.revisions[&id].children.is_empty() && child_age > age;
         }
         (steps, past_end)
     }

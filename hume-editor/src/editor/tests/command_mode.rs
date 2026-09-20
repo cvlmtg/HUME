@@ -1648,6 +1648,33 @@ fn later_old_age_is_noop_and_silent() {
     );
 }
 
+/// `:later <age>` at the tip (no prior `:earlier`) must stay silent — there
+/// is nothing newer to redo onto regardless of how the tip's own age
+/// compares to the requested one. The bug this guards against
+/// (`hume-editing`'s `redo_steps_newer_than_at_the_tip_is_satisfied_
+/// regardless_of_the_tip_s_own_age`) needs a tip old enough to exceed the
+/// requested age to manifest, which this test can't force without a clock
+/// seam — it's a characterization test for the dispatch path, not a red-first
+/// regression test for the specific bug; that lives at the `hume-editing`
+/// unit level, where backdating a revision's timestamp is possible.
+#[test]
+fn later_at_the_tip_with_no_prior_earlier_is_silent() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_text(&mut ed, "X");
+    let before = state(&ed);
+    submit(&mut ed, "later 1h");
+    assert_eq!(
+        state(&ed),
+        before,
+        ":later at the tip must not move — nothing exists to redo onto"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        None,
+        "a satisfied :later must not report"
+    );
+}
+
 #[test]
 fn later_bad_spec_is_error() {
     let mut ed = editor_from("-[h]>ello\n");

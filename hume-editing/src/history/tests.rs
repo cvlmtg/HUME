@@ -457,11 +457,11 @@ fn promotion_reports_last_promoted_only() {
 
 // ── Time-travel step resolution (:earlier/:later) ────────────────────────────
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 /// Backdate revision `id` so it reads as `age` old.
 fn backdate(h: &mut History, id: RevisionId, age: Duration) {
-    h.revisions.get_mut(&id).expect("revision exists").timestamp = Instant::now() - age;
+    h.revisions.get_mut(&id).expect("revision exists").timestamp = SystemTime::now() - age;
 }
 
 fn mins(n: u64) -> Duration {
@@ -525,6 +525,27 @@ fn redo_steps_newer_than_walks_last_child_chain() {
         h.redo_steps_newer_than(mins(30)),
         (0, false),
         ":later older than every descendant is already satisfied — no steps"
+    );
+}
+
+/// A leaf has nothing newer to redo onto regardless of the request — the
+/// tip's own age must never be compared against `age` the way a genuine
+/// over-travel (walking onto a leaf that is still too old) is. Asymmetric
+/// with `undo_steps_older_than`, which never had this bug: its clamp only
+/// ever fires from inside the walk, at the root.
+///
+/// Fail oracle: before the fix, the zero-step tail compared the *current*
+/// revision's own age against `age` whenever it had no children, so this
+/// would have returned `(0, true)` — a false "Already at newest change" —
+/// instead of `(0, false)`.
+#[test]
+fn redo_steps_newer_than_at_the_tip_is_satisfied_regardless_of_the_tip_s_own_age() {
+    let h = aged_chain(); // current = rev3 (tip), backdated to 1m, no children
+    assert_eq!(
+        h.redo_steps_newer_than(Duration::from_secs(5)),
+        (0, false),
+        ":later 5s at the tip is already satisfied — there is nothing newer to redo \
+         onto, no matter how old the tip itself is relative to the requested age"
     );
 }
 
