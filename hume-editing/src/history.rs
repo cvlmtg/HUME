@@ -367,81 +367,81 @@ impl History {
         !self.revisions[&self.current].children.is_empty()
     }
 
-    /// Wall-clock age of revision `id` — every step-resolution query below
-    /// measures through this rather than reading `timestamp` directly, so
-    /// they can't drift on how the clock read is taken. `unwrap_or_default`
-    /// (age `0`) is deliberate for a `SystemTime` that moved backwards since
-    /// the revision was stamped (a manual clock set, an NTP step): reading
-    /// that revision as "just now" is the safe direction to round a clock
-    /// glitch, since it makes the revision look *younger*, never older —
-    /// `undo_steps_older_than`/`redo_steps_newer_than` can then only under-,
-    /// never over-, travel as a result.
-    fn age(&self, id: RevisionId) -> Duration {
-        SystemTime::now()
-            .duration_since(self.revisions[&id].timestamp)
+    /// Wall-clock age of revision `id` as of `now` — every step-resolution
+    /// query below measures through this rather than reading `timestamp`
+    /// directly, so they can't drift on how the clock read is taken. `now` is
+    /// a parameter rather than a fresh `SystemTime::now()` per call: a walk
+    /// spanning thousands of revisions takes one clock read for the whole
+    /// query instead of one per node, and every node is compared against the
+    /// same instant. `unwrap_or_default` (age `0`) is deliberate for a
+    /// `SystemTime` that moved backwards since the revision was stamped (a
+    /// manual clock set, an NTP step): reading that revision as "just now" is
+    /// the safe direction to round a clock glitch, since it makes the
+    /// revision look *younger*, never older — `undo_steps_older_than`/
+    /// `redo_steps_newer_than` can then only under-, never over-, travel as a
+    /// result.
+    fn age(&self, id: RevisionId, now: SystemTime) -> Duration {
+        now.duration_since(self.revisions[&id].timestamp)
             .unwrap_or_default()
     }
 
     /// Undo steps needed to reach the state as of `age` ago, for `:earlier`.
-    /// The caller feeds the returned count into [`Self::undo_n`], so the
-    /// count — not a revision id — is what crosses the crate boundary and the
-    /// tree stays unenumerable.
+    /// `Ok(n)` feeds straight into [`Self::undo_n`], so the count — not a
+    /// revision id — is what crosses the crate boundary and the tree stays
+    /// unenumerable. `Err(n)` means the request is unsatisfiable (the walk
+    /// reached the root while it was still younger than `age`); `n` is the
+    /// number of real ancestors above the root, i.e. as far as `undo_n` can
+    /// actually travel — the caller decides how to report that exhaustion,
+    /// this function only distinguishes the two cases.
     ///
     /// Walks up toward the root while the revision underfoot is still
-    /// younger than `age`. An unsatisfiable request (the walk reaches the
-    /// root while it is still younger than `age`) counts that last,
-    /// un-taken hop too — one more than the real number of ancestors above
-    /// the root — so the count this returns exceeds what `undo_n` can
-    /// actually take, and the caller's own `taken < requested` comparison
-    /// reports the exhaustion there, rather than this function reporting a
-    /// second time itself. Strict `<` keeps an exact hit un-counted as
+    /// younger than `age`. Strict `<` keeps an exact hit un-counted as
     /// unsatisfiable — landing on a revision exactly `age` old is a hit, not
     /// an over-travel.
-    pub fn undo_steps_older_than(&self, age: Duration) -> usize {
+    pub fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {
+        let now = SystemTime::now();
         let mut steps = 0;
         let mut id = self.current;
-        while self.age(id) < age {
-            steps += 1;
+        while self.age(id, now) < age {
             let Some(parent) = self.revisions[&id].parent else {
-                break;
+                return Err(steps);
             };
+            steps += 1;
             id = parent;
         }
-        steps
+        Ok(steps)
     }
 
     /// Redo steps needed to reach the state as of `age` ago, for `:later`.
-    /// The caller feeds the returned count into [`Self::redo_n`].
+    /// `Ok(n)` feeds straight into [`Self::redo_n`]. `Err(n)` mirrors
+    /// [`Self::undo_steps_older_than`]'s: the walk reached a leaf that is
+    /// still older than `age`, so the request is unsatisfiable, and `n` is
+    /// every step `redo_n` can actually take along this chain.
     ///
     /// Walks down the most-recent-child chain (the same path [`Self::redo_n`]
     /// takes) while the next child is still at least `age` old, stopping
-    /// before the first child young enough to postdate it. Mirrors
-    /// [`Self::undo_steps_older_than`]: an unsatisfiable request (the walk
-    /// reaches a leaf that is still older than `age`) counts one extra step
-    /// there, so the count this returns exceeds what `redo_n` can actually
-    /// take, and the caller's own `taken < requested` comparison reports the
-    /// exhaustion — the leaf's empty child list ends the `while let`
-    /// regardless, so the extra count can't cause another lap. Strict `>`
-    /// keeps an exact hit un-counted as unsatisfiable, same boundary as
+    /// before the first child young enough to postdate it. Strict `>` keeps
+    /// an exact hit un-counted as unsatisfiable, same boundary as
     /// `undo_steps_older_than`'s `<`.
-    pub fn redo_steps_newer_than(&self, age: Duration) -> usize {
+    pub fn redo_steps_newer_than(&self, age: Duration) -> Result<usize, usize> {
+        let now = SystemTime::now();
         let mut steps = 0;
         let mut id = self.current;
         while let Some(&child) = self.revisions[&id].children.last() {
             // Single `age()` call per child: doubles as the step decision
-            // and, when this turns out to be the final step, the extra
-            // count for an unsatisfiable end.
-            let child_age = self.age(child);
+            // and, when this turns out to be the last child, the check for
+            // whether the walk ended satisfied or not.
+            let child_age = self.age(child, now);
             if child_age < age {
                 break;
             }
             id = child;
             steps += 1;
             if self.revisions[&id].children.is_empty() && child_age > age {
-                steps += 1;
+                return Err(steps);
             }
         }
-        steps
+        Ok(steps)
     }
 
     /// Total number of revisions in the tree (including the root).

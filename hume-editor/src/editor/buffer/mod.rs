@@ -780,16 +780,14 @@ impl Buffer {
     }
 
     /// Undo steps back to the state as of `age` ago, for `:earlier` — narrow
-    /// delegate so the typed layer never touches `History` itself. An
-    /// unsatisfiable request (still younger than `age` at the root) counts
-    /// one step past the root, so `history_step`'s own `taken < requested`
-    /// comparison reports it — see `History::undo_steps_older_than`'s own doc.
-    pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> usize {
+    /// delegate so the typed layer never touches `History` itself. See
+    /// `History::undo_steps_older_than`'s own doc for the `Result` contract.
+    pub(in crate::editor) fn undo_steps_older_than(&self, age: Duration) -> Result<usize, usize> {
         self.history.undo_steps_older_than(age)
     }
 
     /// Redo steps forward to the state as of `age` ago, for `:later`.
-    pub(in crate::editor) fn redo_steps_newer_than(&self, age: Duration) -> usize {
+    pub(in crate::editor) fn redo_steps_newer_than(&self, age: Duration) -> Result<usize, usize> {
         self.history.redo_steps_newer_than(age)
     }
 

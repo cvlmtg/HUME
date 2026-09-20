@@ -633,7 +633,11 @@ impl ChangeSet {
         let len_before = self.len_before;
         let len_after = other.len_after;
 
-        let mut result: Vec<Operation> = Vec::new();
+        // Upper bound: each loop iteration pushes at most one op and fully
+        // consumes at least one op from one side (the lockstep arm advances
+        // by `min`, the shorter of the two), and `push_merge` only ever
+        // merges into an existing entry, never grows the vec on its own.
+        let mut result: Vec<Operation> = Vec::with_capacity(self.ops.len() + other.ops.len());
 
         // We use partial-consumption iterators. Each "current" slot holds
         // the remainder of the operation being consumed. `into_iter()` moves

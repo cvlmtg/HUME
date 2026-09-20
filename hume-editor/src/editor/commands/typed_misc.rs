@@ -649,8 +649,9 @@ type TravelStepFn =
     fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError>;
 
 /// `Buffer::undo_steps_older_than`/`redo_steps_newer_than` — resolves a
-/// `TravelSpec::Age` to the step count [`TravelStepFn`] takes.
-type TravelResolveAgeFn = fn(&Buffer, Duration) -> usize;
+/// `TravelSpec::Age` to the step count [`TravelStepFn`] takes. `Err(n)` means
+/// the age is unsatisfiable; see `History::undo_steps_older_than`'s own doc.
+type TravelResolveAgeFn = fn(&Buffer, Duration) -> Result<usize, usize>;
 
 /// Direction of `:earlier`/`:later` travel — everything the two commands
 /// differ in, so the shared `travel` core below stays straight-line: a
@@ -679,11 +680,7 @@ impl TravelDir {
 /// tree-sitter, LSP, decorations, and jumps as one composed change — see
 /// `Buffer::apply_transactions` — a read-only buffer is refused identically
 /// on both paths, and exhaustion (an age older than the root, or newer than
-/// the tip) is reported exactly once, by `history_step` itself — see
-/// `History::undo_steps_older_than`'s own doc for how an unsatisfiable age
-/// resolves to a step count that makes `history_step`'s own
-/// `taken < requested` comparison fire naturally, with no second exhaustion
-/// check needed here.
+/// the tip) is reported exactly once, by `history_step` itself.
 fn travel(
     ed: &mut Editor,
     arg: Option<&str>,
@@ -705,7 +702,11 @@ fn travel(
         TravelSpec::Steps(n) => n,
         TravelSpec::Age(age) => {
             let buf = ed.focused_buffer_id();
-            resolve_age(ed.state.buffers.get(buf), age)
+            // Exhaustion is reported by `history_step`'s own
+            // `taken < requested` comparison, not a second time here —
+            // asking for one step more than exists is what makes that
+            // comparison fire.
+            resolve_age(ed.state.buffers.get(buf), age).unwrap_or_else(|avail| avail + 1)
         }
     };
     step(&mut ed.state, &mut ed.view, steps, MotionMode::Move)
