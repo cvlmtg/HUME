@@ -64,6 +64,33 @@ fn run_inline_output_returns_exit_status_of_child() {
     assert!(!status.success());
 }
 
+/// `run_inline_output` puts the child in its own *background* process
+/// group (for Ctrl-c safety — see the test below), not the terminal's
+/// foreground one, so a credential prompt it wrote would be followed by a
+/// read that hangs on `SIGTTIN` rather than an answerable question. Must
+/// deny the prompt outright, the same as `run_capture`.
+///
+/// Fail oracle: before the fix, `$GIT_TERMINAL_PROMPT` was unset here, so
+/// `out.txt` would contain the empty string.
+#[test]
+fn run_inline_output_sets_git_terminal_prompt_to_deny_credential_prompts() {
+    // Inherited stdio means the child's stdout is this test process's own —
+    // write to a file instead of asserting on captured output.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let status = run_inline_output(
+        "sh",
+        &[
+            "-c".to_string(),
+            "printf %s \"$GIT_TERMINAL_PROMPT\" > out.txt".to_string(),
+        ],
+        Some(dir.path()),
+    )
+    .expect("spawn sh");
+    assert!(status.success());
+    let out = std::fs::read_to_string(dir.path().join("out.txt")).expect("read out.txt");
+    assert_eq!(out, "0");
+}
+
 #[test]
 fn run_inline_output_honors_cwd() {
     let dir = tempfile::tempdir().expect("tempdir");

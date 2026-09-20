@@ -23,10 +23,14 @@
 
 ;; ── Process spawning ──────────────────────────────────────────────────────────
 ;; All of PLUM's network commands are `#:inline-output` — git's own progress
-;; prints live instead of vanishing into a captured-but-unread stdout, and a
-;; credential prompt lands on a real terminal instead of hanging invisibly
-;; behind the alt-screen. `run-inline-output!` (core builtin) already raises
-;; on nonzero exit, naming `cmd` and the exit code — no wrapper needed here.
+;; prints live instead of vanishing into a captured-but-unread stdout.
+;; `run-inline-output!` denies git a credential prompt outright
+;; (`GIT_TERMINAL_PROMPT=0`, same as `stdlib/run`): the child's own process
+;; group isn't the terminal's foreground one, so a prompt it wrote would be
+;; followed by a read that hangs instead of an answerable question — see
+;; `hume_platform::process::run_inline_output`'s own doc. `run-inline-output!`
+;; (core builtin) already raises on nonzero exit, naming `cmd` and the exit
+;; code — no wrapper needed here.
 
 ;;; git clone the GitHub repo named by "user/repo" `slug` into `dest`. `--`
 ;;; guards against a slug-derived URL `git` might otherwise read as a flag.

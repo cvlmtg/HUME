@@ -80,9 +80,21 @@ pub mod tracked;
 /// in steel-core, verified against 0.8.2), so plugin code that needs this
 /// safety property calls the `run-inline-output!` builtin (backed by this
 /// function) instead of Steel's stdlib directly.
+///
+/// `GIT_TERMINAL_PROMPT=0`, for the same reason [`run_capture`] sets it:
+/// `process_group(0)` puts the child in a *background* process group, not
+/// the terminal's foreground one — nothing here hands it the foreground via
+/// `tcsetpgrp`. A credential prompt the child writes to the inherited
+/// terminal would therefore be followed by a read that takes `SIGTTIN` and
+/// stops the child cold, hanging `Command::status()` (and HUME, since raw
+/// mode is already off) forever instead of returning. Denying the prompt
+/// turns that hang into a fast, readable git error. A genuinely interactive
+/// child (an editor, a pager) still can't be run this way regardless — it
+/// would hit the same background-process-group `SIGTTIN`/`SIGTTOU` wall on
+/// its own reads/writes the moment it touched the terminal.
 pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::Result<ExitStatus> {
     let mut command = Command::new(cmd);
-    command.args(args);
+    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
     if let Some(dir) = cwd {
         command.current_dir(strip_unc_prefix(dir.to_path_buf()));
     }
@@ -103,9 +115,8 @@ pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::
 /// `GIT_TERMINAL_PROMPT=0` denies git a credential prompt — this call has
 /// no terminal to put one on (stdin is closed), so left unset, a private
 /// repo or expired token would try to open `/dev/tty` directly and hang
-/// forever instead of failing fast. `run_inline_output`, by contrast, hands
-/// the child a real terminal on purpose, so it does not set this: there, a
-/// prompt is visible and answerable.
+/// forever instead of failing fast. `run_inline_output` sets the same
+/// variable for a related but distinct reason — see its own doc.
 pub fn run_capture(
     cmd: &str,
     args: &[String],

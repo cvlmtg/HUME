@@ -71,9 +71,12 @@ exiting; `std::process::Command::output` drains both concurrently instead. Stdin
 immediately (`Stdio::null()`) — never inherited from HUME's own terminal, or the child's reads
 would race the editor's key reads — and `GIT_TERMINAL_PROMPT=0` is set, since this call has no
 terminal to put a credential prompt on: left unset, a private repo or expired token would have
-`git` try `/dev/tty` directly and hang instead of failing fast. `run-inline-output!` does *not*
-set it — there the child owns a real terminal with raw mode off, so a prompt is visible and
-answerable, and denying it would remove a working capability.
+`git` try `/dev/tty` directly and hang instead of failing fast. `run-inline-output!` sets the
+same variable for a related but distinct reason: its child inherits HUME's own terminal, but
+in its own *background* process group (for Ctrl-c safety, above) rather than the terminal's
+foreground one, so a credential prompt there is not actually answerable either — the read that
+follows it takes `SIGTTIN` and hangs the child (and HUME, since raw mode is already off)
+instead of the prompt ever reaching the screen.
 
 ### Git
 
