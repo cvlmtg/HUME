@@ -9,7 +9,7 @@ use super::*;
 /// stream was piped. Also pins the stdin-close-for-EOF pattern needed
 /// since stdin is not inherited by default. No in-tree Scheme calls
 /// `spawn-process` directly any more (`core:stdlib`'s `stdlib/run` is now
-/// `%run-capture!`, a native builtin closing the exact deadlock this shape
+/// `run-capture!`, a native builtin closing the exact deadlock this shape
 /// invites — see its own doc), but the full-trust plugin model leaves
 /// `spawn-process` reachable from any user plugin, so the gotcha stays live
 /// and worth pinning.

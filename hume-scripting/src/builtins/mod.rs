@@ -530,8 +530,15 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // `open`, not `cmd`: Steel's own `spawn-process`/`wait` this
         // replaces (see `run_capture`'s own doc) carried no legality gate
         // either, and `stdlib/run` is a plain helper any plugin body can
-        // reach, not a top-level dispatched command.
-        open "%run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
+        // reach, not a top-level dispatched command. No `%` prefix: unlike
+        // every other native primitive here, it takes no keyword arguments
+        // to flatten, so it needs no `bootstrap.scm` wrapper of the same
+        // name minus the `%` — `stdlib/plugin.scm`'s `(define stdlib/run
+        // run-capture!)` aliases it directly. A `%`-prefixed name would
+        // have been invisible to `is_internal_name`'s host-global-names
+        // filter with no such wrapper to stand in for it, leaving
+        // `steel-language-server` unable to resolve it from plugin code.
+        open "run-capture!" process::run_capture(cmd: SteelVal, args: SteelVal, cwd: SteelVal);
 
         cmd "diff-lines" diff::diff_lines(old: SteelVal, new: SteelVal);
         cmd "diff-buffer-lines" diff::diff_buffer_lines(bid: args::BidArg, ref_text: SteelVal);

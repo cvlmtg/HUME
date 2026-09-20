@@ -1,5 +1,5 @@
 //! `(spawn-async! cmd args cwd callback)` / `(cancel-async! id)` — generic
-//! async subprocess execution. `%run-capture!` — a blocking counterpart with
+//! async subprocess execution. `run-capture!` — a blocking counterpart with
 //! no callback, backing `core:stdlib`'s `stdlib/run`.
 //!
 //! Spawns a command off the main thread and delivers its whole
@@ -60,7 +60,7 @@ pub(crate) fn cancel_async(ctx: &mut SteelCtx, id: SteelVal) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(%run-capture! cmd args cwd)` → `(stdout stderr exit-code)`. Runs `cmd`
+/// `(run-capture! cmd args cwd)` → `(stdout stderr exit-code)`. Runs `cmd`
 /// with `args` (direct argv, no shell) in `cwd` (`#f` = the editor's own
 /// cwd), blocking the calling thread until it exits — the small-output,
 /// synchronous-with-the-TUI-still-up shape `stdlib/run` is for; use
@@ -79,13 +79,13 @@ pub(crate) fn run_capture(
     args: SteelVal,
     cwd: SteelVal,
 ) -> SteelResult {
-    let cmd = string_arg(cmd, "%run-capture! cmd")?;
-    let args = list_to_strings(args, "%run-capture! args")?;
-    let cwd = optional_path_arg(cwd, "%run-capture! cwd")?;
+    let cmd = string_arg(cmd, "run-capture! cmd")?;
+    let args = list_to_strings(args, "run-capture! args")?;
+    let cwd = optional_path_arg(cwd, "run-capture! cwd")?;
 
     ctx.log(
         LogLevel::Trace,
-        format!("%run-capture!: running {cmd} {args:?}"),
+        format!("run-capture!: running {cmd} {args:?}"),
     );
 
     let result = match hume_platform::process::run_capture(&cmd, &args, cwd.as_deref()) {

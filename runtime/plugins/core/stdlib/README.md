@@ -64,7 +64,7 @@ Three ways to run a subprocess, pick by shape: `run-inline-output!` for `#:inlin
 commands (process-group safety for Ctrl-c), `spawn-async!` for enumeration-scale output
 streams, and `stdlib/run` for everything else — a small-output command run synchronously with
 the TUI's raw mode still on. The git probes below build their `#f`-on-failure policy on it.
-`stdlib/run` is `%run-capture!` (native, `hume_platform::process::run_capture`), not Steel's
+`stdlib/run` is `run-capture!` (native, `hume_platform::process::run_capture`), not Steel's
 own `spawn-process`/`wait`/`child-stdout`/`child-stderr` — that shape reads stdout to EOF, then
 waits, then reads stderr, which deadlocks forever on a child that fills its stderr pipe before
 exiting; `std::process::Command::output` drains both concurrently instead. Stdin is closed

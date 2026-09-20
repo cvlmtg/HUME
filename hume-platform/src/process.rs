@@ -9,7 +9,7 @@
 //! through Steel's own `steel/process` stdlib instead (full-trust plugin
 //! model — see `user-manual/docs/plugins.md`'s "Filesystem and processes"),
 //! with one carve-out: [`run_capture`] backs the `stdlib/run` Steel builtin
-//! (`%run-capture!`) because Steel's own `spawn-process`/`wait`/`child-stdout`/
+//! (`run-capture!`) because Steel's own `spawn-process`/`wait`/`child-stdout`/
 //! `child-stderr` read stdout to EOF, then wait, then read stderr — a child
 //! that fills its stderr pipe before exiting blocks forever, the same
 //! deadlock `job.rs`'s doc explains by name. `std::process::Command::output`
@@ -104,7 +104,7 @@ pub fn run_inline_output(cmd: &str, args: &[String], cwd: Option<&Path>) -> io::
 /// Run `cmd` with `args`, both stdout and stderr fully captured, stdin
 /// closed immediately (`Stdio::null()` — the child sees EOF on read rather
 /// than racing the editor's own key reads on the terminal). Backs the
-/// `stdlib/run` Steel builtin (`%run-capture!`).
+/// `stdlib/run` Steel builtin (`run-capture!`).
 ///
 /// Built on `Command::output`, which drains both pipes concurrently rather
 /// than one after the other — see this module's doc for the deadlock that

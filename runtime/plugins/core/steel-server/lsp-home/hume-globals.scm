@@ -263,6 +263,7 @@
 (#%register-global "replace")
 (#%register-global "request-wait-char!")
 (#%register-global "resolve-plugin-path")
+(#%register-global "run-capture!")
 (#%register-global "run-inline-output!")
 (#%register-global "runtime-dir")
 (#%register-global "search-backward")
