@@ -535,6 +535,52 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
     );
 }
 
+/// The INCREMENTAL-sync sibling of `full_sync_server_gets_one_whole_document_
+/// didchange_per_flush`: an insert session queues one `LspPendingChange` per
+/// keystroke, and each queued entry must reach the wire as its own
+/// `didChange` — replaying the whole sequence must still reproduce the
+/// buffer exactly, pinned against the independent string-mirror oracle.
+#[test]
+fn insert_session_sends_one_didchange_per_keystroke() {
+    let tmp = safe_tempdir();
+    let (mut ed, bid, log) = attached_editor(&tmp);
+
+    ed.feed_key(key('i'));
+    ed.feed_key(key('h'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('l'));
+    ed.feed_key(key('o'));
+    ed.feed_key(key_esc()); // five text-mutating keystrokes, one queued entry each
+    ed.drain_lsp();
+
+    let did_changes: Vec<_> = log
+        .borrow()
+        .iter()
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .cloned()
+        .collect();
+    assert_eq!(
+        did_changes.len(),
+        5,
+        "an insert session on an INCREMENTAL-sync server sends one didChange \
+         per keystroke, got: {did_changes:?}"
+    );
+
+    let real_text = ed.state.buffers.get(bid).text().to_string();
+    let real_version = ed.state.buffers.get(bid).text_gen as i64;
+    let (mirrored, last_version) = replay(&log.borrow());
+    assert_eq!(
+        mirrored, real_text,
+        "replaying every per-keystroke didChange must still reproduce the buffer exactly"
+    );
+    assert_eq!(
+        last_version,
+        Some(real_version),
+        "the last didChange's version must equal the buffer's real text_gen"
+    );
+}
+
 /// A server declaring `textDocumentSync: NONE` must receive no `didChange`
 /// at all — but the diagnostics store must still remap through the edit, so
 /// positions from an earlier publish don't silently go stale just because
