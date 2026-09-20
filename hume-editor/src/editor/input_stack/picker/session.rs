@@ -7,7 +7,6 @@
 //! reset-on-rerank patterns.
 
 use std::cmp::Reverse;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use hume_engine::types::TruncateEnd;
 use hume_platform::process::line_source::SpawnedLineSource;
@@ -17,6 +16,7 @@ use termina::event::KeyEvent;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
+use super::super::super::widget_token;
 
 /// One row in a picker: a display string shown to the user and an opaque
 /// payload handed back to `on_select` verbatim. Rust never interprets
@@ -167,8 +167,6 @@ pub(in crate::editor) struct PickerSession {
     actions: Vec<(CanonicalKey, SteelVal)>,
 }
 
-static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
-
 impl PickerSession {
     /// Opens empty — the caller's initial item list (from `picker!`) arrives
     /// through the same `push` path as any later batch: open empty, then
@@ -231,7 +229,7 @@ impl PickerSession {
             on_select,
             prompt,
             truncate,
-            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            token: widget_token::next(),
             population,
             mode,
             requery_armed: false,
@@ -536,12 +534,8 @@ impl PickerSession {
         if visible_rows == 0 {
             return;
         }
-        self.scroll = hume_ui::menu_box::clamp_scroll_to_window(
-            self.selected,
-            self.scroll,
-            self.filtered.len(),
-            visible_rows,
-        );
+        self.scroll =
+            hume_ui::menu_box::clamp_scroll_to_window(self.selected, self.scroll, visible_rows);
         debug_assert!(self.scroll <= self.selected && self.selected < self.scroll + visible_rows);
     }
 

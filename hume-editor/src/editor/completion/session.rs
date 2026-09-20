@@ -16,8 +16,6 @@
 
 mod accept;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, PaneId};
 use hume_rope::offset::CharOffset;
@@ -25,14 +23,9 @@ use rustc_hash::FxHashMap;
 
 use crate::editor::EditorState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
+use crate::editor::widget_token;
 
 use super::item::CompletionItem;
-
-/// Mints `CompletionSession::token` — mirrors `PickerSession`'s own
-/// `NEXT_TOKEN` (`input_stack/picker/session.rs`) so a late async add
-/// racing a session the user already replaced is a silent no-op rather
-/// than a merge into the wrong session (see [`CompletionSession::token`]).
-static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// How a source's items are matched against the typed filter — a per-source
 /// declaration, since one session can (in principle) mix sources with
@@ -341,7 +334,7 @@ impl CompletionSession {
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
             sources: FxHashMap::default(),
             interaction,
-            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            token: widget_token::next(),
             menu_cache: None,
         }
     }

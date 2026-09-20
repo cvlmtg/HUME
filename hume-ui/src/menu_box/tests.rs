@@ -324,37 +324,23 @@ fn band_visible_rows_is_band_capacity_minus_chrome() {
 }
 
 // ── clamp_scroll_to_window ───────────────────────────────────────────────
+//
+// A list shrinking out from under a stale, deep `scroll` is deliberately
+// *not* covered here: this function only keeps `selected` in view, and does
+// not know the list's own length — see its own doc. That case is
+// `EditorState::clamp_drawer_scroll_to_terminal`'s own test, in
+// `hume-editor/src/editor/input_stack/drawer.rs`.
 
-/// A list that shrinks while `scroll` is still positioned deep into the old,
-/// longer one must not leave `scroll` past the point where a full window of
-/// content remains — otherwise the render side's `.skip(scroll).take(visible)`
-/// paints mostly blank rows below a handful of real ones. Reproduces the
-/// severity-floor-narrows-45-diagnostics-to-5 shape from the drawer.
-#[test]
-fn clamp_scroll_to_window_caps_scroll_when_the_list_shrinks() {
-    // selected=4, old scroll=12, 5 items, 5 visible: `selected < scroll`
-    // would otherwise return `scroll` unchanged (12) via the `else` arm,
-    // since 4 < 12 puts it on the `selected` arm instead — but even that
-    // arm's `selected` (4) is what should win, not a scroll that outruns
-    // the list. Assert the list-length cap independently of which arm fires.
-    assert_eq!(clamp_scroll_to_window(4, 12, 5, 5), 0);
-    // A milder shrink hitting the unchanged-`scroll` arm: selected=22 and
-    // scroll=20 were both valid against a longer list, but against a new
-    // 25-item, 10-visible list the max usable scroll is 25 - 10 = 15.
-    assert_eq!(clamp_scroll_to_window(22, 20, 25, 10), 15);
-}
-
-/// The ordinary in-window case is unaffected by the added cap.
 #[test]
 fn clamp_scroll_to_window_keeps_ordinary_behavior() {
-    assert_eq!(clamp_scroll_to_window(4, 0, 100, 10), 0);
-    assert_eq!(clamp_scroll_to_window(15, 0, 100, 10), 6);
-    assert_eq!(clamp_scroll_to_window(2, 5, 100, 10), 2);
+    assert_eq!(clamp_scroll_to_window(4, 0, 10), 0);
+    assert_eq!(clamp_scroll_to_window(15, 0, 10), 6);
+    assert_eq!(clamp_scroll_to_window(2, 5, 10), 2);
 }
 
 #[test]
 fn clamp_scroll_to_window_is_a_noop_with_no_visible_rows() {
-    assert_eq!(clamp_scroll_to_window(4, 12, 5, 0), 12);
+    assert_eq!(clamp_scroll_to_window(4, 12, 0), 12);
 }
 
 #[test]

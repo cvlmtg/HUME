@@ -8,7 +8,7 @@ use hume_engine::types::EditorMode;
 use super::super::mouse::is_fresh_gesture;
 use super::super::{Editor, EditorState};
 use super::placement::{focused_cursor_char, popup_placement};
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
 /// `(show-menu! items on-select)`'s raw content — held on `EditorState`
 /// until the next frame's `Editor::sync_menu_view` resolves it into a
@@ -42,17 +42,24 @@ impl Layer for MenuLayer {
     // on the self-replace path is retired separately (`take_firing_false`,
     // shared with the drawer) before pushing the new one.
     /// Fires `#f` when `why` is [`Removal::Incidental`] — swept up as
-    /// collateral above some other target, most concretely a `Drawer` this
-    /// menu opened above (`drawer.rs`'s own doc: a code-action menu is
-    /// explicitly allowed to open while a references drawer stays up) that
-    /// then gets closed via `close-drawer!`, which has no gate against
-    /// taking a `Menu` above it along for the ride. Stays silent on
-    /// [`Removal::Explicit`]: an explicit `close-menu!` (routed through
-    /// `EditorState::retire`, which reaches this as the named target) must
-    /// stay silent, not fire `#f` on a widget its caller may already be
-    /// finishing its own way. `menu_input`'s own retirement arms (Enter/
-    /// Escape/a stray key/a fresh mouse gesture) and `show_menu`'s
-    /// self-replace path all take the layer *by value* via
+    /// collateral above some other target. No concrete path reaches this
+    /// today: a `Menu` only ever opens while the mode layer is `Base`
+    /// (`show_menu`'s own `async_opener_stale::<BaseLayer, MenuLayer>`), and
+    /// the only two things that can land above one without `is_settled_for`
+    /// reading the stack as moved are a `Popup` (never buried — nothing
+    /// lands above it either, so closing it never reaches below to a `Menu`)
+    /// and a `Drawer`, which excises in place on close
+    /// ([`RemovalScope::SelfOnly`], below) rather than taking a `Menu` above
+    /// it along — see `close_drawer_leaves_a_menu_open_when_one_sits_above_it`.
+    /// Still branches on `why`, matching `DrawerLayer`'s own fix for the same
+    /// bug class, rather than leaving "silent unless swept as collateral"
+    /// true only by that accident of what happens to land where today.
+    /// Stays silent on [`Removal::Explicit`]: an explicit `close-menu!`
+    /// (routed through `EditorState::retire`, which reaches this as the
+    /// named target) must stay silent, not fire `#f` on a widget its caller
+    /// may already be finishing its own way. `menu_input`'s own retirement
+    /// arms (Enter/Escape/a stray key/a fresh mouse gesture) and
+    /// `show_menu`'s self-replace path all take the layer *by value* via
     /// `EditorState::take_layer` instead and fire their own callback
     /// explicitly — neither ever reaches this at all.
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, why: Removal) {
@@ -62,6 +69,11 @@ impl Layer for MenuLayer {
                 vec![steel::rvals::SteelVal::BoolV(false)],
             );
         }
+    }
+    /// A non-modal `Popup` can land directly above a `Menu` by design —
+    /// closing the menu must not take it along.
+    fn removal_scope(&self) -> RemovalScope {
+        RemovalScope::SelfOnly
     }
 }
 

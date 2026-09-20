@@ -122,10 +122,7 @@ fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let token = host
-        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
-        .unwrap();
+    let token = open_drawer_via_host(&mut ed, &["a"]);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.prompt(
         "Name: ".to_string(),

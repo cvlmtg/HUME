@@ -114,10 +114,7 @@ fn diagnostics_drawer_shows_grapheme_column() {
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard.as_ref().expect("drawer must open").rows.clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 1);
     assert!(
         rows[0].contains("1:3 "),
@@ -265,10 +262,7 @@ fn references_drawer_measures_open_buffers_and_echoes_wire_columns_for_unopened_
 
     run_references(&mut ed);
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard.as_ref().expect("drawer must open").rows.clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 9);
     assert!(
         rows[0].ends_with("main.rs:1:3"),

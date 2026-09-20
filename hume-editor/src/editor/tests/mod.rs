@@ -190,6 +190,50 @@ fn custom_text(ed: &Editor, name: &str) -> String {
     text.into_owned()
 }
 
+/// The open drawer's rows — every drawer assertion reads through this
+/// instead of reaching into `views.drawer` by hand. Shared by
+/// `lsp_drawer.rs`, `unix/lsp_diagnostics_nav.rs`, `unix/lsp_goto.rs`,
+/// `unix/lsp_references.rs`, and `unix/column_display_agreement.rs`.
+fn drawer_rows(ed: &Editor) -> Vec<String> {
+    let guard = ed.state.views.drawer.read();
+    guard.as_ref().expect("drawer must be open").rows.to_vec()
+}
+
+/// Extracts and parses the `params` payload back out of a scripted
+/// `publishDiagnostics` notification `Message` — for tests that call
+/// `ingest_publish_diagnostics`/`dispatch_lsp_action` directly rather than
+/// through `drain_lsp`'s batch loop (needed to exercise two separate ingest
+/// calls in sequence — batch coalescing would otherwise collapse two
+/// same-drain publishes into one before ingest ever saw the first — or to
+/// republish outside the initial drain).
+fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsParams {
+    match msg {
+        hume_lsp::codec::Message::Notification { params, .. } => {
+            serde_json::from_value(params).unwrap()
+        }
+        other => panic!("expected a Notification, got {other:?}"),
+    }
+}
+
+/// Opens a drawer with `items` through `EditorHostImpl`'s `UiHost` impl
+/// directly (bypassing Steel) — for tests exercising the host seam's own
+/// token contract (`lsp_prompt.rs`, `lsp_drawer.rs`'s mismatched-token
+/// tests). Returns the live token; panics if `show-drawer-list!` refused the
+/// items or the stack read the request as stale — neither is under test at
+/// any of this helper's callers.
+fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
+    use crate::editor::host_impl::EditorHostImpl;
+    use hume_scripting::host::UiHost;
+
+    EditorHostImpl::new(&mut ed.state, &mut ed.view)
+        .show_drawer_list(
+            items.iter().map(|s| s.to_string()).collect(),
+            steel::rvals::SteelVal::Void,
+        )
+        .unwrap()
+        .expect("show-drawer-list! must open, not read as stale")
+}
+
 /// A normal (no modifier) character key event.
 fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)

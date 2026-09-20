@@ -494,6 +494,8 @@ impl Editor {
         //    `term.size()`. Skipped when no terminal geometry was ever
         //    established (headless callers relying on `Pane::new` defaults).
         self.sync_popup_band_view();
+        self.state
+            .clamp_drawer_scroll_to_terminal(self.view.last_terminal_area.height);
         self.state.sync_drawer_view();
         self.sync_tabline_view();
         let area = self.view.last_terminal_area;

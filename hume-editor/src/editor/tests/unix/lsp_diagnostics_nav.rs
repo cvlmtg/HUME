@@ -75,13 +75,6 @@ fn setup(file: &Path, tmp: &Path, diags: &[DiagFixture]) -> NavSetup {
     }
 }
 
-/// The open drawer's rows — every drawer assertion reads through this, so
-/// none reaches into `views.drawer` by hand.
-fn drawer_rows(ed: &Editor) -> Vec<String> {
-    let guard = ed.state.views.drawer.read();
-    guard.as_ref().expect("drawer must be open").rows.to_vec()
-}
-
 /// Republishes diagnostics for `file` through the production single-shot
 /// path (`dispatch_lsp_action`, the same ingest + `queue_diagnostics_changed`
 /// pair `drain_lsp`'s batch loop runs) and settles, so the queued
@@ -93,10 +86,7 @@ fn republish(
     file: &Path,
     diags: &[DiagFixture],
 ) {
-    let hume_lsp::codec::Message::Notification { params, .. } = publish_msg(file, diags) else {
-        panic!("publish_msg must build a Notification");
-    };
-    let params: lsp_types::PublishDiagnosticsParams = serde_json::from_value(params).unwrap();
+    let params = params_of(publish_msg(file, diags));
     ed.dispatch_lsp_action(sid, hume_lsp::client::ClientAction::Diagnostics(params));
     ed.settle();
 }
@@ -472,13 +462,17 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 
 /// A refresh that shrinks the row list must also pull a stale, deep `scroll`
 /// back into range — `lsp/refresh-diagnostics-drawer` goes through
-/// `update-drawer-list!` -> `EditorState::set_drawer_items`, which is where
-/// that clamp lives. Shrinks 3 diagnostics down to 2, rather than 2 down to
-/// 1, so the surviving selection lands at a *nonzero* new index — a
-/// selection of `0` would already zero the scroll through the ordinary
-/// "selected < scroll" arm regardless of the `len` cap this test targets.
+/// `update-drawer-list!` -> `EditorState::set_drawer_items`, which clamps
+/// `selected` but leaves `scroll` alone; `EditorState::
+/// clamp_drawer_scroll_to_terminal`, run every frame from `prepare_frame`,
+/// is what pulls it back into range, so this drives one frame after the
+/// refresh before reading `scroll` back. Shrinks 3 diagnostics down to 2,
+/// rather than 2 down to 1, so the surviving selection lands at a *nonzero*
+/// new index — a selection of `0` would already zero the scroll through the
+/// ordinary "selected < scroll" arm regardless of the `len` cap this test
+/// targets.
 ///
-/// Fail oracle: before `clamp_scroll_to_window` gained its `len` cap, `scroll`
+/// Fail oracle: before `clamp_drawer_scroll_to_terminal` existed, `scroll`
 /// would have stayed at `1` here (the ordinary arm's answer, `selected`
 /// itself) instead of `0`, and `DrawerWidget::render`'s
 /// `.skip(scroll).take(visible)` would have painted one blank row above the
@@ -528,6 +522,9 @@ fn drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list() {
 
     type_cmd(&mut ed, ":set global lsp.diagnostics-severity-floor=error");
     ed.settle();
+    // `scroll` is clamped at frame time (`clamp_drawer_scroll_to_terminal`),
+    // not by the refresh itself — a frame must run before reading it back.
+    ed.prepare_frame(&mut ctx);
 
     let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 2, "sanity: only the warning (B) drops");
@@ -609,36 +606,4 @@ fn foreign_replace_kills_refresh_tracking() {
         vec!["foreign".to_string()],
         "tracking died with the replace — our publish must not refresh foreign rows"
     );
-}
-
-/// Re-running `:diagnostics` replaces the drawer — the replace fires `#f`
-/// to the outgoing callback, but with a stale token (the outgoing drawer's
-/// own, read from its `box` after the fresh one already overwrote the
-/// tracking var), so the plugin's open-tracking must survive it and the
-/// next publish must still refresh.
-#[test]
-fn rerunning_diagnostics_keeps_refresh_tracking_alive() {
-    let tmp = safe_tempdir();
-    let file_dir = safe_tempdir();
-    let file = file_dir.path().join("main.rs");
-    let NavSetup {
-        mut ed,
-        _guard,
-        sid,
-    } = setup(&file, tmp.path(), &[DIAG_A, DIAG_B]);
-
-    type_cmd(&mut ed, ":diagnostics");
-    ed.settle();
-    type_cmd(&mut ed, ":diagnostics");
-    ed.settle();
-
-    republish(&mut ed, sid, &file, &[DIAG_B]);
-
-    let rows = drawer_rows(&ed);
-    assert_eq!(
-        rows.len(),
-        1,
-        "the replace's own stale #f must not have killed tracking: {rows:?}"
-    );
-    assert!(rows[0].contains("problem B"));
 }

@@ -172,6 +172,13 @@ pub(in crate::editor) trait Layer: Any {
         PopupEviction::Both
     }
 
+    /// What [`EditorState::retire`] does to collateral above this layer when
+    /// retiring it — see [`RemovalScope`]'s own doc for the default and its
+    /// two overrides (`DrawerLayer`, `MenuLayer`).
+    fn removal_scope(&self) -> RemovalScope {
+        RemovalScope::Stack
+    }
+
     /// The sticky-popup slot this layer owns, if it's `Base` or `Insert` —
     /// the home for a `Sticky` popup (signature help), which belongs to
     /// whichever mode owns it rather than to its own layer. See
@@ -192,6 +199,22 @@ pub(in crate::editor) trait Layer: Any {
 /// [`EditorState::take_firing_false`](super::super::EditorState::take_firing_false).
 pub(in crate::editor) trait FiresFalseOnReplace: Layer {
     fn into_callback(self: Box<Self>) -> steel::rvals::SteelVal;
+}
+
+/// What a `close-*!`/Rust-internal retirement of this layer does to whatever
+/// sits above it — read by [`EditorState::retire`]. [`Stack`](Self::Stack)
+/// (the default) takes any collateral above the target with it, the right
+/// shape when what's above genuinely depends on the target being open.
+/// [`SelfOnly`](Self::SelfOnly) removes exactly the target, leaving anything
+/// above in place, for a widget something else is routinely stacked over by
+/// coincidence rather than by dependency — `DrawerLayer` (browse-while-editing
+/// means an `Insert` session or a code-action `Menu` often sits above it) and
+/// `MenuLayer` (a non-modal `Popup` can land above it by design) both declare
+/// this. A layer states its own policy here instead of the caller picking
+/// per call site, so the answer can't drift between `retire`'s callers.
+pub(in crate::editor) enum RemovalScope {
+    Stack,
+    SelfOnly,
 }
 
 // Type-erasing plumbing behind `InputStack::find`/`find_mut`/`is` and the
@@ -333,16 +356,15 @@ impl InputStack {
 
     /// The topmost layer of concrete type `L`, if one is open — the ref a
     /// `close-*!` builtin or a Rust-internal retirement needs to name a
-    /// widget it didn't itself just push. `truncate` takes everything above
-    /// the target with it as collateral; most `close-*!` builtins accept
-    /// that rather than guarding against it (`close_menu`, because a
-    /// non-modal `Popup` can land above it by design). `close_drawer` and
+    /// widget it didn't itself just push. [`EditorState::retire`] reads each
+    /// layer's own [`Layer::removal_scope`] to decide whether removing it
+    /// takes collateral above it along — see that type's own doc.
     /// `enter_buffer_disk_check`/`close_buffer_and_notify` (via
-    /// [`EditorState::retire_stale_confirm`]) excise instead, precisely to
-    /// avoid that collateral — a `Drawer`'s browse session and a stale
-    /// `Confirm` both have something unrelated stacked above them by design,
-    /// not by mistake. Every type but `BaseLayer` occurs at most once on the
-    /// stack today, so "topmost" and "only" coincide in practice.
+    /// [`EditorState::retire_stale_confirm`]) excise a stale `Confirm`
+    /// directly rather than through `retire`, since they're naming a specific
+    /// `LayerRef`, not "topmost of type `L`". Every type but `BaseLayer`
+    /// occurs at most once on the stack today, so "topmost" and "only"
+    /// coincide in practice.
     pub(in crate::editor) fn ref_of<L: Layer>(&self) -> Option<LayerRef> {
         self.layers
             .iter()
@@ -764,34 +786,47 @@ impl EditorState {
     }
 
     /// Removes exactly `r` via [`InputStack::excise`], running its own
-    /// `tear_down` but leaving everything stacked above it untouched. Two
-    /// callers: a stale `Confirm` retirement ([`Self::retire_stale_confirm`]),
-    /// where an unrelated session landing above it since has nothing to do
-    /// with the question the confirm was answering (`ConfirmLayer::tear_down`
-    /// is empty, so this can never double-fire a callback there); and
-    /// `close_drawer`, where the drawer stays open under an `Insert`/`Menu`
-    /// session by design, so closing it must not take that session with it —
-    /// `DrawerLayer::tear_down` stays silent on `Removal::Explicit` for
-    /// exactly this reason. A no-op when `r` is already stale.
+    /// `tear_down` but leaving everything stacked above it untouched.
+    /// [`Self::retire`] calls this itself for a [`RemovalScope::SelfOnly`]
+    /// layer; its other two callers name a specific `LayerRef` they already
+    /// hold rather than going through `retire`'s own `ref_of::<L>()` lookup:
+    /// a stale `Confirm` retirement ([`Self::retire_stale_confirm`]), where
+    /// an unrelated session landing above it since has nothing to do with
+    /// the question the confirm was answering (`ConfirmLayer::tear_down` is
+    /// empty, so this can never double-fire a callback there); and
+    /// `close_drawer`, which already has the token-matched ref
+    /// `drawer_ref_with_token` gave it. A no-op when `r` is already stale.
     pub(in crate::editor) fn excise_layer(&mut self, view: &EngineView, r: LayerRef) {
         if let Some(mut layer) = self.input.excise(r) {
             layer.tear_down(self, view, Removal::Explicit);
         }
     }
 
-    /// Retires the topmost layer of type `L`, if one is open, via ordinary
-    /// (top-down) teardown — the `ref_of::<L>()` + `truncate_layers` shape
-    /// shared by every `close-*!` builtin and internal dismissal
-    /// (`completion_begin`'s own self-replace, `close_menu`, `close_drawer`,
-    /// `dismiss_completion`; both menus' self-replace paths take by value
-    /// instead, via [`Self::take_firing_false`], since they must fire the
-    /// outgoing callback themselves). Unlike [`Self::excise_layer`], this takes
-    /// any collateral above `L` with it — the right shape when what's above
-    /// `L` (if anything) genuinely depends on it, rather than being merely
-    /// stacked over it by coincidence.
+    /// Retires the topmost layer of type `L`, if one is open — the
+    /// `ref_of::<L>()` lookup shared by every `close-*!` builtin and internal
+    /// dismissal that names its target by type rather than a `LayerRef` it
+    /// already holds (`close_menu`, `dismiss_completion`; `close_drawer`
+    /// excises directly instead, since it holds a token-matched `LayerRef`
+    /// already — see its own doc). `show_menu`/`show_drawer_list`'s
+    /// self-replace paths take by value instead, via
+    /// [`Self::take_firing_false`], since they must fire the outgoing
+    /// callback themselves. What happens to anything stacked above `L` is
+    /// `L`'s own [`Layer::removal_scope`] — collateral
+    /// removal ([`Self::truncate_layers`]) when it genuinely depends on `L`
+    /// being open, in-place removal ([`Self::excise_layer`]) when it's merely
+    /// stacked over `L` by coincidence (`DrawerLayer`, `MenuLayer`).
     pub(in crate::editor) fn retire<L: Layer>(&mut self, view: &EngineView) {
-        if let Some(r) = self.input.ref_of::<L>() {
-            self.truncate_layers(view, r);
+        let Some(r) = self.input.ref_of::<L>() else {
+            return;
+        };
+        match self
+            .input
+            .at::<L>(r)
+            .expect("ref_of found L at r")
+            .removal_scope()
+        {
+            RemovalScope::Stack => self.truncate_layers(view, r),
+            RemovalScope::SelfOnly => self.excise_layer(view, r),
         }
     }
 

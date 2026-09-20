@@ -2,7 +2,6 @@
 //! state, browsed with Helix-style "stay open while editing" semantics.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use termina::event::{KeyCode, Modifiers};
 
@@ -11,13 +10,8 @@ use hume_engine::types::EditorMode;
 
 use super::super::Editor;
 use super::super::EditorState;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
-
-/// Mints a fresh, process-unique token per opened drawer — mirrors
-/// `picker::session`'s own `NEXT_TOKEN`. Starts at `1` so `0` stays free as
-/// a sentinel, matching the picker's convention, though nothing here reads
-/// meaning into the value beyond equality.
-static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
+use super::super::widget_token;
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
 /// `(show-drawer-list! items on-select)`'s raw state, including the
 /// not-yet-exhausted Steel callback — cleared by `Esc` or `close-drawer!`,
@@ -52,7 +46,7 @@ impl DrawerLayer {
             selected: 0,
             scroll: 0,
             callback,
-            token: NEXT_TOKEN.fetch_add(1, Ordering::Relaxed),
+            token: widget_token::next(),
         }
     }
 
@@ -111,6 +105,12 @@ impl Layer for DrawerLayer {
     fn is_modal(&self) -> bool {
         false
     }
+    /// A `Drawer`'s browse-while-editing design means an `Insert` session or
+    /// a code-action `Menu` routinely lands above it — closing the drawer
+    /// must not take that along.
+    fn removal_scope(&self) -> RemovalScope {
+        RemovalScope::SelfOnly
+    }
 }
 
 impl EditorState {
@@ -136,19 +136,18 @@ impl EditorState {
     }
 
     /// Replaces the open drawer's rows in place, keeping the browse session
-    /// — the single writer behind `update-drawer-list!`, so that builtin and
-    /// the selection keys (`move_drawer_selection`/`clamp_drawer_scroll`)
-    /// can't drift on clamping. `selected` is clamped into the new list and
-    /// the scroll re-clamped into the visible window, the same
-    /// `clamp_scroll_to_window` the keys get. Returns whether the update
-    /// applied (`false` when no drawer is open, `token` doesn't match the
-    /// open drawer's own — an expected-normal race, never an error, in
+    /// — the single writer behind `update-drawer-list!`. `selected` is
+    /// clamped into the new list; `scroll` is left as-is; a shrunk list
+    /// leaving it pointing past the end is
+    /// [`Self::clamp_drawer_scroll_to_terminal`]'s job, not this one's — see
+    /// that method's own doc for why the two are split. Returns whether the
+    /// update applied (`false` when no drawer is open, `token` doesn't match
+    /// the open drawer's own — an expected-normal race, never an error, in
     /// either case — or when `items` is empty, so a 0-row drawer with an
     /// `Enter` that would fire `0` can never be built from either entry
     /// point; callers close instead).
     pub(in crate::editor) fn set_drawer_items(
         &mut self,
-        terminal_height: u16,
         token: u64,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
@@ -157,22 +156,41 @@ impl EditorState {
         if items.is_empty() {
             return false;
         }
-        let Some(drawer) = self
-            .input
-            .find_mut::<DrawerLayer>()
-            .filter(|d| d.token == token)
-        else {
+        let Some(r) = self.input.drawer_ref_with_token(token) else {
             return false;
         };
+        let drawer = self
+            .input
+            .at_mut::<DrawerLayer>(r)
+            .expect("drawer_ref_with_token names a live DrawerLayer");
         drawer.items = Arc::new(items);
         drawer.callback = callback;
-        let len = drawer.items.len();
-        drawer.selected = selected.min(len - 1);
-        let visible = drawer_visible_for(terminal_height, len);
-        drawer.scroll =
-            hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, len, visible);
+        drawer.selected = selected.min(drawer.items.len() - 1);
         self.sync_drawer_view();
         true
+    }
+
+    /// Clamps the open drawer's `scroll` to `len.saturating_sub(visible)` —
+    /// the last window that still has content in it — against the current
+    /// terminal geometry. Called unconditionally every frame
+    /// (`Editor::prepare_frame`, right before `sync_drawer_view`), the same
+    /// "re-derive from the live model every frame, regardless of what
+    /// changed" shape `sync_drawer_view` itself already has, rather than at
+    /// each mutation site: a list shrinking (`set_drawer_items`) and a
+    /// terminal resize (no drawer mutation at all) both need this same
+    /// bound, and a resize is the one trigger no *write*-side clamp could
+    /// ever catch, since nothing about the drawer changes when it happens.
+    /// One read-time clamp catches both, instead of `clamp_scroll_to_window`
+    /// carrying a `len` parameter every caller has to supply — `set_drawer_items`
+    /// no longer needs `EditorState` to see the terminal height at all as a
+    /// result.
+    pub(in crate::editor) fn clamp_drawer_scroll_to_terminal(&mut self, terminal_height: u16) {
+        let Some(drawer) = self.input.find_mut::<DrawerLayer>() else {
+            return;
+        };
+        let len = drawer.items.len();
+        let visible = drawer_visible_for(terminal_height, len);
+        drawer.scroll = drawer.scroll.min(len.saturating_sub(visible));
     }
 }
 
@@ -192,6 +210,25 @@ impl super::stack::FiresFalseOnReplace for DrawerLayer {
 impl super::stack::InputStack {
     pub(in crate::editor) fn drawer(&self) -> Option<&DrawerLayer> {
         self.find()
+    }
+
+    /// The open drawer, but only if its token is `token` — the shared guard
+    /// for every token-scoped drawer mutation (`update-drawer-list!`,
+    /// `drawer-selected-index`). Mirrors `picker::session_for_token`'s own
+    /// doc and shape: a mismatch, or no drawer open at all, is
+    /// expected-normal — a late callback racing a drawer the user already
+    /// closed or replaced — so callers treat `None` as a silent no-op, never
+    /// an error.
+    pub(in crate::editor) fn drawer_with_token(&self, token: u64) -> Option<&DrawerLayer> {
+        self.drawer().filter(|d| d.token() == token)
+    }
+
+    /// [`Self::drawer_with_token`]'s ref-returning counterpart — for
+    /// `close-drawer!`, which needs a [`LayerRef`] to excise rather than a
+    /// borrow to read.
+    pub(in crate::editor) fn drawer_ref_with_token(&self, token: u64) -> Option<LayerRef> {
+        self.drawer_with_token(token)?;
+        self.ref_of::<DrawerLayer>()
     }
 }
 
@@ -273,9 +310,9 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 /// frame. The height is the last-rendered *terminal* height (not the
 /// already-chrome-reduced pane height) — the same call the engine itself
 /// makes, so this can never drift from what it will next paint. Shared by
-/// the selection keys (via `drawer_visible_rows`) and the in-place refresh
-/// (`EditorState::set_drawer_items`), so the scroll window always agrees
-/// with what's on screen on both paths.
+/// the selection keys (via `drawer_visible_rows`) and the frame-time clamp
+/// (`EditorState::clamp_drawer_scroll_to_terminal`), so the scroll window
+/// always agrees with what's on screen on both paths.
 fn drawer_visible_for(terminal_height: u16, len: usize) -> usize {
     hume_ui::drawer::visible_rows(len, EngineView::bottom_band_max(terminal_height))
 }
@@ -314,12 +351,7 @@ fn clamp_drawer_scroll(ed: &mut Editor, r: LayerRef) {
     let Some(drawer) = ed.state.input.at_mut::<DrawerLayer>(r) else {
         return;
     };
-    let len = drawer.items.len();
-    drawer.scroll = hume_ui::menu_box::clamp_scroll_to_window(
-        drawer.selected,
-        drawer.scroll,
-        len,
-        visible_rows,
-    );
+    drawer.scroll =
+        hume_ui::menu_box::clamp_scroll_to_window(drawer.selected, drawer.scroll, visible_rows);
     ed.state.sync_drawer_view();
 }

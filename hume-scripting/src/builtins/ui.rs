@@ -89,17 +89,23 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx) -> SteelResult {
 /// registers directly (no `%`-prefix wrapper needed). Errors on empty
 /// `items`; callers close (or never open) instead. Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selected-index` to this
-/// drawer, same shape as `picker!`'s own return.
+/// drawer, same shape as `picker!`'s own return — or `#f` when the request
+/// was dropped as stale (the stack moved before it could open; see
+/// `UiHost::show_drawer_list`'s own doc), which callers must branch on
+/// rather than treat as a live drawer's token.
 pub(crate) fn show_drawer_list(
     ctx: &mut SteelCtx,
     items: SteelVal,
     on_select: SteelVal,
 ) -> SteelResult {
     let items = list_to_strings(items, "show-drawer-list! items")?;
-    let token = require_cap(ctx.host.ui(), "show-drawer-list!")?
+    match require_cap(ctx.host.ui(), "show-drawer-list!")?
         .show_drawer_list(items, on_select)
-        .map_err(generic_err)?;
-    Ok(SteelVal::IntV(token as isize))
+        .map_err(generic_err)?
+    {
+        Some(token) => Ok(SteelVal::IntV(token as isize)),
+        None => Ok(SteelVal::BoolV(false)),
+    }
 }
 
 /// `(close-drawer! token)`.

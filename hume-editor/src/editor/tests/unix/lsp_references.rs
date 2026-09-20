@@ -104,11 +104,7 @@ fn three_locations_list_three_rows() {
 
     run_references(&mut ed);
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard.as_ref().expect("drawer must open").rows.clone()
-    };
-    assert_eq!(rows.len(), 3);
+    assert_eq!(drawer_rows(&ed).len(), 3);
 }
 
 #[test]

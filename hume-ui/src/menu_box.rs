@@ -130,33 +130,29 @@ fn window(rows: &[String], desired_start: usize, max_height: usize) -> (usize, &
 }
 
 /// Clamps `scroll` so `selected` stays inside a `visible_rows`-tall window,
-/// scrolling by the minimum needed in either direction, then clamps the
-/// result again to `len.saturating_sub(visible_rows)` — the last window that
-/// still has content in it — so a list that just shrank under a stale
-/// `scroll` (a diagnostics refresh dropping most of the rows out from under
-/// an already-scrolled drawer) can never leave `scroll` pointing past the
-/// end and paint mostly blank rows. Shared by `PickerSession::move_selection`
-/// and `Editor::clamp_drawer_scroll`, whose scroll models otherwise differ
-/// (edge-anchored vs centered) but converge on this one "keep the selection
-/// on screen" formula. A no-op (returns `scroll` unchanged) when
-/// `visible_rows` is `0` — nothing fits, so there's no window to clamp into.
-pub fn clamp_scroll_to_window(
-    selected: usize,
-    scroll: usize,
-    len: usize,
-    visible_rows: usize,
-) -> usize {
+/// scrolling by the minimum needed in either direction. Shared by
+/// `PickerSession::move_selection` and `Editor::clamp_drawer_scroll`, whose
+/// scroll models otherwise differ (edge-anchored vs centered) but converge on
+/// this one "keep the selection on screen" formula. A no-op (returns `scroll`
+/// unchanged) when `visible_rows` is `0` — nothing fits, so there's no window
+/// to clamp into.
+///
+/// This alone doesn't bound `scroll` to the list's own length — a caller
+/// whose list just shrank under an unrelated `scroll` (a diagnostics refresh
+/// dropping most of the rows) needs that bound applied separately, at read
+/// time; see `EditorState::clamp_drawer_scroll_to_terminal`'s own doc for
+/// why the two are split rather than folded into one function here.
+pub fn clamp_scroll_to_window(selected: usize, scroll: usize, visible_rows: usize) -> usize {
     if visible_rows == 0 {
         return scroll;
     }
-    let scroll = if selected >= scroll + visible_rows {
+    if selected >= scroll + visible_rows {
         selected + 1 - visible_rows
     } else if selected < scroll {
         selected
     } else {
         scroll
-    };
-    scroll.min(len.saturating_sub(visible_rows))
+    }
 }
 
 /// Whether `outer` fits entirely inside `pane_rect`. Shared by every overlay

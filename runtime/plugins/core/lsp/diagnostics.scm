@@ -14,8 +14,17 @@
     ((equal? severity "hint") "·")
     (else "?")))
 
+;; `split-once`, not `split-many`: a multi-line rustc message is routinely
+;; 5-20 lines, and every row is rebuilt on every publish — splitting the
+;; whole message just to keep the first line allocates and discards the
+;; rest for nothing. `split-once` answers `#t` (not `#f`) when the pattern
+;; isn't found, so `pair?` — not truthiness — is what tells "found a split"
+;; from "no newline in this message" apart; a bare `(if parts (car parts)
+;; text)` would call `(car #t)` on every single-line message, which is most
+;; of them.
 (define (lsp/first-line text)
-  (car (split-many text "\n")))
+  (let ((parts (split-once text "\n")))
+    (if (pair? parts) (car parts) text)))
 
 ;; Wraps to the first/last entry overall when none qualifies — `diags` is
 ;; start-ascending.
@@ -63,35 +72,24 @@
 ;; The drawer freezes its rows at open time, so this plugin owns refreshing
 ;; its own drawer: it tracks the open drawer itself (buffer + token + last
 ;; snapshot) and rebuilds rows on every `on-diagnostics-changed` for its
-;; buffer. Openness is the buffer alone (`#f` = closed) — no separate flag to
-;; keep in sync with it. Tracking clears through the callback's `#f` —
-;; `Esc`, or a replace by another drawer's `show-drawer-list!`, which fires
-;; `#f` to the outgoing callback — and through `update-drawer-list!`/
-;; `close-drawer!` no-oping (drawer closed, replaced, or belonging to
-;; someone else — Rust checks the token before touching anything, so this
-;; plugin can never reach a foreign drawer even by mistake). The token is
-;; what keeps a replace's own stale `#f` from killing the fresh drawer: only
-;; the current token may clear tracking. A pure liveness check
-;; (`drawer-selected-index` answering non-`#f`) can't replace it: it would
-;; answer non-`#f` for *any* open drawer, our own or not, so liveness alone
-;; couldn't tell a stale `#f` apart from a live one the way an exact token
-;; match does.
-(define lsp/*diagnostics-drawer-bid* #f)
-(define lsp/*diagnostics-drawer-tok* #f)
-(define lsp/*diagnostics-drawer-diags* '())
+;; buffer. `#f` when closed, `(bid tok diags)` when open — one value, not
+;; three hand-synced globals, so "closed" is structural rather than an
+;; invariant across three separately-cleared fields. Tracking clears through
+;; `update-drawer-list!`/`close-drawer!` no-oping in
+;; `lsp/refresh-diagnostics-drawer` below (drawer closed, replaced, or
+;; belonging to someone else — Rust checks the token before touching
+;; anything, so this plugin can never reach a foreign drawer even by
+;; mistake); an `Esc` or a foreign replace is caught the same way, lazily, on
+;; the next publish rather than eagerly through the callback's own `#f` —
+;; every path that could fire `#f` already routes through here on its next
+;; visit, and every mutator below is already token-guarded, so a `#f` this
+;; plugin never sees can't do anything wrong in the meantime.
+(define lsp/*diag-drawer* #f)
 
-;; `tok-box` holds the drawer's own token — a `box`, not the value directly,
-;; because `show-drawer-list!` returns the token only *after* this callback
-;; has already been built and handed to it. `set-box!` right after that call
-;; returns makes the token visible here from then on; the `#f` arm never
-;; fires before that (it needs Esc, a replace, or a refresh's `close-drawer!`
-;; — none of which the caller could trigger before its own call returns).
-(define (lsp/diag-select-callback tok-box bid diags)
+(define (lsp/diag-select-callback bid diags)
   (lambda (idx)
-    (if idx
-        (lsp/diag-jump-to! bid (list-ref diags idx))
-        (when (equal? (unbox tok-box) lsp/*diagnostics-drawer-tok*)
-          (set! lsp/*diagnostics-drawer-bid* #f)))))
+    (when idx
+      (lsp/diag-jump-to! bid (list-ref diags idx)))))
 
 (define-typed-command! "diagnostics" ":diagnostics — list this buffer's diagnostics."
   (lambda ()
@@ -99,65 +97,69 @@
       (if (null? diags)
           (log! 'info "No diagnostics")
           (let* ((bid (current-buffer))
-                 (tok-box (box #f))
                  (tok (show-drawer-list! (map lsp/diag-row diags)
-                                         (lsp/diag-select-callback tok-box bid diags))))
-            (set-box! tok-box tok)
-            (set! lsp/*diagnostics-drawer-bid* bid)
-            (set! lsp/*diagnostics-drawer-tok* tok)
-            (set! lsp/*diagnostics-drawer-diags* diags))))))
+                                         (lsp/diag-select-callback bid diags))))
+            ;; `#f` (a stale async open — see `show-drawer-list!`'s own doc)
+            ;; leaves tracking untouched: there is no drawer to track.
+            (when tok
+              (set! lsp/*diag-drawer* (list bid tok diags))))))))
 
-;; Same diagnostic across a refresh, by message + severity — position stays
-;; out of the key on purpose, since the fix's own edit can shift other
-;; diagnostics' lines. Ties (the same message twice) break toward the
-;; nearest line. Returns the index into NEW-DIAGS to select: the surviving
-;; diagnostic, or the old position clamped — the item now at that position,
-;; i.e. the next one when the selected diagnostic itself was fixed.
+;; The nearest surviving match for OLD in NEW-DIAGS by message + severity —
+;; position stays out of the key on purpose, since the fix's own edit can
+;; shift other diagnostics' lines. Ties (the same message twice) break
+;; toward the nearest line. `#f` when nothing matches.
+(define (lsp/diag-best-match old new-diags)
+  (let ((old-msg (hash-ref old "message"))
+        (old-sev (hash-ref old "severity"))
+        (old-line (hash-ref old "line")))
+    (let loop ((rest new-diags) (i 0) (best #f) (best-dist #f))
+      (if (null? rest)
+          best
+          (let ((d (car rest)))
+            (if (and (equal? (hash-ref d "message") old-msg)
+                     (equal? (hash-ref d "severity") old-sev))
+                (let ((dist (abs (- (hash-ref d "line") old-line))))
+                  (if (or (not best-dist) (< dist best-dist))
+                      (loop (cdr rest) (+ i 1) i dist)
+                      (loop (cdr rest) (+ i 1) best best-dist)))
+                (loop (cdr rest) (+ i 1) best best-dist)))))))
+
+;; Returns the index into NEW-DIAGS (guaranteed non-empty — the sole caller
+;; guards on `(null? diags)` first) to select on a refresh: the surviving
+;; diagnostic ([`lsp/diag-best-match`]), or the old position clamped — the
+;; item now at that position, i.e. the next one when the selected diagnostic
+;; itself was fixed.
 (define (lsp/diag-refresh-index old-diags old-idx new-diags)
-  (let ((n (length new-diags)))
-    (if (= n 0)
-        0
-        (let ((old (if (< old-idx (length old-diags)) (list-ref old-diags old-idx) #f)))
-          (if (not old)
-              (min old-idx (- n 1))
-              (let loop ((rest new-diags) (i 0) (best #f) (best-dist #f))
-                (if (null? rest)
-                    (if best best (min old-idx (- n 1)))
-                    (let ((d (car rest)))
-                      (if (and (equal? (hash-ref d "message") (hash-ref old "message"))
-                               (equal? (hash-ref d "severity") (hash-ref old "severity")))
-                          (let ((dist (abs (- (hash-ref d "line") (hash-ref old "line")))))
-                            (if (or (not best-dist) (< dist best-dist))
-                                (loop (cdr rest) (+ i 1) i dist)
-                                (loop (cdr rest) (+ i 1) best best-dist)))
-                          (loop (cdr rest) (+ i 1) best best-dist))))))))))
+  (let ((fallback (min old-idx (- (length new-diags) 1)))
+        (old (and (< old-idx (length old-diags)) (list-ref old-diags old-idx))))
+    (if old (or (lsp/diag-best-match old new-diags) fallback) fallback)))
 
-(define (lsp/refresh-diagnostics-drawer bid)
+;; `diags` is fetched once by the caller (the hooks below, each of which also
+;; needs it for decorations) rather than re-fetched here — `diagnostics-for-buffer`
+;; sorts and deep-clones up to 1000 diagnostics' whole raw LSP JSON, so
+;; fetching it twice per publish would double that cost for nothing.
+(define (lsp/refresh-diagnostics-drawer bid diags)
   ;; `lsp/diag-refresh-index` and `update-drawer-list!` both clamp into the
   ;; new list, so `sel` passes through raw — no Scheme-side clamp. `tok`
   ;; passes to every call below — Rust ignores any of them the moment `tok`
   ;; no longer names the open drawer (closed, replaced, or never ours), so
   ;; `close-drawer!` here can never reach a foreign drawer the way it could
   ;; before the token existed.
-  (when (and lsp/*diagnostics-drawer-bid*
-             (equal? bid lsp/*diagnostics-drawer-bid*))
-    (let ((diags (diagnostics-for-buffer bid))
-          (tok lsp/*diagnostics-drawer-tok*))
+  (when (and lsp/*diag-drawer* (equal? bid (car lsp/*diag-drawer*)))
+    (let ((tok (cadr lsp/*diag-drawer*)))
       (if (null? diags)
-          (begin (close-drawer! tok) (set! lsp/*diagnostics-drawer-bid* #f))
+          (begin (close-drawer! tok) (set! lsp/*diag-drawer* #f))
           (let ((sel (drawer-selected-index tok)))
             (if (not sel)
-                (set! lsp/*diagnostics-drawer-bid* #f)
-                (let ((idx (lsp/diag-refresh-index lsp/*diagnostics-drawer-diags* sel diags)))
+                (set! lsp/*diag-drawer* #f)
+                (let ((idx (lsp/diag-refresh-index (caddr lsp/*diag-drawer*) sel diags)))
                   ;; An update replaces the callback silently (no `#f`), and
-                  ;; keeps the drawer's existing token — the new closure is
-                  ;; current by construction, so it can just close over `tok`
-                  ;; directly rather than needing the open path's box.
+                  ;; keeps the drawer's existing token.
                   (if (update-drawer-list! tok (map lsp/diag-row diags)
-                                           (lsp/diag-select-callback (box tok) bid diags)
+                                           (lsp/diag-select-callback bid diags)
                                            idx)
-                      (set! lsp/*diagnostics-drawer-diags* diags)
-                      (set! lsp/*diagnostics-drawer-bid* #f)))))))))
+                      (set! lsp/*diag-drawer* (list bid tok diags))
+                      (set! lsp/*diag-drawer* #f)))))))))
 
 ;; ── Diagnostic decorations: EOL summary + gutter signs ──────────────────────
 ;; See docs/decorations.md.
@@ -219,29 +221,37 @@
              (list line "●" (hash-ref (lsp/most-severe line-diags) "severity"))))
          groups)))
 
-(define (lsp/refresh-diagnostic-decorations bid)
+;; `diags` comes from the caller — see `lsp/refresh-diagnostics-drawer`'s own
+;; doc for why: every caller here already needs its own copy for decorations
+;; or the drawer refresh, so fetching it a second time inside this function
+;; would double the cost of `diagnostics-for-buffer`'s sort-and-deep-clone
+;; for nothing.
+(define (lsp/refresh-diagnostic-decorations bid diags)
   (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
-  (let ((diags (diagnostics-for-buffer bid)))
-    (set-eol-text! "lsp-diagnostics" bid
-      (map lsp/line-group->entry (lsp/group-by-line diags)))
-    (set-signs! "lsp-diagnostics" bid (lsp/diagnostic-signs diags))))
+  (set-eol-text! "lsp-diagnostics" bid
+    (map lsp/line-group->entry (lsp/group-by-line diags)))
+  (set-signs! "lsp-diagnostics" bid (lsp/diagnostic-signs diags)))
 
 (register-hook! 'on-diagnostics-changed
   (lambda (bid)
-    (lsp/refresh-diagnostic-decorations bid)
-    (lsp/refresh-diagnostics-drawer bid)))
+    (let ((diags (diagnostics-for-buffer bid)))
+      (lsp/refresh-diagnostic-decorations bid diags)
+      (lsp/refresh-diagnostics-drawer bid diags))))
 
 (register-hook! 'on-lsp-detach
   (lambda (bid server-name)
+    ;; Detach always clears to empty — no fetch needed, unlike the other two
+    ;; hooks, whose whole point is a diagnostic set that just changed.
     (register-sign-source! "lsp-diagnostics" bid lsp/*sign-priority*)
     (set-eol-text! "lsp-diagnostics" bid '())
     (set-signs! "lsp-diagnostics" bid '())
-    (lsp/refresh-diagnostics-drawer bid)))
+    (lsp/refresh-diagnostics-drawer bid '())))
 
 (register-hook! 'on-option-change
   (lambda (key value)
     (when (equal? key "lsp.diagnostics-severity-floor")
       (for-each (lambda (bid)
-                  (lsp/refresh-diagnostic-decorations bid)
-                  (lsp/refresh-diagnostics-drawer bid))
+                  (let ((diags (diagnostics-for-buffer bid)))
+                    (lsp/refresh-diagnostic-decorations bid diags)
+                    (lsp/refresh-diagnostics-drawer bid diags)))
                 (buffers)))))

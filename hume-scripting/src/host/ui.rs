@@ -207,11 +207,15 @@ pub trait UiHost {
     /// drawer, mirroring [`Self::open_picker`]'s own token — a caller must
     /// hold onto it to touch the drawer it opened again, rather than
     /// whichever drawer happens to be open when it gets around to it.
+    /// `None`, unlike `open_picker`'s bare token: this opener is async (a
+    /// Steel callback answering a request fired earlier), so the request can
+    /// be dropped as stale (`EditorState::async_opener_stale`) before ever
+    /// minting one — `open_picker` has no such path to report.
     fn show_drawer_list(
         &mut self,
         items: Vec<String>,
         callback: steel::rvals::SteelVal,
-    ) -> Result<u64, String>;
+    ) -> Result<Option<u64>, String>;
 
     /// `(close-drawer! token)` — dismisses the drawer *without* invoking its
     /// callback (caller-initiated close, distinct from `Esc`, which does

@@ -222,14 +222,7 @@ fn multi_element_array_opens_the_drawer_and_row_select_jumps() {
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard
-            .as_ref()
-            .expect("drawer must open for a multi-entry array")
-            .rows
-            .clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 3);
 
     // Select row index 1 (the second entry, line 1).
@@ -270,14 +263,7 @@ fn windows_drive_letter_uri_displays_without_leading_slash() {
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard
-            .as_ref()
-            .expect("drawer must open for a multi-entry array")
-            .rows
-            .clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 2);
     assert!(
         rows[1].starts_with("C:/Users/x/main.rs"),
@@ -310,14 +296,7 @@ fn multi_element_location_link_array_opens_the_drawer_and_row_select_jumps() {
 
     run_goto(&mut ed, ":lsp-goto-definition");
 
-    let rows = {
-        let guard = ed.state.views.drawer.read();
-        guard
-            .as_ref()
-            .expect("drawer must open for a multi-entry LocationLink array")
-            .rows
-            .clone()
-    };
+    let rows = drawer_rows(&ed);
     assert_eq!(rows.len(), 3);
     assert!(
         rows[1].ends_with(":2:5"),

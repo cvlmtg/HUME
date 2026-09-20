@@ -205,20 +205,6 @@ fn malformed_publish_diagnostics_reaches_the_unhandled_notification_path() {
 
 // ── Minor B — stale-versioned publishes are dropped ────────────────────────
 
-/// Extracts and parses the `params` payload back out of a scripted
-/// `publishDiagnostics` notification `Message`, for tests that call
-/// `ingest_publish_diagnostics` directly (needed to exercise two separate
-/// ingest calls in sequence — batch coalescing would otherwise collapse two
-/// same-drain publishes into one before ingest ever saw the first).
-fn params_of(msg: hume_lsp::codec::Message) -> lsp_types::PublishDiagnosticsParams {
-    match msg {
-        hume_lsp::codec::Message::Notification { params, .. } => {
-            serde_json::from_value(params).unwrap()
-        }
-        other => panic!("expected a Notification, got {other:?}"),
-    }
-}
-
 #[test]
 fn publish_with_matching_version_is_ingested() {
     let tmp = safe_tempdir();

@@ -29,10 +29,8 @@ fn show_drawer_list_populates_model_and_view() {
     arm_three_items(&mut ed, tmp.path());
 
     assert!(ed.state.input.drawer().is_some());
-    let guard = ed.state.views.drawer.read();
-    let view = guard.as_ref().expect("view must be populated on open");
-    assert_eq!(*view.rows, vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
-    assert_eq!(view.selected, 0);
+    assert_eq!(drawer_rows(&ed), vec!["one.rs:1", "two.rs:2", "three.rs:3"]);
+    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 0);
 }
 
 /// A drawer opening while a `Scrollable` popup is up must retire the popup
@@ -204,6 +202,47 @@ fn show_drawer_list_from_insert_drops_silently_as_a_mode_layer_race() {
     );
 }
 
+// ── clamp_drawer_scroll_to_terminal ───────────────────────────────────────
+
+/// A list that shrinks while `scroll` is still positioned deep into a
+/// longer one it no longer matches must not leave `scroll` past the point
+/// where a full window of content remains — otherwise `DrawerWidget::render`'s
+/// `.skip(scroll).take(visible)` paints mostly blank rows below a handful of
+/// real ones. Pokes a stale `scroll` directly rather than shrinking a real
+/// list first: the clamp only reads the drawer's *current* `items.len()` and
+/// the terminal geometry, so a synthetic stale value exercises the same
+/// path as an actual refresh would (`unix/lsp_diagnostics_nav.rs`'s
+/// `drawer_scroll_is_reclamped_when_the_severity_floor_shrinks_the_list` is
+/// this same clamp's end-to-end version, through a real diagnostics
+/// refresh).
+#[test]
+fn clamp_drawer_scroll_to_terminal_caps_scroll_when_the_list_shrinks() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_three_items(&mut ed, tmp.path());
+    ed.sync_viewport_dims(40, 10);
+
+    {
+        let drawer = ed
+            .state
+            .input
+            .find_mut::<crate::editor::input_stack::DrawerLayer>()
+            .expect("sanity: drawer open");
+        drawer.selected = 2;
+        drawer.scroll = 12;
+    }
+
+    ed.state
+        .clamp_drawer_scroll_to_terminal(ed.view.last_terminal_area.height);
+
+    assert_eq!(
+        ed.state.input.drawer().unwrap().scroll,
+        0,
+        "all 3 items fit inside a 40x10 terminal's band, so scroll must be \
+         pulled back to 0, not left pointing past the list"
+    );
+}
+
 /// `sync_drawer_view` runs unconditionally every frame while the drawer is
 /// open (the self-healing backstop this module's header comment describes),
 /// so its row list must be shared (`Arc::clone`) rather than deep-copied —
@@ -260,13 +299,7 @@ fn close_drawer_drops_the_callback_without_invoking_it() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let token = host
-        .show_drawer_list(
-            vec!["a".to_string(), "b".to_string()],
-            steel::rvals::SteelVal::Void,
-        )
-        .unwrap();
+    let token = open_drawer_via_host(&mut ed, &["a", "b"]);
     assert!(ed.state.input.drawer().is_some());
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
@@ -291,10 +324,7 @@ fn close_drawer_with_a_mismatched_token_leaves_it_open() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let token = host
-        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
-        .unwrap();
+    let token = open_drawer_via_host(&mut ed, &["a"]);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     host.close_drawer(token.wrapping_add(1)).unwrap();
@@ -317,13 +347,7 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let token = host
-        .show_drawer_list(
-            vec!["a".to_string(), "b".to_string()],
-            steel::rvals::SteelVal::Void,
-        )
-        .unwrap();
+    let token = open_drawer_via_host(&mut ed, &["a", "b"]);
 
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     let applied = host.update_drawer_list(
@@ -350,10 +374,7 @@ fn drawer_selected_index_with_a_mismatched_token_reports_none() {
     use hume_scripting::host::UiHost;
 
     let mut ed = editor_from("-[x]>abcdefgh\n");
-    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let token = host
-        .show_drawer_list(vec!["a".to_string()], steel::rvals::SteelVal::Void)
-        .unwrap();
+    let token = open_drawer_via_host(&mut ed, &["a"]);
 
     let host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
     assert_eq!(
@@ -518,10 +539,7 @@ fn replace_fires_false_to_the_outgoing_callback() {
         "#false",
         "the outgoing drawer's callback must fire with #f on replace"
     );
-    {
-        let guard = ed.state.views.drawer.read();
-        assert_eq!(*guard.as_ref().unwrap().rows, vec!["c"]);
-    }
+    assert_eq!(drawer_rows(&ed), vec!["c"]);
 }
 
 // ── update-drawer-list! / drawer-selected-index ──────────────────────────────
@@ -574,11 +592,8 @@ fn update_replaces_rows_callback_and_selection_in_place() {
         drawer.selected, 1,
         "caller's selection must be kept, not reset"
     );
-    {
-        let guard = ed.state.views.drawer.read();
-        assert_eq!(*guard.as_ref().unwrap().rows, vec!["x", "y"]);
-        assert_eq!(guard.as_ref().unwrap().selected, 1);
-    }
+    assert_eq!(drawer_rows(&ed), vec!["x", "y"]);
+    assert_eq!(ed.state.views.drawer.read().as_ref().unwrap().selected, 1);
 
     // The new callback is live: Enter fires it with the kept selection, and
     // the drawer stays open.

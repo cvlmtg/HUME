@@ -84,11 +84,11 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             self.state.dismiss_completion(self.view);
             self.state
                 .report(Severity::Info, "no completions".to_string());
-            // No session opened — there is no token to hand back. `0` is
-            // never a live token (`NEXT_TOKEN` starts at 1), so a caller
-            // that (wrongly) tries to `completion-add-items!` against it
-            // gets the same silent no-op a real stale token would.
-            return Ok(0);
+            // No session opened — there is no token to hand back.
+            // `widget_token::DEAD` is never a live token, so a caller that
+            // (wrongly) tries to `completion-add-items!` against it gets the
+            // same silent no-op a real stale token would.
+            return Ok(crate::editor::widget_token::DEAD);
         }
         // Async staleness — see `EditorState::async_opener_stale`'s own doc.
         // A prior `Completion` instance — buried or not — is the one
@@ -99,7 +99,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             .state
             .async_opener_stale::<InsertLayer, CompletionLayer>("completion-begin!")
         {
-            return Ok(0);
+            return Ok(crate::editor::widget_token::DEAD);
         }
         let Some(session) = crate::editor::completion::CompletionSession::begin_buffer(
             self.state,

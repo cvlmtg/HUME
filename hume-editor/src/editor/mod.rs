@@ -65,6 +65,7 @@ mod theme;
 mod timer_bridge;
 mod timers;
 mod visual_move;
+mod widget_token;
 
 pub(in crate::editor) use search::SearchState;
 
