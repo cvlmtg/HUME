@@ -136,6 +136,38 @@ fn replay(log: &[(String, serde_json::Value)]) -> (String, Option<i64>) {
     (mirror, version)
 }
 
+/// Every `textDocument/didChange` entry in `log`, in order.
+fn did_changes(log: &[(String, serde_json::Value)]) -> Vec<(String, serde_json::Value)> {
+    log.iter()
+        .filter(|(m, _)| m == "textDocument/didChange")
+        .cloned()
+        .collect()
+}
+
+/// Replays `log` against the independent string-mirror oracle and asserts it
+/// reproduces the buffer's real text and the real `text_gen` — the invariant
+/// every LSP-sync test in this file ultimately checks. `context` names the
+/// scenario in the assertion message (e.g. "a 3-step composed undo").
+fn assert_mirror_matches(
+    ed: &Editor,
+    bid: BufferId,
+    log: &[(String, serde_json::Value)],
+    context: &str,
+) {
+    let real_text = ed.state.buffers.get(bid).text().to_string();
+    let real_version = ed.state.buffers.get(bid).text_gen as i64;
+    let (mirrored, last_version) = replay(log);
+    assert_eq!(
+        mirrored, real_text,
+        "{context}: replaying the didOpen+didChange stream must reproduce the buffer exactly"
+    );
+    assert_eq!(
+        last_version,
+        Some(real_version),
+        "{context}: the last didChange's version must equal the buffer's real text_gen"
+    );
+}
+
 #[test]
 fn did_open_carries_full_text_and_language_id() {
     let tmp = safe_tempdir();
@@ -281,19 +313,7 @@ fn version_sync_invariant_across_insert_delete_paste_undo_redo() {
 
     ed.drain_lsp(); // flush every queued change to the log
 
-    let real_text = ed.state.buffers.get(bid).text().to_string();
-    let real_version = ed.state.buffers.get(bid).text_gen as i64;
-
-    let (mirrored, last_version) = replay(&log.borrow());
-    assert_eq!(
-        mirrored, real_text,
-        "replaying the didOpen+didChange stream must reproduce the buffer exactly"
-    );
-    assert_eq!(
-        last_version,
-        Some(real_version),
-        "the last didChange's version must equal the buffer's real text_gen"
-    );
+    assert_mirror_matches(&ed, bid, &log.borrow(), "full session replay");
 }
 
 /// The load-bearing case for the composed-walk fix: a counted `u` that
@@ -322,31 +342,14 @@ fn counted_undo_on_an_incremental_server_sends_one_didchange_for_the_whole_walk(
     ed.feed_key(key('u')); // one composed walk back across all three revisions
     ed.drain_lsp();
 
-    let did_changes_after: Vec<_> = log
-        .borrow()
-        .iter()
-        .skip(before)
-        .filter(|(m, _)| m == "textDocument/didChange")
-        .cloned()
-        .collect();
+    let did_changes_after = did_changes(&log.borrow()[before..]);
     assert_eq!(
         did_changes_after.len(),
         1,
         "a 3-step composed undo must send exactly one didChange, got: {did_changes_after:?}"
     );
 
-    let real_text = ed.state.buffers.get(bid).text().to_string();
-    let real_version = ed.state.buffers.get(bid).text_gen as i64;
-    let (mirrored, last_version) = replay(&log.borrow());
-    assert_eq!(
-        mirrored, real_text,
-        "replaying the full didOpen+didChange stream must still reproduce the buffer"
-    );
-    assert_eq!(
-        last_version,
-        Some(real_version),
-        "the composed didChange's version must equal the buffer's real text_gen"
-    );
+    assert_mirror_matches(&ed, bid, &log.borrow(), "a 3-step composed undo");
 }
 
 #[test]
@@ -445,15 +448,10 @@ fn identical_reload_sends_no_didchange() {
     ed.execute_typed("e!", None).unwrap();
     ed.drain_lsp();
 
-    let did_changes: Vec<_> = log
-        .borrow()
-        .iter()
-        .filter(|(m, _)| m == "textDocument/didChange")
-        .cloned()
-        .collect();
+    let changes = did_changes(&log.borrow());
     assert!(
-        did_changes.is_empty(),
-        "a byte-identical reload must send no didChange, got: {did_changes:?}"
+        changes.is_empty(),
+        "a byte-identical reload must send no didChange, got: {changes:?}"
     );
 }
 
@@ -507,12 +505,7 @@ fn full_sync_server_gets_one_whole_document_didchange_per_flush() {
     ed.feed_key(key_esc()); // insert a char — two queued entries, one flush
     ed.drain_lsp();
 
-    let did_changes: Vec<_> = log
-        .borrow()
-        .iter()
-        .filter(|(m, _)| m == "textDocument/didChange")
-        .cloned()
-        .collect();
+    let did_changes = did_changes(&log.borrow());
     assert_eq!(
         did_changes.len(),
         1,
@@ -554,12 +547,7 @@ fn insert_session_sends_one_didchange_per_keystroke() {
     ed.feed_key(key_esc()); // five text-mutating keystrokes, one queued entry each
     ed.drain_lsp();
 
-    let did_changes: Vec<_> = log
-        .borrow()
-        .iter()
-        .filter(|(m, _)| m == "textDocument/didChange")
-        .cloned()
-        .collect();
+    let did_changes = did_changes(&log.borrow());
     assert_eq!(
         did_changes.len(),
         5,
@@ -567,17 +555,11 @@ fn insert_session_sends_one_didchange_per_keystroke() {
          per keystroke, got: {did_changes:?}"
     );
 
-    let real_text = ed.state.buffers.get(bid).text().to_string();
-    let real_version = ed.state.buffers.get(bid).text_gen as i64;
-    let (mirrored, last_version) = replay(&log.borrow());
-    assert_eq!(
-        mirrored, real_text,
-        "replaying every per-keystroke didChange must still reproduce the buffer exactly"
-    );
-    assert_eq!(
-        last_version,
-        Some(real_version),
-        "the last didChange's version must equal the buffer's real text_gen"
+    assert_mirror_matches(
+        &ed,
+        bid,
+        &log.borrow(),
+        "insert session, one didChange per keystroke",
     );
 }
 

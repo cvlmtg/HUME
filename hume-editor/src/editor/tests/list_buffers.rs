@@ -368,11 +368,7 @@ fn read_only_buffer_blocks_undo_and_redo() {
 }
 
 /// `apply_doc_history_walk`'s own read-only refusal must be distinguishable
-/// from genuine root/leaf exhaustion — `history_step`'s outer
-/// `refuse_if_read_only` guard masks this for `u`/`Ctrl-r`/`:earlier`/
-/// `:later` today, but `docs/UNDOTREE.md`'s planned `apply_doc_goto_revision`
-/// leans on this inner guard alone, so the two outcomes must not collapse to
-/// the same value.
+/// from genuine root/leaf exhaustion — see `HistoryWalk`'s own doc for why.
 #[test]
 fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -388,8 +384,7 @@ fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
         &mut ed.state.panes.jumps,
         focused,
         bid,
-        Buffer::undo_n,
-        1,
+        |b| b.undo_n(1),
     );
     assert_eq!(
         result,

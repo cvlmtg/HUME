@@ -193,11 +193,8 @@ impl JumpList {
     /// 100 entries); a changeset with many ops (a multi-cursor edit, `:%s`,
     /// an LSP whole-document format, or a composed multi-revision
     /// `:earlier`/`:later` walk) pays `O(entries × ops)` here, the case
-    /// the batched form would instead win — though a composed walk still
-    /// pays this once for the whole walk rather than once per revision
-    /// crossed, same net win the composition gives every other propagation
-    /// step. `Selection`s *within* one entry are already sorted, so that
-    /// inner mapping
+    /// the batched form would instead win. `Selection`s *within* one entry
+    /// are already sorted, so that inner mapping
     /// (`SelectionSet::translate_in_place_with`) does share one cursor across
     /// them.
     ///

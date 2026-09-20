@@ -292,64 +292,68 @@ impl History {
     /// and move to the parent. Returns `None` if already at the root (nothing
     /// to undo).
     ///
-    /// Thin single-step convenience over [`Self::undo_n`] — see its doc for
-    /// why a multi-step walk must go through there instead of calling this in
-    /// a loop.
+    /// Returns an owned `Transaction` (cloned from the arena) rather than a
+    /// reference, to avoid lifetime conflicts when the caller also holds a
+    /// reference to other fields of the owning struct (e.g. `Buffer::text`).
+    /// `Transaction` is cheap to clone: its ChangeSet is a `Vec<Operation>`.
     pub fn undo(&mut self) -> Option<Transaction> {
-        self.undo_n(1).pop()
+        let old_current = self.current;
+        // One lookup, not two: `parent` and `inverse` both come off the same
+        // arena entry, read before `self.current` moves past it.
+        let rev = &self.revisions[&old_current];
+        let parent = rev.parent?;
+        let inverse = rev.inverse.clone();
+        self.current = parent;
+        Some(inverse)
     }
 
     /// Redo one step: return the forward Transaction of the most recent child
     /// and move to it. Returns `None` if the current revision has no
     /// children.
     ///
-    /// Thin single-step convenience over [`Self::redo_n`] — see its doc for
-    /// why a multi-step walk must go through there instead of calling this in
-    /// a loop.
+    /// The most recent child (last in `children`) is chosen to match
+    /// Vim/Helix behaviour: after undoing and making a new edit, redo goes
+    /// to the most recent edit, not the historically first one.
+    ///
+    /// Returns an owned `Transaction` for the same reason as [`Self::undo`].
     pub fn redo(&mut self) -> Option<Transaction> {
-        self.redo_n(1).pop()
+        // Copy out child_id before mutating current.
+        let child_id = *self.revisions[&self.current].children.last()?;
+        self.current = child_id;
+        Some(self.revisions[&child_id].forward.clone())
     }
 
     /// Walk up to `count` revisions toward the root, returning the inverse
-    /// Transactions to apply, in order — the same shape
-    /// [`Self::goto_revision`]'s up leg produces, but collected during the
-    /// walk itself rather than by re-deriving it: this already knows the
-    /// path is a straight line of `parent` links, so there is no LCA to
-    /// find. Short of `count` when the walk reaches the root; empty when
-    /// `count == 0` or already at the root.
+    /// Transactions to apply, in order — loops [`Self::undo`], the single
+    /// definition of one step. Short of `count` when the walk reaches the
+    /// root; empty when `count == 0` or already at the root.
+    ///
+    /// The caller feeds the result into `Buffer::apply_transactions`, which
+    /// folds it with `ChangeSet::compose_all` into one net transform and
+    /// applies that once — one `set_text`/`finish_edit` cycle for the whole
+    /// walk, however many revisions it crosses, instead of one per step.
     pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
-        let mut id = self.current;
-        let mut txns = Vec::with_capacity(count.min(self.revisions.len()));
+        let mut txns = Vec::new();
         for _ in 0..count {
-            match self.revisions[&id].parent {
-                Some(parent) => {
-                    txns.push(self.revisions[&id].inverse.clone());
-                    id = parent;
-                }
+            match self.undo() {
+                Some(txn) => txns.push(txn),
                 None => break,
             }
         }
-        self.current = id;
         txns
     }
 
     /// Redo up to `count` steps forward along the most-recent-child chain —
-    /// the same path [`Self::redo`] takes one step of. See [`Self::undo_n`]
-    /// for why this collects during the walk rather than through
-    /// [`Self::goto_revision`].
+    /// loops [`Self::redo`]. See [`Self::undo_n`] for the caller-side
+    /// composition contract.
     pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
-        let mut id = self.current;
-        let mut txns = Vec::with_capacity(count.min(self.revisions.len()));
+        let mut txns = Vec::new();
         for _ in 0..count {
-            match self.revisions[&id].children.last() {
-                Some(&child) => {
-                    txns.push(self.revisions[&child].forward.clone());
-                    id = child;
-                }
+            match self.redo() {
+                Some(txn) => txns.push(txn),
                 None => break,
             }
         }
-        self.current = id;
         txns
     }
 
@@ -501,11 +505,11 @@ impl History {
     /// buffer into the target state, **in order**: txn₁ maps state A→B, txn₂
     /// maps B→C, and so on — exactly [`ChangeSet::compose`]'s contract
     /// (`self.len_after == other.len_before`). A caller applying them one at
-    /// a time (as [`Self::undo`]/[`Self::redo`] do internally, and as this
-    /// module's tests do to keep assertions per-hop) is free to; a caller
-    /// walking many revisions in one logical step instead folds the list
-    /// with `ChangeSet::compose` into one net transform and applies that
-    /// once — same end state, one text mutation instead of N.
+    /// a time (as this module's tests do, to keep assertions per-hop) is
+    /// free to; a caller walking many revisions in one logical step instead
+    /// folds the list with `ChangeSet::compose_all` into one net transform
+    /// and applies that once — same end state, one text mutation instead
+    /// of N.
     ///
     /// Returns `None` if `target` equals the current revision (no-op) or is
     /// out of bounds.

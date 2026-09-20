@@ -49,39 +49,31 @@ impl DocHelper {
     }
 
     fn undo(&mut self) {
-        if let Some((new_sels, _cs)) = self.buf.undo() {
-            self.sels = new_sels;
-        }
+        self.undo_n(1);
     }
 
     fn redo(&mut self) {
-        if let Some((new_sels, _cs)) = self.buf.redo() {
-            self.sels = new_sels;
-        }
+        self.redo_n(1);
     }
 
     /// Returns the number of steps actually taken (short of `count` at the
     /// root).
     fn undo_n(&mut self, count: usize) -> usize {
-        match self.buf.undo_n(count) {
-            Some((new_sels, _cs, steps)) => {
-                self.sels = new_sels;
-                steps
-            }
-            None => 0,
-        }
+        let Some((new_sels, _cs, steps)) = self.buf.undo_n(count) else {
+            return 0;
+        };
+        self.sels = new_sels;
+        steps
     }
 
     /// Returns the number of steps actually taken (short of `count` at the
     /// tip).
     fn redo_n(&mut self, count: usize) -> usize {
-        match self.buf.redo_n(count) {
-            Some((new_sels, _cs, steps)) => {
-                self.sels = new_sels;
-                steps
-            }
-            None => 0,
-        }
+        let Some((new_sels, _cs, steps)) = self.buf.redo_n(count) else {
+            return 0;
+        };
+        self.sels = new_sels;
+        steps
     }
 
     fn goto_revision(&mut self, target: hume_editing::history::RevisionId) {
@@ -957,9 +949,9 @@ fn reload_from_text_inverse_is_fine_grained() {
         BufferText::from("alpha\nBETA\ngamma\n"),
         SelectionSet::default(),
     );
-    let (_, inv_cs) = d
+    let (_, inv_cs, _steps) = d
         .buf
-        .undo()
+        .undo_n(1)
         .expect("undo after reload returns the inverse CS");
     let has_small_insert = inv_cs
         .ops()

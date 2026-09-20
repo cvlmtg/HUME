@@ -22,19 +22,11 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
-/// `Buffer::undo_n`/`redo_n` — lets [`apply_doc_history_walk`] pick a
-/// direction by function pointer instead of duplicating the call site per
-/// direction. Returns the restored selections, the net ChangeSet, and how
-/// many steps were actually taken (short of the requested count at the
-/// root/leaf).
-pub(in crate::editor) type HistoryWalkFn =
-    fn(&mut Buffer, usize) -> Option<(SelectionSet, ChangeSet, usize)>;
-
 /// [`apply_doc_history_walk`]'s result — keeps a read-only refusal
 /// distinguishable from genuine root/leaf exhaustion. Both used to collapse
 /// to `0`, which is safe only because every current caller
 /// (`history_step`) already calls `refuse_if_read_only` first; a caller that
-/// leans on this function's own guard alone (the `apply_doc_goto_revision`
+/// leans on this function's own guard alone (the production `goto-revision`
 /// `docs/UNDOTREE.md` plans) would otherwise report "Already at oldest
 /// change" for a read-only buffer — a wrong diagnosis sending the user to
 /// look for missing history that was never there to find.
@@ -307,9 +299,14 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
     );
 }
 
-/// Walk the focused buffer's undo history up to `count` steps in one
-/// direction (`Buffer::undo_n` or `Buffer::redo_n`) and propagate the net
-/// `ChangeSet` to all other panes viewing the same buffer.
+/// Run one history-walking step on the focused buffer (`walk`, typically
+/// `|b| b.undo_n(count)` or `|b| b.redo_n(count)`) and propagate the net
+/// `ChangeSet` to all other panes viewing the same buffer. `walk` closes over
+/// its own step count or target revision, so this function stays the single
+/// entry point for every shape a history walk takes — a count-based
+/// `undo_n`/`redo_n` today, a `RevisionId`-based `goto_revision` walk
+/// tomorrow — with no second copy of the guard, the pre-walk snapshot, or
+/// the `finish_edit` call.
 ///
 /// A single `finish_edit` call for the whole walk, however many revisions it
 /// crosses — `walk` itself already composed those into one net transform
@@ -330,8 +327,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    walk: HistoryWalkFn,
-    count: usize,
+    walk: impl FnOnce(&mut Buffer) -> Option<(SelectionSet, ChangeSet, usize)>,
 ) -> HistoryWalk {
     if buffers.get(buf_id).is_read_only() {
         return HistoryWalk::RefusedReadOnly;
@@ -340,12 +336,11 @@ pub(in crate::editor) fn apply_doc_history_walk(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
         "apply_doc_history_walk called while an edit group is open on this buffer"
     );
-    // text_pre/rope_pre are the current (pre-walk) text: undo's CS maps
-    // post-edit positions back to pre-edit, so non-acting panes' heads must be
+    // text_pre is the current (pre-walk) text: undo's CS maps post-edit
+    // positions back to pre-edit, so non-acting panes' heads must be
     // translated through that CS.
     let text_pre = buffers.get(buf_id).text().clone();
-    let rope_pre = text_pre.rope().clone();
-    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), count) else {
+    let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id)) else {
         return HistoryWalk::Took(0);
     };
     finish_edit(
@@ -358,7 +353,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
         new_sels,
         &cs,
         &text_pre,
-        &rope_pre,
+        text_pre.rope(),
     );
     // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly —
     // a normal edit that cancels to identity records no revision at all, so

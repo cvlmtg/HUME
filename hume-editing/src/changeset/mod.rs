@@ -753,6 +753,35 @@ impl ChangeSet {
             len_after,
         }
     }
+
+    /// Fold a sequence of sequential changesets into one net transform, via
+    /// balanced pairwise [`Self::compose`] — O(N log N) op-steps rather than
+    /// a left fold's O(N²) (each step of a left fold composes the whole
+    /// growing accumulator against the next entry, so the accumulator's own
+    /// op count grows toward N over the fold, and `compose` allocates a
+    /// fresh `Vec<Operation>` every time). A balanced fold instead halves the
+    /// list each round, so no accumulator ever grows past twice the size of
+    /// what it's being composed with. `None` for an empty input.
+    ///
+    /// Every adjacent boundary in `css` is checked exactly once — by
+    /// whichever round's `compose` call first pairs those two neighbors —
+    /// via `compose`'s own `assert_eq!(self.len_after, other.len_before)`.
+    #[must_use]
+    pub fn compose_all(css: impl IntoIterator<Item = ChangeSet>) -> Option<ChangeSet> {
+        let mut css: Vec<ChangeSet> = css.into_iter().collect();
+        while css.len() > 1 {
+            let mut folded = Vec::with_capacity(css.len().div_ceil(2));
+            let mut pairs = css.into_iter();
+            while let Some(a) = pairs.next() {
+                folded.push(match pairs.next() {
+                    Some(b) => a.compose(b),
+                    None => a,
+                });
+            }
+            css = folded;
+        }
+        css.pop()
+    }
 }
 
 mod builder;

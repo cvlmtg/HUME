@@ -1008,6 +1008,22 @@ fn compose_identity_right() {
 }
 
 #[test]
+fn compose_all_empty_is_none() {
+    assert_eq!(ChangeSet::compose_all(Vec::new()), None);
+}
+
+#[test]
+fn compose_all_single_is_that_changeset() {
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.retain(2);
+    b.insert("X");
+    b.retain_rest();
+    let cs = b.finish();
+
+    assert_eq!(ChangeSet::compose_all(vec![cs.clone()]), Some(cs));
+}
+
+#[test]
 fn compose_two_inserts() {
     // "abc\n" = 4 chars.
     // A: insert "X" at 0 → "Xabc\n" (4→5)
@@ -1343,6 +1359,54 @@ proptest! {
         let result_left = ab_c.apply(&text).unwrap();
         let result_right = a_bc.apply(&text).unwrap();
         prop_assert_eq!(result_left.to_string(), result_right.to_string());
+    }
+
+    /// `compose_all`'s balanced fold must agree with a plain left fold
+    /// (`reduce(compose)`) — same chain, same net transform, different
+    /// grouping. Reuses `prop_compose_associativity`'s three-changeset chain.
+    #[test]
+    fn prop_compose_all_matches_left_fold(
+        text in arb_text(20),
+    ) {
+        let text = BufferText::from(text.as_str());
+        let doc_len = text.len_chars();
+
+        let q = doc_len / 4;
+        let mut b1 = ChangeSetBuilder::new(co(doc_len));
+        b1.delete(q);
+        b1.insert("X");
+        b1.retain_rest();
+        let a = b1.finish();
+
+        let mid1 = a.clone().apply(&text).unwrap();
+        let mid1_len = mid1.len_chars();
+
+        let h = mid1_len / 2;
+        let mut b2 = ChangeSetBuilder::new(co(mid1_len));
+        b2.retain(h);
+        b2.insert("YY");
+        b2.retain_rest();
+        let b = b2.finish();
+
+        let mid2 = b.clone().apply(&mid1).unwrap();
+        let mid2_len = mid2.len_chars();
+
+        let t = mid2_len / 3;
+        let mut b3 = ChangeSetBuilder::new(co(mid2_len));
+        b3.retain(t);
+        b3.delete(1.min(mid2_len - t));
+        b3.retain_rest();
+        let c = b3.finish();
+
+        let left_fold = [a.clone(), b.clone(), c.clone()]
+            .into_iter()
+            .reduce(ChangeSet::compose)
+            .unwrap();
+        let balanced = ChangeSet::compose_all(vec![a, b, c]).unwrap();
+
+        let result_left = left_fold.apply(&text).unwrap();
+        let result_balanced = balanced.apply(&text).unwrap();
+        prop_assert_eq!(result_left.to_string(), result_balanced.to_string());
     }
 }
 

@@ -689,18 +689,13 @@ impl Buffer {
 
         if let Some(cs) = group.cs {
             // An identity `cs` moved no bytes: recording it would put a no-op
-            // revision on the undo stack — and `History::undo_n`/`redo_n`
-            // still move `current` and still return a non-empty transaction
-            // list for a no-op revision (they don't inspect the transaction
-            // they're walking, only whether a parent/child link exists), so
-            // `u` would consume a step, change no text, and — because
-            // `steps == count` — print no exhaustion message either. The
-            // user presses `u`, nothing visibly happens, and nothing
-            // explains why. `apply_transactions`'s own identity guard (which
-            // skips `set_text`, not recording) is a different guard for a
-            // different reason: it protects a walk that crosses a genuine
-            // no-op revision *placed there by some other path*, not a
-            // reason to let this one be placed to begin with.
+            // revision on the undo stack, and undoing that revision would
+            // still consume a step and move `current` — `undo_n`/`redo_n`
+            // don't inspect the transaction they're walking, only whether a
+            // parent/child link exists — so `u` would consume a step, change
+            // no text, and print no exhaustion message either. See
+            // `apply_transactions`'s doc for why its own identity guard is a
+            // different one, protecting a different case.
             if cs.is_identity() {
                 return;
             }
@@ -711,10 +706,13 @@ impl Buffer {
 
     /// Apply an ordered Transaction list — from `History::undo_n`/`redo_n`/
     /// `goto_revision` — as one composed transform: fold every ChangeSet
-    /// together with `ChangeSet::compose` (sound because each Transaction in
-    /// the list maps the state the previous one produced, see
-    /// `History::goto_revision`'s doc) and apply the result once. `None` when
-    /// `txns` is empty (nothing to do — already at the target).
+    /// together with `ChangeSet::compose_all` (sound because each Transaction
+    /// in the list maps the state the previous one produced, see
+    /// `History::goto_revision`'s doc) and apply the result once. Returns the
+    /// restored selections, the net ChangeSet, and how many steps `txns`
+    /// held — short of the caller's requested count when the walk hit the
+    /// root/leaf, so the caller can tell exhaustion apart from a full walk.
+    /// `None` when `txns` is empty (nothing to do — already at the target).
     ///
     /// Always validates the landing selections via `Transaction::apply`
     /// (length + bounds check, `merge_overlapping_in_place`), but skips
@@ -726,11 +724,17 @@ impl Buffer {
     /// never enters history; this walk's revision move already happened in
     /// `History::undo_n`/`redo_n`/`goto_revision` before this is even
     /// called, so all that's left to guard here is the text mutation.
-    fn apply_transactions(&mut self, txns: Vec<Transaction>) -> Option<(SelectionSet, ChangeSet)> {
+    fn apply_transactions(
+        &mut self,
+        txns: Vec<Transaction>,
+    ) -> Option<(SelectionSet, ChangeSet, usize)> {
+        let steps = txns.len();
         let landing_sels = txns.last()?.selection().clone();
-        let css: Vec<ChangeSet> = txns.into_iter().map(Transaction::into_changes).collect();
-        let cs = compose_balanced(css);
-        let txn = Transaction::new(cs, landing_sels);
+        let css = txns.into_iter().map(Transaction::into_changes);
+        let txn = Transaction::new(
+            ChangeSet::compose_all(css).expect("txns non-empty: the `?` above already returned"),
+            landing_sels,
+        );
         let (new_text, new_sels) = txn
             .apply(&self.text)
             .expect("composed history transaction failed — history is corrupt");
@@ -738,56 +742,23 @@ impl Buffer {
         if !cs.is_identity() {
             self.set_text(new_text);
         }
-        Some((new_sels, cs))
-    }
-
-    /// Undo the last edit. Returns `(restored_sels, inverse_cs)` on success,
-    /// or `None` if already at the root.
-    ///
-    /// The returned CS maps post-edit positions → pre-edit positions — pass it
-    /// to `propagate_cs_to_panes` so non-acting panes' cursors ride the undo.
-    /// Thin single-step convenience over `undo_n` — see its doc. Production
-    /// always travels through `undo_n` directly (`doc_ops::apply_doc_history_walk`
-    /// takes a step count); this exists for tests that only need "one step".
-    #[cfg(test)]
-    pub(crate) fn undo(&mut self) -> Option<(SelectionSet, ChangeSet)> {
-        let (sels, cs, _steps) = self.undo_n(1)?;
-        Some((sels, cs))
-    }
-
-    /// Redo the most recent undone edit. Returns `(restored_sels, forward_cs)`.
-    ///
-    /// The returned CS maps pre-edit positions → post-edit positions.
-    /// Thin single-step convenience over `redo_n` — see [`Self::undo`]'s doc
-    /// for why this is test-only.
-    #[cfg(test)]
-    pub(crate) fn redo(&mut self) -> Option<(SelectionSet, ChangeSet)> {
-        let (sels, cs, _steps) = self.redo_n(1)?;
-        Some((sels, cs))
+        Some((new_sels, cs, steps))
     }
 
     /// Undo up to `count` steps as one composed transform — the production
     /// path for `5u` and an age-resolved `:earlier`, so a multi-step travel
     /// pays for one `set_text`/`finish_edit` cycle instead of `count` of
-    /// them. Returns the restored selections, the net inverse ChangeSet
-    /// (post-edit positions → pre-edit positions), and how many steps were
-    /// actually taken — short of `count` at the root, so the caller can tell
-    /// exhaustion apart from a full walk. `None` when no step could be taken
-    /// (already at the root).
+    /// them. See [`Self::apply_transactions`] for the return contract.
     pub(crate) fn undo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
         let txns = self.history.undo_n(count);
-        let steps = txns.len();
-        let (sels, cs) = self.apply_transactions(txns)?;
-        Some((sels, cs, steps))
+        self.apply_transactions(txns)
     }
 
     /// Redo up to `count` steps forward as one composed transform. See
     /// `undo_n`'s doc — same contract, redo direction.
     pub(crate) fn redo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
         let txns = self.history.redo_n(count);
-        let steps = txns.len();
-        let (sels, cs) = self.apply_transactions(txns)?;
-        Some((sels, cs, steps))
+        self.apply_transactions(txns)
     }
 
     /// The current buffer contents.
@@ -801,10 +772,8 @@ impl Buffer {
     }
 
     /// Test-only: production no longer branches on this — `undo_n`/`redo_n`
-    /// (via `History::goto_revision`) clamp at the root/leaf themselves and
-    /// report `taken < requested` instead of checking `can_undo` up front.
-    /// No `can_redo` counterpart: it lost its one caller (the old `cmd_redo`
-    /// exhaustion check) in the same change and nothing else ever needed it.
+    /// clamp at the root themselves and report `taken < requested` instead
+    /// of checking `can_undo` up front.
     #[cfg(test)]
     pub(in crate::editor) fn can_undo(&self) -> bool {
         self.history.can_undo()
@@ -832,50 +801,11 @@ impl Buffer {
         target: hume_editing::history::RevisionId,
     ) {
         if let Some(transactions) = self.history.goto_revision(target)
-            && let Some((new_sels, _cs)) = self.apply_transactions(transactions)
+            && let Some((new_sels, _cs, _steps)) = self.apply_transactions(transactions)
         {
             *sels = new_sels;
         }
     }
-}
-
-/// Folds `css` into one net `ChangeSet` via balanced pairwise composition —
-/// O(N log N) op-steps rather than a left fold's O(N²) (each step of a left
-/// fold composes the whole growing accumulator against the next entry, so
-/// the accumulator's own op count grows toward N over the walk, and
-/// `ChangeSet::compose` allocates a fresh `Vec<Operation>` every time). A
-/// balanced fold instead halves the list each round, so no accumulator ever
-/// grows past twice the size of what it's being composed with.
-///
-/// Validates the whole chain up front (`compose`'s own precondition, checked
-/// once here instead of once per `compose` call) and panics with the message
-/// `apply_transactions`' `.expect` already carries — so a broken chain is
-/// diagnosed as history corruption, not as `compose`'s own release
-/// `assert_eq!`, which names neither undo nor history.
-///
-/// # Panics
-/// If `css` is empty, or the chain is broken (`css[i].len_after() !=
-/// css[i + 1].len_before()` for some `i`).
-fn compose_balanced(mut css: Vec<ChangeSet>) -> ChangeSet {
-    assert!(
-        !css.is_empty()
-            && css
-                .windows(2)
-                .all(|w| w[0].len_after() == w[1].len_before()),
-        "composed history transaction failed — history is corrupt"
-    );
-    while css.len() > 1 {
-        let mut folded = Vec::with_capacity(css.len().div_ceil(2));
-        let mut pairs = css.into_iter();
-        while let Some(a) = pairs.next() {
-            folded.push(match pairs.next() {
-                Some(b) => a.compose(b),
-                None => a,
-            });
-        }
-        css = folded;
-    }
-    css.pop().expect("non-empty by the assert above")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

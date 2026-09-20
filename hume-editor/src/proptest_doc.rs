@@ -59,12 +59,12 @@ mod tests {
             self.sels = new_sels;
         }
         fn undo(&mut self) {
-            if let Some((sels, _cs)) = self.buf.undo() {
+            if let Some((sels, _cs, _steps)) = self.buf.undo_n(1) {
                 self.sels = sels;
             }
         }
         fn redo(&mut self) {
-            if let Some((sels, _cs)) = self.buf.redo() {
+            if let Some((sels, _cs, _steps)) = self.buf.redo_n(1) {
                 self.sels = sels;
             }
         }

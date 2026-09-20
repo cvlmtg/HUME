@@ -55,16 +55,19 @@ children, and timestamp, plus a `RevisionId` accessor/reconstructor.
 application logic with production — `undo_n`/`redo_n` (the composed walks
 `:earlier`/`:later` and counted `u`/`Ctrl-r` use) and `goto_revision` all fold
 their transaction list through the same private `Buffer::apply_transactions`
-(one `ChangeSet::compose` chain, one `set_text`) — but it still bypasses the
-read-only guard and `finish_edit` a production mutation must go through: no
-pane propagation, no tree-sitter reparse, no LSP sync, no decoration remap,
-no jump-list entry.
+(one `ChangeSet::compose_all` chain, one `set_text`) — but it still bypasses
+the read-only guard and `finish_edit` a production mutation must go through:
+no pane propagation, no tree-sitter reparse, no LSP sync, no decoration
+remap, no jump-list entry.
 
-Needed: a `doc_ops::apply_doc_goto_revision` mirroring
-`apply_doc_history_walk` (read-only guard, one `finish_edit` call for the
-whole jump) — a thin wrapper now that `apply_transactions` already does the
-composition — and a `Buffer::saved_revision()` accessor for the "this is the
-saved node" marker.
+Needed: promote `Buffer::goto_revision` out of `#[cfg(test)]` and shape its
+return to match `apply_transactions`'s `Option<(SelectionSet, ChangeSet,
+usize)>`, then route it through `doc_ops::apply_doc_history_walk` — its
+`walk` parameter is a closure
+(`impl FnOnce(&mut Buffer) -> Option<(SelectionSet, ChangeSet, usize)>`), so
+`|b| b.goto_revision(target)` reuses that same entry point (read-only guard,
+one `finish_edit` call) with no new `doc_ops` function needed — plus a
+`Buffer::saved_revision()` accessor for the "this is the saved node" marker.
 
 ### `hume-scripting`
 
@@ -134,14 +137,12 @@ undo graph reads well in a terminal, and whether jump-by-node feels good.
 - [ ] Public read-only enumeration API on `History` (`hume-editing`)
 - [ ] `RevisionId` accessor + reconstructor (`hume-editing`)
 - [ ] `Buffer::saved_revision()` accessor (`hume-editor`)
-- [ ] Production `doc_ops::apply_doc_goto_revision` (`hume-editor`) — a thin
-      wrapper now that `Buffer::apply_transactions` already does the
-      composition `undo_n`/`redo_n` and (test-only) `goto_revision` share;
-      needs only the read-only guard and `finish_edit` call
-      `apply_doc_history_walk` already has, and must return
-      `doc_ops::HistoryWalk` the same way — this is the caller that makes
-      that guard's own refusal need to stay distinguishable from exhaustion,
-      since it has no outer `refuse_if_read_only` of its own to fall back on
+- [ ] Promote `Buffer::goto_revision` out of `#[cfg(test)]`, route it through
+      `doc_ops::apply_doc_history_walk` as a closure (no new `doc_ops`
+      function needed — see that crate's `hume-editor` section above) — this
+      is the caller that makes `HistoryWalk::RefusedReadOnly` need to stay
+      distinguishable from `Took(0)`, since it has no outer
+      `refuse_if_read_only` of its own to fall back on
 - [ ] `BufferHost`/`EditHost` methods backing the above (`hume-scripting`)
 - [ ] `(buffer-undo-tree bid)` and `(goto-revision! bid id)` builtins, plus
       regenerated `hume-globals.scm` (`hume-scripting`)

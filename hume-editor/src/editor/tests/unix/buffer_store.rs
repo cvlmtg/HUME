@@ -242,7 +242,7 @@ fn p6_e_bang_inverse_is_fine_grained() {
     // (buffer-swap) reload would have produced an inverse of
     // `Delete(whole new) | Insert(whole old)`; the line-diff path produces a
     // small `Insert("beta\n")` instead.
-    let (_, inv_cs) = ed.doc_mut().undo().expect("undo returns the inverse CS");
+    let (_, inv_cs, _steps) = ed.doc_mut().undo_n(1).expect("undo returns the inverse CS");
     let has_small_insert = inv_cs
         .ops()
         .iter()
