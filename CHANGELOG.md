@@ -4,18 +4,21 @@
 
 ### Breaking changes
 - `--keys` (headless mode) now loads `init.scm` and plugins, same as interactive mode — previously it always ran with pure built-in defaults. This also means headless now pays interactive mode's scripting-startup cost (Steel VM boot, installed grammar registration). Pass `--no-config` for the old pristine, faster behavior.
+- `(show-drawer-list! items on-select)` now returns a token identifying the drawer it opened; `(close-drawer! token)`, `(update-drawer-list! token items on-select selected)`, and `(drawer-selected-index token)` each take it as their first argument and ignore a call whose token doesn't name the currently open drawer. A plugin managing its own drawer needs to hold onto the returned token and pass it to these three going forward.
+- `(show-drawer-list! items on-select)` now errors on an empty `items` instead of opening a 0-row drawer, and — like `show-menu!` — fires the outgoing drawer's callback with `#f` when a second call replaces it, so its owner learns the drawer is gone.
 
 ### CLI
 - New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
 
 ### Editing
 - `/`, `?`, and `s` (sift-within) now accept leading flags before the pattern: `m/pattern` moves (or extends) every selection to its own next match, instead of only the primary; `v/pattern` matches the pattern literally instead of as a regex. Flags combine (`mv/pattern`) and are inherited by `n`/`N` until the next search. `m` has no effect at `s`, which already applies to every selection. Text that would otherwise be read as flags (a flag letter run followed by `/`) is reached literally via `v/` — `v/m/s` searches for the literal text `m/s`. The `'s'` register (`n`/`N`, `"sp`, search history) now stores the pattern's flagged form, e.g. `v/ell` or `m/bar`, not the bare pattern.
-- New `:earlier`/`:later` commands step through the undo history: back, then forward again along the most recent path. A bare number counts revisions (`:earlier 3`); a number with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 5m` goes back to how the buffer looked five minutes ago). Traveling past either end stops at the oldest/newest revision with a message.
+- New `:earlier`/`:later` commands step through the undo history: back, then forward again along the most recent path. A bare number counts revisions (`:earlier 3`); a number with an `s`/`m`/`h`/`d` suffix names an age (`:earlier 5m` goes back to how the buffer looked five minutes ago), measured in actual wall-clock time — including any time the machine spent asleep. Traveling past either end stops at the oldest/newest revision with a message; `:earlier`/`:later` on a read-only buffer are refused the same way `u`/`Ctrl-r` are.
 
 ### Panes & interface
 - New tab pages: `:tabnew`/`:tabclose`/`:tabnext`/`:tabprev` (aliases `:tabe`/`:tabc`/`:tabn`/`:tabp`), and mappable `goto-next-tab`/`goto-prev-tab` commands (default `Ctrl-p t`/`Ctrl-p T`). A tab is a saved window layout — its own splits and focused pane — not a per-buffer strip. A tab bar shows open tabs with click-to-switch and scrolls when they overflow the screen width; new `tabline` setting (`always`/`never`/`dynamic`, default `dynamic`) controls when it's shown.
 - New mappable `tab-new` command — the bindable equivalent of bare `:tabnew`.
 - `Ctrl-d`/`Ctrl-u`/`PageDown`/`PageUp` now scroll the view itself, not just the cursor — matching mouse-wheel scrolling and most other editors.
+- The bottom drawer's `Ctrl-d`/`Ctrl-u` now page by half the visible band instead of one row at a time, matching every other paged view; `Shift-Down`/`Shift-Up` step one row at a time for fine adjustment. `j`/`k` and the plain arrow keys still fall through to the buffer underneath, unchanged.
 - The file, buffer, and modified-files pickers (`z f`/`z b`/`z m`) now accept `Ctrl-o`/`Ctrl-t`/`Ctrl-v`/`Ctrl-s` to open a selection in the current pane, a new tab, a side-by-side split, or a stacked split, alongside `Enter`.
 - Pasting while a picker is open now goes to its query instead of the buffer underneath.
 - Clicking, dragging, or scrolling while a picker is open no longer moves the cursor or the view beneath it.
@@ -30,8 +33,9 @@
 ### Plugins & scripting
 - `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
 - A code-action menu or references list whose response arrives after you've moved on — left Normal mode, or opened something else — is discarded instead of opening.
-- `close-menu!` and `close-drawer!` now retire the widget wherever it sits on the stack, even buried under something else (a `close-drawer!` while browsing it mid-edit, for instance); `picker-close!`, `completion-dismiss!`, and `close-popup!` stay idempotent no-ops when nothing's open.
+- `close-menu!` now retires the widget wherever it sits on the stack, even buried under something else; `close-drawer!` closes the drawer wherever it sits without touching anything stacked above it (an `Insert` session or a code-action menu browsing over it, say — those keep running); `picker-close!`, `completion-dismiss!`, and `close-popup!` stay idempotent no-ops when nothing's open.
 - `on-mode-change` no longer fires for the mode transitions a `.` repeat replays internally.
+- The Steel language server (`core:steel-server`) no longer reports `run-capture!` (the builtin behind `core:stdlib`'s `stdlib/run`) as an undefined identifier when editing `core:stdlib`'s own plugin file.
 
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.
@@ -40,6 +44,10 @@
 - `o`/`O` now carry the current line's indent onto the new line, matching Enter's auto-indent — previously they always opened at column 0.
 - The "file changed on disk" prompt no longer swallows a key that isn't `[r]eload`/`[k]eep`/`Esc` — it still dismisses the prompt, but the keystroke now also runs its own binding instead of vanishing (e.g. `/` now still opens search).
 - Pasting while the "file changed on disk" prompt is open no longer edits the buffer underneath.
+- Fixing the last diagnostic (or otherwise emptying) a buffer whose `:diagnostics` drawer is open no longer drops you out of Insert mode mid-edit — closing the drawer now leaves whatever you were doing above it (typing, a code-action menu) running.
+- The bottom drawer no longer left blank rows below a shorter list — a severity-floor change hiding most diagnostics, for instance — when its scroll position was left over from a longer one.
+- Selecting a row in the `:diagnostics` drawer after switching to a different buffer now jumps into the buffer the diagnostics were listed for, instead of whichever buffer is currently focused.
+- `:plum-install-plugins`/`:plum-update-plugins` no longer hang indefinitely when git needs to prompt for credentials (a private repository, an expired token) — the prompt is now denied outright, and the command fails fast with git's own error instead.
 
 ## [0.12.0] - 2026-09-08
 
