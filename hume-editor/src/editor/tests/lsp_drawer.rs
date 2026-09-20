@@ -874,8 +874,10 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     type_cmd(&mut ed, ":go");
 
     // capacity = min(20 items + 1, 10 rows / 2 = 5) = 5; visible_rows = 4.
+    // Shift-Down, not Ctrl-d, so each press moves exactly one row — this
+    // test is about the scroll-follows-selection mechanism, not paging.
     for _ in 0..6 {
-        ed.feed_key(key_ctrl('d'));
+        ed.feed_key(key_shift_down());
     }
 
     let drawer = ed.state.input.drawer().unwrap();
@@ -892,12 +894,13 @@ fn long_list_auto_scrolls_to_keep_selection_visible() {
     );
 }
 
-// ── Ctrl-d/Ctrl-u: single-line step ───────────────────────────────────────────
+// ── Ctrl-d/Ctrl-u: half-page step; Shift-Down/Up: single-row step ────────────
 
 /// Arms the same 20-item / 40×10 fixture as
 /// `long_list_auto_scrolls_to_keep_selection_visible`: capacity =
-/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4 and each Ctrl-d/Ctrl-u
-/// moves exactly one row.
+/// min(20+1, 10/2=5) = 5, so `visible_rows` = 4, each Ctrl-d/Ctrl-u moves by
+/// half that (`(4 / 2).max(1)` = 2 rows), and each Shift-Down/Shift-Up moves
+/// by exactly 1.
 fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
     let items_scm: String = (0..20)
         .map(|i| format!("\"item {i}\""))
@@ -922,32 +925,24 @@ fn arm_twenty_items_in_a_short_terminal(ed: &mut Editor, tmp: &Path) {
 }
 
 #[test]
-fn ctrl_d_steps_down_one_row() {
+fn ctrl_d_steps_down_half_a_page() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('d'));
-    assert_eq!(
-        ed.state.input.drawer().unwrap().selected,
-        1,
-        "a single row, not a half-page"
-    );
-
-    // A second step stays inside the first visible window (0..4), so
-    // scroll must not advance yet.
-    ed.feed_key(key_ctrl('d'));
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(drawer.selected, 2);
+    assert_eq!(
+        drawer.selected, 2,
+        "half of the 4 visible rows, not a single row"
+    );
     assert_eq!(drawer.scroll, 0, "still inside the first window");
 
-    // Stepping past the window (selected = 5) must scroll to keep the new
-    // selection in view.
-    ed.feed_key(key_ctrl('d'));
-    ed.feed_key(key_ctrl('d'));
+    // The next half-page step (selected = 4) leaves the first window
+    // (0..4), so scroll must advance to keep it in view.
     ed.feed_key(key_ctrl('d'));
     let drawer = ed.state.input.drawer().unwrap();
-    assert_eq!(drawer.selected, 5);
+    assert_eq!(drawer.selected, 4);
     assert!(
         drawer.scroll > 0,
         "scroll must advance once selection leaves the first window"
@@ -960,7 +955,7 @@ fn ctrl_d_clamps_at_the_last_item() {
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
-    for _ in 0..25 {
+    for _ in 0..15 {
         ed.feed_key(key_ctrl('d'));
     }
     assert_eq!(
@@ -971,18 +966,18 @@ fn ctrl_d_clamps_at_the_last_item() {
 }
 
 #[test]
-fn ctrl_u_steps_up_one_row() {
+fn ctrl_u_steps_up_half_a_page() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('d'));
-    ed.feed_key(key_ctrl('d')); // selected = 2
+    ed.feed_key(key_ctrl('d')); // selected = 4
     ed.feed_key(key_ctrl('u'));
     assert_eq!(
         ed.state.input.drawer().unwrap().selected,
-        1,
-        "one row back up from 2"
+        2,
+        "half a page back up from 4"
     );
 }
 
@@ -993,6 +988,78 @@ fn ctrl_u_clamps_at_the_first_item() {
     arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
 
     ed.feed_key(key_ctrl('u'));
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(drawer.selected, 0, "clamped, never underflows");
+    assert_eq!(drawer.scroll, 0);
+}
+
+fn key_shift_down() -> KeyEvent {
+    KeyEvent::new(KeyCode::Down, Modifiers::SHIFT)
+}
+
+fn key_shift_up() -> KeyEvent {
+    KeyEvent::new(KeyCode::Up, Modifiers::SHIFT)
+}
+
+#[test]
+fn shift_down_steps_down_one_row() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_shift_down());
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        1,
+        "exactly one row, not a half-page"
+    );
+
+    // Two rows still stay inside the first visible window (0..4).
+    ed.feed_key(key_shift_down());
+    let drawer = ed.state.input.drawer().unwrap();
+    assert_eq!(drawer.selected, 2);
+    assert_eq!(drawer.scroll, 0, "still inside the first window");
+}
+
+#[test]
+fn shift_down_clamps_at_the_last_item() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    for _ in 0..25 {
+        ed.feed_key(key_shift_down());
+    }
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        19,
+        "clamped to the last of 20 items, not wrapped or overshot"
+    );
+}
+
+#[test]
+fn shift_up_steps_up_one_row() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_shift_down());
+    ed.feed_key(key_shift_down()); // selected = 2
+    ed.feed_key(key_shift_up());
+    assert_eq!(
+        ed.state.input.drawer().unwrap().selected,
+        1,
+        "one row back up from 2"
+    );
+}
+
+#[test]
+fn shift_up_clamps_at_the_first_item() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    arm_twenty_items_in_a_short_terminal(&mut ed, tmp.path());
+
+    ed.feed_key(key_shift_up());
     let drawer = ed.state.input.drawer().unwrap();
     assert_eq!(drawer.selected, 0, "clamped, never underflows");
     assert_eq!(drawer.scroll, 0);
