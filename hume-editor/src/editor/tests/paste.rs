@@ -539,6 +539,45 @@ fn redo_after_undo_keeps_ring_stamp_stale() {
     );
 }
 
+/// A composed undo whose net `ChangeSet` is identity (insert 'x', delete 'x')
+/// still moves the revision and the selections — `apply_doc_history_walk`
+/// must bump `edit_seq` for it same as any other walk, even though
+/// `finish_edit` skips `set_text` for an identity CS. Without that bump, a
+/// stamp taken right before the walk would stay "fresh" across it, and a
+/// bare `p` right after would incorrectly cycle the ring instead of falling
+/// back to the clipboard.
+#[test]
+fn net_identity_undo_still_bumps_edit_seq_and_ends_paste_session() {
+    use hume_ops::register::CLIPBOARD_REGISTER;
+
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.state
+        .registers
+        .write_text(CLIPBOARD_REGISTER, vec!["CLIP".to_string()]);
+    ed.feed_key(key('i'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key_esc()); // rev1: insert 'x' — lands a 1-char selection on it
+    ed.feed_key(key('d')); // rev2: delete 'x' → ring = ["x"], stamp fresh
+    let before = ed.doc().text().to_string();
+
+    ed.feed_key(key('2'));
+    ed.feed_key(key('u')); // one composed walk over rev2+rev1 — nets to identity
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "sanity: undoing insert-then-delete of the same char changes no text"
+    );
+
+    ed.feed_key(key('p')); // bare smart-p → must read the clipboard, not the ring
+    let buf = ed.doc().text().to_string();
+    assert!(
+        buf.contains("CLIP"),
+        "p after a net-identity undo must read the clipboard — the undo moved \
+         the revision and ended the paste session even though no text changed; \
+         buf={buf:?}"
+    );
+}
+
 /// An edit in a *different* buffer invalidates the stamp too — `edit_seq`
 /// (`BufferStore`) is a single global counter, not per-buffer, so a capture
 /// in buffer A followed by any edit in buffer B (before switching back to A)

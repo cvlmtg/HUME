@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::doc_ops;
 use pretty_assertions::assert_eq;
 
 pub(super) fn ls_output(ed: &mut Editor) -> String {
@@ -363,6 +364,38 @@ fn read_only_buffer_blocks_undo_and_redo() {
         ed.state.status_msg.as_deref(),
         Some("Buffer is read-only"),
         "Ctrl-r must report the refusal, same as :later does"
+    );
+}
+
+/// `apply_doc_history_walk`'s own read-only refusal must be distinguishable
+/// from genuine root/leaf exhaustion — `history_step`'s outer
+/// `refuse_if_read_only` guard masks this for `u`/`Ctrl-r`/`:earlier`/
+/// `:later` today, but `docs/UNDOTREE.md`'s planned `apply_doc_goto_revision`
+/// leans on this inner guard alone, so the two outcomes must not collapse to
+/// the same value.
+#[test]
+fn apply_doc_history_walk_distinguishes_refusal_from_exhaustion() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key('d')); // creates one undo step — not exhausted
+    ed.doc_mut().read_only = true;
+
+    let focused = ed.state.focus.id();
+    let bid = ed.focused_buffer_id();
+    let result = doc_ops::apply_doc_history_walk(
+        &mut ed.state.buffers,
+        &ed.state.config.decorations,
+        &mut ed.state.panes.state,
+        &mut ed.state.panes.jumps,
+        focused,
+        bid,
+        Buffer::undo_n,
+        1,
+    );
+    assert_eq!(
+        result,
+        doc_ops::HistoryWalk::RefusedReadOnly,
+        "a read-only buffer with real undo history available must report \
+         refusal, not the `Took(0)` a genuinely exhausted walk would also report"
     );
 }
 

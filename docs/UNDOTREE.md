@@ -138,7 +138,10 @@ undo graph reads well in a terminal, and whether jump-by-node feels good.
       wrapper now that `Buffer::apply_transactions` already does the
       composition `undo_n`/`redo_n` and (test-only) `goto_revision` share;
       needs only the read-only guard and `finish_edit` call
-      `apply_doc_history_walk` already has
+      `apply_doc_history_walk` already has, and must return
+      `doc_ops::HistoryWalk` the same way — this is the caller that makes
+      that guard's own refusal need to stay distinguishable from exhaustion,
+      since it has no outer `refuse_if_read_only` of its own to fall back on
 - [ ] `BufferHost`/`EditHost` methods backing the above (`hume-scripting`)
 - [ ] `(buffer-undo-tree bid)` and `(goto-revision! bid id)` builtins, plus
       regenerated `hume-globals.scm` (`hume-scripting`)

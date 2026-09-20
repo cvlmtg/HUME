@@ -30,6 +30,23 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 pub(in crate::editor) type HistoryWalkFn =
     fn(&mut Buffer, usize) -> Option<(SelectionSet, ChangeSet, usize)>;
 
+/// [`apply_doc_history_walk`]'s result — keeps a read-only refusal
+/// distinguishable from genuine root/leaf exhaustion. Both used to collapse
+/// to `0`, which is safe only because every current caller
+/// (`history_step`) already calls `refuse_if_read_only` first; a caller that
+/// leans on this function's own guard alone (the `apply_doc_goto_revision`
+/// `docs/UNDOTREE.md` plans) would otherwise report "Already at oldest
+/// change" for a read-only buffer — a wrong diagnosis sending the user to
+/// look for missing history that was never there to find.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum HistoryWalk {
+    /// The buffer is read-only; nothing was attempted.
+    RefusedReadOnly,
+    /// The walk ran and took this many steps — short of the requested count
+    /// at the root/leaf.
+    Took(usize),
+}
+
 /// No-op when `buf_id` has no grammar attached (`syntax` is `None`).
 /// Called immediately after every text mutation.
 fn record_syntax_edits(
@@ -301,8 +318,11 @@ pub(in crate::editor) fn apply_doc_edit_regrouped(
 /// age-resolved `:earlier`/`:later` (an unbounded step count) as cheap as a
 /// single `u`.
 ///
-/// Returns the number of steps actually taken — short of `count` when the
-/// walk hit the root/leaf, so the caller can report exhaustion.
+/// Returns [`HistoryWalk::Took`] with the number of steps actually taken —
+/// short of `count` when the walk hit the root/leaf, so the caller can
+/// report exhaustion — or [`HistoryWalk::RefusedReadOnly`] when the buffer
+/// refused the walk outright; see that type's doc for why the two must stay
+/// distinguishable.
 pub(in crate::editor) fn apply_doc_history_walk(
     buffers: &mut BufferStore,
     decorations: &DecorationStores,
@@ -312,9 +332,9 @@ pub(in crate::editor) fn apply_doc_history_walk(
     buf_id: BufferId,
     walk: HistoryWalkFn,
     count: usize,
-) -> usize {
+) -> HistoryWalk {
     if buffers.get(buf_id).is_read_only() {
-        return 0;
+        return HistoryWalk::RefusedReadOnly;
     }
     debug_assert!(
         pane_state[focused_pane_id][buf_id].edit_group.is_none(),
@@ -326,7 +346,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     let text_pre = buffers.get(buf_id).text().clone();
     let rope_pre = text_pre.rope().clone();
     let Some((new_sels, cs, steps)) = walk(buffers.get_mut(buf_id), count) else {
-        return 0;
+        return HistoryWalk::Took(0);
     };
     finish_edit(
         buffers,
@@ -340,7 +360,17 @@ pub(in crate::editor) fn apply_doc_history_walk(
         &text_pre,
         &rope_pre,
     );
-    steps
+    // `finish_edit` skips `bump_edit_seq` for an identity `cs` (correctly —
+    // a normal edit that cancels to identity records no revision at all, so
+    // nothing happened). A history walk is different: `current` moved to a
+    // real revision and the selections moved with it even when the net text
+    // didn't, so any paste session live before this walk is over. Bumped
+    // here rather than in `finish_edit` itself, since that guard still needs
+    // to hold for every *other* caller.
+    if cs.is_identity() {
+        buffers.bump_edit_seq();
+    }
+    HistoryWalk::Took(steps)
 }
 
 /// Apply a motion function and store the resulting selection in `pane_state`.

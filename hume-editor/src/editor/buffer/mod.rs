@@ -39,9 +39,14 @@ use hume_treesitter::syntax::Syntax;
 /// stamped with the buffer's `text_gen` at capture time.
 ///
 /// `mii` (`select-last-insertion`) compares `text_gen` against the buffer's
-/// live generation before using `spans` — any intervening mutation (an edit,
-/// undo, or redo, all of which bump `text_gen`) invalidates it rather than
-/// trying to remap positions through the change.
+/// live generation before using `spans` — any intervening mutation that
+/// actually moves text (an edit, or an undo/redo whose net `ChangeSet` isn't
+/// identity) bumps `text_gen`, invalidating the stash rather than trying to
+/// remap positions through the change. A net-identity undo/redo walk skips
+/// the bump (see `apply_transactions`), but that's still sound here: identity
+/// means every op is a `Retain` — no character moved — so the stashed spans
+/// stay literally correct positions even though `current` moved to a
+/// different revision.
 pub(in crate::editor) struct LastInsert {
     /// One inclusive char range per selection that was active during the
     /// session, sorted by `start`.
@@ -480,6 +485,14 @@ impl Buffer {
     /// reports a clean buffer — a simple `dirty: bool` flag cannot do this.
     /// `saved_revision == None` (saved state evicted by promotion) always
     /// reads dirty.
+    ///
+    /// Tracks revision identity, not byte equality with the saved text: a
+    /// history walk that lands on a *different* revision whose text happens
+    /// to be byte-identical to the saved one (e.g. undoing an insert and its
+    /// own later delete, past the save point) still reads dirty. Making this
+    /// content-truthful would mean hashing the buffer on every dirty query —
+    /// the statusline makes one every frame — for a case that self-corrects
+    /// on the next real edit or save.
     pub(crate) fn is_dirty(&self) -> bool {
         self.saved_revision != Some(self.history.current_id())
     }
@@ -676,11 +689,18 @@ impl Buffer {
 
         if let Some(cs) = group.cs {
             // An identity `cs` moved no bytes: recording it would put a no-op
-            // revision on the undo stack, and undoing that revision would
-            // call `set_text` unconditionally (`Buffer::undo` has no identity
-            // guard of its own — every revision that reaches `record_revision`
-            // is assumed real), bumping `text_gen` and firing
-            // `on-text-changed` for a mutation that never happened.
+            // revision on the undo stack — and `History::undo_n`/`redo_n`
+            // still move `current` and still return a non-empty transaction
+            // list for a no-op revision (they don't inspect the transaction
+            // they're walking, only whether a parent/child link exists), so
+            // `u` would consume a step, change no text, and — because
+            // `steps == count` — print no exhaustion message either. The
+            // user presses `u`, nothing visibly happens, and nothing
+            // explains why. `apply_transactions`'s own identity guard (which
+            // skips `set_text`, not recording) is a different guard for a
+            // different reason: it protects a walk that crosses a genuine
+            // no-op revision *placed there by some other path*, not a
+            // reason to let this one be placed to begin with.
             if cs.is_identity() {
                 return;
             }
@@ -699,16 +719,17 @@ impl Buffer {
     /// Always validates the landing selections via `Transaction::apply`
     /// (length + bounds check, `merge_overlapping_in_place`), but skips
     /// `set_text` when the composed ChangeSet is identity — a walk that
-    /// undoes an insert and its own later delete nets to no text change, and
-    /// `apply_edit`/`commit_edit_group` use the same guard so `text_gen`
-    /// never moves for a mutation that never happened.
+    /// undoes an insert and its own later delete nets to no text change, so
+    /// `text_gen` doesn't move for a mutation that never happened. A
+    /// different guard from `apply_edit`/`commit_edit_group`'s, not the same
+    /// one: those two skip recording a revision at all, so a no-op edit
+    /// never enters history; this walk's revision move already happened in
+    /// `History::undo_n`/`redo_n`/`goto_revision` before this is even
+    /// called, so all that's left to guard here is the text mutation.
     fn apply_transactions(&mut self, txns: Vec<Transaction>) -> Option<(SelectionSet, ChangeSet)> {
         let landing_sels = txns.last()?.selection().clone();
-        let cs = txns
-            .into_iter()
-            .map(Transaction::into_changes)
-            .reduce(ChangeSet::compose)
-            .expect("non-empty — `last()` above returned Some");
+        let css: Vec<ChangeSet> = txns.into_iter().map(Transaction::into_changes).collect();
+        let cs = compose_balanced(css);
         let txn = Transaction::new(cs, landing_sels);
         let (new_text, new_sels) = txn
             .apply(&self.text)
@@ -816,6 +837,45 @@ impl Buffer {
             *sels = new_sels;
         }
     }
+}
+
+/// Folds `css` into one net `ChangeSet` via balanced pairwise composition —
+/// O(N log N) op-steps rather than a left fold's O(N²) (each step of a left
+/// fold composes the whole growing accumulator against the next entry, so
+/// the accumulator's own op count grows toward N over the walk, and
+/// `ChangeSet::compose` allocates a fresh `Vec<Operation>` every time). A
+/// balanced fold instead halves the list each round, so no accumulator ever
+/// grows past twice the size of what it's being composed with.
+///
+/// Validates the whole chain up front (`compose`'s own precondition, checked
+/// once here instead of once per `compose` call) and panics with the message
+/// `apply_transactions`' `.expect` already carries — so a broken chain is
+/// diagnosed as history corruption, not as `compose`'s own release
+/// `assert_eq!`, which names neither undo nor history.
+///
+/// # Panics
+/// If `css` is empty, or the chain is broken (`css[i].len_after() !=
+/// css[i + 1].len_before()` for some `i`).
+fn compose_balanced(mut css: Vec<ChangeSet>) -> ChangeSet {
+    assert!(
+        !css.is_empty()
+            && css
+                .windows(2)
+                .all(|w| w[0].len_after() == w[1].len_before()),
+        "composed history transaction failed — history is corrupt"
+    );
+    while css.len() > 1 {
+        let mut folded = Vec::with_capacity(css.len().div_ceil(2));
+        let mut pairs = css.into_iter();
+        while let Some(a) = pairs.next() {
+            folded.push(match pairs.next() {
+                Some(b) => a.compose(b),
+                None => a,
+            });
+        }
+        css = folded;
+    }
+    css.pop().expect("non-empty by the assert above")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

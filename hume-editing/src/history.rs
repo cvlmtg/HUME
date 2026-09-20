@@ -310,42 +310,47 @@ impl History {
         self.redo_n(1).pop()
     }
 
-    /// Walk up to `count` revisions toward the root, returning the
-    /// Transactions to apply — **already composed into the same
-    /// LCA-walk-then-compose path [`Self::goto_revision`] uses**, not a
-    /// per-step list, so a caller replaying an age-resolved `:earlier` still
-    /// pays for one transaction, not one per revision crossed. Short of
-    /// `count` when the walk reaches the root; empty when `count == 0` or
-    /// already at the root.
-    ///
-    /// Resolves the target by walking `parent` links `count` times (without
-    /// mutating `self.current`), then delegates the actual path-building to
-    /// [`Self::goto_revision`] — the one place that turns "from here to
-    /// there" into a Transaction list and advances `current`.
+    /// Walk up to `count` revisions toward the root, returning the inverse
+    /// Transactions to apply, in order — the same shape
+    /// [`Self::goto_revision`]'s up leg produces, but collected during the
+    /// walk itself rather than by re-deriving it: this already knows the
+    /// path is a straight line of `parent` links, so there is no LCA to
+    /// find. Short of `count` when the walk reaches the root; empty when
+    /// `count == 0` or already at the root.
     pub fn undo_n(&mut self, count: usize) -> Vec<Transaction> {
         let mut id = self.current;
+        let mut txns = Vec::with_capacity(count.min(self.revisions.len()));
         for _ in 0..count {
             match self.revisions[&id].parent {
-                Some(parent) => id = parent,
+                Some(parent) => {
+                    txns.push(self.revisions[&id].inverse.clone());
+                    id = parent;
+                }
                 None => break,
             }
         }
-        self.goto_revision(id).unwrap_or_default()
+        self.current = id;
+        txns
     }
 
     /// Redo up to `count` steps forward along the most-recent-child chain —
     /// the same path [`Self::redo`] takes one step of. See [`Self::undo_n`]
-    /// for why this composes through [`Self::goto_revision`] rather than
-    /// walking one revision at a time.
+    /// for why this collects during the walk rather than through
+    /// [`Self::goto_revision`].
     pub fn redo_n(&mut self, count: usize) -> Vec<Transaction> {
         let mut id = self.current;
+        let mut txns = Vec::with_capacity(count.min(self.revisions.len()));
         for _ in 0..count {
             match self.revisions[&id].children.last() {
-                Some(&child) => id = child,
+                Some(&child) => {
+                    txns.push(self.revisions[&child].forward.clone());
+                    id = child;
+                }
                 None => break,
             }
         }
-        self.goto_revision(id).unwrap_or_default()
+        self.current = id;
+        txns
     }
 
     /// True if there is at least one revision above the current position.
@@ -485,7 +490,12 @@ impl History {
         chain
     }
 
-    /// Jump to an arbitrary revision in the undo tree.
+    /// Jump to an arbitrary revision in the undo tree — the general case
+    /// [`Self::undo_n`]/[`Self::redo_n`] don't need, since each of those
+    /// already walks a straight line of `parent`/`children` links with no
+    /// LCA to find. This is for a target that isn't known to be a plain
+    /// ancestor or descendant of `current` (e.g. jumping to an arbitrary
+    /// branch).
     ///
     /// Returns the sequence of [`Transaction`]s that transform the current
     /// buffer into the target state, **in order**: txn₁ maps state A→B, txn₂
@@ -493,10 +503,9 @@ impl History {
     /// (`self.len_after == other.len_before`). A caller applying them one at
     /// a time (as [`Self::undo`]/[`Self::redo`] do internally, and as this
     /// module's tests do to keep assertions per-hop) is free to; a caller
-    /// walking many revisions in one logical step (`:earlier <age>`,
-    /// [`Self::undo_n`]/[`Self::redo_n`]) instead folds the list with
-    /// `ChangeSet::compose` into one net transform and applies that once —
-    /// same end state, one text mutation instead of N.
+    /// walking many revisions in one logical step instead folds the list
+    /// with `ChangeSet::compose` into one net transform and applies that
+    /// once — same end state, one text mutation instead of N.
     ///
     /// Returns `None` if `target` equals the current revision (no-op) or is
     /// out of bounds.

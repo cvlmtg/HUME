@@ -201,7 +201,7 @@ fn history_step(
 ) -> Result<(), CommandError> {
     let focused = state.focus.id();
     let buf = focused_buffer_id(state, view);
-    let taken = doc_ops::apply_doc_history_walk(
+    let result = doc_ops::apply_doc_history_walk(
         &mut state.buffers,
         &state.config.decorations,
         &mut state.panes.state,
@@ -211,7 +211,14 @@ fn history_step(
         walk,
         count,
     );
-    if taken < count {
+    // `RefusedReadOnly` is unreachable today — `cmd_undo`/`cmd_redo` both
+    // call `refuse_if_read_only` before this — but stays a distinct arm
+    // rather than folding into `Took(0)` so a future caller that skips the
+    // outer guard (`docs/UNDOTREE.md`'s planned `apply_doc_goto_revision`)
+    // can't have a refusal misreported as exhaustion here.
+    if let doc_ops::HistoryWalk::Took(taken) = result
+        && taken < count
+    {
         state.report(Severity::Info, exhausted_msg.to_string());
     }
     Ok(())
