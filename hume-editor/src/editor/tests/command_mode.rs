@@ -1607,6 +1607,45 @@ fn earlier_bang_is_rejected() {
     assert_eq!(state(&ed), before);
 }
 
+/// `:earlier`/`:later` must refuse a read-only buffer exactly like `u`/
+/// `Ctrl-r` do — same message, same side effects — since both now dispatch
+/// through the same `cmd_undo`/`cmd_redo` (`list_buffers.rs`'s
+/// `read_only_buffer_blocks_undo_and_redo` is this test's key-driven
+/// counterpart).
+#[test]
+fn earlier_and_later_agree_with_undo_and_redo_on_a_read_only_buffer() {
+    let mut ed = editor_from("-[h]>ello\n");
+    type_text(&mut ed, "X");
+    let after_edit = state(&ed);
+
+    ed.doc_mut().read_only = true;
+
+    submit(&mut ed, "earlier");
+    assert_eq!(
+        state(&ed),
+        after_edit,
+        ":earlier must not undo on a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        ":earlier must report the same refusal as u"
+    );
+    ed.state.status_msg = None;
+
+    submit(&mut ed, "later");
+    assert_eq!(
+        state(&ed),
+        after_edit,
+        ":later must not redo on a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        ":later must report the same refusal as Ctrl-r"
+    );
+}
+
 #[test]
 fn later_zero_duration_walks_to_tip_and_reports() {
     let mut ed = editor_from("-[h]>ello\n");

@@ -178,16 +178,17 @@ pub(in crate::editor) fn cmd_yank(
     Ok(())
 }
 
+/// Exhaustion messages shared by `cmd_undo`/`cmd_redo` and, via those same
+/// functions, `:earlier`/`:later` (`commands::typed_misc::TravelDir`) — one
+/// undo command, one message, regardless of which key or typed name reached it.
+pub(in crate::editor::commands) const UNDO_EXHAUSTED_MSG: &str = "Already at oldest change";
+pub(in crate::editor::commands) const REDO_EXHAUSTED_MSG: &str = "Already at newest change";
+
 /// Step the undo/redo history `count` times, stopping (with a status report)
 /// as soon as `can` returns false — shared by `cmd_undo`/`cmd_redo`, which
-/// differ only in direction, and by `:earlier`/`:later`, which resolve their
-/// spec to a step count first and then travel the same per-step path.
-/// Widened to `pub(super)` for those typed callers: the `(can, apply)` pair
-/// must always match direction (undo-back / redo-forward) — a mismatch would
-/// travel the wrong way, caught by the roundtrip tests, not silent.
-/// Duplicating the loop instead would split the exhaustion message and the
-/// per-step propagation contract in two.
-pub(super) fn history_step(
+/// differ only in direction. Duplicating the loop instead would split the
+/// exhaustion message and the per-step propagation contract in two.
+fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
@@ -214,35 +215,46 @@ pub(super) fn history_step(
     Ok(())
 }
 
+/// `:earlier`/`:later` (`commands::typed_misc::travel`) call this directly
+/// too, via a function pointer on `TravelDir` — the same undo path `u`/
+/// `Ctrl-r` take, `refuse_if_read_only` guard included, rather than a second
+/// hand-copied one.
 pub(in crate::editor) fn cmd_undo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::refuse_if_read_only(state, view) {
+        return Ok(());
+    }
     history_step(
         state,
         view,
         count,
         Buffer::can_undo,
         doc_ops::apply_doc_undo,
-        "Already at oldest change",
+        UNDO_EXHAUSTED_MSG,
     )
 }
 
+/// See [`cmd_undo`]'s doc — same sharing, redo direction.
 pub(in crate::editor) fn cmd_redo(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
     _mode: MotionMode,
 ) -> Result<(), CommandError> {
+    if super::refuse_if_read_only(state, view) {
+        return Ok(());
+    }
     history_step(
         state,
         view,
         count,
         Buffer::can_redo,
         doc_ops::apply_doc_redo,
-        "Already at newest change",
+        REDO_EXHAUSTED_MSG,
     )
 }
 

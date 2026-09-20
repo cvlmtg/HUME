@@ -103,17 +103,21 @@ fn second_prompt_while_one_is_open_errors() {
 
 /// A `Prompt` buried under a `Drawer` (`show-drawer-list!` opens first,
 /// landing below — it isn't a mode layer, so `prompt!`'s `push_mode_layer`
-/// never truncates it; `prompt!` then lands above it) must still fire its
-/// callback with `#f` when `close-drawer!` truncates the drawer and takes
-/// the buried prompt with it as collateral — the same "exactly one call
-/// fires, on Confirm or on any cancel path" contract this file's header
-/// promises for every other retirement.
+/// never truncates it; `prompt!` then lands above it) must stay open and
+/// unfired when `close-drawer!` closes the drawer beneath it — the prompt is
+/// unrelated to the drawer, not depending on it, the same as an `Insert`
+/// session or a code-action `Menu` above a drawer (see
+/// `lsp_drawer.rs`'s `close_drawer_closes_a_drawer_buried_under_insert_
+/// leaving_insert_intact`/`close_drawer_leaves_a_menu_open_when_one_sits_
+/// above_it`). `close-drawer!` now excises the drawer in place instead of
+/// truncating everything above it.
 ///
-/// Fail oracle: before this fix, `PromptLayer::tear_down` only reset
-/// history — the callback was silently dropped and `pending_work` would be
-/// empty below.
+/// Fail oracle: before the excise fix, `close_drawer` truncated at the
+/// drawer's own ref, sweeping the prompt above it and firing its callback
+/// with `#f` as collateral — `ed.state.minibuf()` below would be `None` and
+/// `pending_work` would hold the `#f` call.
 #[test]
-fn close_drawer_through_a_buried_prompt_still_fires_its_callback() {
+fn close_drawer_leaves_a_buried_prompt_open_and_unfired() {
     use crate::editor::host_impl::EditorHostImpl;
     use hume_scripting::host::UiHost;
 
@@ -135,14 +139,13 @@ fn close_drawer_through_a_buried_prompt_still_fires_its_callback() {
     host.close_drawer().unwrap();
 
     assert!(ed.state.input.drawer().is_none());
-    assert!(ed.state.minibuf().is_none(), "the prompt is gone too");
     assert!(
-        matches!(
-            ed.state.config.pending_work.front(),
-            Some(crate::editor::event::PendingWork::Call(_, args))
-                if matches!(args.as_slice(), [steel::rvals::SteelVal::BoolV(false)])
-        ),
-        "the buried prompt's callback must still fire with #f"
+        ed.state.minibuf().is_some(),
+        "the prompt must stay open — it is unrelated to the drawer beneath it, not collateral"
+    );
+    assert!(
+        ed.state.config.pending_work.is_empty(),
+        "the prompt's callback must not fire — it has not been answered"
     );
 }
 

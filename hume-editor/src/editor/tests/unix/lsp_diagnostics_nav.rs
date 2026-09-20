@@ -473,8 +473,8 @@ fn drawer_refreshes_rows_when_the_severity_floor_changes() {
 /// A refresh that shrinks the row list must also pull a stale, deep `scroll`
 /// back into range — `lsp/refresh-diagnostics-drawer` goes through
 /// `update-drawer-list!` -> `EditorState::set_drawer_items`, which is where
-/// that clamp lives. Uses 3 diagnostics shrinking to 2 (not 2 shrinking to
-/// 1) so the surviving selection lands at a *nonzero* new index — a
+/// that clamp lives. Shrinks 3 diagnostics down to 2, rather than 2 down to
+/// 1, so the surviving selection lands at a *nonzero* new index — a
 /// selection of `0` would already zero the scroll through the ordinary
 /// "selected < scroll" arm regardless of the `len` cap this test targets.
 ///

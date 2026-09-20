@@ -315,8 +315,11 @@ fn ls_does_not_pollute_jump_list() {
 }
 
 /// `u` and `Ctrl-r` on a read-only buffer must be no-ops.
-/// Validity: remove the is_read_only() guards from apply_doc_undo/apply_doc_redo
-/// and this test fails (undo reverts the edit, changing the buffer text).
+/// Validity: remove `cmd_undo`/`cmd_redo`'s `refuse_if_read_only` guard *and*
+/// `apply_doc_undo`/`apply_doc_redo`'s own `is_read_only()` check (the
+/// layered second guard `:earlier`/`:later` also runs through, since both
+/// commands share this same path) and this test fails (undo reverts the
+/// edit, changing the buffer text).
 #[test]
 fn read_only_buffer_blocks_undo_and_redo() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -329,12 +332,18 @@ fn read_only_buffer_blocks_undo_and_redo() {
     // somehow has undo history — e.g. from a future API path).
     ed.doc_mut().read_only = true;
 
-    // u (undo) must be a no-op.
+    // u (undo) must be a no-op, and must report why (refuse_if_read_only,
+    // not the old silent doc_ops early return).
     ed.handle_key(key('u'));
     assert_eq!(
         ed.doc().text().to_string(),
         after_delete,
         "u must not undo on a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "u must report the refusal, same as :earlier does"
     );
 
     // Ctrl-r (redo) must also be a no-op.
@@ -342,12 +351,18 @@ fn read_only_buffer_blocks_undo_and_redo() {
     ed.handle_key(key('u'));
     let after_undo = ed.doc().text().to_string();
     ed.doc_mut().read_only = true;
+    ed.state.status_msg = None;
 
     ed.handle_key(key_ctrl('r'));
     assert_eq!(
         ed.doc().text().to_string(),
         after_undo,
         "Ctrl-r must not redo on a read-only buffer"
+    );
+    assert_eq!(
+        ed.state.status_msg.as_deref(),
+        Some("Buffer is read-only"),
+        "Ctrl-r must report the refusal, same as :later does"
     );
 }
 

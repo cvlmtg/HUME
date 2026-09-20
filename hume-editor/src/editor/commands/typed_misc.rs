@@ -1,16 +1,20 @@
 use std::time::Duration;
 
-use hume_engine::pipeline::{BufferId, Direction};
+use hume_engine::pipeline::{BufferId, Direction, EngineView};
 use hume_grid::Rgb;
 use hume_scripting::host::DecorationHost;
 
 use super::super::Editor;
-use super::super::{Severity, doc_ops};
-use super::{current_jump_entry, history_step, record_jump_if_moved};
+use super::super::{EditorState, Severity};
+use super::{
+    REDO_EXHAUSTED_MSG, UNDO_EXHAUSTED_MSG, cmd_redo, cmd_undo, current_jump_entry,
+    record_jump_if_moved,
+};
 use crate::editor::buffer::Buffer;
 use crate::editor::error::CommandError;
 use crate::editor::host_impl::EditorHostImpl;
 use crate::editor::settings::THEME_KEY;
+use hume_ops::MotionMode;
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -665,22 +669,20 @@ impl TravelDir {
 
     fn exhausted_msg(self) -> &'static str {
         match self {
-            TravelDir::Earlier => "Already at oldest change",
-            TravelDir::Later => "Already at newest change",
+            TravelDir::Earlier => UNDO_EXHAUSTED_MSG,
+            TravelDir::Later => REDO_EXHAUSTED_MSG,
         }
     }
 
-    fn can(self) -> fn(&Buffer) -> bool {
+    /// `cmd_undo`/`cmd_redo` themselves — the same function `u`/`Ctrl-r`
+    /// dispatch to, `refuse_if_read_only` guard included, rather than a
+    /// second copy of the `(can, apply)` pair and its own read-only check.
+    fn step(
+        self,
+    ) -> fn(&mut EditorState, &mut EngineView, usize, MotionMode) -> Result<(), CommandError> {
         match self {
-            TravelDir::Earlier => Buffer::can_undo,
-            TravelDir::Later => Buffer::can_redo,
-        }
-    }
-
-    fn apply(self) -> doc_ops::ApplyDocFn {
-        match self {
-            TravelDir::Earlier => doc_ops::apply_doc_undo,
-            TravelDir::Later => doc_ops::apply_doc_redo,
+            TravelDir::Earlier => cmd_undo,
+            TravelDir::Later => cmd_redo,
         }
     }
 
@@ -693,8 +695,9 @@ impl TravelDir {
 }
 
 /// Shared `:earlier`/`:later` body: resolve the spec to a step count, then
-/// travel the same per-step loop as `u`/`Ctrl-r` so every step propagates to
-/// panes, tree-sitter, LSP, decorations, and jumps.
+/// travel through the same `cmd_undo`/`cmd_redo` `u`/`Ctrl-r` dispatch to, so
+/// every step propagates to panes, tree-sitter, LSP, decorations, and jumps,
+/// and a read-only buffer is refused identically on both paths.
 fn travel(
     ed: &mut Editor,
     arg: Option<&str>,
@@ -707,9 +710,11 @@ fn travel(
             dir.cmd_name()
         )));
     }
-    if ed.focused_buffer_read_only() {
-        return Err(CommandError::transient("Buffer is read-only"));
-    }
+    // Read once, before `dir.step()` may itself refuse and report why — a
+    // read-only buffer's own report must not be overwritten by the
+    // over-travel report below, computed from a (harmless to read) age query
+    // against the same read-only buffer's history.
+    let read_only = ed.focused_buffer_read_only();
     let (steps, past_end) = match parse_travel_spec(arg.unwrap_or("1"))? {
         TravelSpec::Steps(n) => (n, false),
         TravelSpec::Age(age) => {
@@ -717,18 +722,12 @@ fn travel(
             dir.resolve_age()(ed.state.buffers.get(buf), age)
         }
     };
-    history_step(
-        &mut ed.state,
-        &mut ed.view,
-        steps,
-        dir.can(),
-        dir.apply(),
-        dir.exhausted_msg(),
-    )?;
-    // Count over-travel reports inside `history_step`; an age clamp resolves to
-    // exactly the end depth, so the loop never exhausts — report here instead
-    // when the end is still on the wrong side of the requested age.
-    if past_end {
+    dir.step()(&mut ed.state, &mut ed.view, steps, MotionMode::Move)?;
+    // Count over-travel reports inside `cmd_undo`/`cmd_redo`'s shared
+    // `history_step`; an age clamp resolves to exactly the end depth, so the
+    // loop never exhausts — report here instead when the end is still on the
+    // wrong side of the requested age.
+    if past_end && !read_only {
         ed.state
             .report(Severity::Info, dir.exhausted_msg().to_string());
     }
