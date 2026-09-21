@@ -66,9 +66,12 @@ Every feature file shares these:
 ## Shared helpers (`lib.scm`)
 
 - **Trigger-char lifecycle** — `lsp/setup-trigger-chars!` wires `on-lsp-attach`/
-  `on-lsp-detach`/`on-trigger-char` for a feature (completion, signature help). It's
-  keyed `(source, language)` on the Rust side, so a second language attaching under
-  the same `source-name` gets its own entry rather than clobbering the first.
+  `on-lsp-detach` for a feature (completion, signature help), and `on-trigger-char`
+  when the feature passes a handler — signature help does; completion passes `#f`,
+  since the editor invokes the completion source registered under the same name
+  itself. It's keyed `(source, language)` on the Rust side, so a second language
+  attaching under the same `source-name` gets its own entry rather than clobbering
+  the first.
 - **Viewport** — `lsp/visible-lines` wraps the synchronous `viewport-range` builtin,
   which is 0-based end-exclusive, so the visible-line count is just the range's width
   (no `+ 1`). Its two callers are hover's popup-docking threshold and inlay hints'

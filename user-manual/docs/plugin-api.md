@@ -185,19 +185,18 @@ Not LSP-specific — any plugin can populate these — but LSP diagnostics and i
 
 ## Completion
 
-These are editor-builtin commands any completion plugin can drive — a source registers its triggers and feeds candidates through them rather than rendering its own UI.
+A plugin registers a completion *source*; the editor drives it. `Ctrl-Space` in Insert mode (the built-in `completion-trigger` command) asks every source registered for the buffer, a registered trigger character asks the source registered under its name, and the first `Tab` on a `:` command line asks the source that command declared. Each answer is ranked with every other source's, in one menu, against that source's own token — no source renders its own UI.
 
 | Call | Effect |
 |------|--------|
-| `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)` — feeds the `on-trigger-char` hook |
-| `(completion-begin! bid items #:source #:anchor #:incomplete #:priority #:match)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token. `#:anchor` is the span accepting a candidate replaces, not just where filtering starts: a char offset (`(word-start-before-cursor bid)` for the word before the cursor is the common choice) or `#f` to replace nothing before the cursor, filtering only as the user keeps typing. It must be on the cursor's own line. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against typed text. Further typing refilters the open menu in place |
-| `(completion-add-items! token items #:source #:priority #:match #:incomplete)` | Merge more items into the session `token` names, replacing that `source`'s prior contribution rather than appending — a stale `token` (the session closed or restarted since) is a silent no-op |
-| `(completion-update-filter! text)` | Re-filter the open session against `text` |
-| `(completion-top n)` | The top `n` ranked/filtered items |
+| `(register-completion-source! name proc #:target #:token #:match #:priority)` | Register `proc` as the completion source `name`. `#:target 'buffer` serves Insert mode, calling `(proc id bid prefix)`; `#:target 'minibuf` serves the `:` line, calling `(proc id input cursor)`. `#:token` says where the source's token starts — what its answers are filtered against and what accepting one replaces: for a buffer, `'word` (the identifier run before the cursor, `prefix` being that text), `'cursor` (nothing before the cursor), or `'custom` (the answer names its own span); for the `:` line, `'arg` (the whitespace-delimited argument the cursor is in) or `'custom`. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against the token's text; `#:priority` (default `0`) breaks score ties, higher first. Registering a name again replaces the earlier source |
+| `(completion-emit! id items #:incomplete #:span)` | `proc`'s answer to the call it received `id` from, sync or from a later callback — exactly once; an empty list means "nothing from me". `items` is a list of decoded `CompletionItem` hashmaps (`label` is the only required key). `#:incomplete #t` asks to be called again as the user keeps typing. `#:span (cons start end)` is required for a `'custom` token, in the coordinates of what the source was handed (char offsets of the buffer, or byte offsets of `input`); it must contain the cursor and stay on one line. Returns `#f` when `id` is no longer the latest call — a later keystroke re-asked, or the menu closed — and the answer was dropped |
+| `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)`: typing one in Insert mode fires the `on-trigger-char` hook and invokes the completion source named `source`, if one is registered |
+| `(completion-top n)` | The top `n` ranked items of the open menu, each carrying its `source` |
 | `(completion-accept! idx)` | Accept item `idx` from `completion-top`'s (ranked) order — fires the `on-completion-accept` hook |
-| `(completion-dismiss!)` | Close the open session; a no-op if none is open |
+| `(completion-dismiss!)` | Close the open menu; a no-op if none is open |
 
-A completion source registers its trigger characters, then reacts to the `on-trigger-char` hook by fetching candidates and calling `completion-begin!` (or, once a session from another source is already open, `completion-add-items!` with the token that session returned); `on-completion-refilter` fires as the user keeps typing, and `on-completion-accept` once they pick a result. See [Hooks](plugins.md#hooks) for those three hooks' lambda signatures.
+`define-typed-command!` takes `#:complete "name"` to give a `:` command argument completion from source `name` — a source registered with `#:target 'minibuf`, or a built-in one such as `"path"`. See [Hooks](plugins.md#hooks) for `on-trigger-char` and `on-completion-accept`'s lambda signatures.
 
 ## Pickers
 

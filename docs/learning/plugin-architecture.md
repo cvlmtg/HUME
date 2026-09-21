@@ -155,7 +155,6 @@ The full set of lifecycle hooks, for reference:
 | `on-viewport-change` | The visible region settled after a scroll or resize |
 | `on-trigger-char` | A registered trigger character was typed in insert mode |
 | `on-completion-accept` | A completion candidate was accepted |
-| `on-completion-refilter` | An incomplete completion list needs a fresh request as typing continues |
 | `on-option-change` | A global setting changed (`:set global`, `set-option!`, `:theme`) |
 | `on-text-changed` | A buffer's text changed — edits, undo/redo, and `:e!` reload alike, coalesced into one fire per triggering command rather than one per underlying mutation |
 

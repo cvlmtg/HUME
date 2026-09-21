@@ -40,7 +40,7 @@ and it uses exactly what you list instead of the defaults:
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+               "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics" "format-source"
                       "lsp-install" "lsp-uninstall" "lsp-servers" "lsp-rescan-servers"
                       "lsp-status" "lsp-stop" "lsp-restart"))
@@ -251,7 +251,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | `g p` | `goto-prev-diagnostic`       | Jump to the previous error/warning before the cursor (wraps) |
 | —     | `:diagnostics`               | List every diagnostic in the buffer |
 | —     | `:format-source`             | Format the selected lines if every selection spans one or more whole lines, the whole buffer if none do, or (with a warning) nothing if it's a mix of the two |
-| `Ctrl-Space` (Insert) | `lsp-completion-trigger` | Show completions at the cursor |
+| `Ctrl-Space` (Insert) | `completion-trigger`        | Show completions at the cursor (an editor key, not this plugin's — the plugin supplies the server's candidates) |
 
 Jumping to a definition, declaration, type, implementation, or reference in another file
 opens that file as a buffer; `Ctrl-o` jumps back. A goto with more than one match opens a
@@ -331,6 +331,6 @@ builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set — check `err` first and stop
 on it, the way every built-in feature does.
 
-`lsp-request` also takes two keyword args for requests that fire more than once. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's per-keystroke refilter avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful.
+`lsp-request` also takes two keyword args for requests that fire more than once. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful.
 
 A server's response sometimes carries its own position or range rather than the one you sent — a related location returned inside `res`, say. Convert it back into a plain buffer offset with `lsp-position->offset`/`lsp-range->offsets` before using it with any editing command; both return `#f` if the buffer has no server attached to convert against.

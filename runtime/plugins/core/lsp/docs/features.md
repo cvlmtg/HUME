@@ -52,16 +52,20 @@ spec-valid ("nothing to show"), handled the same as a null/void response.
 
 ## Completion
 
-Never passes `#:allow-stale` to `lsp-request` — unlike hover, a stale completion
-response is auto-cancelled/dropped rather than shown. Snippet stripping happens in
-Rust at the store ingress, so items arriving here already have plain
-`insertText`/`textEdit.newText`. Two entry points reach the same request function:
-`Ctrl-Space` (bound to `lsp-completion-trigger`) and a registered server trigger
-character. Per-keystroke refiltering can re-issue the request before a prior response
-lands, so it's sent with `#:supersede "completion"` rather than racing two sessions;
-the `on-completion-refilter` hook needs no capability re-guard, since the capability
-was already confirmed to start the session in the first place. There's deliberately no
-`on-completion-accept` handler: Rust applies the main edit, `additionalTextEdits`, and
+The plugin is a *source*, not the driver: `register-completion-source!` registers
+`"lsp"` (`#:token 'word`, so the editor seeds the filter from the identifier before
+the cursor and accept replaces it), and the editor calls it — on `Ctrl-Space`, on a
+server trigger character (registered under the same `"lsp"` name at attach, so the
+editor invokes the source by name with no hook round trip), and again after each
+keystroke while the last answer said `isIncomplete`. The source declines with an empty
+answer when the buffer's server has no `completionProvider`. Never passes
+`#:allow-stale` to `lsp-request` — unlike hover, a stale completion response is
+auto-cancelled/dropped rather than shown; a re-request can go out before a prior
+response lands, so it's sent with `#:supersede "completion"`, and an answer to a call
+the editor has since superseded is dropped by the editor anyway. Snippet stripping
+happens in Rust at the store ingress, so items arriving here already have plain
+`insertText`/`textEdit.newText`. There's deliberately no `on-completion-accept`
+handler: Rust applies the main edit, `additionalTextEdits`, and
 `completionItem/resolve` atomically on accept, leaving nothing for Scheme to do.
 
 ## Code actions

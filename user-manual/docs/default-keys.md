@@ -235,6 +235,7 @@ Press `Ctrl-p` then a second key:
 | `Delete` | — | Delete character under cursor |
 | `Enter` | — | Insert newline, copying leading whitespace from current line (auto-pairs aware) |
 | `Ctrl-w` | `delete-word-backward` | Delete word before cursor |
+| `Ctrl-Space` | `completion-trigger` | Show completions at the cursor, from every registered completion source (a language server's, say — see [Language servers](lsp.md)) |
 | Any other character | — | Insert character (auto-pairs aware) |
 
 Insert mode handles auto-pair insertion: typing `(`, `[`, `{`, `"`, `'`, or `` ` `` inserts the matching close character. Backspace inside an empty pair deletes both characters.

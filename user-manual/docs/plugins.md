@@ -277,7 +277,6 @@ Available hooks and their lambda signatures:
 | `on-viewport-change` | The visible region of a pane changes | `(buffer-id first-line end-line)` — 0-based, end-exclusive |
 | `on-trigger-char` | A registered trigger character is typed | `(buffer-id char source)` |
 | `on-completion-accept` | A completion entry is accepted | `(buffer-id item)` |
-| `on-completion-refilter` | Completion input changes | `(buffer-id text)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)` — both strings |
 | `on-text-changed` | A buffer's text changes | `(buffer-id)` |
 

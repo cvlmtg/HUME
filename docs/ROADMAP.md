@@ -12,8 +12,7 @@
 - [ ] Per-buffer keymaps (Steel) — `on-buffer-enter` already exists to key off of.
 - [ ] `:e` binary / huge-file y/n confirm — binary-sniff + size threshold. The reusable confirm-overlay primitive this needs (`ConfirmLayer`, `hume-editor/src/editor/input_stack/confirm.rs`) already exists, built for the disk-change reload prompt.
 - [ ] Streaming load for huge files — chunked read replacing single blocking full-file read.
-- [ ] Scriptable minibuffer completers — Steel builtin to register plugin completers; core does prefix matching only, fuzzy scoring is a plugin concern.
-- [ ] Scriptable insert-mode completion sources — see `docs/COMPLETION-PICKER.md` (additive, nothing blocks on current work).
+- [ ] Buffer-words completion source — a native `Buffer`-target source (`completion/registry.rs`'s `SourceBody` gains its variant) scanning the buffer's own identifiers; see `docs/COMPLETION-PICKER.md`.
 - [ ] Styled spans in `show-popup!` — the popup takes one flat string today, so signature help marks the active parameter as `⟨…⟩` on a second line instead of highlighting it in place. Wants a `(start end scope)` span list over the popup text, the shape `set-virtual-lines!`'s `'segments` already uses. Its input already arrives: HUME declares `labelOffsetSupport`, so a server sends each parameter's offsets into the signature label.
 - [ ] Styled spans in the drawer — `lsp-locations->display-parts` shows an unopened target's column as the location's own wire unit rather than a measured grapheme column (see `docs/LSP.md`'s "User-facing column unit" decision row); once a drawer row can style part of itself, render that unmeasured column visually distinctly (e.g. italic) instead of identically to a measured one. Wants the same per-row span support as the `show-popup!` item above.
 - [ ] Auto-generated command reference + in-editor `:help` expansion.
@@ -60,7 +59,7 @@ Structural work found during a cheap-wins sweep. Each is real but wants a design
 - [ ] PLUM: pin plugins to commit / tag / branch.
 - [ ] `core:lsp` `cargo-git` install flavor — installs from a pinned git tag instead of crates.io semver; unblocks `nil`.
 - [ ] `core:lsp` install support for `pkg:golang` (gopls) and `pkg:pypi` source kinds — currently fail loudly as unsupported (see `docs/LSP-INSTALL.md`'s "v1 scope and limitations").
-- [ ] `:lsp-install` argument completion — Steel commands have no argument-completion path today.
+- [ ] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
 
 ## Open questions
 
