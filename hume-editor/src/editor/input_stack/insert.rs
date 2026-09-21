@@ -105,12 +105,16 @@ impl Editor {
         // open, since `apply_insert_edit` always edits the focused buffer.
         // `observe_edit`'s own length check would reject a mismatched
         // `ChangeSet` anyway, but checking `bid` up front documents why,
-        // rather than relying on that as a coincidence.
+        // rather than relying on that as a coincidence. Read after
+        // `apply_doc_edit_grouped` returns, so `text_gen` reflects the edit
+        // just applied, not the buffer's state before it.
+        let text_gen = self.state.buffers.get(buf).text_gen;
         let stale = self
             .state
             .input
             .completion_mut()
-            .is_some_and(|session| session.bid() == buf && !session.observe_edit(&cs));
+            .and_then(|session| session.buffer_mut())
+            .is_some_and(|bt| bt.bid() == buf && !bt.observe_edit(&cs, text_gen));
         if stale {
             self.state.dismiss_completion(&self.view);
         }

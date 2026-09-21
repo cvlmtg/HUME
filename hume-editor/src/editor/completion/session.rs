@@ -75,7 +75,7 @@ pub(in crate::editor) enum Interaction {
 /// behind the variant rather than left flat on [`CompletionSession`], since a
 /// [`CompletionTarget::Minibuf`] session has no buffer, pane, or generation
 /// to track at all.
-struct BufferTarget {
+pub(in crate::editor) struct BufferTarget {
     bid: BufferId,
     /// Pane the session began in — `accept` only proceeds while this pane is
     /// still focused. A completion resolved against a pane the user has
@@ -105,9 +105,76 @@ struct BufferTarget {
     /// the frozen snapshot, then map forward through every keystroke
     /// since, rather than approximating drift as a scalar shift.
     cs_since_begin: ChangeSet,
-    /// Buffer generation as of the last `begin_buffer`/`update_filter` call
-    /// — `accept!` rejects if the buffer changed by any other path since.
+    /// Buffer generation as of `begin_buffer`, or the last edit this session
+    /// actually observed via `observe_edit` — `accept!` rejects if the
+    /// buffer changed by any other path since. Stamped only there, not on
+    /// every `update_filter` call: a filter change alone (Steel-driven, or a
+    /// narrowed `self.filter` with no matching edit) is not evidence the
+    /// live buffer still matches what `accept!`'s position math assumes.
     generation_at_begin: u64,
+}
+
+impl BufferTarget {
+    pub(in crate::editor) fn bid(&self) -> BufferId {
+        self.bid
+    }
+
+    /// Char offset where the completed token starts — the anchor the
+    /// completion menu positions itself at (not the live cursor, which
+    /// drifts as the user types further into the token). Derived by mapping
+    /// `anchor_at_begin` forward through every edit observed so far —
+    /// `Assoc::Before`: the anchor marks the token's start, so text inserted
+    /// exactly at it belongs to the token and the anchor must stay left of
+    /// it, same association `apply_doc_edit_grouped` uses for a
+    /// `TypedRun`'s own anchors.
+    ///
+    /// A completion accept's own replacement edit (`accept.rs`) is one more
+    /// edit `apply_doc_edit_grouped` remaps an open `TypedRun` through, same
+    /// as any keystroke — so if the accepted item's `textEdit`
+    /// replaces text typed before the Insert session began (e.g. `A` mid-
+    /// identifier, type one char, then accept), the selected typed run on
+    /// Esc grows to cover the whole replacement, not just the char actually
+    /// keyed. That's intended, not a pin-tracking bug: the accept's own edit
+    /// rewrote that whole span, so every character in it was written by this
+    /// session, and selecting the freshly completed token is the useful
+    /// outcome.
+    pub(in crate::editor) fn anchor(&self) -> CharOffset {
+        let mut positions = [self.anchor_at_begin];
+        self.cs_since_begin
+            .map_positions(&mut positions, Assoc::Before);
+        positions[0]
+    }
+
+    /// Records an Insert-mode edit that landed on this session's buffer —
+    /// called after every keystroke that lands in the buffer while this
+    /// session is open, not just ones at the primary cursor. Without this, a
+    /// keystroke at a cursor *before* the primary (multi-cursor Insert mode)
+    /// shifts the primary head by more than one char while `anchor()` stays
+    /// put, and `refilter_lsp_completion_after_edit`'s `slice(anchor..head)`
+    /// picks up the drifted text.
+    ///
+    /// Returns `false` — leaving `cs_since_begin` and `generation_at_begin`
+    /// untouched — when `cs` wasn't produced against this session's own
+    /// tracked document length (`cs.len_before() != cs_since_begin`'s
+    /// `len_after()`): an edit reached the buffer through a path this
+    /// session never observed, which `ChangeSet::compose` would otherwise
+    /// turn into a hard panic (its `len_before`/`len_after` check is a
+    /// release `assert_eq!`, not a `debug_assert!`). The caller must dismiss
+    /// the session in that case — there's no shorter edit history to fall
+    /// back to.
+    ///
+    /// `text_gen` is the buffer's generation *after* `cs` landed — stamped
+    /// into `generation_at_begin` on the `true` path only, so `accept!`'s
+    /// gen check tracks the buffer's real edit history instead of being
+    /// re-baselined by an unrelated filter change.
+    pub(in crate::editor) fn observe_edit(&mut self, cs: &ChangeSet, text_gen: u64) -> bool {
+        if cs.len_before() != self.cs_since_begin.len_after() {
+            return false;
+        }
+        self.cs_since_begin = self.cs_since_begin.clone().compose(cs.clone());
+        self.generation_at_begin = text_gen;
+        true
+    }
 }
 
 /// Where an accepted item lands — the one axis `accept()` itself branches
@@ -188,76 +255,26 @@ struct SourceState {
 }
 
 impl CompletionSession {
-    /// The `Buffer`-target fields, or `None` for a `Minibuf` session.
-    fn buffer_target(&self) -> Option<&BufferTarget> {
+    /// The `Buffer`-target fields, or `None` for a `Minibuf` session — the
+    /// one way code outside this module reaches `BufferTarget`'s own
+    /// accessors, so a `Minibuf` session can't be asked for a buffer-only
+    /// fact by mistake: the compiler forces every caller to handle `None`
+    /// rather than trusting an `.expect()` that a `Minibuf` session never
+    /// reaches it.
+    pub(in crate::editor) fn buffer(&self) -> Option<&BufferTarget> {
         match &self.target {
             CompletionTarget::Buffer(b) => Some(b),
             CompletionTarget::Minibuf { .. } => None,
         }
     }
 
-    /// Char offset where the completed token starts — the anchor the
-    /// completion menu positions itself at (not the live cursor, which
-    /// drifts as the user types further into the token). Derived by mapping
-    /// `anchor_at_begin` forward through every edit observed so far —
-    /// `Assoc::Before`: the anchor marks the token's start, so text inserted
-    /// exactly at it belongs to the token and the anchor must stay left of
-    /// it, same association `apply_doc_edit_grouped` uses for a
-    /// `TypedRun`'s own anchors.
-    ///
-    /// A completion accept's own replacement edit (`accept.rs`) is one more
-    /// edit `apply_doc_edit_grouped` remaps an open `TypedRun` through, same
-    /// as any keystroke — so if the accepted item's `textEdit`
-    /// replaces text typed before the Insert session began (e.g. `A` mid-
-    /// identifier, type one char, then accept), the selected typed run on
-    /// Esc grows to cover the whole replacement, not just the char actually
-    /// keyed. That's intended, not a pin-tracking bug: the accept's own edit
-    /// rewrote that whole span, so every character in it was written by this
-    /// session, and selecting the freshly completed token is the useful
-    /// outcome.
-    ///
-    /// `Buffer`-target only — every caller reaches this from an Insert-mode-
-    /// specific code path, where the topmost `CompletionLayer` (if any) is
-    /// never `Minibuf`-targeted (that target only ever sits above `Command`).
-    pub(in crate::editor) fn anchor(&self) -> CharOffset {
-        let b = self
-            .buffer_target()
-            .expect("anchor() is Buffer-target only");
-        let mut positions = [b.anchor_at_begin];
-        b.cs_since_begin
-            .map_positions(&mut positions, Assoc::Before);
-        positions[0]
-    }
-
-    /// Records an Insert-mode edit that landed on this session's buffer —
-    /// called after every keystroke that lands in the buffer while this
-    /// session is open, not just ones at the primary cursor. Without this, a
-    /// keystroke at a cursor *before* the primary (multi-cursor Insert mode)
-    /// shifts the primary head by more than one char while `anchor()` stays
-    /// put, and `refilter_lsp_completion_after_edit`'s `slice(anchor..head)`
-    /// picks up the drifted text.
-    ///
-    /// Returns `false` — leaving `cs_since_begin` untouched — when `cs`
-    /// wasn't produced against this session's own tracked document length
-    /// (`cs.len_before() != cs_since_begin`'s `len_after()`): an edit reached
-    /// the buffer through a path this session never observed, which
-    /// `ChangeSet::compose` would otherwise turn into a hard panic (its
-    /// `len_before`/`len_after` check is a release `assert_eq!`, not a
-    /// `debug_assert!`). The caller must dismiss the session in that case —
-    /// there's no shorter edit history to fall back to. `Buffer`-target
-    /// only, same reasoning as `anchor()`.
-    pub(in crate::editor) fn observe_edit(&mut self, cs: &ChangeSet) -> bool {
-        let b = match &mut self.target {
-            CompletionTarget::Buffer(b) => b,
-            CompletionTarget::Minibuf { .. } => {
-                unreachable!("observe_edit is Buffer-target only")
-            }
-        };
-        if cs.len_before() != b.cs_since_begin.len_after() {
-            return false;
+    /// Mutable counterpart of [`Self::buffer`] — `observe_edit` is the one
+    /// caller today.
+    pub(in crate::editor) fn buffer_mut(&mut self) -> Option<&mut BufferTarget> {
+        match &mut self.target {
+            CompletionTarget::Buffer(b) => Some(b),
+            CompletionTarget::Minibuf { .. } => None,
         }
-        b.cs_since_begin = b.cs_since_begin.clone().compose(cs.clone());
-        true
     }
 
     /// Whether any source's *latest* contribution was `isIncomplete` — gates
@@ -270,13 +287,6 @@ impl CompletionSession {
     /// stops being counted).
     pub(in crate::editor) fn incomplete(&self) -> bool {
         self.sources.values().any(|s| s.incomplete)
-    }
-
-    /// `Buffer`-target only — same reasoning as `anchor()`.
-    pub(in crate::editor) fn bid(&self) -> BufferId {
-        self.buffer_target()
-            .expect("bid() is Buffer-target only")
-            .bid
     }
 
     /// The minibuffer-splice anchor, for a `Minibuf`-target session —
@@ -360,7 +370,8 @@ impl CompletionSession {
             .selections()
             .primary()
             .head();
-        let rope_at_begin = state.buffers.get(bid).text().rope().clone();
+        let buf = state.buffers.get(bid);
+        let rope_at_begin = buf.text().rope().clone();
         let mut session = Self::new(
             CompletionTarget::Buffer(BufferTarget {
                 bid,
@@ -368,19 +379,11 @@ impl CompletionSession {
                 anchor_at_begin: anchor,
                 cs_since_begin: ChangeSet::identity(rope_at_begin.len_chars()),
                 rope_at_begin,
-                // Real value stamped by `add_items` -> `update_filter`, below.
-                generation_at_begin: 0,
+                generation_at_begin: buf.text_gen,
             }),
             interaction,
         );
-        session.add_items(
-            state.buffers.get(bid).text_gen,
-            source,
-            priority,
-            match_kind,
-            incomplete,
-            items,
-        );
+        session.add_items(source, priority, match_kind, incomplete, items);
         Some(session)
     }
 
@@ -397,9 +400,7 @@ impl CompletionSession {
             CompletionTarget::Minibuf { span_start },
             Interaction::CycleApply,
         );
-        // `text_gen` is inert for a Minibuf-target session (no buffer, no
-        // generation to stamp); `0` is never read.
-        session.add_items(0, source, 0, match_kind, false, items);
+        session.add_items(source, 0, match_kind, false, items);
         session
     }
 
@@ -414,7 +415,6 @@ impl CompletionSession {
     /// mid-session add must respect what the user has already typed.
     pub(in crate::editor) fn add_items(
         &mut self,
-        text_gen: u64,
         source: Box<str>,
         priority: i64,
         match_kind: MatchKind,
@@ -435,24 +435,18 @@ impl CompletionSession {
                 incomplete,
             },
         );
-        self.update_filter(text_gen, self.filter.clone());
+        self.update_filter(self.filter.clone());
     }
 
-    /// Re-ranks `items` against `text`, re-stamping the `Buffer` target's
-    /// generation to `text_gen` (inert for `Minibuf` — there is no buffer to
-    /// stamp) — the expected flow is "user types a char into the buffer
-    /// (bumping its `text_gen`), then this is called with that new value and
-    /// the new filter text," so a legitimate keystroke must not itself look
-    /// like the buffer-changed-out-from-under-us case `accept!` guards
-    /// against. Takes `text_gen` rather than `&EditorState`: every caller
-    /// now reaches this method through a mutable borrow of the session that
-    /// is itself nested inside `EditorState.input`, so a second, immutable
-    /// borrow of the whole struct alongside it would alias.
-    pub(in crate::editor) fn update_filter(&mut self, text_gen: u64, text: String) {
+    /// Re-ranks `items` against `text` — does *not* touch the `Buffer`
+    /// target's `generation_at_begin`: only `BufferTarget::observe_edit`
+    /// (an actual witnessed buffer edit) stamps that. A filter change alone
+    /// — Steel-driven, or `self.filter` narrowed with no matching real edit
+    /// — is not evidence the live buffer still matches what `accept!`'s
+    /// position math assumes, so it must not re-baseline the guard that
+    /// checks exactly that.
+    pub(in crate::editor) fn update_filter(&mut self, text: String) {
         self.filter = text;
-        if let CompletionTarget::Buffer(b) = &mut self.target {
-            b.generation_at_begin = text_gen;
-        }
         self.menu_cache = None;
         self.rank_scratch.clear();
         let pattern = self.matcher.parse(&self.filter);
@@ -583,7 +577,7 @@ mod tests {
             "sanity: both items visible unfiltered"
         );
 
-        session.update_filter(0, "ban".into());
+        session.update_filter("ban".into());
         let after_rows = session.menu_rows();
         let after: Vec<&str> = after_rows.labels().iter().map(String::as_str).collect();
         assert_eq!(

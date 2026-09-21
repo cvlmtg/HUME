@@ -152,31 +152,18 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let match_kind = match_kind_from_host(match_kind);
         // Token checked before parsing anything — a stale token is a
         // silent no-op end to end, including no Trace noise from parsing
-        // items nothing will ever use.
-        //
-        // Two-phase, same shape `refilter_lsp_completion_after_edit` uses
-        // and documents: `bid` comes from a first, short-lived lookup so
-        // `text_gen` can then borrow `self.state.buffers` on its own,
-        // disjoint from the second lookup's `&mut` on `self.state.input`
-        // that actually calls `add_items`.
-        let Some(bid) =
-            input_stack::completion::session_for_token(self.state, token).map(|s| s.bid())
-        else {
+        // items nothing will ever use. Checked twice: this first lookup is
+        // discarded (its only job is the early liveness check), then
+        // `add_items` reaches through a second, fresh one — parsing sits
+        // between them so a stale token skips it entirely.
+        if input_stack::completion::session_for_token(self.state, token).is_none() {
             return false;
-        };
+        }
         let parsed = parse_items(self.state, &items, "completion-add-items!");
-        let text_gen = self.state.buffers.get(bid).text_gen;
         let Some(session) = input_stack::completion::session_for_token(self.state, token) else {
             return false;
         };
-        session.add_items(
-            text_gen,
-            source.into(),
-            priority,
-            match_kind,
-            incomplete,
-            parsed,
-        );
+        session.add_items(source.into(), priority, match_kind, incomplete, parsed);
         if let Some(r) = self.state.input.ref_of::<CompletionLayer>()
             && let Some(slot) = self.state.input.completion_ui_mut(r)
         {
@@ -189,16 +176,10 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.lsp.is_none() {
             return Err("completion-update-filter!: no LSP state available".to_string());
         }
-        let Some(bid) = self.state.input.completion().map(|s| s.bid()) else {
+        let Some(session) = self.state.input.completion_mut() else {
             return Err("completion-update-filter!: no active completion session".to_string());
         };
-        // Read from `state.buffers` before re-borrowing the session
-        // mutably out of `state.input` — the two now live inside the same
-        // top-level struct, so a `&EditorState` passed alongside a `&mut
-        // CompletionSession` borrowed from it would alias.
-        let text_gen = self.state.buffers.get(bid).text_gen;
-        let session = self.state.input.completion_mut().expect("checked above");
-        session.update_filter(text_gen, text);
+        session.update_filter(text);
         Ok(())
     }
 
@@ -217,7 +198,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(session) = self.state.take_completion_session(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
-        session.accept(self.state, lsp, idx)
+        session.accept(self.state, self.view, lsp, idx)
     }
 
     fn completion_dismiss(&mut self) -> Result<(), String> {

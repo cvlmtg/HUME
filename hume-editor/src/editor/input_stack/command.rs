@@ -243,7 +243,7 @@ pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse:
     let mut session =
         completion::CompletionSession::begin_minibuf(span_start, source, match_kind, items);
     let prefix_text = input[span_start.min(input.len())..cursor.min(input.len())].to_owned();
-    session.update_filter(0, prefix_text);
+    session.update_filter(prefix_text);
 
     if session.is_empty() {
         return;

@@ -478,6 +478,138 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
 }
 
 #[test]
+fn accept_after_the_pane_switched_buffers_errors() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    let original_buf = ed.focused_buffer_id();
+    let original_text = ed.doc().text().to_string();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+           (define-command! "finish" "" (lambda ()
+             (completion-accept! 0)))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("begin".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: session began"
+    );
+
+    // The session's pane stays focused but is redirected to a different
+    // buffer — a pane-buffer switch dismisses nothing synchronously (that's
+    // `Editor::dismiss_invalid_completion`'s job, and it only runs at
+    // settle), so this window is real between the switch and the next
+    // drain. `PaneBufferState`'s own per-(pane, buffer) map can't catch it
+    // either — it's retained, not removed, when a pane switches away.
+    let scratch = ed.open_buffer(crate::editor::buffer::Buffer::scratch());
+    ed.switch_to_buffer_without_jump(scratch);
+
+    ed.execute_keymap_command("finish".into(), None, false);
+    assert_eq!(
+        ed.state.buffers.get(original_buf).text().to_string(),
+        original_text,
+        "accept! must reject — the session's pane no longer shows its buffer"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("no longer shows"),
+        "expected a pane/buffer-mismatch error, got {msg:?}"
+    );
+}
+
+#[test]
+fn accept_without_a_text_edit_errors_when_the_cursor_left_the_token() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "x" "insertText" "z" "filterText" "ab"))
+               #:source "test")))
+           (define-command! "narrow" "" (lambda ()
+             (completion-update-filter! "a")))
+           (define-command! "finish" "" (lambda ()
+             (completion-accept! 0)))"#,
+    );
+    // A real `i` (not a raw `push_mode_layer`) — the two keystrokes below
+    // need an open edit group, which only a real Insert session provides.
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command("begin".into(), None, false);
+    // Two real keystrokes land in the buffer and are observed by the
+    // session (`apply_insert_edit` -> `observe_edit`), moving the primary
+    // head two chars past the anchor; the automatic refilter keeps
+    // `self.filter` at "ab", matching.
+    ed.feed_key(key('a'));
+    ed.feed_key(key('b'));
+    // Narrows `self.filter` to one char with no matching real edit — the
+    // documented case `accept`'s own comment describes: the session's
+    // filter can be set directly by a scripted caller, decoupled from what
+    // has actually been typed. `typed` (1) no longer covers the real head
+    // (anchor + 2).
+    ed.execute_keymap_command("narrow".into(), None, false);
+
+    let before = ed.doc().text().to_string();
+    ed.execute_keymap_command("finish".into(), None, false);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before,
+        "accept! must reject — the cursor sits outside the token the narrowed filter describes"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("token"),
+        "expected a token-containment error, got {msg:?}"
+    );
+}
+
+#[test]
+fn a_same_length_out_of_band_edit_followed_by_update_filter_still_invalidates_the_session() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+           (define-command! "corrupt" "" (lambda ()
+             ; Same-length replace ("bcdef" -> "BCDEF") — bypasses
+             ; observe_edit (only apply_insert_edit calls it) and preserves
+             ; length, so it survives observe_edit's own length check on the
+             ; next real keystroke too. A subsequent filter update must not
+             ; treat this silently-corrupted buffer as caught up.
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 1) (cons 0 6) "BCDEF")))
+             (completion-update-filter! "")))
+           (define-command! "finish" "" (lambda ()
+             (completion-accept! 0)))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("begin".into(), None, false);
+    ed.execute_keymap_command("corrupt".into(), None, false);
+
+    let before_accept = ed.doc().text().to_string();
+    ed.execute_keymap_command("finish".into(), None, false);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        before_accept,
+        "accept! must reject — a same-length out-of-band edit followed by a \
+         filter update must not re-baseline the generation guard"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("changed"),
+        "expected a buffer-changed error, got {msg:?}"
+    );
+}
+
+#[test]
 fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
     let tmp = safe_tempdir();
     // textEdit replaces chars [0, 3) ("abc"); additionalTextEdits targets

@@ -3,11 +3,12 @@
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
+use hume_engine::pipeline::EngineView;
 use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
-use super::CompletionSession;
+use super::{BufferTarget, CompletionSession};
 use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
@@ -73,12 +74,13 @@ impl CompletionSession {
     pub(in crate::editor) fn accept(
         &self,
         state: &mut EditorState,
+        view: &EngineView,
         lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
         let bt = self
-            .buffer_target()
-            .expect("completion-accept! is Buffer-target only");
+            .buffer()
+            .ok_or_else(|| "completion-accept!: not a buffer-target session".to_string())?;
         let &item_idx = self
             .filtered
             .get(idx)
@@ -97,6 +99,16 @@ impl CompletionSession {
         // errors instead of silently landing the edit at the top of the file.
         if state.focus.id() != bt.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
+        }
+        // Focus alone doesn't prove the pane still *shows* this buffer —
+        // `PaneBufferState`'s per-(pane, buffer) map (read below) is
+        // retained, not removed, when a pane switches away, so it can't
+        // detect this. `view.panes` is the engine's live pane→buffer
+        // mapping — the actual on-screen truth.
+        if view.panes.get(bt.pane_id).map(|p| p.buffer_id) != Some(bt.bid) {
+            return Err(
+                "completion-accept!: the session's pane no longer shows its buffer".to_string(),
+            );
         }
         let pid = bt.pane_id;
         let head_now = {
@@ -150,7 +162,7 @@ impl CompletionSession {
                 // (never shrinking) to cover it here catches that case too,
                 // on top of whatever `cs_since_begin` mapped from real edits.
                 let end_now =
-                    end_pos[0].max(self.anchor().shift(self.filter.chars().count() as isize));
+                    end_pos[0].max(bt.anchor().shift(self.filter.chars().count() as isize));
                 // The delta model below rests entirely on this containment:
                 // a conforming server's completion range always contains
                 // the request position (LSP spec). An off-spec server, or a
@@ -181,19 +193,27 @@ impl CompletionSession {
             // cursors need different treatment here.
             None => {
                 let typed = self.filter.chars().count();
-                let anchor = self.anchor();
-                // Not `anchor.shift(typed as isize).chars_since(head_now)`:
-                // `chars_since` debug-panics on inversion, and `head_now` can
-                // sit past `anchor + typed` (a narrowed `self.filter` with no
-                // matching real edit, same case `end_now`'s doc above
-                // describes) — `forward` must saturate to 0 there, not panic.
-                let forward = (anchor.index() + typed).saturating_sub(head_now.index());
+                let anchor = bt.anchor();
+                let token_end = anchor.shift(typed as isize);
+                // Mirrors the `textEdit` arm's containment guard above: a
+                // cursor that has drifted outside the token this session is
+                // tracking (an arrow key the completion menu lets through,
+                // or `self.filter` narrowed via `completion-update-filter!`
+                // with no matching real edit) has no well-defined
+                // token-replacement span — erroring here, buffer untouched,
+                // is safer than silently computing one from a stale anchor.
+                if !(anchor <= head_now && head_now <= token_end) {
+                    return Err(
+                        "completion-accept!: insertText token does not contain the cursor"
+                            .to_string(),
+                    );
+                }
                 (
                     ReplaceSpan::TokenBefore {
                         primary_head: head_now,
                         anchor,
                         typed,
-                        forward,
+                        forward: token_end.chars_since(head_now),
                     },
                     item.insert_text.clone(),
                 )
@@ -404,7 +424,7 @@ impl CompletionSession {
         });
 
         if !item.has_additional_text_edits {
-            self.maybe_send_resolve(state, lsp, item, rope_pre, accept_cs, encoding);
+            self.maybe_send_resolve(bt, state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
     }
@@ -412,9 +432,11 @@ impl CompletionSession {
     /// Sends `completionItem/resolve` when the server advertised
     /// `completionProvider.resolveProvider` — best-effort: a resolution
     /// error, timeout, or a server that's gone by send time only logs, it
-    /// never fails the accept that already landed.
+    /// never fails the accept that already landed. `bt` is the same
+    /// `BufferTarget` `accept` already resolved — its only caller.
     fn maybe_send_resolve(
         &self,
+        bt: &BufferTarget,
         state: &mut EditorState,
         lsp: &mut LspState,
         item: &CompletionItem,
@@ -422,9 +444,6 @@ impl CompletionSession {
         accept_cs: hume_editing::changeset::ChangeSet,
         encoding: hume_rope::position_encoding::PositionEncoding,
     ) {
-        let bt = self
-            .buffer_target()
-            .expect("maybe_send_resolve is Buffer-target only");
         let Some(server_id) = state.buffers.try_get(bt.bid).and_then(|b| b.lsp_server) else {
             return;
         };

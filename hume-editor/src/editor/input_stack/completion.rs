@@ -108,14 +108,12 @@ impl Editor {
         let border = self.state.settings.popup_border;
         let resolved = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.completion()?;
-            if session.minibuf_span_start().is_some() {
+            let bt = session.buffer()?;
+            if bt.bid() != self.focused_buffer_id() {
                 return None;
             }
-            if session.bid() != self.focused_buffer_id() {
-                return None;
-            }
-            let anchor_char = session.anchor();
-            let len = self.state.buffers.get(session.bid()).text().end();
+            let anchor_char = bt.anchor();
+            let len = self.state.buffers.get(bt.bid()).text().end();
             if anchor_char >= len {
                 return None;
             }
@@ -252,6 +250,8 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
                     .at::<CompletionLayer>(r)
                     .expect("non_empty implies a session")
                     .session
+                    .buffer()
+                    .expect("completion_input_buffer is only reached by a Buffer-target session")
                     .anchor();
                 if head <= anchor {
                     ed.state.dismiss_completion(&ed.view);
@@ -412,7 +412,7 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let Some(session) = ed.state.take_completion_session(&ed.view) else {
         return;
     };
-    if let Err(msg) = session.accept(&mut ed.state, &mut ed.lsp, selected) {
+    if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {
         ed.report(Severity::Error, msg);
     }
 }
@@ -431,8 +431,11 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, r: LayerRef, key: KeyEven
     let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    let anchor = layer.session.anchor();
-    let bid = layer.session.bid();
+    let Some(bt) = layer.session.buffer() else {
+        return; // can't happen — this handler is Buffer-target only
+    };
+    let anchor = bt.anchor();
+    let bid = bt.bid();
     let head = ed.current_selections().primary().head();
     // Backspace crossing the anchor already dismissed the session
     // above, before the edit ran. But `head` can still land before
@@ -451,16 +454,11 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, r: LayerRef, key: KeyEven
         .slice(ExclusiveRange::new(anchor, head))
         .to_string();
 
-    // Phase 2 — disjoint-field reads: `text_gen` comes from
-    // `state.buffers`, read *before* borrowing `state.input`'s session
-    // mutably — `state.buffers` and `state.input` are sibling fields, but
-    // the session lives inside `state.input`, so a `&mut` on it and a
-    // second borrow of `state` as a whole cannot coexist.
-    let text_gen = ed.state.buffers.get(bid).text_gen;
+    // Phase 2: re-borrow the session mutably to re-rank it.
     let Some(layer) = ed.state.input.at_mut::<CompletionLayer>(r) else {
         return; // can't happen (checked above), but never assume it
     };
-    layer.session.update_filter(text_gen, text.clone());
+    layer.session.update_filter(text.clone());
     let incomplete = layer.session.incomplete();
 
     // Phase 3 — borrows from phase 2 have ended; back to whole-`ed`.

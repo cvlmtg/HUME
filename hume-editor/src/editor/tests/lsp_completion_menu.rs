@@ -702,7 +702,14 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
     // Cursor is now on the blank line past "line4\n" — the session anchor.
     begin_session(&mut ed, &[("candidate", None)]);
     let bid = ed.focused_buffer_id();
-    let anchor = ed.state.input.completion().unwrap().anchor();
+    let anchor = ed
+        .state
+        .input
+        .completion()
+        .unwrap()
+        .buffer()
+        .unwrap()
+        .anchor();
     assert!(anchor > co(3), "sanity: anchor is deep in the buffer");
 
     // `reload_buffer_in_place` (`:e!`) clamps every pane's cursor to the new,
@@ -1013,7 +1020,7 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
         .take_completion_session(&ed.view)
         .expect("session open");
     session
-        .accept(&mut ed.state, &mut ed.lsp, 0)
+        .accept(&mut ed.state, &ed.view, &mut ed.lsp, 0)
         .expect("accept must succeed");
     let text = ed.doc().text().to_string();
     assert_eq!(
@@ -1063,7 +1070,7 @@ fn anchor_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() 
         ed.doc()
             .text()
             .slice(ExclusiveRange::new(
-                session.anchor(),
+                session.buffer().expect("buffer-target session").anchor(),
                 ed.current_selections().primary().head(),
             ))
             .to_string(),
