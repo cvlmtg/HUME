@@ -14,6 +14,8 @@
 //! listing, a parse phase), so it takes `(input, cursor, ctx)` and returns
 //! its own finished, already-ordered result.
 
+use std::ops::Range;
+
 use rustc_hash::FxHashMap;
 
 use super::{CompletionCtx, CompletionItem, MatchKind};
@@ -23,8 +25,11 @@ use super::{CompletionCtx, CompletionItem, MatchKind};
 type NativeFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
 
 /// A `Delegated`-kind native source: computes its own finished result fresh
-/// from the live input every attempt — `(span_start, items)`.
-type NativeDelegatedFn = fn(&str, usize, &CompletionCtx<'_>) -> (usize, Vec<CompletionItem>);
+/// from the live input every attempt — `(span, items)`, `span` being the
+/// byte range in the minibuffer input the accepted candidate replaces (not
+/// just where it starts — see [`super::token_end_at`]'s doc for why the end
+/// matters too).
+type NativeDelegatedFn = fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
 enum SourceKind {
     Native(NativeFn),
@@ -38,11 +43,11 @@ struct CompletionSourceEntry {
 
 /// One completion attempt's outcome — a `String`/`Fuzzy` source's universe
 /// (for the caller to build a session from and let `update_filter` narrow),
-/// or a `Delegated` source's own finished `(span_start, items)`.
+/// or a `Delegated` source's own finished `(span, items)`.
 pub(in crate::editor) enum SourceResult {
     Universe(Vec<CompletionItem>),
     Delegated {
-        span_start: usize,
+        span: Range<usize>,
         items: Vec<CompletionItem>,
     },
 }
@@ -119,8 +124,8 @@ impl CompletionSourceRegistry {
         let result = match entry.kind {
             SourceKind::Native(f) => SourceResult::Universe(f(ctx)),
             SourceKind::NativeDelegated(f) => {
-                let (span_start, items) = f(input, cursor, ctx);
-                SourceResult::Delegated { span_start, items }
+                let (span, items) = f(input, cursor, ctx);
+                SourceResult::Delegated { span, items }
             }
         };
         Some((entry.match_kind, result))

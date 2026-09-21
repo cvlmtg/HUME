@@ -485,7 +485,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(bid: args::BidArg);
 
         // Completion orchestration.
-        cmd "%completion-begin!" completion::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal, source: SteelVal, priority: SteelVal, match_kind: SteelVal, interaction: SteelVal);
+        cmd "%completion-begin!" completion::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal, source: SteelVal, priority: SteelVal, match_kind: SteelVal);
         cmd "%completion-add-items!" completion::completion_add_items(token: SteelVal, items: SteelVal, source: SteelVal, priority: SteelVal, match_kind: SteelVal, incomplete: SteelVal);
         cmd "completion-update-filter!" completion::completion_update_filter(text: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);

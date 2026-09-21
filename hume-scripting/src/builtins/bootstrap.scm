@@ -124,8 +124,8 @@
 ;; external keyword stays `#:match`; keyword name and bound identifier are
 ;; independent in Steel's `#:kw [name default]` syntax.
 (define (completion-begin! bid items #:source source #:incomplete [incomplete #f] #:priority [priority 0]
-                                      #:match [match-kind 'fuzzy] #:interaction [interaction 'select])
-  (%completion-begin! bid items incomplete source priority match-kind interaction))
+                                      #:match [match-kind 'fuzzy])
+  (%completion-begin! bid items incomplete source priority match-kind))
 
 (define (completion-add-items! token items #:source source #:priority [priority 0]
                                             #:match [match-kind 'fuzzy] #:incomplete [incomplete #f])

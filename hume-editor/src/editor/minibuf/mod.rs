@@ -196,18 +196,18 @@ impl MiniBuffer {
         MiniBufferEvent::Edited
     }
 
-    /// Replaces `input[span_start..cursor]` with `text` and parks the
-    /// cursor at the end of the inserted text — the one minibuffer mutation
-    /// a completion-apply performs, whether cycling the popup
+    /// Replaces `input[span]` with `text` and parks the cursor at the end
+    /// of the inserted text — the one minibuffer mutation a completion-apply
+    /// performs, whether cycling the popup
     /// (`apply_selected_minibuf_candidate`, `input_stack/completion.rs`) or
     /// applying a silently-completed single match (`complete_minibuf`,
-    /// `input_stack/command.rs`). Reads `self.cursor` fresh rather than
-    /// taking it as a parameter, so a caller holding an earlier-captured
-    /// cursor value can't splice against a position the minibuffer has
-    /// since moved past.
-    pub(in crate::editor) fn splice(&mut self, span_start: usize, text: &str) {
-        let cursor = self.cursor;
-        self.input.replace_range(span_start..cursor, text);
+    /// `input_stack/command.rs`). `span` is the *token's own* range, not
+    /// `span_start..self.cursor` — replacing up to a mid-token cursor
+    /// instead would leave the token's uncompleted tail duplicated after
+    /// the applied candidate (see `CompletionTarget::Minibuf`'s doc).
+    pub(in crate::editor) fn splice(&mut self, span: std::ops::Range<usize>, text: &str) {
+        let span_start = span.start;
+        self.input.replace_range(span, text);
         self.cursor = span_start + text.len();
     }
 }

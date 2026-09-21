@@ -4,7 +4,7 @@
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{Interaction, MatchKind};
+use crate::host::MatchKind;
 use crate::json::{json_to_steel, steel_to_json};
 
 use super::SteelResult;
@@ -34,18 +34,6 @@ fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, steel::rer
     )
 }
 
-/// Decodes `#:interaction` (`'select`/`'cycle`).
-fn interaction_arg(val: SteelVal, ctx_name: &str) -> Result<Interaction, steel::rerrs::SteelErr> {
-    symbol_enum_arg(
-        string_arg(val, ctx_name)?.as_str(),
-        ctx_name,
-        &[
-            ("select", Interaction::SelectAccept),
-            ("cycle", Interaction::CycleApply),
-        ],
-    )
-}
-
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable
 /// from any context, including command bodies and hook handlers —
@@ -68,12 +56,11 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-begin! bid items incomplete source priority match
-/// interaction)` — the `completion-begin!` Scheme wrapper supplies
-/// `#:incomplete`/`#:priority`/`#:match`/`#:interaction`'s defaults;
-/// `#:source` has none (see the wrapper's own doc). `items`: list of decoded
-/// `CompletionItem` hashmaps. Returns the new session's token.
-#[allow(clippy::too_many_arguments)]
+/// `(%completion-begin! bid items incomplete source priority match)` — the
+/// `completion-begin!` Scheme wrapper supplies `#:incomplete`/`#:priority`/
+/// `#:match`'s defaults; `#:source` has none (see the wrapper's own doc).
+/// `items`: list of decoded `CompletionItem` hashmaps. Returns the new
+/// session's token.
 pub(crate) fn completion_begin(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -82,28 +69,18 @@ pub(crate) fn completion_begin(
     source: SteelVal,
     priority: SteelVal,
     match_kind: SteelVal,
-    interaction: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
     let incomplete = bool_arg(incomplete, "completion-begin! #:incomplete")?;
     let source = string_arg(source, "completion-begin! #:source")?;
     let priority = int_arg(priority, "completion-begin! #:priority")?;
     let match_kind = match_kind_arg(match_kind, "completion-begin! #:match")?;
-    let interaction = interaction_arg(interaction, "completion-begin! #:interaction")?;
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-begin! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
     require_cap(ctx.host.completions(), "completion-begin!")?
-        .completion_begin(
-            id,
-            parsed,
-            source,
-            priority,
-            match_kind,
-            interaction,
-            incomplete,
-        )
+        .completion_begin(id, parsed, source, priority, match_kind, incomplete)
         .map(|token| SteelVal::IntV(token as isize))
         .map_err(generic_err)
 }
@@ -112,8 +89,7 @@ pub(crate) fn completion_begin(
 /// — the `completion-add-items!` Scheme wrapper supplies `#:priority`/
 /// `#:match`/`#:incomplete`'s defaults; `#:source` has none, same as
 /// `%completion-begin!`. Returns whether the merge applied (`#f` on a stale
-/// token). No `#:interaction` here — it's decided once, by whoever calls
-/// `completion-begin!`.
+/// token).
 pub(crate) fn completion_add_items(
     ctx: &mut SteelCtx,
     token: SteelVal,

@@ -189,7 +189,7 @@ These are editor-builtin commands any completion plugin can drive — a source r
 | Call | Effect |
 |------|--------|
 | `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)` — feeds the `on-trigger-char` hook |
-| `(completion-begin! bid items #:source #:incomplete #:priority #:match #:interaction)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against typed text; `#:interaction` (`'select` default, or `'cycle`) picks whether further typing refilters the open menu or dismisses it, and is fixed for the session's life regardless of what a later `completion-add-items!` call passes |
+| `(completion-begin! bid items #:source #:incomplete #:priority #:match)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against typed text. Further typing refilters the open menu in place |
 | `(completion-add-items! token items #:source #:priority #:match #:incomplete)` | Merge more items into the session `token` names, replacing that `source`'s prior contribution rather than appending — a stale `token` (the session closed or restarted since) is a silent no-op |
 | `(completion-update-filter! text)` | Re-filter the open session against `text` |
 | `(completion-top n)` | The top `n` ranked/filtered items |

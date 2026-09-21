@@ -1,7 +1,9 @@
+use std::ops::Range;
+
 use hume_engine::builtins::line_number::LineNumberStyle;
 use hume_engine::pane::{WhitespaceRender, WrapMode};
 
-use super::{CompletionCtx, CompletionItem, theme_name_candidates};
+use super::{CompletionCtx, CompletionItem, theme_name_candidates, token_end_at};
 use crate::editor::settings::{
     LANGUAGE_KEY, SHOW_NEWLINE_VALUES, Scope, SignColumnConfig, THEME_KEY, WRAP_MODE_KEY,
     all_setting_keys, setting_scopes,
@@ -137,11 +139,11 @@ pub(super) fn complete_set(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
-) -> (usize, Vec<CompletionItem>) {
+) -> (Range<usize>, Vec<CompletionItem>) {
     let up_to = &input[..cursor.min(input.len())];
     // Argument region begins after the command word ("set ").
     let Some(arg_start) = up_to.find(' ').map(|i| i + 1) else {
-        return (up_to.len(), Vec::new());
+        return (up_to.len()..up_to.len(), Vec::new());
     };
     let arg = up_to[arg_start..].trim_start();
 
@@ -149,26 +151,37 @@ pub(super) fn complete_set(
         None => {
             // Scope token: bounded by whitespace only — no '=' can occur
             // yet, so the last space before the cursor is always correct,
-            // robust to stray extra whitespace.
+            // robust to stray extra whitespace. `'='` is an extra stop on
+            // the forward side purely for symmetry with the key phase below
+            // — a scope name never contains one, so it never fires here.
             let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-            complete_set_scope(arg, span_start)
+            let span_end = token_end_at(input, cursor, &[' ', '=']);
+            let (_, candidates) = complete_set_scope(arg, span_start);
+            (span_start..span_end, candidates)
         }
         Some((scope, rest)) => {
             let rest = rest.trim_start();
             match rest.split_once('=') {
                 None => {
-                    // Key token: same reasoning as the scope case.
+                    // Key token: same start reasoning as the scope case.
+                    // The forward scan must also stop at `'='` — not just
+                    // whitespace — or completing `:set global th|eme=x`
+                    // would swallow the `=x` into the replaced span instead
+                    // of leaving it after the completed key.
                     let span_start = up_to.rfind(' ').map_or(0, |i| i + 1);
-                    complete_set_key(scope, rest, span_start)
+                    let span_end = token_end_at(input, cursor, &[' ', '=']);
+                    let (_, candidates) = complete_set_key(scope, rest, span_start);
+                    (span_start..span_end, candidates)
                 }
                 Some((key, value)) => {
-                    // Value token: bounded by '=' only, never by internal
-                    // whitespace — a value can legitimately contain spaces
-                    // (e.g. a theme filename stem like "my theme"), and
-                    // replacing from the last *space* would drop
-                    // everything before it instead of the whole value.
+                    // Value token: bounded by '=' on the start, whitespace
+                    // only on the end — a value can legitimately contain an
+                    // internal '=' or spaces (e.g. a `statusline` format
+                    // string), so only whitespace ends it.
                     let span_start = up_to.rfind('=').map_or(0, |i| i + 1);
-                    complete_set_value(scope, key, value, span_start, ctx)
+                    let span_end = token_end_at(input, cursor, &[' ']);
+                    let (_, candidates) = complete_set_value(scope, key, value, span_start, ctx);
+                    (span_start..span_end, candidates)
                 }
             }
         }

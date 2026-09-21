@@ -30,7 +30,7 @@ mod simple;
 pub(in crate::editor) use item::CompletionItem;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{CompletionSourceRegistry, SourceResult};
-pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, Interaction, MatchKind};
+pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind};
 pub(in crate::editor) use set::SET_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
@@ -69,6 +69,24 @@ pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str)
         Some(space_idx) => (space_idx + 1, &up_to_cursor[space_idx + 1..]),
         None => (0, up_to_cursor),
     }
+}
+
+/// Forward counterpart of [`arg_prefix`]'s backward scan: the byte offset,
+/// at or after `cursor`, of the first char in `stops` — or `input.len()` if
+/// none appears before the end. The token a completion *replaces* extends
+/// past the cursor to wherever it actually ends (`arg_prefix` alone only
+/// ever looks at `input[..cursor]`), so a candidate applied with the cursor
+/// mid-token doesn't duplicate the token's own tail (`:e src/ma|in.rs` +
+/// Tab must not produce `src/main.rsin.rs`).
+///
+/// `stops` names the token's own separator alphabet — a `:set` key stops at
+/// `'='` too (so completing `:set global th|eme=x` doesn't swallow the
+/// `=x`), where a path or command-name token stops at whitespace alone.
+pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]) -> usize {
+    let from = cursor.min(input.len());
+    input[from..]
+        .find(|c: char| stops.contains(&c))
+        .map_or(input.len(), |i| from + i)
 }
 
 /// Scan `themes/*.toml` in every search path and return the stems that start

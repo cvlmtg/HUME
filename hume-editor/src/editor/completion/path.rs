@@ -1,6 +1,7 @@
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use super::{CompletionCtx, CompletionItem, arg_prefix};
+use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 
 // ── Filesystem path ───────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ pub(super) fn complete_path(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
-) -> (usize, Vec<CompletionItem>) {
+) -> (Range<usize>, Vec<CompletionItem>) {
     complete_path_with_expand(input, cursor, ctx, false, hume_platform::path::expand)
 }
 
@@ -28,7 +29,7 @@ pub(super) fn complete_path_dirs_only(
     input: &str,
     cursor: usize,
     ctx: &CompletionCtx<'_>,
-) -> (usize, Vec<CompletionItem>) {
+) -> (Range<usize>, Vec<CompletionItem>) {
     complete_path_with_expand(input, cursor, ctx, true, hume_platform::path::expand)
 }
 
@@ -49,11 +50,12 @@ fn complete_path_with_expand<F>(
     ctx: &CompletionCtx<'_>,
     dirs_only: bool,
     expand_fn: F,
-) -> (usize, Vec<CompletionItem>)
+) -> (Range<usize>, Vec<CompletionItem>)
 where
     F: for<'a> Fn(&'a str) -> std::borrow::Cow<'a, str>,
 {
     let (arg_start, prefix) = arg_prefix(input, cursor);
+    let arg_end = token_end_at(input, cursor, &[' ']);
 
     // Split prefix into (dir_str, file_prefix).
     let (dir_str, file_prefix) = hume_platform::path::split_path_at_sep(prefix);
@@ -78,7 +80,7 @@ where
     // candidates — not a hard error.
     let rd = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
-        Err(_) => return (arg_start, Vec::new()),
+        Err(_) => return (arg_start..arg_end, Vec::new()),
     };
 
     let mut candidates: Vec<CompletionItem> = rd
@@ -107,7 +109,7 @@ where
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));
 
-    (arg_start, candidates)
+    (arg_start..arg_end, candidates)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

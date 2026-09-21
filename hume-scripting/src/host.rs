@@ -26,7 +26,7 @@ mod ui;
 pub use async_process::AsyncProcessHost;
 pub use buffers::BufferHost;
 pub use commands::CommandHost;
-pub use completion::{CompletionHost, Interaction, MatchKind};
+pub use completion::{CompletionHost, MatchKind};
 pub use cursor::CursorHost;
 pub use decorations::DecorationHost;
 pub use diff::{DiffHost, DiffHunk, WordDiffHunk};

@@ -2,9 +2,9 @@
 //! above `Command` for a minibuffer one. One `CompletionLayer` type serves
 //! both; `dispatch_at` (`mappings/mod.rs`) routes into whichever key
 //! handler `handler()` names, chosen by the session's own target — see
-//! `completion/session.rs`'s module doc for what genuinely differs between
-//! the two (the accept mechanism, and further-typing's `Interaction`) and
-//! what doesn't (this layer's own `Layer` impl, menu navigation).
+//! `completion/session.rs`'s `CompletionTarget` doc for what genuinely
+//! differs between the two (the accept mechanism, further-typing behavior)
+//! and what doesn't (this layer's own `Layer` impl, menu navigation).
 
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -31,15 +31,14 @@ pub(in crate::editor) struct CompletionLayer {
 
 impl Layer for CompletionLayer {
     fn handler(&self) -> LayerHandler {
-        // Keyed on `Interaction`, not `CompletionTarget` — the two coincide
-        // in every session that exists today (LSP is Buffer+SelectAccept,
-        // every native minibuffer source is Minibuf+CycleApply), but
-        // they're different axes (see `completion/session.rs`'s doc):
-        // `Interaction` is what actually decides which key behavior this
-        // layer needs.
-        match self.session.interaction() {
-            crate::editor::completion::Interaction::SelectAccept => completion_input_buffer,
-            crate::editor::completion::Interaction::CycleApply => completion_input_minibuf,
+        // The session's own target is the one axis further-typing behavior
+        // follows — see `CompletionTarget`'s own doc (`completion/
+        // session.rs`) for why a `Buffer` session always refilters in place
+        // and a `Minibuf` one always cycles/dismisses.
+        if self.session.minibuf_span().is_some() {
+            completion_input_minibuf
+        } else {
+            completion_input_buffer
         }
     }
     fn mode(&self) -> Option<EditorMode> {
@@ -63,7 +62,7 @@ impl Layer for CompletionLayer {
         // `PopupState` in the other until the next frame's sync silently
         // clears it for us (see `sync_minibuf_completion_view`'s own
         // is-open check), which is a lucky accident, not a guarantee.
-        if self.session.minibuf_span_start().is_some() {
+        if self.session.minibuf_span().is_some() {
             state.views.minibuf_completion.set(None);
         } else {
             state.views.completion_menu.set(None);
@@ -89,7 +88,7 @@ impl Editor {
             .state
             .input
             .completion()
-            .is_some_and(|s| s.minibuf_span_start().is_none());
+            .is_some_and(|s| s.buffer().is_some());
         if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
             return;
         }
@@ -283,9 +282,9 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     refilter_lsp_completion_after_edit(ed, r, key);
 }
 
-/// Handles one key while a minibuffer completion session is open —
-/// `Interaction::CycleApply`: Tab/Shift-Tab move the selection *and*
-/// immediately splice the newly-selected candidate into the minibuffer
+/// Handles one key while a minibuffer completion session is open — always
+/// cycle-and-apply: Tab/Shift-Tab move the selection *and* immediately
+/// splice the newly-selected candidate into the minibuffer
 /// (there is no separate accept step, unlike the Buffer-target's Enter);
 /// every other key dismisses the popup first, then falls through
 /// unchanged — the minibuffer's own always-eager-apply UX.
@@ -359,7 +358,7 @@ pub(in crate::editor) fn apply_selected_minibuf_candidate(ed: &mut Editor, r: La
     let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    let Some(span_start) = layer.session.minibuf_span_start() else {
+    let Some(span) = layer.session.minibuf_span() else {
         return;
     };
     let selected = layer.ui.as_ref().map_or(0, |ui| ui.selected);
@@ -370,31 +369,34 @@ pub(in crate::editor) fn apply_selected_minibuf_candidate(ed: &mut Editor, r: La
     let Some(mb) = ed.state.input.minibuf_mut() else {
         return;
     };
-    mb.splice(span_start, &insert_text);
+    mb.splice(span, &insert_text);
+    // The next apply (cycling to a different candidate) must replace what
+    // this one just inserted, not the original pre-completion token.
+    if let Some(layer) = ed.state.input.at_mut::<CompletionLayer>(r) {
+        layer.session.note_minibuf_splice(insert_text.len());
+    }
 }
 
 /// Moves the completion menu's selection by one row. The popup scrolls
 /// to keep the selection visible, so the bound is the full ranked
 /// candidate list, not just the visible window. Shared by both targets —
-/// already target-agnostic.
+/// already target-agnostic. A no-op on an empty session — reachable for a
+/// `Minibuf`-target session, whose key handler has no non-empty guard the
+/// way `completion_input_buffer`'s does.
 fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
     let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    // `completion_input_buffer`'s empty-session guard already returned
-    // before dispatching here for a Buffer-target session; a Minibuf-
-    // target session is only ever opened non-empty (see `complete_minibuf`,
-    // `input_stack/command.rs`) — either way `n` is always positive.
-    let n = layer.session.len();
+    let current = layer.ui.as_ref().map_or(0, |ui| ui.selected);
+    let Some(next) = layer.session.step_selection(current, forward) else {
+        return;
+    };
     let Some(ui_slot) = ed.state.input.completion_ui_mut(r) else {
         return;
     };
-    let ui = ui_slot.get_or_insert(CompletionMenuUi { selected: 0 });
-    if forward {
-        ui.selected = (ui.selected + 1) % n;
-    } else {
-        ui.selected = ui.selected.checked_sub(1).unwrap_or(n - 1);
-    }
+    ui_slot
+        .get_or_insert(CompletionMenuUi { selected: 0 })
+        .selected = next;
 }
 
 /// Accepts the currently-selected completion item through the same

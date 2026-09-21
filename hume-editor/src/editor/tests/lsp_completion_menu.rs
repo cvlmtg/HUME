@@ -9,7 +9,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
+use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
@@ -47,7 +47,6 @@ fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
         "test".into(),
         0,
         MatchKind::Fuzzy,
-        Interaction::SelectAccept,
         items,
         false,
     )
@@ -673,7 +672,7 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
         .completion()
         .expect("2+ path candidates must open a popup");
     assert!(
-        session.minibuf_span_start().is_some(),
+        session.minibuf_span().is_some(),
         "the open session must be Minibuf-target, not the LSP guard's Buffer-target"
     );
 }

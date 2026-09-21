@@ -14,13 +14,13 @@ fn path_completer_lists_directory() {
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
     let ctx = ctx(&reg, &store, dir.path());
     let input = "e ";
-    let (span_start, candidates) = complete_path(input, input.len(), &ctx);
+    let (span, candidates) = complete_path(input, input.len(), &ctx);
 
     let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
     assert!(names.contains(&"alpha.txt"), "alpha.txt should appear");
     assert!(names.contains(&"beta.txt"), "beta.txt should appear");
     assert!(names.contains(&"gamma/"), "directory gets trailing /");
-    assert_eq!(span_start, 2);
+    assert_eq!(span, 2..2, "cursor at end of input: empty replace span");
 }
 
 #[test]

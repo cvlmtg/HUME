@@ -17,26 +17,16 @@ pub enum MatchKind {
     Delegated,
 }
 
-/// What further typing does while the popup is open — decoded from
-/// `#:interaction` (`'select`/`'cycle`). Only `SelectAccept` has a real
-/// Steel caller today.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Interaction {
-    CycleApply,
-    SelectAccept,
-}
-
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
     /// `(completion-begin! bid items #:source s #:incomplete f #:priority n
-    /// #:match k #:interaction i)` — `items` is a list of decoded
-    /// `CompletionItem` hashmaps (JSON already converted by the caller),
-    /// tagged with the contributing `source`'s name. Starting a session
-    /// replaces any session already open. Returns the new session's token
-    /// (`0` if no session was opened — an empty/all-malformed `items`), for
-    /// a later `completion-add-items!` to merge a second source into.
-    #[allow(clippy::too_many_arguments)]
+    /// #:match k)` — `items` is a list of decoded `CompletionItem` hashmaps
+    /// (JSON already converted by the caller), tagged with the contributing
+    /// `source`'s name. Starting a session replaces any session already
+    /// open. Returns the new session's token (`0` if no session was opened
+    /// — an empty/all-malformed `items`), for a later `completion-add-
+    /// items!` to merge a second source into.
     fn completion_begin(
         &mut self,
         bid: BufferId,
@@ -44,7 +34,6 @@ pub trait CompletionHost {
         source: String,
         priority: i64,
         match_kind: MatchKind,
-        interaction: Interaction,
         incomplete: bool,
     ) -> Result<u64, String>;
 
@@ -56,8 +45,6 @@ pub trait CompletionHost {
     /// session was replaced or dismissed since the caller captured it — is
     /// expected-normal, not an error: returns whether the merge applied,
     /// same silent-no-op contract as `picker-push!`/`picker-replace!`.
-    /// `interaction` isn't a parameter here — it's decided once, by whoever
-    /// calls `completion_begin`, and stays fixed for the session's life.
     #[allow(clippy::too_many_arguments)]
     fn completion_add_items(
         &mut self,

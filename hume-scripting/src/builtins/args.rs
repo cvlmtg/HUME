@@ -65,7 +65,7 @@ pub(crate) fn optional_symbol_arg(
 /// Maps an already-decoded keyword string to one of a fixed set of enum
 /// values via a `(spelling, value)` table — the "must be 'a, 'b, or 'c, got
 /// 'x" shape shared by every Steel enum-keyword decoder (`#:match`,
-/// `#:interaction`, `#:truncate`, `#:anchor`, `#:kind`, bind-mode). Callers
+/// `#:truncate`, `#:anchor`, `#:kind`, bind-mode). Callers
 /// extract the string themselves first (`string_arg` for a string-or-symbol
 /// argument, a stricter symbol-only check where the wire contract insists on
 /// a bare symbol) — this helper is only about the mapping and the error

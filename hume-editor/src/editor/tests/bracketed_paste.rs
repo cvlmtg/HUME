@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
+use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
@@ -28,7 +28,6 @@ fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
         "test".into(),
         0,
         MatchKind::Fuzzy,
-        Interaction::SelectAccept,
         items,
         false,
     )

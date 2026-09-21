@@ -8,10 +8,10 @@ use crate::editor::input_stack::{self, CompletionLayer, InsertLayer};
 use super::EditorHostImpl;
 use hume_scripting::host::CompletionHost;
 
-/// `hume-scripting`'s `MatchKind`/`Interaction` are the Steel/host-trait
-/// boundary's own mirror (see their doc) — converted here into the editor's
-/// richer internal enum, one-to-one, the same crossing every other Steel-
-/// facing option (`PickerFeedMode`, `TruncateEnd`) makes at this same seam.
+/// `hume-scripting`'s `MatchKind` is the Steel/host-trait boundary's own
+/// mirror (see its doc) — converted here into the editor's richer internal
+/// enum, one-to-one, the same crossing every other Steel-facing option
+/// (`PickerFeedMode`, `TruncateEnd`) makes at this same seam.
 fn match_kind_from_host(
     m: hume_scripting::host::MatchKind,
 ) -> crate::editor::completion::MatchKind {
@@ -20,16 +20,6 @@ fn match_kind_from_host(
         hume_scripting::host::MatchKind::Fuzzy => M::Fuzzy,
         hume_scripting::host::MatchKind::String { case_sensitive } => M::String { case_sensitive },
         hume_scripting::host::MatchKind::Delegated => M::Delegated,
-    }
-}
-
-fn interaction_from_host(
-    i: hume_scripting::host::Interaction,
-) -> crate::editor::completion::Interaction {
-    use crate::editor::completion::Interaction as I;
-    match i {
-        hume_scripting::host::Interaction::CycleApply => I::CycleApply,
-        hume_scripting::host::Interaction::SelectAccept => I::SelectAccept,
     }
 }
 
@@ -63,11 +53,9 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         source: String,
         priority: i64,
         match_kind: hume_scripting::host::MatchKind,
-        interaction: hume_scripting::host::Interaction,
         incomplete: bool,
     ) -> Result<u64, String> {
         let match_kind = match_kind_from_host(match_kind);
-        let interaction = interaction_from_host(interaction);
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
@@ -107,7 +95,6 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             source.into(),
             priority,
             match_kind,
-            interaction,
             parsed,
             incomplete,
         ) else {

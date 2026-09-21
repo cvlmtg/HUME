@@ -190,6 +190,80 @@ fn tab_in_search_mode_is_noop() {
     assert!(ed.state.input.completion().is_none());
 }
 
+// ── Mid-token Tab: the replaced span must not stop at the live cursor ──────
+//
+// `Minibuf::splice` used to replace `span_start..cursor` — correct only
+// when the cursor sits at the token's own end. With the cursor mid-token
+// (Left-arrowed back into already-typed text), that left everything past
+// the cursor untouched, so the applied candidate landed *ahead* of the
+// token's own uncompleted tail instead of replacing it.
+
+#[test]
+fn tab_mid_token_replaces_the_whole_path_not_just_up_to_the_cursor() {
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+
+    let mut ed = editor_from("-[h]>ello\n");
+    let input = format!("e {}/hello.txt extra", dir.path().display());
+    ed.handle_key(key(':'));
+    for ch in input.chars() {
+        ed.handle_key(key(ch));
+    }
+    // Move the cursor back to just after "hel" — mid-token, with "lo.txt
+    // extra" still ahead of it.
+    for _ in 0.."lo.txt extra".len() {
+        ed.handle_key(key_left());
+    }
+    ed.handle_key(key_tab());
+
+    let expected = format!("e {}/hello.txt extra", dir.path().display());
+    assert_eq!(
+        minibuf_input(&ed),
+        expected,
+        "must replace the whole token, not just up to the cursor"
+    );
+}
+
+#[test]
+fn tab_mid_command_name_replaces_the_whole_name() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "reload-config".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Cursor back to just after "relo" — mid-token.
+    for _ in 0.."ad-config".len() {
+        ed.handle_key(key_left());
+    }
+    ed.handle_key(key_tab());
+    assert_eq!(
+        minibuf_input(&ed),
+        "reload-config",
+        "must replace the whole command name, not just up to the cursor"
+    );
+}
+
+#[test]
+fn tab_mid_set_key_does_not_swallow_the_equals_value() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    for ch in "set global theme=x".chars() {
+        ed.handle_key(key(ch));
+    }
+    // Cursor back to just after "th" — mid-key, with "eme=x" still ahead.
+    // A space-only forward scan for the replaced span's end would swallow
+    // the trailing "=x" into it.
+    for _ in 0.."eme=x".len() {
+        ed.handle_key(key_left());
+    }
+    ed.handle_key(key_tab());
+    assert_eq!(
+        minibuf_input(&ed),
+        "set global theme=x",
+        "the key completion must not swallow the trailing '=x' value"
+    );
+}
+
 // ── Path completion ───────────────────────────────────────────────────────────
 
 #[test]
@@ -535,4 +609,105 @@ fn minibuf_completion_popup_renders_above_the_statusline() {
 
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 10));
     insta::assert_snapshot!(snap);
+}
+
+// ── Minibuffer session reaching Buffer-target-only host builtins ────────────
+//
+// Nothing gates `completion-accept!`/`completion-update-filter!` on the
+// session's target — a plugin or async callback calling either while the
+// `:` popup is open (a `Minibuf`-target session) must get an `Err`, not a
+// panic.
+
+#[test]
+fn tab_on_a_minibuffer_session_narrowed_to_empty_does_not_panic() {
+    // `complete_minibuf` only ever opens a Minibuf session non-empty, but
+    // nothing stops a plugin narrowing it to nothing afterward via
+    // `completion-update-filter!` (target-agnostic, no gate of its own) —
+    // `completion_input_minibuf`'s key handler has no non-empty guard the
+    // way `completion_input_buffer`'s does.
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: minibuffer popup open, non-empty"
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "narrow" "" (lambda ()
+             (completion-update-filter! "this-matches-nothing-zzz")))"#,
+    );
+    ed.execute_keymap_command("narrow".into(), None, false);
+    assert!(
+        ed.state.input.completion().unwrap().is_empty(),
+        "sanity: narrowed to zero matches"
+    );
+
+    // Must not panic.
+    ed.handle_key(key_tab());
+    ed.handle_key(key_shift_tab());
+}
+
+#[test]
+fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: minibuffer popup open"
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "check" "" (lambda ()
+             (completion-accept! 0)))"#,
+    );
+    ed.execute_keymap_command("check".into(), None, false);
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("not a buffer-target session"),
+        "expected a target-mismatch error, not a panic; got {msg:?}"
+    );
+}
+
+#[test]
+fn completion_update_filter_on_a_minibuffer_session_does_not_abort() {
+    // Unlike `completion-accept!`, `completion-update-filter!` never reads
+    // `BufferTarget` at all — no target check needed here; this pins that
+    // it stays that way (a `bid()`-derived value reintroduced for some
+    // future reason would abort on this same session).
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key_tab());
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: minibuffer popup open"
+    );
+
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "check" "" (lambda ()
+             (completion-update-filter! "write")))"#,
+    );
+    ed.execute_keymap_command("check".into(), None, false);
+    assert!(
+        ed.state.status_msg.is_none(),
+        "must succeed silently, got {:?}",
+        ed.state.status_msg
+    );
+    assert!(
+        ed.state.input.completion().is_some(),
+        "the minibuffer session must still be open"
+    );
 }

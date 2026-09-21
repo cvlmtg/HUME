@@ -52,7 +52,7 @@ impl Editor {
             .state
             .input
             .completion()
-            .is_some_and(|s| s.minibuf_span_start().is_some());
+            .is_some_and(|s| s.minibuf_span().is_some());
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if !is_open && self.state.views.minibuf_completion.read().is_none() {
@@ -64,13 +64,13 @@ impl Editor {
         // takes `&mut self`.
         let view = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.completion()?;
-            let span_start = session.minibuf_span_start()?;
+            let span = session.minibuf_span()?;
             let selected = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
             let anchor_x = self
                 .state
                 .input
                 .minibuf()
-                .map(|mb| mb.cursor_x_at(span_start))
+                .map(|mb| mb.cursor_x_at(span.start))
                 .unwrap_or(0);
             let session = self.state.input.completion_mut()?;
             let rows = session.menu_rows();
@@ -173,8 +173,9 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// (`completion_input_minibuf`, `input_stack/completion.rs`) before it ever
 /// reaches here again. Resolves the applicable source for the current input
 /// shape, runs it, and either applies the sole candidate silently, or opens
-/// the popup with the first candidate already applied (`Interaction::
-/// CycleApply` — see `completion/session.rs`'s doc).
+/// the popup with the first candidate already applied — a `Minibuf`-target
+/// session's own cycle-and-apply behavior (see `CompletionTarget`'s doc,
+/// `completion/session.rs`).
 pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse: bool) {
     // Shift-Tab with no open popup is a no-op.
     if reverse {
@@ -221,9 +222,16 @@ pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse:
     };
 
     use completion::SourceResult;
-    let (span_start, items) = match source_result {
-        SourceResult::Universe(items) => (universe_span_start, items),
-        SourceResult::Delegated { span_start, items } => (span_start, items),
+    let (span, items) = match source_result {
+        SourceResult::Universe(items) => {
+            // The `Universe` shape doesn't carry a span of its own — every
+            // source of this kind shares the same forward boundary
+            // (whitespace), unlike `Delegated`'s per-source rules (`:set`'s
+            // `'='` stop, for one).
+            let span_end = completion::token_end_at(&input, cursor, &[' ']);
+            (universe_span_start..span_end, items)
+        }
+        SourceResult::Delegated { span, items } => (span, items),
     };
 
     if items.is_empty() {
@@ -240,9 +248,14 @@ pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse:
     // own `MatchKind::Delegated` ignores filter text entirely, so applying
     // it here is a no-op for that case.
     let source = Box::<str>::from(source_name);
+    // The filter narrows on the cursor-bounded prefix (what the user has
+    // actually typed), never the full `span` — a `MatchKind::String`
+    // source's boundary-safe prefix gate would otherwise filter on the
+    // whole word the cursor sits inside, showing only the exact match the
+    // user is standing in the middle of.
+    let prefix_text = input[span.start.min(input.len())..cursor.min(input.len())].to_owned();
     let mut session =
-        completion::CompletionSession::begin_minibuf(span_start, source, match_kind, items);
-    let prefix_text = input[span_start.min(input.len())..cursor.min(input.len())].to_owned();
+        completion::CompletionSession::begin_minibuf(span.clone(), source, match_kind, items);
     session.update_filter(prefix_text);
 
     if session.is_empty() {
@@ -257,7 +270,7 @@ pub(in crate::editor::input_stack) fn complete_minibuf(ed: &mut Editor, reverse:
             .insert_text()
             .to_owned();
         if let Some(mb) = ed.state.input.minibuf_mut() {
-            mb.splice(span_start, &insert_text);
+            mb.splice(span, &insert_text);
         }
         return;
     }

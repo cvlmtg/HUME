@@ -53,24 +53,6 @@ pub(in crate::editor) enum MatchKind {
     Delegated,
 }
 
-/// What happens while a completion popup is open and the user keeps typing —
-/// a UI modality decided once, by whichever source calls [`CompletionSession::
-/// begin_buffer`]/[`CompletionSession::begin_minibuf`], and unchanged for the
-/// rest of the session's life: it cannot be two things at once.
-///
-/// - `CycleApply` — any further typing dismisses the popup outright; Tab
-///   only cycles the list already computed. Today's minibuffer (`:`) UX,
-///   pairing naturally with `MatchKind::String`/`Delegated` sources, whose
-///   universes are re-derived fresh on the *next* attempt rather than
-///   refiltered live.
-/// - `SelectAccept` — further typing refilters the open menu in place.
-///   Today's Insert-mode/LSP UX, pairing with `MatchKind::Fuzzy`.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum Interaction {
-    CycleApply,
-    SelectAccept,
-}
-
 /// Fields meaningful only for a [`CompletionTarget::Buffer`] session — moved
 /// behind the variant rather than left flat on [`CompletionSession`], since a
 /// [`CompletionTarget::Minibuf`] session has no buffer, pane, or generation
@@ -178,17 +160,28 @@ impl BufferTarget {
 }
 
 /// Where an accepted item lands — the one axis `accept()` itself branches
-/// on; unrelated to how a source's items were matched ([`MatchKind`]) or
-/// what further typing does ([`Interaction`]).
+/// on, and also the one axis further-typing behavior follows (see
+/// `CompletionLayer::handler`'s doc): a `Buffer` session always refilters
+/// the open menu in place (Insert-mode/LSP UX, pairing with
+/// `MatchKind::Fuzzy`); a `Minibuf` session always dismisses on any further
+/// typing other than Tab, which only cycles the list already computed
+/// (today's minibuffer `:` UX, pairing naturally with `MatchKind::String`/
+/// `Delegated` sources, whose universes are re-derived fresh on the *next*
+/// attempt rather than refiltered live).
 enum CompletionTarget {
     Buffer(BufferTarget),
-    /// Byte offset in the minibuffer's own input where the completed token
-    /// starts — the anchor `accept` splices `insert_text` from, over
-    /// `span_start..cursor`, via `Layer::minibuf_mut` (never a direct field
-    /// access — `CompletionLayer` doesn't own the minibuffer, `CommandLayer`
-    /// does).
+    /// Byte range in the minibuffer's own input that an accepted candidate
+    /// replaces, via `Layer::minibuf_mut` (never a direct field access —
+    /// `CompletionLayer` doesn't own the minibuffer, `CommandLayer` does).
+    /// `span_end` is the completed token's own end, not the live cursor —
+    /// replacing `span_start..cursor` instead would leave a mid-token
+    /// cursor's uncompleted tail duplicated after the applied candidate
+    /// (`:e src/ma|in.rs` + Tab producing `src/main.rsin.rs`). Updated by
+    /// `note_minibuf_splice` after every apply, since a cycled candidate's
+    /// own `insert_text` length isn't the original token's.
     Minibuf {
         span_start: usize,
+        span_end: usize,
     },
 }
 
@@ -214,9 +207,6 @@ pub(in crate::editor) struct CompletionSession {
     /// across every entry's flag — `update_filter`'s rank key reads each
     /// item's own entry for its priority tiebreaker and match kind.
     sources: FxHashMap<Box<str>, SourceState>,
-    /// Decided once, by whichever source first calls `begin_buffer`/
-    /// `begin_minibuf` — see [`Interaction`]'s own doc.
-    interaction: Interaction,
     /// Identifies this session to Steel and to
     /// `input_stack::completion::session_for_token`, the guard
     /// `completion-add-items!` checks before reaching a `&mut
@@ -289,21 +279,33 @@ impl CompletionSession {
         self.sources.values().any(|s| s.incomplete)
     }
 
-    /// The minibuffer-splice anchor, for a `Minibuf`-target session —
-    /// `None` for `Buffer`. The one way code outside this module learns
-    /// which target a session has, since `CompletionTarget` itself stays
-    /// private.
-    pub(in crate::editor) fn minibuf_span_start(&self) -> Option<usize> {
+    /// The byte range in the minibuffer's own input an accepted candidate
+    /// replaces, for a `Minibuf`-target session — `None` for `Buffer`. The
+    /// one way code outside this module learns which target a session has,
+    /// since `CompletionTarget` itself stays private.
+    pub(in crate::editor) fn minibuf_span(&self) -> Option<std::ops::Range<usize>> {
         match &self.target {
-            CompletionTarget::Minibuf { span_start } => Some(*span_start),
+            CompletionTarget::Minibuf {
+                span_start,
+                span_end,
+            } => Some(*span_start..*span_end),
             CompletionTarget::Buffer(_) => None,
         }
     }
 
-    /// The interaction model this session was opened with — see
-    /// [`Interaction`]'s own doc.
-    pub(in crate::editor) fn interaction(&self) -> Interaction {
-        self.interaction
+    /// Records that a candidate of `inserted_len` bytes just replaced the
+    /// tracked span — the next apply (cycling to a different candidate)
+    /// must replace exactly what the previous one left behind, not the
+    /// original pre-completion token, since candidates rarely share a
+    /// length. A no-op for a `Buffer`-target session.
+    pub(in crate::editor) fn note_minibuf_splice(&mut self, inserted_len: usize) {
+        if let CompletionTarget::Minibuf {
+            span_start,
+            span_end,
+        } = &mut self.target
+        {
+            *span_end = *span_start + inserted_len;
+        }
     }
 
     /// Identifies this session to Steel — see the `token` field's own doc
@@ -334,7 +336,24 @@ impl CompletionSession {
         self.filtered.get(idx).map(|&i| &self.items[i as usize])
     }
 
-    fn new(target: CompletionTarget, interaction: Interaction) -> Self {
+    /// Moves a menu selection by one row, wrapping at either end — `None`
+    /// when `filtered` is empty, so a caller can't divide by zero or
+    /// underflow computing the wrapped index itself. `current` is the
+    /// caller's own UI state (`CompletionMenuUi` lives outside this type —
+    /// see its own doc), not tracked here.
+    pub(in crate::editor) fn step_selection(&self, current: usize, forward: bool) -> Option<usize> {
+        let n = self.filtered.len();
+        if n == 0 {
+            return None;
+        }
+        Some(if forward {
+            (current + 1) % n
+        } else {
+            current.checked_sub(1).unwrap_or(n - 1)
+        })
+    }
+
+    fn new(target: CompletionTarget) -> Self {
         Self {
             target,
             items: Vec::new(),
@@ -343,7 +362,6 @@ impl CompletionSession {
             filter: String::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
             sources: FxHashMap::default(),
-            interaction,
             token: widget_token::next(),
             menu_cache: None,
         }
@@ -353,14 +371,12 @@ impl CompletionSession {
     /// race (the async completion response landed after the user switched
     /// panes), not a caller bug, so this is silently absorbed by the caller
     /// rather than raised as a Steel error.
-    #[allow(clippy::too_many_arguments)]
     pub(in crate::editor) fn begin_buffer(
         state: &EditorState,
         bid: BufferId,
         source: Box<str>,
         priority: i64,
         match_kind: MatchKind,
-        interaction: Interaction,
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> Option<Self> {
@@ -372,34 +388,33 @@ impl CompletionSession {
             .head();
         let buf = state.buffers.get(bid);
         let rope_at_begin = buf.text().rope().clone();
-        let mut session = Self::new(
-            CompletionTarget::Buffer(BufferTarget {
-                bid,
-                pane_id: pid,
-                anchor_at_begin: anchor,
-                cs_since_begin: ChangeSet::identity(rope_at_begin.len_chars()),
-                rope_at_begin,
-                generation_at_begin: buf.text_gen,
-            }),
-            interaction,
-        );
+        let mut session = Self::new(CompletionTarget::Buffer(BufferTarget {
+            bid,
+            pane_id: pid,
+            anchor_at_begin: anchor,
+            cs_since_begin: ChangeSet::identity(rope_at_begin.len_chars()),
+            rope_at_begin,
+            generation_at_begin: buf.text_gen,
+        }));
         session.add_items(source, priority, match_kind, incomplete, items);
         Some(session)
     }
 
     /// A minibuffer completion session — always a single source, never
     /// `isIncomplete` (native completers finish synchronously), so `begin`
-    /// and the merge step are one call here rather than two.
+    /// and the merge step are one call here rather than two. `span` is the
+    /// completed token's own byte range, both ends — see
+    /// [`CompletionTarget::Minibuf`]'s doc for why the end matters too.
     pub(in crate::editor) fn begin_minibuf(
-        span_start: usize,
+        span: std::ops::Range<usize>,
         source: Box<str>,
         match_kind: MatchKind,
         items: Vec<CompletionItem>,
     ) -> Self {
-        let mut session = Self::new(
-            CompletionTarget::Minibuf { span_start },
-            Interaction::CycleApply,
-        );
+        let mut session = Self::new(CompletionTarget::Minibuf {
+            span_start: span.start,
+            span_end: span.end,
+        });
         session.add_items(source, 0, match_kind, false, items);
         session
     }
@@ -559,7 +574,7 @@ mod tests {
     #[test]
     fn menu_rows_cache_is_invalidated_by_update_filter() {
         let mut session = CompletionSession::begin_minibuf(
-            0,
+            0..0,
             "test".into(),
             MatchKind::String {
                 case_sensitive: false,
@@ -585,6 +600,46 @@ mod tests {
             vec!["banana"],
             "menu_rows' cache must be invalidated by update_filter"
         );
+    }
+
+    /// A session narrowed to zero matches (continued typing past every
+    /// candidate) must not let a caller divide by, or subtract from, zero —
+    /// `None` is the caller's cue to no-op instead.
+    #[test]
+    fn step_selection_on_an_empty_filtered_set_is_none() {
+        let mut session = CompletionSession::begin_minibuf(
+            0..0,
+            "test".into(),
+            MatchKind::String {
+                case_sensitive: false,
+            },
+            vec![CompletionItem::plain(
+                "apple".into(),
+                "apple".into(),
+                "apple".into(),
+            )],
+        );
+        session.update_filter("zzz".into());
+        assert!(session.is_empty(), "sanity: filter matches nothing");
+        assert_eq!(session.step_selection(0, true), None);
+        assert_eq!(session.step_selection(0, false), None);
+    }
+
+    #[test]
+    fn step_selection_wraps_at_either_end() {
+        let session = CompletionSession::begin_minibuf(
+            0..0,
+            "test".into(),
+            MatchKind::String {
+                case_sensitive: false,
+            },
+            vec![
+                CompletionItem::plain("a".into(), "a".into(), "a".into()),
+                CompletionItem::plain("b".into(), "b".into(), "b".into()),
+            ],
+        );
+        assert_eq!(session.step_selection(1, true), Some(0), "wraps forward");
+        assert_eq!(session.step_selection(0, false), Some(1), "wraps backward");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
-use crate::editor::completion::{CompletionItem, CompletionSession, Interaction, MatchKind};
+use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
 use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
@@ -375,7 +375,6 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
         "test".into(),
         0,
         MatchKind::Fuzzy,
-        Interaction::SelectAccept,
         items,
         false,
     )

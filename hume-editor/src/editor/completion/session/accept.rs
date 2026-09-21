@@ -434,6 +434,7 @@ impl CompletionSession {
     /// error, timeout, or a server that's gone by send time only logs, it
     /// never fails the accept that already landed. `bt` is the same
     /// `BufferTarget` `accept` already resolved — its only caller.
+    #[allow(clippy::too_many_arguments)]
     fn maybe_send_resolve(
         &self,
         bt: &BufferTarget,
