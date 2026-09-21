@@ -913,11 +913,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.state.push_layer(
         &ed.view,
-        MenuLayer {
-            rows: hume_ui::popup::MenuRows::plain(vec!["m0".into()]),
-            selected: 0,
-            callback: marker("menu-cb"),
-        },
+        MenuLayer::new(vec!["m0".into()], marker("menu-cb")),
     );
 
     ed.handle_input(mouse_left_down(3, 0));

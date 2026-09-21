@@ -18,13 +18,27 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalSc
 ///
 /// `rows` is built once at construction, not rebuilt per frame: labels
 /// never change during a menu's lifetime (only `selected` does), so
-/// `sync_menu_view` just clones the `Arc` every frame the menu stays open —
-/// measuring/windowing down to what's visible is `resolve_menu`'s own job,
-/// done fresh each call from whatever `rows` still holds.
+/// `sync_menu_view` slices it to the visible window every frame the menu
+/// stays open — measuring is `resolve_menu`'s own job, done fresh each call
+/// from that slice alone.
 pub(in crate::editor) struct MenuLayer {
-    pub(in crate::editor) rows: hume_ui::popup::MenuRows,
+    pub(in crate::editor) rows: Vec<hume_ui::popup::MenuRow>,
     pub(in crate::editor) selected: usize,
     pub(in crate::editor) callback: steel::rvals::SteelVal,
+}
+
+impl MenuLayer {
+    /// A fresh menu over single-column `items`, selection at row 0.
+    pub(in crate::editor) fn new(items: Vec<String>, callback: steel::rvals::SteelVal) -> Self {
+        Self {
+            rows: items
+                .into_iter()
+                .map(hume_ui::popup::MenuRow::plain)
+                .collect(),
+            selected: 0,
+            callback,
+        }
+    }
 }
 
 impl Layer for MenuLayer {
@@ -109,13 +123,11 @@ impl Editor {
 
         let resolved = placement.and_then(|placement| {
             let model = self.state.input.menu()?;
-            // `MenuRows::clone` is an `Arc` bump, and `resolve_menu` itself
-            // measures/windows fresh from only the visible rows each call —
-            // there's no per-item cache to keep in sync here, unlike the
-            // completion session's own `menu_cache`.
+            let window =
+                hume_ui::popup::menu_window(model.rows.len(), model.selected, placement.pane_rect);
             Some(hume_ui::popup::resolve_menu(
-                model.rows.clone(),
-                model.selected,
+                &model.rows[window.range.clone()],
+                window,
                 placement,
                 border,
             ))

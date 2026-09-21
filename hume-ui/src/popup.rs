@@ -17,13 +17,15 @@
 //!
 //! [`resolve_popup`]/[`resolve_menu`]/[`resolve_band`] are the composition
 //! entry points: each resolves geometry (wrapping + flip + clamp) *and* the
-//! visible scroll window fresh, every frame, from a
-//! [`PopupContent`]/[`MenuRows`] plus a [`PopupPlacement`] (or, for
-//! `resolve_band`, the raw band width — a docked popup has no anchor or pane
-//! rect). Windowing lives here, not at paint time (`draw_menu_box` paints
-//! exactly the rows it's handed), so a menu's width — measured only from
-//! what's actually visible — is never inflated by a candidate scrolled out
-//! of view. `hume-editor`'s `Editor::sync_popup_view`/
+//! visible scroll window fresh, every frame, from a [`PopupContent`] (or,
+//! for a menu, a [`MenuWindow`] plus exactly that window's rows) plus a
+//! [`PopupPlacement`] (or, for `resolve_band`, the raw band width — a docked
+//! popup has no anchor or pane rect). Windowing lives here, not at paint
+//! time (`draw_menu_box` paints exactly the rows it's handed). For a menu it
+//! is split in two so that width *cannot* be measured over anything but the
+//! visible rows: [`menu_window`] resolves the window from counts alone, the
+//! caller materializes only that range's rows, and [`resolve_menu`] never
+//! sees the rest of the list. `hume-editor`'s `Editor::sync_popup_view`/
 //! `sync_menu_view`/`sync_completion_menu_view`/`sync_minibuf_completion_view`/
 //! `sync_popup_band_view` call these against the focused pane's *current*
 //! rect — never pre-computed at `show-popup!` time — so a resize or scroll
@@ -165,9 +167,9 @@ pub struct PopupState {
     /// carries the window into it, so a scrolled popup taller than its box
     /// still costs a refcount bump per frame, not a fresh `Vec` copy of
     /// whatever's on screen. For a menu (`resolve_menu`): already just the
-    /// visible window, composed fresh every frame (no cache to share, and
-    /// [`MenuRows`] never keeps a full-list `Arc` of its own) — `visible` is
-    /// then `0..lines.len()`, a no-op slice.
+    /// visible window, composed fresh every frame from the only rows the
+    /// resolver was ever handed — `visible` is then `0..lines.len()`, a
+    /// no-op slice.
     pub lines: Arc<Vec<String>>,
     /// The window into `lines` that's actually on screen — `draw_menu_box`
     /// paints `&lines[visible]`, never `lines` whole. Same length as `rect`'s
@@ -196,7 +198,7 @@ pub struct PopupState {
     /// `visible` indexes into the small per-frame `lines` rather than the
     /// full filtered/ranked list `total_rows` counts. For a plain popup
     /// (`selected.is_none()`), the resolved counterpart of
-    /// `PopupLayer::scroll`; for a menu, wherever `window_range` centered
+    /// `PopupLayer::scroll`; for a menu, wherever [`menu_window`] centered
     /// the window around `selected`. Used only by the scrollbar thumb.
     pub scroll: usize,
     /// Whether to draw box-drawing border glyphs around the popup (vs. a
@@ -424,8 +426,9 @@ pub fn resolve_band(
 /// against it (an LSP completion candidate's `detail`, e.g.) — see
 /// [`resolve_menu`] for how the two are laid out into one painted string.
 /// `Arc<str>`, not `String`: a completion source clones its own already-
-/// interned label/detail into this every keystroke ([`MenuRows`]' own doc),
-/// so a `.clone()` here is a refcount bump, not a re-copy.
+/// interned label/detail into this every frame the menu is open (for the
+/// handful of rows in the window), so a `.clone()` here is a refcount bump,
+/// not a re-copy.
 #[derive(Clone)]
 pub struct MenuRow {
     pub main: Arc<str>,
@@ -442,78 +445,45 @@ impl MenuRow {
     }
 }
 
-/// Menu rows in filtered/ranked order, unmeasured — width is resolved by
-/// [`resolve_menu`] fresh each frame from only the rows currently in the
-/// visible window, never cached across the whole list: a filtered set can
-/// run into the thousands (an unfiltered LSP completion response), and
-/// nothing past the ~10 rows `MAX_MENU_ROWS` ever shows needs measuring.
-#[derive(Clone)]
-pub struct MenuRows(Arc<Vec<MenuRow>>);
-
-impl MenuRows {
-    /// Single-column rows — `show-menu!`, the minibuffer `:` completion.
-    pub fn plain(rows: Vec<String>) -> Self {
-        Self(Arc::new(rows.into_iter().map(MenuRow::plain).collect()))
-    }
-
-    /// Two-column rows — the LSP/Insert-mode completion menu.
-    pub fn two_column(rows: Vec<MenuRow>) -> Self {
-        Self(Arc::new(rows))
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Every row's `main` text, in order. Test-only in practice (no
-    /// production caller — `show-menu!` builds its `MenuRows::plain` rows
-    /// and never reads them back), but `#[cfg(test)]` can't gate it here:
-    /// two of its three call sites are `hume-editor`'s own tests, a
-    /// downstream crate that only ever sees this crate's ordinary build.
-    /// `self.0`'s tuple field is private, so this stays the one way to read
-    /// a row's label back without exposing that field instead.
-    pub fn labels(&self) -> Vec<&str> {
-        self.0.iter().map(|r| r.main.as_ref()).collect()
-    }
-}
-
 /// The blank column separator between a row's `main` and `trailing` parts.
 const MENU_COLUMN_GAP: u16 = 2;
 
-/// Resolve a menu's (selection menu or LSP completion menu) content +
-/// position for this frame. No wrapping — menu entries are short labels,
-/// not prose — so, unlike [`resolve_popup`], there is no fixed width budget:
-/// the box is exactly as wide as its *visible* rows need, up to the pane
-/// clamp, so one long candidate scrolled out of the window never inflates
-/// it. Column widths (`main`/`trailing`) are resolved from that same visible
-/// window and composed into each row before painting — `draw_menu_box`
-/// receives plain, pre-aligned strings, unaware rows ever had two parts.
-pub fn resolve_menu(
-    rows: MenuRows,
-    selected: usize,
-    placement: PopupPlacement,
-    border: bool,
-) -> PopupState {
-    let total_rows = rows.len();
+/// Which rows of a menu are on screen this frame — resolved by
+/// [`menu_window`] from *counts alone*, before any row is materialized. A
+/// caller slices its own list to `range`, hands exactly those rows to
+/// [`resolve_menu`], and the rest of the list never reaches the resolver at
+/// all. Every field but `range` is private and there is no constructor
+/// besides `menu_window`, so a window can't be faked or widened by hand.
+pub struct MenuWindow {
+    /// The `[start, end)` slice of the full ranked list that's visible.
+    pub range: std::ops::Range<usize>,
+    /// The highlighted row, window-relative — `None` for an empty list.
+    selected_rel: Option<usize>,
+    /// Outer row count including the 1-cell frame, already clamped to the
+    /// pane's height.
+    outer_h: u16,
+    /// The full list's length `range` was cut from — the scrollbar thumb's
+    /// denominator.
+    total_rows: usize,
+}
 
-    // Height first — it doesn't depend on width, and (unlike width) the
-    // pane clamp on it can be applied directly: `resolve_popup_geometry`
-    // below reclamps it again with the final width, but a value already
-    // `<=` the pane's height is unaffected by a second `.min`.
+/// Phase 1 of resolving a menu (selection menu or completion menu): the
+/// visible window, from `total_rows`/`selected`/the pane's height only.
+/// Height doesn't depend on width, and the pane clamp on it can be applied
+/// directly here: `resolve_popup_geometry` (inside [`resolve_menu`])
+/// reclamps it again with the final width, but a value already `<=` the
+/// pane's height is unaffected by a second `.min`.
+///
+/// A session narrowed to zero matches still resolves a (tiny, unpainted —
+/// `PopupOverlay`/`PopupBandWidget` both bail on an empty `lines`) box:
+/// geometry stays a pure function of `(total_rows, pane)`, with no
+/// special-cased early return, so a caller never sees a stale rect from
+/// the *previous* nonempty frame linger into this one.
+pub fn menu_window(total_rows: usize, selected: usize, pane_rect: Rect) -> MenuWindow {
     let raw_outer_h = super::menu_box::outer_rows(total_rows, super::menu_box::MAX_MENU_ROWS);
-    let outer_h = raw_outer_h.min(placement.pane_rect.height);
+    let outer_h = raw_outer_h.min(pane_rect.height);
     let inner_h = outer_h.saturating_sub(2) as usize;
-
-    // A session narrowed to zero matches still resolves a (tiny, unpainted —
-    // `PopupOverlay`/`PopupBandWidget` both bail on an empty `lines`) box:
-    // geometry stays a pure function of `(total_rows, pane)`, with no
-    // special-cased early return, so a caller never sees a stale rect from
-    // the *previous* nonempty frame linger into this one.
-    let (selected_abs, range) = if total_rows == 0 {
+    let (selected_rel, range) = if total_rows == 0 {
         (None, 0..0)
     } else {
         let selected = selected.min(total_rows - 1);
@@ -522,13 +492,42 @@ pub fn resolve_menu(
             selected.saturating_sub(inner_h / 2),
             inner_h,
         );
-        (Some(selected), range)
+        (Some(selected - range.start), range)
     };
-    let visible = &rows.0[range.clone()];
+    MenuWindow {
+        range,
+        selected_rel,
+        outer_h,
+        total_rows,
+    }
+}
+
+/// Phase 2: a menu's content + position for this frame, from `rows` — which
+/// are exactly `window.range`'s rows, nothing more. No wrapping — menu
+/// entries are short labels, not prose — so, unlike [`resolve_popup`], there
+/// is no fixed width budget: the box is exactly as wide as `rows` need, up
+/// to the pane clamp. Because a caller can only ever hand over the window's
+/// own rows, one long candidate scrolled out of view *cannot* inflate the
+/// box — that guarantee is the reason the resolver is split in two, not a
+/// property this function has to remember to uphold. Column widths
+/// (`main`/`trailing`) are resolved from `rows` and composed into each row
+/// before painting — `draw_menu_box` receives plain, pre-aligned strings,
+/// unaware rows ever had two parts.
+pub fn resolve_menu(
+    rows: &[MenuRow],
+    window: MenuWindow,
+    placement: PopupPlacement,
+    border: bool,
+) -> PopupState {
+    debug_assert_eq!(
+        rows.len(),
+        window.range.len(),
+        "resolve_menu: `rows` must be exactly the window's own slice"
+    );
 
     let max_inner = placement.pane_rect.width.saturating_sub(2);
-    let main_w = super::menu_box::widest(visible.iter().map(|r| r.main.as_ref()));
-    let trail_w = super::menu_box::widest(visible.iter().filter_map(|r| r.trailing.as_deref()));
+    let main_w = super::menu_box::widest(rows.iter().map(|r| r.main.as_ref()));
+    let trail_w = super::menu_box::widest(rows.iter().filter_map(|r| r.trailing.as_deref()));
     let main_col = main_w.min(max_inner);
     // `trail_w == 0` (no row has a `trailing` at all) already collapses to
     // `trail_col == 0` through the `.min` below — a real budget-of-zero and
@@ -546,21 +545,25 @@ pub fn resolve_menu(
             0
         };
 
-    let lines: Vec<String> = visible
+    let lines: Vec<String> = rows
         .iter()
         .map(|row| compose_menu_row(row, main_col, trail_col))
         .collect();
 
-    let (x, y, outer_w, outer_h) =
-        resolve_popup_geometry(inner_w + 2, outer_h, placement.anchor, placement.pane_rect);
+    let (x, y, outer_w, outer_h) = resolve_popup_geometry(
+        inner_w + 2,
+        window.outer_h,
+        placement.anchor,
+        placement.pane_rect,
+    );
     let visible_len = lines.len();
     PopupState {
         lines: Arc::new(lines),
         visible: 0..visible_len,
         rect: Rect::new(x, y, outer_w, outer_h),
-        selected: selected_abs.map(|s| s - range.start),
-        total_rows,
-        scroll: range.start,
+        selected: window.selected_rel,
+        total_rows: window.total_rows,
+        scroll: window.range.start,
         styled_rows: None, // menus never highlight per-span, only per-row
         border,
     }

@@ -268,11 +268,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.status_msg = Some("previous message".to_string());
     ed.state.push_layer(
         &ed.view,
-        MenuLayer {
-            rows: hume_ui::popup::MenuRows::plain(vec!["m0".into()]),
-            selected: 0,
-            callback: marker("menu-cb"),
-        },
+        MenuLayer::new(vec!["m0".into()], marker("menu-cb")),
     );
 
     ed.feed_paste("xyz");

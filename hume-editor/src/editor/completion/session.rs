@@ -226,16 +226,6 @@ pub(in crate::editor) struct CompletionSession {
     /// CompletionSession` at all — mirrors `PickerSession::token`'s own
     /// doc and purpose exactly.
     token: u64,
-    /// Row content for the current `filtered` set, unmeasured — built lazily
-    /// by [`Self::menu_rows`] and invalidated by `update_filter`. `filtered`
-    /// only changes there — not on menu navigation (selecting a different
-    /// row) or on an unrelated frame redraw — so caching here means a
-    /// per-frame render sync doesn't re-format every candidate for a menu
-    /// whose contents haven't moved. `MenuRows` carries its rows by `Arc`,
-    /// so a caller (`resolve_menu`) reading it is a cheap refcount bump, not
-    /// a fresh clone of every label — measuring/windowing down to what's
-    /// actually visible is `resolve_menu`'s own job, done fresh each frame.
-    menu_cache: Option<hume_ui::popup::MenuRows>,
 }
 
 /// UI state for an open completion session — kept separate from
@@ -397,7 +387,6 @@ impl CompletionSession {
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
             sources: Vec::new(),
             token: widget_token::next(),
-            menu_cache: None,
         }
     }
 
@@ -526,7 +515,6 @@ impl CompletionSession {
     /// checks exactly that.
     pub(in crate::editor) fn update_filter(&mut self, text: String) {
         self.filter = text;
-        self.menu_cache = None;
         self.rank_scratch.clear();
         let pattern = self.matcher.parse(&self.filter);
         for (i, sourced) in self.items.iter().enumerate() {
@@ -588,23 +576,22 @@ impl CompletionSession {
             .collect()
     }
 
-    /// Row content for every candidate in `filtered` — unmeasured (measuring
-    /// and windowing are `resolve_menu`'s job now, from only what's actually
-    /// visible). Built once per `filtered` set — see [`Self::menu_cache`]'s
-    /// doc — so a caller redrawing the same unchanged menu every frame reads
-    /// the cache instead of reformatting every candidate again.
-    pub(in crate::editor) fn menu_rows(&mut self) -> hume_ui::popup::MenuRows {
-        if let Some(cached) = &self.menu_cache {
-            return cached.clone();
-        }
-        let rows: Vec<hume_ui::popup::MenuRow> = self
-            .filtered
+    /// Row content for the candidates at `range` in ranked order — the only
+    /// way rows leave this session, and `range` is `menu_window`'s own
+    /// window (`hume_ui::popup`), so a frame formats at most `MAX_MENU_ROWS`
+    /// rows (each an `Arc<str>` refcount bump) and never the whole filtered
+    /// list. There is deliberately no full-list accessor: the render side
+    /// measures width over whatever it's handed, so the one thing that keeps
+    /// a scrolled-away candidate from inflating the box is that nothing can
+    /// hand it over.
+    pub(in crate::editor) fn rows_in(
+        &self,
+        range: std::ops::Range<usize>,
+    ) -> Vec<hume_ui::popup::MenuRow> {
+        self.filtered[range]
             .iter()
             .map(|&i| self.items[i as usize].item.menu_row())
-            .collect();
-        self.menu_cache
-            .insert(hume_ui::popup::MenuRows::two_column(rows))
-            .clone()
+            .collect()
     }
 }
 
@@ -625,41 +612,6 @@ fn prefix_matches(haystack: &str, prefix: &str, case_sensitive: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{CompletionItem, CompletionSession, MatchKind, prefix_matches};
-
-    /// Regression for the cache the `menu_cache` field doc describes:
-    /// `update_filter` must invalidate it, not just populate it once. A
-    /// deleted `self.menu_cache = None` (session.rs's own `update_filter`)
-    /// would leave `after` below still showing both items.
-    #[test]
-    fn menu_rows_cache_is_invalidated_by_update_filter() {
-        let mut session = CompletionSession::begin_minibuf(
-            0..0,
-            "test".into(),
-            MatchKind::String {
-                case_sensitive: false,
-            },
-            vec![
-                CompletionItem::plain("apple".into(), "apple".into(), "apple".into()),
-                CompletionItem::plain("banana".into(), "banana".into(), "banana".into()),
-            ],
-        );
-        let before_rows = session.menu_rows();
-        let before = before_rows.labels();
-        assert_eq!(
-            before,
-            vec!["apple", "banana"],
-            "sanity: both items visible unfiltered"
-        );
-
-        session.update_filter("ban".into());
-        let after_rows = session.menu_rows();
-        let after = after_rows.labels();
-        assert_eq!(
-            after,
-            vec!["banana"],
-            "menu_rows' cache must be invalidated by update_filter"
-        );
-    }
 
     /// A session narrowed to zero matches (continued typing past every
     /// candidate) must not let a caller divide by, or subtract from, zero —

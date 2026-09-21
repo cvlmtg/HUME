@@ -189,10 +189,17 @@ fn placement(pane: Rect) -> PopupPlacement {
     }
 }
 
+/// The two-phase call every production menu makes: resolve the window from
+/// counts, slice the list to it, resolve from that slice alone.
+fn menu(rows: &[MenuRow], selected: usize, pane: Rect) -> PopupState {
+    let window = menu_window(rows.len(), selected, pane);
+    resolve_menu(&rows[window.range.clone()], window, placement(pane), true)
+}
+
 /// A candidate scrolled out of the visible window must never widen the
-/// box — the bug this fixes: width used to be measured over every filtered
-/// candidate, so one very wide label anywhere in a long list inflated the
-/// menu even while scrolled away from it.
+/// box. `menu_window` resolves the window from counts alone and
+/// `resolve_menu` only ever receives that window's rows, so the 100-char
+/// row 0 below is never even handed to the resolver.
 #[test]
 fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
     let mut rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
@@ -200,17 +207,27 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
 
     // selected = 14 (the last row) centers the window well past the wide
     // row 0 — window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
-    let state = resolve_menu(
-        MenuRows::two_column(rows),
-        14,
-        placement(rect(0, 0, 200, 50)),
-        true,
-    );
+    let window = menu_window(rows.len(), 14, rect(0, 0, 200, 50));
+    assert_eq!(window.range, 5..15, "sanity: the wide row 0 is outside");
+    let state = menu(&rows, 14, rect(0, 0, 200, 50));
     assert_eq!(
         state.rect.width, 5,
         "widest *visible* row is \"r10\"..\"r14\" (3 chars) + the 2-cell frame, \
          not the 100-char row scrolled out of view"
     );
+}
+
+/// The contract's own tripwire: handing `resolve_menu` anything other than
+/// the window's exact slice (here, the whole list) is a caller bug, caught
+/// in debug builds rather than silently measured.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "must be exactly the window's own slice")]
+fn resolve_menu_rejects_rows_that_are_not_the_windows_slice() {
+    let rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
+    let pane = rect(0, 0, 200, 50);
+    let window = menu_window(rows.len(), 0, pane);
+    resolve_menu(&rows, window, placement(pane), true);
 }
 
 /// Two-column composition: `trailing` right-aligned flush against the
@@ -228,12 +245,7 @@ fn resolve_menu_right_aligns_trailing_when_it_fits() {
             trailing: Some("Kind".into()),
         },
     ];
-    let state = resolve_menu(
-        MenuRows::two_column(rows),
-        0,
-        placement(rect(0, 0, 200, 50)),
-        true,
-    );
+    let state = menu(&rows, 0, rect(0, 0, 200, 50));
     // main padded to the widest main ("kitty_support", 13), a 2-cell gap,
     // then trailing right-aligned to the widest trailing (4).
     insta::assert_snapshot!(state.lines.join("\n"), @r"
@@ -252,12 +264,7 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
     }];
     // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
     // = min(19, 10 - 7 - 2) = 1 — just enough for the ellipsis marker.
-    let state = resolve_menu(
-        MenuRows::two_column(rows),
-        0,
-        placement(rect(0, 0, 12, 50)),
-        true,
-    );
+    let state = menu(&rows, 0, rect(0, 0, 12, 50));
     insta::assert_snapshot!(state.lines.join("\n"), @"assert!  …");
 }
 
@@ -271,27 +278,17 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
         trailing: Some("xy".into()),
     }];
     // max_inner = pane.width - 2 = 2, all consumed by `main` alone.
-    let state = resolve_menu(
-        MenuRows::two_column(rows),
-        0,
-        placement(rect(0, 0, 4, 50)),
-        true,
-    );
+    let state = menu(&rows, 0, rect(0, 0, 4, 50));
     insta::assert_snapshot!(state.lines.join("\n"), @"ab");
 }
 
 /// A session narrowed to zero matches must not panic computing `selected`
 /// against an empty list — a real path (`sync_completion_menu_view` calls
-/// `resolve_menu` unconditionally, whether or not the filter matched
-/// anything).
+/// `menu_window`/`resolve_menu` unconditionally, whether or not the filter
+/// matched anything).
 #[test]
 fn resolve_menu_on_an_empty_list_does_not_panic() {
-    let state = resolve_menu(
-        MenuRows::plain(Vec::new()),
-        0,
-        placement(rect(0, 0, 40, 20)),
-        true,
-    );
+    let state = menu(&[], 0, rect(0, 0, 40, 20));
     assert!(state.lines.is_empty());
     assert_eq!(state.selected, None);
 }

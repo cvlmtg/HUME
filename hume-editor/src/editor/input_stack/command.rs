@@ -46,8 +46,7 @@ impl Editor {
     /// Called from `prepare_frame`'s overlay-sync step. Needs only
     /// `last_pane_area` (settled in step 0), unlike its cursor-anchored
     /// siblings, which need the current frame's scroll result too.
-    /// `&mut self`, not `&self` — `menu_rows()` lazily populates a cache.
-    pub(in crate::editor) fn sync_minibuf_completion_view(&mut self) {
+    pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
         let is_open = self
             .state
             .input
@@ -59,9 +58,6 @@ impl Editor {
             return;
         }
         let pane_rect = self.view.last_pane_area;
-        // Sequential borrows, same reasoning as `sync_completion_menu_view`:
-        // the shared reads (span, selection) have to end before `menu_rows`
-        // takes `&mut self`.
         let view = (|| -> Option<hume_ui::popup::PopupState> {
             let session = self.state.input.completion()?;
             let span = session.minibuf_span()?;
@@ -72,16 +68,16 @@ impl Editor {
                 .minibuf()
                 .map(|mb| mb.cursor_x_at(span.start))
                 .unwrap_or(0);
-            let session = self.state.input.completion_mut()?;
-            let rows = session.menu_rows();
+            let window = hume_ui::popup::menu_window(session.len(), selected, pane_rect);
+            let rows = session.rows_in(window.range.clone());
             // Anchoring at the pane's bottom edge is what drives
             // `resolve_popup_geometry` into its flip-above branch
             // (`space_below` saturates to 0 there), landing the box on the
             // rows just above the statusline. The -1 pulls the frame left so
             // the first label column sits under the token in the input.
             Some(hume_ui::popup::resolve_menu(
-                rows,
-                selected,
+                &rows,
+                window,
                 hume_ui::popup::PopupPlacement {
                     anchor: (anchor_x.saturating_sub(1), pane_rect.bottom()),
                     pane_rect,

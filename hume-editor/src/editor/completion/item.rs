@@ -16,9 +16,8 @@ use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snipp
 /// hook and `completionItem/resolve` both see the server's original text).
 pub(in crate::editor) struct CompletionItem {
     /// `Arc<str>`, not `String`: [`Self::menu_row`] reads this fresh every
-    /// keystroke (`CompletionSession::menu_rows`'s cache is invalidated by
-    /// every refilter), and a filtered set can run into the thousands — a
-    /// refcount bump beats re-copying every candidate's label each time.
+    /// frame the menu is open (`CompletionSession::rows_in`) — a refcount
+    /// bump per visible row beats re-copying each label every frame.
     pub(super) label: std::sync::Arc<str>,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
@@ -228,9 +227,9 @@ impl CompletionItem {
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
     /// (`hume_ui::popup`), not this store's. Both clones are refcount bumps
-    /// (`label`/`detail` are `Arc<str>`) — called fresh every keystroke by
-    /// `CompletionSession::menu_rows`, for every candidate still in
-    /// `filtered`, not just the handful that end up on screen.
+    /// (`label`/`detail` are `Arc<str>`) — called fresh every frame by
+    /// `CompletionSession::rows_in`, for the handful of candidates in the
+    /// visible window only.
     pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
             main: self.label.clone(),

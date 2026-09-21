@@ -922,11 +922,10 @@ fn empty_items_from_a_stale_response_leaves_the_open_session_alone() {
     // now read `false`, same as a mode-layer change.
     ed.state.push_layer(
         &ed.view,
-        crate::editor::input_stack::MenuLayer {
-            rows: hume_ui::popup::MenuRows::plain(vec!["x".to_string()]),
-            selected: 0,
-            callback: steel::rvals::SteelVal::Void,
-        },
+        crate::editor::input_stack::MenuLayer::new(
+            vec!["x".to_string()],
+            steel::rvals::SteelVal::Void,
+        ),
     );
 
     ed.execute_keymap_command("reopen-empty".into(), None, false);

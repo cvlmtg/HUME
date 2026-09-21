@@ -178,14 +178,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         if let Some(r) = self.state.input.ref_of::<MenuLayer>() {
             self.state.take_firing_false::<MenuLayer>(self.view, r);
         }
-        self.state.push_layer(
-            self.view,
-            MenuLayer {
-                rows: hume_ui::popup::MenuRows::plain(items),
-                selected: 0,
-                callback,
-            },
-        );
+        self.state
+            .push_layer(self.view, MenuLayer::new(items, callback));
         Ok(())
     }
 

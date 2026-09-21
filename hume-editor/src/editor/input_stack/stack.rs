@@ -878,11 +878,7 @@ mod tests {
     use steel::rvals::SteelVal;
 
     fn menu(label: &str) -> MenuLayer {
-        MenuLayer {
-            rows: hume_ui::popup::MenuRows::plain(vec![label.to_string()]),
-            selected: 0,
-            callback: SteelVal::BoolV(false),
-        }
+        MenuLayer::new(vec![label.to_string()], SteelVal::BoolV(false))
     }
 
     fn confirm() -> ConfirmLayer {

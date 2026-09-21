@@ -36,12 +36,9 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     ];
     paint_styled_row(&mut canvas, 0, 1, &runs, 20);
 
-    assert_eq!(
-        symbols_in(&buf, Rect::new(0, 1, 12, 1)),
-        "a<200b>bcd",
-        "the placeholder spans the columns reserved for it, and the second \
-         run starts in the cell right after it"
-    );
+    // The placeholder spans the columns reserved for it, and the second run
+    // starts in the cell right after it.
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 12, 1)), @"a<200b>bcd");
 }
 
 #[test]
@@ -61,7 +58,7 @@ fn styled_runs_stop_at_the_right_edge() {
     // dropped — leaving 'z' nowhere to start from either.
     paint_styled_row(&mut canvas, 0, 1, &runs, 4);
 
-    assert_eq!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), "abc");
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 8, 1)), @"abc");
 }
 
 #[test]
@@ -88,12 +85,9 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
         None,
     );
 
-    assert_eq!(
-        symbols_in(&buf, Rect::new(0, 1, 20, 1)),
-        "  │abcdef│",
-        "the row fills the inner width and stops; the border stands and the \
-         cells beyond it are untouched"
-    );
+    // The row fills the inner width and stops; the border stands and the
+    // cells beyond it are untouched.
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 20, 1)), @"  │abcdef│");
 }
 
 #[test]
@@ -176,10 +170,13 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
         None,
     );
 
-    let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
-    assert_eq!(row0, "item7");
-    let row2: String = (1..=5).map(|x| buf[(x, 3)].text().to_string()).collect();
-    assert_eq!(row2, "item9");
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item7   │
+    │item8   │
+    │item9   ┃
+    └────────┘
+    ");
 }
 
 /// Unlike a menu (which windows around `selected`), a plain popup
@@ -207,10 +204,13 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
         None,
     );
 
-    let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
-    assert_eq!(row0, "item4");
-    let row2: String = (1..=5).map(|x| buf[(x, 3)].text().to_string()).collect();
-    assert_eq!(row2, "item6");
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item4   │
+    │item5   ┃
+    │item6   │
+    └────────┘
+    ");
 }
 
 #[test]
@@ -385,7 +385,13 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
         None,
     );
 
-    assert!(symbols_in(&buf, outer).contains('┃'));
+    insta::assert_snapshot!(symbols_in(&buf, outer), @"
+    ┌────────┐
+    │item4   │
+    │item5   ┃
+    │item6   │
+    └────────┘
+    ");
 }
 
 #[test]
