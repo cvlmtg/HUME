@@ -12,8 +12,8 @@ use slotmap::SecondaryMap;
 
 use hume_engine::pipeline::{BufferId, PaneId};
 
-use crate::editor::buffer::Buffer;
 use crate::editor::buffer::store::BufferStore;
+use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::jump_list::JumpLists;
 use crate::editor::pane_state::PaneBufferState;
 use hume_decorations::DecorationStores;
@@ -327,7 +327,7 @@ pub(in crate::editor) fn apply_doc_history_walk(
     pane_jumps: &mut JumpLists,
     focused_pane_id: PaneId,
     buf_id: BufferId,
-    walk: impl FnOnce(&mut Buffer) -> Option<(SelectionSet, ChangeSet, usize)>,
+    walk: impl FnOnce(&mut Buffer) -> HistoryWalkResult,
 ) -> HistoryWalk {
     if buffers.get(buf_id).is_read_only() {
         return HistoryWalk::RefusedReadOnly;

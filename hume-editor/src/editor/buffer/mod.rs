@@ -56,6 +56,12 @@ pub(in crate::editor) struct LastInsert {
 
 // ── Buffer ────────────────────────────────────────────────────────────────────
 
+/// What one composed undo/redo walk hands back — see
+/// [`Buffer::apply_transactions`]'s doc for each part's contract. Named
+/// once here so `undo_n`/`redo_n`, `doc_ops::apply_doc_history_walk`, and
+/// `commands::edit::history_step` all spell the same shape.
+pub(in crate::editor) type HistoryWalkResult = Option<(SelectionSet, ChangeSet, usize)>;
+
 /// Content-only document: text, undo history, search state, and per-buffer overrides.
 ///
 /// `Buffer` is the SSOT for everything intrinsic to an open file and shared
@@ -708,11 +714,12 @@ impl Buffer {
     /// `goto_revision` — as one composed transform: fold every ChangeSet
     /// together with `ChangeSet::compose_all` (sound because each Transaction
     /// in the list maps the state the previous one produced, see
-    /// `History::goto_revision`'s doc) and apply the result once. Returns the
-    /// restored selections, the net ChangeSet, and how many steps `txns`
-    /// held — short of the caller's requested count when the walk hit the
-    /// root/leaf, so the caller can tell exhaustion apart from a full walk.
-    /// `None` when `txns` is empty (nothing to do — already at the target).
+    /// `History::goto_revision`'s doc) and apply the result once. Returns a
+    /// [`HistoryWalkResult`]: the restored selections, the net ChangeSet,
+    /// and how many steps `txns` held — short of the caller's requested
+    /// count when the walk hit the root/leaf, so the caller can tell
+    /// exhaustion apart from a full walk. `None` when `txns` is empty
+    /// (nothing to do — already at the target).
     ///
     /// Always validates the landing selections via `Transaction::apply`
     /// (length + bounds check, `merge_overlapping_in_place`), but skips
@@ -724,10 +731,7 @@ impl Buffer {
     /// never enters history; this walk's revision move already happened in
     /// `History::undo_n`/`redo_n`/`goto_revision` before this is even
     /// called, so all that's left to guard here is the text mutation.
-    fn apply_transactions(
-        &mut self,
-        txns: Vec<Transaction>,
-    ) -> Option<(SelectionSet, ChangeSet, usize)> {
+    fn apply_transactions(&mut self, txns: Vec<Transaction>) -> HistoryWalkResult {
         let steps = txns.len();
         let landing_sels = txns.last()?.selection().clone();
         let css = txns.into_iter().map(Transaction::into_changes);
@@ -749,14 +753,14 @@ impl Buffer {
     /// path for `5u` and an age-resolved `:earlier`, so a multi-step travel
     /// pays for one `set_text`/`finish_edit` cycle instead of `count` of
     /// them. See [`Self::apply_transactions`] for the return contract.
-    pub(crate) fn undo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
+    pub(crate) fn undo_n(&mut self, count: usize) -> HistoryWalkResult {
         let txns = self.history.undo_n(count);
         self.apply_transactions(txns)
     }
 
     /// Redo up to `count` steps forward as one composed transform. See
     /// `undo_n`'s doc — same contract, redo direction.
-    pub(crate) fn redo_n(&mut self, count: usize) -> Option<(SelectionSet, ChangeSet, usize)> {
+    pub(crate) fn redo_n(&mut self, count: usize) -> HistoryWalkResult {
         let txns = self.history.redo_n(count);
         self.apply_transactions(txns)
     }

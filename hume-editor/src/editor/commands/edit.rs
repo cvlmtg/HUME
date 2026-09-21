@@ -1,7 +1,6 @@
 use hume_engine::pipeline::EngineView;
 
-use crate::editor::buffer::Buffer;
-use hume_editing::changeset::ChangeSet;
+use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::word::WordChars;
 use hume_ops::MotionMode;
@@ -197,7 +196,7 @@ fn history_step(
     state: &mut EditorState,
     view: &mut EngineView,
     count: usize,
-    walk: fn(&mut Buffer, usize) -> Option<(SelectionSet, ChangeSet, usize)>,
+    walk: fn(&mut Buffer, usize) -> HistoryWalkResult,
     exhausted_msg: &str,
 ) -> Result<(), CommandError> {
     let focused = state.focus.id();
