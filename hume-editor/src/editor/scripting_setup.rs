@@ -304,6 +304,7 @@ impl Editor {
         loop {
             self.detect_buffer_enter();
             self.detect_mode_change();
+            self.dismiss_invalid_completion();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
             // (auto-format, trim-on-change) is a feedback loop, and only
@@ -396,6 +397,29 @@ impl Editor {
             self.state.last_observed_mode = now;
             self.state
                 .queue_event(EditorEvent::OnModeChange { from, to: now });
+        }
+    }
+
+    /// Dismisses an open `Buffer`-target completion session once it no
+    /// longer matches live state — a pane switching to a different buffer,
+    /// losing focus, closing the buffer, or the buffer changing through a
+    /// path `observe_edit` never witnessed (an LSP `workspace/applyEdit`,
+    /// `:e!`, or any other out-of-band edit, same-length ones included —
+    /// see `BufferTarget::observe_edit`'s own doc for why a length-changing
+    /// one is already caught sooner, by the next keystroke's length check)
+    /// all leave the session silently stale, and none of them has a single
+    /// write-site chokepoint to hang a synchronous dismiss on — same shape
+    /// `detect_buffer_enter`'s own doc describes for `focused_buffer_id()`.
+    /// Run every pass of `drain_pending_work`'s loop, not just once before
+    /// it, so a handler-driven change is caught by the very next pass. A
+    /// `Minibuf`-target session has nothing to invalidate here — it isn't
+    /// watching a buffer.
+    fn dismiss_invalid_completion(&mut self) {
+        let Some(bt) = self.state.input.completion().and_then(|s| s.buffer()) else {
+            return;
+        };
+        if !bt.still_valid(&self.state, &self.view) {
+            self.state.dismiss_completion(&self.view);
         }
     }
 

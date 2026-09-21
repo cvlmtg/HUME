@@ -684,12 +684,17 @@ fn minibuffer_e_tab_completion_is_unaffected_by_the_lsp_completion_guard() {
 // told about — but only `apply_insert_edit` (the chokepoint every ordinary
 // Insert-mode keystroke goes through) ever calls `observe_edit`. An edit from
 // any other source (a `:e!` reload, a pane switching to a different buffer)
-// bypasses it entirely and can leave `anchor` pointing past the
-// currently-focused buffer's end, and `sync_completion_menu_view` must not
-// panic walking `DisplayLineMap::locate` with it.
+// bypasses it entirely and leaves the session's `generation_at_begin`
+// stamped against a buffer generation that no longer exists —
+// `Editor::dismiss_invalid_completion` (`scripting_setup.rs`) catches this
+// at the next `settle()` and dismisses the session outright.
+// `sync_completion_menu_view`'s own anchor/buffer checks stay as a
+// fail-safe for the narrower window before that settle runs — a frame
+// rendered between the out-of-band edit and the next settle must still not
+// panic walking `DisplayLineMap::locate` with a stale anchor.
 
 #[test]
-fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
+fn a_stale_anchor_from_a_buffer_reload_is_dismissed_at_settle() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for line in ["line0", "line1", "line2", "line3", "line4"] {
@@ -713,28 +718,31 @@ fn stale_anchor_after_a_buffer_reload_skips_render_instead_of_panicking() {
 
     // `reload_buffer_in_place` (`:e!`) clamps every pane's cursor to the new,
     // much shorter content, but has no notion of an open completion session
-    // — so `anchor` is left pointing past the reloaded buffer's end.
+    // — so `anchor` is left pointing past the reloaded buffer's end, and the
+    // reload's own `text_gen` bump leaves the session's `generation_at_begin`
+    // stale.
     let replacement = Buffer::new(BufferText::from("hi\n"), SelectionSet::default());
     ed.reload_buffer_in_place(bid, replacement);
 
+    ed.settle();
+    assert!(
+        ed.state.input.completion().is_none(),
+        "dismiss_invalid_completion must dismiss a session whose buffer \
+         changed through a path observe_edit never witnessed"
+    );
+
+    // Must not panic even for a caller that renders before the next settle.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 8);
-    ed.settle();
-    ed.prepare_frame(&mut ctx); // must not panic
-
+    ed.prepare_frame(&mut ctx);
     assert!(
         ed.state.views.completion_menu.read().is_none(),
-        "popup must not render against a stale out-of-range anchor"
-    );
-    assert!(
-        ed.state.input.completion().is_some(),
-        "the guard skips only this frame's render — dismissal stays with \
-         the existing keypress-driven paths"
+        "no session, no popup"
     );
 }
 
 #[test]
-fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
+fn switching_to_another_buffer_dismisses_the_session_at_settle() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
     for ch in "hello".chars() {
@@ -746,23 +754,31 @@ fn stale_anchor_after_switching_focus_to_another_buffer_skips_render() {
         "sanity: session open"
     );
 
-    // Switch focus to a different buffer without dismissing the session —
-    // `sync_completion_menu_view` builds its `DisplayLineMap` over whichever buffer
-    // is focused *now*, not the one the session was opened against.
+    // Switch focus to a different buffer without dismissing the session
+    // directly — `dismiss_invalid_completion` must catch the mismatch at
+    // the next settle, before `sync_completion_menu_view` ever builds a
+    // `DisplayLineMap` over whichever buffer is focused *now*, not the one
+    // the session was opened against.
     let other = ed.open_buffer(Buffer::new(
         BufferText::from("other\n"),
         SelectionSet::default(),
     ));
     ed.switch_to_buffer_with_jump(other);
 
+    ed.settle();
+    assert!(
+        ed.state.input.completion().is_none(),
+        "dismiss_invalid_completion must dismiss the session once its pane \
+         shows a different buffer"
+    );
+
+    // Must not panic even for a caller that renders before the next settle.
     let mut ctx = RenderContext::new();
     ed.sync_viewport_dims(40, 8);
-    ed.settle();
-    ed.prepare_frame(&mut ctx); // must not panic
-
+    ed.prepare_frame(&mut ctx);
     assert!(
         ed.state.views.completion_menu.read().is_none(),
-        "popup must not render a session anchored to a buffer that isn't focused"
+        "no session, no popup"
     );
 }
 

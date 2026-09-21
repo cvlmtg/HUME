@@ -823,6 +823,82 @@ fn begin_with_empty_items_clears_an_already_open_session() {
     );
 }
 
+#[test]
+fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+           (define-command! "corrupt" "" (lambda ()
+             (apply-text-edits! (current-buffer)
+               (list (list (cons 0 1) (cons 0 6) "BCDEF")))))"#,
+    );
+    ed.feed_key(key('i'));
+    ed.execute_keymap_command("begin".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: session began"
+    );
+
+    // Same-length replace — bypasses `observe_edit` (only `apply_insert_edit`
+    // calls it) and survives its length check on the next real keystroke,
+    // but `dismiss_invalid_completion` catches the generation mismatch
+    // directly, with no filter update or accept attempt needed first.
+    ed.execute_keymap_command("corrupt".into(), None, false);
+    ed.settle();
+    assert!(
+        ed.state.input.completion().is_none(),
+        "dismiss_invalid_completion must dismiss the session after a \
+         same-length out-of-band edit"
+    );
+}
+
+#[test]
+fn empty_items_from_a_stale_response_leaves_the_open_session_alone() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "open" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+           (define-command! "reopen-empty" "" (lambda ()
+             (completion-begin! (current-buffer) (list) #:source "test")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("open".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: session opened"
+    );
+
+    // A modal overlay (`MenuLayer`, default `is_modal() == true`) lands on
+    // top of the completion session since the (stale) request went out —
+    // constructed directly, bypassing `show-menu!`'s own gate, which
+    // requires the mode layer to be `Base` and would refuse to open here
+    // while `Insert` is active. `is_settled_for::<CompletionLayer>` must
+    // now read `false`, same as a mode-layer change.
+    ed.state.push_layer(
+        &ed.view,
+        crate::editor::input_stack::MenuLayer {
+            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["x".to_string()])),
+            selected: 0,
+            callback: steel::rvals::SteelVal::Void,
+        },
+    );
+
+    ed.execute_keymap_command("reopen-empty".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "a stale empty response must leave the open session (and whatever \
+         landed above it) alone, not dismiss it"
+    );
+}
+
 // ── on-completion-accept / on-completion-refilter ────────────────────
 
 #[test]
@@ -1084,6 +1160,36 @@ fn add_items_resets_the_menu_selection_to_row_zero() {
     assert!(
         ed.state.input.completion_ui().is_none(),
         "a merge must reset the selection to row 0 (cleared, same as refilter's own reset)"
+    );
+}
+
+#[test]
+fn update_filter_resets_the_menu_selection_to_row_zero() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "begin" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:source "s")))
+           (define-command! "narrow" "" (lambda ()
+             (completion-update-filter! "")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("begin".into(), None, false);
+    ed.feed_key(key_tab());
+    ed.feed_key(key_tab());
+    assert_eq!(
+        ed.state.input.completion_ui().unwrap().selected,
+        2,
+        "sanity check: two Tabs move the selection off row 0"
+    );
+    ed.execute_keymap_command("narrow".into(), None, false);
+    assert!(
+        ed.state.input.completion_ui().is_none(),
+        "completion-update-filter! must reset the selection to row 0, same as add_items/refilter"
     );
 }
 

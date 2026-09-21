@@ -93,13 +93,15 @@ impl Editor {
             return;
         }
 
-        // `session.anchor()` is a char offset captured when the session
-        // began; it isn't remapped through edits, so an out-of-band shrink
-        // (LSP applyEdit, file reload) or a pane switch since can leave it
+        // `bt.anchor()` is mapped forward through every edit `observe_edit`
+        // was told about — but an edit that bypasses it entirely (an LSP
+        // applyEdit, a file reload) or a pane switch can still leave it
         // pointing past the focused buffer's current end, or at a buffer
-        // that isn't even the one on screen. `DisplayLineMap::locate` (reached via
-        // `popup_placement`) has no way to tell a stale offset from a live
-        // one, so check both here.
+        // that isn't even the one on screen, in the narrow window before
+        // `Editor::dismiss_invalid_completion`'s next settle-time pass
+        // catches the mismatch (`scripting_setup.rs`). `DisplayLineMap::locate`
+        // (reached via `popup_placement`) has no way to tell a stale offset
+        // from a live one, so this fail-safe checks both here.
         //
         // Sequential borrows rather than one closure over
         // `self.state.input`: the session's shared borrow has to end
@@ -473,7 +475,5 @@ fn refilter_lsp_completion_after_edit(ed: &mut Editor, r: LayerRef, key: KeyEven
             filter_text: text,
         });
     }
-    if let Some(slot) = ed.state.input.completion_ui_mut(r) {
-        *slot = None;
-    }
+    ed.state.reset_completion_selection();
 }

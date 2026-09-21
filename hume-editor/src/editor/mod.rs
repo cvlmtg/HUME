@@ -789,6 +789,22 @@ impl EditorState {
         Some(completion.session)
     }
 
+    /// Resets the open completion menu's selection back to row 0 — every
+    /// path that re-ranks a session's `filtered` list (`add_items`,
+    /// `update_filter`, a post-edit refilter) must call this, since the
+    /// previous selection index has no guaranteed meaning against the new
+    /// order (it can point past the new list's end, or simply land on a
+    /// different candidate than the one visibly highlighted). A no-op when
+    /// no session is open.
+    pub(in crate::editor) fn reset_completion_selection(&mut self) {
+        let Some(r) = self.input.ref_of::<input_stack::CompletionLayer>() else {
+            return;
+        };
+        if let Some(slot) = self.input.completion_ui_mut(r) {
+            *slot = None;
+        }
+    }
+
     /// Enqueue `event` to fire after the current command returns — the
     /// single raise path every event goes through, reached as
     /// `self.state.queue_event(…)` from `Editor` methods and directly, like

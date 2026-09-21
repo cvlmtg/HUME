@@ -59,6 +59,23 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if self.state.buffers.try_get(bid).is_none() {
             return Err("completion-begin!: no such buffer".to_string());
         }
+        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
+        // Checked before anything else touches the stack or parses a single
+        // item: a stale response (the mode layer changed, or a modal
+        // overlay landed on top, since the request went out) must leave
+        // whatever's already there untouched — including an *empty* stale
+        // response, which must not dismiss a session this response knows
+        // nothing about. A prior `Completion` instance — buried or not — is
+        // the one exception this gate tolerates: it's the *normal* refresh
+        // path, not an edge — `on-completion-refilter` re-calls this while a
+        // session is already open, and so does a trigger char typed with
+        // the menu up.
+        if self
+            .state
+            .async_opener_stale::<InsertLayer, CompletionLayer>("completion-begin!")
+        {
+            return Ok(crate::editor::widget_token::DEAD);
+        }
         // A malformed item (e.g. missing the spec-required `label`) is
         // skipped, not fatal to the whole batch — one bad item from a
         // misbehaving server must not silently drop every good one.
@@ -66,9 +83,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         if parsed.is_empty() {
             // Replaces any open session too — an isIncomplete re-request
             // that comes back empty (or entirely malformed) must close the
-            // menu, not leave the old one live. Unconditional: this path
-            // never consults the LSP-availability or mode/top gates below,
-            // same as before the session moved onto the stack.
+            // menu, not leave the old one live.
             self.state.dismiss_completion(self.view);
             self.state
                 .report(Severity::Info, "no completions".to_string());
@@ -76,17 +91,6 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             // `widget_token::DEAD` is never a live token, so a caller that
             // (wrongly) tries to `completion-add-items!` against it gets the
             // same silent no-op a real stale token would.
-            return Ok(crate::editor::widget_token::DEAD);
-        }
-        // Async staleness — see `EditorState::async_opener_stale`'s own doc.
-        // A prior `Completion` instance — buried or not — is the one
-        // exception it tolerates: it's the *normal* refresh path, not an
-        // edge — `on-completion-refilter` re-calls this while a session is
-        // already open, and so does a trigger char typed with the menu up.
-        if self
-            .state
-            .async_opener_stale::<InsertLayer, CompletionLayer>("completion-begin!")
-        {
             return Ok(crate::editor::widget_token::DEAD);
         }
         let Some(session) = crate::editor::completion::CompletionSession::begin_buffer(
@@ -151,11 +155,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             return false;
         };
         session.add_items(source.into(), priority, match_kind, incomplete, parsed);
-        if let Some(r) = self.state.input.ref_of::<CompletionLayer>()
-            && let Some(slot) = self.state.input.completion_ui_mut(r)
-        {
-            *slot = None;
-        }
+        self.state.reset_completion_selection();
         true
     }
 
@@ -167,6 +167,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             return Err("completion-update-filter!: no active completion session".to_string());
         };
         session.update_filter(text);
+        self.state.reset_completion_selection();
         Ok(())
     }
 

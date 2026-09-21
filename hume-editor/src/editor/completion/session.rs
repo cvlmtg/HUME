@@ -17,7 +17,7 @@
 mod accept;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
-use hume_engine::pipeline::{BufferId, PaneId};
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
 use rustc_hash::FxHashMap;
 
@@ -156,6 +156,18 @@ impl BufferTarget {
         self.cs_since_begin = self.cs_since_begin.clone().compose(cs.clone());
         self.generation_at_begin = text_gen;
         true
+    }
+
+    /// Whether this target's pane/buffer/generation still match live state
+    /// — `Editor::dismiss_invalid_completion`'s settle-time check. A coarse
+    /// yes/no, unlike `accept`'s own preconditions (`checked_buffer`, the
+    /// focus and pane-shows-buffer checks in `accept.rs`), which stay
+    /// separate because they each need their own distinct Steel-facing
+    /// error message; this one only ever feeds a silent background dismiss.
+    pub(in crate::editor) fn still_valid(&self, state: &EditorState, view: &EngineView) -> bool {
+        state.focus.id() == self.pane_id
+            && view.panes.get(self.pane_id).map(|p| p.buffer_id) == Some(self.bid)
+            && state.buffers.try_get(self.bid).map(|b| b.text_gen) == Some(self.generation_at_begin)
     }
 }
 
