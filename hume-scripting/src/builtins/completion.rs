@@ -9,7 +9,8 @@ use crate::json::{json_to_steel, steel_to_json};
 
 use super::SteelResult;
 use super::args::{
-    BidArg, bool_arg, chars_arg, int_arg, list_items, string_arg, symbol_enum_arg, usize_arg,
+    BidArg, bool_arg, chars_arg, int_arg, list_items, optional_usize_arg, string_arg,
+    symbol_enum_arg, usize_arg,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -56,11 +57,13 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-/// `(%completion-begin! bid items incomplete source priority match)` — the
-/// `completion-begin!` Scheme wrapper supplies `#:incomplete`/`#:priority`/
-/// `#:match`'s defaults; `#:source` has none (see the wrapper's own doc).
-/// `items`: list of decoded `CompletionItem` hashmaps. Returns the new
-/// session's token.
+/// `(%completion-begin! bid items incomplete source priority match anchor)`
+/// — the `completion-begin!` Scheme wrapper supplies `#:incomplete`/
+/// `#:priority`/`#:match`'s defaults; `#:source`/`#:anchor` have none (see
+/// the wrapper's own doc — `#:anchor` is a caller decision, not a default
+/// Rust supplies). `items`: list of decoded `CompletionItem` hashmaps.
+/// Returns the new session's token.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn completion_begin(
     ctx: &mut SteelCtx,
     bid: BidArg,
@@ -69,18 +72,20 @@ pub(crate) fn completion_begin(
     source: SteelVal,
     priority: SteelVal,
     match_kind: SteelVal,
+    anchor: SteelVal,
 ) -> SteelResult {
     let id = bid.0;
     let incomplete = bool_arg(incomplete, "completion-begin! #:incomplete")?;
     let source = string_arg(source, "completion-begin! #:source")?;
     let priority = int_arg(priority, "completion-begin! #:priority")?;
     let match_kind = match_kind_arg(match_kind, "completion-begin! #:match")?;
+    let anchor = optional_usize_arg(anchor, "completion-begin! #:anchor")?;
     let mut parsed = Vec::new();
     for entry in list_items(items, "completion-begin! items")? {
         parsed.push(steel_to_json(&entry).map_err(generic_err)?);
     }
     require_cap(ctx.host.completions(), "completion-begin!")?
-        .completion_begin(id, parsed, source, priority, match_kind, incomplete)
+        .completion_begin(id, parsed, source, priority, match_kind, incomplete, anchor)
         .map(|token| SteelVal::IntV(token as isize))
         .map_err(generic_err)
 }

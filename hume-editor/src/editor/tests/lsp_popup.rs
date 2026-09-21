@@ -625,6 +625,58 @@ fn ctrl_d_and_ctrl_u_scroll_a_scrollable_popup_without_touching_the_buffer() {
     );
 }
 
+/// `PopupState::lines` is always the full wrap, `Arc`-shared with
+/// `PopupContent`'s own cache regardless of scroll position, with a
+/// `visible` range carrying the window into it — a scrolled popup (unlike
+/// `wrap_is_cached_per_width_and_invalidated_only_when_width_changes`'s own
+/// fixture, which fits in one screen and never scrolls) still costs only a
+/// refcount bump per frame, not a deep clone of its visible rows.
+#[test]
+fn wrap_cache_stays_shared_across_frames_even_once_the_popup_scrolls() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>abcdefgh\n");
+    let tall = (0..30)
+        .map(|i| format!("line{i}"))
+        .collect::<Vec<_>>()
+        .join("\\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-typed-command! "go" "" (lambda () (show-popup! "{tall}" #:kind 'scrollable)))"#
+        ),
+    );
+    type_cmd(&mut ed, ":go");
+    let mut ctx = RenderContext::new();
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let before_scroll = popup_view_lines_arc(&ed).expect("popup must be showing");
+
+    ed.feed_key(key_ctrl('d'));
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    assert!(
+        ed.state.input.popup().expect("still shown").scroll > 0,
+        "sanity: Ctrl-d actually scrolled"
+    );
+    let after_scroll = popup_view_lines_arc(&ed).expect("popup must still be showing");
+    assert!(
+        Arc::ptr_eq(&before_scroll, &after_scroll),
+        "the wrap cache must stay Arc-shared across a scroll, not be deep-cloned"
+    );
+
+    ed.sync_viewport_dims(80, 25);
+    ed.settle();
+    ed.prepare_frame(&mut ctx);
+    let same_frame_again = popup_view_lines_arc(&ed).expect("popup must still be showing");
+    assert!(
+        Arc::ptr_eq(&after_scroll, &same_frame_again),
+        "and stay shared across an unrelated re-render once scrolled"
+    );
+}
+
 #[test]
 fn ctrl_u_clamps_a_stale_scroll_after_the_window_grows_between_frames() {
     // Regression: `PopupLayer::scroll` is clamped for *rendering* every

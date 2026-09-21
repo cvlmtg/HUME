@@ -148,10 +148,10 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
     ");
 }
 
-/// Windowing itself has moved to the write side (`resolve_menu`/
-/// `resolve_popup`, via `window_range`) — this test pre-slices `rows` the
-/// same way a caller now must, and checks `draw_menu_box` paints exactly
-/// that slice, not the full list.
+/// Windowing is the write side's job (`resolve_menu`/`resolve_popup`, via
+/// `window_range`), not `draw_menu_box`'s — this test pre-slices `rows` the
+/// same way a caller must, and checks `draw_menu_box` paints exactly that
+/// slice, not the full list.
 #[test]
 fn draw_menu_box_scrolls_to_keep_selected_visible() {
     let mut buf = Grid::new(20, 20);
@@ -389,11 +389,13 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
 }
 
 #[test]
-fn menu_inner_width_is_widest_row() {
-    assert_eq!(
-        menu_inner_width(&["a".into(), "abc".into(), "ab".into()]),
-        3
-    );
+fn widest_is_the_widest_texts_display_width() {
+    assert_eq!(widest(["a", "abc", "ab"].into_iter()), 3);
+}
+
+#[test]
+fn widest_of_an_empty_run_is_zero() {
+    assert_eq!(widest(std::iter::empty()), 0);
 }
 
 // ── band_capacity ──────────────────────────────────────────────────────
@@ -549,4 +551,44 @@ fn scrollbar_thumb_length_scales_with_visible_fraction_not_just_the_clamp() {
 fn scrollbar_thumb_single_row_window_is_a_solid_cell() {
     assert_eq!(scrollbar_thumb(1, 10, 0), Some((0, 1)));
     assert_eq!(scrollbar_thumb(1, 10, 9), Some((0, 1)));
+}
+
+/// A caller that hands more rows than the box's inner height fits (a
+/// pre-windowing bug, since production always slices to `window_range`
+/// first) must not paint past the box — the vertical twin of
+/// `a_row_wider_than_the_box_is_clipped_at_the_border`. The bottom border
+/// row, and everything below the box, must survive untouched.
+#[test]
+fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
+    let mut buf = Grid::new(20, 20);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    // Outer height 5 → inner height 3, but 5 rows are handed in unwindowed.
+    let outer = Rect::new(2, 3, 8, 5);
+    // `total_rows` matches the 3 that should actually be visible — this
+    // test is about the row-count mismatch alone, not the scrollbar thumb
+    // a real `total_rows > view` would also draw.
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &rows(5),
+        Some(0),
+        3,
+        0,
+        true,
+        styles(),
+        None,
+    );
+
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 0, 12, 9)), @"
+
+
+
+    ┌──────┐
+    │item0 │
+    │item1 │
+    │item2 │
+    └──────┘
+
+    ");
 }

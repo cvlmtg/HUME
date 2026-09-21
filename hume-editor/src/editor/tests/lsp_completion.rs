@@ -27,7 +27,7 @@ fn begin_then_top_returns_items_ranked_by_sort_text_with_no_filter() {
              (completion-begin! (current-buffer)
                (list (hash "label" "second" "sortText" "b")
                      (hash "label" "first" "sortText" "a")
-                     (hash "label" "third" "sortText" "c")) #:source "test")
+                     (hash "label" "third" "sortText" "c")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
@@ -61,7 +61,7 @@ fn update_filter_narrows_and_fuzzy_score_beats_sort_text() {
                      ; still rank first is if the fuzzy score genuinely
                      ; dominates the sortText tie-break.
                      (hash "label" "rnorm" "sortText" "z")
-                     (hash "label" "grape")) #:source "test")                  ; no "r" at all — dropped
+                     (hash "label" "grape")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")                  ; no "r" at all — dropped
              (completion-update-filter! "rn")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -89,7 +89,7 @@ fn update_filter_with_uppercase_query_is_case_sensitive() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "Vec") (hash "label" "vec_deque")) #:source "test")
+               (list (hash "label" "Vec") (hash "label" "vec_deque")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "Vec")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -120,7 +120,7 @@ fn update_filter_with_trailing_space_matches_nothing() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar")) #:source "test")
+               (list (hash "label" "foobar")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "foo ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -149,7 +149,7 @@ fn update_filter_with_only_a_space_matches_nothing() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar") (hash "label" "foo")) #:source "test")
+               (list (hash "label" "foobar") (hash "label" "foo")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! " ")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -173,7 +173,7 @@ fn accept_with_no_text_edit_inserts_insert_text_at_the_anchor_span() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -197,7 +197,7 @@ fn accept_normalizes_crlf_in_insert_text() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hel\r\nlo")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "hel\r\nlo")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -221,7 +221,7 @@ fn accept_with_no_text_edit_replaces_the_prefix_typed_before_completion_began() 
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "foobar")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "foobar")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -244,7 +244,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foo-bar" "insertText" "foo-bar")) #:source "test")
+               (list (hash "label" "foo-bar" "insertText" "foo-bar")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -269,7 +269,7 @@ fn accept_with_a_text_edit_extends_the_range_to_cover_chars_typed_after_begin() 
                (list (hash "label" "format!" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                         "end" (hash "line" 0 "character" 2))
-                                       "newText" "format!"))) #:source "test")
+                                       "newText" "format!"))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "for")
              (completion-accept! 0)))"#,
     );
@@ -300,7 +300,7 @@ fn accept_with_an_off_spec_text_edit_range_not_containing_the_cursor_errors_and_
                (list (hash "label" "x" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
                                                         "end" (hash "line" 0 "character" 4))
-                                       "newText" "XYZ"))) #:source "test")
+                                       "newText" "XYZ"))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -330,7 +330,7 @@ fn accept_is_one_undo_step() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -359,7 +359,7 @@ fn dismiss_clears_the_session_so_a_later_accept_errors() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-dismiss!)
              (completion-accept! 0)))"#,
     );
@@ -387,7 +387,7 @@ fn a_buffer_edit_that_bypasses_update_filter_invalidates_the_session() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              ; An edit that never goes through completion-update-filter! —
              ; a raw text-edit builtin, not Insert-mode typing (which is
              ; wired to call completion-update-filter! automatically
@@ -439,7 +439,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
@@ -487,7 +487,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "finish" "" (lambda ()
              (completion-accept! 0)))"#,
     );
@@ -530,7 +530,7 @@ fn accept_without_a_text_edit_errors_when_the_cursor_left_the_token() {
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "x" "insertText" "z" "filterText" "ab"))
+               (list (hash "label" "x" "insertText" "z" "filterText" "ab")) #:anchor (word-start-before-cursor (current-buffer))
                #:source "test")))
            (define-command! "narrow" "" (lambda ()
              (completion-update-filter! "a")))
@@ -576,7 +576,7 @@ fn a_same_length_out_of_band_edit_followed_by_update_filter_still_invalidates_th
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "corrupt" "" (lambda ()
              ; Same-length replace ("bcdef" -> "BCDEF") — bypasses
              ; observe_edit (only apply_insert_edit calls it) and preserves
@@ -629,7 +629,7 @@ fn accept_errors_when_additional_text_edits_overlap_the_main_text_edit() {
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
                                                       "end" (hash "line" 0 "character" 4))
-                                     "newText" "QQ")))) #:source "test")
+                                     "newText" "QQ")))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -663,7 +663,7 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "ab" "insertText" "z")) #:source "test")
+             (completion-begin! (current-buffer) (list (hash "label" "ab" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -713,7 +713,7 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 2)
                                                       "end" (hash "line" 0 "character" 2))
-                                     "newText" "ZZ")))) #:source "test")
+                                     "newText" "ZZ")))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -733,29 +733,20 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
 }
 
 #[test]
-fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_edits() {
+fn accept_with_no_text_edit_lands_correctly_past_an_additional_text_edit_shift() {
     let tmp = safe_tempdir();
-    // `primary_head`/`anchor` are captured *before* `additionalTextEdits`
-    // lands, in pre-shift buffer coordinates; the live cursor position used
-    // to decide "is this the primary cursor" (and, once recognized, to
-    // locate its token via `anchor`) is only available *after* it lands.
-    // `completion-begin!` already seeds `anchor` at 0 (`word_start_before`
-    // scans back through "abc") and `filter` at "abc"; `completion-update-
-    // filter!` then narrows the filter to "wxyz" — matching the item's own
-    // label (so it still survives filtering) but with no matching buffer
-    // edit at all, so `typed` no longer reflects real typed content — the
-    // exact divergence `anchor` exists to handle, see `ReplaceSpan::
-    // TokenBefore`'s field docs. That pushes `anchor.shift(typed)` to 4,
-    // short of `head_now` + the additionalTextEdits shift — so `head -
-    // typed` and the correctly anchor-derived start land on genuinely
-    // different buffer positions once additionalTextEdits (a 3-char
-    // import-like insert at the top of the file) shifts everything after
-    // it. Left unmapped, `primary_head` stays stale (3) against the live,
-    // shifted head (6) — never recognized as primary — and the `head -
-    // typed` fallback (`6.retreat_saturating(4)`) scans from position 2,
-    // landing outside "abc" entirely (right after the "// " import) instead
-    // of at the real token boundary (3, right after "// ", where "abc"
-    // begins).
+    // `back`/`forward` are derived once, before `additionalTextEdits` lands,
+    // from `anchor` and `head_now` in that same pre-shift coordinate space —
+    // `completion-begin!` seeds `anchor` at 0 (`word_start_before` scans back
+    // through "abc") and `filter` at "abc"; `completion-update-filter!` then
+    // narrows the filter to "wxyz" (matching the item's own label, so it
+    // still survives filtering) with no matching buffer edit, so `typed` no
+    // longer reflects real typed content and `back` (derived from `anchor`,
+    // not `typed`) is what must carry the correct distance. `commit_char_edits`
+    // shifts the live head across the "// " import before `replace_around_
+    // cursors` reads it, so `back` chars retreat from the *shifted* head —
+    // landing on the real "abc" token regardless of where the import moved
+    // it to, with no separate remapping step of its own.
     let mut ed = editor_from("abc-[ ]>def\n");
     run(
         &mut ed,
@@ -766,7 +757,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
                            "additionalTextEdits"
                              (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                       "end" (hash "line" 0 "character" 0))
-                                     "newText" "// ")))) #:source "test")
+                                     "newText" "// ")))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "wxyz")
              (completion-accept! 0)))"#,
     );
@@ -776,9 +767,42 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
     assert_eq!(
         ed.doc().text().to_string(),
         "// Xdef\n",
-        "primary_head/anchor must be remapped through additionalTextEdits' \
-         own changeset before deciding which cursor is primary and where \
-         its token starts"
+        "the completion's own edit must land on \"abc\", not on a position \
+         stale relative to the additionalTextEdits shift"
+    );
+}
+
+#[test]
+fn accept_with_no_text_edit_uses_the_anchor_verbatim_even_when_additional_text_edits_extend_it_with_word_chars()
+ {
+    let tmp = safe_tempdir();
+    // A word-char-ending sibling of `accept_with_no_text_edit_lands_
+    // correctly_past_an_additional_text_edit_shift`: `back` retreats a fixed
+    // char count from the live (already-shifted) head, with no scan of its
+    // own to walk into the auto-inserted "zz" — whether the additionalTextEdit
+    // ends in a word char or not is irrelevant to a distance-based retreat,
+    // unlike the word-chars scan this design replaced.
+    let mut ed = editor_from("abc-[ ]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer)
+               (list (hash "label" "abc" "insertText" "X"
+                           "additionalTextEdits"
+                             (list (hash "range" (hash "start" (hash "line" 0 "character" 0)
+                                                      "end" (hash "line" 0 "character" 0))
+                                     "newText" "zz")))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
+             (completion-accept! 0)))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "zzX def\n",
+        "the anchor's own replacement must not eat back into additionalTextEdits' \
+         auto-inserted \"zz\", even though it's word-char-adjacent to the remapped anchor"
     );
 }
 
@@ -792,7 +816,7 @@ fn begin_with_empty_items_creates_no_session_and_reports_info() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list) #:source "test")))"#,
+             (completion-begin! (current-buffer) (list) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -817,9 +841,9 @@ fn begin_with_empty_items_clears_an_already_open_session() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "open" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "reopen-empty" "" (lambda ()
-             (completion-begin! (current-buffer) (list) #:source "test")))"#,
+             (completion-begin! (current-buffer) (list) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -845,7 +869,7 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "corrupt" "" (lambda ()
              (apply-text-edits! (current-buffer)
                (list (list (cons 0 1) (cons 0 6) "BCDEF")))))"#,
@@ -878,9 +902,9 @@ fn empty_items_from_a_stale_response_leaves_the_open_session_alone() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "open" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")))
+             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (define-command! "reopen-empty" "" (lambda ()
-             (completion-begin! (current-buffer) (list) #:source "test")))"#,
+             (completion-begin! (current-buffer) (list) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -924,7 +948,7 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "hello" "extra" "e1")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))
            (register-hook! 'on-completion-accept (lambda (bid item)
@@ -959,7 +983,7 @@ fn accept_with_no_hook_registered_still_applies_the_edit() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-update-filter! "fo")
              (completion-accept! 0)))"#,
     );
@@ -979,7 +1003,7 @@ fn refilter_fires_on_completion_refilter_only_when_incomplete() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello"))
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer))
                #:incomplete #t #:source "test")))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info (string-append "refilter:" text))))"#,
@@ -1009,7 +1033,7 @@ fn refilter_does_not_fire_when_the_session_is_complete() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")) #:source "test")))
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info "should-not-fire")))"#,
     );
@@ -1039,7 +1063,7 @@ fn add_items_with_a_stale_token_is_a_silent_no_op() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (define tok (completion-begin! (current-buffer) (list (hash "label" "a")) #:source "s1"))
+             (define tok (completion-begin! (current-buffer) (list (hash "label" "a")) #:anchor (word-start-before-cursor (current-buffer)) #:source "s1"))
              (completion-add-items! (+ tok 1000) (list (hash "label" "z")) #:source "s2")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -1066,7 +1090,7 @@ fn add_items_merges_and_reranks_across_sources_by_score() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (define tok (completion-begin! (current-buffer)
-               (list (hash "label" "random" "sortText" "a")) #:source "a"))
+               (list (hash "label" "random" "sortText" "a")) #:anchor (word-start-before-cursor (current-buffer)) #:source "a"))
              (completion-add-items! tok
                (list (hash "label" "rnorm" "sortText" "z")) #:source "b")
              (completion-update-filter! "rn")
@@ -1096,7 +1120,7 @@ fn add_items_same_source_replaces_rather_than_appends() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (define tok (completion-begin! (current-buffer)
-               (list (hash "label" "x") (hash "label" "y")) #:source "s"))
+               (list (hash "label" "x") (hash "label" "y")) #:anchor (word-start-before-cursor (current-buffer)) #:source "s"))
              (completion-add-items! tok (list (hash "label" "x") (hash "label" "z")) #:source "s")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -1124,7 +1148,7 @@ fn late_add_flips_incomplete_even_though_the_session_began_complete() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (define tok (completion-begin! (current-buffer)
-               (list (hash "label" "foobar" "insertText" "hello")) #:source "a"))
+               (list (hash "label" "foobar" "insertText" "hello")) #:anchor (word-start-before-cursor (current-buffer)) #:source "a"))
              (completion-add-items! tok (list (hash "label" "other")) #:source "b" #:incomplete #t)))
            (register-hook! 'on-completion-refilter (lambda (bid text)
              (log! 'info (string-append "refilter:" text))))"#,
@@ -1156,7 +1180,7 @@ fn add_items_resets_the_menu_selection_to_row_zero() {
         r#"(define completion-token #f)
            (define-command! "begin" "" (lambda ()
              (set! completion-token (completion-begin! (current-buffer)
-               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:source "s"))))
+               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:anchor (word-start-before-cursor (current-buffer)) #:source "s"))))
            (define-command! "merge" "" (lambda ()
              (completion-add-items! completion-token (list (hash "label" "d")) #:source "s2")))"#,
     );
@@ -1186,7 +1210,7 @@ fn update_filter_resets_the_menu_selection_to_row_zero() {
         tmp.path(),
         r#"(define-command! "begin" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:source "s")))
+               (list (hash "label" "a") (hash "label" "b") (hash "label" "c")) #:anchor (word-start-before-cursor (current-buffer)) #:source "s")))
            (define-command! "narrow" "" (lambda ()
              (completion-update-filter! "")))"#,
     );
@@ -1219,7 +1243,7 @@ fn add_items_priority_breaks_a_score_tie_before_sort_text() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (define tok (completion-begin! (current-buffer)
-               (list (hash "label" "aaa")) #:source "lo" #:priority 0))
+               (list (hash "label" "aaa")) #:anchor (word-start-before-cursor (current-buffer)) #:source "lo" #:priority 0))
              (completion-add-items! tok (list (hash "label" "zzz")) #:source "hi" #:priority 10)
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
@@ -1241,7 +1265,7 @@ fn top_json_still_carries_the_contributing_source_name() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x")) #:source "test-source")
+             (completion-begin! (current-buffer) (list (hash "label" "x")) #:anchor (word-start-before-cursor (current-buffer)) #:source "test-source")
              (log! 'info (hash-ref (car (completion-top 1)) "source"))))"#,
     );
     ed.state
@@ -1271,7 +1295,7 @@ fn scripted_1k_item_session_stays_under_the_p8_budget() {
         tmp.path(),
         &format!(
             r#"(define-command! "go" "" (lambda ()
-                 (completion-begin! (current-buffer) (list {items}) #:source "test")
+                 (completion-begin! (current-buffer) (list {items}) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
                  (completion-update-filter! "item5")
                  (completion-top 64)
                  (completion-accept! 0)))"#
@@ -1338,6 +1362,7 @@ fn completion_begin_for_a_buffer_not_shown_in_the_focused_pane_is_a_benign_no_op
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         false,
+        None, // this test is about the pane-mismatch guard, not anchors
     );
     assert!(
         result.is_ok(),
@@ -1387,6 +1412,7 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         true,
+        None, // this test is about the popup-refresh gate, not anchors
     )
     .unwrap();
     assert_eq!(ed.state.input.completion().unwrap().len(), 1, "sanity");
@@ -1417,6 +1443,7 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         false,
+        None, // this test is about the popup-refresh gate, not anchors
     )
     .unwrap();
 
@@ -1443,6 +1470,10 @@ fn completion_begin_seeds_the_filter_from_the_word_before_the_cursor() {
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
 
+    // "ki" (2 default-word-chars) immediately precedes the cursor — an
+    // independent oracle, not `word_start_before` calling itself: the
+    // anchor is the buffer start.
+    let anchor = 0;
     let mut host = live_host!(ed);
     host.completion_begin(
         bid,
@@ -1455,6 +1486,7 @@ fn completion_begin_seeds_the_filter_from_the_word_before_the_cursor() {
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         false,
+        Some(anchor),
     )
     .unwrap();
 
@@ -1481,7 +1513,7 @@ fn completion_begin_seeds_the_filter_from_the_word_before_the_cursor() {
 /// has typed since the first begin.
 #[test]
 fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_style() {
-    use hume_scripting::host::CompletionHost;
+    use hume_scripting::host::{CompletionHost, CursorHost};
 
     let mut ed = editor_from("ki-[x]>\n");
     let bid = ed.focused_buffer_id();
@@ -1494,6 +1526,13 @@ fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_
             serde_json::json!({"label": "AsMut"}),
         ]
     };
+    // Recomputed fresh for each begin below via the same call a real plugin
+    // makes, `(word-start-before-cursor bid)` — the idempotence this test
+    // pins is that recomputing it twice against the same unchanged buffer
+    // gives the same value, not that the test captures it once and reuses
+    // it, so this must be a genuine second call, not a literal asserted
+    // twice.
+    let anchor = live_host!(ed).word_start_before_cursor(bid).unwrap();
     let mut host = live_host!(ed);
     host.completion_begin(
         bid,
@@ -1502,6 +1541,7 @@ fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         true, // isIncomplete
+        Some(anchor),
     )
     .unwrap();
     assert_eq!(
@@ -1512,6 +1552,7 @@ fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_
 
     // The refresh: a brand-new `completion-begin!` against the *same* live
     // buffer/cursor, exactly what `on-completion-refilter` triggers.
+    let anchor = live_host!(ed).word_start_before_cursor(bid).unwrap();
     let mut host = live_host!(ed);
     host.completion_begin(
         bid,
@@ -1520,6 +1561,7 @@ fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_
         0,
         hume_scripting::host::MatchKind::Fuzzy,
         true,
+        Some(anchor),
     )
     .unwrap();
 
@@ -1540,6 +1582,255 @@ fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_
     );
 }
 
+/// `#:anchor #f` is a first-class choice, not merely a fallback: it seeds no
+/// filter at all even when the cursor sits mid-word, right after real word
+/// content the caller chose not to scan.
+#[test]
+fn completion_begin_with_anchor_false_seeds_no_filter_even_mid_word() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("ab-[c]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "kitty_support"))
+                                 #:anchor #f #:source "test")
+             (log! 'info (number->string (length (completion-top 10))))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "1",
+        "\"kitty_support\" shares no chars with \"ab\" at all — it would be \
+         fuzzy-filtered out entirely if #:anchor #f let the buffer's own \
+         word-chars scan seed the filter instead of leaving it empty"
+    );
+}
+
+/// `#:anchor #f` isn't just a filtering choice — it's a declaration that
+/// accept replaces nothing before the cursor. A prefix typed before the
+/// trigger (here "fo", already in the buffer when the source calls
+/// `completion-begin!`) is therefore duplicated ahead of the inserted text,
+/// not swallowed by it — the documented consequence of choosing `#f` over
+/// `(word-start-before-cursor bid)`, not a bug.
+#[test]
+fn completion_begin_with_anchor_false_duplicates_the_pre_trigger_prefix_on_accept() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("fo-[ ]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "foobar" "insertText" "foobar"))
+                                 #:anchor #f #:source "test")
+             (completion-accept! 0)))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "fofoobar \n",
+        "#:anchor #f replaces nothing before the cursor, so the \"fo\" \
+         already in the buffer is left in place, duplicated ahead of the \
+         inserted \"foobar\""
+    );
+}
+
+/// `#:anchor` after the live cursor is a caller mistake, not the ordinary
+/// stale-pane race `begin_buffer`'s own `None` path absorbs — it must error
+/// loudly rather than let `begin_buffer` slice an inverted range and panic.
+#[test]
+fn completion_begin_errors_when_anchor_is_after_the_cursor() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x")) #:anchor 3 #:source "test")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_none(),
+        "no session may open from an invalid anchor"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("after the cursor"),
+        "expected an anchor-after-cursor error, got {msg:?}"
+    );
+}
+
+/// An `#:anchor` past the buffer's own length is equally a caller mistake —
+/// distinct wording from the after-the-cursor case, since it's caught at a
+/// different point (minting the offset, before any cursor is even read).
+#[test]
+fn completion_begin_errors_when_anchor_is_out_of_range() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x")) #:anchor 999 #:source "test")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_none(),
+        "no session may open from an out-of-range anchor"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abcdef\n",
+        "buffer must be untouched"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("out of range"),
+        "expected an out-of-range error, got {msg:?}"
+    );
+}
+
+/// A completion token never spans a line — an `#:anchor` on a previous line
+/// is a caller mistake distinct from both the after-the-cursor and
+/// out-of-range cases (it can satisfy `anchor <= head` and still be in
+/// range), so it needs its own check and its own wording.
+#[test]
+fn completion_begin_errors_when_anchor_is_on_a_different_line() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc\n-[d]>ef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x")) #:anchor 0 #:source "test")))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert!(
+        ed.state.input.completion().is_none(),
+        "no session may open from a cross-line anchor"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "abc\ndef\n",
+        "buffer must be untouched"
+    );
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("different line"),
+        "expected a different-line error, got {msg:?}"
+    );
+}
+
+/// `focused_buffer_state(bid)` is *retained*, not removed, when the focused
+/// pane switches to a different buffer — so it alone can't tell "the pane
+/// still shows `bid`" from "the pane showed `bid` once, and moved on since."
+/// One pane is enough to exercise this: no split needed, since the stale
+/// entry survives an ordinary buffer switch just as well as a pane switch.
+/// This must be absorbed exactly like the ordinary async race (`Trace` +
+/// the dead token), not raised as a Steel error and not silently open a
+/// session for a buffer nothing is looking at.
+#[test]
+fn completion_begin_absorbs_the_race_when_the_pane_shows_a_different_buffer_now() {
+    use hume_scripting::host::CompletionHost;
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.feed_key(key('i'));
+    for ch in "abc".chars() {
+        ed.feed_key(key(ch));
+    }
+    ed.feed_key(key_esc());
+
+    // The user switches to another buffer and starts typing there — the
+    // realistic shape of the race: an async response for `bid` (still
+    // in-flight, or delivered right as this happens) must reach the *live*
+    // Insert layer's own gate (`async_opener_stale`) and pass it, so the
+    // pane-liveness check is what actually has to catch the mismatch.
+    let other = ed.open_buffer(Buffer::new(
+        BufferText::from("other\n"),
+        SelectionSet::default(),
+    ));
+    ed.switch_to_buffer_with_jump(other);
+    ed.feed_key(key('i'));
+
+    let mut host = live_host!(ed);
+    let result = host.completion_begin(
+        bid,
+        vec![serde_json::json!({"label": "x"})],
+        "test".to_string(),
+        0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        false,
+        Some(0),
+    );
+    assert!(
+        matches!(result, Ok(0)),
+        "must absorb as the dead token, not error: {result:?}"
+    );
+    assert!(
+        ed.state.input.completion().is_none(),
+        "no session may open for a buffer the focused pane no longer shows"
+    );
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "other\n",
+        "the now-focused buffer must be untouched"
+    );
+}
+
+/// A mid-cluster `#:anchor` — between a base character and its combining
+/// mark — must snap outward to the enclosing grapheme cluster's own start,
+/// same as every other buffer-position seam that admits untrusted input.
+/// Proven through filtering rather than inspecting the seeded filter
+/// directly: an unsnapped anchor seeds a 1-char filter (the orphaned
+/// combining mark alone, since the mark is always the slice's own last
+/// char regardless of where it starts), which is never a *prefix* of the
+/// item's own filter text — only the correctly snapped 2-char "é" is.
+#[test]
+fn completion_begin_snaps_a_mid_cluster_anchor_to_the_cluster_boundary() {
+    let tmp = safe_tempdir();
+    // "cafe\u{0301}" = c,a,f,e,{combining acute} — one grapheme cluster
+    // spans chars [3,5). Anchor 4 sits between the base 'e' and its accent;
+    // snapped, it floors to 3, the cluster's own start.
+    let mut ed = editor_from("cafe\u{0301}-[x]>\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            r#"(define-command! "go" "" (lambda ()
+                 (completion-begin! (current-buffer) (list (hash "label" "efoo" "filterText" "e{}foo"))
+                                     #:anchor 4 #:match 'string #:source "test")
+                 (log! 'info (number->string (length (completion-top 10))))))"#,
+            '\u{0301}'
+        ),
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "1",
+        "the seeded filter must be the 2-char \"é\" (a prefix of \"éfoo\"), \
+         not the 1-char orphaned combining mark alone (a prefix of nothing) \
+         — an unsnapped anchor would filter the item out entirely"
+    );
+}
+
 /// A malformed item (missing the spec-required `label`) must not take down
 /// the whole batch — the well-formed item next to it still survives.
 #[test]
@@ -1551,7 +1842,7 @@ fn malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "good") (hash "kind" 1)) #:source "test")
+               (list (hash "label" "good") (hash "kind" 1)) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (log! 'info (string-join (map (lambda (h) (hash-ref h "label")) (completion-top 10)) ","))))"#,
     );
     ed.state
@@ -1583,7 +1874,7 @@ fn all_items_malformed_behaves_like_an_empty_response() {
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)) #:source "test")))"#,
+             (completion-begin! (current-buffer) (list (hash "kind" 1) (hash "kind" 2)) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")))"#,
     );
     ed.state
         .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
@@ -1625,7 +1916,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
                                                             "end" (hash "line" 0 "character" 3))
                                             "replace" (hash "start" (hash "line" 0 "character" 1)
                                                              "end" (hash "line" 0 "character" 6))
-                                            "newText" "XYZ"))) #:source "test")
+                                            "newText" "XYZ"))) #:anchor (word-start-before-cursor (current-buffer)) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state

@@ -35,38 +35,41 @@ pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_
     cursor
 }
 
-/// General multi-cursor "replace around each head" primitive: for every
-/// selection, `start_of(text, head)` determines where the deletion begins and
-/// `forward` chars ahead of the head are replaced along with it, uniformly,
-/// by `replacement`. [`replace_around_cursors`] is the common case (`start_of`
-/// is a uniform backward char count). LSP completion's `insertText` fallback
-/// (no server-provided range) calls this directly instead, since it has no
-/// single uniform notion of "how far back" — its own `start_of` closure
-/// special-cases the session's primary cursor (whose true token start is
-/// `CompletionSession::anchor()`, tracked independently of live buffer
-/// content — see that method's doc for why) and falls back to a per-cursor
-/// scan for every other cursor.
+/// Replaces `back` chars behind each selection's head and `forward` chars
+/// ahead of it with `replacement` — the multi-cursor form of "the user typed
+/// this text here." Used by LSP completion accept, for both a server-provided
+/// `textEdit` range and the `insertText` fallback: a conforming server's
+/// completion range always contains the request position (LSP spec), and the
+/// fallback's `(back, forward)` is derived from the session's own tracked
+/// anchor the same way — either way, a pair derived from one cursor's own
+/// edit is the same char span typing would have consumed at any cursor, so
+/// applying it uniformly gives every cursor the completion, not just the one
+/// the server (or the session) saw.
 ///
 /// Two cursors closer together than the resulting span, or a cursor nearer
 /// the buffer start than it, would otherwise produce a delete range starting
 /// before `b.old_pos()` (the previous selection's edit already claimed that
 /// text) — clamped to `b.old_pos()` instead of erroring, so a cramped cursor
 /// simply replaces less and every cursor still receives `replacement`.
-pub fn replace_span_around_cursors(
+pub fn replace_around_cursors(
     text: BufferText,
     sels: SelectionSet,
-    start_of: impl Fn(&BufferText, CharOffset) -> CharOffset,
+    back: usize,
     forward: usize,
     replacement: &str,
 ) -> (BufferText, SelectionSet, ChangeSet) {
     apply_edit(text, sels, |b, text, _i, sel, new_sels| {
         let head = sel.head();
-        // `start_of(head)`/`head + forward` bound a char span that can land
+        // `head - back`/`head + forward` bound a char span that can land
         // mid-cluster when this cursor's surrounding text differs from the
         // one the span was derived from (e.g. a combining mark). Snap
         // outward — floor `start` down, ceil `end` up — to the enclosing
         // cluster boundary rather than splitting it.
-        let raw_start = start_of(text, head);
+        //
+        // Saturating, not `retreat`: a cramped cursor's `head` can sit fewer
+        // than `back` chars into the buffer — the `.max(b.old_pos())` clamp
+        // below does the real repair, so this must not panic first.
+        let raw_start = head.retreat_saturating(back);
         let start = snap_to_cluster_start(text, raw_start).max(b.old_pos());
         // Capped at `len_chars()` (not `len_chars() - 1`) so the boundary
         // lookups below never see an out-of-range offset; the structural
@@ -97,33 +100,6 @@ pub fn replace_span_around_cursors(
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
-}
-
-/// Replaces `back` chars behind each selection's head and `forward` chars
-/// ahead of it with `replacement` — the multi-cursor form of "the user typed
-/// this text here." Used by LSP completion accept for a server-provided
-/// `textEdit` range: a conforming server's completion range always contains
-/// the request position (LSP spec), so a `(back, forward)` pair derived from
-/// one cursor's own edit is the same char span typing would have consumed at
-/// any cursor, and applying it uniformly gives every cursor the completion,
-/// not just the one the server saw.
-pub fn replace_around_cursors(
-    text: BufferText,
-    sels: SelectionSet,
-    back: usize,
-    forward: usize,
-    replacement: &str,
-) -> (BufferText, SelectionSet, ChangeSet) {
-    replace_span_around_cursors(
-        text,
-        sels,
-        // Saturating, not `retreat`: a cramped cursor's `head` can sit fewer
-        // than `back` chars into the buffer — the `.max(b.old_pos())` clamp
-        // below does the real repair, so this must not panic first.
-        |_buf, head| head.retreat_saturating(back),
-        forward,
-        replacement,
-    )
 }
 
 /// Replace every grapheme in every selection with `ch` (normal-mode `r`).

@@ -26,7 +26,8 @@
           (let* ((decoded (lsp/completion-response->items res))
                  (items (car decoded))
                  (incomplete (cadr decoded)))
-            (completion-begin! bid items #:source "lsp" #:incomplete incomplete)))))
+            (completion-begin! bid items #:source "lsp" #:anchor (word-start-before-cursor bid)
+                               #:incomplete incomplete)))))
     #:supersede "completion"))
 
 ;; ── Trigger entry points ─────────────────────────────────────────────────────

@@ -20,13 +20,22 @@ pub enum MatchKind {
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
-    /// `(completion-begin! bid items #:source s #:incomplete f #:priority n
-    /// #:match k)` — `items` is a list of decoded `CompletionItem` hashmaps
-    /// (JSON already converted by the caller), tagged with the contributing
-    /// `source`'s name. Starting a session replaces any session already
-    /// open. Returns the new session's token (`0` if no session was opened
-    /// — an empty/all-malformed `items`), for a later `completion-add-
-    /// items!` to merge a second source into.
+    /// `(completion-begin! bid items #:source s #:anchor a #:incomplete f
+    /// #:priority n #:match k)` — `items` is a list of decoded
+    /// `CompletionItem` hashmaps (JSON already converted by the caller),
+    /// tagged with the contributing `source`'s name. Starting a session
+    /// replaces any session already open. Returns the new session's token
+    /// (`0` if no session was opened — an empty/all-malformed `items`), for
+    /// a later `completion-add-items!` to merge a second source into.
+    ///
+    /// `anchor`: the caller's own token-start choice, and also `accept`'s
+    /// own replacement span — `None`/`#f` seeds no filter and replaces
+    /// nothing before the cursor (anchor sits at the cursor). `Some(idx)`
+    /// past the buffer's length, after the live cursor, or on a different
+    /// line than it (a completion token never spans a line) is a caller
+    /// mistake, not a race — implementations reject it with an `Err` rather
+    /// than absorbing it the way a stale-pane race is absorbed (`Ok(0)`).
+    #[allow(clippy::too_many_arguments)]
     fn completion_begin(
         &mut self,
         bid: BufferId,
@@ -35,6 +44,7 @@ pub trait CompletionHost {
         priority: i64,
         match_kind: MatchKind,
         incomplete: bool,
+        anchor: Option<usize>,
     ) -> Result<u64, String>;
 
     /// `(completion-add-items! token items #:source s #:priority n #:match k

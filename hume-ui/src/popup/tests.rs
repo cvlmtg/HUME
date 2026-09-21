@@ -190,9 +190,9 @@ fn placement(pane: Rect) -> PopupPlacement {
 }
 
 /// A candidate scrolled out of the visible window must never widen the
-/// box — the bug this fixes: the old `menu_inner_width` measured every
-/// filtered candidate, so one very wide label anywhere in a long list
-/// inflated the menu even while scrolled away from it.
+/// box — the bug this fixes: width used to be measured over every filtered
+/// candidate, so one very wide label anywhere in a long list inflated the
+/// menu even while scrolled away from it.
 #[test]
 fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
     let mut rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
@@ -220,12 +220,12 @@ fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
 fn resolve_menu_right_aligns_trailing_when_it_fits() {
     let rows = vec![
         MenuRow {
-            main: "kitty_support".to_string(),
-            trailing: Some("bool".to_string()),
+            main: "kitty_support".into(),
+            trailing: Some("bool".into()),
         },
         MenuRow {
-            main: "kind".to_string(),
-            trailing: Some("Kind".to_string()),
+            main: "kind".into(),
+            trailing: Some("Kind".into()),
         },
     ];
     let state = resolve_menu(
@@ -234,15 +234,12 @@ fn resolve_menu_right_aligns_trailing_when_it_fits() {
         placement(rect(0, 0, 200, 50)),
         true,
     );
-    assert_eq!(
-        state.lines.as_ref(),
-        &vec![
-            "kitty_support  bool".to_string(),
-            "kind           Kind".to_string(),
-        ],
-        "main padded to the widest main (\"kitty_support\", 13), a 2-cell \
-         gap, then trailing right-aligned to the widest trailing (4)"
-    );
+    // main padded to the widest main ("kitty_support", 13), a 2-cell gap,
+    // then trailing right-aligned to the widest trailing (4).
+    insta::assert_snapshot!(state.lines.join("\n"), @r"
+    kitty_support  bool
+    kind           Kind
+    ");
 }
 
 /// A pane too narrow for both columns truncates `trailing` with an
@@ -250,8 +247,8 @@ fn resolve_menu_right_aligns_trailing_when_it_fits() {
 #[test]
 fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
     let rows = vec![MenuRow {
-        main: "assert!".to_string(),
-        trailing: Some("macro_rules! assert".to_string()),
+        main: "assert!".into(),
+        trailing: Some("macro_rules! assert".into()),
     }];
     // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
     // = min(19, 10 - 7 - 2) = 1 — just enough for the ellipsis marker.
@@ -261,7 +258,7 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
         placement(rect(0, 0, 12, 50)),
         true,
     );
-    assert_eq!(state.lines.as_ref(), &vec!["assert!  …".to_string()]);
+    insta::assert_snapshot!(state.lines.join("\n"), @"assert!  …");
 }
 
 /// When there's no room left for a trailing column at all (`trail_col`
@@ -270,8 +267,8 @@ fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
 #[test]
 fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
     let rows = vec![MenuRow {
-        main: "ab".to_string(),
-        trailing: Some("xy".to_string()),
+        main: "ab".into(),
+        trailing: Some("xy".into()),
     }];
     // max_inner = pane.width - 2 = 2, all consumed by `main` alone.
     let state = resolve_menu(
@@ -280,7 +277,7 @@ fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
         placement(rect(0, 0, 4, 50)),
         true,
     );
-    assert_eq!(state.lines.as_ref(), &vec!["ab".to_string()]);
+    insta::assert_snapshot!(state.lines.join("\n"), @"ab");
 }
 
 /// A session narrowed to zero matches must not panic computing `selected`

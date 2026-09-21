@@ -1,5 +1,4 @@
 use super::super::*;
-use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -134,60 +133,6 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
     assert!(
         new_sels.primary().head() < new_text.end(),
         "cursor must land before the structural newline, not on/after it"
-    );
-}
-
-// ── replace_span_around_cursors (per-cursor `start_of`) ──────────────────────
-//
-// `replace_around_cursors` (tested above) is the uniform-`back` case; these
-// exercise `replace_span_around_cursors` directly with a `word_start_before`-
-// based `start_of`, the shape LSP completion's `insertText` fallback uses for
-// every cursor but its own primary (see `completion.rs`'s `accept`).
-
-#[test]
-fn replace_span_around_cursors_word_start_before_uses_each_cursors_own_token_length() {
-    // Primary's token is "foo" (3 chars); the second cursor's own preceding
-    // token is "o" (1 char, preceded by punctuation) — using the primary's
-    // token length there (as a naive uniform `back` would) eats "x(" too.
-    // Independent oracle: this fails under `replace_around_cursors` with a
-    // hardcoded `back = 3`, so it isn't circular against the fix.
-    assert_state!(
-        "foo-[ ]>x(o-[)]>\n",
-        |(text, sels)| replace_span_around_cursors(
-            text,
-            sels,
-            |text, pos| word_start_before(text, pos, WordChars::default()),
-            0,
-            "Z"
-        ),
-        "Z-[ ]>x(Z-[)]>\n"
-    );
-}
-
-#[test]
-fn replace_span_around_cursors_skips_typed_chars_before_scanning_each_cursors_prefix() {
-    // Both cursors typed the same 2 chars ("go") since the session began —
-    // uniform, real multi-cursor typing keeps every cursor in lockstep — but
-    // each had a different pre-existing token before that: "foo" ahead of
-    // the first, "o" (preceded by punctuation) ahead of the second. The
-    // typed suffix must be skipped before each cursor's own backward scan
-    // starts, or the scan would walk into the "go" every cursor typed
-    // instead of stopping at each cursor's own pre-session content.
-    let typed = 2;
-    assert_state!(
-        "foogo-[ ]>x(ogo-[)]>\n",
-        |(text, sels)| replace_span_around_cursors(
-            text,
-            sels,
-            move |text, head| word_start_before(
-                text,
-                head.retreat_saturating(typed),
-                WordChars::default()
-            ),
-            0,
-            "Z"
-        ),
-        "Z-[ ]>x(Z-[)]>\n"
     );
 }
 

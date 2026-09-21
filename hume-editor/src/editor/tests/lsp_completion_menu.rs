@@ -9,8 +9,7 @@
 
 use super::*;
 use crate::editor::buffer::Buffer;
-use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
-use crate::editor::input_stack::CompletionLayer;
+use crate::editor::completion::CompletionItem;
 use crate::editor::{commands, cursor};
 use hume_editing::selection::{Selection, SelectionSet};
 use hume_editing::text::BufferText;
@@ -18,6 +17,7 @@ use hume_engine::pane::WrapMode;
 use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
 use hume_rope::offset::ExclusiveRange;
+use hume_scripting::host::CursorHost;
 
 fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
     let items_json: Vec<serde_json::Value> = items
@@ -36,23 +36,17 @@ fn begin_session(ed: &mut Editor, items: &[(&str, Option<&str>)]) {
 /// Generalized form of [`begin_session`] for items carrying `textEdit` /
 /// `additionalTextEdits` — arbitrary JSON, not just label/detail.
 fn begin_session_items(ed: &mut Editor, items: &[serde_json::Value]) {
-    let bid = ed.focused_buffer_id();
     let items: Vec<CompletionItem> = items
         .iter()
         .map(|v| CompletionItem::from_json(v).expect("test item"))
         .collect();
-    let session = CompletionSession::begin_buffer(
-        &ed.state,
-        bid,
-        "test".into(),
-        0,
-        MatchKind::Fuzzy,
-        items,
-        false,
-    )
-    .unwrap();
-    ed.state
-        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+    // The same call a real plugin makes to seed `#:anchor` — these tests
+    // exercise Insert-mode routing and rendering, not the anchor-seeding
+    // policy, so they want the same default the LSP plugin now asks for
+    // explicitly rather than getting it automatically.
+    let bid = ed.focused_buffer_id();
+    let anchor = live_host!(ed).word_start_before_cursor(bid).map(co);
+    begin_completion_session(ed, items, anchor);
 }
 
 // ── Interaction with the two popup homes ─────────────────────────────────────
@@ -420,10 +414,11 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 fn backspace_past_the_anchor_dismisses_the_session() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
-    // A non-word char right before the trigger point — `completion-begin!`'s
-    // own `word_start_before` scan stops immediately on it, so the anchor
-    // lands exactly at the cursor (same as if a word char *had* preceded it
-    // and been scanned into the seeded filter instead, see
+    // A non-word char right before the trigger point — `begin_session_items`'s
+    // own `word_start_before` scan (standing in for the LSP plugin's
+    // `(word-start-before-cursor bid)` call) stops immediately on it, so the
+    // anchor lands exactly at the cursor (same as if a word char *had*
+    // preceded it and been scanned into the seeded filter instead, see
     // `backspace_within_the_token_refilters_and_keeps_the_session_open`).
     ed.feed_key(key(';'));
     begin_session(&mut ed, &[("foo", None)]);
@@ -444,10 +439,11 @@ fn backspace_past_the_anchor_dismisses_the_session() {
 }
 
 /// A word already typed before the trigger is scanned into the seeded
-/// anchor/filter (`completion-begin!`'s own `word_start_before` scan) — so a
-/// Backspace that only removes part of *that* prefix narrows the session
-/// exactly like removing a char typed after the trigger would, rather than
-/// crossing the anchor and dismissing on the very first press.
+/// anchor/filter (`begin_session_items`'s own `word_start_before` scan,
+/// standing in for the LSP plugin's `(word-start-before-cursor bid)` call)
+/// — so a Backspace that only removes part of *that* prefix narrows the
+/// session exactly like removing a char typed after the trigger would,
+/// rather than crossing the anchor and dismissing on the very first press.
 #[test]
 fn backspace_within_a_seeded_prefix_narrows_instead_of_dismissing() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
@@ -851,14 +847,14 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     for ch in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
         ed.feed_key(key(ch));
     }
-    // A space, then one more word char, before triggering: the popup now
-    // anchors at `word_start_before` the cursor (right after the space), not
-    // at the live cursor itself — landing one char earlier than it, and
-    // still many display lines into the wrapped text, so this test still
-    // exercises wrap-aware positioning rather than collapsing to the
-    // buffer's very first display line.
-    ed.feed_key(key(' '));
-    ed.feed_key(key('z'));
+    // A non-word char right before triggering: `begin_session_items`'s own
+    // `word_start_before` scan stops immediately on a non-word predecessor,
+    // so the anchor lands exactly at the cursor — the
+    // fast path this test exists to pin (`anchor_char == focused_cursor_char`)
+    // is only taken when the two agree. Still many display lines into the
+    // wrapped text, so this exercises wrap-aware positioning rather than
+    // collapsing to the buffer's very first display line.
+    ed.feed_key(key(';'));
     begin_session(&mut ed, &[("candidate", None)]);
 
     let mut ctx = RenderContext::new();
@@ -878,9 +874,10 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
 
     // Independent oracle: re-derive the same cell via a fresh `DisplayLineMap` and
     // `cursor::content_pos` — the exact primitives the fast path's slow
-    // fallback uses — entirely bypassing `ctx.cursor_content_pos`. Reads the
-    // session's own anchor, not the live cursor — the two now differ by one
-    // char (the trailing "z"), and the popup positions at the anchor.
+    // fallback uses — entirely bypassing `ctx.cursor_content_pos`. The
+    // session's anchor and the live cursor agree here (see the trigger-char
+    // comment above), so either would do; reading the anchor is what
+    // production's `popup_placement` call is actually keyed on.
     let bid = ed.focused_buffer_id();
     let cursor_char = ed
         .state
@@ -931,18 +928,22 @@ fn accepting_a_completion_lands_at_every_cursor_not_just_the_primary() {
     assert_eq!(ed.doc().text().to_string(), "std std\n");
 }
 
-/// `ReplaceSpan::TokenBefore` resolves the primary cursor's token start from
-/// the session anchor and every other cursor's from `head - typed` — two
-/// different expressions of the same idea, each of which must honor this
-/// buffer's `word-chars`. Typing "x-" before `begin_session` and "st" after
-/// it makes `typed` non-zero, so the non-primary arm's subtraction is
-/// actually exercised, not just its head.
+/// The `insertText` fallback's replacement span is uniform across every
+/// cursor — the same `(back, forward)` pair, derived once from the primary's
+/// own anchor — not each cursor's own preceding word-chars token. Here the
+/// primary has nothing before it (its anchor sits at the trigger point)
+/// while the non-primary cursor sits right after a pre-existing, unselected
+/// "abc" the trigger never saw; a per-cursor token scan would reach back
+/// through "abc" too, since `-` is configured as a word char and nothing
+/// separates it from the typed prefix. The uniform span leaves "abc"
+/// untouched instead — asymmetric surrounding text does not change what a
+/// non-primary cursor loses.
 ///
-/// Fail oracle: drop `chars` from either arm and that cursor keeps its "x-"
-/// prefix — "x-std x-std\n" instead of "std std\n".
+/// Fail oracle: a per-cursor scan instead of the uniform span consumes
+/// "abc" at the second cursor — "std std\n" instead of "std abcstd\n".
 #[test]
-fn accepting_a_completion_replaces_the_whole_word_chars_token_at_every_cursor() {
-    let mut ed = editor_from("-[foo]> -[bar]>\n");
+fn accepting_a_completion_uses_the_same_span_at_every_cursor_regardless_of_surrounding_text() {
+    let mut ed = editor_from("-[foo]> abc-[bar]>\n");
     ed.state.settings.word_chars = "-".into();
     ed.feed_key(key('c'));
     for ch in "x-".chars() {
@@ -950,12 +951,12 @@ fn accepting_a_completion_replaces_the_whole_word_chars_token_at_every_cursor() 
     }
     // `filterText` "x-st" separate from `label`/`insertText` "std":
     // `completion-begin!` now seeds the session filter from the word before
-    // the cursor ("x-", with '-' configured as a word char), and the filter
-    // grows to "x-st" once "st" lands below — the item must fuzzy-match
-    // both to survive into `filtered`. A real server would never suggest
-    // "std" as a completion for "x-st", but this test is about the
-    // accept-time replacement span, not ranking, hence the fixed
-    // `filterText` standing in for a plausible one.
+    // the primary cursor ("x-", with '-' configured as a word char — nothing
+    // precedes it there), and the filter grows to "x-st" once "st" lands
+    // below — the item must fuzzy-match both to survive into `filtered`. A
+    // real server would never suggest "std" as a completion for "x-st", but
+    // this test is about the accept-time replacement span, not ranking,
+    // hence the fixed `filterText` standing in for a plausible one.
     begin_session_items(
         &mut ed,
         &[serde_json::json!({"label": "std", "insertText": "std", "filterText": "x-st"})],
@@ -964,7 +965,13 @@ fn accepting_a_completion_replaces_the_whole_word_chars_token_at_every_cursor() 
         ed.feed_key(key(ch));
     }
     ed.feed_key(key_enter());
-    assert_eq!(ed.doc().text().to_string(), "std std\n");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "std abcstd\n",
+        "the primary's own (back, forward) span, not a per-cursor token \
+         scan, must apply at the non-primary cursor too — \"abc\" is outside \
+         that span and must survive"
+    );
 }
 
 #[test]
@@ -1127,6 +1134,50 @@ fn multi_cursor_accept_is_one_undo_step_from_steel_outside_insert_mode() {
         "one undo must revert both cursors' completion and additionalTextEdits \
          together, even though accept opened its own edit group"
     );
+}
+
+/// The uniform `(back, forward)` span travels through an `additionalTextEdits`
+/// shift for free — every cursor's own *live* head is already shifted by
+/// `commit_char_edits`/`translate_in_place` before the completion's own edit
+/// reads it, so no per-cursor remap is needed: `back`/`forward` chars
+/// behind/ahead of the already-shifted head is the right span outright.
+/// Here the header lands between the two cursors: unrelated to either span,
+/// but it does shift the *second* cursor's absolute position, so this pins
+/// that the second cursor's span still lands on its own correct (shifted)
+/// content, not on text the header pushed into its way.
+///
+/// Fail oracle: a per-cursor scan re-deriving each cursor's token from live
+/// (post-header) text, instead of retreating a fixed count from an
+/// already-shifted head, would scan straight through "H" and "abc" as one
+/// word-chars run, consuming both cursors' whole prefix back past the
+/// header: "std std\n" instead of "std aHbcstd\n".
+#[test]
+fn accepting_a_completion_with_additional_text_edits_between_cursors_lands_correctly_at_both() {
+    let mut ed = editor_from("-[foo]> abc-[bar]>\n");
+    ed.feed_key(key('c'));
+    for ch in "xy".chars() {
+        ed.feed_key(key(ch));
+    }
+    // Buffer is now "xy abcxy\n": cursor1 (primary) after the first "xy" at
+    // char 2, cursor2 after the second at char 8. `begin_session_items` runs
+    // here, after "xy" is already typed, so `rope_at_begin` is this same
+    // buffer — the header's wire position needs no forward-mapping through
+    // `cs_since_begin` (nothing is typed after begin in this test). Character
+    // 4 is "right before 'b'", strictly between the two cursors' own spans.
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({
+            "label": "std",
+            "insertText": "std",
+            "filterText": "xy",
+            "additionalTextEdits": [
+                {"range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 4}},
+                 "newText": "H"}
+            ]
+        })],
+    );
+    ed.feed_key(key_enter());
+    assert_eq!(ed.doc().text().to_string(), "std aHbcstd\n");
 }
 
 #[test]

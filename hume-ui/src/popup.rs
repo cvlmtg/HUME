@@ -101,8 +101,8 @@ struct Wrapped {
     lines: Arc<Vec<String>>,
     /// Widest line's display width — measured once per wrap, not
     /// re-measured every frame an unchanged wrap is reused. See
-    /// [`super::menu_box::menu_inner_width`], the same measurement
-    /// [`MenuRows`] caches for the same reason.
+    /// [`super::menu_box::widest`], the same measurement [`MenuRows`]
+    /// caches for the same reason.
     inner_width: u16,
     styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
@@ -132,12 +132,10 @@ impl PopupContent {
     /// an unchanged width across frames is O(1), not a re-wrap. `lines`/
     /// `styled_rows` are `Arc`-wrapped here so the *cache* itself is a
     /// pointer, not a copy, across frames; [`resolve_popup`]/[`resolve_band`]
-    /// then window down to what's visible (`window_slice`) — an `Arc` clone,
-    /// not a copy, when the window covers the whole wrap (content short
-    /// enough to need no scrolling, the common case), and otherwise a fresh,
-    /// owned `Vec` bounded by the visible height (⅓ pane for a popup,
-    /// [`band_visible_rows`] for the band) — a handful of rows per frame,
-    /// never the whole wrapped document.
+    /// hand that same `Arc` straight to [`PopupState`]/[`PopupBandState`]
+    /// (an `Arc` clone, never a copy, regardless of scroll position) along
+    /// with a `visible` range into it — the window is a view, not a slice
+    /// taken up front.
     fn wrapped(&mut self, width: u16) -> &Wrapped {
         let stale = self.cache.as_ref().is_none_or(|c| c.width != width);
         if stale {
@@ -147,7 +145,7 @@ impl PopupContent {
                 .map(|row| row.iter().map(|(s, _)| s.as_str()).collect())
                 .collect();
             let styled_rows = self.styled.then(|| Arc::new(rows));
-            let inner_width = super::menu_box::menu_inner_width(&lines);
+            let inner_width = super::menu_box::widest(lines.iter().map(String::as_str));
             self.cache = Some(Wrapped {
                 width,
                 lines: Arc::new(lines),
@@ -162,13 +160,20 @@ impl PopupContent {
 /// Fully-resolved popup/menu content and position — computed once per frame
 /// by the write side; the overlay only paints.
 pub struct PopupState {
-    /// Exactly the rows on screen — already windowed to `rect`'s inner
-    /// height, not the popup/menu's full row count. Owned (not `Arc`-shared
-    /// with the source [`PopupContent`]'s cache, unlike before windowing
-    /// moved here): the visible slice is a handful of rows, cheap to clone
-    /// fresh each frame, and a menu's own unwrapped labels come from
-    /// [`MenuRows`] rather than a `PopupContent` cache at all.
+    /// For a popup (`resolve_popup`): the *full* wrapped row list,
+    /// `Arc`-shared with the source [`PopupContent`]'s cache — `visible`
+    /// carries the window into it, so a scrolled popup taller than its box
+    /// still costs a refcount bump per frame, not a fresh `Vec` copy of
+    /// whatever's on screen. For a menu (`resolve_menu`): already just the
+    /// visible window, composed fresh every frame (no cache to share, and
+    /// [`MenuRows`] never keeps a full-list `Arc` of its own) — `visible` is
+    /// then `0..lines.len()`, a no-op slice.
     pub lines: Arc<Vec<String>>,
+    /// The window into `lines` that's actually on screen — `draw_menu_box`
+    /// paints `&lines[visible]`, never `lines` whole. Same length as `rect`'s
+    /// inner height (or less, for the last partial window at the end of a
+    /// short list).
+    pub visible: std::ops::Range<usize>,
     /// Outer footprint (including the 1-cell frame), top-left corner already
     /// flipped/clamped by the write side. Each caller's row cap differs
     /// (hover: ⅓ pane height; menus/LSP completion: `MAX_MENU_ROWS` with a
@@ -178,28 +183,30 @@ pub struct PopupState {
     /// same box.
     pub rect: Rect,
     /// The highlighted row index, for menus — window-relative (an index
-    /// into `lines`, not into the full filtered/ranked list). `None` for a
+    /// into `visible`, not into the full filtered/ranked list). `None` for a
     /// plain popup.
     pub selected: Option<usize>,
-    /// The full, unwindowed row count `lines` was sliced from — together
-    /// with `scroll`, what the scrollbar thumb sizes and places itself
-    /// against; `lines.len()` alone can't stand in for it once `lines` is
-    /// only the visible window.
+    /// The full, unwindowed row count `lines`/`visible` were sliced from —
+    /// together with `scroll`, what the scrollbar thumb sizes and places
+    /// itself against; for a menu, `lines.len()` alone can't stand in for it
+    /// since `lines` is only ever the visible window there.
     pub total_rows: usize,
-    /// The visible window's own start within the full list. For a plain
-    /// popup (`selected.is_none()`), the resolved counterpart of
+    /// The visible window's own start within the full list — equal to
+    /// `visible.start` for a popup, but a distinct value for a menu, whose
+    /// `visible` indexes into the small per-frame `lines` rather than the
+    /// full filtered/ranked list `total_rows` counts. For a plain popup
+    /// (`selected.is_none()`), the resolved counterpart of
     /// `PopupLayer::scroll`; for a menu, wherever `window_range` centered
-    /// the window around `selected`. Used only by the scrollbar thumb —
-    /// `lines` is already sliced to this window, so nothing else needs it.
+    /// the window around `selected`. Used only by the scrollbar thumb.
     pub scroll: usize,
     /// Whether to draw box-drawing border glyphs around the popup (vs. a
     /// plain background-filled 1-cell margin). Fed from the `popup-border`
     /// setting.
     pub border: bool,
-    /// Per-run styled counterpart of `lines`, same length, same window, and
-    /// same text when flattened — `Some` only for a [`PopupContent::styled`]
-    /// popup. `None` for every other popup and for menus, which paint
-    /// `lines` in one style regardless.
+    /// Per-run styled counterpart of `lines`, same length and same text when
+    /// flattened — `Some` only for a [`PopupContent::styled`] popup. `None`
+    /// for every other popup and for menus, which paint `lines` in one style
+    /// regardless. Sliced by `visible` the same way `lines` is.
     pub styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
 
@@ -235,13 +242,16 @@ impl OverlayProvider for PopupOverlay {
         draw_menu_box(
             canvas,
             state.rect,
-            &state.lines,
+            &state.lines[state.visible.clone()],
             state.selected,
             state.total_rows,
             state.scroll,
             state.border,
             MenuBoxStyles::resolve(theme, self.scope),
-            state.styled_rows.as_ref().map(|rows| rows.as_slice()),
+            state
+                .styled_rows
+                .as_ref()
+                .map(|rows| &rows[state.visible.clone()]),
         );
     }
 }
@@ -255,11 +265,15 @@ impl OverlayProvider for PopupOverlay {
 pub struct PopupBandState {
     /// Word-wrapped to the band's width (the write side, `Editor::
     /// sync_popup_band_view`, wraps against `last_terminal_area` — the same
-    /// raw area the engine will render the band into) and already windowed
-    /// to what's visible — see [`PopupState::lines`]'s doc, same contract.
+    /// raw area the engine will render the band into) — the *full* wrapped
+    /// list, `Arc`-shared with the source `PopupContent`'s cache; `visible`
+    /// carries the window into it. See [`PopupState::lines`]'s doc, same
+    /// contract (a docked popup has no menu counterpart, so this is always
+    /// the shared-cache case).
     pub lines: Arc<Vec<String>>,
-    /// See [`PopupState::total_rows`] — `lines.len()` alone can't stand in
-    /// for the full wrapped row count once `lines` is just the window.
+    /// See [`PopupState::visible`].
+    pub visible: std::ops::Range<usize>,
+    /// See [`PopupState::total_rows`].
     pub total_rows: usize,
     pub scroll: usize,
     pub border: bool,
@@ -306,13 +320,16 @@ impl BottomBandProvider for PopupBandWidget {
         draw_menu_box(
             canvas,
             area,
-            &state.lines,
+            &state.lines[state.visible.clone()],
             None,
             state.total_rows,
             state.scroll,
             state.border,
             MenuBoxStyles::resolve(theme, ui_scopes::POPUP),
-            state.styled_rows.as_ref().map(|rows| rows.as_slice()),
+            state
+                .styled_rows
+                .as_ref()
+                .map(|rows| &rows[state.visible.clone()]),
         );
     }
 }
@@ -359,33 +376,16 @@ pub fn resolve_popup(
         resolve_popup_geometry(outer_w, outer_h, placement.anchor, placement.pane_rect);
     let inner_h = outer_h.saturating_sub(2) as usize;
     let scroll = scroll.min(total_rows.saturating_sub(inner_h));
-    let range = super::menu_box::window_range(total_rows, scroll, inner_h);
-    let lines = window_slice(&wrapped.lines, range.clone());
-    let styled_rows = wrapped
-        .styled_rows
-        .as_ref()
-        .map(|rows| window_slice(rows, range));
+    let visible = super::menu_box::window_range(total_rows, scroll, inner_h);
     PopupState {
-        lines,
+        lines: Arc::clone(&wrapped.lines),
+        visible,
         rect: Rect::new(x, y, outer_w, outer_h),
         selected: None,
         total_rows,
         scroll,
-        styled_rows,
+        styled_rows: wrapped.styled_rows.clone(),
         border,
-    }
-}
-
-/// Slice `full` down to `range`, sharing the same `Arc` (no copy) when the
-/// window covers the whole list — the common case for a popup/band short
-/// enough to need no scrolling at all, and worth keeping cheap: an unchanged
-/// wrap at an unchanged width is then still an `Arc` clone end to end, not a
-/// fresh `Vec` built from it every frame.
-fn window_slice<T: Clone>(full: &Arc<Vec<T>>, range: std::ops::Range<usize>) -> Arc<Vec<T>> {
-    if range == (0..full.len()) {
-        Arc::clone(full)
-    } else {
-        Arc::new(full[range].to_vec())
     }
 }
 
@@ -409,17 +409,13 @@ pub fn resolve_band(
     let total_rows = wrapped.lines.len();
     let inner_h = band_visible_rows(total_rows, max_rows);
     let scroll = scroll.min(total_rows.saturating_sub(inner_h));
-    let range = super::menu_box::window_range(total_rows, scroll, inner_h);
-    let lines = window_slice(&wrapped.lines, range.clone());
-    let styled_rows = wrapped
-        .styled_rows
-        .as_ref()
-        .map(|rows| window_slice(rows, range));
+    let visible = super::menu_box::window_range(total_rows, scroll, inner_h);
     PopupBandState {
-        lines,
+        lines: Arc::clone(&wrapped.lines),
+        visible,
         total_rows,
         scroll,
-        styled_rows,
+        styled_rows: wrapped.styled_rows.clone(),
         border,
     }
 }
@@ -427,17 +423,20 @@ pub fn resolve_band(
 /// One menu row: a primary label, plus an optional second part right-aligned
 /// against it (an LSP completion candidate's `detail`, e.g.) — see
 /// [`resolve_menu`] for how the two are laid out into one painted string.
+/// `Arc<str>`, not `String`: a completion source clones its own already-
+/// interned label/detail into this every keystroke ([`MenuRows`]' own doc),
+/// so a `.clone()` here is a refcount bump, not a re-copy.
 #[derive(Clone)]
 pub struct MenuRow {
-    pub main: String,
-    pub trailing: Option<String>,
+    pub main: Arc<str>,
+    pub trailing: Option<Arc<str>>,
 }
 
 impl MenuRow {
     /// A single-column row — `trailing` absent.
-    pub fn plain(main: String) -> Self {
+    pub fn plain(main: impl Into<Arc<str>>) -> Self {
         Self {
-            main,
+            main: main.into(),
             trailing: None,
         }
     }
@@ -470,16 +469,19 @@ impl MenuRows {
         self.0.is_empty()
     }
 
-    /// Every row's `main` text, in order — for a caller that only cares
-    /// about the primary label (tests; `show-menu!`'s rows, which have no
-    /// `trailing` at all).
+    /// Every row's `main` text, in order. Test-only in practice (no
+    /// production caller — `show-menu!` builds its `MenuRows::plain` rows
+    /// and never reads them back), but `#[cfg(test)]` can't gate it here:
+    /// two of its three call sites are `hume-editor`'s own tests, a
+    /// downstream crate that only ever sees this crate's ordinary build.
+    /// `self.0`'s tuple field is private, so this stays the one way to read
+    /// a row's label back without exposing that field instead.
     pub fn labels(&self) -> Vec<&str> {
-        self.0.iter().map(|r| r.main.as_str()).collect()
+        self.0.iter().map(|r| r.main.as_ref()).collect()
     }
 }
 
-/// The blank column separator between a row's `main` and `trailing` parts —
-/// matches the single-column format's own former `"label  detail"` spacing.
+/// The blank column separator between a row's `main` and `trailing` parts.
 const MENU_COLUMN_GAP: u16 = 2;
 
 /// Resolve a menu's (selection menu or LSP completion menu) content +
@@ -502,7 +504,7 @@ pub fn resolve_menu(
     // pane clamp on it can be applied directly: `resolve_popup_geometry`
     // below reclamps it again with the final width, but a value already
     // `<=` the pane's height is unaffected by a second `.min`.
-    let raw_outer_h = (total_rows.min(super::menu_box::MAX_MENU_ROWS as usize) as u16) + 2;
+    let raw_outer_h = super::menu_box::outer_rows(total_rows, super::menu_box::MAX_MENU_ROWS);
     let outer_h = raw_outer_h.min(placement.pane_rect.height);
     let inner_h = outer_h.saturating_sub(2) as usize;
 
@@ -525,27 +527,18 @@ pub fn resolve_menu(
     let visible = &rows.0[range.clone()];
 
     let max_inner = placement.pane_rect.width.saturating_sub(2);
-    let main_w = visible
-        .iter()
-        .map(|r| super::width::text_width(&r.main))
-        .max()
-        .unwrap_or(0) as u16;
-    let trail_w = visible
-        .iter()
-        .filter_map(|r| r.trailing.as_deref())
-        .map(super::width::text_width)
-        .max()
-        .unwrap_or(0) as u16;
+    let main_w = super::menu_box::widest(visible.iter().map(|r| r.main.as_ref()));
+    let trail_w = super::menu_box::widest(visible.iter().filter_map(|r| r.trailing.as_deref()));
     let main_col = main_w.min(max_inner);
-    let trail_col = if trail_w == 0 {
-        0
-    } else {
-        trail_w.min(
-            max_inner
-                .saturating_sub(main_col)
-                .saturating_sub(MENU_COLUMN_GAP),
-        )
-    };
+    // `trail_w == 0` (no row has a `trailing` at all) already collapses to
+    // `trail_col == 0` through the `.min` below — a real budget-of-zero and
+    // an absent trailing column are indistinguishable to this arithmetic,
+    // and that's fine: both mean "reserve no trailing column".
+    let trail_col = trail_w.min(
+        max_inner
+            .saturating_sub(main_col)
+            .saturating_sub(MENU_COLUMN_GAP),
+    );
     let inner_w = main_col
         + if trail_col > 0 {
             MENU_COLUMN_GAP + trail_col
@@ -560,8 +553,10 @@ pub fn resolve_menu(
 
     let (x, y, outer_w, outer_h) =
         resolve_popup_geometry(inner_w + 2, outer_h, placement.anchor, placement.pane_rect);
+    let visible_len = lines.len();
     PopupState {
         lines: Arc::new(lines),
+        visible: 0..visible_len,
         rect: Rect::new(x, y, outer_w, outer_h),
         selected: selected_abs.map(|s| s - range.start),
         total_rows,

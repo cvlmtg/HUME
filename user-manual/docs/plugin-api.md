@@ -103,6 +103,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(selections-linewise? bid)` | `#t` if every one of `bid`'s selections covers whole lines. A cursor sitting alone on a blank line doesn't count either way — it neither satisfies this nor breaks it when a real whole-line selection is also present — and `#f` if every selection is such a cursor |
 | `(selections-charwise? bid)` | `#t` if none of `bid`'s selections covers whole lines, with the same blank-line-cursor exception as above; `#t` if every selection is such a cursor |
 | `(symbol-under-cursor bid)` | The identifier under `bid`'s primary cursor, as a string |
+| `(word-start-before-cursor bid)` | Char offset where the word before `bid`'s cursor starts, or the cursor's own position when nothing word-like precedes it; `#f` if `bid` isn't shown in any pane |
 | `(buffer-id? v)`, `(pane-id? v)` | `#t` if `v` is an opaque BufferId/PaneId |
 | `(buffer-id=? a b)`, `(pane-id=? a b)` | Value-equality for two BufferId/PaneId handles |
 
@@ -189,7 +190,7 @@ These are editor-builtin commands any completion plugin can drive — a source r
 | Call | Effect |
 |------|--------|
 | `(register-trigger-chars! source language chars)` | Register 1-char trigger strings `chars` for `(source, language)` — feeds the `on-trigger-char` hook |
-| `(completion-begin! bid items #:source #:incomplete #:priority #:match)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against typed text. Further typing refilters the open menu in place |
+| `(completion-begin! bid items #:source #:anchor #:incomplete #:priority #:match)` | Open a completion session for `bid` with a list of decoded `CompletionItem` hashmaps tagged as coming from `source` — returns a session token. `#:anchor` is the span accepting a candidate replaces, not just where filtering starts: a char offset (`(word-start-before-cursor bid)` for the word before the cursor is the common choice) or `#f` to replace nothing before the cursor, filtering only as the user keeps typing. It must be on the cursor's own line. `#:match` (`'fuzzy` default, `'string`, or `'delegated`) picks how items are scored against typed text. Further typing refilters the open menu in place |
 | `(completion-add-items! token items #:source #:priority #:match #:incomplete)` | Merge more items into the session `token` names, replacing that `source`'s prior contribution rather than appending — a stale `token` (the session closed or restarted since) is a silent no-op |
 | `(completion-update-filter! text)` | Re-filter the open session against `text` |
 | `(completion-top n)` | The top `n` ranked/filtered items |

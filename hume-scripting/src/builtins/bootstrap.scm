@@ -123,9 +123,9 @@
 ;; after macro expansion has already tried (and failed) to expand it. The
 ;; external keyword stays `#:match`; keyword name and bound identifier are
 ;; independent in Steel's `#:kw [name default]` syntax.
-(define (completion-begin! bid items #:source source #:incomplete [incomplete #f] #:priority [priority 0]
-                                      #:match [match-kind 'fuzzy])
-  (%completion-begin! bid items incomplete source priority match-kind))
+(define (completion-begin! bid items #:source source #:anchor anchor #:incomplete [incomplete #f]
+                                      #:priority [priority 0] #:match [match-kind 'fuzzy])
+  (%completion-begin! bid items incomplete source priority match-kind anchor))
 
 (define (completion-add-items! token items #:source source #:priority [priority 0]
                                             #:match [match-kind 'fuzzy] #:incomplete [incomplete #f])

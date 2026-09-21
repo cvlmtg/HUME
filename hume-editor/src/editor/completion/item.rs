@@ -15,13 +15,18 @@ use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snipp
 /// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
 /// hook and `completionItem/resolve` both see the server's original text).
 pub(in crate::editor) struct CompletionItem {
-    pub(super) label: String,
+    /// `Arc<str>`, not `String`: [`Self::menu_row`] reads this fresh every
+    /// keystroke (`CompletionSession::menu_rows`'s cache is invalidated by
+    /// every refilter), and a filtered set can run into the thousands — a
+    /// refcount bump beats re-copying every candidate's label each time.
+    pub(super) label: std::sync::Arc<str>,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
     /// typed field: `CompletionItemKind` wraps a private `i32` with no
     /// accessor.
     pub(super) kind: Option<i64>,
-    pub(super) detail: Option<String>,
+    /// `Arc<str>` for the same reason as `label`.
+    pub(super) detail: Option<std::sync::Arc<str>>,
     pub(super) sort_text: String,
     pub(super) filter_text: String,
     pub(super) insert_text: String,
@@ -54,9 +59,10 @@ impl CompletionItem {
     /// `kind`/`detail`/`text_edit` absent, no `additionalTextEdits`, `raw`
     /// null — nothing here is a wire concern.
     pub(super) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
+        let filter_text = label.clone();
         Self {
-            filter_text: label.clone(),
-            label,
+            filter_text,
+            label: label.into(),
             insert_text,
             sort_text,
             kind: None,
@@ -123,9 +129,9 @@ impl CompletionItem {
         let has_additional_text_edits = item.additional_text_edits.is_some();
         let additional_text_edits = item.additional_text_edits.unwrap_or_default();
         Self {
-            label,
+            label: label.into(),
             kind,
-            detail: item.detail,
+            detail: item.detail.map(Into::into),
             sort_text,
             filter_text,
             insert_text,
@@ -146,7 +152,10 @@ impl CompletionItem {
     fn from_json_lenient(v: &serde_json::Value) -> Option<Self> {
         let label = v.get("label")?.as_str()?.to_string();
         let kind = v.get("kind").and_then(|x| x.as_i64());
-        let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
+        let detail = v
+            .get("detail")
+            .and_then(|x| x.as_str())
+            .map(std::sync::Arc::from);
         let string_or_label = |key: &str| -> String {
             v.get(key)
                 .and_then(|x| x.as_str())
@@ -178,7 +187,7 @@ impl CompletionItem {
         let has_additional_text_edits = v.get("additionalTextEdits").is_some();
         let additional_text_edits = parse_additional_text_edits_lenient(v);
         Some(Self {
-            label,
+            label: label.into(),
             kind,
             detail,
             sort_text,
@@ -200,16 +209,16 @@ impl CompletionItem {
         &self.insert_text
     }
 
-    /// `source` is the contributing source's name — no longer a field of
-    /// `Self` (`session.rs` now pairs an item with its source's index into
-    /// its own source list instead), so the caller — the only one that
-    /// still knows it — passes it in for the Steel-visible `"source"` key
+    /// `source` is the contributing source's name. `session.rs` pairs each
+    /// item with its source's index into its own source list rather than
+    /// storing the name on `Self`, so the caller — the only one that knows
+    /// it — passes it in for the Steel-visible `"source"` key
     /// `completion-top` surfaces.
     pub(super) fn to_json(&self, source: &str) -> serde_json::Value {
         serde_json::json!({
-            "label": self.label,
+            "label": &*self.label,
             "kind": self.kind,
-            "detail": self.detail,
+            "detail": self.detail.as_deref(),
             "source": source,
         })
     }
@@ -218,15 +227,14 @@ impl CompletionItem {
     /// non-empty) as the right-aligned trailing one — reads both directly
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
-    /// (`hume_ui::popup`), not this store's.
+    /// (`hume_ui::popup`), not this store's. Both clones are refcount bumps
+    /// (`label`/`detail` are `Arc<str>`) — called fresh every keystroke by
+    /// `CompletionSession::menu_rows`, for every candidate still in
+    /// `filtered`, not just the handful that end up on screen.
     pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
             main: self.label.clone(),
-            trailing: self
-                .detail
-                .as_deref()
-                .filter(|d| !d.is_empty())
-                .map(str::to_string),
+            trailing: self.detail.clone().filter(|d| !d.is_empty()),
         }
     }
 }

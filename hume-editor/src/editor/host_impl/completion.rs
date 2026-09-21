@@ -54,10 +54,89 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         priority: i64,
         match_kind: hume_scripting::host::MatchKind,
         incomplete: bool,
+        anchor: Option<usize>,
     ) -> Result<u64, String> {
         let match_kind = match_kind_from_host(match_kind);
-        if self.state.buffers.try_get(bid).is_none() {
+        let Some(buf) = self.state.buffers.try_get(bid) else {
             return Err("completion-begin!: no such buffer".to_string());
+        };
+        // Mint against this buffer's own rope: range-checked, then snapped to
+        // a grapheme-cluster start. An untrusted Steel anchor (a plugin's own
+        // char arithmetic, or a hand-decoded LSP wire position) can land
+        // mid-cluster; nothing downstream re-validates that before slicing
+        // the seeded filter off it (`begin_buffer`) or placing the menu
+        // against it (`popup_placement`) — `replace_around_cursors` happens
+        // to snap its own `raw_start` three layers downstream at accept
+        // time, but leaning on that distant invariant is why this mint
+        // should establish it directly instead.
+        let anchor = anchor
+            .map(|idx| -> Result<_, String> {
+                let rope = buf.text().rope();
+                let checked =
+                    hume_rope::offset::CharOffset::checked(rope, idx).ok_or_else(|| {
+                        format!(
+                            "completion-begin!: #:anchor offset {idx} is out of range \
+                         (buffer has {} chars)",
+                            rope.len_chars()
+                        )
+                    })?;
+                Ok(hume_editing::grapheme::snap_to_cluster_start(
+                    buf.text(),
+                    checked,
+                ))
+            })
+            .transpose()?;
+        // The focused pane may no longer show `bid` at all — the async
+        // response this call answers landed after the user switched panes,
+        // or switched buffers within the same pane. That's the ordinary
+        // "response arrived late" race, not a caller mistake, and it applies
+        // whether or not an anchor was given: with no live head, there is
+        // nothing to validate `anchor` against below, and no anchor at all
+        // still means "open a session for a buffer this pane isn't showing."
+        //
+        // `self.view.panes` (the engine's live pane→buffer mapping) is the
+        // check, not `focused_buffer_state(bid)`: that map's entries are
+        // *retained*, not removed, when a pane switches to a different
+        // buffer (`pane_state.rs`'s own doc), so it stays `Some` — with a
+        // stale head — for any `bid` this pane has ever shown, long after
+        // the pane moved on. Using it here would validate `anchor` against
+        // a cursor position from a buffer the user is no longer looking at.
+        let live = self
+            .view
+            .panes
+            .get(self.state.focus.id())
+            .map(|p| p.buffer_id)
+            == Some(bid);
+        let Some(head) = live
+            .then(|| self.state.focused_buffer_state(bid))
+            .flatten()
+            .map(|pbs| pbs.selections().primary().head())
+        else {
+            self.state.report(
+                Severity::Trace,
+                "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
+            );
+            return Ok(crate::editor::widget_token::DEAD);
+        };
+        if let Some(a) = anchor
+            && a > head
+        {
+            return Err("completion-begin!: #:anchor is after the cursor".to_string());
+        }
+        // A completion token never spans a line — this is a policy-free
+        // bound (unlike requiring `anchor` to be a word-chars token start,
+        // which would re-impose in Rust exactly the per-source policy
+        // `#:anchor` becoming caller-supplied exists to remove) that still
+        // caps the blast radius of a wildly wrong `#:anchor` to at most one
+        // line, rather than accepting it verbatim as accept time's own
+        // deletion span.
+        let text = buf.text();
+        if let Some(a) = anchor
+            && text.ropey_char_to_line(a) != text.ropey_char_to_line(head)
+        {
+            return Err(
+                "completion-begin!: #:anchor is on a different line than the cursor".to_string(),
+            );
         }
         // Async staleness — see `EditorState::async_opener_stale`'s own doc.
         // Checked before anything else touches the stack or parses a single
@@ -93,23 +172,19 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
             // same silent no-op a real stale token would.
             return Ok(crate::editor::widget_token::DEAD);
         }
-        let Some(session) = crate::editor::completion::CompletionSession::begin_buffer(
+        let session = crate::editor::completion::CompletionSession::begin_buffer(
             self.state,
             bid,
-            source.into(),
-            priority,
-            match_kind,
+            head,
+            crate::editor::completion::SourceState {
+                name: source.into(),
+                priority,
+                match_kind,
+                incomplete,
+            },
             parsed,
-            incomplete,
-        ) else {
-            // Benign race: the async completion response landed after the
-            // user switched away from `bid`'s pane.
-            self.state.report(
-                Severity::Trace,
-                "completion-begin!: buffer not shown in focused pane — ignored".to_string(),
-            );
-            return Ok(0);
-        };
+            anchor,
+        );
         // The session itself no longer lives on `LspState`, but this
         // builtin has no `require_cmd_ctx!` gate of its own (unlike most
         // command-mode builtins) — `self.lsp` being `None` is the only
@@ -154,7 +229,15 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(session) = input_stack::completion::session_for_token(self.state, token) else {
             return false;
         };
-        session.add_items(source.into(), priority, match_kind, incomplete, parsed);
+        session.add_items(
+            crate::editor::completion::SourceState {
+                name: source.into(),
+                priority,
+                match_kind,
+                incomplete,
+            },
+            parsed,
+        );
         self.state.reset_completion_selection();
         true
     }

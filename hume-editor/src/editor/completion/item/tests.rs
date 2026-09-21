@@ -85,7 +85,7 @@ fn well_formed_item_never_touches_the_lenient_path() {
     let v = serde_json::json!({"label": "ok", "kind": 3});
     assert!(serde_json::from_value::<lsp_types::CompletionItem>(v.clone()).is_ok());
     let item = CompletionItem::from_json(&v).expect("well-formed item");
-    assert_eq!(item.label, "ok");
+    assert_eq!(&*item.label, "ok");
     assert_eq!(item.kind, Some(3));
 }
 
@@ -99,7 +99,7 @@ fn string_kind_recovers_via_lenient_fallback() {
     assert_strict_parse_fails(&v);
 
     let item = CompletionItem::from_json(&v).expect("label present — must recover");
-    assert_eq!(item.label, "foo");
+    assert_eq!(&*item.label, "foo");
     // The lenient reader can't make sense of a non-numeric kind either
     // — dropped, not faked as some default kind.
     assert_eq!(item.kind, None);
@@ -128,7 +128,7 @@ fn malformed_text_edit_recovers_the_item_without_the_edit() {
     assert_strict_parse_fails(&v);
 
     let item = CompletionItem::from_json(&v).expect("label present — must recover");
-    assert_eq!(item.label, "bar");
+    assert_eq!(&*item.label, "bar");
     assert_eq!(item.detail.as_deref(), Some("a detail"));
     assert!(
         item.text_edit.is_none(),

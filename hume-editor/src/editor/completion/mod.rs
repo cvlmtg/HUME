@@ -30,7 +30,7 @@ mod simple;
 pub(in crate::editor) use item::CompletionItem;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{CompletionSourceRegistry, SourceResult};
-pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind};
+pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind, SourceState};
 pub(in crate::editor) use set::SET_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 

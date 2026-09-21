@@ -217,6 +217,9 @@ impl CursorHost for NullHost {
     fn symbol_under_cursor(&self, _bid: BufferId) -> String {
         String::new()
     }
+    fn word_start_before_cursor(&self, _bid: BufferId) -> Option<usize> {
+        None
+    }
     fn selections_linewise(&self, _bid: BufferId) -> bool {
         false
     }

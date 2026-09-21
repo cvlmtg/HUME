@@ -4,8 +4,6 @@
 
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
-use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
@@ -13,28 +11,6 @@ use hume_engine::types::TruncateEnd;
 use hume_scripting::host::{LivePickerOpts, PickerOpts};
 use pretty_assertions::assert_eq;
 use steel::rvals::SteelVal;
-
-fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
-    let bid = ed.focused_buffer_id();
-    let items: Vec<CompletionItem> = items
-        .iter()
-        .map(|label| {
-            CompletionItem::from_json(&serde_json::json!({"label": label})).expect("test item")
-        })
-        .collect();
-    let session = CompletionSession::begin_buffer(
-        &ed.state,
-        bid,
-        "test".into(),
-        0,
-        MatchKind::Fuzzy,
-        items,
-        false,
-    )
-    .unwrap();
-    ed.state
-        .push_layer(&ed.view, CompletionLayer { session, ui: None });
-}
 
 // ── No-op guards ──────────────────────────────────────────────────────────
 
@@ -106,7 +82,7 @@ fn insert_mode_paste_skips_auto_pairs() {
 fn insert_mode_paste_dismisses_open_completion_session() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
-    begin_completion_session(&mut ed, &["foo", "bar"]);
+    begin_completion_session(&mut ed, completion_items(&["foo", "bar"]), None); // just needs a live session — this file is about pasting, not anchors
     assert!(ed.state.input.completion().is_some());
 
     ed.feed_paste("xyz");

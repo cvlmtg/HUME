@@ -66,12 +66,23 @@ impl MenuBoxStyles {
 /// 1-cell frame). Both overlays scroll past this using [`window_range`].
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
-/// Widest row's display width — used only where a caller still has the full,
-/// unwindowed row list in hand (`resolve_popup`'s wrapped content); a menu's
-/// width is measured from its visible window alone (`resolve_menu`), never
-/// from this.
-pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
-    rows.iter().map(|r| text_width(r)).max().unwrap_or(0) as u16
+/// Widest of an arbitrary run of texts' display widths, or `0` for an empty
+/// run — the one measurement rule behind `resolve_popup`'s wrapped-content
+/// width and `resolve_menu`'s own main/trailing column folds, so a change to
+/// how width is measured (a leading icon's cells, a different wide-cluster
+/// clamp) can't update one caller and silently miss another.
+pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
+    texts.map(text_width).max().unwrap_or(0) as u16
+}
+
+/// Outer row count (including the 1-cell frame's top/bottom) for a box
+/// windowing `row_count` rows to at most `row_cap` visible ones — the height
+/// half of [`outer_dims_from_width`], split out because `resolve_menu`
+/// resolves its height before it knows its width (see that function's own
+/// comment on the ordering) and so has no `inner_width` to hand that
+/// function yet.
+pub(crate) fn outer_rows(row_count: usize, row_cap: u16) -> u16 {
+    (row_count as u16).min(row_cap) + 2
 }
 
 /// Outer footprint (including the 1-cell frame) for a box showing `row_count`
@@ -84,9 +95,7 @@ pub(crate) fn outer_dims_from_width(
     row_count: usize,
     row_cap: u16,
 ) -> (u16, u16) {
-    let outer_w = inner_width + 2;
-    let outer_h = (row_count as u16).min(row_cap) + 2;
-    (outer_w, outer_h)
+    (inner_width + 2, outer_rows(row_count, row_cap))
 }
 
 /// Outer row count for a bottom band showing `content_rows` rows plus
@@ -313,9 +322,14 @@ pub(crate) fn draw_menu_box(
     // Rows arrive untruncated — `outer` was sized to the widest of them but
     // then clamped to the pane, so a row wider than the pane would otherwise
     // be written straight over the right border and past it. Bounding every
-    // row write at the inner edge is what keeps the box a box.
+    // row write at the inner edge is what keeps the box a box, horizontally.
+    // The `.take` below is that same guarantee for the vertical axis: the
+    // write side is trusted to hand in a pre-windowed slice, but this is the
+    // one place that could still catch a caller that gets it wrong — one row
+    // too many would otherwise overwrite the bottom border, then paint
+    // straight past the box.
     let text_right = inner.right();
-    for (i, row_text) in rows.iter().enumerate() {
+    for (i, row_text) in rows.iter().enumerate().take(inner.height as usize) {
         let y = inner.y + i as u16;
         let is_selected = selected == Some(i);
 

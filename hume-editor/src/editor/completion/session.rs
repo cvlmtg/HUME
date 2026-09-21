@@ -18,7 +18,6 @@ mod accept;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
-use hume_ops::edit::word_start_before;
 use hume_rope::offset::CharOffset;
 
 use crate::editor::EditorState;
@@ -251,12 +250,16 @@ pub(in crate::editor) struct CompletionMenuUi {
 /// One source's latest contribution metadata — see
 /// `CompletionSession::sources`'s doc for why priority, match kind, and
 /// `isIncomplete` live together in one struct rather than several that
-/// would have to stay in sync.
-struct SourceState {
-    name: Box<str>,
-    priority: i64,
-    match_kind: MatchKind,
-    incomplete: bool,
+/// would have to stay in sync. `pub(in crate::editor)`, not module-private:
+/// `host_impl/completion.rs` builds one directly from the Steel-facing args
+/// it already decoded, rather than threading them into `begin_buffer`/
+/// `add_items` as four separate parameters that would just be reassembled
+/// here.
+pub(in crate::editor) struct SourceState {
+    pub(in crate::editor) name: Box<str>,
+    pub(in crate::editor) priority: i64,
+    pub(in crate::editor) match_kind: MatchKind,
+    pub(in crate::editor) incomplete: bool,
 }
 
 /// One item plus the index of its contributing source in
@@ -398,45 +401,48 @@ impl CompletionSession {
         }
     }
 
-    /// Returns `None` when `bid` isn't shown in the focused pane — a normal
-    /// race (the async completion response landed after the user switched
-    /// panes), not a caller bug, so this is silently absorbed by the caller
-    /// rather than raised as a Steel error.
+    /// `head` is the caller's own live primary-cursor read — `completion_
+    /// begin` already resolved it once to validate `#:anchor` against, so
+    /// this takes it rather than re-resolving `focused_buffer_state(bid)`
+    /// itself and having to reconcile a second, possibly-differing answer.
     ///
-    /// Anchors at the *start of the identifier token before the cursor*
-    /// (`word_start_before`, the same scan `accept`'s token-replacement
-    /// fallback already does), not at the cursor itself, and seeds `filter`
-    /// from the text in between. Two things depend on this: a prefix typed
-    /// before Ctrl-Space (or before the trigger char) is filtered on
-    /// immediately, rather than showing every candidate until the next
-    /// keystroke; and, since the anchor is now a function of buffer content
-    /// rather than of "wherever the cursor happened to be when this
-    /// particular request returned," a re-`begin_buffer` on the LSP
-    /// `isIncomplete` refilter flow (a fresh session, not `add_items`)
-    /// recomputes the identical anchor and filter instead of wiping the
-    /// filter the user just typed. A non-word cursor position (right after a
-    /// trigger char like `.`/`:`) leaves `word_start_before` at the cursor,
-    /// same as before.
+    /// `anchor` is the caller's own token-start choice, not derived here —
+    /// `None` means no seed at all: anchor sits at the cursor, filter starts
+    /// empty (the right choice right after a non-identifier trigger like
+    /// `.`/`:`, and a legitimate one generally, not merely a fallback).
+    /// `Some(pos)` is trusted verbatim; validating it (range, grapheme
+    /// alignment, `anchor <= head`, same line as `head`) is the caller's job
+    /// (`host_impl/completion.rs`'s `completion_begin`) — this method has no
+    /// vocabulary of its own for rejecting a bad one. `filter` is then pure
+    /// arithmetic on whichever anchor resulted: `buf[anchor..head]`.
+    ///
+    /// One asymmetry worth naming: `(word-start-before-cursor bid)`, called
+    /// explicitly by the LSP plugin to compute the `anchor` it then passes to
+    /// `completion-begin!`, resolves its own pane via *any* pane showing
+    /// `bid` (`symbol-under-cursor`'s policy) — not the *focused*-pane policy
+    /// `head` above reads. `completion_begin`'s live-pane check is what
+    /// catches a mismatch (`bid` shown only in a non-focused pane) before
+    /// `anchor` is validated at all, rather than this method or its caller
+    /// trying to reconcile two pane policies.
+    ///
+    /// Because seeding is the caller's decision, its own determinism is what
+    /// keeps a re-`begin_buffer` on the LSP `isIncomplete` refilter flow (a
+    /// fresh session, not `add_items`) idempotent — the plugin's anchor
+    /// computation reads the same buffer content every time, so it
+    /// recomputes the identical value instead of wiping the filter the user
+    /// just typed.
     pub(in crate::editor) fn begin_buffer(
         state: &EditorState,
         bid: BufferId,
-        source: Box<str>,
-        priority: i64,
-        match_kind: MatchKind,
+        head: CharOffset,
+        source: SourceState,
         items: Vec<CompletionItem>,
-        incomplete: bool,
-    ) -> Option<Self> {
+        anchor: Option<CharOffset>,
+    ) -> Self {
         let pid = state.focus.id();
-        let head = state
-            .focused_buffer_state(bid)?
-            .selections()
-            .primary()
-            .head();
+        let anchor = anchor.unwrap_or(head);
         let buf = state.buffers.get(bid);
         let rope_at_begin = buf.text().rope().clone();
-        let word_chars = crate::editor::commands::word_chars_owned(buf, &state.settings);
-        let chars = hume_editing::word::WordChars::new(&word_chars);
-        let anchor = word_start_before(buf.text(), head, chars);
         let filter = buf
             .text()
             .slice(hume_rope::offset::ExclusiveRange::new(anchor, head))
@@ -450,8 +456,8 @@ impl CompletionSession {
             generation_at_begin: buf.text_gen,
         }));
         session.filter = filter;
-        session.add_items(source, priority, match_kind, incomplete, items);
-        Some(session)
+        session.add_items(source, items);
+        session
     }
 
     /// A minibuffer completion session — always a single source, never
@@ -469,7 +475,15 @@ impl CompletionSession {
             span_start: span.start,
             span_end: span.end,
         });
-        session.add_items(source, 0, match_kind, false, items);
+        session.add_items(
+            SourceState {
+                name: source,
+                priority: 0,
+                match_kind,
+                incomplete: false,
+            },
+            items,
+        );
         session
     }
 
@@ -482,35 +496,18 @@ impl CompletionSession {
     /// path, so there is exactly one insertion point, not two. Re-ranks
     /// against the filter text already in effect (not an empty one) — a
     /// mid-session add must respect what the user has already typed.
-    pub(in crate::editor) fn add_items(
-        &mut self,
-        source: Box<str>,
-        priority: i64,
-        match_kind: MatchKind,
-        incomplete: bool,
-        items: Vec<CompletionItem>,
-    ) {
+    pub(in crate::editor) fn add_items(&mut self, source: SourceState, items: Vec<CompletionItem>) {
         // Overwritten in place, not re-pushed, when `source` already has an
         // entry — a `Sourced` item's `source_idx` from an earlier add must
         // keep pointing at the same slot.
-        let source_idx = match self.sources.iter().position(|s| *s.name == *source) {
+        let source_idx = match self.sources.iter().position(|s| *s.name == *source.name) {
             Some(i) => {
-                self.sources[i] = SourceState {
-                    name: source,
-                    priority,
-                    match_kind,
-                    incomplete,
-                };
+                self.sources[i] = source;
                 i as u32
             }
             None => {
                 let i = self.sources.len() as u32;
-                self.sources.push(SourceState {
-                    name: source,
-                    priority,
-                    match_kind,
-                    incomplete,
-                });
+                self.sources.push(source);
                 i
             }
         };
@@ -597,17 +594,17 @@ impl CompletionSession {
     /// doc — so a caller redrawing the same unchanged menu every frame reads
     /// the cache instead of reformatting every candidate again.
     pub(in crate::editor) fn menu_rows(&mut self) -> hume_ui::popup::MenuRows {
-        if self.menu_cache.is_none() {
-            let rows: Vec<hume_ui::popup::MenuRow> = self
-                .filtered
-                .iter()
-                .map(|&i| self.items[i as usize].item.menu_row())
-                .collect();
-            self.menu_cache = Some(hume_ui::popup::MenuRows::two_column(rows));
+        if let Some(cached) = &self.menu_cache {
+            return cached.clone();
         }
+        let rows: Vec<hume_ui::popup::MenuRow> = self
+            .filtered
+            .iter()
+            .map(|&i| self.items[i as usize].item.menu_row())
+            .collect();
         self.menu_cache
+            .insert(hume_ui::popup::MenuRows::two_column(rows))
             .clone()
-            .expect("populated by the check above")
     }
 }
 

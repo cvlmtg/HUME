@@ -404,12 +404,7 @@ fn symbol_under_cursor_finds_a_word_in_a_non_focused_pane() {
     // stays open (with its "bar" cursor) in the now-unfocused first pane.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_file(&extra);
-    let other_bid = ed
-        .state
-        .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
-        .expect("extra file must be open in the buffer list");
+    let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
     let start_pid = ed.state.focus.id();
     let other_pid = open_pane_in_layout(
         &mut ed.state,
@@ -445,12 +440,7 @@ fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
     // at it, so no pane currently shows it.
     let extra = tmp.path().join("other.rs");
     std::fs::write(&extra, "fn other() {}\n").unwrap();
-    ed.open_extra_file(&extra);
-    let other_bid = ed
-        .state
-        .buffers
-        .find_by_path(&std::fs::canonicalize(&extra).unwrap())
-        .expect("extra file must be open in the buffer list");
+    let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
     ed.switch_to_buffer_with_jump(other_bid);
 
     let fired = run_probe(
@@ -463,5 +453,74 @@ fn symbol_under_cursor_is_empty_once_no_pane_shows_the_buffer() {
     assert!(
         fired,
         "symbol-under-cursor must return \"\" once the buffer is shown in no pane, not the stale cursor's word"
+    );
+}
+
+// ── word-start-before-cursor ──────────────────────────────────────────────────
+
+#[test]
+fn word_start_before_cursor_right_after_a_word_returns_its_start() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("abc-[ ]>def\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "check" "" (lambda ()
+             (log! 'info (number->string (word-start-before-cursor (current-buffer))))))"#,
+    );
+    type_cmd(&mut ed, ":check");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
+}
+
+#[test]
+fn word_start_before_cursor_right_after_a_trigger_char_returns_the_cursor_itself() {
+    let tmp = safe_tempdir();
+    // Cursor sits right after "x." — the char immediately behind it is
+    // punctuation, not a word char, so the scan takes zero steps back.
+    let mut ed = editor_from("x.-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "check" "" (lambda ()
+             (log! 'info (number->string (word-start-before-cursor (current-buffer))))))"#,
+    );
+    type_cmd(&mut ed, ":check");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "2");
+}
+
+#[test]
+fn word_start_before_cursor_at_buffer_start_returns_zero() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "check" "" (lambda ()
+             (log! 'info (number->string (word-start-before-cursor (current-buffer))))))"#,
+    );
+    type_cmd(&mut ed, ":check");
+    assert_eq!(ed.state.status_msg.clone().unwrap(), "0");
+}
+
+#[test]
+fn word_start_before_cursor_is_false_once_no_pane_shows_the_buffer() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("foo -[b]>ar baz\n");
+
+    let extra = tmp.path().join("other.rs");
+    std::fs::write(&extra, "fn other() {}\n").unwrap();
+    let other_bid = ed.open_extra_file(&extra).expect("extra file must open");
+    ed.switch_to_buffer_with_jump(other_bid);
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(let ((hidden (car (filter (lambda (b) (not (equal? b (current-buffer)))) (buffers)))))
+             (not (word-start-before-cursor hidden)))"#,
+    );
+    assert!(
+        fired,
+        "word-start-before-cursor must return #f once the buffer is shown in no pane"
     );
 }

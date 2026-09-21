@@ -6,6 +6,7 @@
 - `--keys` (headless mode) now loads `init.scm` and plugins, same as interactive mode — previously it always ran with pure built-in defaults. This also means headless now pays interactive mode's scripting-startup cost (Steel VM boot, installed grammar registration). Pass `--no-config` for the old pristine, faster behavior.
 - `(show-drawer-list! items on-select)` now returns a token identifying the drawer it opened; `(close-drawer! token)`, `(update-drawer-list! token items on-select selected)`, and `(drawer-selected-index token)` each take it as their first argument and ignore a call whose token doesn't name the currently open drawer. A plugin managing its own drawer needs to hold onto the returned token and pass it to these three going forward.
 - `(show-drawer-list! items on-select)` now errors on an empty `items` instead of opening a 0-row drawer, and — like `show-menu!` — fires the outgoing drawer's callback with `#f` when a second call replaces it, so its owner learns the drawer is gone.
+- `(completion-begin! bid items #:source s ...)` now requires `#:anchor`: a char offset marking the span accepting a candidate replaces (and where the typed prefix starts filtering from), or `#f` to replace nothing before the cursor. It must be on the cursor's own line. A plugin wanting the word before the cursor (the previous, automatic behavior) passes `#:anchor (word-start-before-cursor bid)` explicitly.
 
 ### CLI
 - New `--no-config` flag skips `init.scm` (no user config, no plugins) while still loading bundled language detection and syntax highlighting — usable in both interactive and headless (`--keys`) mode. `--config` is now usable alongside `--keys` as well.
@@ -29,8 +30,11 @@
 
 ### Language servers
 - The signature-help popup now closes as soon as Insert mode ends, rather than waiting on a plugin hook.
+- Triggering completion (Ctrl-Space, or a trigger character) after already typing part of a word now filters the list immediately by what's typed so far, instead of showing every candidate until the next keystroke.
+- The completion menu now shows a candidate's detail (its type signature, say) right-aligned in its own column, rather than run into the label on one line — and the menu's width tracks only the candidates currently scrolled into view, so one very long candidate elsewhere in the list no longer widens the whole menu.
 
 ### Plugins & scripting
+- New `(word-start-before-cursor bid)` — the char offset where the word ending at `bid`'s cursor started, or the cursor's own position when nothing word-like precedes it; `#f` if `bid` isn't shown in any pane. Sits beside `symbol-under-cursor`.
 - `picker!`/`live-picker!` accept a new `#:actions` keyword — a list of `(key-spec . proc)` bindings tried after every built-in picker key, for a plugin picker that wants more than `Enter`/`Esc`. `core:stdlib`'s new `stdlib/buffer-actions` composes the current-pane/new-tab/vertical-split/horizontal-split combinators `core:pickers` now uses for the keys above.
 - A code-action menu or references list whose response arrives after you've moved on — left Normal mode, or opened something else — is discarded instead of opening.
 - `close-menu!` now retires the widget wherever it sits on the stack, even buried under something else; `close-drawer!` closes the drawer wherever it sits without touching anything stacked above it (an `Insert` session or a code-action menu browsing over it, say — those keep running); `picker-close!`, `completion-dismiss!`, and `close-popup!` stay idempotent no-ops when nothing's open.

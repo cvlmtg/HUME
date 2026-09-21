@@ -234,6 +234,55 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
         .expect("show-drawer-list! must open, not read as stale")
 }
 
+/// Opens a completion session directly via `CompletionSession::begin_buffer`,
+/// bypassing `completion-begin!`'s Steel/wire path entirely — shared by every
+/// test file that just needs a live session on the focused buffer's stack
+/// (picker/paste/mouse interaction tests pass `anchor: None`) or one seeded
+/// at a caller-computed anchor (`lsp_completion_menu.rs`'s own
+/// `begin_session_items`, which resolves `anchor` via
+/// `word_start_before_cursor` before calling this).
+fn begin_completion_session(
+    ed: &mut Editor,
+    items: Vec<crate::editor::completion::CompletionItem>,
+    anchor: Option<hume_rope::offset::CharOffset>,
+) {
+    use crate::editor::completion::{CompletionSession, MatchKind, SourceState};
+    use crate::editor::input_stack::CompletionLayer;
+
+    let bid = ed.focused_buffer_id();
+    let head = ed.current_selections().primary().head();
+    let session = CompletionSession::begin_buffer(
+        &ed.state,
+        bid,
+        head,
+        SourceState {
+            name: "test".into(),
+            priority: 0,
+            match_kind: MatchKind::Fuzzy,
+            incomplete: false,
+        },
+        items,
+        anchor,
+    );
+    ed.state
+        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+}
+
+/// `label`-only `CompletionItem`s, for a test that just needs a live session
+/// on screen — shared by every caller of [`begin_completion_session`] that
+/// doesn't care about `textEdit`/`additionalTextEdits`.
+fn completion_items(labels: &[&str]) -> Vec<crate::editor::completion::CompletionItem> {
+    labels
+        .iter()
+        .map(|label| {
+            crate::editor::completion::CompletionItem::from_json(&serde_json::json!({
+                "label": label
+            }))
+            .expect("test item")
+        })
+        .collect()
+}
+
 /// A normal (no modifier) character key event.
 fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)

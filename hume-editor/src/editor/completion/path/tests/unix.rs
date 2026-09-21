@@ -42,7 +42,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
         candidates.iter().all(|c| c.insert_text.starts_with("~/")),
         "replacements must preserve the `~/` prefix"
     );
-    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     assert!(names.contains(&"notes.md"), "notes.md should appear");
     assert!(
         names.contains(&"code/"),
@@ -86,7 +86,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
             .iter()
             .all(|c| c.insert_text.starts_with("$MYDIR/"))
     );
-    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_str()).collect();
+    let names: Vec<&str> = candidates.iter().map(|c| c.label.as_ref()).collect();
     assert!(names.contains(&"main.rs"));
 }
 
@@ -110,7 +110,7 @@ fn path_completer_dirs_only_mode() {
 
     // dirs_only — files must be excluded.
     let (_, dirs) = complete_path_dirs_only("cd m", 4, &ctx);
-    let dir_names: Vec<&str> = dirs.iter().map(|c| c.label.as_str()).collect();
+    let dir_names: Vec<&str> = dirs.iter().map(|c| c.label.as_ref()).collect();
     assert!(
         dir_names.contains(&"mysubdir/"),
         "dirs_only must include subdirectory"
@@ -122,7 +122,7 @@ fn path_completer_dirs_only_mode() {
 
     // Plain complete_path — both dirs and files must appear.
     let (_, all) = complete_path("e m", 3, &ctx);
-    let all_names: Vec<&str> = all.iter().map(|c| c.label.as_str()).collect();
+    let all_names: Vec<&str> = all.iter().map(|c| c.label.as_ref()).collect();
     assert!(
         all_names.contains(&"mysubdir/"),
         "complete_path must include subdirectory"

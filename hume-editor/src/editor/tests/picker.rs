@@ -5,8 +5,6 @@
 // end-to-end coverage of the Steel surface itself.
 
 use super::*;
-use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
-use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{PickerItem, PickerSession};
 use hume_engine::pipeline::RenderContext;
@@ -367,20 +365,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert);
 
-    let bid = ed.focused_buffer_id();
-    let items = vec![CompletionItem::from_json(&serde_json::json!({"label": "foo"})).unwrap()];
-    let session = CompletionSession::begin_buffer(
-        &ed.state,
-        bid,
-        "test".into(),
-        0,
-        MatchKind::Fuzzy,
-        items,
-        false,
-    )
-    .unwrap();
-    ed.state
-        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+    begin_completion_session(&mut ed, completion_items(&["foo"]), None); // just needs a live session — this file is about the picker, not anchors
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(

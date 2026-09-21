@@ -92,7 +92,7 @@ fn buffer_name_completer_lists_open_buffers_by_basename_full_path_insert_text() 
         .iter()
         .find(|c| c.insert_text == "/tmp/foo.txt")
         .expect("foo.txt must appear");
-    assert_eq!(item.label, "foo.txt");
+    assert_eq!(&*item.label, "foo.txt");
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn buffer_name_completer_duplicate_basename_adds_parent_suffix() {
     let foo_entries: Vec<&str> = items
         .iter()
         .filter(|c| c.label.contains("foo.txt"))
-        .map(|c| c.label.as_str())
+        .map(|c| c.label.as_ref())
         .collect();
     assert_eq!(foo_entries.len(), 2, "both foo.txt entries must appear");
     assert!(

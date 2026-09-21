@@ -1,7 +1,5 @@
 use super::*;
 use crate::editor::buffer::{DiskCheckTrigger, DiskState};
-use crate::editor::completion::{CompletionItem, CompletionSession, MatchKind};
-use crate::editor::input_stack::CompletionLayer;
 use crate::editor::input_stack::picker;
 use crate::editor::input_stack::{DrawerLayer, MenuLayer};
 use crate::editor::input_stack::{PickerItem, PickerSession};
@@ -50,28 +48,6 @@ fn open_test_picker(ed: &mut Editor, items: &[&str]) {
             .collect(),
     );
     picker::open_picker(&mut ed.state, &ed.view, session);
-}
-
-fn begin_completion_session(ed: &mut Editor, items: &[&str]) {
-    let bid = ed.focused_buffer_id();
-    let items: Vec<CompletionItem> = items
-        .iter()
-        .map(|label| {
-            CompletionItem::from_json(&serde_json::json!({"label": label})).expect("test item")
-        })
-        .collect();
-    let session = CompletionSession::begin_buffer(
-        &ed.state,
-        bid,
-        "test".into(),
-        0,
-        MatchKind::Fuzzy,
-        items,
-        false,
-    )
-    .unwrap();
-    ed.state
-        .push_layer(&ed.view, CompletionLayer { session, ui: None });
 }
 
 /// `tab`'s start column in the synced tabline view — computed the same way
@@ -1021,7 +997,7 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.feed_key(key('i'));
-    begin_completion_session(&mut ed, &["hello", "help"]);
+    begin_completion_session(&mut ed, completion_items(&["hello", "help"]), None); // just needs a live session — this file is about mouse clicks, not anchors
     assert!(ed.state.input.completion().is_some(), "setup: session open");
 
     ed.handle_input(mouse_left_down(3, 0));

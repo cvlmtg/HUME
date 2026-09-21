@@ -13,47 +13,11 @@ use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
-use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
-
-/// How `CompletionSession::accept` derives the per-cursor deletion span: a
-/// uniform `(back, forward)` pair when the server sent a `textEdit` (safe
-/// everywhere per the LSP containment guarantee on the server's own range,
-/// applied via [`replace_around_cursors`]), or each cursor's own preceding
-/// identifier token when it didn't (no such guarantee exists for a
-/// synthesized range, so it must be computed per cursor via
-/// [`replace_span_around_cursors`] — see `accept`'s `None` arm for how the
-/// fields here become that per-cursor `start_of` closure).
-#[derive(Clone, Copy)]
-enum ReplaceSpan {
-    Uniform {
-        back: usize,
-        forward: usize,
-    },
-    TokenBefore {
-        /// The session's own primary cursor — identifiable by its head
-        /// position since `SelectionSet` heads are unique — gets `anchor`
-        /// as its token start rather than `head - typed`; see the field
-        /// docs on those two for why they can diverge.
-        primary_head: CharOffset,
-        /// `CompletionSession::anchor()` — tracked independently of live
-        /// buffer content, so it stays correct even when `self.filter` was
-        /// narrowed via `completion-update-filter!` without a matching real
-        /// edit (the primary's head then doesn't reflect `typed` chars at
-        /// all, so `head - typed` would be wrong for it specifically).
-        anchor: CharOffset,
-        /// Chars this session has logically consumed since it began — the
-        /// same at every cursor, since multi-cursor Insert types
-        /// identically everywhere. Skipped before each *non-primary*
-        /// cursor's own backward token scan, so the scan only ever looks at
-        /// that cursor's own pre-session content.
-        typed: usize,
-        forward: usize,
-    },
-}
+use hume_ops::edit::replace_around_cursors;
 
 impl CompletionSession {
     /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
-    /// over each cursor's own identifier token when absent) at *every*
+    /// over the session's own anchor..cursor span when absent) at *every*
     /// cursor in the session's pane, as if the completion had been typed at
     /// each — a conforming server's completion range always contains the
     /// request position (LSP spec, `item.rs`'s `CompletionItem`
@@ -111,7 +75,7 @@ impl CompletionSession {
             );
         }
         let pid = bt.pane_id;
-        let head_now = {
+        let (head_now, heads_now) = {
             let pbs = state.panes.buffer_state(pid, bt.bid).ok_or_else(|| {
                 "completion-accept!: buffer is no longer shown in the session's pane".to_string()
             })?;
@@ -123,10 +87,20 @@ impl CompletionSession {
             if !pbs.selections().iter_sorted().all(|s| s.is_collapsed()) {
                 return Err("completion-accept!: selections must be collapsed".to_string());
             }
-            pbs.selections().primary().head()
+            // Every cursor's own head, not just the primary's — the overlap
+            // check below (span is uniform, but each cursor's own live head
+            // differs) needs every one of them to catch an `additionalTextEdits`
+            // insertion landing inside a *non-primary* cursor's own span.
+            let heads_now: Vec<CharOffset> =
+                pbs.selections().iter_sorted().map(|s| s.head()).collect();
+            (pbs.selections().primary().head(), heads_now)
         };
 
-        let (span, new_text) = match &item.text_edit {
+        // Both arms below produce a `(start_now, end_now)` pair in today's
+        // live coordinates and a label for the containment error — the
+        // containment check and the `(back, forward)` distance it licenses
+        // are then shared by both, just after the match.
+        let (start_now, end_now, new_text, what) = match &item.text_edit {
             Some(te) => {
                 let rope_at_begin = &bt.rope_at_begin;
                 let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
@@ -163,62 +137,50 @@ impl CompletionSession {
                 // on top of whatever `cs_since_begin` mapped from real edits.
                 let end_now =
                     end_pos[0].max(bt.anchor().shift(self.filter.chars().count() as isize));
-                // The delta model below rests entirely on this containment:
-                // a conforming server's completion range always contains
-                // the request position (LSP spec). An off-spec server, or a
-                // cursor that has since moved outside the range (e.g. an
-                // arrow key the completion menu deliberately lets through),
-                // breaks that assumption — erroring here, buffer untouched,
-                // is safer than silently clamping to some other span.
-                if !(start_now <= head_now && head_now <= end_now) {
-                    return Err(
-                        "completion-accept!: textEdit range does not contain the cursor"
-                            .to_string(),
-                    );
-                }
-                (
-                    ReplaceSpan::Uniform {
-                        back: head_now.chars_since(start_now),
-                        forward: end_now.chars_since(head_now),
-                    },
-                    te.new_text.clone(),
-                )
+                (start_now, end_now, te.new_text.clone(), "textEdit range")
             }
-            // No server-provided range: replace each cursor's own preceding
-            // identifier token rather than just the anchor..cursor span —
-            // any prefix typed *before* triggering completion (e.g. "fo"
-            // before the popup opened) is otherwise left untouched,
-            // duplicating it ahead of `insert_text`. See `ReplaceSpan::
-            // TokenBefore`'s field docs for why the primary and the other
-            // cursors need different treatment here.
+            // No server-provided range: replace the anchor..cursor span
+            // uniformly at every cursor, same as the `textEdit` arm just
+            // above — any prefix typed *before* triggering completion (e.g.
+            // "fo" before the popup opened) is otherwise left untouched,
+            // duplicating it ahead of `insert_text`. `#:anchor` is the
+            // caller's own declared token start (`host_impl/completion.rs`'s
+            // `completion_begin` validates it's on the cursor's own line);
+            // there is no well-defined *per-cursor* token independent of it
+            // to fall back to, so this is the one span every cursor gets.
             None => {
                 let typed = self.filter.chars().count();
                 let anchor = bt.anchor();
                 let token_end = anchor.shift(typed as isize);
-                // Mirrors the `textEdit` arm's containment guard above: a
-                // cursor that has drifted outside the token this session is
-                // tracking (an arrow key the completion menu lets through,
-                // or `self.filter` narrowed via `completion-update-filter!`
-                // with no matching real edit) has no well-defined
-                // token-replacement span — erroring here, buffer untouched,
-                // is safer than silently computing one from a stale anchor.
-                if !(anchor <= head_now && head_now <= token_end) {
-                    return Err(
-                        "completion-accept!: insertText token does not contain the cursor"
-                            .to_string(),
-                    );
-                }
                 (
-                    ReplaceSpan::TokenBefore {
-                        primary_head: head_now,
-                        anchor,
-                        typed,
-                        forward: token_end.chars_since(head_now),
-                    },
+                    anchor,
+                    token_end,
                     item.insert_text.clone(),
+                    "insertText token",
                 )
             }
         };
+        // The delta model below rests entirely on this containment: a
+        // conforming server's completion range always contains the request
+        // position (LSP spec), and the `insertText` fallback's anchor..
+        // cursor span rests on the same guarantee via `#:anchor`'s own
+        // `<= head` validation at `completion-begin!` time. A cursor that
+        // has since moved outside the span (an arrow key the completion
+        // menu deliberately lets through, or `self.filter` narrowed via
+        // `completion-update-filter!` with no matching real edit) breaks
+        // that assumption — erroring here, buffer untouched, is safer than
+        // silently computing a span from a stale reference point. This also
+        // keeps the `chars_since` calls below from tripping their inversion
+        // assert.
+        if !(start_now <= head_now && head_now <= end_now) {
+            return Err(format!(
+                "completion-accept!: {what} does not contain the cursor"
+            ));
+        }
+        let (back, forward) = (
+            head_now.chars_since(start_now),
+            end_now.chars_since(head_now),
+        );
 
         // Captured before any edit lands — a resolve response (if one ends
         // up sent below) is computed against this exact pre-accept document,
@@ -235,27 +197,42 @@ impl CompletionSession {
             encoding,
             &item.additional_text_edits,
         )?;
-        // Scoped to the server-range case: only there does the main edit
-        // have a single, well-defined [start, end) to check against — the
-        // token-replacement fallback has no server-provided range to
-        // overlap in the first place.
-        if let ReplaceSpan::Uniform { back, forward } = span {
-            let (start_now, end_now) = (head_now.retreat(back), head_now.shift(forward as isize));
-            // The half-open overlap test alone (`s < end_now && start_now <
-            // e`) misses a *zero-width* additional edit sitting exactly at
-            // `end_now`: it inserts before the cursor edit lands, so
-            // `translate_in_place`'s `Assoc::After` on selection heads
-            // (`hume-editing/src/selection/mod.rs`) walks the live head past
-            // the inserted text — the cursor edit's `back` chars then eat
-            // that inserted text instead of the span the server asked for.
-            // An insertion at `start_now` is safe (it shifts the whole span
-            // uniformly ahead of the edit) and stays excluded.
-            let overlaps = additional_char_edits.iter().any(|(r, _)| {
-                (r.start < end_now && start_now < r.end) || (r.start == r.end && r.start == end_now)
-            });
-            if overlaps {
-                return Err("completion-accept!: textEdit overlaps additionalTextEdits".to_string());
-            }
+        // The span is uniform across cursors (see the match above), applied
+        // at *every* cursor — so this check runs per cursor too, not just
+        // the primary's, and protects the `insertText` fallback as well as
+        // a server-provided `textEdit` range.
+        let overlaps = heads_now.iter().any(|&head| {
+            let (start_now, end_now) =
+                (head.retreat_saturating(back), head.shift(forward as isize));
+            additional_char_edits.iter().any(|(r, _)| {
+                // The half-open overlap test alone (`s < end_now && start_now
+                // < e`) misses a *zero-width* additional edit sitting
+                // exactly at `head` (equivalently `end_now` when `forward ==
+                // 0` — the only case where the two coincide, and the only
+                // one this can reach: an edit strictly ahead of `head` leaves
+                // `head` itself untouched by `Assoc::After`, so it can never
+                // land inside this span's own `back` retreat): the header
+                // inserts before the cursor edit lands, so
+                // `translate_in_place`'s `Assoc::After` on selection heads
+                // (`hume-editing/src/selection/mod.rs`) walks the live head
+                // past the inserted text — the cursor edit's `back` chars
+                // then eat that inserted text instead of the span the server
+                // asked for. Guarded on `back > 0`: a zero-width completion
+                // span (a pure insert, `back == forward == 0`) never
+                // retreats into anything, so flagging it here would reject
+                // the ordinary "accept immediately after the trigger char"
+                // shape whenever a source also sends an `additionalTextEdits`
+                // insertion at that same point. An insertion at `start_now`
+                // is safe (it shifts the whole span uniformly ahead of the
+                // edit) and stays excluded.
+                (r.start < end_now && start_now < r.end)
+                    || (back > 0 && r.start == r.end && r.start == head)
+            })
+        });
+        if overlaps {
+            return Err(
+                "completion-accept!: replacement span overlaps additionalTextEdits".to_string(),
+            );
         }
 
         // Insert mode already has a group open (composing this accept into
@@ -300,103 +277,27 @@ impl CompletionSession {
             }
         };
 
-        // `primary_head`/`anchor` were captured before `additionalTextEdits`
-        // landed — the closure below compares them against live heads read
-        // *after* `commit_char_edits` above already shifted every selection
-        // across those edits (`apply_doc_edit_grouped` → `translate_in_place`).
-        // Left unmapped, an additional edit ahead of the cursor (e.g. an
-        // auto-inserted import line) would make `head == primary_head` never
-        // match the real primary, or — worse — spuriously match a different
-        // cursor that happened to remap onto the stale value.
+        // A uniform `(back, forward)` span is expressed relative to each
+        // cursor's own *live* head, so it travels forward through
+        // `additionalTextEdits` for free: `apply_doc_edit_grouped` below
+        // reads selections `commit_char_edits` above already shifted across
+        // those edits (`translate_in_place`, `Assoc::After` on heads), so
+        // `back`/`forward` chars behind/ahead of the live head is already
+        // the right span at every cursor.
         //
-        // Both map with `Assoc::After`, *not* the `Before` `anchor()` itself
-        // uses for `cs_since_begin` — that association is specific to real
-        // typed content (a char landing exactly at the anchor extends the
-        // token leftward-inclusive). `cs_additional` is a foreign, unrelated
-        // document edit (e.g. an auto-inserted import), not typed content;
-        // an edit landing exactly at the anchor should carry it forward
-        // exactly like any other live cursor position would, so the
-        // completion's own text still lands where the user's token actually
-        // was — after the inserted text, never spliced inside it.
-        let span = match span {
-            ReplaceSpan::TokenBefore {
-                primary_head,
-                anchor,
-                typed,
-                forward,
-            } => {
-                let (primary_head, anchor) = match &cs_additional {
-                    Some(cs_a) => {
-                        let mut ph = [primary_head];
-                        cs_a.map_positions(&mut ph, Assoc::After);
-                        let mut a = [anchor];
-                        cs_a.map_positions(&mut a, Assoc::After);
-                        (ph[0], a[0])
-                    }
-                    None => (primary_head, anchor),
-                };
-                ReplaceSpan::TokenBefore {
-                    primary_head,
-                    anchor,
-                    typed,
-                    forward,
-                }
-            }
-            uniform => uniform,
-        };
-
-        // This is the edit that grows an open Insert session's typed-run
-        // selection to cover the whole replacement, not just what was keyed
-        // since — see `CompletionSession::anchor`'s doc for why that's
-        // intended.
-        let cs_cursors = match span {
-            ReplaceSpan::Uniform { back, forward } => {
-                crate::editor::doc_ops::apply_doc_edit_grouped(
-                    &mut state.buffers,
-                    &state.config.decorations,
-                    &mut state.panes.state,
-                    &mut state.panes.jumps,
-                    pid,
-                    bt.bid,
-                    move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
-                )
-            }
-            ReplaceSpan::TokenBefore {
-                primary_head,
-                anchor,
-                typed,
-                forward,
-            } => {
-                let word_chars = crate::editor::commands::word_chars_owned(
-                    state.buffers.get(bt.bid),
-                    &state.settings,
-                );
-                crate::editor::doc_ops::apply_doc_edit_grouped(
-                    &mut state.buffers,
-                    &state.config.decorations,
-                    &mut state.panes.state,
-                    &mut state.panes.jumps,
-                    pid,
-                    bt.bid,
-                    move |b, s| {
-                        let chars = hume_editing::word::WordChars::new(&word_chars);
-                        replace_span_around_cursors(
-                            b,
-                            s,
-                            move |text, head| {
-                                if head == primary_head {
-                                    word_start_before(text, anchor, chars)
-                                } else {
-                                    word_start_before(text, head.retreat_saturating(typed), chars)
-                                }
-                            },
-                            forward,
-                            &new_text,
-                        )
-                    },
-                )
-            }
-        };
+        // This is also the edit that grows an open Insert session's
+        // typed-run selection to cover the whole replacement, not just what
+        // was keyed since — see `CompletionSession::anchor`'s doc for why
+        // that's intended.
+        let cs_cursors = crate::editor::doc_ops::apply_doc_edit_grouped(
+            &mut state.buffers,
+            &state.config.decorations,
+            &mut state.panes.state,
+            &mut state.panes.jumps,
+            pid,
+            bt.bid,
+            move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
+        );
 
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(
