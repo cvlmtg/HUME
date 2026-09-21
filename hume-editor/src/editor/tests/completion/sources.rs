@@ -853,3 +853,96 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
          a different buffer"
     );
 }
+
+// ── A Steel typed command's declared completer ──────────────────────────────
+
+/// `define-typed-command! … #:complete "path"` — a Steel `:` command gets
+/// the same argument completion a built-in declares.
+#[test]
+fn a_steel_typed_command_can_declare_a_native_completer() {
+    let tmp = safe_tempdir();
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "look" "" (lambda (arg) (log! 'info arg)) #:complete "path")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, &format!("look {}/hel", dir.path().display()));
+    ed.handle_key(key_tab());
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        format!("look {}/hello.txt", dir.path().display())
+    );
+}
+
+/// A `'minibuf` Steel source, named by a Steel typed command — the whole
+/// `:` completion path with no native code involved.
+#[test]
+fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "names"
+             (lambda (id input cursor)
+               (completion-emit! id (list (hash "label" "alice") (hash "label" "bob"))))
+             #:target 'minibuf #:token 'arg #:match 'string)
+           (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet al");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        "greet alice",
+        "the sole prefix match lands silently once the async source answers"
+    );
+    assert!(ed.state.input.completion().is_none());
+}
+
+/// A completer naming a `'buffer` source can't serve the `:` line — Tab
+/// does nothing beyond a Trace line, never a panic or a wrong-target session.
+#[test]
+fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        &format!(
+            "{}\n{}",
+            completion_source("words", &completion_labels(&["x"]), ""),
+            r#"(define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "words")"#
+        ),
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet a");
+    ed.handle_key(key_tab());
+    assert!(ed.state.input.completion().is_none());
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        "greet a"
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Trace && e.text.contains("serves the buffer")),
+        "got: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+}

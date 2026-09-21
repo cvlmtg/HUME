@@ -197,9 +197,12 @@ pub(crate) fn define_typed_command(
     doc: String,
     proc: SteelVal,
     inline_output: bool,
+    completer: SteelVal,
 ) -> SteelResult {
     check_definable(ctx, "define-typed-command!", &name)?;
     let proc = super::args::callable_arg(proc, "define-typed-command! third arg (proc)")?;
+    let completer =
+        super::args::optional_string_arg(completer, "define-typed-command! #:complete")?;
     let (arity, is_variadic) = match &proc {
         SteelVal::Closure(gc) => (gc.arity() as u16, gc.is_multi_arity()),
         _ => (0, false),
@@ -212,6 +215,7 @@ pub(crate) fn define_typed_command(
             arity,
             is_variadic,
             inline_output,
+            completer,
         })
         .map_err(generic_err)?;
     let current_owner = ctx.plugin_stack.current_owner();

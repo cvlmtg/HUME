@@ -358,7 +358,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         config "%define-command!" commands::define_command(name: String, doc: String, proc: SteelVal, repeatable: bool, inline_output: bool);
         // Typed (`:` command line) counterpart — see the module-doc paragraph
         // above BOOTSTRAP. No #:repeatable keyword arg.
-        config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool);
+        config "%define-typed-command!" commands::define_typed_command(name: String, doc: String, proc: SteelVal, inline_output: bool, completer: SteelVal);
         // %call-native! is the Rust leaf for native/unknown dispatch; the variadic
         // (call! name args…) macro desugars to (%dispatch-command …) which routes
         // activated plugin commands inline in Steel and falls back here for everything else.

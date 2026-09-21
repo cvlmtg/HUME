@@ -196,7 +196,7 @@ impl EditorState {
         let Some(name) = resolve_minibuf_source(&self.config.registry, &input, cursor) else {
             return;
         };
-        let Some(id) = self.config.completion_sources.id_of(name) else {
+        let Some(id) = self.config.completion_sources.id_of(&name) else {
             // `TypedCommand.completer` naming no registered source — a stale
             // name after a rename. Silent to the user, same as `:bd`
             // declaring no completer at all; loud enough to find in the log.
@@ -458,14 +458,15 @@ fn resolve_minibuf_source(
     registry: &CommandRegistry,
     input: &str,
     cursor: usize,
-) -> Option<&'static str> {
+) -> Option<std::borrow::Cow<'static, str>> {
+    use std::borrow::Cow;
     match input.split_once(' ') {
-        None => Some(super::COMMAND_SOURCE),
-        Some((cmd_raw, _)) if cursor <= cmd_raw.len() => Some(super::COMMAND_SOURCE),
+        None => Some(Cow::Borrowed(super::COMMAND_SOURCE)),
+        Some((cmd_raw, _)) if cursor <= cmd_raw.len() => Some(Cow::Borrowed(super::COMMAND_SOURCE)),
         Some((cmd_raw, _)) => {
             // Resolve alias → command, and its declared argument completer.
             let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-            registry.get_typed(cmd)?.completer
+            registry.get_typed(cmd)?.completer.clone()
         }
     }
 }

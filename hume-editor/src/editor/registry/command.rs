@@ -555,14 +555,13 @@ pub(in crate::editor) struct TypedCommand {
     /// How this command executes — see [`TypedBody`].
     pub body: TypedBody,
     /// Names this command's `:` argument-completion source in
-    /// `completion::SourceRegistry`, if it declares one. A
-    /// `&'static str`, not a closed enum: `completion/orchestrate.rs`'s
-    /// `resolve_minibuf_source` looks it up by name at completion time
-    /// instead of matching on it — a precondition for a Steel-defined typed
-    /// command to eventually declare a completer of its own, though
-    /// `define-typed-command!` doesn't expose that keyword yet (no
-    /// `SteelTypedCmdDef` field feeds this); every command with a non-`None`
-    /// value today is a built-in registered in `registry/defaults/typed.rs`.
+    /// `completion::SourceRegistry`, if it declares one. A name, not a
+    /// closed enum: `completion/orchestrate.rs`'s `resolve_minibuf_source`
+    /// looks it up at completion time instead of matching on it, which is
+    /// what lets a Steel typed command's `#:complete` name a source — native
+    /// or Steel-registered — the same way. `Cow`, like `name`: `Borrowed`
+    /// for a built-in's `&'static str` constant, `Owned` for the runtime
+    /// string `define-typed-command!` hands over.
     ///
     /// ⚠️ Constraint Relaxation, per `CLAUDE.md`: the enum this replaced
     /// made "this command's declared completer exists" a compile-time
@@ -573,7 +572,7 @@ pub(in crate::editor) struct TypedCommand {
     /// declared beside each source's own registration
     /// (`completion::COMMAND_SOURCE` and siblings), so a rename there still
     /// breaks the build at the constant, just not at this field.
-    pub completer: Option<&'static str>,
+    pub completer: Option<Cow<'static, str>>,
 }
 
 /// How a [`TypedCommand`] executes when dispatched from `:`.

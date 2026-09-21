@@ -30,8 +30,9 @@
   (%define-command! name doc proc repeatable inline-output))
 
 (define (define-typed-command! name doc proc
-                               #:inline-output [inline-output #f])
-  (%define-typed-command! name doc proc inline-output))
+                               #:inline-output [inline-output #f]
+                               #:complete [complete #f])
+  (%define-typed-command! name doc proc inline-output complete))
 
 (define (%apply-command proc name args)
   (let* ((depth (%arm-inline-output! name))

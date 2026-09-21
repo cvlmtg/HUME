@@ -49,6 +49,11 @@ pub struct SteelTypedCmdDef {
     /// `true` if dispatch should bracket this command with an alt-screen exit
     /// so subprocess output streams live to the terminal.
     pub inline_output: bool,
+    /// `#:complete` — the name of the completion source (`register-
+    /// completion-source!`'s, or a native one such as `"path"`) that
+    /// completes this command's `:` argument on Tab. Resolved by name at
+    /// completion time, same as a built-in's declared completer.
+    pub completer: Option<String>,
 }
 
 /// Language identity registration queued by `(define-language! …)`, applied

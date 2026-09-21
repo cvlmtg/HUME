@@ -17,7 +17,7 @@ impl CommandRegistry {
                     doc: Cow::Borrowed($doc),
                     aliases: $aliases,
                     body: TypedBody::Native($fun),
-                    completer: $completer,
+                    completer: $completer.map(Cow::Borrowed),
                 })
             };
         }

@@ -84,7 +84,7 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
                 is_variadic: def.is_variadic,
                 inline_output: def.inline_output,
             },
-            completer: None,
+            completer: def.completer.map(std::borrow::Cow::Owned),
         });
         Ok(())
     }

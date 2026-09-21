@@ -219,6 +219,7 @@ fn define_typed_command_name_with_double_quote_errors() {
         "doc".to_string(),
         SteelVal::BoolV(false), // type check comes after name check
         false,
+        SteelVal::BoolV(false),
     )
     .unwrap_err();
     assert!(
@@ -237,6 +238,7 @@ fn define_typed_command_name_with_backslash_errors() {
         "doc".to_string(),
         SteelVal::BoolV(false),
         false,
+        SteelVal::BoolV(false),
     )
     .unwrap_err();
     assert!(
@@ -266,6 +268,7 @@ fn define_typed_command_host_rejection_leaves_tables_clean() {
             "doc".to_string(),
             SteelVal::FuncV(dummy_proc),
             false,
+            SteelVal::BoolV(false),
         )
         .unwrap_err();
         assert!(
@@ -429,6 +432,7 @@ fn define_typed_command_dup_names_error_names_existing_owner() {
         "doc".to_string(),
         SteelVal::FuncV(dummy_proc),
         false,
+        SteelVal::BoolV(false),
     )
     .unwrap_err();
     let msg = err.to_string();
