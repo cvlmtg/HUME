@@ -82,6 +82,24 @@ pub(in crate::editor) fn scroll_view(
     );
 }
 
+/// How far `Ctrl-d`/`Ctrl-u` move given `visible_rows` rows on screen — the
+/// buffer viewport, the bottom drawer, the fuzzy picker, and a scrollable
+/// popup all page by this same step, so a browsed drawer or picker feels
+/// like a scrolled pane under the same keys.
+///
+/// Floors rather than rounds up (`9` visible rows steps `4`, not `5`) to
+/// match the conventional buffer half-page; `.max(1)` keeps a one- or
+/// two-row view pageable instead of stalling on a truncated division.
+/// `0` stays `0` rather than climbing to `1`: before a widget's first frame
+/// its geometry is unresolved and `visible_rows` is `0`, where paging must
+/// be a no-op, not a one-row creep.
+pub(in crate::editor) fn half_page(visible_rows: usize) -> usize {
+    if visible_rows == 0 {
+        return 0;
+    }
+    (visible_rows / 2).max(1)
+}
+
 fn scroll_page(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -91,7 +109,7 @@ fn scroll_page(
     down: bool,
 ) -> Result<(), CommandError> {
     let height = viewport(view, pid).height as usize;
-    let count = if half { (height / 2).max(1) } else { height };
+    let count = if half { half_page(height) } else { height };
     scroll_view(state, view, pid, count, down, mode);
     Ok(())
 }

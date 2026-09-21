@@ -10,6 +10,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::Editor;
 use super::super::EditorState;
+use super::super::commands::half_page;
 use super::super::widget_token;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal, RemovalScope};
 
@@ -233,13 +234,11 @@ impl super::stack::InputStack {
 }
 
 /// Handles one key while the bottom drawer is open. Ctrl-d/Ctrl-u page by
-/// half the visible band (matching `cmd_half_page_down`/`cmd_half_page_up`'s
-/// own `(visible_rows / 2).max(1)`, not the picker's `div_ceil` — a browsed
-/// drawer and a scrolled pane should feel the same under the same keys),
-/// Shift-Down/Shift-Up step one row at a time for fine adjustment, and
-/// `Enter` (which fires `on-select` repeatedly across a browse session,
-/// unlike the menu, without closing the drawer) is handled in place; `Esc`
-/// retires the layer and fires `#f`; any other key — including bare `j`/`k`
+/// half the visible band, Shift-Down/Shift-Up step one row at a time for
+/// fine adjustment, and `Enter` (which fires `on-select` repeatedly across a
+/// browse session, unlike the menu, without closing the drawer) is handled
+/// in place; `Esc` retires the layer and fires `#f`; any other key —
+/// including bare `j`/`k`
 /// and the arrow keys — falls through completely untouched (no close, no
 /// callback), leaving the drawer open while focus moves to whatever the
 /// fallen-through key does (Helix-style browse-while-editing, so vertical
@@ -267,13 +266,11 @@ pub(in crate::editor) fn drawer_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     };
     // Every movement key differs only in the delta passed to
     // `move_drawer_selection` — collapsed to one borrow instead of one per
-    // key, mirroring `picker_input`'s own step table. `half_page` reads
-    // `visible_rows` once up front, same as the picker does, rather than
-    // recomputing it inside each arm.
-    let half_page = (drawer_visible_rows(ed, r) / 2).max(1) as isize;
+    // key, mirroring `picker_input`'s own step table.
+    let half_page_step = half_page(drawer_visible_rows(ed, r)) as isize;
     let step: Option<isize> = match key.code {
-        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page),
-        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page),
+        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page_step),
+        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page_step),
         KeyCode::Down if key.modifiers.contains(Modifiers::SHIFT) => Some(1),
         KeyCode::Up if key.modifiers.contains(Modifiers::SHIFT) => Some(-1),
         _ => None,

@@ -249,6 +249,7 @@ fn drawer_lists_severity_glyph_and_message_and_enter_jumps() {
         "severity 2 (Warning) must render as the warning glyph: {rows:?}"
     );
 
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
     ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();
@@ -360,6 +361,7 @@ fn drawer_keeps_selection_on_the_surviving_diagnostic() {
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
     ed.handle_key(key_ctrl('d')); // select C (row 1 of [A, C, B])
 
     republish(&mut ed, sid, &file, &[DIAG_C, DIAG_B]);
@@ -389,6 +391,7 @@ fn drawer_moves_selection_to_next_when_the_selected_diagnostic_is_fixed() {
 
     type_cmd(&mut ed, ":diagnostics");
     ed.settle();
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
     ed.handle_key(key_ctrl('d')); // select C (row 1 of [A, C, B])
 
     republish(&mut ed, sid, &file, &[DIAG_A, DIAG_B]);

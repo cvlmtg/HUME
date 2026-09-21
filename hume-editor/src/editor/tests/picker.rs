@@ -136,7 +136,7 @@ fn half_page_keys_move_by_half_the_list_rows() {
     ed.feed_key(key_ctrl('d'));
     assert_eq!(
         ed.state.input.picker().unwrap().selected(),
-        geo.list_rows.div_ceil(2)
+        geo.list_rows / 2
     );
     ed.feed_key(key_ctrl('u'));
     assert_eq!(ed.state.input.picker().unwrap().selected(), 0);

@@ -13,6 +13,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use steel::rvals::SteelVal;
 
+use super::super::commands::half_page;
 use super::super::minibuf::flatten_single_line;
 use super::super::{Editor, EditorState};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, Removal};
@@ -259,6 +260,9 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 
     // Every movement key differs only in the delta passed to
     // `move_selection` — collapsed to one borrow instead of one per key.
+    // `half_page_step` reads `visible_rows` once up front rather than
+    // recomputing it in each of the two Ctrl-d/Ctrl-u arms.
+    let half_page_step = half_page(visible_rows) as isize;
     let step: Option<isize> = match key.code {
         KeyCode::Down => Some(1),
         KeyCode::Up => Some(-1),
@@ -266,15 +270,8 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
         KeyCode::Char('p') if key.modifiers.contains(Modifiers::CONTROL) => Some(-1),
         KeyCode::PageDown => Some(visible_rows as isize),
         KeyCode::PageUp => Some(-(visible_rows as isize)),
-        // `div_ceil`, not the `(visible_rows / 2).max(1)` the drawer and
-        // `cmd_half_page_*` use, so this is `0` when `visible_rows` is `0` —
-        // keeping paging a documented no-op before the first frame.
-        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some(visible_rows.div_ceil(2) as isize)
-        }
-        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => {
-            Some(-(visible_rows.div_ceil(2) as isize))
-        }
+        KeyCode::Char('d') if key.modifiers.contains(Modifiers::CONTROL) => Some(half_page_step),
+        KeyCode::Char('u') if key.modifiers.contains(Modifiers::CONTROL) => Some(-half_page_step),
         _ => None,
     };
     if let Some(delta) = step {

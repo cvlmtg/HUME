@@ -1,5 +1,6 @@
 use super::doubles::VirtualLineBlock;
 use super::*;
+use crate::editor::commands::half_page;
 use hume_engine::providers::VirtualLineAnchor;
 use pretty_assertions::assert_eq;
 
@@ -364,4 +365,30 @@ fn half_page_down_overshoots_a_virtual_line_block_taller_than_the_budget() {
         hume_rope::line::ContentLine::new(2),
         "half-page-down over a 4-line virtual block (budget 3) must overshoot to line 2, not stall on line 1"
     );
+}
+
+// ── half_page: the shared half-page-step formula ────────────────────────────
+//
+// Independent oracle: expected values written out by hand, not derived by
+// calling `half_page` back on itself.
+
+#[test]
+fn half_page_steps_floor_visible_rows_over_two_clamped_to_one_zero_safe() {
+    let cases = [
+        (0, 0),
+        (1, 1),
+        (2, 1),
+        (3, 1),
+        (4, 2),
+        (9, 4),
+        (24, 12),
+        (25, 12),
+    ];
+    for (visible_rows, expected) in cases {
+        assert_eq!(
+            half_page(visible_rows),
+            expected,
+            "half_page({visible_rows}) should be {expected}"
+        );
+    }
 }

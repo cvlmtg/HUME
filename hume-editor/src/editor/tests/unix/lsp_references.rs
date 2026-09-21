@@ -120,6 +120,7 @@ fn enter_jumps_and_drawer_stays_open() {
     });
 
     run_references(&mut ed);
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
     ed.handle_key(key_ctrl('d'));
     ed.handle_key(key_enter());
     ed.settle();

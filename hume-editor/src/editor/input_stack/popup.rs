@@ -11,6 +11,7 @@ use hume_engine::theme::ui_scopes;
 use hume_engine::types::{EditorMode, Scope};
 
 use super::super::Editor;
+use super::super::commands::half_page;
 use super::placement::{focused_cursor_char, popup_placement};
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 
@@ -271,7 +272,7 @@ fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
     let Some(popup) = ed.state.input.popup_mut() else {
         return false;
     };
-    let half = (inner_h / 2).max(1);
+    let half = half_page(inner_h);
     // `popup.scroll` is the model value, re-clamped for rendering only in
     // the per-frame view sync (see `PopupLayer::scroll`) — it can be
     // stale-large after the popup's content shrinks (e.g. terminal grows

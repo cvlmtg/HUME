@@ -131,6 +131,7 @@ fn insert_above_an_open_drawer_then_esc_leaves_the_drawer_fully_functional() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
     assert!(ed.state.input.drawer().is_some(), "sanity: drawer open");
 
     ed.feed_key(key('i'));
@@ -568,6 +569,7 @@ fn update_replaces_rows_callback_and_selection_in_place() {
     );
     type_cmd(&mut ed, ":go");
     ed.settle();
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
 
     ed.feed_key(key_ctrl('d'));
     type_cmd(&mut ed, ":sel");
@@ -722,6 +724,7 @@ fn enter_calls_back_and_the_drawer_stays_open() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
 
     ed.feed_key(key_enter());
     ed.settle();
@@ -760,6 +763,7 @@ fn selection_clamps_at_the_bottom() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[x]>abcdefgh\n");
     arm_three_items(&mut ed, tmp.path());
+    render(&mut ed); // establishes real geometry so Ctrl-d below isn't a pre-frame no-op
 
     for _ in 0..5 {
         ed.feed_key(key_ctrl('d'));
