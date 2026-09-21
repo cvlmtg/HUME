@@ -24,6 +24,7 @@ use hume_ops::edit::{
 };
 use hume_ops::motion::cmd_move_right;
 
+use super::super::completion;
 use super::super::event::EditorEvent;
 use super::super::keymap::WalkResult;
 use super::super::registry::MappableCommand;
@@ -73,17 +74,19 @@ pub(in crate::editor) fn insert_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 impl Editor {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    /// Applies a grouped edit on the focused (pane, buffer) and, if an LSP
-    /// completion session is open on that same buffer, records the edit on
-    /// it via `observe_edit` — the chokepoint every keystroke handler below
-    /// that edits the focused buffer directly goes through, so no such call
-    /// site needs its own record-or-not decision. (A cursor-motion or
-    /// edit-command key that instead resolves through the insert trie is a
-    /// separate case — `completion_input`'s own trie peek dismisses the
-    /// session outright before falling through to any of those, since none
-    /// of them route back through here.) See `CompletionSession::observe_edit`
-    /// for why every keystroke reaching this function needs recording, not
-    /// just ones at the primary cursor.
+    /// Applies a grouped edit on the focused (pane, buffer) and, if a
+    /// completion session is open on that same buffer, tells it
+    /// (`EditorState::completion_observe_edit`: remap every token, re-rank,
+    /// re-invoke incomplete sources, dismiss if typed out of) — the
+    /// chokepoint every keystroke handler below that edits the focused
+    /// buffer directly goes through, so no such call site needs its own
+    /// record-or-not decision. (A cursor-motion or edit-command key that
+    /// instead resolves through the insert trie is a separate case —
+    /// `completion_input_buffer`'s own trie peek dismisses the session
+    /// outright once any of those returns, since none of them route back
+    /// through here.) See `CompletionSession::observe_edit` for why every
+    /// keystroke reaching this function needs recording, not just ones at
+    /// the primary cursor.
     fn apply_insert_edit(
         &mut self,
         cmd: impl FnOnce(BufferText, SelectionSet) -> (BufferText, SelectionSet, ChangeSet),
@@ -99,25 +102,11 @@ impl Editor {
             buf,
             cmd,
         );
-        // A session anchored to a different buffer than the one this edit
-        // just landed on has nothing to record here — this can only happen
-        // while a stale session (its buffer no longer focused) is still
-        // open, since `apply_insert_edit` always edits the focused buffer.
-        // `observe_edit`'s own length check would reject a mismatched
-        // `ChangeSet` anyway, but checking `bid` up front documents why,
-        // rather than relying on that as a coincidence. Read after
-        // `apply_doc_edit_grouped` returns, so `text_gen` reflects the edit
-        // just applied, not the buffer's state before it.
+        // Read after `apply_doc_edit_grouped` returns, so `text_gen`
+        // reflects the edit just applied, not the buffer's state before it.
         let text_gen = self.state.buffers.get(buf).text_gen;
-        let stale = self
-            .state
-            .input
-            .completion_mut()
-            .and_then(|session| session.buffer_mut())
-            .is_some_and(|bt| bt.bid() == buf && !bt.observe_edit(&cs, text_gen));
-        if stale {
-            self.state.dismiss_completion(&self.view);
-        }
+        self.state
+            .completion_observe_edit(&self.view, buf, &cs, text_gen);
     }
 
     pub(in crate::editor) fn handle_insert(&mut self, key: KeyEvent) {
@@ -245,13 +234,22 @@ impl Editor {
                         .get(buf)
                         .language
                         .map(|id| self.state.config.languages.name_of(id));
-                    for source in self.state.trigger_sources_for(ch, language) {
+                    let sources = self.state.trigger_sources_for(ch, language);
+                    for source in &sources {
                         self.state.queue_event(EditorEvent::OnTriggerChar {
                             buffer: buf,
                             ch,
-                            source,
+                            source: source.clone(),
                         });
                     }
+                    // The hook above is for any listener (signature help);
+                    // a completion source registered under one of these
+                    // names is invoked directly, by name — no hook round
+                    // trip for the framework's own feature.
+                    self.state.trigger_buffer_completion(
+                        &self.view,
+                        completion::Trigger::Char { sources: &sources },
+                    );
                 }
             }
 

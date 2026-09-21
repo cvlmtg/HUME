@@ -74,6 +74,12 @@ impl CommandRegistry {
             cmd_exit_insert,
         )
         .reg(self);
+        ecmd(
+            "completion-trigger",
+            "Show completions at the cursor (Insert mode).",
+            cmd_completion_trigger,
+        )
+        .reg(self);
 
         // ── Editor commands — edit composites ─────────────────────────────────
         ecmd(

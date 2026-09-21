@@ -237,6 +237,99 @@ fn status_msg_cleared_on_next_keypress() {
     assert!(ed.state.status_msg.is_none());
 }
 
+// ── Ctrl-w delete-word in the minibuffer ─────────────────────────────────────
+
+fn minibuf_input(ed: &Editor) -> &str {
+    ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
+}
+
+#[test]
+fn ctrl_w_deletes_word_in_minibuf() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":e foo bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e foo ");
+}
+
+#[test]
+fn ctrl_w_skips_trailing_whitespace_first() {
+    // Readline behaviour: runs of spaces are consumed before the word.
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":e foo   ".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e ");
+}
+
+#[test]
+fn ctrl_w_at_start_is_noop_and_keeps_minibuf_open() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "");
+    // Unlike Backspace on empty input (which cancels), Ctrl-w is a no-op.
+    assert!(
+        ed.state.minibuf().is_some(),
+        "Ctrl-w on empty input must not close the minibuf"
+    );
+}
+
+#[test]
+fn ctrl_w_stops_at_slash_for_path_args() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":e /tmp/alpha/one.txt".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e /tmp/alpha/");
+}
+
+#[test]
+fn ctrl_w_on_trailing_slash_deletes_dir_component() {
+    let mut ed = editor_from("-[h]>ello\n");
+    for ch in ":e /tmp/alpha/".chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "e /tmp/");
+}
+
+#[test]
+fn ctrl_w_works_in_search_minibuf() {
+    // Ctrl-w in a `/` search prompt deletes the last word without cancelling.
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    assert_eq!(ed.state.mode(), Mode::Search);
+    for ch in "foo bar".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(minibuf_input(&ed), "foo bar");
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(minibuf_input(&ed), "foo ");
+    assert!(
+        ed.state.minibuf().is_some(),
+        "Ctrl-w must not close the search minibuf"
+    );
+    assert_eq!(ed.state.mode(), Mode::Search);
+    ed.handle_key(key_esc());
+}
+
+#[test]
+fn ctrl_w_at_start_of_search_minibuf_is_noop() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    ed.handle_key(key_ctrl('w'));
+    assert!(
+        ed.state.minibuf().is_some(),
+        "Ctrl-w on empty search input must not close the minibuf"
+    );
+    assert_eq!(ed.state.mode(), Mode::Search);
+    ed.handle_key(key_esc());
+}
+
 // ── Dirty-buffer tracking and :q guard ───────────────────────────────────────
 
 #[test]

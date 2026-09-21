@@ -120,19 +120,22 @@ pub(crate) struct ConfigState {
     /// Registry of all mappable commands (motions, selections, edits), plus
     /// every `%define-command!`/`%declare-plugin!` dynamic and lazy entry.
     pub(in crate::editor) registry: CommandRegistry,
-    /// The minibuffer's argument-completion sources, keyed by name —
-    /// `TypedCommand.completer` names an entry here. See `completion/
-    /// registry.rs`'s module doc.
-    pub(in crate::editor) completion_sources: completion::CompletionSourceRegistry,
+    /// Every completion source, native or Steel-registered, keyed by name —
+    /// `TypedCommand.completer` names a `Minibuf` entry here, an Insert-mode
+    /// trigger invokes the `Buffer` ones. See `completion/registry.rs`'s
+    /// module doc.
+    pub(in crate::editor) completion_sources: completion::SourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
-    /// Chars that fire `OnTriggerChar` in Insert mode, keyed by
-    /// `(source, language)` — a `(register-trigger-chars! source language
-    /// chars)` call only ever replaces its own `(source, language)` entry,
-    /// so two languages sharing a source (e.g. completion's `"lsp-
-    /// completion"` source registered separately for `"rust"` and
-    /// `"python"`) never clobber each other. An empty `chars` removes the
-    /// entry entirely (matches `on-lsp-detach`'s clear-on-detach usage).
+    /// Chars that fire `OnTriggerChar` in Insert mode — and invoke the
+    /// completion source registered under the same `source` name, if any
+    /// (`EditorState::trigger_buffer_completion`) — keyed by `(source,
+    /// language)`: a `(register-trigger-chars! source language chars)` call
+    /// only ever replaces its own `(source, language)` entry, so two
+    /// languages sharing a source (e.g. the `"lsp"` completion source
+    /// registered separately for `"rust"` and `"python"`) never clobber
+    /// each other. An empty `chars` removes the entry entirely (matches
+    /// `on-lsp-detach`'s clear-on-detach usage).
     pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds) — the render
@@ -197,7 +200,7 @@ impl ConfigState {
         Self {
             keymap: default_keymap_for(kitty_enabled),
             registry: CommandRegistry::with_defaults(),
-            completion_sources: completion::CompletionSourceRegistry::with_defaults(),
+            completion_sources: completion::SourceRegistry::with_defaults(),
             languages: LanguageRegistry::new(),
             trigger_chars: rustc_hash::FxHashMap::default(),
             decorations: hume_decorations::DecorationStores::reset(prior_clock),

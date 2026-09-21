@@ -22,7 +22,7 @@ const DECLARE_LSP: &str = r#"(load-plugin "core:stdlib")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+               "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics"))"#;
 
 /// Same manifest as `DECLARE_LSP` but keyed on `on-buffer-save` instead of
@@ -35,7 +35,7 @@ const DECLARE_LSP_WRONG_EVENT: &str = r#"(load-plugin "core:stdlib")
   #:commands '("lsp-hover" "lsp-goto-definition" "lsp-goto-declaration"
                "lsp-goto-type-definition" "lsp-goto-implementation" "lsp-references"
                "goto-next-diagnostic" "goto-prev-diagnostic"
-               "lsp-rename" "lsp-fmt" "lsp-code-actions" "lsp-completion-trigger")
+               "lsp-rename" "lsp-fmt" "lsp-code-actions")
   #:typed-commands '("diagnostics"))"#;
 
 /// Mirrors `lsp_hover.rs`'s `setup`, but declares `core:lsp` lazily

@@ -219,6 +219,20 @@ pub(in crate::editor) fn cmd_exit_insert(
     Ok(())
 }
 
+/// `completion-trigger` — Ctrl-Space in Insert mode: invoke every
+/// registered completion source at the cursor. A native command rather
+/// than a plugin's, since the orchestration is the editor's own; the
+/// sources it invokes are whatever plugins registered.
+pub(in crate::editor) fn cmd_completion_trigger(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    _count: usize,
+    _mode: MotionMode,
+) -> Result<(), CommandError> {
+    state.trigger_buffer_completion(view, super::super::completion::Trigger::Explicit);
+    Ok(())
+}
+
 // ── Extend mode ───────────────────────────────────────────────────────────────
 
 /// No-op unless the mode layer is `Base` — `EditorMode::Extend` is only ever

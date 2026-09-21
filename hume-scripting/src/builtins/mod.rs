@@ -485,10 +485,10 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(bid: args::BidArg);
         cmd "word-start-before-cursor" buffers::word_start_before_cursor(bid: args::BidArg);
 
-        // Completion orchestration.
-        cmd "%completion-begin!" completion::completion_begin(bid: args::BidArg, items: SteelVal, incomplete: SteelVal, source: SteelVal, priority: SteelVal, match_kind: SteelVal, anchor: SteelVal);
-        cmd "%completion-add-items!" completion::completion_add_items(token: SteelVal, items: SteelVal, source: SteelVal, priority: SteelVal, match_kind: SteelVal, incomplete: SteelVal);
-        cmd "completion-update-filter!" completion::completion_update_filter(text: SteelVal);
+        // Completion: sources register at config time; answers, the ranked
+        // view, and accept/dismiss are command-time.
+        config "%register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, token: SteelVal, match_kind: SteelVal, priority: SteelVal);
+        cmd "%completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal, span: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();

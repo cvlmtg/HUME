@@ -6,105 +6,25 @@
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use super::*;
-use crate::editor::lsp::LspState;
 use hume_engine::pipeline::RenderContext;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
+use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
-use hume_scripting::ScriptingHost;
 
-fn write_fixture_file(file_dir: &Path) -> PathBuf {
-    let file = file_dir.join("main.rs");
-    // "foo\n" — char 3 is the trailing newline; a collapsed selection
-    // there puts Insert mode's cursor right after "foo", ready to type "(".
-    std::fs::write(&file, "foo\n").unwrap();
-    file
-}
-
-/// The client and its handshake are constructed *after* the plugin loads
-/// (unlike every other feature's `setup`), so `on-lsp-attach`'s handler —
-/// which registers trigger chars — is already installed when the
-/// `Running` transition fires it. Every other card's tests never depend on
-/// that ordering because they trigger everything through `type_cmd`, not
-/// through a hook that only fires once, at attach time.
 fn setup(
     file: &Path,
     tmp: &Path,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
-    setup_with_capabilities(
+    setup_trigger_char_feature(
         file,
         tmp,
         serde_json::json!({"signatureHelpProvider": {"triggerCharacters": ["(", ","]}}),
         configure,
     )
-}
-
-/// [`setup`] with the server's advertised capabilities spelled out, for the
-/// one test that needs the handshake to negotiate a non-default position
-/// encoding. `configure` runs too late to supply them — `respond_to` queues
-/// per method, so a second `initialize` reply would sit behind the first
-/// forever.
-fn setup_with_capabilities(
-    file: &Path,
-    tmp: &Path,
-    capabilities: serde_json::Value,
-    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
-) -> (Editor, RealRuntimeGuard, RequestLog) {
-    let guard = RealRuntimeGuard::new();
-
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({ "capabilities": capabilities }),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    // This harness's `eval_init` never loads `languages.scm` (unlike the
-    // real `Editor::init_scripting` startup sequence), so `.rs` extension
-    // detection never ran — set the language explicitly to match the
-    // "rust" server key below, which on-lsp-attach's `server-name` arg
-    // (the language) must equal for register-trigger-chars! to route here.
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle(); // on-lsp-attach registers trigger chars
-
-    (ed, guard, requests)
 }
 
 /// Char 3 of the fixture's "foo\n" is the trailing newline — a collapsed
@@ -170,7 +90,7 @@ fn signature_help_response(
 fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |_backend, _sid| {});
     position_after_foo(&mut ed);
 
@@ -195,7 +115,7 @@ fn detach_clears_sighelp_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 fn trigger_char_after_debounce_shows_signature_with_marked_param() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -218,7 +138,7 @@ fn trigger_char_after_debounce_shows_signature_with_marked_param() {
 fn comma_advances_the_marked_parameter() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -246,7 +166,7 @@ fn comma_advances_the_marked_parameter() {
 fn close_paren_closes_the_popup_without_a_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -285,7 +205,7 @@ fn close_paren_closes_the_popup_without_a_request() {
 fn esc_ending_insert_closes_the_sticky_popup() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -311,7 +231,7 @@ fn esc_ending_insert_closes_the_sticky_popup() {
 fn rapid_trigger_chars_coalesce_to_one_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -351,7 +271,7 @@ fn rapid_trigger_chars_coalesce_to_one_request() {
 fn null_response_closes_the_popup() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -380,7 +300,7 @@ fn null_response_closes_the_popup() {
 fn offset_form_parameter_label_marks_the_correct_slice() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -414,7 +334,7 @@ fn offset_form_parameter_label_marks_the_correct_slice() {
 fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(&file, tmp.path(), |backend, _sid| {
         backend.respond_to(
             "textDocument/signatureHelp",
@@ -448,8 +368,8 @@ fn offset_form_label_with_an_astral_char_marks_the_correct_slice() {
 fn offset_form_label_is_read_in_the_negotiated_encoding_not_always_utf16() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
-    let (mut ed, _guard, _requests) = setup_with_capabilities(
+    let file = write_foo_fixture(file_dir.path());
+    let (mut ed, _guard, _requests) = setup_trigger_char_feature(
         &file,
         tmp.path(),
         serde_json::json!({

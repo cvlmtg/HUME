@@ -365,7 +365,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
     ed.feed_key(key('i'));
     assert_eq!(ed.state.mode(), Mode::Insert);
 
-    begin_completion_session(&mut ed, completion_items(&["foo"]), None); // just needs a live session — this file is about the picker, not anchors
+    open_completion_session(&mut ed, &["foo"]);
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(

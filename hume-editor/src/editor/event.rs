@@ -121,13 +121,6 @@ pub(in crate::editor) enum EditorEvent {
         buffer: BufferId,
         item: serde_json::Value,
     },
-    /// Fires from the Insert-mode per-keystroke refilter path, but only when
-    /// the open session's `isIncomplete` flag is set — a bounded,
-    /// user-intent-adjacent window, not an unconditional per-keystroke hook.
-    OnCompletionRefilter {
-        buffer: BufferId,
-        filter_text: String,
-    },
     /// Fires when a buffer's text changes — user edits, undo, redo, `:e!`
     /// reload, and read-only view refreshes (`:messages`, `:ls`,
     /// `:plugin-status`) alike, all of which bump `Buffer::text_gen`. Raised
@@ -227,7 +220,6 @@ editor_event_names! {
     OnViewportChange => "on-viewport-change",
     OnTriggerChar => "on-trigger-char",
     OnCompletionAccept => "on-completion-accept",
-    OnCompletionRefilter => "on-completion-refilter",
     OnOptionChange => "on-option-change",
     OnTextChanged => "on-text-changed",
 }
@@ -291,15 +283,6 @@ impl EditorEvent {
                 vec![
                     SteelBufferId::new(*buffer).into_steel_val(),
                     json_to_steel(item),
-                ]
-            }
-            EditorEvent::OnCompletionRefilter {
-                buffer,
-                filter_text,
-            } => {
-                vec![
-                    SteelBufferId::new(*buffer).into_steel_val(),
-                    SteelVal::StringV(filter_text.as_str().into()),
                 ]
             }
             EditorEvent::OnOptionChange { key, value } => {

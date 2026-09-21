@@ -123,13 +123,12 @@
 ;; after macro expansion has already tried (and failed) to expand it. The
 ;; external keyword stays `#:match`; keyword name and bound identifier are
 ;; independent in Steel's `#:kw [name default]` syntax.
-(define (completion-begin! bid items #:source source #:anchor anchor #:incomplete [incomplete #f]
-                                      #:priority [priority 0] #:match [match-kind 'fuzzy])
-  (%completion-begin! bid items incomplete source priority match-kind anchor))
+(define (register-completion-source! name proc #:target target #:token token
+                                               #:match [match-kind 'fuzzy] #:priority [priority 0])
+  (%register-completion-source! name proc target token match-kind priority))
 
-(define (completion-add-items! token items #:source source #:priority [priority 0]
-                                            #:match [match-kind 'fuzzy] #:incomplete [incomplete #f])
-  (%completion-add-items! token items source priority match-kind incomplete))
+(define (completion-emit! id items #:incomplete [incomplete #f] #:span [span #f])
+  (%completion-emit! id items incomplete span))
 
 (define (run-inline-output! cmd args #:cwd [cwd #f])
   (let ([code (%run-inline-output! cmd args cwd)])

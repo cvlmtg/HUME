@@ -46,10 +46,6 @@ fn all_variants() -> Vec<EditorEvent> {
             buffer,
             item: serde_json::json!({"label": "foo"}),
         },
-        EditorEvent::OnCompletionRefilter {
-            buffer,
-            filter_text: "fo".to_string(),
-        },
         EditorEvent::OnOptionChange {
             key: "lsp.inlay-hints".to_string(),
             value: "true".to_string(),
@@ -246,19 +242,6 @@ fn on_completion_accept_json_round_trips_through_json_to_steel() {
     assert_eq!(args.len(), 2);
     assert_steel_buffer_id(&args, 0, buffer);
     assert_eq!(args[1], hume_scripting::json::json_to_steel(&item));
-}
-
-#[test]
-fn on_completion_refilter_carries_buffer_and_filter_text() {
-    let buffer = BufferId::default();
-    let event = EditorEvent::OnCompletionRefilter {
-        buffer,
-        filter_text: "fo".to_string(),
-    };
-    let args = event.steel_args();
-    assert_eq!(args.len(), 2);
-    assert_steel_buffer_id(&args, 0, buffer);
-    assert_eq!(steel_string(&args, 1), "fo");
 }
 
 #[test]

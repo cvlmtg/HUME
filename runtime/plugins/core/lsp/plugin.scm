@@ -31,4 +31,3 @@
 (bind-key! 'normal "z a" "lsp-code-actions")
 (bind-key! 'normal "g n" "goto-next-diagnostic")
 (bind-key! 'normal "g p" "goto-prev-diagnostic")
-(bind-key! 'insert "ctrl-space" "lsp-completion-trigger")

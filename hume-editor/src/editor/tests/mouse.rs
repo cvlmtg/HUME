@@ -993,7 +993,7 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.feed_key(key('i'));
-    begin_completion_session(&mut ed, completion_items(&["hello", "help"]), None); // just needs a live session — this file is about mouse clicks, not anchors
+    open_completion_session(&mut ed, &["hello", "help"]);
     assert!(ed.state.input.completion().is_some(), "setup: session open");
 
     ed.handle_input(mouse_left_down(3, 0));

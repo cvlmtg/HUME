@@ -1,18 +1,16 @@
-//! Completion — both of the editor's completion systems, on one shared
-//! item/session model.
+//! Completion — both of the editor's completion targets (Insert mode and
+//! the `:` command line), on one model:
 //!
-//! - Insert-mode: `CompletionSession` (`session.rs`) holds every
-//!   contributing source's items and does the per-keystroke filter/rank;
-//!   `CompletionItem` (`item.rs`) is its item type; `session/accept.rs`
-//!   applies the accepted item as a buffer edit.
-//! - Minibuffer (`:` command line): the same `CompletionSession`/
-//!   `CompletionItem`, targeted at the minibuffer's own input instead of a
-//!   buffer (`CompletionTarget::Minibuf`) — see `session.rs`'s module doc.
-//!
-//! What still differs per source is *how* candidates are gathered — see
-//! `MatchKind`'s own doc for the three kinds and why `Delegated` sources
-//! (`complete_path`/`complete_set`) keep taking the live input while
-//! `Fuzzy`/`String` sources don't.
+//! - `registry.rs` — every *source*, native or Steel-registered, keyed by
+//!   name: what it targets, where its token starts, how its items score.
+//! - `session.rs` — the one open *session*: each participating source's
+//!   latest invocation (the document it saw, the span it answered for, its
+//!   items), ranked per keystroke against each source's own token;
+//!   `session/accept.rs` applies the accepted item as a buffer edit.
+//! - `orchestrate.rs` — the one *driver*: triggers, invokes sources, lands
+//!   answers, reacts to edits, applies the `:` line's eager policy.
+//! - `item.rs` — the item type both targets share; `simple.rs`/`path.rs`/
+//!   `set.rs` — the native minibuffer sources.
 
 use std::path::Path;
 
@@ -21,6 +19,7 @@ use crate::editor::registry::CommandRegistry;
 use hume_treesitter::registry::LanguageRegistry;
 
 mod item;
+mod orchestrate;
 mod path;
 mod registry;
 mod session;
@@ -28,16 +27,18 @@ mod set;
 mod simple;
 
 pub(in crate::editor) use item::CompletionItem;
+pub(in crate::editor) use orchestrate::Trigger;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
-pub(in crate::editor) use registry::{CompletionSourceRegistry, SourceResult};
-pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind, SourceState};
+pub(in crate::editor) use registry::{
+    BufferToken, MinibufToken, SourceBody, SourceEntry, SourceRegistry, SourceTarget,
+};
+pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind};
 pub(in crate::editor) use set::SET_SOURCE;
 pub(in crate::editor) use simple::{BUFFER_NAME_SOURCE, COMMAND_SOURCE, THEME_SOURCE};
 
 // ── Context ──────────────────────────────────────────────────────────────────
 
-/// Context supplied to every completer function — Insert-mode's native
-/// sources (none exist yet) and the minibuffer's five.
+/// Context supplied to every native completer function.
 ///
 /// Bundles read-only references to the editor state that completers need
 /// (command registry, buffer list, working directory) without exposing a full
@@ -59,10 +60,10 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 /// `prefix` is the unfinished argument text up to the cursor.
 ///
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
-/// `Delegated` sources use this for their own filtering; `complete_minibuf`
-/// (`input_stack/command.rs`) uses it too, for a `String`/`Fuzzy` argument
-/// source's span — that source's own function doesn't see the input at all,
-/// so nothing else computes this for it.
+/// `Delegated` sources use this for their own filtering; the orchestrator
+/// (`orchestrate.rs`) uses it too, for a `MinibufToken::Arg` source's span —
+/// that source's own function doesn't see the input at all, so nothing else
+/// computes this for it.
 pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
     let up_to_cursor = &input[..cursor.min(input.len())];
     match up_to_cursor.find(' ') {

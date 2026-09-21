@@ -235,10 +235,87 @@ impl Drop for RealRuntimeGuard {
 // difference, not incidental duplication.
 
 use crate::editor::lsp::LspState;
-use hume_lsp::backend::LspBackend;
+use hume_lsp::backend::{LspBackend, ServerId};
 use hume_lsp::client::LspClient;
 use hume_lsp::inline::InlineLspBackend;
+use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 use hume_scripting::ScriptingHost;
+
+/// `<file_dir>/main.rs` holding `"foo\n"` — char 3 is the trailing newline,
+/// so a collapsed selection there puts Insert mode's cursor right after
+/// "foo", ready to type a trigger char. Shared by the two trigger-char
+/// features (completion, signature help).
+fn write_foo_fixture(file_dir: &Path) -> PathBuf {
+    let file = file_dir.join("main.rs");
+    std::fs::write(&file, "foo\n").unwrap();
+    file
+}
+
+/// A real `core:lsp` plugin (`RealRuntimeGuard`) over a recording backend
+/// that answers `initialize` with `capabilities`, for a feature driven by
+/// server trigger characters (completion, signature help). The client and
+/// its handshake are constructed *after* the plugin loads — unlike
+/// `lsp_actions.rs`'s own setup — so `on-lsp-attach`'s handler, which
+/// registers the trigger chars, is already installed when the `Running`
+/// transition fires it, once, at attach time. `configure` queues the
+/// backend's method responses before anything is sent.
+fn setup_trigger_char_feature(
+    file: &Path,
+    tmp: &Path,
+    capabilities: serde_json::Value,
+    configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
+) -> (Editor, RealRuntimeGuard, RequestLog) {
+    let guard = RealRuntimeGuard::new();
+
+    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": capabilities }),
+    );
+    let sid = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+    configure(&mut backend, sid);
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        r#"(load-plugin "core:stdlib")
+(load-plugin "core:lsp")"#,
+        tmp,
+    );
+    ed.scripting = Some(host);
+
+    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
+    let bid = ed.focused_buffer_id();
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    // This harness's `eval_init` never loads `languages.scm` (unlike the
+    // real `Editor::init_scripting` startup sequence), so `.rs` extension
+    // detection never ran — set the language explicitly to match the
+    // "rust" server key below, which on-lsp-attach's `server-name` arg
+    // (the language) must equal for register-trigger-chars! to route here.
+    let lang = ed.state.config.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
+
+    let mut client = LspClient::new(sid, PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
+
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+    ed.settle(); // on-lsp-attach registers trigger chars
+
+    (ed, guard, requests)
+}
 
 /// `((start_line, start_char), (end_line, end_char), severity, message)`.
 type DiagFixture<'a> = ((u32, u32), (u32, u32), i64, &'a str);

@@ -555,8 +555,8 @@ pub(in crate::editor) struct TypedCommand {
     /// How this command executes — see [`TypedBody`].
     pub body: TypedBody,
     /// Names this command's `:` argument-completion source in
-    /// `completion::CompletionSourceRegistry`, if it declares one. A
-    /// `&'static str`, not a closed enum: `input_stack/command.rs`'s
+    /// `completion::SourceRegistry`, if it declares one. A
+    /// `&'static str`, not a closed enum: `completion/orchestrate.rs`'s
     /// `resolve_minibuf_source` looks it up by name at completion time
     /// instead of matching on it — a precondition for a Steel-defined typed
     /// command to eventually declare a completer of its own, though

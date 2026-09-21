@@ -153,7 +153,7 @@ impl LspState {
     /// here is safe. `configs` is the `register-lsp-server!` registration
     /// store the new `init.scm` re-populates. `supersede` indexes in-flight
     /// `#:supersede`-tagged requests (an open completion session's
-    /// `on-completion-refilter` re-request among them) filed by an engine
+    /// `isIncomplete` re-request among them) filed by an engine
     /// that no longer exists — meaningless once it's gone; the completion
     /// session itself lives on `EditorState.input` now and is dropped by
     /// `input.truncate_to_base()` alongside every other layer, not here.

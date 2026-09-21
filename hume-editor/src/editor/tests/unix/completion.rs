@@ -1,119 +1,83 @@
+//! The two `:` completion sources that read the runtime's `themes/` dir —
+//! `:theme <Tab>` (`THEME_SOURCE`, a `String` source offering
+//! `theme_name_candidates`'s whole universe) and `:set global theme=<Tab>`
+//! (`complete_set`'s `Delegated` value phase reaching the same list).
+//!
+//! Sets only `HUME_RUNTIME` (not `TMPDIR`) so neither test can race the
+//! unguarded path-completion tests, whose `tempfile::tempdir()` respects
+//! `TMPDIR`. The shared `TEST_GLOBALS` claim still serializes against other
+//! `HUME_RUNTIME`-sensitive tests.
+
 use super::*;
 
-/// `:set global theme=<name>` must surface installed themes — verifying the
-/// `complete_set` dispatch reaches `theme_name_candidates` (shared with
-/// `:theme`) and that the value phase for `theme` is wired end-to-end.
-///
-/// Sets only `HUME_RUNTIME` (not `TMPDIR`) so it cannot race with the
-/// unguarded path-completion tests, whose `tempfile::tempdir()` respects
-/// `TMPDIR`. The shared `TEST_GLOBALS` claim still serializes against other
-/// `HUME_RUNTIME`-sensitive tests.
-// `std::env::set_var`/`remove_var` below mutate the process-global
-// `HUME_RUNTIME` var — sound only under the `TEST_GLOBALS.claim(Global::Env)`
-// taken just below, held for the rest of this test via `HumeRuntimeOnly`'s
-// `_lock` field, which is what makes this the sanctioned caller
-// `clippy.toml`'s `disallowed-methods` entry lists as exempt.
-#[test]
-#[allow(clippy::disallowed_methods)]
-fn tab_completes_set_global_theme_value() {
-    struct HumeRuntimeOnly {
-        _dir: tempfile::TempDir,
-        _lock: ClaimGuard,
-    }
-    impl Drop for HumeRuntimeOnly {
-        fn drop(&mut self) {
-            unsafe { std::env::remove_var("HUME_RUNTIME") }
-        }
-    }
-    let lock = TEST_GLOBALS.claim(Global::Env);
-    let dir = safe_tempdir();
-    // Two themes so the popup opens (a single candidate completes silently).
-    let themes_dir = dir.path().join("themes");
-    std::fs::create_dir_all(&themes_dir).unwrap();
-    std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();
-    std::fs::write(themes_dir.join("alpha.toml"), b"").unwrap();
-    unsafe { std::env::set_var("HUME_RUNTIME", dir.path()) }
-    let _guard = HumeRuntimeOnly {
-        _dir: dir,
-        _lock: lock,
-    };
-
-    let mut ed = editor_from("-[h]>ello\n");
-    ed.handle_key(key(':'));
-    for ch in "set global theme=".chars() {
-        ed.handle_key(key(ch));
-    }
-    ed.handle_key(key_tab());
-
-    let session = ed
-        .state
-        .input
-        .completion()
-        .expect("theme value should open a popup (>=2 candidates)");
-    let names: Vec<String> = (0..session.len())
-        .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
-        .collect();
-    assert!(
-        names.iter().any(|n| n == "zorro"),
-        "theme candidate missing: {names:?}"
-    );
-    assert!(
-        names.iter().any(|n| n == "alpha"),
-        "theme candidate missing: {names:?}"
-    );
+/// A runtime dir holding two themes (so the popup opens — a single
+/// candidate completes silently), installed as `HUME_RUNTIME` for the
+/// guard's lifetime. Fields drop in order: the var is cleared, then the dir
+/// is deleted, then the claim is released.
+struct TwoThemesRuntime {
+    _dir: tempfile::TempDir,
+    _lock: ClaimGuard,
 }
 
-/// `:theme <Tab>` — `complete_theme`'s own `THEME_SOURCE`, a `MatchKind::
-/// String` source that offers `theme_name_candidates`'s full universe for
-/// the session to narrow. Distinct from `tab_completes_set_global_theme_value`
-/// above, which reaches the same candidate list through `complete_set`'s
-/// `Delegated` value phase instead — this test is `:theme`'s own, and was
-/// previously the only registered source with no coverage at all.
-#[test]
-#[allow(clippy::disallowed_methods)]
-fn tab_on_theme_arg_completes_theme_names() {
-    struct HumeRuntimeOnly {
-        _dir: tempfile::TempDir,
-        _lock: ClaimGuard,
-    }
-    impl Drop for HumeRuntimeOnly {
-        fn drop(&mut self) {
-            unsafe { std::env::remove_var("HUME_RUNTIME") }
+impl TwoThemesRuntime {
+    // `set_var` below mutates process-global `HUME_RUNTIME`, always under the
+    // `Global::Env` claim taken first and held for the guard's lifetime —
+    // the sanctioned-caller shape `clippy.toml`'s `disallowed-methods` entry
+    // exists to protect.
+    #[allow(clippy::disallowed_methods)]
+    fn new() -> Self {
+        let lock = TEST_GLOBALS.claim(Global::Env);
+        let dir = safe_tempdir();
+        let themes_dir = dir.path().join("themes");
+        std::fs::create_dir_all(&themes_dir).unwrap();
+        std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();
+        std::fs::write(themes_dir.join("alpha.toml"), b"").unwrap();
+        unsafe { std::env::set_var("HUME_RUNTIME", dir.path()) }
+        Self {
+            _dir: dir,
+            _lock: lock,
         }
     }
-    let lock = TEST_GLOBALS.claim(Global::Env);
-    let dir = safe_tempdir();
-    let themes_dir = dir.path().join("themes");
-    std::fs::create_dir_all(&themes_dir).unwrap();
-    std::fs::write(themes_dir.join("zorro.toml"), b"").unwrap();
-    std::fs::write(themes_dir.join("alpha.toml"), b"").unwrap();
-    unsafe { std::env::set_var("HUME_RUNTIME", dir.path()) }
-    let _guard = HumeRuntimeOnly {
-        _dir: dir,
-        _lock: lock,
-    };
+}
 
+impl Drop for TwoThemesRuntime {
+    // Sanctioned caller — see `Self::new`.
+    #[allow(clippy::disallowed_methods)]
+    fn drop(&mut self) {
+        unsafe { std::env::remove_var("HUME_RUNTIME") }
+    }
+}
+
+/// `:` + `input` + Tab, then every candidate's `insert_text`.
+fn theme_candidates_for(input: &str) -> Vec<String> {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
-    for ch in "theme ".chars() {
+    for ch in input.chars() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_tab());
-
     let session = ed
         .state
         .input
         .completion()
-        .expect(":theme <Tab> should open a popup (>=2 candidates)");
-    let names: Vec<String> = (0..session.len())
+        .expect("two themes must open a popup");
+    (0..session.len())
         .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
-        .collect();
-    assert!(
-        names.iter().any(|n| n == "zorro"),
-        "theme candidate missing: {names:?}"
-    );
-    assert!(
-        names.iter().any(|n| n == "alpha"),
-        "theme candidate missing: {names:?}"
-    );
+        .collect()
+}
+
+#[test]
+fn tab_completes_set_global_theme_value() {
+    let _runtime = TwoThemesRuntime::new();
+    let names = theme_candidates_for("set global theme=");
+    assert!(names.iter().any(|n| n == "zorro"), "{names:?}");
+    assert!(names.iter().any(|n| n == "alpha"), "{names:?}");
+}
+
+#[test]
+fn tab_on_theme_arg_completes_theme_names() {
+    let _runtime = TwoThemesRuntime::new();
+    let names = theme_candidates_for("theme ");
+    assert!(names.iter().any(|n| n == "zorro"), "{names:?}");
+    assert!(names.iter().any(|n| n == "alpha"), "{names:?}");
 }

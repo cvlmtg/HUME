@@ -118,6 +118,7 @@ impl Editor {
                     .config
                     .keymap
                     .unbind_user(to_editor_bind_mode(mode), &keys),
+                Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
             }
         }
         self.detect_pending_languages();
@@ -506,7 +507,6 @@ impl Editor {
             | EditorEvent::OnViewportChange { .. }
             | EditorEvent::OnTriggerChar { .. }
             | EditorEvent::OnCompletionAccept { .. }
-            | EditorEvent::OnCompletionRefilter { .. }
             | EditorEvent::OnOptionChange { .. }
             | EditorEvent::OnTextChanged { .. } => {}
         }

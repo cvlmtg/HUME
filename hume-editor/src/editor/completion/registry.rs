@@ -1,133 +1,193 @@
-//! The minibuffer's argument-completion sources, keyed by name —
-//! `TypedCommand.completer: Option<&'static str>` names an entry here
-//! instead of dispatching through a closed enum, which is what lets a
-//! Steel-defined typed command declare a completer at all (`registry/
-//! command.rs`'s own doc records the constraint-relaxation cost of that
-//! widening).
+//! Every completion source the editor knows, keyed by name — the six native
+//! minibuffer sources compiled in, plus whatever Steel registered via
+//! `(register-completion-source! …)`. One registry for both targets: a
+//! `TypedCommand.completer` names a `Minibuf` entry here, and an Insert-mode
+//! trigger invokes every `Buffer` entry (or the ones registered for a
+//! trigger char). Lives on `ConfigState`, so `:reload-config` rebuilds it
+//! from the natives by construction and a Steel entry never outlives the
+//! config that registered it.
 //!
-//! Two native-fn shapes, one per non-`Fuzzy` `MatchKind` a minibuffer source
-//! actually uses (`MatchKind::Fuzzy` has no native registrant yet — nothing
-//! in the minibuffer needs incremental/async collection): a `String`-kind
-//! source's universe doesn't depend on the live input at all (`ctx` alone),
-//! so `update_filter`'s own generic prefix gate can narrow it; a
-//! `Delegated`-kind source's universe *is* the live input (a directory
-//! listing, a parse phase), so it takes `(input, cursor, ctx)` and returns
-//! its own finished, already-ordered result.
+//! A source's *static* facts live here (what it targets, where its token
+//! starts, how its items are scored, its priority); everything about one
+//! particular invocation of it — the document it saw, the span it answered
+//! for, the items — is `session.rs`'s [`super::Invocation`]. A session
+//! refers back here by [`SourceId`] rather than copying any of this, so a
+//! name/priority/match kind has exactly one home.
 
 use std::ops::Range;
 
-use rustc_hash::FxHashMap;
+use steel::rvals::SteelVal;
 
 use super::{CompletionCtx, CompletionItem, MatchKind};
 
-/// A `String`- or `Fuzzy`-kind native source: enumerates its whole universe
-/// once; the session's own matcher narrows it per keystroke.
-type NativeFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
+/// Where a `Buffer`-target source's token starts — resolved by Rust against
+/// the invocation's own snapshot *before* the source runs, so it is
+/// deterministic, identical on every re-invocation, and known (for the
+/// seeded filter and the menu anchor) even while the source is still
+/// pending. Chosen once, at registration: the framework never guesses a
+/// boundary on a source's behalf.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum BufferToken {
+    /// `hume_ops::edit::word_start_before(text, head, word_chars)..head` —
+    /// the identifier run before the cursor, the LSP source's choice.
+    Word,
+    /// `head..head` — no seeding, and accept replaces nothing before the
+    /// cursor. The right choice right after a non-identifier trigger.
+    Cursor,
+    /// The answer's own `#:span` is authoritative; an emission without one
+    /// is an error.
+    Custom,
+}
 
-/// A `Delegated`-kind native source: computes its own finished result fresh
-/// from the live input every attempt — `(span, items)`, `span` being the
-/// byte range in the minibuffer input the accepted candidate replaces (not
-/// just where it starts — see [`super::token_end_at`]'s doc for why the end
-/// matters too).
-type NativeDelegatedFn = fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
+/// [`BufferToken`]'s minibuffer counterpart, in byte offsets of the `:`
+/// line's input.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum MinibufToken {
+    /// The whitespace-delimited argument token the cursor is in —
+    /// [`super::arg_prefix`]'s start through [`super::token_end_at`]'s
+    /// whitespace stop. The framework's own command-line grammar, so a
+    /// source that just enumerates a universe never has to spell it.
+    Arg,
+    /// The answer's own span is authoritative (`:e`'s path, `:set`'s
+    /// phase-dependent token).
+    Custom,
+}
 
-enum SourceKind {
-    Native(NativeFn),
+/// Which target a source serves, carrying that target's own token rule —
+/// the pairing is a type, not two fields validated against each other, so
+/// a `Buffer` source with an `Arg` token can't be built.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum SourceTarget {
+    Buffer(BufferToken),
+    Minibuf(MinibufToken),
+}
+
+/// A native minibuffer source that enumerates a stable universe — the
+/// session's own matcher narrows it, and the orchestrator supplies the
+/// [`MinibufToken::Arg`] span it never has to compute.
+pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
+
+/// A native minibuffer source whose universe *is* the live input (a
+/// directory listing, a parse phase): computes its own finished, ordered
+/// result and its own [`MinibufToken::Custom`] byte span, fresh every
+/// attempt.
+pub(in crate::editor) type NativeDelegatedFn =
+    fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
+
+/// How a source produces its answer. The two native shapes each imply
+/// their target and token rule (see [`SourceEntry::target`]) — a native
+/// source's signature *is* its contract, so there is no second field to
+/// keep in agreement with it. No native `Buffer`-target shape exists yet; a
+/// future buffer-words source adds its own variant here.
+pub(in crate::editor) enum SourceBody {
+    NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),
-}
-
-struct CompletionSourceEntry {
-    match_kind: MatchKind,
-    kind: SourceKind,
-}
-
-/// One completion attempt's outcome — a `String`/`Fuzzy` source's universe
-/// (for the caller to build a session from and let `update_filter` narrow),
-/// or a `Delegated` source's own finished `(span, items)`.
-pub(in crate::editor) enum SourceResult {
-    Universe(Vec<CompletionItem>),
-    Delegated {
-        span: Range<usize>,
-        items: Vec<CompletionItem>,
+    /// Invoked via `EditorState::queue_steel_call` with the invocation id
+    /// first — `(proc id bid prefix)` for a `Buffer` source, `(proc id
+    /// input cursor)` for a `Minibuf` one — and answered, sync or async,
+    /// by `(completion-emit! id …)`.
+    Steel {
+        proc: SteelVal,
+        target: SourceTarget,
     },
 }
 
-pub(in crate::editor) struct CompletionSourceRegistry {
-    sources: FxHashMap<&'static str, CompletionSourceEntry>,
+pub(in crate::editor) struct SourceEntry {
+    pub(in crate::editor) name: Box<str>,
+    pub(in crate::editor) match_kind: MatchKind,
+    pub(in crate::editor) priority: i64,
+    pub(in crate::editor) body: SourceBody,
 }
 
-impl CompletionSourceRegistry {
+impl SourceEntry {
+    pub(in crate::editor) fn target(&self) -> SourceTarget {
+        match &self.body {
+            SourceBody::NativeUniverse(_) => SourceTarget::Minibuf(MinibufToken::Arg),
+            SourceBody::NativeDelegated(_) => SourceTarget::Minibuf(MinibufToken::Custom),
+            SourceBody::Steel { target, .. } => *target,
+        }
+    }
+}
+
+/// Index into [`SourceRegistry`]'s entry list — stable for an entry's
+/// whole life, since a re-registration under the same name overwrites the
+/// slot in place rather than pushing a new one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) struct SourceId(u32);
+
+pub(in crate::editor) struct SourceRegistry {
+    entries: Vec<SourceEntry>,
+}
+
+impl SourceRegistry {
     pub(in crate::editor) fn with_defaults() -> Self {
-        let mut sources = FxHashMap::default();
-        sources.insert(
-            super::simple::COMMAND_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::String {
-                    case_sensitive: false,
-                },
-                kind: SourceKind::Native(super::simple::complete_command),
-            },
-        );
-        sources.insert(
-            super::simple::BUFFER_NAME_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::String {
-                    case_sensitive: true,
-                },
-                kind: SourceKind::Native(super::simple::complete_buffer_name),
-            },
-        );
-        sources.insert(
-            super::simple::THEME_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::String {
-                    case_sensitive: true,
-                },
-                kind: SourceKind::Native(super::simple::complete_theme),
-            },
-        );
-        sources.insert(
-            super::path::PATH_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::Delegated,
-                kind: SourceKind::NativeDelegated(super::path::complete_path),
-            },
-        );
-        sources.insert(
-            super::path::PATH_DIRS_ONLY_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::Delegated,
-                kind: SourceKind::NativeDelegated(super::path::complete_path_dirs_only),
-            },
-        );
-        sources.insert(
-            super::set::SET_SOURCE,
-            CompletionSourceEntry {
-                match_kind: MatchKind::Delegated,
-                kind: SourceKind::NativeDelegated(super::set::complete_set),
-            },
-        );
-        Self { sources }
+        use super::{path, set, simple};
+        let universe = |name: &str, case_sensitive, body| SourceEntry {
+            name: name.into(),
+            match_kind: MatchKind::String { case_sensitive },
+            priority: 0,
+            body: SourceBody::NativeUniverse(body),
+        };
+        let delegated = |name: &str, body| SourceEntry {
+            name: name.into(),
+            match_kind: MatchKind::Delegated,
+            priority: 0,
+            body: SourceBody::NativeDelegated(body),
+        };
+        Self {
+            entries: vec![
+                universe(simple::COMMAND_SOURCE, false, simple::complete_command),
+                universe(
+                    simple::BUFFER_NAME_SOURCE,
+                    true,
+                    simple::complete_buffer_name,
+                ),
+                universe(simple::THEME_SOURCE, true, simple::complete_theme),
+                delegated(path::PATH_SOURCE, path::complete_path),
+                delegated(path::PATH_DIRS_ONLY_SOURCE, path::complete_path_dirs_only),
+                delegated(set::SET_SOURCE, set::complete_set),
+            ],
+        }
     }
 
-    /// Runs `name`'s source against `(input, cursor, ctx)`, returning `None`
-    /// if `name` isn't registered (a stale name after a rename — reports at
-    /// `Severity::Trace`, one level up).
-    pub(in crate::editor) fn run(
-        &self,
-        name: &str,
-        input: &str,
-        cursor: usize,
-        ctx: &CompletionCtx<'_>,
-    ) -> Option<(MatchKind, SourceResult)> {
-        let entry = self.sources.get(name)?;
-        let result = match entry.kind {
-            SourceKind::Native(f) => SourceResult::Universe(f(ctx)),
-            SourceKind::NativeDelegated(f) => {
-                let (span, items) = f(input, cursor, ctx);
-                SourceResult::Delegated { span, items }
+    /// Registers (or, under an already-taken name, replaces in place) a
+    /// source. Replacing keeps the entry's [`SourceId`] stable for any
+    /// session still referring to it; overriding a native name is allowed —
+    /// a plugin swapping in its own `path` source is a feature, not a
+    /// collision. Returns whether an entry was replaced, for the caller's
+    /// own `Trace` line.
+    pub(in crate::editor) fn register(&mut self, entry: SourceEntry) -> bool {
+        match self.id_of(&entry.name) {
+            Some(id) => {
+                self.entries[id.0 as usize] = entry;
+                true
             }
-        };
-        Some((entry.match_kind, result))
+            None => {
+                self.entries.push(entry);
+                false
+            }
+        }
+    }
+
+    pub(in crate::editor) fn id_of(&self, name: &str) -> Option<SourceId> {
+        self.entries
+            .iter()
+            .position(|e| &*e.name == name)
+            .map(|i| SourceId(i as u32))
+    }
+
+    pub(in crate::editor) fn get(&self, id: SourceId) -> &SourceEntry {
+        &self.entries[id.0 as usize]
+    }
+
+    /// Every `Buffer`-target source, in registration order — what an
+    /// explicit Insert-mode trigger invokes.
+    pub(in crate::editor) fn buffer_sources(&self) -> Vec<SourceId> {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e.target(), SourceTarget::Buffer(_)))
+            .map(|(i, _)| SourceId(i as u32))
+            .collect()
     }
 }

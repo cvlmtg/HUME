@@ -61,6 +61,7 @@ pub(crate) mod watchdog;
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
 pub use builtins::ids::SteelBufferId;
+pub use host::PendingCompletionSource;
 pub use keys::parse_key_stream;
 pub use log::LogLevel;
 pub use types::{

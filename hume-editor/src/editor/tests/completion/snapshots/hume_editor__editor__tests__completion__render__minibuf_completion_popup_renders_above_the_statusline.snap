@@ -1,6 +1,5 @@
 ---
-source: hume-editor/src/editor/tests/completion.rs
-assertion_line: 502
+source: hume-editor/src/editor/tests/completion/render.rs
 expression: snap
 ---
 <fg=#665c54,bg=#3c3836>  </><fg=#fabd2f,bg=#3c3836>1</>

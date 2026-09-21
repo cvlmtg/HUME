@@ -234,53 +234,50 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
         .expect("show-drawer-list! must open, not read as stale")
 }
 
-/// Opens a completion session directly via `CompletionSession::begin_buffer`,
-/// bypassing `completion-begin!`'s Steel/wire path entirely — shared by every
-/// test file that just needs a live session on the focused buffer's stack
-/// (picker/paste/mouse interaction tests pass `anchor: None`) or one seeded
-/// at a caller-computed anchor (`lsp_completion_menu.rs`'s own
-/// `begin_session_items`, which resolves `anchor` via
-/// `word_start_before_cursor` before calling this).
-fn begin_completion_session(
-    ed: &mut Editor,
-    items: Vec<crate::editor::completion::CompletionItem>,
-    anchor: Option<hume_rope::offset::CharOffset>,
-) {
-    use crate::editor::completion::{CompletionSession, MatchKind, SourceState};
-    use crate::editor::input_stack::CompletionLayer;
-
-    let bid = ed.focused_buffer_id();
-    let head = ed.current_selections().primary().head();
-    let session = CompletionSession::begin_buffer(
-        &ed.state,
-        bid,
-        head,
-        SourceState {
-            name: "test".into(),
-            priority: 0,
-            match_kind: MatchKind::Fuzzy,
-            incomplete: false,
-        },
-        items,
-        anchor,
-    );
-    ed.state
-        .push_layer(&ed.view, CompletionLayer { session, ui: None });
+/// A Steel completion source named `name` that answers `items` — Scheme
+/// item literals, e.g. `(list (hash "label" "foo"))` — synchronously,
+/// registered with `#:target 'buffer #:token 'word` plus `extra` keywords.
+/// The one shape every completion test's script starts from, so the
+/// registration syntax is spelled once.
+fn completion_source(name: &str, items: &str, extra: &str) -> String {
+    format!(
+        r#"(register-completion-source! "{name}"
+             (lambda (id bid prefix) (completion-emit! id {items}))
+             #:target 'buffer #:token 'word {extra})"#
+    )
 }
 
-/// `label`-only `CompletionItem`s, for a test that just needs a live session
-/// on screen — shared by every caller of [`begin_completion_session`] that
-/// doesn't care about `textEdit`/`additionalTextEdits`.
-fn completion_items(labels: &[&str]) -> Vec<crate::editor::completion::CompletionItem> {
-    labels
+/// `(list (hash "label" "a") (hash "label" "b") …)` for `labels`.
+fn completion_labels(labels: &[&str]) -> String {
+    let items: Vec<String> = labels
         .iter()
-        .map(|label| {
-            crate::editor::completion::CompletionItem::from_json(&serde_json::json!({
-                "label": label
-            }))
-            .expect("test item")
-        })
-        .collect()
+        .map(|l| format!(r#"(hash "label" "{l}")"#))
+        .collect();
+    format!("(list {})", items.join(" "))
+}
+
+/// Registers one source answering `labels` and triggers it (Ctrl-Space,
+/// then settle so the queued Steel call answers) — for a test that just
+/// needs a live Insert-mode session on the focused buffer. The editor must
+/// already be in Insert mode; installs a fresh scripting host.
+fn open_completion_session(ed: &mut Editor, labels: &[&str]) {
+    let tmp = safe_tempdir();
+    run(
+        ed,
+        tmp.path(),
+        &completion_source("test", &completion_labels(labels), ""),
+    );
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+}
+
+/// Feed `text`'s chars one by one through `feed_key` — for typing inside
+/// an already-open Insert or minibuffer session, unlike [`type_text`],
+/// which enters and leaves Insert itself.
+fn type_chars(ed: &mut Editor, text: &str) {
+    for ch in text.chars() {
+        ed.feed_key(key(ch));
+    }
 }
 
 /// A normal (no modifier) character key event.
@@ -318,6 +315,10 @@ fn key_pagedown() -> KeyEvent {
 
 fn key_tab() -> KeyEvent {
     KeyEvent::new(KeyCode::Tab, Modifiers::NONE)
+}
+
+fn key_shift_tab() -> KeyEvent {
+    KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)
 }
 
 fn key_backspace() -> KeyEvent {
@@ -1246,8 +1247,6 @@ mod line_store;
 mod list_buffers;
 mod lsp;
 mod lsp_bridge;
-mod lsp_completion;
-mod lsp_completion_menu;
 mod lsp_decorations;
 mod lsp_diagnostics;
 mod lsp_diagnostics_inline;

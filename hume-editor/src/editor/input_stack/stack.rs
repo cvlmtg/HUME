@@ -159,7 +159,7 @@ pub(in crate::editor) trait Layer: Any {
     /// overlay and mode layer; `DrawerLayer`/`PopupLayer` override to
     /// `false` — the drawer is built to be worked over (a stray key falls
     /// through and it stays open) and a popup owns nothing but Ctrl-u/d, so
-    /// neither should make a `show-menu!`/`completion-begin!` response read
+    /// neither should make a `show-menu!`/`show-drawer-list!` response read
     /// the stack as moved.
     fn is_modal(&self) -> bool {
         true
@@ -411,9 +411,8 @@ impl InputStack {
     /// Whether nothing *modal* (see [`Layer::is_modal`]) sits above the
     /// current mode layer, tolerating a layer of type `L` specifically —
     /// the staleness check an *async* opener (a Steel callback answering a
-    /// request fired earlier: `show-menu!`, `show-drawer-list!`,
-    /// `completion-begin!`) makes before landing, alongside its own
-    /// mode-layer requirement. It is not a precedence rule: a synchronous,
+    /// request fired earlier: `show-menu!`, `show-drawer-list!`) makes
+    /// before landing, alongside its own mode-layer requirement. It is not a precedence rule: a synchronous,
     /// key- or command-triggered opener (`picker!`, `prompt!`) never calls
     /// this, because dispatch order already proves the stack is exactly
     /// where the key path left it — there is nothing left to check. An
@@ -426,8 +425,7 @@ impl InputStack {
     /// modal one does, or a mode-layer change.
     ///
     /// The `L` parameter is what lets a self-replacing opener
-    /// (`show_menu`, `show_drawer_list`, `completion_begin`) tolerate its
-    /// own prior instance too, wherever it landed relative to a later
+    /// (`show_menu`, `show_drawer_list`) tolerate its own prior instance too, wherever it landed relative to a later
     /// non-modal overlay (e.g. a `Popup` that opened once the first
     /// instance was already up) — a plain `top() == L` check misses exactly
     /// that case, since `L` buried under a later non-modal overlay would
@@ -832,10 +830,12 @@ impl EditorState {
 
     /// The async-staleness gate every opener whose Steel callback fires
     /// after the key path that triggered it has already returned must
-    /// check before landing — `show-menu!`, `show-drawer-list!`,
-    /// `completion-begin!`. `M` is the mode layer the request requires
-    /// (`BaseLayer` for the first two, `InsertLayer` for completion); `L`
-    /// is the overlay it's about to push. `true` when the request should be
+    /// check before landing — `show-menu!`, `show-drawer-list!`. `M` is the
+    /// mode layer the request requires (`BaseLayer` for both); `L` is the
+    /// overlay it's about to push. (A completion source's answer has no
+    /// such gate: it names the one invocation it answers, and an answer
+    /// whose invocation is no longer the latest in an open session is
+    /// dropped by construction.) `true` when the request should be
     /// dropped: the mode layer changed, or a *modal* overlay landed on top
     /// of it, since the request went out — the user left the required mode,
     /// or opened something else, while the response was in flight. A prior

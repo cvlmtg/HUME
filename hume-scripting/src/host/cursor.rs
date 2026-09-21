@@ -46,7 +46,8 @@ pub trait CursorHost {
     /// Resolves the pane the same way `symbol_under_cursor` does — any pane
     /// currently showing `bid`, background tabs included, not necessarily
     /// the *focused* pane. A caller that also independently reads the
-    /// focused pane's own cursor (`completion-begin!`'s `#:anchor`, say)
+    /// focused pane's own cursor (a `'custom`-token completion source
+    /// computing its `#:span`, say)
     /// must treat a result from here as advisory, not necessarily agreeing
     /// with that other read, and guard accordingly.
     fn word_start_before_cursor(&self, bid: BufferId) -> Option<usize>;

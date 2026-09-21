@@ -41,6 +41,8 @@
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
+;;; `on-trigger` is `#f` for a source the editor invokes by name itself
+;;; (a completion source registered under `source-name`).
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
   (register-hook! 'on-lsp-attach
     (lambda (bid server-name)
@@ -51,10 +53,11 @@
   (register-hook! 'on-lsp-detach
     (lambda (bid server-name)
       (register-trigger-chars! source-name server-name '())))
-  (register-hook! 'on-trigger-char
-    (lambda (bid ch source)
-      (when (equal? source source-name)
-        (on-trigger bid ch)))))
+  (when on-trigger
+    (register-hook! 'on-trigger-char
+      (lambda (bid ch source)
+        (when (equal? source source-name)
+          (on-trigger bid ch))))))
 
 (define (lsp/report-error what err)
   (log! 'error

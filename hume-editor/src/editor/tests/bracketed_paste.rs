@@ -82,7 +82,7 @@ fn insert_mode_paste_skips_auto_pairs() {
 fn insert_mode_paste_dismisses_open_completion_session() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
-    begin_completion_session(&mut ed, completion_items(&["foo", "bar"]), None); // just needs a live session — this file is about pasting, not anchors
+    open_completion_session(&mut ed, &["foo", "bar"]);
     assert!(ed.state.input.completion().is_some());
 
     ed.feed_paste("xyz");

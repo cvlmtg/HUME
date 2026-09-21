@@ -63,24 +63,25 @@ fn keymap_lint_warns_with_kind_hint_for_typed_only_command() {
 }
 
 /// Native default keymaps must never bind a key to a command that isn't a Rust
-/// built-in — `lsp-completion-trigger` (Ctrl-Space) lives entirely in
-/// `core:lsp`'s `plugin.scm` now, not in `keymap/defaults.rs`, so an editor
-/// that never loads or declares `core:lsp` must start up with no keymap-lint
-/// warning naming it.
+/// built-in — Ctrl-Space's `completion-trigger` (`keymap/defaults.rs`) is
+/// one (`registry/defaults/editor_cmds.rs`), so an editor that never loads
+/// or declares any plugin must start up with no keymap-lint warning naming
+/// it.
 ///
-/// Flip: re-adding `t.bind_leaf(key!(Ctrl + ' '), cmd!("lsp-completion-trigger"))`
-/// to `default_insert_keymap` in `keymap/defaults.rs` makes this fail.
+/// Flip: rebinding Ctrl-Space in `default_insert_keymap` to a command only a
+/// plugin defines makes this fail.
 #[test]
-fn no_keymap_lint_warning_for_lsp_completion_trigger_without_core_lsp() {
+fn no_keymap_lint_warning_for_completion_trigger_without_plugins() {
     use crate::editor::Severity;
 
     let (ed, _dirs) = setup_editor_with_init_scripting("", None);
 
     assert!(
-        !ed.state.message_log.entries().any(|e| {
-            e.severity == Severity::Warning && e.text.contains("lsp-completion-trigger")
-        }),
-        "no warning should name 'lsp-completion-trigger' when core:lsp is never loaded/declared; messages: {:?}",
+        !ed.state
+            .message_log
+            .entries()
+            .any(|e| { e.severity == Severity::Warning && e.text.contains("completion-trigger") }),
+        "no warning should name 'completion-trigger' when no plugin is loaded/declared; messages: {:?}",
         ed.state
             .message_log
             .entries()

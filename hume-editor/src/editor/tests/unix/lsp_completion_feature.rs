@@ -1,89 +1,28 @@
-// The full completion flow: trigger (Ctrl-Space + server trigger chars) ->
-// textDocument/completion -> completion-begin!; on-completion-accept applies
-// additionalTextEdits or resolves; on-completion-refilter re-requests while
-// isIncomplete. Named lsp_completion_feature.rs (not lsp_completion.rs — that
-// file already covers the completion-begin!/update-filter!/top/
-// accept!/dismiss! orchestration directly; this file drives the same
-// primitives through the real shipped plugin and a real LSP round trip).
+// The full completion flow through the real shipped `core:lsp` plugin and
+// a real LSP round trip: `completion-trigger` (Ctrl-Space) and the server's
+// trigger chars invoke the plugin's registered `"lsp"` source, which sends
+// textDocument/completion and answers with `completion-emit!`; accept
+// applies additionalTextEdits or resolves; an `isIncomplete` answer is
+// re-requested as the user types. The orchestration itself is covered
+// without a server in `tests/completion/`; this file drives it end to end.
 // Loads the real shipped `core:lsp` plugin in place (`RealRuntimeGuard`).
 //
 // Not on Windows: Scheme require strings embed OS paths; backslashes are not
 // escaped in Steel string literals (same constraint as tests/plugins.rs).
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::*;
-use crate::editor::lsp::LspState;
-use hume_lsp::backend::{LspBackend, ServerId};
-use hume_lsp::client::LspClient;
+use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
-use hume_scripting::ScriptingHost;
 
-fn write_fixture_file(file_dir: &Path) -> PathBuf {
-    let file = file_dir.join("main.rs");
-    std::fs::write(&file, "foo\n").unwrap();
-    file
-}
-
-/// Same plugin-before-handshake ordering as the signature-help setup: `on-lsp-attach`'s
-/// handler (registers trigger chars) must already be installed when the
-/// `Running` transition fires it, once, at attach time.
 fn setup(
     file: &Path,
     tmp: &Path,
     capabilities: serde_json::Value,
     configure: impl FnOnce(&mut RecordingLspBackend, ServerId),
 ) -> (Editor, RealRuntimeGuard, RequestLog) {
-    let guard = RealRuntimeGuard::new();
-
-    let (mut backend, _notifications, requests) = RecordingLspBackend::new();
-    backend.respond_to(
-        "initialize",
-        serde_json::json!({"capabilities": capabilities}),
-    );
-    let sid = backend
-        .start("rust-analyzer", &[], Path::new("."), &[])
-        .unwrap();
-    configure(&mut backend, sid);
-
-    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
-    ed.lsp = LspState::from_backend_for_test(Box::new(backend));
-
-    let mut host = ScriptingHost::new();
-    eval_with_real_host(
-        &mut ed,
-        &mut host,
-        r#"(load-plugin "core:stdlib")
-(load-plugin "core:lsp")"#,
-        tmp,
-    );
-    ed.scripting = Some(host);
-
-    ed.execute_typed("e", Some(file.to_str().unwrap())).unwrap();
-    let bid = ed.focused_buffer_id();
-    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
-    // This harness's `eval_init` never loads `languages.scm` (unlike the
-    // real `Editor::init_scripting` startup sequence), so `.rs` extension
-    // detection never ran — set the language explicitly to match the
-    // "rust" server key below, which on-lsp-attach's `server-name` arg
-    // (the language) must equal for register-trigger-chars! to route here.
-    let lang = ed.state.config.languages.intern("rust");
-    ed.state.buffers.get_mut(bid).language = Some(lang);
-
-    let mut client = LspClient::new(sid, PathBuf::from("."));
-    client.start_handshake(ed.lsp.backend_mut());
-    ed.lsp.insert_client_for_test(client);
-    ed.lsp
-        .insert_server_key_for_test("rust".to_string(), PathBuf::from("."), sid);
-
-    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
-    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
-    for action in actions {
-        ed.dispatch_lsp_action(sid2, action);
-    }
-    ed.settle(); // on-lsp-attach registers trigger chars
-
-    (ed, guard, requests)
+    setup_trigger_char_feature(file, tmp, capabilities, configure)
 }
 
 fn full_completion_caps() -> serde_json::Value {
@@ -114,7 +53,7 @@ fn status(ed: &Editor) -> String {
 fn trigger_char_fires_the_completion_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -136,7 +75,7 @@ fn trigger_char_fires_the_completion_request() {
 fn ctrl_space_fires_completion_trigger() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -158,7 +97,7 @@ fn ctrl_space_fires_completion_trigger() {
 fn capability_gated_no_completion_provider_sends_no_request() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -172,14 +111,18 @@ fn capability_gated_no_completion_provider_sends_no_request() {
     settle(&mut ed);
 
     assert_eq!(request_count(&requests, "textDocument/completion"), 0);
-    assert!(status(&ed).to_lowercase().contains("not supported"));
+    assert_eq!(
+        status(&ed),
+        "no completions",
+        "the source declines without a request; the framework reports the empty answer"
+    );
 }
 
 #[test]
 fn null_response_opens_no_session() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(
         &file,
         tmp.path(),
@@ -201,9 +144,7 @@ fn null_response_opens_no_session() {
     );
     ed.feed_key(key_esc());
 
-    // Directly exercise the session state the completion orchestration tests
-    // already cover: no
-    // active session means accept! must error.
+    // No session means accept! must error.
     let source = r#"(define-typed-command! "try-accept" "" (lambda () (completion-accept! 0)))"#;
     let mut host = ed.scripting.take().unwrap();
     eval_with_real_host(&mut ed, &mut host, source, tmp.path());
@@ -214,7 +155,7 @@ fn null_response_opens_no_session() {
         status(&ed)
             .to_lowercase()
             .contains("no active completion session"),
-        "a null response must never call completion-begin!, got status {:?}",
+        "a null response must open no session, got status {:?}",
         status(&ed)
     );
 }
@@ -682,7 +623,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
 fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_present() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -729,7 +670,7 @@ fn resolve_sent_only_when_item_lacks_additional_text_edits_and_resolve_provider_
 fn null_resolve_response_is_a_clean_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -766,7 +707,7 @@ fn null_resolve_response_is_a_clean_no_op() {
 fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -806,11 +747,13 @@ fn resolve_not_sent_when_the_item_already_has_additional_text_edits() {
     );
 }
 
+/// The `"lsp"` source answered `isIncomplete` — the framework calls it again
+/// on the next keystroke, and it re-requests.
 #[test]
-fn refilter_on_incomplete_session_re_requests() {
+fn an_incomplete_answer_is_re_requested_on_typing() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -838,15 +781,15 @@ fn refilter_on_incomplete_session_re_requests() {
     assert_eq!(
         request_count(&requests, "textDocument/completion"),
         2,
-        "typing while the session is isIncomplete must re-request"
+        "typing after an isIncomplete answer must re-request"
     );
 }
 
 #[test]
-fn refilter_on_complete_session_does_not_re_request() {
+fn a_complete_answer_is_not_re_requested_on_typing() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -870,22 +813,19 @@ fn refilter_on_complete_session_does_not_re_request() {
     assert_eq!(
         request_count(&requests, "textDocument/completion"),
         1,
-        "a complete (non-isIncomplete) session must not re-request on further typing"
+        "a complete (non-isIncomplete) answer must not re-request on further typing"
     );
 }
 
-/// Detach must be a true no-op, not a per-keystroke log:
-/// `*completion-chars*`/`"lsp-completion"`'s trigger-char registration is
-/// global, set once at attach, so `on-lsp-detach` must clear it — a trigger
-/// char left registered past `:lsp-stop` would still reach
-/// `lsp/guard-capability`, which resolves the focused buffer's own
-/// (now-detached) server and logs "not supported by server" on every
-/// matching keystroke.
+/// Detach must be a true no-op, not a per-keystroke request or log: the
+/// `"lsp"` source's trigger-char registration is set once at attach, so
+/// `on-lsp-detach` must clear it — a trigger char left registered past
+/// `:lsp-stop` would still invoke the source on every matching keystroke.
 #[test]
 fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, requests) = setup(
         &file,
         tmp.path(),
@@ -894,7 +834,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     );
 
     ed.lsp_stop(Some("rust"));
-    ed.settle(); // on-lsp-detach clears *completion-chars*
+    ed.settle(); // on-lsp-detach clears the "lsp" trigger chars
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -906,7 +846,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
     assert_eq!(
         ed.state.status_msg, before,
         "a trigger char left registered past detach must be a true no-op, not a \
-         guard-capability 'not supported' status message every keystroke"
+         status message every keystroke"
     );
 }
 
@@ -918,7 +858,7 @@ fn detach_clears_completion_trigger_chars_so_a_stale_trigger_is_a_true_no_op() {
 fn detach_dismisses_an_open_completion_session_for_that_buffer() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(
         &file,
         tmp.path(),
@@ -952,7 +892,7 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
 fn snippet_item_lands_as_stripped_plain_text() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
-    let file = write_fixture_file(file_dir.path());
+    let file = write_foo_fixture(file_dir.path());
     let (mut ed, _guard, _requests) = setup(
         &file,
         tmp.path(),

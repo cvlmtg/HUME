@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
-use super::{BufferTarget, CompletionSession};
+use super::{BufferTarget, CompletionSession, SpanTrack};
 use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
@@ -17,15 +17,21 @@ use hume_ops::edit::replace_around_cursors;
 
 impl CompletionSession {
     /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
-    /// over the session's own anchor..cursor span when absent) at *every*
-    /// cursor in the session's pane, as if the completion had been typed at
-    /// each — a conforming server's completion range always contains the
-    /// request position (LSP spec, `item.rs`'s `CompletionItem`
-    /// doc), so the primary's own edit, re-expressed as a char count behind/ahead of
-    /// its live head, is the same span typing would have consumed at any
+    /// over its own source's live token span when absent) at *every* cursor
+    /// in the session's pane, as if the completion had been typed at each —
+    /// a conforming server's completion range always contains the request
+    /// position (LSP spec, `item.rs`'s `CompletionItem` doc), so the
+    /// primary's own edit, re-expressed as a char count behind/ahead of its
+    /// live head, is the same span typing would have consumed at any
     /// cursor. `additionalTextEdits` have no cursor of their own and are
     /// applied once, document-wide. Both land as one undo step — gen-checked
-    /// against `generation_at_begin`.
+    /// against the last edit this session observed.
+    ///
+    /// Every position here is decoded against the *selected item's own*
+    /// invocation snapshot and mapped through the edits observed since it —
+    /// a second source, or the same source re-invoked against a later
+    /// document, has its own snapshot, so no contributor's positions are
+    /// ever read against another's document.
     ///
     /// If the item lacks `additionalTextEdits` entirely (not just an empty
     /// array — see [`CompletionItem::has_additional_text_edits`]) and
@@ -33,8 +39,8 @@ impl CompletionSession {
     /// `completionItem/resolve` and applies whatever it returns once the
     /// response lands (via the ordinary `LspCallback`/`stale_check`
     /// machinery every other `lsp-request` uses — dropped silently if the
-    /// buffer has moved past `generation_at_begin`'s successor by then,
-    /// same staleness discipline as any other LSP response).
+    /// buffer has moved past the accept's own generation by then, same
+    /// staleness discipline as any other LSP response).
     pub(in crate::editor) fn accept(
         &self,
         state: &mut EditorState,
@@ -45,22 +51,28 @@ impl CompletionSession {
         let bt = self
             .buffer()
             .ok_or_else(|| "completion-accept!: not a buffer-target session".to_string())?;
-        let &item_idx = self
-            .filtered
-            .get(idx)
+        let (_, invocation, item) = self
+            .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
-        let item = &self.items[item_idx as usize].item;
-        edits::checked_buffer(state, bt.bid, Some(bt.generation_at_begin))?;
+        let SpanTrack::Buffer {
+            doc,
+            live: Some(live),
+        } = &invocation.span
+        else {
+            unreachable!("a ranked Buffer invocation always has its live span resolved")
+        };
+        edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 
         // The session's pane/buffer pairing may no longer be live — a pane
         // switch (nothing dismisses the session on one), or the Steel
         // `completion-accept!` builtin firing from a different pane than
-        // `begin()` resolved. `pane_state::ensure`'s fallback (fabricate a
-        // fresh cursor at char 0 for a pane that never showed this buffer)
-        // is right for "a background buffer with no selection state yet",
-        // not for "this session's own point of reference is gone" — so this
-        // errors instead of silently landing the edit at the top of the file.
+        // the session opened in. `pane_state::ensure`'s fallback (fabricate
+        // a fresh cursor at char 0 for a pane that never showed this
+        // buffer) is right for "a background buffer with no selection state
+        // yet", not for "this session's own point of reference is gone" —
+        // so this errors instead of silently landing the edit at the top of
+        // the file.
         if state.focus.id() != bt.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
         }
@@ -102,8 +114,7 @@ impl CompletionSession {
         // are then shared by both, just after the match.
         let (start_now, end_now, new_text, what) = match &item.text_edit {
             Some(te) => {
-                let rope_at_begin = &bt.rope_at_begin;
-                let range = wire_range_to_chars(rope_at_begin, &te.range, encoding);
+                let range = wire_range_to_chars(&doc.rope, &te.range, encoding);
                 let (start_b, end_b) = (range.start, range.end);
                 if end_b < start_b {
                     return Err(format!(
@@ -112,62 +123,50 @@ impl CompletionSession {
                 }
                 // Decoded once against the frozen request-time snapshot
                 // above, then mapped forward through every edit this
-                // session actually observed via `observe_edit` (`Assoc::
-                // Before` on the start so it stays pinned to the token even
-                // if an observed insertion landed exactly there;
-                // `Assoc::After` on the end so an observed insertion at or
-                // inside the range extends it rather than being left
-                // stranded next to the completion text) — exact position
-                // tracking through the intervening keystrokes, not a
-                // scalar-drift guess. Two single-position maps, not
-                // `map_ranges`: that helper hardcodes both ends to *shrink*
-                // on a boundary insertion, which is the wrong association
-                // for the end here.
+                // invocation actually observed (`Assoc::Before` on the start
+                // so it stays pinned to the token even if an observed
+                // insertion landed exactly there; `Assoc::After` on the end
+                // so an observed insertion at or inside the range extends it
+                // rather than being left stranded next to the completion
+                // text) — exact position tracking through the intervening
+                // keystrokes, not a scalar-drift guess. Two single-position
+                // maps, not `map_ranges`: that helper hardcodes both ends to
+                // *shrink* on a boundary insertion, which is the wrong
+                // association for the end here.
                 let mut start_pos = [start_b];
-                bt.cs_since_begin
-                    .map_positions(&mut start_pos, Assoc::Before);
-                let start_now = start_pos[0];
+                doc.cs_since.map_positions(&mut start_pos, Assoc::Before);
                 let mut end_pos = [end_b];
-                bt.cs_since_begin.map_positions(&mut end_pos, Assoc::After);
-                // `self.filter` can narrow independent of any edit this
-                // session observed — `completion-update-filter!` sets it
-                // directly, without touching the buffer (used by
-                // programmatic/scripted callers, and by tests). Extending
-                // (never shrinking) to cover it here catches that case too,
-                // on top of whatever `cs_since_begin` mapped from real edits.
-                let end_now =
-                    end_pos[0].max(bt.anchor().shift(self.filter.chars().count() as isize));
-                (start_now, end_now, te.new_text.clone(), "textEdit range")
-            }
-            // No server-provided range: replace the anchor..cursor span
-            // uniformly at every cursor, same as the `textEdit` arm just
-            // above — any prefix typed *before* triggering completion (e.g.
-            // "fo" before the popup opened) is otherwise left untouched,
-            // duplicating it ahead of `insert_text`. `#:anchor` is the
-            // caller's own declared token start (`host_impl/completion.rs`'s
-            // `completion_begin` validates it's on the cursor's own line);
-            // there is no well-defined *per-cursor* token independent of it
-            // to fall back to, so this is the one span every cursor gets.
-            None => {
-                let typed = self.filter.chars().count();
-                let anchor = bt.anchor();
-                let token_end = anchor.shift(typed as isize);
+                doc.cs_since.map_positions(&mut end_pos, Assoc::After);
                 (
-                    anchor,
-                    token_end,
-                    item.insert_text.clone(),
-                    "insertText token",
+                    start_pos[0],
+                    end_pos[0],
+                    te.new_text.clone(),
+                    "textEdit range",
                 )
             }
+            // No server-provided range: replace this source's own live
+            // token uniformly at every cursor, same as the `textEdit` arm
+            // just above — any prefix typed *before* triggering completion
+            // (e.g. "fo" before the popup opened) is otherwise left
+            // untouched, duplicating it ahead of `insert_text`. The token is
+            // the source's own declared span (`registry.rs`'s token rule, or
+            // a `Custom` answer's `#:span`), tracked through every keystroke
+            // since; there is no well-defined *per-cursor* token independent
+            // of it to fall back to, so this is the one span every cursor
+            // gets.
+            None => (
+                live.start,
+                live.end,
+                item.insert_text.clone(),
+                "insertText token",
+            ),
         };
         // The delta model below rests entirely on this containment: a
         // conforming server's completion range always contains the request
-        // position (LSP spec), and the `insertText` fallback's anchor..
-        // cursor span rests on the same guarantee via `#:anchor`'s own
-        // `<= head` validation at `completion-begin!` time. A cursor that
-        // has since moved outside the span (an arrow key the completion
-        // menu deliberately lets through, or `self.filter` narrowed via
-        // `completion-update-filter!` with no matching real edit) breaks
+        // position (LSP spec), and the `insertText` fallback's token rests
+        // on the same guarantee via the session's own tracking (`observe_
+        // edit` drops a slot the cursor has left). A cursor that has since
+        // moved outside the span by a path the session never saw breaks
         // that assumption — erroring here, buffer untouched, is safer than
         // silently computing a span from a stale reference point. This also
         // keeps the `chars_since` calls below from tripping their inversion
@@ -192,8 +191,8 @@ impl CompletionSession {
         // with the main edit's own range (checked just below) can be caught
         // before either lands.
         let additional_char_edits = edits::build_edits_from_earlier_document(
-            &bt.rope_at_begin,
-            &bt.cs_since_begin,
+            &doc.rope,
+            &doc.cs_since,
             encoding,
             &item.additional_text_edits,
         )?;
@@ -287,8 +286,13 @@ impl CompletionSession {
         //
         // This is also the edit that grows an open Insert session's
         // typed-run selection to cover the whole replacement, not just what
-        // was keyed since — see `CompletionSession::anchor`'s doc for why
-        // that's intended.
+        // was keyed since: if the accepted item's `textEdit` replaces text
+        // typed before the Insert session began (e.g. `A` mid-identifier,
+        // type one char, then accept), the selected typed run on Esc grows
+        // to cover the whole replacement. That's intended, not a
+        // pin-tracking bug: the accept's own edit rewrote that whole span,
+        // so every character in it was written by this session, and
+        // selecting the freshly completed token is the useful outcome.
         let cs_cursors = crate::editor::doc_ops::apply_doc_edit_grouped(
             &mut state.buffers,
             &state.config.decorations,
@@ -318,88 +322,83 @@ impl CompletionSession {
 
         // Fire on-completion-accept with the raw (pristine) item after the
         // edit lands — an extension point for anything this store doesn't
-        // parse (e.g. `command`); Rust now owns additionalTextEdits/resolve.
+        // parse (e.g. `command`); Rust owns additionalTextEdits/resolve.
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: bt.bid,
             item: item.raw.clone(),
         });
 
         if !item.has_additional_text_edits {
-            self.maybe_send_resolve(bt, state, lsp, item, rope_pre, accept_cs, encoding);
+            maybe_send_resolve(bt, state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
     }
+}
 
-    /// Sends `completionItem/resolve` when the server advertised
-    /// `completionProvider.resolveProvider` — best-effort: a resolution
-    /// error, timeout, or a server that's gone by send time only logs, it
-    /// never fails the accept that already landed. `bt` is the same
-    /// `BufferTarget` `accept` already resolved — its only caller.
-    #[allow(clippy::too_many_arguments)]
-    fn maybe_send_resolve(
-        &self,
-        bt: &BufferTarget,
-        state: &mut EditorState,
-        lsp: &mut LspState,
-        item: &CompletionItem,
-        rope_pre: ropey::Rope,
-        accept_cs: hume_editing::changeset::ChangeSet,
-        encoding: hume_rope::position_encoding::PositionEncoding,
-    ) {
-        let Some(server_id) = state.buffers.try_get(bt.bid).and_then(|b| b.lsp_server) else {
-            return;
-        };
-        if !introspect::completion_resolve_provider(lsp, server_id) {
-            return;
-        }
-
-        // Same discipline `lsp-request` itself uses (bridge.rs): a request
-        // minted here must not reach the wire ahead of the didChange
-        // describing the edit `accept` just applied.
-        crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);
-        let bid = bt.bid;
-        let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
-        let meta = hume_lsp::client::RequestMeta {
-            method: "completionItem/resolve".to_string(),
-            allow_stale: false,
-            deadline,
-        };
-        let gen_after = state.buffers.get(bid).text_gen;
-        let Some(id) =
-            lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
-        else {
-            return; // server gone between the capability check and now
-        };
-        let callback: LspCallback = Box::new(move |editor, outcome| match outcome {
-            hume_lsp::client::Outcome::Ok(resolved) => {
-                let resolved_edits = parse_additional_text_edits_lenient(&resolved);
-                let result = edits::build_edits_from_earlier_document(
-                    &rope_pre,
-                    &accept_cs,
-                    encoding,
-                    &resolved_edits,
-                )
-                .and_then(|char_edits| {
-                    edits::commit_char_edits(&mut editor.state, bid, char_edits)
-                });
-                if let Err(e) = result {
-                    editor.report(Severity::Error, format!("lsp completion resolve: {e}"));
-                }
-            }
-            hume_lsp::client::Outcome::Err(e) => {
-                editor.report(
-                    Severity::Error,
-                    format!("lsp completion resolve: {} ({})", e.message, e.code),
-                );
-            }
-            hume_lsp::client::Outcome::TimedOut => {
-                editor.report(
-                    Severity::Error,
-                    "lsp completion resolve: timeout".to_string(),
-                );
-            }
-        });
-        lsp.register_callback(server_id, id, Some((bid, gen_after)), callback);
+/// Sends `completionItem/resolve` when the server advertised
+/// `completionProvider.resolveProvider` — best-effort: a resolution error,
+/// timeout, or a server that's gone by send time only logs, it never fails
+/// the accept that already landed. `bt` is the same `BufferTarget` `accept`
+/// already resolved — its only caller.
+fn maybe_send_resolve(
+    bt: &BufferTarget,
+    state: &mut EditorState,
+    lsp: &mut LspState,
+    item: &CompletionItem,
+    rope_pre: ropey::Rope,
+    accept_cs: hume_editing::changeset::ChangeSet,
+    encoding: hume_rope::position_encoding::PositionEncoding,
+) {
+    let Some(server_id) = state.buffers.try_get(bt.bid).and_then(|b| b.lsp_server) else {
+        return;
+    };
+    if !introspect::completion_resolve_provider(lsp, server_id) {
+        return;
     }
+
+    // Same discipline `lsp-request` itself uses (bridge.rs): a request
+    // minted here must not reach the wire ahead of the didChange
+    // describing the edit `accept` just applied.
+    crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);
+    let bid = bt.bid;
+    let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+    let meta = hume_lsp::client::RequestMeta {
+        method: "completionItem/resolve".to_string(),
+        allow_stale: false,
+        deadline,
+    };
+    let gen_after = state.buffers.get(bid).text_gen;
+    let Some(id) = lsp.send_request(server_id, "completionItem/resolve", item.raw.clone(), meta)
+    else {
+        return; // server gone between the capability check and now
+    };
+    let callback: LspCallback = Box::new(move |editor, outcome| match outcome {
+        hume_lsp::client::Outcome::Ok(resolved) => {
+            let resolved_edits = parse_additional_text_edits_lenient(&resolved);
+            let result = edits::build_edits_from_earlier_document(
+                &rope_pre,
+                &accept_cs,
+                encoding,
+                &resolved_edits,
+            )
+            .and_then(|char_edits| edits::commit_char_edits(&mut editor.state, bid, char_edits));
+            if let Err(e) = result {
+                editor.report(Severity::Error, format!("lsp completion resolve: {e}"));
+            }
+        }
+        hume_lsp::client::Outcome::Err(e) => {
+            editor.report(
+                Severity::Error,
+                format!("lsp completion resolve: {} ({})", e.message, e.code),
+            );
+        }
+        hume_lsp::client::Outcome::TimedOut => {
+            editor.report(
+                Severity::Error,
+                "lsp completion resolve: timeout".to_string(),
+            );
+        }
+    });
+    lsp.register_callback(server_id, id, Some((bid, gen_after)), callback);
 }

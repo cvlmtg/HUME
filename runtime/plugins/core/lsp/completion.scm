@@ -14,40 +14,27 @@
       (list (hash-ref res "items")
             (if (hash-contains? res "isIncomplete") (hash-ref res "isIncomplete") #f))))
 
-;; ── Request + begin ──────────────────────────────────────────────────────────
+;; ── The source ───────────────────────────────────────────────────────────────
 
-(define (lsp/request-and-begin-completions bid)
-  (lsp-request #f "textDocument/completion" (lsp-position-params bid)
-    (lambda (err res)
-      (cond
-        (err (lsp/report-error "completion" err))
-        ((void? res) (begin)) ; null -> no session
-        (else
-          (let* ((decoded (lsp/completion-response->items res))
-                 (items (car decoded))
-                 (incomplete (cadr decoded)))
-            (completion-begin! bid items #:source "lsp" #:anchor (word-start-before-cursor bid)
-                               #:incomplete incomplete)))))
-    #:supersede "completion"))
+(register-completion-source! "lsp"
+  (lambda (id bid prefix)
+    (if (lsp/supports-for-buffer? bid "completionProvider")
+        (lsp-request #f "textDocument/completion" (lsp-position-params bid)
+          (lambda (err res)
+            (cond
+              (err (lsp/report-error "completion" err)
+                   (completion-emit! id '()))
+              ((void? res) (completion-emit! id '()))
+              (else
+                (let ((decoded (lsp/completion-response->items res)))
+                  (completion-emit! id (car decoded) #:incomplete (cadr decoded))))))
+          #:supersede "completion")
+        (completion-emit! id '())))
+  #:target 'buffer #:token 'word #:priority 10)
 
-;; ── Trigger entry points ─────────────────────────────────────────────────────
+;; ── Trigger chars ─────────────────────────────────────────────────────────────
 
-(define-command! "lsp-completion-trigger" "Trigger LSP completion at the cursor."
-  (lambda ()
-    (lsp/guard-capability "completionProvider"
-      (lambda () (lsp/request-and-begin-completions (current-buffer))))))
-
-(lsp/setup-trigger-chars! "completionProvider" "lsp-completion" '()
-  (lambda (bid ch)
-    (lsp/guard-capability "completionProvider"
-      (lambda () (lsp/request-and-begin-completions bid)))))
-
-;; ── isIncomplete re-request ──────────────────────────────────────────────────
-
-(register-hook! 'on-completion-refilter
-  (lambda (bid filter-text)
-    (lsp/request-and-begin-completions bid)))
+(lsp/setup-trigger-chars! "completionProvider" "lsp" '() #f)
 
 ;; ── Accept ────────────────────────────────────────────────────────────────────
 ;; No `on-completion-accept` handler here, deliberately — see docs/features.md.
-

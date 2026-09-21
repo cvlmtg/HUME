@@ -1,15 +1,16 @@
-//! Completion session orchestration.
+//! Completion: a source's answer in, the ranked view out, accept/dismiss.
+//! Registering a source is not a host method — it crosses as
+//! `Effect::RegisterCompletionSource` (see `crate::Effect`), so a failed
+//! plugin activation's registration is never applied.
 
-use hume_engine::pipeline::BufferId;
+use steel::rvals::SteelVal;
 
-/// How a source's items are matched against the typed filter — decoded from
-/// `completion-begin!`/`completion-add-items!`'s `#:match` symbol
-/// (`'fuzzy`/`'string`/`'delegated`) at the builtin layer, converted into the
-/// editor's own richer internal enum by the host implementation. Only
-/// `Fuzzy` has a real Steel caller today (`core:lsp`); `String`/`Delegated`
-/// exist for a future Steel-registered source to declare, same as this
-/// crate's `PickerFeedMode`/`TruncateEnd` mirror editor-side concepts at this
-/// same boundary.
+/// How a source's items are matched against its token's typed text —
+/// decoded from `register-completion-source!`'s `#:match` symbol
+/// (`'fuzzy`/`'string`/`'delegated`) at the builtin layer, converted into
+/// the editor's own richer internal enum by the host implementation, same
+/// as this crate's `PickerFeedMode`/`TruncateEnd` mirror editor-side
+/// concepts at this same boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchKind {
     Fuzzy,
@@ -17,58 +18,71 @@ pub enum MatchKind {
     Delegated,
 }
 
+/// Where a `Buffer`-target source's token starts — `#:token` on
+/// `register-completion-source!` with `#:target 'buffer`. Resolved by the
+/// editor against the invocation's own snapshot before the source runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BufferToken {
+    /// `'word` — the identifier run before the cursor.
+    Word,
+    /// `'cursor` — nothing seeded, nothing replaced before the cursor.
+    Cursor,
+    /// `'custom` — the answer's own `#:span` names it.
+    Custom,
+}
+
+/// [`BufferToken`]'s `#:target 'minibuf` counterpart, in byte offsets of
+/// the `:` line's input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MinibufToken {
+    /// `'arg` — the whitespace-delimited argument the cursor is in.
+    Arg,
+    /// `'custom` — the answer's own `#:span` names it.
+    Custom,
+}
+
+/// `#:target` plus the target's own `#:token` — paired as a type at the
+/// builtin so a `'buffer` source with an `'arg` token is a Steel argument
+/// error, never a state the editor has to reject later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionSourceTarget {
+    Buffer(BufferToken),
+    Minibuf(MinibufToken),
+}
+
+/// A `(register-completion-source! …)` call, queued as an `Effect` for the
+/// editor to apply once the eval that made it succeeds.
+#[derive(Debug)]
+pub struct PendingCompletionSource {
+    pub name: String,
+    pub proc: SteelVal,
+    pub target: CompletionSourceTarget,
+    pub match_kind: MatchKind,
+    pub priority: i64,
+}
+
 /// Completion session orchestration — accessed through
 /// [`EditorHost::completions`](super::EditorHost::completions).
 pub trait CompletionHost {
-    /// `(completion-begin! bid items #:source s #:anchor a #:incomplete f
-    /// #:priority n #:match k)` — `items` is a list of decoded
-    /// `CompletionItem` hashmaps (JSON already converted by the caller),
-    /// tagged with the contributing `source`'s name. Starting a session
-    /// replaces any session already open. Returns the new session's token
-    /// (`0` if no session was opened — an empty/all-malformed `items`), for
-    /// a later `completion-add-items!` to merge a second source into.
-    ///
-    /// `anchor`: the caller's own token-start choice, and also `accept`'s
-    /// own replacement span — `None`/`#f` seeds no filter and replaces
-    /// nothing before the cursor (anchor sits at the cursor). `Some(idx)`
-    /// past the buffer's length, after the live cursor, or on a different
-    /// line than it (a completion token never spans a line) is a caller
-    /// mistake, not a race — implementations reject it with an `Err` rather
-    /// than absorbing it the way a stale-pane race is absorbed (`Ok(0)`).
-    #[allow(clippy::too_many_arguments)]
-    fn completion_begin(
+    /// `(completion-emit! id items #:incomplete f #:span (start . end))` —
+    /// a source's answer to invocation `id`: `items` is a list of decoded
+    /// `CompletionItem` hashmaps (JSON already converted by the caller), an
+    /// empty list meaning "nothing from this source". `span` is required
+    /// for, and only honoured by, a source registered with a `'custom`
+    /// token, in the *invocation's own* coordinates (char offsets of the
+    /// buffer the source was called against; bytes of the `input` a
+    /// minibuffer source was handed). Returns whether the answer applied —
+    /// `false` when `id` is no longer the latest call of any source in the
+    /// open session (superseded by a later keystroke, or the session was
+    /// replaced or dismissed): expected-normal for a late async source,
+    /// never an error. `Err` names an unusable `span`.
+    fn completion_emit(
         &mut self,
-        bid: BufferId,
+        id: u64,
         items: Vec<serde_json::Value>,
-        source: String,
-        priority: i64,
-        match_kind: MatchKind,
         incomplete: bool,
-        anchor: Option<usize>,
-    ) -> Result<u64, String>;
-
-    /// `(completion-add-items! token items #:source s #:priority n #:match k
-    /// #:incomplete f)` — merges `items` into the session `token` names,
-    /// replacing that source's prior contribution wholesale (an
-    /// `isIncomplete` re-request re-emitting the same source is therefore
-    /// idempotent, not additive) and re-ranking. A mismatched `token` — the
-    /// session was replaced or dismissed since the caller captured it — is
-    /// expected-normal, not an error: returns whether the merge applied,
-    /// same silent-no-op contract as `picker-push!`/`picker-replace!`.
-    #[allow(clippy::too_many_arguments)]
-    fn completion_add_items(
-        &mut self,
-        token: u64,
-        items: Vec<serde_json::Value>,
-        source: String,
-        priority: i64,
-        match_kind: MatchKind,
-        incomplete: bool,
-    ) -> bool;
-
-    /// `(completion-update-filter! text)` — re-ranks the open session
-    /// against `text`; Rust-side work only, safe to call every keystroke.
-    fn completion_update_filter(&mut self, text: String) -> Result<(), String>;
+        span: Option<(usize, usize)>,
+    ) -> Result<bool, String>;
 
     /// `(completion-top n)` — up to `n` ranked items as hashmaps, `[]` with
     /// no open session.
