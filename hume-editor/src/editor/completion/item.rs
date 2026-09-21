@@ -3,7 +3,7 @@
 //! lenient `TextEdit` decode this relies on live in `hume_lsp::completion_item`
 //! — pure protocol work with no editor dependency — but the item type itself
 //! is HUME's completion-store item: `CompletionSession` ranks/filters it and
-//! `to_json`/`menu_row_label` render it, neither of which is a wire concern.
+//! `to_json`/`menu_row` render it, neither of which is a wire concern.
 //! The wire type is always spelled `lsp_types::CompletionItem`; the bare
 //! name here is this store's own item.
 
@@ -214,14 +214,19 @@ impl CompletionItem {
         })
     }
 
-    /// Formats this item as `"label  detail"`, uniformly styled — per-part
-    /// dimming would need segment-styled rows, which no card requires. The
-    /// menu's own row label: reads `label`/`detail` directly rather than
-    /// going through [`Self::to_json`], since the menu never needs `kind`.
-    pub(super) fn menu_row_label(&self) -> String {
-        match self.detail.as_deref() {
-            Some(detail) if !detail.is_empty() => format!("{}  {detail}", self.label),
-            _ => self.label.clone(),
+    /// This item's menu row: `label` as the main column, `detail` (when
+    /// non-empty) as the right-aligned trailing one — reads both directly
+    /// rather than going through [`Self::to_json`], since the menu never
+    /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
+    /// (`hume_ui::popup`), not this store's.
+    pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
+        hume_ui::popup::MenuRow {
+            main: self.label.clone(),
+            trailing: self
+                .detail
+                .as_deref()
+                .filter(|d| !d.is_empty())
+                .map(str::to_string),
         }
     }
 }

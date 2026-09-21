@@ -76,7 +76,17 @@ fn a_row_wider_than_the_box_is_clipped_at_the_border() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     let outer = Rect::new(2, 0, 8, 3); // inner text spans x 3..9
     let long = vec!["abcdefghij".to_string()];
-    draw_menu_box(&mut canvas, outer, &long, Some(0), 0, true, styles(), None);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &long,
+        Some(0),
+        1,
+        0,
+        true,
+        styles(),
+        None,
+    );
 
     assert_eq!(
         symbols_in(&buf, Rect::new(0, 1, 20, 1)),
@@ -97,6 +107,7 @@ fn draw_menu_box_border_frame_snapshot() {
         outer,
         &rows(2),
         Some(0),
+        2,
         0,
         true,
         styles(),
@@ -122,6 +133,7 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
         outer,
         &rows(2),
         Some(0),
+        2,
         0,
         false,
         styles(),
@@ -136,6 +148,10 @@ fn draw_menu_box_no_border_leaves_plain_margin() {
     ");
 }
 
+/// Windowing itself has moved to the write side (`resolve_menu`/
+/// `resolve_popup`, via `window_range`) — this test pre-slices `rows` the
+/// same way a caller now must, and checks `draw_menu_box` paints exactly
+/// that slice, not the full list.
 #[test]
 fn draw_menu_box_scrolls_to_keep_selected_visible() {
     let mut buf = Grid::new(20, 20);
@@ -144,10 +160,22 @@ fn draw_menu_box_scrolls_to_keep_selected_visible() {
     // Inner height 3 (outer height 5), 10 rows total, selected near the end.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
-    draw_menu_box(&mut canvas, outer, &data, Some(9), 0, true, styles(), None);
-
     // Window of size 3 anchored so index 9 is visible: start = 9 - 1 = 8,
     // clamped to total-max = 7 → window [7, 10) = item7,item8,item9.
+    let range = window_range(10, 8, 3);
+    assert_eq!(range, 7..10, "sanity: window lands where the comment says");
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        Some(9 - range.start),
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
+
     let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
     assert_eq!(row0, "item7");
     let row2: String = (1..=5).map(|x| buf[(x, 3)].text().to_string()).collect();
@@ -166,7 +194,18 @@ fn draw_menu_box_scroll_windows_from_offset_when_no_selection() {
     // Inner height 3 (outer height 5), 10 rows total, scrolled to row 4.
     let outer = Rect::new(0, 0, 10, 5);
     let data = rows(10);
-    draw_menu_box(&mut canvas, outer, &data, None, 4, true, styles(), None);
+    let range = window_range(10, 4, 3);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        None,
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
 
     let row0: String = (1..=5).map(|x| buf[(x, 1)].text().to_string()).collect();
     assert_eq!(row0, "item4");
@@ -181,7 +220,19 @@ fn draw_menu_box_shows_scrollbar_thumb_at_top_when_scrolled_to_top() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 0: thumb flush at the top.
     let outer = Rect::new(0, 0, 10, 5);
-    draw_menu_box(&mut canvas, outer, &rows(10), None, 0, true, styles(), None);
+    let data = rows(10);
+    let range = window_range(10, 0, 3);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        None,
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
     ┌────────┐
@@ -199,7 +250,19 @@ fn draw_menu_box_shows_scrollbar_thumb_in_the_middle_when_scrolled_to_the_middle
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 4: thumb centered.
     let outer = Rect::new(0, 0, 10, 5);
-    draw_menu_box(&mut canvas, outer, &rows(10), None, 4, true, styles(), None);
+    let data = rows(10);
+    let range = window_range(10, 4, 3);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        None,
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
     ┌────────┐
@@ -217,7 +280,19 @@ fn draw_menu_box_shows_scrollbar_thumb_at_bottom_when_scrolled_to_bottom() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 3, 10 rows total, scroll = 7 (max_scroll): thumb flush at the bottom.
     let outer = Rect::new(0, 0, 10, 5);
-    draw_menu_box(&mut canvas, outer, &rows(10), None, 7, true, styles(), None);
+    let data = rows(10);
+    let range = window_range(10, 7, 3);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        None,
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
     ┌────────┐
@@ -238,7 +313,19 @@ fn draw_menu_box_single_row_window_shows_a_solid_thumb() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // Inner height 1, 10 rows total, scroll = 4 (mid-range).
     let outer = Rect::new(0, 0, 10, 3);
-    draw_menu_box(&mut canvas, outer, &rows(10), None, 4, true, styles(), None);
+    let data = rows(10);
+    let range = window_range(10, 4, 1);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &data[range.clone()],
+        None,
+        10,
+        range.start,
+        true,
+        styles(),
+        None,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
     ┌────────┐
@@ -254,7 +341,17 @@ fn draw_menu_box_no_overflow_shows_no_scrollbar() {
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
     // 2 rows fit entirely inside inner height 3 — nothing to scroll.
     let outer = Rect::new(0, 0, 10, 5);
-    draw_menu_box(&mut canvas, outer, &rows(2), None, 0, true, styles(), None);
+    draw_menu_box(
+        &mut canvas,
+        outer,
+        &rows(2),
+        None,
+        2,
+        0,
+        true,
+        styles(),
+        None,
+    );
 
     insta::assert_snapshot!(symbols_in(&buf, outer), @"
     ┌────────┐
@@ -274,12 +371,15 @@ fn draw_menu_box_scrolled_menu_shows_scrollbar_thumb() {
     // selection (a menu) — the highlight signals *which* row, the thumb
     // signals how much more there is to scroll past; both show together.
     let outer = Rect::new(0, 0, 10, 5);
+    let data = rows(10);
+    let range = window_range(10, 5usize.saturating_sub(3 / 2), 3);
     draw_menu_box(
         &mut canvas,
         outer,
-        &rows(10),
-        Some(5),
-        0,
+        &data[range.clone()],
+        Some(5 - range.start),
+        10,
+        range.start,
         true,
         styles(),
         None,
@@ -354,6 +454,7 @@ fn draw_menu_box_too_small_outer_does_nothing() {
         Rect::new(0, 0, 2, 2),
         &rows(1),
         Some(0),
+        1,
         0,
         true,
         styles(),

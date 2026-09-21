@@ -242,7 +242,7 @@ fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
                 .popup
                 .read()
                 .as_ref()
-                .map(|s| (s.rect.height.saturating_sub(2) as usize, s.lines.len()))
+                .map(|s| (s.rect.height.saturating_sub(2) as usize, s.total_rows))
             else {
                 return false;
             };
@@ -255,7 +255,7 @@ fn scroll_popup(ed: &mut Editor, down: bool) -> bool {
                 .popup_band
                 .read()
                 .as_ref()
-                .map(|s| s.lines.len())
+                .map(|s| s.total_rows)
             else {
                 return false;
             };

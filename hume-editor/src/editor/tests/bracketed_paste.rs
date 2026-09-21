@@ -293,7 +293,7 @@ fn menu_paste_is_swallowed_but_clears_the_status_message() {
     ed.state.push_layer(
         &ed.view,
         MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
+            rows: hume_ui::popup::MenuRows::plain(vec!["m0".into()]),
             selected: 0,
             callback: marker("menu-cb"),
         },

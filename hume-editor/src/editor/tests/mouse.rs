@@ -938,7 +938,7 @@ fn click_with_menu_open_cancels_it_and_falls_through() {
     ed.state.push_layer(
         &ed.view,
         MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["m0".into()])),
+            rows: hume_ui::popup::MenuRows::plain(vec!["m0".into()]),
             selected: 0,
             callback: marker("menu-cb"),
         },

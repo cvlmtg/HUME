@@ -18,6 +18,7 @@ mod accept;
 
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
+use hume_ops::edit::word_start_before;
 use hume_rope::offset::CharOffset;
 
 use crate::editor::EditorState;
@@ -226,15 +227,15 @@ pub(in crate::editor) struct CompletionSession {
     /// CompletionSession` at all — mirrors `PickerSession::token`'s own
     /// doc and purpose exactly.
     token: u64,
-    /// Row labels for the current `filtered` set, pre-measured to a menu box
-    /// width, built lazily by [`Self::menu_rows`] and invalidated by
-    /// `update_filter`. `filtered` only changes there — not on menu
-    /// navigation (selecting a different row) or on an unrelated frame
-    /// redraw — so caching here means a per-frame render sync doesn't
-    /// re-format and re-measure every candidate for a menu whose contents
-    /// haven't moved. `MenuRows` carries its labels by `Arc`, so a caller
-    /// building a `PopupState` (which itself shares its `lines` by `Arc`)
-    /// gets a cheap refcount bump instead of a fresh clone of every label.
+    /// Row content for the current `filtered` set, unmeasured — built lazily
+    /// by [`Self::menu_rows`] and invalidated by `update_filter`. `filtered`
+    /// only changes there — not on menu navigation (selecting a different
+    /// row) or on an unrelated frame redraw — so caching here means a
+    /// per-frame render sync doesn't re-format every candidate for a menu
+    /// whose contents haven't moved. `MenuRows` carries its rows by `Arc`,
+    /// so a caller (`resolve_menu`) reading it is a cheap refcount bump, not
+    /// a fresh clone of every label — measuring/windowing down to what's
+    /// actually visible is `resolve_menu`'s own job, done fresh each frame.
     menu_cache: Option<hume_ui::popup::MenuRows>,
 }
 
@@ -401,6 +402,21 @@ impl CompletionSession {
     /// race (the async completion response landed after the user switched
     /// panes), not a caller bug, so this is silently absorbed by the caller
     /// rather than raised as a Steel error.
+    ///
+    /// Anchors at the *start of the identifier token before the cursor*
+    /// (`word_start_before`, the same scan `accept`'s token-replacement
+    /// fallback already does), not at the cursor itself, and seeds `filter`
+    /// from the text in between. Two things depend on this: a prefix typed
+    /// before Ctrl-Space (or before the trigger char) is filtered on
+    /// immediately, rather than showing every candidate until the next
+    /// keystroke; and, since the anchor is now a function of buffer content
+    /// rather than of "wherever the cursor happened to be when this
+    /// particular request returned," a re-`begin_buffer` on the LSP
+    /// `isIncomplete` refilter flow (a fresh session, not `add_items`)
+    /// recomputes the identical anchor and filter instead of wiping the
+    /// filter the user just typed. A non-word cursor position (right after a
+    /// trigger char like `.`/`:`) leaves `word_start_before` at the cursor,
+    /// same as before.
     pub(in crate::editor) fn begin_buffer(
         state: &EditorState,
         bid: BufferId,
@@ -411,13 +427,20 @@ impl CompletionSession {
         incomplete: bool,
     ) -> Option<Self> {
         let pid = state.focus.id();
-        let anchor = state
+        let head = state
             .focused_buffer_state(bid)?
             .selections()
             .primary()
             .head();
         let buf = state.buffers.get(bid);
         let rope_at_begin = buf.text().rope().clone();
+        let word_chars = crate::editor::commands::word_chars_owned(buf, &state.settings);
+        let chars = hume_editing::word::WordChars::new(&word_chars);
+        let anchor = word_start_before(buf.text(), head, chars);
+        let filter = buf
+            .text()
+            .slice(hume_rope::offset::ExclusiveRange::new(anchor, head))
+            .to_string();
         let mut session = Self::new(CompletionTarget::Buffer(BufferTarget {
             bid,
             pane_id: pid,
@@ -426,6 +449,7 @@ impl CompletionSession {
             rope_at_begin,
             generation_at_begin: buf.text_gen,
         }));
+        session.filter = filter;
         session.add_items(source, priority, match_kind, incomplete, items);
         Some(session)
     }
@@ -567,22 +591,19 @@ impl CompletionSession {
             .collect()
     }
 
-    /// Row labels for every candidate in `filtered` (not just the visible
-    /// window — the menu box's width has to stay stable as the user scrolls
-    /// past wider or narrower rows), pre-measured to their menu box width.
-    /// Built once per `filtered` set — see [`Self::menu_cache`]'s doc — so a
-    /// caller redrawing the same unchanged menu every frame reads the cache
-    /// instead of reformatting and re-measuring every candidate again.
+    /// Row content for every candidate in `filtered` — unmeasured (measuring
+    /// and windowing are `resolve_menu`'s job now, from only what's actually
+    /// visible). Built once per `filtered` set — see [`Self::menu_cache`]'s
+    /// doc — so a caller redrawing the same unchanged menu every frame reads
+    /// the cache instead of reformatting every candidate again.
     pub(in crate::editor) fn menu_rows(&mut self) -> hume_ui::popup::MenuRows {
         if self.menu_cache.is_none() {
-            let labels: Vec<String> = self
+            let rows: Vec<hume_ui::popup::MenuRow> = self
                 .filtered
                 .iter()
-                .map(|&i| self.items[i as usize].item.menu_row_label())
+                .map(|&i| self.items[i as usize].item.menu_row())
                 .collect();
-            self.menu_cache = Some(hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
-                labels,
-            )));
+            self.menu_cache = Some(hume_ui::popup::MenuRows::two_column(rows));
         }
         self.menu_cache
             .clone()
@@ -626,7 +647,7 @@ mod tests {
             ],
         );
         let before_rows = session.menu_rows();
-        let before: Vec<&str> = before_rows.labels().iter().map(String::as_str).collect();
+        let before = before_rows.labels();
         assert_eq!(
             before,
             vec!["apple", "banana"],
@@ -635,7 +656,7 @@ mod tests {
 
         session.update_filter("ban".into());
         let after_rows = session.menu_rows();
-        let after: Vec<&str> = after_rows.labels().iter().map(String::as_str).collect();
+        let after = after_rows.labels();
         assert_eq!(
             after,
             vec!["banana"],

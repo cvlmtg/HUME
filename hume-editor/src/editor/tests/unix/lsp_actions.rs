@@ -107,7 +107,7 @@ fn menu_items(ed: &Editor) -> Vec<String> {
     ed.state
         .input
         .menu()
-        .map(|m| m.rows.labels().as_ref().clone())
+        .map(|m| m.rows.labels().into_iter().map(String::from).collect())
         .unwrap_or_default()
 }
 

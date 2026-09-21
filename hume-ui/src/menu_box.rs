@@ -63,20 +63,22 @@ impl MenuBoxStyles {
 }
 
 /// Maximum number of visible rows inside a menu/popup box (excluding the
-/// 1-cell frame). Both overlays scroll past this using [`window`].
+/// 1-cell frame). Both overlays scroll past this using [`window_range`].
 pub(crate) const MAX_MENU_ROWS: u16 = 10;
 
-/// Widest row's display width — stable across scrolling, so the box doesn't
-/// resize as the visible window changes.
+/// Widest row's display width — used only where a caller still has the full,
+/// unwindowed row list in hand (`resolve_popup`'s wrapped content); a menu's
+/// width is measured from its visible window alone (`resolve_menu`), never
+/// from this.
 pub(crate) fn menu_inner_width(rows: &[String]) -> u16 {
     rows.iter().map(|r| text_width(r)).max().unwrap_or(0) as u16
 }
 
 /// Outer footprint (including the 1-cell frame) for a box showing `row_count`
 /// rows measuring `inner_width` wide, windowed to at most `row_cap` visible
-/// rows. Every caller (`resolve_popup`'s `Wrapped` cache, `resolve_menu`'s
-/// `MenuRows`) already has the width in hand from a cached measurement, so
-/// this takes it directly rather than re-measuring `rows` itself.
+/// rows. `resolve_popup`'s wrapped content already has the width in hand
+/// from a cached measurement, so this takes it directly rather than
+/// re-measuring `rows` itself.
 pub(crate) fn outer_dims_from_width(
     inner_width: u16,
     row_count: usize,
@@ -113,20 +115,24 @@ pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16)
     band_capacity(content_rows, chrome_rows, max).saturating_sub(chrome_rows) as usize
 }
 
-/// Return `(scroll_offset, visible_slice)` for a window of `max_height`
-/// entries starting as close to `desired_start` as `rows` allows — clamped so
-/// the window never runs past the end. Shared by both callers in
-/// `draw_menu_box`: a menu passes `sel.saturating_sub(max_height / 2)` to
-/// keep the selected row anchored near the window's center; a plain popup
-/// passes `scroll` directly, so the window start is exactly the scroll
+/// The `[start, end)` window of `max_height` entries out of `total`,
+/// starting as close to `desired_start` as the total allows — clamped so the
+/// window never runs past the end. Resolved on the *write* side now (every
+/// `resolve_popup`/`resolve_band`/`resolve_menu` caller), not at paint time:
+/// a menu passes `selected.saturating_sub(max_height / 2)` to keep the
+/// selected row anchored near the window's center; a plain popup passes its
+/// own `scroll` directly, so the window start is exactly the scroll
 /// position.
-fn window(rows: &[String], desired_start: usize, max_height: usize) -> (usize, &[String]) {
-    let total = rows.len();
+pub(crate) fn window_range(
+    total: usize,
+    desired_start: usize,
+    max_height: usize,
+) -> std::ops::Range<usize> {
     if total <= max_height {
-        return (0, rows);
+        return 0..total;
     }
     let start = desired_start.min(total - max_height);
-    (start, &rows[start..start + max_height])
+    start..start + max_height
 }
 
 /// Clamps `scroll` so `selected` stays inside a `visible_rows`-tall window,
@@ -235,27 +241,32 @@ fn scrollbar_thumb(view: usize, total: usize, scroll: usize) -> Option<(usize, u
 }
 
 /// Paint a menu/popup box into `outer` (the full footprint, including the
-/// 1-cell frame). Windows `rows` to fit `outer`'s inner height, keeping
-/// `selected` (an absolute index into `rows`) visible.
+/// 1-cell frame). `rows` arrives *already windowed* to what's visible — the
+/// write side (`resolve_popup`/`resolve_band`/`resolve_menu`) resolves the
+/// window, this only paints it; `total_rows` and `scroll` (the window's own
+/// start within the full, unwindowed list) exist here solely to size and
+/// place the scrollbar thumb.
 ///
-/// `scroll`: for a plain popup (`selected` is `None`), the first visible
-/// row — ignored when `selected` is `Some` (a menu windows around the
-/// selected row instead).
+/// `selected`: the highlighted row, already window-relative (an index into
+/// `rows`, not into the full list) — `None` for a plain popup, which never
+/// highlights a row.
 ///
 /// `border`: when `true`, overdraws the 1-cell frame with box-drawing
 /// glyphs; when `false`, the frame stays a plain background-filled margin
 /// (still 1 cell wide — only the glyphs are suppressed).
 ///
-/// `styled`: per-row style runs, same length as `rows` — a markdown popup
-/// with a `markdown` grammar registered. `None` for every other caller
-/// (plain popups, menus), which paint each row in one style. Ignored for a
-/// row that has `selected == Some(row_idx)`: the highlight bar always wins.
+/// `styled`: per-row style runs, same length (and same window) as `rows` — a
+/// markdown popup with a `markdown` grammar registered. `None` for every
+/// other caller (plain popups, menus), which paint each row in one style.
+/// Ignored for a row that has `selected == Some(i)`: the highlight bar
+/// always wins.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_menu_box(
     canvas: &mut Canvas,
     outer: Rect,
     rows: &[String],
     selected: Option<usize>,
+    total_rows: usize,
     scroll: usize,
     border: bool,
     styles: MenuBoxStyles,
@@ -266,11 +277,6 @@ pub(crate) fn draw_menu_box(
     }
 
     let inner = outer.inset(1, 1);
-    let inner_h = inner.height as usize;
-    let (scroll_offset, visible_rows) = match selected {
-        Some(sel) => window(rows, sel.saturating_sub(inner_h / 2), inner_h),
-        None => window(rows, scroll, inner_h),
-    };
 
     // 1. Fill the entire outer rectangle with the popup background. This
     //    gives a solid, opaque backdrop — no buffer content bleeds through.
@@ -287,7 +293,8 @@ pub(crate) fn draw_menu_box(
     //     highlight bar signals *which row*, not how much more there is to
     //     scroll past.
     if border
-        && let Some((thumb_start, thumb_len)) = scrollbar_thumb(inner_h, rows.len(), scroll_offset)
+        && let Some((thumb_start, thumb_len)) =
+            scrollbar_thumb(inner.height as usize, total_rows, scroll)
     {
         let right = inner.right();
         for row in thumb_start..thumb_start + thumb_len {
@@ -308,14 +315,13 @@ pub(crate) fn draw_menu_box(
     // be written straight over the right border and past it. Bounding every
     // row write at the inner edge is what keeps the box a box.
     let text_right = inner.right();
-    for (i, row_text) in visible_rows.iter().enumerate() {
+    for (i, row_text) in rows.iter().enumerate() {
         let y = inner.y + i as u16;
-        let row_idx = scroll_offset + i;
-        let is_selected = selected == Some(row_idx);
+        let is_selected = selected == Some(i);
 
         // Highlight bar always wins, even over a styled row — a selected row
         // never needs per-run markdown styling, just the plain highlight.
-        if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(row_idx)) {
+        if !is_selected && let Some(runs) = styled.and_then(|rows| rows.get(i)) {
             // The base fill (step 1) already covers the row — runs are
             // contiguous and together span exactly `row_text`, so there are
             // no gaps left for `styles.base` to show through.

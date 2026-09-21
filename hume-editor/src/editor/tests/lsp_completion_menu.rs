@@ -420,11 +420,16 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 fn backspace_past_the_anchor_dismisses_the_session() {
     let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
     ed.feed_key(key('i'));
-    ed.feed_key(key('x')); // one char BEFORE the session's anchor
+    // A non-word char right before the trigger point — `completion-begin!`'s
+    // own `word_start_before` scan stops immediately on it, so the anchor
+    // lands exactly at the cursor (same as if a word char *had* preceded it
+    // and been scanned into the seeded filter instead, see
+    // `backspace_within_the_token_refilters_and_keeps_the_session_open`).
+    ed.feed_key(key(';'));
     begin_session(&mut ed, &[("foo", None)]);
 
     // No filter chars typed yet — cursor sits exactly at the anchor.
-    // Backspace now would delete "x", which lies before the anchor.
+    // Backspace now would delete ";", which lies before the anchor.
     ed.feed_key(key_backspace());
 
     assert!(
@@ -434,8 +439,47 @@ fn backspace_past_the_anchor_dismisses_the_session() {
     let text = ed.doc().text().to_string();
     assert_eq!(
         text, "\n",
-        "the backspace itself must still delete \"x\" normally"
+        "the backspace itself must still delete \";\" normally"
     );
+}
+
+/// A word already typed before the trigger is scanned into the seeded
+/// anchor/filter (`completion-begin!`'s own `word_start_before` scan) — so a
+/// Backspace that only removes part of *that* prefix narrows the session
+/// exactly like removing a char typed after the trigger would, rather than
+/// crossing the anchor and dismissing on the very first press.
+#[test]
+fn backspace_within_a_seeded_prefix_narrows_instead_of_dismissing() {
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.feed_key(key('i'));
+    for ch in "fo".chars() {
+        ed.feed_key(key(ch));
+    }
+    begin_session(&mut ed, &[("foo", None), ("bar", None)]);
+    assert_eq!(
+        ed.state.input.completion().unwrap().len(),
+        1,
+        "sanity: seeded filter \"fo\" already narrows to \"foo\""
+    );
+
+    ed.feed_key(key_backspace());
+
+    assert!(
+        ed.state.input.completion().is_some(),
+        "backspace inside the seeded prefix must not dismiss the session"
+    );
+    let session = ed.state.input.completion().unwrap();
+    let top: Vec<String> = session
+        .top(10)
+        .iter()
+        .map(|v| v["label"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        top,
+        vec!["foo"],
+        "filter back down to \"f\" must still match \"foo\" (\"bar\" has no \"f\" at all)"
+    );
+    assert_eq!(ed.doc().text().to_string(), "f\n");
 }
 
 // ── Tab/Shift-Tab: selection wraps at the boundaries ─────────────────────────
@@ -807,6 +851,14 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     for ch in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
         ed.feed_key(key(ch));
     }
+    // A space, then one more word char, before triggering: the popup now
+    // anchors at `word_start_before` the cursor (right after the space), not
+    // at the live cursor itself — landing one char earlier than it, and
+    // still many display lines into the wrapped text, so this test still
+    // exercises wrap-aware positioning rather than collapsing to the
+    // buffer's very first display line.
+    ed.feed_key(key(' '));
+    ed.feed_key(key('z'));
     begin_session(&mut ed, &[("candidate", None)]);
 
     let mut ctx = RenderContext::new();
@@ -826,9 +878,18 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
 
     // Independent oracle: re-derive the same cell via a fresh `DisplayLineMap` and
     // `cursor::content_pos` — the exact primitives the fast path's slow
-    // fallback uses — entirely bypassing `ctx.cursor_content_pos`.
+    // fallback uses — entirely bypassing `ctx.cursor_content_pos`. Reads the
+    // session's own anchor, not the live cursor — the two now differ by one
+    // char (the trailing "z"), and the popup positions at the anchor.
     let bid = ed.focused_buffer_id();
-    let cursor_char = ed.current_selections().primary().head();
+    let cursor_char = ed
+        .state
+        .input
+        .completion()
+        .unwrap()
+        .buffer()
+        .unwrap()
+        .anchor();
     let pane_rect = ed.view.pane_rect(pid).expect("focused pane has a rect");
     let buf = ed.state.buffers.get(bid);
     let gutter_w = cursor::gutter_width(
@@ -887,7 +948,18 @@ fn accepting_a_completion_replaces_the_whole_word_chars_token_at_every_cursor() 
     for ch in "x-".chars() {
         ed.feed_key(key(ch));
     }
-    begin_session(&mut ed, &[("std", None)]);
+    // `filterText` "x-st" separate from `label`/`insertText` "std":
+    // `completion-begin!` now seeds the session filter from the word before
+    // the cursor ("x-", with '-' configured as a word char), and the filter
+    // grows to "x-st" once "st" lands below — the item must fuzzy-match
+    // both to survive into `filtered`. A real server would never suggest
+    // "std" as a completion for "x-st", but this test is about the
+    // accept-time replacement span, not ranking, hence the fixed
+    // `filterText` standing in for a plausible one.
+    begin_session_items(
+        &mut ed,
+        &[serde_json::json!({"label": "std", "insertText": "std", "filterText": "x-st"})],
+    );
     for ch in "st".chars() {
         ed.feed_key(key(ch));
     }

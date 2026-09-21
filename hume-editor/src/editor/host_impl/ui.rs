@@ -181,7 +181,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         self.state.push_layer(
             self.view,
             MenuLayer {
-                rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(items)),
+                rows: hume_ui::popup::MenuRows::plain(items),
                 selected: 0,
                 callback,
             },

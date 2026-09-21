@@ -653,12 +653,17 @@ fn accept_with_a_non_collapsed_selection_errors_instead_of_force_collapsing_it()
     // A real (non-collapsed) selection over "bc" — `replace_around_cursors`
     // would otherwise splice text around its head and force-collapse it,
     // silently discarding whatever the user had selected.
+    //
+    // Label "ab" — `completion-begin!` now seeds the filter from the word
+    // before the cursor ("ab", the two chars right before the selection's
+    // head), so the item must actually match it to survive into `filtered`
+    // and be reachable as index 0.
     let mut ed = editor_from("a-[bc]>def\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
-             (completion-begin! (current-buffer) (list (hash "label" "x" "insertText" "z")) #:source "test")
+             (completion-begin! (current-buffer) (list (hash "label" "ab" "insertText" "z")) #:source "test")
              (completion-accept! 0)))"#,
     );
     ed.state
@@ -692,13 +697,16 @@ fn accept_errors_when_additional_text_edits_zero_width_inserts_exactly_at_the_te
     // additional edit and leaving "cd" from the server's own range
     // untouched. Before this test's fix, that ran to completion as
     // "abXYcdef\n" instead of erroring.
+    //
+    // Label "ab" — matches the filter `completion-begin!` now seeds from
+    // the word before the cursor, so the item survives into `filtered`.
     let mut ed = editor_from("ab-[c]>def\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "x" "insertText" "ignored-fallback"
+               (list (hash "label" "ab" "insertText" "ignored-fallback"
                            "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 0)
                                                         "end" (hash "line" 0 "character" 2))
                                        "newText" "XY")
@@ -731,17 +739,23 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
     // lands, in pre-shift buffer coordinates; the live cursor position used
     // to decide "is this the primary cursor" (and, once recognized, to
     // locate its token via `anchor`) is only available *after* it lands.
-    // `completion-update-filter!` narrows the filter to 4 chars without any
-    // matching buffer edit (`typed` no longer reflects real typed content —
-    // the exact divergence `anchor` exists to handle, see `ReplaceSpan::
-    // TokenBefore`'s field docs), so `head - typed` and the correctly
-    // anchor-derived start land on genuinely different buffer positions once
-    // additionalTextEdits (a 3-char import-like insert at the top of the
-    // file) shifts everything after it. Left unmapped, `primary_head` stays
-    // stale (3) against the live, shifted head (6) — never recognized as
-    // primary — and the `head - typed` fallback scans from position 2,
+    // `completion-begin!` already seeds `anchor` at 0 (`word_start_before`
+    // scans back through "abc") and `filter` at "abc"; `completion-update-
+    // filter!` then narrows the filter to "wxyz" — matching the item's own
+    // label (so it still survives filtering) but with no matching buffer
+    // edit at all, so `typed` no longer reflects real typed content — the
+    // exact divergence `anchor` exists to handle, see `ReplaceSpan::
+    // TokenBefore`'s field docs. That pushes `anchor.shift(typed)` to 4,
+    // short of `head_now` + the additionalTextEdits shift — so `head -
+    // typed` and the correctly anchor-derived start land on genuinely
+    // different buffer positions once additionalTextEdits (a 3-char
+    // import-like insert at the top of the file) shifts everything after
+    // it. Left unmapped, `primary_head` stays stale (3) against the live,
+    // shifted head (6) — never recognized as primary — and the `head -
+    // typed` fallback (`6.retreat_saturating(4)`) scans from position 2,
     // landing outside "abc" entirely (right after the "// " import) instead
-    // of at the real token boundary (3, right after "abc").
+    // of at the real token boundary (3, right after "// ", where "abc"
+    // begins).
     let mut ed = editor_from("abc-[ ]>def\n");
     run(
         &mut ed,
@@ -761,7 +775,7 @@ fn accept_with_no_text_edit_remaps_the_primary_anchor_through_additional_text_ed
     ed.execute_keymap_command("go".into(), None, false);
     assert_eq!(
         ed.doc().text().to_string(),
-        "// X\n",
+        "// Xdef\n",
         "primary_head/anchor must be remapped through additionalTextEdits' \
          own changeset before deciding which cursor is primary and where \
          its token starts"
@@ -885,7 +899,7 @@ fn empty_items_from_a_stale_response_leaves_the_open_session_alone() {
     ed.state.push_layer(
         &ed.view,
         crate::editor::input_stack::MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec!["x".to_string()])),
+            rows: hume_ui::popup::MenuRows::plain(vec!["x".to_string()]),
             selected: 0,
             callback: steel::rvals::SteelVal::Void,
         },
@@ -1413,6 +1427,119 @@ fn completion_begin_refreshes_through_a_popup_landed_above_it() {
     );
 }
 
+// ── Filter seeded from the word before the cursor ────────────────────────
+
+/// A prefix already typed before the trigger (Ctrl-Space, or a re-request)
+/// must be filtered on immediately — the bug this fixes: `completion-begin!`
+/// used to seed an empty filter regardless of what already preceded the
+/// cursor, so every candidate survived (in `sortText` order) until some
+/// later keystroke narrowed the list.
+#[test]
+fn completion_begin_seeds_the_filter_from_the_word_before_the_cursor() {
+    use hume_scripting::host::CompletionHost;
+
+    let mut ed = editor_from("ki-[x]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+
+    let mut host = live_host!(ed);
+    host.completion_begin(
+        bid,
+        vec![
+            serde_json::json!({"label": "kitty_support"}),
+            serde_json::json!({"label": "AsMut"}),
+            serde_json::json!({"label": "f32"}),
+        ],
+        "test".to_string(),
+        0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        false,
+    )
+    .unwrap();
+
+    let labels: Vec<String> = ed
+        .state
+        .input
+        .completion()
+        .unwrap()
+        .top(10)
+        .iter()
+        .map(|v| v["label"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        labels,
+        vec!["kitty_support"],
+        "only the \"ki\" subsequence match must survive begin, not the whole list"
+    );
+}
+
+/// The LSP `isIncomplete` flow re-`begin!`s the session from scratch on
+/// every keystroke (`lsp/request-and-begin-completions`) rather than calling
+/// `completion-add-items!` — a fresh `begin_buffer` must recompute the same
+/// anchor/filter from the live buffer each time, not wipe out what the user
+/// has typed since the first begin.
+#[test]
+fn completion_begin_reseeds_the_same_filter_across_repeated_begins_isincomplete_style() {
+    use hume_scripting::host::CompletionHost;
+
+    let mut ed = editor_from("ki-[x]>\n");
+    let bid = ed.focused_buffer_id();
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+
+    let items = || {
+        vec![
+            serde_json::json!({"label": "kitty_support"}),
+            serde_json::json!({"label": "AsMut"}),
+        ]
+    };
+    let mut host = live_host!(ed);
+    host.completion_begin(
+        bid,
+        items(),
+        "test".to_string(),
+        0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        true, // isIncomplete
+    )
+    .unwrap();
+    assert_eq!(
+        ed.state.input.completion().unwrap().len(),
+        1,
+        "sanity: filtered on first begin"
+    );
+
+    // The refresh: a brand-new `completion-begin!` against the *same* live
+    // buffer/cursor, exactly what `on-completion-refilter` triggers.
+    let mut host = live_host!(ed);
+    host.completion_begin(
+        bid,
+        items(),
+        "test".to_string(),
+        0,
+        hume_scripting::host::MatchKind::Fuzzy,
+        true,
+    )
+    .unwrap();
+
+    let labels: Vec<String> = ed
+        .state
+        .input
+        .completion()
+        .unwrap()
+        .top(10)
+        .iter()
+        .map(|v| v["label"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        labels,
+        vec!["kitty_support"],
+        "the re-begin must recompute the same filter from the live buffer, \
+         not reset to an unfiltered list"
+    );
+}
+
 /// A malformed item (missing the spec-required `label`) must not take down
 /// the whole batch — the well-formed item next to it still survives.
 #[test]
@@ -1483,13 +1610,17 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
     // spec's containment guarantee (`completion.rs`'s `text_edit` doc);
     // unlike the two off-spec regression tests, this one isn't testing
     // range-vs-cursor divergence, so the fixture stays spec-conforming.
+    //
+    // Label "xa" — `completion-begin!` seeds the filter from the word
+    // before the cursor ("a"), so the item must contain it to survive into
+    // `filtered`.
     let mut ed = editor_from("a-[b]>cdef\n");
     run(
         &mut ed,
         tmp.path(),
         r#"(define-command! "go" "" (lambda ()
              (completion-begin! (current-buffer)
-               (list (hash "label" "x"
+               (list (hash "label" "xa"
                            "textEdit" (hash "insert" (hash "start" (hash "line" 0 "character" 1)
                                                             "end" (hash "line" 0 "character" 3))
                                             "replace" (hash "start" (hash "line" 0 "character" 1)

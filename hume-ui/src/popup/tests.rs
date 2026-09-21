@@ -179,6 +179,126 @@ fn geometry_clamps_height_to_pane_when_content_is_taller() {
     );
 }
 
+// ── resolve_menu ──────────────────────────────────────────────────────
+
+fn placement(pane: Rect) -> PopupPlacement {
+    PopupPlacement {
+        anchor: (0, 0),
+        pane_rect: pane,
+        content_width: pane.width,
+    }
+}
+
+/// A candidate scrolled out of the visible window must never widen the
+/// box — the bug this fixes: the old `menu_inner_width` measured every
+/// filtered candidate, so one very wide label anywhere in a long list
+/// inflated the menu even while scrolled away from it.
+#[test]
+fn resolve_menu_width_reflects_only_the_visible_window_not_the_whole_list() {
+    let mut rows: Vec<MenuRow> = (0..15).map(|i| MenuRow::plain(format!("r{i}"))).collect();
+    rows[0] = MenuRow::plain("x".repeat(100));
+
+    // selected = 14 (the last row) centers the window well past the wide
+    // row 0 — window_range(15, 14 - 10/2 = 9, 10) clamps to [5, 15).
+    let state = resolve_menu(
+        MenuRows::two_column(rows),
+        14,
+        placement(rect(0, 0, 200, 50)),
+        true,
+    );
+    assert_eq!(
+        state.rect.width, 5,
+        "widest *visible* row is \"r10\"..\"r14\" (3 chars) + the 2-cell frame, \
+         not the 100-char row scrolled out of view"
+    );
+}
+
+/// Two-column composition: `trailing` right-aligned flush against the
+/// widest of it in the window, `main` left-aligned and padded to the
+/// widest of it — an exact fit, no truncation.
+#[test]
+fn resolve_menu_right_aligns_trailing_when_it_fits() {
+    let rows = vec![
+        MenuRow {
+            main: "kitty_support".to_string(),
+            trailing: Some("bool".to_string()),
+        },
+        MenuRow {
+            main: "kind".to_string(),
+            trailing: Some("Kind".to_string()),
+        },
+    ];
+    let state = resolve_menu(
+        MenuRows::two_column(rows),
+        0,
+        placement(rect(0, 0, 200, 50)),
+        true,
+    );
+    assert_eq!(
+        state.lines.as_ref(),
+        &vec![
+            "kitty_support  bool".to_string(),
+            "kind           Kind".to_string(),
+        ],
+        "main padded to the widest main (\"kitty_support\", 13), a 2-cell \
+         gap, then trailing right-aligned to the widest trailing (4)"
+    );
+}
+
+/// A pane too narrow for both columns truncates `trailing` with an
+/// ellipsis rather than pushing the box past the pane clamp.
+#[test]
+fn resolve_menu_truncates_trailing_when_the_pane_is_too_narrow() {
+    let rows = vec![MenuRow {
+        main: "assert!".to_string(),
+        trailing: Some("macro_rules! assert".to_string()),
+    }];
+    // max_inner = pane.width - 2 = 10; main_col = 7 ("assert!"); trail_col
+    // = min(19, 10 - 7 - 2) = 1 — just enough for the ellipsis marker.
+    let state = resolve_menu(
+        MenuRows::two_column(rows),
+        0,
+        placement(rect(0, 0, 12, 50)),
+        true,
+    );
+    assert_eq!(state.lines.as_ref(), &vec!["assert!  …".to_string()]);
+}
+
+/// When there's no room left for a trailing column at all (`trail_col`
+/// clamps to 0), every row's trailing part is dropped uniformly — never a
+/// half-truncated fragment with no gap before it.
+#[test]
+fn resolve_menu_drops_trailing_entirely_when_no_room_is_left() {
+    let rows = vec![MenuRow {
+        main: "ab".to_string(),
+        trailing: Some("xy".to_string()),
+    }];
+    // max_inner = pane.width - 2 = 2, all consumed by `main` alone.
+    let state = resolve_menu(
+        MenuRows::two_column(rows),
+        0,
+        placement(rect(0, 0, 4, 50)),
+        true,
+    );
+    assert_eq!(state.lines.as_ref(), &vec!["ab".to_string()]);
+}
+
+/// A session narrowed to zero matches must not panic computing `selected`
+/// against an empty list — a real path (`sync_completion_menu_view` calls
+/// `resolve_menu` unconditionally, whether or not the filter matched
+/// anything).
+#[test]
+fn resolve_menu_on_an_empty_list_does_not_panic() {
+    let state = resolve_menu(
+        MenuRows::plain(Vec::new()),
+        0,
+        placement(rect(0, 0, 40, 20)),
+        true,
+    );
+    assert!(state.lines.is_empty());
+    assert_eq!(state.selected, None);
+}
+
 // ── band_visible_rows ─────────────────────────────────────────────────
 
 /// The overflow-safety guard on the shared arithmetic itself lives in

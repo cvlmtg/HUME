@@ -578,10 +578,7 @@ fn picker_opens_over_a_live_menu_and_the_menu_resumes_once_it_closes() {
     ed.state.push_layer(
         &ed.view,
         crate::editor::input_stack::MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![
-                "m0".into(),
-                "m1".into(),
-            ])),
+            rows: hume_ui::popup::MenuRows::plain(vec!["m0".into(), "m1".into()]),
             selected: 0,
             callback: marker("menu-cb"),
         },

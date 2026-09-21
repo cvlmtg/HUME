@@ -879,7 +879,7 @@ mod tests {
 
     fn menu(label: &str) -> MenuLayer {
         MenuLayer {
-            rows: hume_ui::popup::MenuRows::measure(std::sync::Arc::new(vec![label.to_string()])),
+            rows: hume_ui::popup::MenuRows::plain(vec![label.to_string()]),
             selected: 0,
             callback: SteelVal::BoolV(false),
         }
