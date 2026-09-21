@@ -85,7 +85,7 @@ impl CompletionSession {
             .filtered
             .get(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
-        let item = &self.items[item_idx as usize];
+        let item = &self.items[item_idx as usize].item;
         edits::checked_buffer(state, bt.bid, Some(bt.generation_at_begin))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 

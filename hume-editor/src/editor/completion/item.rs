@@ -40,14 +40,6 @@ pub(in crate::editor) struct CompletionItem {
     /// (snippet syntax included) — Steel/resolve should see exactly what
     /// the server sent, not this store's stripped/narrowed projection.
     pub(super) raw: serde_json::Value,
-    /// The name of the source that contributed this item — `"lsp"` for
-    /// today's sole caller. Empty at construction (`from_json`/
-    /// `from_json_lenient` parse a wire item in isolation, with no source
-    /// context of their own); `CompletionSession::add_items` stamps every
-    /// item with its own `source` argument immediately after parsing,
-    /// before any item is visible outside this module. Used for the
-    /// per-source eviction on merge, the rank tiebreaker, and display.
-    pub(super) source: Box<str>,
 }
 
 impl CompletionItem {
@@ -73,7 +65,6 @@ impl CompletionItem {
             additional_text_edits: Vec::new(),
             has_additional_text_edits: false,
             raw: serde_json::Value::Null,
-            source: Box::default(),
         }
     }
 
@@ -142,7 +133,6 @@ impl CompletionItem {
             additional_text_edits,
             has_additional_text_edits,
             raw: v.clone(),
-            source: Box::default(),
         }
     }
 
@@ -198,7 +188,6 @@ impl CompletionItem {
             additional_text_edits,
             has_additional_text_edits,
             raw: v.clone(),
-            source: Box::default(),
         })
     }
 
@@ -211,12 +200,17 @@ impl CompletionItem {
         &self.insert_text
     }
 
-    pub(super) fn to_json(&self) -> serde_json::Value {
+    /// `source` is the contributing source's name — no longer a field of
+    /// `Self` (`session.rs` now pairs an item with its source's index into
+    /// its own source list instead), so the caller — the only one that
+    /// still knows it — passes it in for the Steel-visible `"source"` key
+    /// `completion-top` surfaces.
+    pub(super) fn to_json(&self, source: &str) -> serde_json::Value {
         serde_json::json!({
             "label": self.label,
             "kind": self.kind,
             "detail": self.detail,
-            "source": self.source,
+            "source": source,
         })
     }
 

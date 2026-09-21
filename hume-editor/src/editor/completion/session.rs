@@ -19,7 +19,6 @@ mod accept;
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::CharOffset;
-use rustc_hash::FxHashMap;
 
 use crate::editor::EditorState;
 use crate::editor::fuzzy::{FuzzyMatcher, FuzzyProfile};
@@ -199,7 +198,7 @@ enum CompletionTarget {
 
 pub(in crate::editor) struct CompletionSession {
     target: CompletionTarget,
-    items: Vec<CompletionItem>,
+    items: Vec<Sourced>,
     /// Ranked indices into `items`, rebuilt by every `update_filter` call.
     filtered: Vec<u32>,
     /// Retained across `update_filter` calls so per-keystroke filtering
@@ -211,14 +210,16 @@ pub(in crate::editor) struct CompletionSession {
     /// a `MatchKind::Fuzzy` item; unused (but always present — one instance
     /// per session, not per source) otherwise.
     matcher: FuzzyMatcher,
-    /// Every source that has contributed to this session, keyed by name —
-    /// its latest priority, match kind, and `isIncomplete` flag. One entry
-    /// per source that has ever called [`Self::add_items`] (including the
-    /// first, via `begin_buffer`/`begin_minibuf`); an entry is overwritten,
-    /// never removed, by a same-source re-add. `incomplete()` is the OR
-    /// across every entry's flag — `update_filter`'s rank key reads each
-    /// item's own entry for its priority tiebreaker and match kind.
-    sources: FxHashMap<Box<str>, SourceState>,
+    /// Every source that has contributed to this session — its name,
+    /// latest priority, match kind, and `isIncomplete` flag. One entry per
+    /// source that has ever called [`Self::add_items`] (including the
+    /// first, via `begin_buffer`/`begin_minibuf`); an entry is overwritten
+    /// in place, never removed, by a same-source re-add, so a `Sourced`
+    /// item's own `source_idx` stays valid for the session's whole life —
+    /// `update_filter`'s rank key indexes straight into this rather than a
+    /// name lookup (see [`Sourced`]'s own doc for why). `incomplete()` is
+    /// the OR across every entry's flag.
+    sources: Vec<SourceState>,
     /// Identifies this session to Steel and to
     /// `input_stack::completion::session_for_token`, the guard
     /// `completion-add-items!` checks before reaching a `&mut
@@ -248,12 +249,27 @@ pub(in crate::editor) struct CompletionMenuUi {
 
 /// One source's latest contribution metadata — see
 /// `CompletionSession::sources`'s doc for why priority, match kind, and
-/// `isIncomplete` live together in one map rather than several that would
-/// have to stay in sync.
+/// `isIncomplete` live together in one struct rather than several that
+/// would have to stay in sync.
 struct SourceState {
+    name: Box<str>,
     priority: i64,
     match_kind: MatchKind,
     incomplete: bool,
+}
+
+/// One item plus the index of its contributing source in
+/// `CompletionSession::sources` — `CompletionItem` itself carries no source
+/// of its own; `add_items` is the sole place an item enters a session
+/// (`begin_buffer`/`begin_minibuf` route through it too), so this pairing
+/// happens exactly once, at construction, with no "not yet stamped" state
+/// to represent and so no sentinel index. Replaces a per-item `Box<str>`
+/// name (a heap clone per item, per source add) plus a `FxHashMap<Box<str>,
+/// _>` lookup per item per rank (`update_filter`'s scoring loop, and again
+/// in its sort comparator) with one `u32` and a slice index.
+struct Sourced {
+    source_idx: u32,
+    item: CompletionItem,
 }
 
 impl CompletionSession {
@@ -288,7 +304,7 @@ impl CompletionSession {
     /// re-add always carries its current flag, so a resolved source simply
     /// stops being counted).
     pub(in crate::editor) fn incomplete(&self) -> bool {
-        self.sources.values().any(|s| s.incomplete)
+        self.sources.iter().any(|s| s.incomplete)
     }
 
     /// The byte range in the minibuffer's own input an accepted candidate
@@ -345,7 +361,9 @@ impl CompletionSession {
     /// The item behind `filtered[idx]`, for a caller (`accept`) that already
     /// has a UI selection index rather than a raw item index.
     pub(in crate::editor) fn selected_item(&self, idx: usize) -> Option<&CompletionItem> {
-        self.filtered.get(idx).map(|&i| &self.items[i as usize])
+        self.filtered
+            .get(idx)
+            .map(|&i| &self.items[i as usize].item)
     }
 
     /// Moves a menu selection by one row, wrapping at either end — `None`
@@ -373,7 +391,7 @@ impl CompletionSession {
             rank_scratch: Vec::new(),
             filter: String::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
-            sources: FxHashMap::default(),
+            sources: Vec::new(),
             token: widget_token::next(),
             menu_cache: None,
         }
@@ -446,22 +464,35 @@ impl CompletionSession {
         priority: i64,
         match_kind: MatchKind,
         incomplete: bool,
-        mut items: Vec<CompletionItem>,
+        items: Vec<CompletionItem>,
     ) {
-        for item in &mut items {
-            item.source = source.clone();
-        }
+        // Overwritten in place, not re-pushed, when `source` already has an
+        // entry — a `Sourced` item's `source_idx` from an earlier add must
+        // keep pointing at the same slot.
+        let source_idx = match self.sources.iter().position(|s| *s.name == *source) {
+            Some(i) => {
+                self.sources[i] = SourceState {
+                    name: source,
+                    priority,
+                    match_kind,
+                    incomplete,
+                };
+                i as u32
+            }
+            None => {
+                let i = self.sources.len() as u32;
+                self.sources.push(SourceState {
+                    name: source,
+                    priority,
+                    match_kind,
+                    incomplete,
+                });
+                i
+            }
+        };
+        self.items.retain(|s| s.source_idx != source_idx);
         self.items
-            .retain(|item| item.source.as_ref() != source.as_ref());
-        self.items.extend(items);
-        self.sources.insert(
-            source,
-            SourceState {
-                priority,
-                match_kind,
-                incomplete,
-            },
-        );
+            .extend(items.into_iter().map(|item| Sourced { source_idx, item }));
         self.update_filter(self.filter.clone());
     }
 
@@ -477,15 +508,13 @@ impl CompletionSession {
         self.menu_cache = None;
         self.rank_scratch.clear();
         let pattern = self.matcher.parse(&self.filter);
-        for (i, item) in self.items.iter().enumerate() {
-            let source = self
-                .sources
-                .get(item.source.as_ref())
-                .expect("every item's source has a live entry, stamped by add_items");
-            let score = match source.match_kind {
-                MatchKind::Fuzzy => self.matcher.score(&pattern, &item.filter_text),
+        for (i, sourced) in self.items.iter().enumerate() {
+            let match_kind = self.sources[sourced.source_idx as usize].match_kind;
+            let score = match match_kind {
+                MatchKind::Fuzzy => self.matcher.score(&pattern, &sourced.item.filter_text),
                 MatchKind::String { case_sensitive } => {
-                    prefix_matches(&item.filter_text, &self.filter, case_sensitive).then_some(0)
+                    prefix_matches(&sourced.item.filter_text, &self.filter, case_sensitive)
+                        .then_some(0)
                 }
                 // The source already produced a finished, ordered result —
                 // never excluded here; the rank key's tiebreak chain (empty
@@ -511,18 +540,13 @@ impl CompletionSession {
         // triple alone wouldn't be a unique key.
         let items = &self.items;
         let sources = &self.sources;
-        let priority_of = |item: &CompletionItem| {
-            sources
-                .get(item.source.as_ref())
-                .expect("every item's source has a live entry, stamped by add_items")
-                .priority
-        };
+        let priority_of = |sourced: &Sourced| sources[sourced.source_idx as usize].priority;
         self.rank_scratch.sort_unstable_by(|a, b| {
             let item_a = &items[a.1 as usize];
             let item_b = &items[b.1 as usize];
             b.0.cmp(&a.0)
                 .then_with(|| priority_of(item_b).cmp(&priority_of(item_a)))
-                .then_with(|| item_a.sort_text.cmp(&item_b.sort_text))
+                .then_with(|| item_a.item.sort_text.cmp(&item_b.item.sort_text))
                 .then(a.1.cmp(&b.1))
         });
         self.filtered.clear();
@@ -534,7 +558,12 @@ impl CompletionSession {
         self.filtered
             .iter()
             .take(n)
-            .map(|&i| self.items[i as usize].to_json())
+            .map(|&i| {
+                let sourced = &self.items[i as usize];
+                sourced
+                    .item
+                    .to_json(&self.sources[sourced.source_idx as usize].name)
+            })
             .collect()
     }
 
@@ -549,7 +578,7 @@ impl CompletionSession {
             let labels: Vec<String> = self
                 .filtered
                 .iter()
-                .map(|&i| self.items[i as usize].menu_row_label())
+                .map(|&i| self.items[i as usize].item.menu_row_label())
                 .collect();
             self.menu_cache = Some(hume_ui::popup::MenuRows::measure(std::sync::Arc::new(
                 labels,

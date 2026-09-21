@@ -1219,6 +1219,27 @@ fn add_items_priority_breaks_a_score_tie_before_sort_text() {
     );
 }
 
+#[test]
+fn top_json_still_carries_the_contributing_source_name() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-command! "go" "" (lambda ()
+             (completion-begin! (current-buffer) (list (hash "label" "x")) #:source "test-source")
+             (log! 'info (hash-ref (car (completion-top 1)) "source"))))"#,
+    );
+    ed.state
+        .push_mode_layer(&ed.view, InsertLayer { sticky_popup: None });
+    ed.execute_keymap_command("go".into(), None, false);
+    assert_eq!(
+        ed.state.status_msg.clone().unwrap(),
+        "test-source",
+        "completion-top's items must still carry the contributing source's name"
+    );
+}
+
 /// Guardrail regression test: a 1k-item scripted session (begin ->
 /// filter -> top -> accept) under a loose release-mode bound. `#[ignore]`
 /// by default — run explicitly with `cargo test --release -- --ignored`.
