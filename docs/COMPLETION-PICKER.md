@@ -248,18 +248,34 @@ registers the server's trigger characters under the same `"lsp"` name.
 
 ## Open questions
 
-**Q-A1 — dedup across sources — answered, no dedup.** Buffer-words echoes
-identifiers LSP also returns; there is no dedup across sources. The two rank
-by score first (`CompletionSession::rank`, score desc before priority desc),
-so once something is typed a `'fuzzy` LSP candidate that scores well can
-outrank a `'string` buffer-words one. An empty pattern scores *every*
-haystack `0` (`hume-editor/src/editor/fuzzy.rs`'s
+**Q-A1 — dedup across sources — answered, priority-ordered dedup of plain
+items.** `CompletionSession::recompute_dedup` hides a *plain* item (no
+`textEdit`, no `additionalTextEdits`) when a strictly-higher-priority slot's
+shown answer has an item with the same `filter_text` — so the same
+identifier from `core:lsp` and buffer-words shows once, as `core:lsp`'s own
+item (`#:priority 10` beats buffer-words' default `0`). An item carrying
+edits is never hidden this way — accepting it does something a
+duplicate-*looking* plain item wouldn't, e.g. an auto-import buffer-words
+could never offer. This only compares *shown* answers, and only recomputes
+when the shown item set changes (an answer lands, a slot is dropped by
+`observe_edit`), not every keystroke — `rank` reads the precomputed result.
+
+Ranking otherwise still runs by score first (`CompletionSession::rank`,
+score desc before priority desc): once something is typed, a `'fuzzy` LSP
+candidate that scores well *always* outranks a `'string` buffer-words one
+scoring a flat `0` — deliberate policy, not a gap (see `MatchKind::String`'s
+own doc, `hume-editor/src/editor/completion/session.rs`): in an
+LSP-attached buffer, LSP should win once the user narrows by typing, and
+buffer-words earns its keep where LSP has nothing (a comment, a string
+literal, a plain-text buffer with no server). An empty pattern scores
+*every* haystack `0` (`hume-editor/src/editor/fuzzy.rs`'s
 `empty_query_scores_every_haystack_equally`), so on a bare trigger — buffer-
 words' own headline case — both sources tie at score `0` and priority
-decides: `core:lsp` registers `#:priority 10`, buffer-words defaults to `0`,
-so LSP items rank first. `#:config (hash "match" 'fuzzy)` opts buffer-words
-into subsequence scoring too, at which point it competes with LSP on score
-like any other `'fuzzy` source and the priority tiebreak no longer decides.
+decides. `#:config (hash "match" 'fuzzy)` opts buffer-words into subsequence
+scoring too, at which point it competes with LSP on score like any other
+`'fuzzy` source and the priority tiebreak no longer decides (dedup still
+applies regardless of `#:match` — it runs before scoring, not as part of
+it).
 
 **Q-A5 — buffer-words matching — answered, `#:match 'string`, not
 prefix-at-collection.** The source emits its *whole* cached word set once

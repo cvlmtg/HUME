@@ -401,30 +401,43 @@ fn any_live<Id: Copy + PartialEq, S>(slots: &[SourceSlot<Id, S>]) -> bool {
     slots.iter().any(SourceSlot::is_live)
 }
 
+/// [`CompletionSession::rank`]'s own scratch state, reborrowed disjointly
+/// from `self` (see `rank`'s own destructure) and threaded through
+/// [`score_slot`] as one bundle rather than three separate parameters —
+/// every one of the three is reused across every slot of both `Target`
+/// arms, unlike `score_slot`'s other, per-slot arguments.
+struct ScoreCtx<'a> {
+    matcher: &'a mut FuzzyMatcher,
+    rank_scratch: &'a mut Vec<(u32, i64, u32, u32)>,
+    dedup_hidden: &'a rustc_hash::FxHashSet<(u32, u32)>,
+}
+
 /// Scores every item in `items` against `filter` per `match_kind`, dropping
 /// a no-op item first, and pushes `(score, priority, s, i)` into
-/// `rank_scratch` for each survivor. Returns whether anything survived —
-/// [`CompletionSession::rank`]'s own signal to fold this slot's token start
-/// into the menu anchor. Shared by the `Buffer` and `Minibuf` arms of
+/// `ctx.rank_scratch` for each survivor. Returns whether anything survived
+/// — [`CompletionSession::rank`]'s own signal to fold this slot's token
+/// start into the menu anchor. Shared by the `Buffer` and `Minibuf` arms of
 /// `rank`, which differ only in how they compute `filter` and their own
 /// anchor's unit.
 fn score_slot(
-    matcher: &mut FuzzyMatcher,
-    rank_scratch: &mut Vec<(u32, i64, u32, u32)>,
+    ctx: &mut ScoreCtx<'_>,
     s: u32,
     items: &[CompletionItem],
     filter: &str,
     match_kind: MatchKind,
     priority: i64,
 ) -> bool {
-    let pattern = matcher.parse(filter);
+    let pattern = ctx.matcher.parse(filter);
     let mut contributed = false;
     for (i, item) in items.iter().enumerate() {
         if item.is_noop_for(filter) {
             continue;
         }
+        if ctx.dedup_hidden.contains(&(s, i as u32)) {
+            continue;
+        }
         let score = match match_kind {
-            MatchKind::Fuzzy => matcher.score(&pattern, &item.filter_text),
+            MatchKind::Fuzzy => ctx.matcher.score(&pattern, &item.filter_text),
             MatchKind::String { case_sensitive } => {
                 prefix_matches(&item.filter_text, filter, case_sensitive).then_some(0)
             }
@@ -435,7 +448,7 @@ fn score_slot(
             MatchKind::Delegated => Some(0),
         };
         if let Some(score) = score {
-            rank_scratch.push((score, priority, s, i as u32));
+            ctx.rank_scratch.push((score, priority, s, i as u32));
             contributed = true;
         }
     }
@@ -464,6 +477,15 @@ pub(in crate::editor) struct CompletionSession {
     /// distinguishes this from the picker's own instance. One instance per
     /// session, consulted only for a `MatchKind::Fuzzy` slot.
     matcher: FuzzyMatcher,
+    /// `(slot, item)` pairs a lower-priority `Buffer` slot's plain item
+    /// (see [`CompletionItem::is_plain`]) is hidden because a
+    /// strictly-higher-priority slot already shows an item with the same
+    /// `filter_text` — rebuilt by [`Self::recompute_dedup`] only when the
+    /// shown item *set* changes (an answer lands, a slot is dropped), not
+    /// every keystroke; [`Self::rank`] only ever reads it. Always empty for
+    /// a `Minibuf` session — it invokes exactly one source, so there is
+    /// never a second slot to dedup against.
+    dedup_hidden: rustc_hash::FxHashSet<(u32, u32)>,
 }
 
 /// UI state for an open completion session — kept separate from
@@ -481,6 +503,7 @@ impl CompletionSession {
             target,
             rank_scratch: Vec::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
+            dedup_hidden: rustc_hash::FxHashSet::default(),
         }
     }
 
@@ -596,17 +619,25 @@ impl CompletionSession {
         Some(invoke_into(slots, source, invocation))
     }
 
-    /// Lands an answer for invocation `id` — see [`contribute_into`].
+    /// Lands an answer for invocation `id` — see [`contribute_into`]. Then,
+    /// if it landed, rebuilds [`Self::dedup_hidden`] against the item set
+    /// as it now stands (a no-op for a `Minibuf` session — see that field's
+    /// own doc).
     pub(in crate::editor) fn contribute(
         &mut self,
+        sources: &SourceRegistry,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        match &mut self.target {
+        let landed = match &mut self.target {
             Target::Buffer { slots, .. } => contribute_into(slots, id, items, incomplete),
             Target::Minibuf { slots, .. } => contribute_into(slots, id, items, incomplete),
+        };
+        if landed {
+            self.recompute_dedup(sources);
         }
+        landed
     }
 
     /// Whether any slot still awaits an answer.
@@ -677,6 +708,7 @@ impl CompletionSession {
     /// generation *after* `cs` landed.
     pub(in crate::editor) fn observe_edit(
         &mut self,
+        sources: &SourceRegistry,
         cs: &ChangeSet,
         text_gen: u64,
         head: CharOffset,
@@ -689,6 +721,10 @@ impl CompletionSession {
         }
         bt.len = cs.len_after();
         bt.generation = text_gen;
+        // Whether any slot's `shown` answer was actually dropped below —
+        // the one thing that can change which items dedup compares against,
+        // so `recompute_dedup` runs only then, not on every edit.
+        let mut dropped = false;
         for slot in slots {
             if let Some(inv) = &mut slot.inflight {
                 inv.observe(cs);
@@ -697,14 +733,59 @@ impl CompletionSession {
                 && !inv.observe(cs)
             {
                 slot.shown = None;
+                dropped = true;
             }
             if let Some(inv) = &slot.shown
                 && !inv.contains(head)
             {
                 slot.shown = None;
+                dropped = true;
             }
         }
+        if dropped {
+            self.recompute_dedup(sources);
+        }
         true
+    }
+
+    /// Rebuilds [`Self::dedup_hidden`] from the `Buffer` slots' current
+    /// shown items: a plain item ([`CompletionItem::is_plain`]) is hidden
+    /// when a strictly-higher-priority slot's shown answer has an item with
+    /// the same `filter_text`. An item carrying edits is never hidden —
+    /// accepting it does something a duplicate-*looking* plain item from
+    /// another source wouldn't, so it stays regardless of what else
+    /// duplicates its label. Priority is a static, per-source fact
+    /// (`BufferSourceEntry::priority`), so this only ever needs to run when
+    /// the shown item *set* changes ([`Self::contribute`] landing an
+    /// answer, [`Self::observe_edit`] dropping a slot) — not on every
+    /// keystroke, unlike scoring itself. A no-op for a `Minibuf` session
+    /// (`dedup_hidden` stays empty — see that field's own doc).
+    fn recompute_dedup(&mut self, sources: &SourceRegistry) {
+        self.dedup_hidden.clear();
+        let Target::Buffer { slots, .. } = &self.target else {
+            return;
+        };
+        for (s, slot) in slots.iter().enumerate() {
+            let Some(inv) = &slot.shown else { continue };
+            let priority = sources.buffer_get(slot.source).priority;
+            for (i, item) in inv.items().iter().enumerate() {
+                if !item.is_plain() {
+                    continue;
+                }
+                let outranked = slots.iter().enumerate().any(|(s2, slot2)| {
+                    s2 != s
+                        && sources.buffer_get(slot2.source).priority > priority
+                        && slot2.shown.as_ref().is_some_and(|inv2| {
+                            inv2.items()
+                                .iter()
+                                .any(|item2| item2.filter_text == item.filter_text)
+                        })
+                });
+                if outranked {
+                    self.dedup_hidden.insert((s as u32, i as u32));
+                }
+            }
+        }
     }
 
     // ── Ranking ──────────────────────────────────────────────────────────────
@@ -713,7 +794,11 @@ impl CompletionSession {
     /// `live[start..head]` for a `Buffer` session, `input[start..cursor]`
     /// for a `Minibuf` one — with its source's `MatchKind`, dropping any
     /// item that's a no-op against that text first (`CompletionItem::
-    /// is_noop_for`) regardless of `MatchKind`. Rank key: score descending,
+    /// is_noop_for`) regardless of `MatchKind`, and any item
+    /// [`Self::dedup_hidden`] already marked as a lower-priority duplicate —
+    /// that set is rebuilt only when the shown items change, not here, so
+    /// this is a cheap membership check, not a fresh cross-slot comparison
+    /// every keystroke. Rank key: score descending,
     /// then source priority descending (a tiebreaker only — match quality
     /// stays king — applied before sortText so a higher-priority source's
     /// item wins a tie regardless of how its label sorts; direction matches
@@ -730,8 +815,14 @@ impl CompletionSession {
             target,
             rank_scratch,
             matcher,
+            dedup_hidden,
         } = self;
         rank_scratch.clear();
+        let mut ctx = ScoreCtx {
+            matcher,
+            rank_scratch,
+            dedup_hidden: &*dedup_hidden,
+        };
         // The leftmost token start among the slots that end up contributing
         // at least one scored item — folded into the same per-slot pass
         // rather than a second walk over `rank_scratch` every time a caller
@@ -755,8 +846,7 @@ impl CompletionSession {
                         let filter = token_text(doc.text, start, doc.head);
                         let entry = sources.buffer_get(slot.source);
                         let contributed = score_slot(
-                            matcher,
-                            rank_scratch,
+                            &mut ctx,
                             s as u32,
                             inv.items(),
                             &filter,
@@ -778,8 +868,7 @@ impl CompletionSession {
                     let filter = mt.input[start..mt.cursor].to_owned();
                     let entry = sources.minibuf_get(slot.source);
                     let contributed = score_slot(
-                        matcher,
-                        rank_scratch,
+                        &mut ctx,
                         s as u32,
                         inv.items(),
                         &filter,
@@ -799,7 +888,7 @@ impl CompletionSession {
                 Target::Minibuf { slots, .. } => slots[s as usize].item(i as usize),
             }
         };
-        rank_scratch.sort_unstable_by(|a, b| {
+        ctx.rank_scratch.sort_unstable_by(|a, b| {
             b.0.cmp(&a.0)
                 .then_with(|| b.1.cmp(&a.1))
                 .then_with(|| {

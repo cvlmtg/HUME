@@ -896,3 +896,86 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
         "a buffer-words item must never trigger resolve, regardless of the buffer's server capabilities"
     );
 }
+
+/// The same identifier from `core:lsp` and `core:buffer-words` must show
+/// once, not twice — `core:lsp`'s own plain (no textEdit, no
+/// additionalTextEdits) item is a duplicate of buffer-words' own, and
+/// `core:lsp`'s higher `#:priority` decides which one survives.
+#[test]
+fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_priority_ones() {
+    use hume_lsp::backend::ServerId;
+    use hume_lsp::client::LspClient;
+    use hume_lsp::test_util::RecordingLspBackend;
+
+    let tmp = safe_tempdir();
+    let _guard = RealRuntimeGuard::new();
+
+    let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "completionProvider": {} } }),
+    );
+    backend.respond_to(
+        "textDocument/completion",
+        serde_json::json!([{"label": "buffer_word", "insertText": "buffer_word"}]),
+    );
+    let sid: ServerId = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:buffer-words\")\n(load-plugin \"core:lsp\")",
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("main.rs");
+    std::fs::write(&path, "buffer_word\n").unwrap();
+    let bid = open(&mut ed, &path);
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let lang = ed.state.config.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
+
+    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+    ed.settle();
+
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    let got = labels(&ed);
+    assert_eq!(
+        got,
+        vec!["buffer_word"],
+        "the same label from two sources must be deduplicated to one row: {got:?}"
+    );
+
+    let top = ed
+        .state
+        .input
+        .completion()
+        .expect("session open")
+        .top(20, &ed.state.config.completion_sources);
+    assert_eq!(
+        top[0]["source"], "lsp",
+        "core:lsp's #:priority 10 beats buffer-words' default 0, so its own \
+         (surviving) item is the one shown: {top:?}"
+    );
+}

@@ -34,6 +34,7 @@
 - The completion menu now shows a candidate's detail (its type signature, say) right-aligned in its own column, rather than run into the label on one line — and the menu's width tracks only the candidates currently scrolled into view, so one very long candidate elsewhere in the list no longer widens the whole menu.
 - While a server's completion list is incomplete, typing re-asks the server without clearing the menu first — the previous answer stays up until the new one arrives, and a late answer to an earlier keystroke can no longer overwrite a newer one.
 - A completion item that would do nothing beyond leaving the typed text in place (no replacement range, no additional edits elsewhere) no longer appears in the menu, for every source — previously only `:set`'s and `:theme`'s own completers dropped an exact match this way.
+- The same identifier offered by two completion sources (e.g. `core:lsp` and `core:buffer-words`) now shows once instead of twice — the higher-`#:priority` source's own item wins, unless the lower-priority one carries edits (`additionalTextEdits`, a `textEdit`), in which case both stay since accepting it does something the duplicate-looking one wouldn't.
 - Backspacing over the character just before the completed word closes the menu; backspacing within the word (including a prefix typed before the menu opened) keeps it open and widens the list.
 
 ### Plugins & scripting

@@ -151,7 +151,7 @@ impl EditorState {
         if session.buffer().is_none_or(|bt| bt.bid() != bid) {
             return;
         }
-        if !session.observe_edit(cs, text_gen, head) {
+        if !session.observe_edit(&self.config.completion_sources, cs, text_gen, head) {
             self.dismiss_completion(view);
             return;
         }
@@ -313,7 +313,7 @@ impl EditorState {
             return false;
         };
         let session = self.input.completion_mut().expect("ref_of found the layer");
-        let landed = session.contribute(id, items, incomplete);
+        let landed = session.contribute(&self.config.completion_sources, id, items, incomplete);
         if landed {
             if session.buffer().is_some() {
                 let explicit = session.is_explicit();
@@ -438,13 +438,13 @@ fn invoke_minibuf_source(
         MinibufBody::NativeUniverse(f) => {
             let invocation_id =
                 session.invoke_minibuf(id, Invocation::minibuf(arg_span(input, cursor)))?;
-            session.contribute(invocation_id, f(ctx), false);
+            session.contribute(sources, invocation_id, f(ctx), false);
             None
         }
         MinibufBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
             let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
-            session.contribute(invocation_id, items, false);
+            session.contribute(sources, invocation_id, items, false);
             None
         }
         MinibufBody::Steel(proc) => {

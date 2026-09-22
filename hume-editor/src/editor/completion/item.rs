@@ -203,9 +203,18 @@ impl CompletionItem {
     /// case-correction, a snippet), so `insert_text` alone can't stand in
     /// for what accepting it actually does.
     pub(super) fn is_noop_for(&self, typed: &str) -> bool {
-        self.text_edit.is_none()
-            && self.additional_text_edits.is_empty()
-            && self.insert_text == typed
+        self.is_plain() && self.insert_text == typed
+    }
+
+    /// No `textEdit`, no `additionalTextEdits` — accepting this item does
+    /// nothing beyond inserting `insert_text` at the cursor. Shared by
+    /// [`Self::is_noop_for`] and `CompletionSession::recompute_dedup`'s
+    /// cross-source duplicate check: only a plain item is ever hidden as
+    /// someone else's duplicate, since an item carrying edits does
+    /// something a duplicate-looking plain item from another source
+    /// wouldn't.
+    pub(super) fn is_plain(&self) -> bool {
+        self.text_edit.is_none() && self.additional_text_edits.is_empty()
     }
 
     /// `source` is the contributing source's name. `session.rs` pairs each
