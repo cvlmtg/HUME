@@ -1,5 +1,5 @@
 // End-to-end Steel coverage for `buffer-text` / `buffer-lines` /
-// `selections-linewise?` / `selections-charwise?`.
+// `buffer-line-count` / `selections-linewise?` / `selections-charwise?`.
 
 use super::*;
 use crate::editor::commands::open_pane_in_layout;
@@ -51,6 +51,50 @@ fn buffer_lines_excludes_the_phantom_trailing_line() {
     assert!(
         fired,
         "buffer-lines must return exactly the content lines, no phantom trailing entry"
+    );
+}
+
+/// `buffer-line-count` excludes the same phantom trailing line as
+/// `buffer-lines`.
+///
+/// Independent oracle: `3` is read off the fixture by eye (three content
+/// lines), not derived from `buffer-lines`. Fail oracle: dropping the
+/// ghost-line subtraction would return 4.
+#[test]
+fn buffer_line_count_excludes_the_phantom_trailing_line() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\nc\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(= (buffer-line-count (current-buffer)) 3)"#,
+    );
+    assert!(
+        fired,
+        "buffer-line-count must return the buffer's content line count"
+    );
+}
+
+/// `buffer-line-count` must agree with the slower `(length (buffer-lines
+/// bid))` idiom it replaces — same pattern as `diff-buffer-lines`' agreement
+/// check against `diff-lines`.
+#[test]
+fn buffer_line_count_agrees_with_buffer_lines_length() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>\nb\nc\nd\n");
+
+    let fired = run_probe(
+        &mut ed,
+        ScriptingHost::new(),
+        tmp.path(),
+        r#"(= (buffer-line-count (current-buffer))
+             (length (buffer-lines (current-buffer))))"#,
+    );
+    assert!(
+        fired,
+        "buffer-line-count and (length (buffer-lines bid)) must agree"
     );
 }
 
@@ -251,6 +295,12 @@ fn buffer_text_on_a_stale_bid_raises_invalid_buffer_id() {
 #[test]
 fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-lines", "buffer-lines");
+}
+
+/// Same pattern as `buffer-lines`' stale-bid test.
+#[test]
+fn buffer_line_count_on_a_stale_bid_raises_invalid_buffer_id() {
+    assert_stale_bid_raises("buffer-line-count", "buffer-line-count");
 }
 
 /// `line->offset` returns the char offset where each content line starts.

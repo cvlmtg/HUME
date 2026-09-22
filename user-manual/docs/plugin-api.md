@@ -89,6 +89,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(buffer-dirty? bid)` | `#t` if `bid` has unsaved edits |
 | `(buffer-text bid)` | Full live content as a string |
 | `(buffer-lines bid #:start #:end)` | Content as a list of lines, each with its ending stripped |
+| `(buffer-line-count bid)` | Content line count — cheaper than `(length (buffer-lines bid))` |
 | `(current-line-number)` | 1-indexed line of the primary cursor, or `#f` |
 | `(current-selections)` | List of `(anchor head primary?)` triples for the focused buffer |
 | `(char-index->line idx)` | 1-indexed line number containing 0-indexed char offset `idx` |
@@ -106,7 +107,7 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(buffer-id? v)`, `(pane-id? v)` | `#t` if `v` is an opaque BufferId/PaneId |
 | `(buffer-id=? a b)`, `(pane-id=? a b)` | Value-equality for two BufferId/PaneId handles |
 
-`buffer-text`, `buffer-lines`, `current-selections`, `char-index->line`, `line->offset`, and `viewport-range` are covered with examples in [Reading selections](plugins.md#reading-selections) and [Reading buffer text](plugins.md#reading-buffer-text). Every `bid`/pane argument here is an opaque id from one of these functions — there's no "current buffer" shortcut baked into the builtin itself; pass `(current-buffer)` explicitly when that's what you mean.
+`buffer-text`, `buffer-lines`, `buffer-line-count`, `current-selections`, `char-index->line`, `line->offset`, and `viewport-range` are covered with examples in [Reading selections](plugins.md#reading-selections) and [Reading buffer text](plugins.md#reading-buffer-text). Every `bid`/pane argument here is an opaque id from one of these functions — there's no "current buffer" shortcut baked into the builtin itself; pass `(current-buffer)` explicitly when that's what you mean.
 
 ## Editing & navigation
 

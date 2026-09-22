@@ -48,6 +48,7 @@
 (#%register-global "buffer-id=?")
 (#%register-global "buffer-id?")
 (#%register-global "buffer-language")
+(#%register-global "buffer-line-count")
 (#%register-global "buffer-lines")
 (#%register-global "buffer-name")
 (#%register-global "buffer-path")

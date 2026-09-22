@@ -421,6 +421,12 @@ Returns the buffer's content as a list of lines, each with its line ending strip
 If you're about to diff a buffer's content against another text, reach for `(diff-buffer-lines bid ref-text)` instead of `(buffer-text bid)`, especially from a hook that fires on every keystroke.
 
 ```scheme
+(buffer-line-count bid)
+```
+
+Returns the buffer's content line count as an integer, same count `buffer-lines` returns lines for. If all you need is the count, reach for this instead of `(length (buffer-lines bid))` — that idiom builds and throws away a full list of line strings just to measure it.
+
+```scheme
 (line->offset bid line)
 ```
 

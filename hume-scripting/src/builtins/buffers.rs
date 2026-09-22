@@ -125,6 +125,19 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
         .map_err(generic_err)
 }
 
+/// `(buffer-line-count bid)` → int — `bid`'s content line count, excluding
+/// the phantom line past its structural trailing `\n` (matches the
+/// statusline and `:w`). O(1): reads `buffer_line_count` directly rather
+/// than counting a materialized `(buffer-lines bid)` list.
+pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
+    let count = ctx
+        .host
+        .buffers()
+        .buffer_line_count(bid.0)
+        .ok_or_else(|| bid.not_live_err("buffer-line-count"))?;
+    Ok(SteelVal::IntV(count as isize))
+}
+
 /// `(%buffer-lines bid start end)` — Rust half of the bootstrap-wrapped
 /// `(buffer-lines bid #:start .. #:end ..)`. `start`/`end` are already-decoded
 /// `Option<usize>` from `bootstrap.scm`'s `#f`-defaulted keyword args:

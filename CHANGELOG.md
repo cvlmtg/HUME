@@ -43,6 +43,7 @@
 - `close-menu!` now retires the widget wherever it sits on the stack, even buried under something else; `close-drawer!` closes the drawer wherever it sits without touching anything stacked above it (an `Insert` session or a code-action menu browsing over it, say — those keep running); `picker-close!`, `completion-dismiss!`, and `close-popup!` stay idempotent no-ops when nothing's open.
 - `on-mode-change` no longer fires for the mode transitions a `.` repeat replays internally.
 - The Steel language server (`core:steel-server`) no longer reports `run-capture!` (the builtin behind `core:stdlib`'s `stdlib/run`) as an undefined identifier when editing `core:stdlib`'s own plugin file.
+- New `(buffer-line-count bid)` scripting builtin returns a buffer's content line count directly, without materializing `(buffer-lines bid)`'s full list of line strings just to measure it.
 
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.

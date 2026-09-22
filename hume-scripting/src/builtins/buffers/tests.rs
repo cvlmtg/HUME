@@ -139,6 +139,13 @@ fn buffer_lines_blocked_in_init_mode() {
     assert!(super::super::errors::require_cmd(&h.ctx_init(), "%buffer-lines").is_err());
 }
 
+/// `buffer-line-count` is blocked in init mode.
+#[test]
+fn buffer_line_count_blocked_in_init_mode() {
+    let mut h = SteelCtxTestHarness::new();
+    assert!(super::super::errors::require_cmd(&h.ctx_init(), "buffer-line-count").is_err());
+}
+
 /// `line->offset` is blocked in init mode.
 #[test]
 fn line_to_offset_blocked_in_init_mode() {
@@ -258,6 +265,22 @@ fn buffer_text_invalid_id_errors() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = buffer_text(&mut ctx, default_bid());
+    assert!(result.is_err(), "non-existent buffer id must error");
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid buffer id")
+    );
+}
+
+/// `buffer-line-count` on a non-existent buffer raises, exactly like
+/// `buffer-text`.
+#[test]
+fn buffer_line_count_invalid_id_errors() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let result = buffer_line_count(&mut ctx, default_bid());
     assert!(result.is_err(), "non-existent buffer id must error");
     assert!(
         result

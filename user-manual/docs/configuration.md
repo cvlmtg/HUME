@@ -401,7 +401,7 @@ Place `"steel:<name>"` for any `<name>` of your choosing to add your own element
 
 (define (refresh-line-count! bid)
   (set-statusline-text! "line-count" bid
-    (string-append (number->string (length (buffer-lines bid))) "L")))
+    (string-append (number->string (buffer-line-count bid)) "L")))
 
 (register-hook! 'on-text-changed refresh-line-count!)
 (register-hook! 'on-buffer-enter refresh-line-count!)
