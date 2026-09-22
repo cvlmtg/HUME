@@ -30,13 +30,19 @@ use crate::editor::{EditorState, Severity};
 
 /// What set an Insert-mode trigger in motion — and so which sources it
 /// invokes.
-pub(in crate::editor) enum Trigger<'a> {
+pub(in crate::editor) enum Trigger {
     /// Ctrl-Space / the `completion-trigger` command: every `Buffer` source.
     Explicit,
-    /// A registered trigger char landed: the sources registered for it
-    /// (`EditorState::trigger_sources_for`'s names, matched against the
-    /// registry by name — `register-trigger-chars!` is the join).
-    Char { sources: &'a [String] },
+    /// A char landed in Insert mode: every `Buffer` source registered for
+    /// `(ch, language)` via `(completion-set-trigger-chars! …)`
+    /// (`SourceRegistry::buffer_sources_for_trigger` is the join) — its own
+    /// table, separate from `register-trigger-chars!`'s shared one, which
+    /// only ever feeds the generic `on-trigger-char` hook. `language` is
+    /// owned, not borrowed from the caller's own `&str` (`LanguageRegistry::
+    /// name_of`'s return): the caller passes this straight into a `&mut
+    /// EditorState` method, so a borrow tied to that same state would
+    /// conflict with the method's own `&mut self`.
+    Char { ch: char, language: Option<String> },
 }
 
 /// A Steel proc plus its args, minted while a session is borrowed and
@@ -56,7 +62,7 @@ impl EditorState {
     pub(in crate::editor) fn trigger_buffer_completion(
         &mut self,
         view: &EngineView,
-        trigger: Trigger<'_>,
+        trigger: Trigger,
     ) {
         if !self.input.is::<InsertLayer>(self.input.mode_layer()) {
             self.report(
@@ -68,10 +74,9 @@ impl EditorState {
         let sources = &self.config.completion_sources;
         let ids: Vec<BufferSourceId> = match trigger {
             Trigger::Explicit => sources.buffer_sources(),
-            Trigger::Char { sources: names } => names
-                .iter()
-                .filter_map(|name| sources.buffer_id_of(name))
-                .collect(),
+            Trigger::Char { ch, ref language } => {
+                sources.buffer_sources_for_trigger(ch, language.as_deref())
+            }
         };
         if ids.is_empty() {
             if let Trigger::Explicit = trigger {

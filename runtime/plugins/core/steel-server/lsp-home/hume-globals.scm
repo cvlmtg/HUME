@@ -74,6 +74,7 @@
 (#%register-global "completion-accept!")
 (#%register-global "completion-dismiss!")
 (#%register-global "completion-emit!")
+(#%register-global "completion-set-trigger-chars!")
 (#%register-global "completion-top")
 (#%register-global "completion-trigger")
 (#%register-global "configure-statusline!")

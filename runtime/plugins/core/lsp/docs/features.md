@@ -58,8 +58,11 @@ identifier before the cursor, so the editor seeds the filter from it and accept
 replaces it — with `#:resolve #t`, its claim that its items are wire items from
 the buffer's own attached server, licensing `completionItem/resolve` on accept),
 and the editor calls it — on `Ctrl-Space`, on a
-server trigger character (registered under the same `"lsp"` name at attach, so the
-editor invokes the source by name with no hook round trip), and again after each
+server trigger character (registered as `"lsp"`'s own trigger chars via
+`completion-set-trigger-chars!` at attach — `lib.scm`'s `lsp/setup-trigger-chars!`,
+not the shared `register-trigger-chars!`/`on-trigger-char` table that signature
+help uses instead — so the editor invokes the source directly, no hook round
+trip), and again after each
 keystroke while the last answer said `isIncomplete`. The source declines with an empty
 answer when the buffer's server has no `completionProvider`. Never passes
 `#:allow-stale` to `lsp-request` — unlike hover, a stale completion response is

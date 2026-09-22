@@ -74,4 +74,21 @@ pub trait CompletionHost {
     /// an error — same "closes regardless of what's on top" contract every
     /// other `close-*!` builtin has.
     fn completion_dismiss(&mut self) -> Result<(), String>;
+
+    /// `(completion-set-trigger-chars! source language chars)` — registers
+    /// `chars` as `source`'s own trigger characters for `language`,
+    /// replacing that exact `(source, language)` pair's previous set; an
+    /// empty `chars` removes it. This is `'buffer` sources' own routing
+    /// table, separate from `register-trigger-chars!`'s shared,
+    /// listener-agnostic one (`LanguageHost::register_trigger_chars`) —
+    /// only a registered `'buffer` source's own trigger chars decide which
+    /// sources a keystroke invokes (`Trigger::Char`, editor-side); `Err`
+    /// when `source` names no registered `'buffer` source, a plugin's own
+    /// typo or stale rename.
+    fn completion_set_trigger_chars(
+        &mut self,
+        source: &str,
+        language: &str,
+        chars: Vec<char>,
+    ) -> Result<(), String>;
 }

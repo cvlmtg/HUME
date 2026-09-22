@@ -202,19 +202,21 @@ the sources with a ranked candidate.
 
 | Builtin | Notes |
 |---|---|
-| `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); re-registering a name replaces it, natives included, *as long as the new source serves the same target* — a name taken by the other target is refused with a loud error, not silently clobbered |
+| `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0] #:resolve [#f])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); `#:target` picks one of two separate namespaces (`'buffer`, `'minibuf`) — re-registering a name replaces it, natives included, *within that namespace*; the same name in the other namespace is a second, unrelated source, since there is no shared id space between them to collide in. `#:resolve #t` (`'buffer` only) claims this source's items are wire items from the buffer's attached server, licensing `completionItem/resolve` on accept |
 | `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
-| `(register-trigger-chars! source language chars)` + `on-trigger-char` | unchanged, shared with signature help; the editor additionally invokes the completion source registered under `source`'s name, by name |
+| `(register-trigger-chars! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined |
+| `(completion-set-trigger-chars! source language chars)` | a `'buffer` completion source's own trigger chars for `language`, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. `Err` when `source` names no registered `'buffer` source |
 | `(define-typed-command! … #:complete "name")` | a `:` command's argument completer |
 | command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger")` from Steel |
 
 `core:lsp/completion.scm` is the reference source: `register-completion-
-source! "lsp"` with `#:priority 10`, whose proc sends
+source! "lsp"` with `#:priority 10 #:resolve #t`, whose proc sends
 `textDocument/completion` (`#:supersede "completion"`) and answers with the
 decoded list and its `isIncomplete` flag, declining with an empty answer when
 the buffer's server has no `completionProvider`; `lsp/setup-trigger-chars!`
-registers the server's trigger characters under the same `"lsp"` name.
+registers the server's trigger characters as `"lsp"`'s own, via
+`completion-set-trigger-chars!`.
 
 ## Tests
 

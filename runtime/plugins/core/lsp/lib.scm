@@ -41,18 +41,25 @@
 
 ;; ── Trigger-char lifecycle ──────────────────────────────────────────────────
 
-;;; `on-trigger` is `#f` for a source the editor invokes by name itself
-;;; (a completion source registered under `source-name`).
+;;; `on-trigger` is `#f` for a completion source registered under
+;;; `source-name`, invoked directly by the editor against its own trigger
+;;; chars (`completion-set-trigger-chars!`) — not through the shared,
+;;; listener-agnostic `register-trigger-chars!`/`on-trigger-char` table,
+;;; which serves every *other* trigger-char listener (signature help).
 (define (lsp/setup-trigger-chars! cap-key source-name extra-chars on-trigger)
+  (define (set-chars! server-name chars)
+    (if on-trigger
+        (register-trigger-chars! source-name server-name chars)
+        (completion-set-trigger-chars! source-name server-name chars)))
   (register-hook! 'on-lsp-attach
     (lambda (bid server-name)
       (let ((caps (lsp-capabilities server-name)))
         (when (and caps (hash-contains? caps cap-key))
-          (register-trigger-chars! source-name server-name
+          (set-chars! server-name
             (append extra-chars (lsp/cap-field caps cap-key "triggerCharacters" (list))))))))
   (register-hook! 'on-lsp-detach
     (lambda (bid server-name)
-      (register-trigger-chars! source-name server-name '())))
+      (set-chars! server-name '())))
   (when on-trigger
     (register-hook! 'on-trigger-char
       (lambda (bid ch source)

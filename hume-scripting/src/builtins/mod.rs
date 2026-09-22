@@ -495,6 +495,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);
         cmd "completion-dismiss!" completion::completion_dismiss();
+        open "completion-set-trigger-chars!" completion::completion_set_trigger_chars(source: SteelVal, language: SteelVal, chars: SteelVal);
 
         // Cursor-anchored popup widget.
         cmd "%show-popup!" ui::show_popup(text: SteelVal, anchor: SteelVal, kind: SteelVal, lang: SteelVal);

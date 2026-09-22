@@ -51,11 +51,14 @@ fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of
 /// 1-char strings, registered for exactly `(source, language)`. Callable
 /// from any context, including command bodies and hook handlers —
-/// completion/signature-help register a server's trigger characters from
-/// inside an `on-lsp-attach` handler, which runs as plain command context
-/// (no `EvalMode` gate applies here, unlike `register-hook!` /
-/// `on-lsp-notification`). A completion source registered under `source`'s
-/// name is invoked directly when one of `chars` lands in Insert mode.
+/// signature help registers a server's trigger characters from inside an
+/// `on-lsp-attach` handler, which runs as plain command context (no
+/// `EvalMode` gate applies here, unlike `register-hook!` /
+/// `on-lsp-notification`). `chars` landing in Insert mode fires the
+/// `on-trigger-char` hook for any listener named `source` — a shared,
+/// listener-agnostic table, *not* how a completion source's own trigger
+/// chars are joined (that's `completion-set-trigger-chars!`, a completion
+/// source's own routing table, checked before invoking sources directly).
 pub(crate) fn register_trigger_chars(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -163,6 +166,25 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
     require_cap(ctx.host.completions(), "completion-dismiss!")?
         .completion_dismiss()
+        .map(|()| SteelVal::Void)
+        .map_err(generic_err)
+}
+
+/// `(completion-set-trigger-chars! source language chars)` — see
+/// `CompletionHost::completion_set_trigger_chars`'s own doc. Callable from
+/// any context, same as `register-trigger-chars!` (`on-lsp-attach` runs as
+/// plain command context).
+pub(crate) fn completion_set_trigger_chars(
+    ctx: &mut SteelCtx,
+    source: SteelVal,
+    language: SteelVal,
+    chars: SteelVal,
+) -> SteelResult {
+    let source = string_arg(source, "completion-set-trigger-chars! source")?;
+    let language = string_arg(language, "completion-set-trigger-chars! language")?;
+    let chars = chars_arg(chars, "completion-set-trigger-chars! chars")?;
+    require_cap(ctx.host.completions(), "completion-set-trigger-chars!")?
+        .completion_set_trigger_chars(&source, &language, chars)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
 }

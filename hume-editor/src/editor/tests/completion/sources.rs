@@ -499,9 +499,10 @@ fn top_carries_the_contributing_source_name() {
     assert_eq!(status(&ed), "test-source");
 }
 
-/// A trigger char invokes the source registered under its name (via
-/// `register-trigger-chars!`) into the open session — the other source's
-/// slot survives, shown again once the typed char is backspaced away.
+/// A trigger char invokes the `Buffer` source registered under its name
+/// (via `completion-set-trigger-chars!`) into the open session — the other
+/// source's slot survives, shown again once the typed char is backspaced
+/// away.
 #[test]
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let tmp = safe_tempdir();
@@ -524,9 +525,16 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            (register-completion-source! "other"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "other"))))
              #:target 'buffer)
-           (register-trigger-chars! "dot" "rust" (list "."))"#,
+           (define-command! "set-dot-trigger" "" (lambda ()
+             (completion-set-trigger-chars! "dot" "rust" (list "."))))"#,
     );
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
+    // `register-completion-source!` above only queues an `Effect`, applied
+    // after `insert_with_script`'s own eval returns — the same ordering a
+    // real `completion-set-trigger-chars!` caller (`on-lsp-attach`, a later
+    // hook fire) always sees in practice, so this is called as its own
+    // command rather than inline in the registering eval.
+    ed.execute_keymap_command("set-dot-trigger".into(), None, false);
 
     ed.feed_key(key('.'));
     ed.settle();

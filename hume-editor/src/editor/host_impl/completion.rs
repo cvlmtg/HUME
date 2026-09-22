@@ -52,6 +52,7 @@ impl crate::editor::Editor {
                     priority: reg.priority,
                     proc: reg.proc,
                     resolve: reg.resolve,
+                    trigger_chars: rustc_hash::FxHashMap::default(),
                 }),
             host::CompletionSourceTarget::Minibuf => self
                 .state
@@ -117,5 +118,17 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_dismiss(&mut self) -> Result<(), String> {
         self.state.dismiss_completion(self.view);
         Ok(())
+    }
+
+    fn completion_set_trigger_chars(
+        &mut self,
+        source: &str,
+        language: &str,
+        chars: Vec<char>,
+    ) -> Result<(), String> {
+        self.state
+            .config
+            .completion_sources
+            .set_buffer_trigger_chars(source, language.to_string(), chars)
     }
 }

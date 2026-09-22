@@ -26,6 +26,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             priority: *priority,
             proc: SteelVal::Void,
             resolve: false,
+            trigger_chars: rustc_hash::FxHashMap::default(),
         });
     }
     reg

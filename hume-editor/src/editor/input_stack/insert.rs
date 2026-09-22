@@ -234,12 +234,15 @@ impl Editor {
                     self.apply_insert_edit(|b, s| insert_char(b, s, ch));
                 }
                 if inserted {
-                    let language = self
-                        .state
-                        .buffers
-                        .get(buf)
-                        .language
-                        .map(|id| self.state.config.languages.name_of(id));
+                    let lang_id = self.state.buffers.get(buf).language;
+                    // Owned, not a borrow of `self.state.config.languages`:
+                    // `sources` below already needs a borrowed `&str`, but
+                    // `Trigger::Char` is handed to a `&mut EditorState`
+                    // method further down, so its own copy can't be tied to
+                    // that same borrow (see `Trigger::Char`'s own doc).
+                    let language_owned =
+                        lang_id.map(|id| self.state.config.languages.name_of(id).to_owned());
+                    let language = language_owned.as_deref();
                     let sources = self.state.trigger_sources_for(ch, language);
                     for source in &sources {
                         self.state.queue_event(EditorEvent::OnTriggerChar {
@@ -248,13 +251,20 @@ impl Editor {
                             source: source.clone(),
                         });
                     }
-                    // The hook above is for any listener (signature help);
-                    // a completion source registered under one of these
-                    // names is invoked directly, by name — no hook round
-                    // trip for the framework's own feature.
+                    // The hook above is for any listener (signature help); a
+                    // completion source's own trigger chars are looked up
+                    // directly against the registry
+                    // (`SourceRegistry::buffer_sources_for_trigger`) — no
+                    // hook round trip, and no dependency on
+                    // `register-trigger-chars!`'s separate table (`sources`
+                    // above is that table's own answer, used only to fire
+                    // the generic hook).
                     self.state.trigger_buffer_completion(
                         &self.view,
-                        completion::Trigger::Char { sources: &sources },
+                        completion::Trigger::Char {
+                            ch,
+                            language: language_owned,
+                        },
                     );
                 }
             }
