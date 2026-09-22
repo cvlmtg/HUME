@@ -507,8 +507,7 @@ fn top_carries_the_contributing_source_name() {
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let tmp = safe_tempdir();
     // A space, not a word char, right before the cursor — both sources'
-    // `'word` token starts empty, the same "no filter yet" shape `'cursor`
-    // used to give unconditionally.
+    // `'word` token starts empty, so neither has a filter yet.
     let mut ed = editor_from("-[ ]>bcdef\n");
     let lang = ed.state.config.languages.intern("rust");
     let bid = ed.focused_buffer_id();

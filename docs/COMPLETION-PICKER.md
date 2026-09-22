@@ -2,10 +2,11 @@
 
 Design record for the completion system: one model in which a *source*
 (native Rust, or Steel-registered — `core:lsp` is one) is registered once
-with its own token rule, invoked by one orchestrator for either target
-(Insert mode, or the `:` command line), and answers a specific *invocation*
-that carries its own document snapshot and span. Several sources rank
-together in one menu, each against its own token.
+against one of two targets (Insert mode, or the `:` command line — each
+with its own fixed token rule, not the source's own choice), invoked by one
+orchestrator, and answers a specific *invocation* that carries its own
+document snapshot and span. Several sources rank together in one menu, each
+against its own target's token.
 
 The sibling fuzzy-finder (picker) shipped as `core:pickers` (roadmap for
 what's left: `docs/FUZZY-FINDERS.md`). The two share the "Rust store, Steel
@@ -55,31 +56,34 @@ Six concepts, each with one owner — everything under
 
 | Concept | Type | Where |
 |---|---|---|
-| **Source** — a named producer of candidates, with its static facts: which target it serves, where its token starts, how its items score, its priority, and its body (a native fn or a Steel proc) | `SourceEntry` in `SourceRegistry` | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config` rebuilds it from the natives by construction |
-| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + `head` + every edit observed since, composed), its token span in live coordinates, and its answer once it has one | `Invocation` | `session.rs` |
-| **Session** — the one open session: one `SourceSlot` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher | `CompletionSession` | `session.rs`; `session/accept.rs` applies the accepted item |
-| **Target** — where an accepted item lands, and what the target alone knows (`Buffer`: bid, pane, generation; `Minibuf`: the `:` input every source saw) | `Target` | `session.rs` |
+| **Source** — a named producer of candidates, with its static facts: how its items score, its priority, and its body (a native fn or a Steel proc). Two separate namespaces, one per target — a name in one has no bearing on the same name in the other | `BufferSourceEntry`/`MinibufSourceEntry` in `SourceRegistry` (`buffer`/`minibuf` fields, `BufferSourceId`/`MinibufSourceId` index them) | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config` rebuilds it from the natives by construction |
+| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + `head` + every edit observed since, composed, `Buffer`-target only), its token span in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session.rs` |
+| **Session** — the one open session: one `SourceSlot<Id, S>` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher, a rank-time dedup mask | `CompletionSession` | `session.rs`; `session/accept.rs` applies the accepted item |
+| **Target** — where an accepted item lands, and each target's own slots, typed against that target's own id/span shape so a `Minibuf` session can't hold `Buffer` coordinates or vice versa | `Target::{Buffer{bt,slots}, Minibuf{mt,slots}}` | `session.rs` |
 | **Orchestrator** — the one driver for both targets: picks the sources a trigger applies to, mints invocations, runs them, lands answers, reacts to edits, applies the `:` line's eager policy | `impl EditorState` | `orchestrate.rs` |
 | **Layer** — keys, selection, render sync | `CompletionLayer` | `input_stack/completion.rs` |
 
 ### Sources
 
 ```rust
-enum SourceBody {
-    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // ⇒ Minibuf, 'arg span
-    NativeDelegated(fn(&str, usize, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // ⇒ Minibuf, own span
-    Steel { proc: SteelVal, target: SourceTarget },
+struct BufferSourceEntry { name, match_kind, priority, proc: SteelVal, resolve: bool, trigger_chars }
+
+enum MinibufBody {
+    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // 'arg span
+    NativeDelegated(fn(&str, usize, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // own span
+    Steel(SteelVal),
 }
-enum SourceTarget { Buffer, Minibuf }
+struct MinibufSourceEntry { name, match_kind, priority, body: MinibufBody }
 ```
 
-A native source's signature *is* its contract (`SourceEntry::target` is
-derived from the body); a Steel source declares `#:target` alone — there is
-no separate token keyword, because each target has exactly one token rule
-(below). No native `Buffer`-target shape exists — the buffer-words source
-(`runtime/plugins/core/buffer-words/`) is Steel, deliberately: it dogfoods
-this plugin-facing API rather than the Rust-internal machinery the six native
-minibuffer sources already validate.
+Every `Buffer` source is Steel, by design — there is no native `Buffer`
+shape to have a body enum over; the buffer-words source
+(`runtime/plugins/core/buffer-words/`) dogfoods this plugin-facing API
+rather than the Rust-internal machinery the six native minibuffer sources
+already validate. A `Buffer` source's own token is always the identifier
+before the cursor, a `Minibuf` source's always the whitespace-delimited
+argument — the rule belongs to the *target*, not a per-source choice, so
+there is no separate token keyword to decode.
 
 The six native minibuffer sources (`command`, `buffer-name`, `theme` —
 `NativeUniverse`; `path`, `path-dirs-only`, `set` — `NativeDelegated`) are
@@ -140,10 +144,13 @@ which:
    `start` and `start - 1` mapping to the same live position, which a
    deletion elsewhere (a second cursor's, say) cannot cause. Deleting the
    token's own first char stays inside it; a slot narrowed to zero *matches*
-   is still live (Backspace brings its items back);
+   is still live (Backspace brings its items back). A dropped slot also
+   rebuilds the cross-source dedup mask (Q-A1, below) — the item set it
+   compared against changed;
 3. re-ranks (`CompletionSession::rank`: score desc, source priority desc,
    sortText asc, index asc — each shown item scored against *its own* slot's
-   token text with its source's `MatchKind`), resets the menu selection;
+   token text with its source's `MatchKind`, after skipping a no-op item and
+   any item the dedup mask already hid), resets the menu selection;
 4. re-invokes every source whose last answer was `isIncomplete` or that is
    still pending against the pre-edit document; and
 5. dismisses the session, silently, once no slot has an answer with items
@@ -221,13 +228,21 @@ registers the server's trigger characters as `"lsp"`'s own, via
 ## Tests
 
 - `hume-editor/src/editor/completion/session/tests.rs` — the store alone:
-  per-slot tokens, the crossing rule, stale answers, no-op item drop.
+  per-slot tokens, the crossing rule, stale answers, no-op item drop,
+  cross-source dedup.
+- `hume-editor/src/editor/completion/registry/tests.rs` — the registry
+  alone: namespace independence, trigger-char join/clear, trigger chars
+  surviving a same-name re-registration.
 - `hume-editor/src/editor/tests/completion/` — through the real seams, one
   file per concern: `sources.rs` (registration, invocation, token rules,
   stale answers, re-invocation, several sources), `menu_keys.rs`,
   `accept.rs`, `minibuf.rs`, `render.rs`.
 - `hume-editor/src/editor/tests/unix/lsp_completion_feature.rs` — the real
   `core:lsp` plugin against a recording backend.
+- `hume-editor/src/editor/tests/unix/buffer_words_plugin.rs` — the real
+  `core:buffer-words` plugin; its last few tests load `core:lsp` too, the
+  only place two real, independently-motivated `Buffer` sources rank
+  together, dedup, and gate `resolve` in one session.
 - `hume-scripting/src/builtins/completion/tests.rs` — the builtins' argument
   decoding.
 - `hume-ui/src/popup/tests.rs` — `menu_window`/`resolve_menu`, including the
@@ -245,6 +260,11 @@ registers the server's trigger characters as `"lsp"`'s own, via
 | Filter text | **Derived per slot from its live span, never set** | Removes `completion-update-filter!` and the accept-time extension it forced. |
 | `:` line cycle-apply | **Restore the invoke-time input, then splice over the slot's span** | Idempotent in invoke-time coordinates; two sources with different spans coexist by construction. |
 | Menu width | **`menu_window` from counts, `rows_in(range)`, `resolve_menu(&rows[window])`** | No full-list accessor exists, so width over the whole list is unwritable. |
+| Source registry namespaces | **Two, `SourceRegistry::{buffer,minibuf}`, distinct `BufferSourceId`/`MinibufSourceId` — not one `Vec` plus a runtime target tag** | A name taken in one namespace was refused as "the wrong target" for the other, at runtime, only once a second real `Buffer` source (buffer-words) existed to collide with `core:lsp`. Splitting the namespace makes the collision impossible by construction instead. |
+| Session slots | **Typed inside their own `Target` variant (`SourceSlot<BufferSourceId, BufferSpan>` vs. `<MinibufSourceId, MinibufSpan>`) — not one flat span enum re-checked at every read** | The old `SpanTrack` enum could disagree with which `Target` variant held it (a fallback arm, a silent `_ => continue`, an `unreachable!` in accept) even though a slot's target has never actually been able to vary independently of its own span shape. |
+| `completionItem/resolve` gating | **A source's own `#:resolve #t` claim (`BufferSourceEntry::resolve`), checked in `accept`, not just "the buffer has a server with `resolveProvider`"** | A second `Buffer` source sharing an LSP-attached buffer (buffer-words) would otherwise have a resolve request sent for an item the server never produced — a real gap the first source (`core:lsp`) never surfaced, since "an item in an LSP-attached buffer" and "an LSP item" were the same fact until a second source existed. |
+| Cross-source dedup | **Rank-time, priority-ordered, plain items only (`CompletionSession::recompute_dedup`)** | See Q-A1, below — the same identifier from two sources otherwise shows twice. |
+| Trigger-char join for `Buffer` sources | **A source's own table (`completion-set-trigger-chars!`, `BufferSourceEntry::trigger_chars`), not `register-trigger-chars!`'s shared, listener-agnostic one** | The shared table has to accept an unknown name (it serves non-completion listeners too), so a typo on either side of the join silently disabled trigger-char completion with no error anywhere. The new table validates against the `Buffer` namespace and errors on a miss. `register-trigger-chars!`/`on-trigger-char` are unchanged for every other listener (signature help). |
 | Item schema | **LSP `CompletionItem` JSON shape as lingua franca** | The store already parses it with label-fallbacks; the minimal item is `{"label": …}`; a non-LSP source omits `textEdit` and rides the token-span accept path. |
 | Completion vs picker core | **Siblings sharing the matcher, not a shared session type** | See `hume-editor/src/editor/input_stack/picker/session.rs`. |
 
@@ -282,8 +302,9 @@ it).
 **Q-A5 — buffer-words matching — answered, `#:match 'string`, not
 prefix-at-collection.** The source emits its *whole* cached word set once
 per trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
-keystroke, via `MatchKind::String`, same as this doc's `MatchKind` table
-already describes for any `'string` source. It carries no `#:incomplete` —
+keystroke, via `MatchKind::String` (see that enum's own doc,
+`hume-editor/src/editor/completion/session.rs`) — the same rule any
+`'string` source gets. It carries no `#:incomplete` —
 `CompletionSession::rank`'s own no-op check (`CompletionItem::is_noop_for`)
 drops the exact-typed token for every source, derived fresh from the live
 cursor on every keystroke, so this source never needs re-invoking just to

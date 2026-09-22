@@ -213,7 +213,7 @@ cached set is exactly what `bw/walk!` found, no per-keystroke rebuild. The
 *framework* never re-invokes this source on its own (`completion-emit!`
 carries no `#:incomplete`); the plugin still pushes a second answer itself
 when the background walk finishes — see "Pushing a finished index to an
-open menu" below.
+open menu" above.
 
 The scan collects the word under the cursor like any other word, but
 offering it back would be a no-op to accept — this plugin doesn't filter it

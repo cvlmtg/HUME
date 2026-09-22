@@ -342,9 +342,9 @@ impl EditorState {
     }
 
     /// Re-ranks the open session against the live document and resets the
-    /// menu selection to row 0 — every path that changes `filtered` must,
-    /// since the previous selection index has no guaranteed meaning against
-    /// the new order.
+    /// menu selection to row 0 — every path that changes the ranked list
+    /// must, since the previous selection index has no guaranteed meaning
+    /// against the new order.
     fn rerank_open_session(&mut self) {
         let live = self
             .input
