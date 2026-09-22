@@ -1,42 +1,30 @@
-//! Every completion source the editor knows, keyed by name — the six native
-//! minibuffer sources compiled in, plus whatever Steel registered via
-//! `(register-completion-source! …)`. One registry for both targets: a
-//! `TypedCommand.completer` names a `Minibuf` entry here, and an Insert-mode
-//! trigger invokes every `Buffer` entry (or the ones registered for a
-//! trigger char). Lives on `ConfigState`, so `:reload-config` rebuilds it
-//! from the natives by construction and a Steel entry never outlives the
+//! Every completion source the editor knows — the six native minibuffer
+//! sources compiled in, plus whatever Steel registered via
+//! `(register-completion-source! …)`. **Two separate namespaces, one per
+//! target**: a `TypedCommand.completer` names an entry in [`SourceRegistry::minibuf`],
+//! an Insert-mode trigger invokes entries in [`SourceRegistry::buffer`]. A
+//! name can be taken in both namespaces at once — `"path"` as a `Buffer`
+//! source and `"path"` as a `Minibuf` source are two unrelated
+//! registrations, not a collision, because there is no shared id space for
+//! them to collide in. Lives on `ConfigState`, so `:reload-config` rebuilds
+//! it from the natives by construction and a Steel entry never outlives the
 //! config that registered it.
 //!
-//! A source's *static* facts live here (what it targets, how its items are
-//! scored, its priority); everything about one particular invocation of it
-//! — the document it saw, the span it answered for, the items — is
-//! `session.rs`'s [`super::Invocation`]. A session refers back here by
-//! [`SourceId`] rather than copying any of this, so a name/priority/match
-//! kind has exactly one home.
+//! A source's *static* facts live here (its name, how its items are scored,
+//! its priority); everything about one particular invocation of it — the
+//! document it saw, the span it answered for, the items — is `session.rs`'s
+//! [`super::Invocation`]. A session refers back here by id rather than
+//! copying any of this, so a name/priority/match kind has exactly one home.
+//!
+//! Every `Buffer` source is Steel — there is no native one, by design: a
+//! `Buffer`-target source scans live editor state (the buffer, an LSP
+//! server), which is exactly what the plugin layer exists to reach into.
 
 use std::ops::Range;
 
 use steel::rvals::SteelVal;
 
 use super::{CompletionCtx, CompletionItem, MatchKind};
-
-/// Which target a source serves. A `Buffer` source's token is always the
-/// identifier run before the cursor
-/// (`hume_ops::edit::word_start_before(text, head, word_chars)..head`) —
-/// resolved by Rust against the invocation's own snapshot *before* the
-/// source runs, so it is deterministic, identical on every re-invocation,
-/// and known (for the seeded filter and the menu anchor) even while the
-/// source is still pending. A `Minibuf` source's token is the whitespace-
-/// delimited argument the cursor is in
-/// ([`super::arg_prefix`]'s start through [`super::token_end_at`]'s
-/// whitespace stop) — except a [`SourceBody::NativeDelegated`] source,
-/// which computes its own span synchronously instead (`:e`'s path, `:set`'s
-/// phase-dependent token).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::editor) enum SourceTarget {
-    Buffer,
-    Minibuf,
-}
 
 /// A native minibuffer source that enumerates a stable universe — the
 /// session's own matcher narrows it, and the orchestrator supplies the
@@ -49,79 +37,78 @@ pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<Comp
 pub(in crate::editor) type NativeDelegatedFn =
     fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
-/// How a source produces its answer. The two native shapes each imply
-/// their target (see [`SourceEntry::target`]) — a native source's signature
-/// *is* its contract, so there is no second field to keep in agreement with
-/// it. No native `Buffer`-target shape exists yet; a future source that
-/// scans the buffer itself adds its own variant here.
-pub(in crate::editor) enum SourceBody {
+/// How a `Minibuf` source produces its answer — the two native shapes each
+/// have a fixed span rule of their own (see [`super::orchestrate::
+/// invoke_minibuf_source`]'s doc): `NativeDelegated` computes its own,
+/// everything else (including every `Steel` minibuf source) gets the
+/// whitespace-delimited `'arg` span computed upfront by the orchestrator.
+pub(in crate::editor) enum MinibufBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),
-    /// Invoked via `EditorState::queue_steel_call` with the invocation id
-    /// first — `(proc id bid prefix)` for a `Buffer` source, `(proc id
-    /// input cursor)` for a `Minibuf` one — and answered, sync or async,
-    /// by `(completion-emit! id …)`.
-    Steel {
-        proc: SteelVal,
-        target: SourceTarget,
-    },
+    /// Invoked via `EditorState::queue_steel_call` as `(proc id input
+    /// cursor)`, answered by `(completion-emit! id …)`.
+    Steel(SteelVal),
 }
 
-pub(in crate::editor) struct SourceEntry {
+pub(in crate::editor) struct BufferSourceEntry {
     pub(in crate::editor) name: Box<str>,
     pub(in crate::editor) match_kind: MatchKind,
     pub(in crate::editor) priority: i64,
-    pub(in crate::editor) body: SourceBody,
+    /// Invoked via `EditorState::queue_steel_call` as `(proc id bid
+    /// prefix)`, answered by `(completion-emit! id …)`.
+    pub(in crate::editor) proc: SteelVal,
 }
 
-impl SourceEntry {
-    pub(in crate::editor) fn target(&self) -> SourceTarget {
-        match &self.body {
-            SourceBody::NativeUniverse(_) | SourceBody::NativeDelegated(_) => SourceTarget::Minibuf,
-            SourceBody::Steel { target, .. } => *target,
-        }
-    }
+pub(in crate::editor) struct MinibufSourceEntry {
+    pub(in crate::editor) name: Box<str>,
+    pub(in crate::editor) match_kind: MatchKind,
+    pub(in crate::editor) priority: i64,
+    pub(in crate::editor) body: MinibufBody,
 }
 
-/// Index into [`SourceRegistry`]'s entry list — stable for an entry's
-/// whole life, since a re-registration under the same name overwrites the
-/// slot in place rather than pushing a new one.
+/// Index into [`SourceRegistry::buffer`] — stable for an entry's whole
+/// life, since a re-registration under the same name overwrites the slot in
+/// place rather than pushing a new one. Distinct from [`MinibufSourceId`]
+/// so a caller can't hand a buffer-namespace id to a minibuf-namespace
+/// lookup (or the reverse) — the two id spaces don't overlap, and there is
+/// no shared "which target" tag left to check at runtime.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::editor) struct SourceId(u32);
+pub(in crate::editor) struct BufferSourceId(u32);
+
+/// [`BufferSourceId`]'s counterpart into [`SourceRegistry::minibuf`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) struct MinibufSourceId(u32);
 
 pub(in crate::editor) struct SourceRegistry {
-    entries: Vec<SourceEntry>,
+    buffer: Vec<BufferSourceEntry>,
+    minibuf: Vec<MinibufSourceEntry>,
 }
 
-/// What [`SourceRegistry::register`] did — the caller's own report depends
-/// on which.
+/// What a `register_*` call did — the caller's own report depends on which.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum RegisterOutcome {
     Added,
     Replaced,
-    /// The name was already taken by a source serving the other target
-    /// (its own target given here); the write was refused, the existing
-    /// entry is untouched.
-    TargetMismatch(SourceTarget),
 }
 
 impl SourceRegistry {
     pub(in crate::editor) fn with_defaults() -> Self {
         use super::{path, set, simple};
-        let universe = |name: &str, case_sensitive, body| SourceEntry {
+        let universe = |name: &str, case_sensitive, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::String { case_sensitive },
             priority: 0,
-            body: SourceBody::NativeUniverse(body),
+            body: MinibufBody::NativeUniverse(body),
         };
-        let delegated = |name: &str, body| SourceEntry {
+        let delegated = |name: &str, body| MinibufSourceEntry {
             name: name.into(),
             match_kind: MatchKind::Delegated,
             priority: 0,
-            body: SourceBody::NativeDelegated(body),
+            body: MinibufBody::NativeDelegated(body),
         };
         Self {
-            entries: vec![
+            buffer: Vec::new(),
+            minibuf: vec![
                 universe(simple::COMMAND_SOURCE, false, simple::complete_command),
                 universe(
                     simple::BUFFER_NAME_SOURCE,
@@ -137,51 +124,71 @@ impl SourceRegistry {
     }
 
     /// Registers (or, under an already-taken name, replaces in place) a
-    /// source. Replacing keeps the entry's [`SourceId`] stable for any
-    /// session still referring to it; overriding a native name is allowed —
-    /// a plugin swapping in its own `path` source is a feature, not a
-    /// collision — *as long as the new entry serves the same target*. A
-    /// name taken by the *other* target is refused rather than silently
-    /// clobbered: a `TypedCommand.completer` naming `"path"` expects a
-    /// `Minibuf` source, and a `Buffer` source quietly taking that name
-    /// would break `:e` completion with no compile-time signal anywhere.
-    pub(in crate::editor) fn register(&mut self, entry: SourceEntry) -> RegisterOutcome {
-        match self.id_of(&entry.name) {
+    /// `Buffer` source. Replacing keeps the entry's [`BufferSourceId`]
+    /// stable for any session still referring to it — a plugin swapping in
+    /// its own source under a name it already owns is a feature, not a
+    /// collision.
+    pub(in crate::editor) fn register_buffer(
+        &mut self,
+        entry: BufferSourceEntry,
+    ) -> RegisterOutcome {
+        match self.buffer_id_of(&entry.name) {
             Some(id) => {
-                let existing_target = self.entries[id.0 as usize].target();
-                if existing_target != entry.target() {
-                    return RegisterOutcome::TargetMismatch(existing_target);
-                }
-                self.entries[id.0 as usize] = entry;
+                self.buffer[id.0 as usize] = entry;
                 RegisterOutcome::Replaced
             }
             None => {
-                self.entries.push(entry);
+                self.buffer.push(entry);
                 RegisterOutcome::Added
             }
         }
     }
 
-    pub(in crate::editor) fn id_of(&self, name: &str) -> Option<SourceId> {
-        self.entries
-            .iter()
-            .position(|e| &*e.name == name)
-            .map(|i| SourceId(i as u32))
+    /// [`Self::register_buffer`]'s `Minibuf` counterpart — overriding a
+    /// native name (`"path"`, `"command"`, …) is allowed for the same
+    /// reason.
+    pub(in crate::editor) fn register_minibuf(
+        &mut self,
+        entry: MinibufSourceEntry,
+    ) -> RegisterOutcome {
+        match self.minibuf_id_of(&entry.name) {
+            Some(id) => {
+                self.minibuf[id.0 as usize] = entry;
+                RegisterOutcome::Replaced
+            }
+            None => {
+                self.minibuf.push(entry);
+                RegisterOutcome::Added
+            }
+        }
     }
 
-    pub(in crate::editor) fn get(&self, id: SourceId) -> &SourceEntry {
-        &self.entries[id.0 as usize]
+    pub(in crate::editor) fn buffer_id_of(&self, name: &str) -> Option<BufferSourceId> {
+        self.buffer
+            .iter()
+            .position(|e| &*e.name == name)
+            .map(|i| BufferSourceId(i as u32))
+    }
+
+    pub(in crate::editor) fn minibuf_id_of(&self, name: &str) -> Option<MinibufSourceId> {
+        self.minibuf
+            .iter()
+            .position(|e| &*e.name == name)
+            .map(|i| MinibufSourceId(i as u32))
+    }
+
+    pub(in crate::editor) fn buffer_get(&self, id: BufferSourceId) -> &BufferSourceEntry {
+        &self.buffer[id.0 as usize]
+    }
+
+    pub(in crate::editor) fn minibuf_get(&self, id: MinibufSourceId) -> &MinibufSourceEntry {
+        &self.minibuf[id.0 as usize]
     }
 
     /// Every `Buffer`-target source, in registration order — what an
     /// explicit Insert-mode trigger invokes.
-    pub(in crate::editor) fn buffer_sources(&self) -> Vec<SourceId> {
-        self.entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.target() == SourceTarget::Buffer)
-            .map(|(i, _)| SourceId(i as u32))
-            .collect()
+    pub(in crate::editor) fn buffer_sources(&self) -> Vec<BufferSourceId> {
+        (0..self.buffer.len() as u32).map(BufferSourceId).collect()
     }
 }
 

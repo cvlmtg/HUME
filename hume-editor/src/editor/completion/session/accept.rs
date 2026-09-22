@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
-use super::{BufferTarget, CompletionSession, SpanTrack, contains_cursor};
+use super::{BufferSpan, BufferTarget, CompletionSession, Target, contains_cursor};
 use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
@@ -16,7 +16,7 @@ use crate::editor::{EditorState, Severity};
 use hume_ops::edit::replace_around_cursors;
 
 impl CompletionSession {
-    /// Applies `filtered[idx]`'s `textEdit` (falling back to `insertText`
+    /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
     /// over its own source's live token span when absent) at *every* cursor
     /// in the session's pane, as if the completion had been typed at each —
     /// a conforming server's completion range always contains the request
@@ -48,15 +48,13 @@ impl CompletionSession {
         lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
-        let bt = self
-            .buffer()
-            .ok_or_else(|| "completion-accept!: not a buffer-target session".to_string())?;
-        let (_, invocation, item) = self
-            .ranked(idx)
-            .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
-        let SpanTrack::Buffer { doc, live } = &invocation.span else {
-            unreachable!("`self.buffer()` above confirmed a Buffer-target session")
+        let Target::Buffer { bt, .. } = &self.target else {
+            return Err("completion-accept!: not a buffer-target session".to_string());
         };
+        let (invocation, item) = self
+            .ranked_buffer(idx)
+            .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
+        let BufferSpan { doc, live } = &invocation.span;
         edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 

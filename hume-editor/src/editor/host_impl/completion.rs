@@ -2,7 +2,9 @@
 //! (`completion-emit!`), the ranked view out, accept/dismiss.
 
 use crate::editor::Severity;
-use crate::editor::completion::{RegisterOutcome, SourceBody, SourceEntry, SourceTarget};
+use crate::editor::completion::{
+    BufferSourceEntry, MinibufBody, MinibufSourceEntry, RegisterOutcome,
+};
 
 use super::EditorHostImpl;
 use hume_scripting::host::{self, CompletionHost};
@@ -20,57 +22,52 @@ fn match_kind_from_host(m: host::MatchKind) -> crate::editor::completion::MatchK
     }
 }
 
-fn target_from_host(t: host::CompletionSourceTarget) -> SourceTarget {
-    match t {
-        host::CompletionSourceTarget::Buffer => SourceTarget::Buffer,
-        host::CompletionSourceTarget::Minibuf => SourceTarget::Minibuf,
-    }
-}
-
 impl crate::editor::Editor {
     /// Applies a queued `Effect::RegisterCompletionSource` — a Steel
     /// source entering `ConfigState.completion_sources`. Queued rather
     /// than applied through the host trait inline so a failed plugin
     /// activation's registration is never applied (see `Effect::BindKey`'s
-    /// doc for the same reasoning); a re-registration under a taken name,
-    /// native or Steel, replaces it — a plugin swapping in its own `path`
-    /// source is a feature — and says so in the log, *unless* the name is
-    /// taken by a source serving the other target, which is refused (see
-    /// `SourceRegistry::register`'s own doc) and reported loudly: silently
-    /// keeping the old entry there would otherwise look, from the plugin's
-    /// side, exactly like a successful registration.
+    /// doc for the same reasoning). `#:target` picks the namespace
+    /// (`SourceRegistry::register_buffer`/`register_minibuf`) — a
+    /// re-registration under a name already taken *in that namespace*
+    /// replaces it (a plugin swapping in its own `path` source is a
+    /// feature) and says so in the log; the same name in the *other*
+    /// namespace is simply a second, unrelated source, since a `Buffer`
+    /// trigger and a `TypedCommand.completer` each only ever look in their
+    /// own namespace.
     pub(in crate::editor) fn register_completion_source(
         &mut self,
         reg: hume_scripting::PendingCompletionSource,
     ) {
         let name = reg.name;
-        let target = target_from_host(reg.target);
-        let outcome = self.state.config.completion_sources.register(SourceEntry {
-            name: name.clone().into(),
-            match_kind: match_kind_from_host(reg.match_kind),
-            priority: reg.priority,
-            body: SourceBody::Steel {
-                proc: reg.proc,
-                target,
-            },
-        });
-        match outcome {
-            RegisterOutcome::Added => {}
-            RegisterOutcome::Replaced => {
-                self.report(
-                    Severity::Trace,
-                    format!("register-completion-source!: replaced source {name:?}"),
-                );
-            }
-            RegisterOutcome::TargetMismatch(existing) => {
-                self.report(
-                    Severity::Error,
-                    format!(
-                        "register-completion-source!: {name:?} is already registered for \
-                         {existing:?}, refusing to replace it with a {target:?} source"
-                    ),
-                );
-            }
+        let match_kind = match_kind_from_host(reg.match_kind);
+        let outcome = match reg.target {
+            host::CompletionSourceTarget::Buffer => self
+                .state
+                .config
+                .completion_sources
+                .register_buffer(BufferSourceEntry {
+                    name: name.clone().into(),
+                    match_kind,
+                    priority: reg.priority,
+                    proc: reg.proc,
+                }),
+            host::CompletionSourceTarget::Minibuf => self
+                .state
+                .config
+                .completion_sources
+                .register_minibuf(MinibufSourceEntry {
+                    name: name.clone().into(),
+                    match_kind,
+                    priority: reg.priority,
+                    body: MinibufBody::Steel(reg.proc),
+                }),
+        };
+        if outcome == RegisterOutcome::Replaced {
+            self.report(
+                Severity::Trace,
+                format!("register-completion-source!: replaced source {name:?}"),
+            );
         }
     }
 }

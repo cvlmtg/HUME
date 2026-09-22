@@ -3,7 +3,7 @@
 //! `editor/tests/completion/`.
 
 use super::*;
-use crate::editor::completion::registry::{SourceBody, SourceEntry, SourceTarget};
+use crate::editor::completion::registry::{BufferSourceEntry, MinibufBody, MinibufSourceEntry};
 use hume_editing::changeset::ChangeSetBuilder;
 use steel::rvals::SteelVal;
 
@@ -20,21 +20,37 @@ fn items(labels: &[&str]) -> Vec<CompletionItem> {
 fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
     let mut reg = SourceRegistry::with_defaults();
     for (name, priority) in sources {
-        reg.register(SourceEntry {
+        reg.register_buffer(BufferSourceEntry {
             name: (*name).into(),
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
-            body: SourceBody::Steel {
-                proc: SteelVal::Void,
-                target: SourceTarget::Buffer,
-            },
+            proc: SteelVal::Void,
         });
     }
     reg
 }
 
-fn id_of(reg: &SourceRegistry, name: &str) -> SourceId {
-    reg.id_of(name).expect("registered")
+fn id_of(reg: &SourceRegistry, name: &str) -> BufferSourceId {
+    reg.buffer_id_of(name).expect("registered")
+}
+
+/// [`registry`]'s `Minibuf` counterpart, for the one test below that opens
+/// a `Minibuf` session.
+fn minibuf_registry(sources: &[(&str, i64)]) -> SourceRegistry {
+    let mut reg = SourceRegistry::with_defaults();
+    for (name, priority) in sources {
+        reg.register_minibuf(MinibufSourceEntry {
+            name: (*name).into(),
+            match_kind: MatchKind::Fuzzy,
+            priority: *priority,
+            body: MinibufBody::Steel(SteelVal::Void),
+        });
+    }
+    reg
+}
+
+fn minibuf_id_of(reg: &SourceRegistry, name: &str) -> MinibufSourceId {
+    reg.minibuf_id_of(name).expect("registered")
 }
 
 fn text(s: &str) -> BufferText {
@@ -55,7 +71,7 @@ fn buffer_session(content: &str) -> (CompletionSession, BufferText) {
 /// `labels` at once.
 fn invoke_and_answer(
     session: &mut CompletionSession,
-    source: SourceId,
+    source: BufferSourceId,
     text: &BufferText,
     start: usize,
     head: usize,
@@ -66,7 +82,7 @@ fn invoke_and_answer(
         CharOffset::new(head),
         CharOffset::new(start)..CharOffset::new(head),
     );
-    let id = session.invoke(source, inv);
+    let id = session.invoke_buffer(source, inv).expect("buffer session");
     session.contribute(id, items(labels), false);
 }
 
@@ -262,7 +278,9 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
         CharOffset::new(3),
         CharOffset::new(0)..CharOffset::new(3),
     );
-    let id = session.invoke(id_of(&reg, "s"), inv);
+    let id = session
+        .invoke_buffer(id_of(&reg, "s"), inv)
+        .expect("buffer session");
     assert!(session.contribute(
         id,
         vec![item_with_edits("cat", Some(some_edit("cat")), Vec::new())],
@@ -285,7 +303,9 @@ fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() 
         CharOffset::new(3),
         CharOffset::new(0)..CharOffset::new(3),
     );
-    let id = session.invoke(id_of(&reg, "s"), inv);
+    let id = session
+        .invoke_buffer(id_of(&reg, "s"), inv)
+        .expect("buffer session");
     assert!(session.contribute(
         id,
         vec![item_with_edits(
@@ -311,14 +331,18 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let first = session.invoke(
-        src,
-        Invocation::buffer(text.rope().clone(), head, head..head),
-    );
-    let second = session.invoke(
-        src,
-        Invocation::buffer(text.rope().clone(), head, head..head),
-    );
+    let first = session
+        .invoke_buffer(
+            src,
+            Invocation::buffer(text.rope().clone(), head, head..head),
+        )
+        .expect("buffer session");
+    let second = session
+        .invoke_buffer(
+            src,
+            Invocation::buffer(text.rope().clone(), head, head..head),
+        )
+        .expect("buffer session");
     assert!(!session.contribute(first, items(&["stale"]), false));
     assert!(session.contribute(second, items(&["fresh"]), false));
     session.rank(&reg, live(&text, 0));
@@ -331,10 +355,12 @@ fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let id = session.invoke(
-        src,
-        Invocation::buffer(text.rope().clone(), head, head..head),
-    );
+    let id = session
+        .invoke_buffer(
+            src,
+            Invocation::buffer(text.rope().clone(), head, head..head),
+        )
+        .expect("buffer session");
     assert!(session.contribute(id, items(&["x", "y"]), false));
     assert!(session.contribute(id, items(&["x", "z"]), false));
     session.rank(&reg, live(&text, 0));
@@ -349,10 +375,12 @@ fn pending_and_live_track_each_slots_latest_call() {
     let head = CharOffset::new(0);
     assert!(!session.is_pending());
     assert!(!session.has_live_sources());
-    let id = session.invoke(
-        src,
-        Invocation::buffer(text.rope().clone(), head, head..head),
-    );
+    let id = session
+        .invoke_buffer(
+            src,
+            Invocation::buffer(text.rope().clone(), head, head..head),
+        )
+        .expect("buffer session");
     assert!(session.is_pending());
     assert!(session.contribute(id, items(&["x"]), true));
     assert!(!session.is_pending());
@@ -486,9 +514,11 @@ fn step_selection_on_an_empty_ranking_is_none() {
 
 #[test]
 fn step_selection_wraps_at_either_end() {
-    let reg = registry(&[("s", 0)]);
+    let reg = minibuf_registry(&[("s", 0)]);
     let mut session = CompletionSession::open_minibuf("w".into(), 1);
-    let id = session.invoke(id_of(&reg, "s"), Invocation::minibuf(0..1));
+    let id = session
+        .invoke_minibuf(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1))
+        .expect("minibuf session");
     assert!(session.contribute(id, items(&["wa", "wb"]), false));
     session.rank(&reg, None);
     assert_eq!(session.step_selection(1, true), Some(0), "wraps forward");

@@ -595,12 +595,13 @@ fn re_registering_a_name_replaces_the_source() {
     assert_eq!(labels(&ed), vec!["new"]);
 }
 
-/// A Steel `'buffer` source registered under `"path"` — the native
-/// `Minibuf` source `:e` completion names — must not silently take the
-/// name: the write is refused, an `Error` is reported, and `:e`'s own path
-/// completion keeps working.
+/// A Steel `'buffer` source registered under `"path"` — the same name the
+/// native `Minibuf` source `:e` completion uses — lands as a second,
+/// independent source rather than a collision: `Buffer` and `Minibuf`
+/// sources live in separate namespaces, so registering one never touches
+/// the other, and `:e`'s own path completion is unaffected.
 #[test]
-fn a_cross_target_registration_under_a_native_name_is_refused() {
+fn the_same_name_in_both_namespaces_is_two_independent_sources() {
     let dir = safe_tempdir();
     std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
     let mut ed = editor_from("-[h]>ello\n");
@@ -612,12 +613,20 @@ fn a_cross_target_registration_under_a_native_name_is_refused() {
              #:target 'buffer)"#,
     );
     assert!(
-        ed.state
+        !ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Error && e.text.contains("path")),
-        "got: {:?}",
+            .any(|e| e.severity == Severity::Error),
+        "a second namespace's registration under a taken name is not an error: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+    assert!(
+        ed.state
+            .config
+            .completion_sources
+            .buffer_id_of("path")
+            .is_some(),
+        "the buffer-namespace registration landed"
     );
     ed.handle_key(key(':'));
     type_chars(&mut ed, &format!("e {}/hel", dir.path().display()));
@@ -625,7 +634,7 @@ fn a_cross_target_registration_under_a_native_name_is_refused() {
     assert_eq!(
         minibuf_input(&ed),
         format!("e {}/hello.txt", dir.path().display()),
-        "the native path source must still be the one serving `:e`"
+        "the native minibuf path source still serves `:e`, untouched by the buffer one"
     );
 }
 
@@ -653,7 +662,11 @@ fn a_registration_in_a_failed_init_is_never_applied() {
     ed.apply_script_effects(err.effects);
     ed.scripting = Some(host);
     assert!(
-        ed.state.config.completion_sources.id_of("test").is_none(),
+        ed.state
+            .config
+            .completion_sources
+            .buffer_id_of("test")
+            .is_none(),
         "the failed init's registration must not have been applied"
     );
 }
@@ -667,14 +680,28 @@ fn reload_config_forgets_a_steel_source() {
         tmp.path(),
         &completion_source("test", &completion_labels(&["x"]), ""),
     );
-    assert!(ed.state.config.completion_sources.id_of("test").is_some());
+    assert!(
+        ed.state
+            .config
+            .completion_sources
+            .buffer_id_of("test")
+            .is_some()
+    );
     ed.reset_config_state();
     assert!(
-        ed.state.config.completion_sources.id_of("test").is_none(),
+        ed.state
+            .config
+            .completion_sources
+            .buffer_id_of("test")
+            .is_none(),
         "the registry is rebuilt from the natives on reload"
     );
     assert!(
-        ed.state.config.completion_sources.id_of("path").is_some(),
+        ed.state
+            .config
+            .completion_sources
+            .minibuf_id_of("path")
+            .is_some(),
         "…and the natives are still there"
     );
 }
@@ -773,8 +800,11 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
     assert!(ed.state.input.completion().is_none());
 }
 
-/// A completer naming a `'buffer` source can't serve the `:` line — Tab
-/// does nothing beyond a Trace line, never a panic or a wrong-target session.
+/// A completer naming a `'buffer` source can't serve the `:` line — the
+/// name simply doesn't exist in the `Minibuf` namespace `#:complete` looks
+/// in, so this is indistinguishable from any other stale/unregistered
+/// name: Tab does nothing beyond the same Trace line, never a panic or a
+/// wrong-target session.
 #[test]
 fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
     let tmp = safe_tempdir();
@@ -797,7 +827,7 @@ fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
         ed.state
             .message_log
             .entries()
-            .any(|e| e.severity == Severity::Trace && e.text.contains("serves the buffer")),
+            .any(|e| e.severity == Severity::Trace && e.text.contains("no completion source named")),
         "got: {:?}",
         ed.state.message_log.entries().collect::<Vec<_>>()
     );

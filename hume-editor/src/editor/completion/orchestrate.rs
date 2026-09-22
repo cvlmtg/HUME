@@ -19,7 +19,7 @@ use hume_rope::offset::CharOffset;
 use hume_scripting::SteelBufferId;
 use steel::rvals::SteelVal;
 
-use super::registry::{SourceBody, SourceId, SourceRegistry, SourceTarget};
+use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use super::session::{CompletionSession, Invocation, LiveDoc};
 use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 use crate::editor::buffer::store::BufferStore;
@@ -66,12 +66,11 @@ impl EditorState {
             return;
         }
         let sources = &self.config.completion_sources;
-        let ids: Vec<SourceId> = match trigger {
+        let ids: Vec<BufferSourceId> = match trigger {
             Trigger::Explicit => sources.buffer_sources(),
             Trigger::Char { sources: names } => names
                 .iter()
-                .filter_map(|name| sources.id_of(name))
-                .filter(|&id| sources.get(id).target() == SourceTarget::Buffer)
+                .filter_map(|name| sources.buffer_id_of(name))
                 .collect(),
         };
         if ids.is_empty() {
@@ -207,7 +206,7 @@ impl EditorState {
         let Some(name) = resolve_minibuf_source(&self.config.registry, &input, cursor) else {
             return;
         };
-        let Some(id) = self.config.completion_sources.id_of(&name) else {
+        let Some(id) = self.config.completion_sources.minibuf_id_of(&name) else {
             // `TypedCommand.completer` naming no registered source — a stale
             // name after a rename. Silent to the user, same as `:bd`
             // declaring no completer at all; loud enough to find in the log.
@@ -224,20 +223,14 @@ impl EditorState {
             cwd: &self.cwd,
             languages: &self.config.languages,
         };
-        let call = match invoke_minibuf_source(
+        let call = invoke_minibuf_source(
             &self.config.completion_sources,
             &ctx,
             &mut session,
             id,
             &input,
             cursor,
-        ) {
-            Ok(call) => call,
-            Err(msg) => {
-                self.report(Severity::Trace, msg);
-                return;
-            }
-        };
+        );
         if let Some((proc, args)) = call {
             self.queue_steel_call(proc, args);
         }
@@ -388,8 +381,8 @@ impl EditorState {
 }
 
 /// Mints one invocation per source in `ids` into `session` and returns the
-/// Steel calls to queue (a native `Buffer` source doesn't exist yet, so
-/// every entry here is a Steel one). Takes the fields it needs rather than
+/// Steel calls to queue — every `Buffer` source is Steel, by design (see
+/// `registry.rs`'s module doc). Takes the fields it needs rather than
 /// `&mut EditorState` so a caller can hand it a session still borrowed
 /// from the input stack.
 fn invoke_buffer_sources(
@@ -397,7 +390,7 @@ fn invoke_buffer_sources(
     buffers: &BufferStore,
     settings: &EditorSettings,
     session: &mut CompletionSession,
-    ids: &[SourceId],
+    ids: &[BufferSourceId],
     bid: BufferId,
     head: CharOffset,
 ) -> Vec<SteelCall> {
@@ -405,20 +398,14 @@ fn invoke_buffer_sources(
     let text = buf.text();
     ids.iter()
         .filter_map(|&id| {
-            let SourceBody::Steel {
-                proc,
-                target: SourceTarget::Buffer,
-            } = &sources.get(id).body
-            else {
-                return None;
-            };
+            let entry = sources.buffer_get(id);
             let chars = crate::editor::commands::effective_word_chars(buf, settings);
             let live = hume_ops::edit::word_start_before(text, head, chars)..head;
             let invocation = Invocation::buffer(text.rope().clone(), head, live);
             let prefix = invocation.prefix(text);
-            let invocation_id = session.invoke(id, invocation);
+            let invocation_id = session.invoke_buffer(id, invocation)?;
             Some((
-                proc.clone(),
+                entry.proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
                     SteelBufferId::new(bid).into_steel_val(),
@@ -430,9 +417,7 @@ fn invoke_buffer_sources(
 }
 
 /// Mints an invocation of `id` into `session` and runs it: a native source
-/// answers inline, a Steel one returns the call to queue. `Err` names a
-/// source that can't serve the `:` line at all (a `Buffer`-target entry a
-/// `TypedCommand.completer` mistakenly names).
+/// answers inline, a Steel one returns the call to queue.
 ///
 /// `NativeDelegated`'s own span comes from calling its function first — the
 /// only body variant whose span isn't the generic `'arg` one, since its
@@ -444,31 +429,27 @@ fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
     session: &mut CompletionSession,
-    id: SourceId,
+    id: MinibufSourceId,
     input: &str,
     cursor: usize,
-) -> Result<Option<SteelCall>, String> {
-    let entry = sources.get(id);
-    if entry.target() != SourceTarget::Minibuf {
-        return Err(format!(
-            "completion source {:?} serves the buffer, not the command line",
-            entry.name
-        ));
-    }
-    let call = match &entry.body {
-        SourceBody::NativeUniverse(f) => {
-            let invocation_id = session.invoke(id, Invocation::minibuf(arg_span(input, cursor)));
+) -> Option<SteelCall> {
+    let entry = sources.minibuf_get(id);
+    match &entry.body {
+        MinibufBody::NativeUniverse(f) => {
+            let invocation_id =
+                session.invoke_minibuf(id, Invocation::minibuf(arg_span(input, cursor)))?;
             session.contribute(invocation_id, f(ctx), false);
             None
         }
-        SourceBody::NativeDelegated(f) => {
+        MinibufBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
-            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
             session.contribute(invocation_id, items, false);
             None
         }
-        SourceBody::Steel { proc, .. } => {
-            let invocation_id = session.invoke(id, Invocation::minibuf(arg_span(input, cursor)));
+        MinibufBody::Steel(proc) => {
+            let invocation_id =
+                session.invoke_minibuf(id, Invocation::minibuf(arg_span(input, cursor)))?;
             Some((
                 proc.clone(),
                 vec![
@@ -478,8 +459,7 @@ fn invoke_minibuf_source(
                 ],
             ))
         }
-    };
-    Ok(call)
+    }
 }
 
 /// The whitespace-delimited argument token the cursor is in — the `'arg`
