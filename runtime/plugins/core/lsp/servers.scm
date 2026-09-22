@@ -250,6 +250,15 @@
               (when had-dir?
                 (log! 'info "LSP: if the server was running it has now been shut down — run :lsp-install again")))))))
 
+;;; `:lsp-install`'s own completion universe: every language a server is
+;;; seeded for — the same set `lsp-install`'s own "no language server is
+;;; seeded for" check reads against.
+(register-completion-source! "lsp:languages"
+  (lambda (id input cursor)
+    (completion-emit! id
+      (map (lambda (lang) (hash "label" lang)) (hash-keys->list *lsp-lang->server*))))
+  #:target 'minibuf #:match 'string)
+
 (define-typed-command! "lsp-install"
   "Download and verify the language server for a language (default: the current buffer's language), then register it."
   (lambda (arg)
@@ -260,7 +269,20 @@
          (log! 'info (string-append "lsp-install: no language server is seeded for \"" lang "\"")))
         (else
          (lsp/lsp-install-or-report! (hash-ref *lsp-lang->server* lang))))))
-  #:inline-output #t)
+  #:inline-output #t #:complete "lsp:languages")
+
+;;; `:lsp-uninstall`'s own completion universe: every server with an install
+;;; dir on disk, seeded or orphan alike — the same set `lsp-uninstall`
+;;; itself accepts (its own `(path-exists? dir)` check, not the seeded
+;;; catalog, decides what's really there to remove).
+(register-completion-source! "lsp:servers"
+  (lambda (id input cursor)
+    (let ((sdir (lsp/servers-dir)))
+      (completion-emit! id
+        (if (path-exists? sdir)
+            (map (lambda (name) (hash "label" name)) (call! "stdlib/list-subdirs" sdir))
+            '()))))
+  #:target 'minibuf #:match 'string)
 
 (define-typed-command! "lsp-uninstall"
   "Shut down and remove an installed language server by name."
@@ -289,7 +311,8 @@
                            (when (lsp/with-install-lock! (string-append "uninstall " name)
                                    (lambda () (call! "stdlib/delete-dir" dir)))
                              (log! 'info (string-append "LSP: removed " name))))))
-              (log! 'info (string-append "LSP: nothing to uninstall for " name))))))))
+              (log! 'info (string-append "LSP: nothing to uninstall for " name)))))))
+  #:complete "lsp:servers")
 
 (define-typed-command! "lsp-servers"
   "Log the LSP server catalog: languages, seeded version, and install status."

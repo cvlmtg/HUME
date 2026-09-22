@@ -101,7 +101,7 @@ Open a file in the language you want a server for, then run:
 :lsp-install
 ```
 
-Or name the language directly:
+Or name the language directly — Tab completes every language HUME has a seeded server for:
 
 ```
 :lsp-install rust
@@ -136,7 +136,8 @@ with `register-lsp-server!` below.
 
 Shuts down any running client for that server, unregisters it, and removes it from disk. Use
 the server's name from `:lsp-servers`, not the language name — e.g.
-`:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`.
+`:lsp-uninstall rust-analyzer`, not `:lsp-uninstall rust`. Tab completes every server with an
+install directory on disk, including an orphan one no longer in the seeded catalog.
 
 Reinstalling a server that's already running (e.g. to pick up an update) shuts the old client
 down first. If the install fails anyway — a locked file on Windows is the usual reason — the

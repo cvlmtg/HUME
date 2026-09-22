@@ -615,6 +615,24 @@ fn lsp_install_unknown_language_warns() {
     );
 }
 
+/// Tab on `:lsp-install`'s argument completes against the seeded catalog's
+/// own languages, read from the real `runtime/scheme/lsp-servers.scm` (not
+/// a fixture subset) — "rus" matches only "rust" (unlike "ru", which also
+/// matches "ruby").
+#[test]
+fn lsp_install_tab_completes_a_seeded_language() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "lsp-install rus");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "lsp-install rust");
+}
+
 #[test]
 fn lsp_install_no_language_buffer_and_no_arg_warns() {
     let _lock = lock();
@@ -859,6 +877,31 @@ fn lsp_uninstall_removes_registration_and_directory() {
         !dir.exists(),
         "uninstall must remove the server directory once the deferred (after 0 ...) fires"
     );
+}
+
+/// Tab on `:lsp-uninstall`'s argument completes against every server with
+/// an install dir on disk — the same set the command itself accepts,
+/// including an orphan no longer in the seeded catalog (uninstall's own
+/// `(path-exists? dir)` check, not the catalog, decides what's removable).
+#[test]
+fn lsp_uninstall_tab_completes_an_installed_server() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    fabricate_server(
+        data_tmp.path(),
+        "rust-analyzer",
+        "2026-07-06",
+        "rust-analyzer",
+    );
+
+    let mut ed = editor_from("-[x]>\n");
+    load_lsp(&mut ed, data_tmp.path());
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "lsp-uninstall rust-a");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "lsp-uninstall rust-analyzer");
 }
 
 /// The uninstall delete is guarded by the same cross-process lock — a live

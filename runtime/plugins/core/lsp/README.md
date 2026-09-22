@@ -45,8 +45,8 @@ summary.
 
 | Command                | Effect                                                                       |
 |-------------------------|-------------------------------------------------------------------------------|
-| `:lsp-install [lang]`  | Download, verify, unpack, and register the server for a language (default: current buffer's language) |
-| `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language) |
+| `:lsp-install [lang]`  | Download, verify, unpack, and register the server for a language (default: current buffer's language) — Tab-completes seeded languages |
+| `:lsp-uninstall <name>`| Shut down and unregister a server's clients, remove it from disk (by server name, not language) — Tab-completes installed servers |
 | `:lsp-servers`         | Catalog listing: every seeded server, its languages, and install status      |
 | `:lsp-rescan-servers`  | Re-scan `<data>/servers/` and register any installed server not yet registered — useful for a server installed out-of-band |
 | `:lsp-status`          | Show every running server and its state, plus attached buffers' diagnostic counts |
