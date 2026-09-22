@@ -656,14 +656,13 @@ fn the_exact_token_exclusion_tracks_further_typing() {
     assert!(got.contains(&"catalog".to_string()), "{got:?}");
 }
 
-/// A trigger fired while the background walk is still partial freezes that
-/// partial answer for the rest of the session: `completion-emit!` carries
-/// no `#:incomplete`, so nothing re-invokes this source again once it has
-/// answered once — even once the walk finishes and further edits land.
-/// Closing the menu (`Esc`) and pressing `Ctrl-Space` again reads the by-
-/// then-complete index instead.
+/// A trigger fired while the background walk is still partial does not
+/// freeze that partial answer: once the walk finishes, it pushes its own
+/// completed word list straight to the still-open invocation
+/// (`bw/push-finished-answer!`, README.md's "Pushing a finished index to
+/// an open menu") — no further keystroke, no fresh `Ctrl-Space`, required.
 #[test]
-fn a_menu_opened_before_the_walk_finishes_is_frozen_until_reopened() {
+fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let tmp = safe_tempdir();
     let guard = HumeRuntimeGuard::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
@@ -680,39 +679,20 @@ fn a_menu_opened_before_the_walk_finishes_is_frozen_until_reopened() {
     ed.settle();
     assert!(!labels(&ed).contains(&"late_word".to_string()));
 
-    // Let the background walk run to completion — it advances on its own
-    // timer chain, independent of the completion session, so no keystroke
-    // is needed here.
+    // No further keystroke — the walk's own push is what has to surface
+    // `late_word`, once it finishes on its own timer chain.
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         ed.settle();
-        std::thread::sleep(Duration::from_millis(10));
-        if Instant::now() >= deadline {
-            break;
+        if labels(&ed).contains(&"late_word".to_string()) {
+            return;
         }
+        assert!(
+            Instant::now() < deadline,
+            "the walk's finished-answer push never arrived"
+        );
+        std::thread::sleep(Duration::from_millis(10));
     }
-
-    // An ordinary edit on the still-open menu does not re-invoke the
-    // source — the answer from before the walk finished stands.
-    ed.feed_key(key(' '));
-    ed.feed_key(key_backspace());
-    ed.settle();
-    assert!(
-        !labels(&ed).contains(&"late_word".to_string()),
-        "the source isn't re-invoked without #:incomplete, so its answer stays frozen"
-    );
-
-    // Closing and reopening the menu re-invokes it against the by-then-
-    // complete index. One Escape closes the still-open completion popup
-    // without leaving Insert mode (see `a_global_word_chars_change_
-    // reindexes_an_already_open_buffer`'s own doc for the same two-step
-    // shape), so no `key('i')` is needed before the next trigger.
-    ed.feed_key(key_esc());
-    trigger(&mut ed);
-    assert!(
-        labels(&ed).contains(&"late_word".to_string()),
-        "a fresh trigger reads the now-complete index"
-    );
 }
 
 /// A *global* `word-chars` change reindexes every open buffer

@@ -179,6 +179,29 @@ falls back to mapping the in-progress hashset into that same shape instead
 — otherwise the very first `Ctrl-Space` after a buffer opens would show
 nothing.
 
+### Pushing a finished index to an open menu
+
+A trigger only ever answers the invocation it was called for — it has no
+way to notice a *later* event on its own. That's fine for typing (the
+editor's own re-ranking, below, tracks the live cursor on every keystroke
+with no help from this plugin) but not for the background walk finishing:
+if `Ctrl-Space` lands on a large buffer whose walk is still partial, sitting
+still with the menu open would otherwise leave it stuck at that partial
+answer forever — walk progress isn't something the user *typed*, so nothing
+would ever ask this source again.
+
+So the completion source stashes the invocation id it was last called with
+(`bw/set-live-id!`, one id per buffer, in the same per-buffer entry
+everything else here lives in), and `bw/walk!` pushes straight to that id
+— via a second, unsolicited `completion-emit!` call, not a fresh answer to
+a fresh question — the moment it promotes `"building"` to `"words"`
+(`bw/push-finished-answer!`). `completion-emit!` accepts this the same way
+it accepts an LSP source streaming a second answer for a still-open call:
+the id just has to still be the latest one for this source's slot. A stale
+id — the menu was dismissed, or a later trigger already replaced it with
+its own — is silently dropped; this plugin never has to find out which,
+since there's no hook that would tell it a menu closed.
+
 ### Matching
 
 The completion framework re-filters this source's items against whatever's
@@ -186,9 +209,11 @@ typed on every keystroke, without re-invoking the source
 (`#:match 'string`'s prefix gate, or `#:match 'fuzzy`'s subsequence score —
 both run in Rust). So this plugin emits its *whole* cached set once per
 trigger rather than pre-filtering by what's typed so far in Steel — the
-cached set is exactly what `bw/walk!` found, no per-keystroke rebuild and
-no re-invocation while the menu stays open (`completion-emit!` carries no
-`#:incomplete`).
+cached set is exactly what `bw/walk!` found, no per-keystroke rebuild. The
+*framework* never re-invokes this source on its own (`completion-emit!`
+carries no `#:incomplete`); the plugin still pushes a second answer itself
+when the background walk finishes — see "Pushing a finished index to an
+open menu" below.
 
 The scan collects the word under the cursor like any other word, but
 offering it back would be a no-op to accept — this plugin doesn't filter it

@@ -16,9 +16,11 @@
 
 (define bw/*buffers* (box (hash)))
 
-;;; SSOT for a buffer's starting shape — see README.md's "Double-buffered cache".
+;;; SSOT for a buffer's starting shape — see README.md's "Double-buffered
+;;; cache". `"live-id"` is the completion-source's own state — see
+;;; "Pushing a finished index to an open menu".
 (define (bw/fresh-entry)
-  (hash "words" #f "building" #f "timer" #f "gen" 0))
+  (hash "words" #f "building" #f "timer" #f "gen" 0 "live-id" #f))
 
 (define (bw/entry bid)
   (let ([table (unbox bw/*buffers*)])
@@ -54,7 +56,9 @@
         (if n (- n 1) 0))
       0))
 
-;;; See README.md's "Double-buffered cache".
+;;; See README.md's "Double-buffered cache". Pure — does not install `bid`'s
+;;; entry or push anything; `bw/walk!` (the one caller) does both once it
+;;; has the finished entry in hand.
 (define (bw/finish-entry entry building)
   (hash-insert
     (hash-insert
@@ -64,6 +68,17 @@
 
 (define (bw/continue-entry entry building timer)
   (hash-insert (hash-insert entry "building" building) "timer" timer))
+
+;;; Pushes `entry`'s freshly finished word list to whatever completion
+;;; invocation is still open on it, if any — the id `bw/set-live-id!`
+;;; stashed when the completion source itself last ran. See README.md's
+;;; "Pushing a finished index to an open menu". A stale id — no menu open,
+;;; or a newer trigger already replaced it — is silently dropped by
+;;; `completion-emit!` itself; nothing here needs to know which.
+(define (bw/push-finished-answer! entry)
+  (let ([id (hash-ref entry "live-id")])
+    (when id
+      (completion-emit! id (hash-ref entry "words")))))
 
 ;;; One reindex tick — see README.md's "Cursor-outward, line-windowed
 ;;; indexing".
@@ -78,9 +93,11 @@
              [bwd-lines (if (< bwd-lo bwd-hi) (buffer-lines bid #:start bwd-lo #:end bwd-hi) '())]
              [building (bw/add-lines (bw/add-lines (or (hash-ref entry "building") (hashset)) fwd-lines wc)
                                       bwd-lines wc)])
-        (bw/install! bid
-          (if (and (>= fwd-hi total) (<= bwd-lo 0))
-              (bw/finish-entry entry building)
+        (if (and (>= fwd-hi total) (<= bwd-lo 0))
+            (let ([finished (bw/finish-entry entry building)])
+              (bw/install! bid finished)
+              (bw/push-finished-answer! finished))
+            (bw/install! bid
               (bw/continue-entry entry building
                                   (after bw/tick-delay-ms
                                     (lambda () (bw/walk! bid gen wc fwd-hi bwd-lo))))))))))
@@ -142,6 +159,17 @@
                     (map (lambda (w) (hash "label" w)) (hashset->list words))
                     '())))))))
 
+;;; Stashes `id` as the invocation a still-in-progress walk should push its
+;;; finished answer to — see `bw/push-finished-answer!` and README.md's
+;;; "Pushing a finished index to an open menu". A no-op if `bid` has no
+;;; entry (the source answered empty and there's nothing to track).
+(define (bw/set-live-id! bid id)
+  (let ([entry (bw/entry bid)])
+    (when entry
+      (bw/install! bid (hash-insert entry "live-id" id)))))
+
 (register-completion-source! "buffer-words"
-  (lambda (id bid prefix) (completion-emit! id (bw/items bid)))
+  (lambda (id bid prefix)
+    (bw/set-live-id! bid id)
+    (completion-emit! id (bw/items bid)))
   #:target 'buffer #:match bw/match)
