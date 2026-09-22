@@ -1,7 +1,7 @@
 use super::super::*;
 use crate::WordCtx;
 use hume_editing::text::BufferText;
-use hume_editing::word::{WordChars, is_word_boundary};
+use hume_editing::word::WordChars;
 use test_fixtures::assert_state;
 
 // ── cmd_select_next_word (w) ──────────────────────────────────────────────
@@ -1236,7 +1236,7 @@ fn extend_word_chars_anchor_ending_in_combining_cluster_stays_whole() {
 
 fn runs(s: &str, chars: WordChars<'_>) -> Vec<String> {
     let text = BufferText::from(s);
-    word_runs(&text, is_word_boundary, chars)
+    word_runs(&text, chars)
         .into_iter()
         .map(|range| text.slice(range.to_exclusive()).to_string())
         .collect()

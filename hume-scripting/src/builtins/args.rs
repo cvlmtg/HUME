@@ -309,6 +309,22 @@ pub(crate) fn tuple_list<T>(
         .collect()
 }
 
+// ── List encoders ─────────────────────────────────────────────────────────────
+
+/// Builds a proper Steel list from already-encoded `SteelVal`s — the shared
+/// encode counterpart to `list_items`, for a builtin returning a list rather
+/// than decoding one.
+pub(crate) fn list_of(items: impl IntoIterator<Item = SteelVal>) -> SteelVal {
+    SteelVal::ListV(items.into_iter().collect::<Vec<_>>().into())
+}
+
+/// A Steel list of strings — `list_of`'s common case, for a builtin whose
+/// result is itself a list of `String`s (a diff hunk's lines, a tokenizer's
+/// words) rather than a mix of `SteelVal` shapes.
+pub(crate) fn string_list(items: impl IntoIterator<Item = String>) -> SteelVal {
+    list_of(items.into_iter().map(|s| SteelVal::StringV(s.into())))
+}
+
 // ── Dotted-pair decoders/encoders ────────────────────────────────────────────
 
 /// Unpacks `val` as a dotted pair `(car . cdr)` — the shared decode for wire

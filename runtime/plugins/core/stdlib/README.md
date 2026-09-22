@@ -125,13 +125,13 @@ built-in — a plugin adding its own entries should pick keys the same way.
 
 `(stdlib/split-words bid str)` is `(split-words str (get-option bid "word-chars"))` —
 tokenizing `str` (typically one of `bid`'s own lines) using that buffer's configured
-`word-chars`, the same classification `w`/`b` motions and text objects use. `bid`'s
-`word-chars` is a fact with exactly one source (the buffer's own setting); asking every
-caller to fetch and thread it through itself is how a caller ends up passing a stale or
-mismatched value by accident. `core:buffer-words` is the first caller — indexing a buffer's
-identifiers with that buffer's own notion of a word, not a caller-supplied one. A plugin
-tokenizing text that isn't `bid`'s own content, or that has a genuine reason to classify
-differently, calls `split-words` directly instead.
+`word-chars`, the same classification `w`/`b` motions and text objects use, without the
+caller fetching and threading `word-chars` through itself. A plugin tokenizing many of
+`bid`'s own lines in a loop should instead read `(get-option bid "word-chars")` once and
+call `split-words` directly per line — `core:buffer-words`' own per-tick scan does this,
+since re-deriving the same setting on every line would be wasted work. A plugin tokenizing
+text that isn't `bid`'s own content, or that has a genuine reason to classify differently,
+also calls `split-words` directly.
 
 ### Plugin config
 

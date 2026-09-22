@@ -166,13 +166,16 @@ does the opposite for a write path that must succeed regardless.
 ### Double-buffered cache
 
 Each buffer keeps two sets: the last *complete* index (what `Ctrl-Space`
-reads) and the walk in progress. The in-progress set is promoted once the
-walk finishes; until then, the complete set keeps answering triggers
-untouched. A deleted word can therefore linger for up to one refresh cycle
-— the same bounded staleness the completion framework already accepts
-elsewhere ("the old answer stays ranked until the new one lands, so the
-menu never blinks empty"). Before the first walk ever completes there is no
-complete index yet, so a trigger falls back to the in-progress set instead
+reads) and the walk in progress. The in-progress set is a raw hashset,
+rebuilt tick by tick; once a walk finishes, it's promoted into the ready
+completion-item shape (`(hash "label" w)` per word) a trigger can hand
+straight to `completion-emit!` with no per-keystroke rebuild. Until then,
+the complete index keeps answering triggers untouched. A deleted word can
+therefore linger for up to one refresh cycle — the same bounded staleness
+the completion framework already accepts elsewhere ("the old answer stays
+ranked until the new one lands, so the menu never blinks empty"). Before the
+first walk ever completes there is no complete index yet, so a trigger
+falls back to mapping the in-progress hashset into that same shape instead
 — otherwise the very first `Ctrl-Space` after a buffer opens would show
 nothing.
 
@@ -221,13 +224,12 @@ Rust-side event this plugin cannot add on its own.
 ### Non-ASCII words
 
 Steel has no Unicode character-category table (no `char-alphabetic?`, no
-regex), so classification isn't done in Steel at all — the scan calls
-`core:stdlib`'s `(call! "stdlib/split-words" bid line)`, which resolves
-`bid`'s own `word-chars` and hands it to native `split-words`, a builtin
-that tokenizes a whole line at once using `hume-editing`'s
-`WordChars`/`CharClass` machinery, the same classifier `w`/`b` motions and
-text objects already use. A word this plugin offers is, by construction,
-exactly what a `w` motion would select:
+regex), so classification isn't done in Steel at all — `bw/reindex!` reads
+`bid`'s own `word-chars` once per walk and the scan calls native
+`(split-words line word-chars)` per line, a builtin that tokenizes a whole
+line at once using `hume-editing`'s `WordChars`/`CharClass` machinery, the
+same classifier `w`/`b` motions and text objects already use. A word this
+plugin offers is, by construction, exactly what a `w` motion would select:
 `café` (with a combining accent) stays one candidate, `l’élément` splits at
 the curly apostrophe into `l` and `élément`, `foo—bar` (em dash) splits into
 `foo` and `bar`, and CJK punctuation behaves the same way — no approximation

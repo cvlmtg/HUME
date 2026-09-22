@@ -108,19 +108,18 @@ pub(crate) fn prev_word_start(
 /// combining-mark handling those already rely on, so a run found here is,
 /// by construction, exactly what `w`/`b` would select — the property
 /// `core:buffer-words`' Steel-side `split-words` builtin
-/// (`hume-scripting/src/builtins/words.rs`) depends on.
-pub fn word_runs(
-    text: &BufferText,
-    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
-    chars: WordChars<'_>,
-) -> Vec<InclusiveRange<CharOffset>> {
+/// (`hume-scripting/src/builtins/words.rs`) depends on. Always
+/// `is_word_boundary`: unlike `find_word_end_from`'s single-boundary query
+/// (which also serves `W`'s `is_uppercase_word_boundary`), there is no WORD
+/// variant of "every run in the buffer" for this to generalize over.
+pub fn word_runs(text: &BufferText, chars: WordChars<'_>) -> Vec<InclusiveRange<CharOffset>> {
     let end = text.end();
     let mut runs = Vec::new();
     let mut pos = CharOffset::new(0);
     while pos < end {
         let cat = chars.classify(text.char_at(pos).expect("pos < end"));
         if cat == CharClass::Word {
-            let run_end = find_word_end_from(text, pos, is_boundary, chars);
+            let run_end = find_word_end_from(text, pos, is_word_boundary, chars);
             runs.push(InclusiveRange::new(pos, run_end));
             pos = next_grapheme_boundary(text, run_end);
         } else {

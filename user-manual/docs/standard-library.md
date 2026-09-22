@@ -68,7 +68,7 @@ Use this for a `:` command that takes an optional language name — `arg` is wha
 |------|--------|
 | `(call! "stdlib/split-words" bid str)` | Every word in `str`, tokenized using `bid`'s own `word-chars` setting |
 
-Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-option bid "word-chars"))` — use it whenever `str` is `bid`'s own content (typically one of its lines) and you want that buffer's own notion of a word; call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from `bid`'s setting.
+Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-option bid "word-chars"))` — use it whenever `str` is `bid`'s own content (typically one of its lines) and you want that buffer's own notion of a word. Tokenizing many of `bid`'s lines in a loop? Fetch `(get-option bid "word-chars")` once and call `(split-words line word-chars)` per line instead, rather than re-deriving the same setting every time. Call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from `bid`'s setting.
 
 ## Plugin configuration
 

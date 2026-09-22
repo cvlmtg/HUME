@@ -93,7 +93,7 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-only wire de
 ### Used by
 - hume-editor
 ## Description
-Steel (Scheme) scripting host: owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Reaches editor state only through `EditorHost`, never a direct dependency on `hume-editor` — the inversion that keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else. `hume-editing`/`hume-ops` are the one exception, and a deliberate one: both are pure data-and-algorithm crates with zero knowledge of `hume-editor` or live editor state (`hume-ops` has no dependency on `hume-editor` at all, compiler-enforced — see its own entry), so reaching them directly for a stateless text transform (`split-words`, `hume-scripting/src/builtins/words.rs`) doesn't touch the inversion's actual point: keeping *editor state* funneled through `EditorHost`.
+Steel (Scheme) scripting host: owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Reaches editor state only through `EditorHost`, never a direct dependency on `hume-editor` — the inversion that keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else. `hume-editing`/`hume-ops` are the one exception: both are pure data-and-algorithm crates with no knowledge of `hume-editor` or live editor state, so reaching them directly for a stateless text transform (`split-words`, `hume-scripting/src/builtins/words.rs`) doesn't touch that inversion.
 
 # hume-treesitter
 ### Depends on

@@ -47,7 +47,7 @@ pub trait BufferHost {
     fn buffer_text(&self, id: BufferId) -> Option<String>;
 
     /// `(buffer-line-count bid)` — number of *content* lines in `id`'s live
-    /// text — every HUME buffer ends with a structural `\n`, which ropey
+    /// text. Every HUME buffer ends with a structural `\n`, which ropey
     /// counts as one extra empty line (see [`hume_engine::pipeline`]
     /// invariants); this excludes that phantom line, matching what the
     /// statusline and `:w` report. `None` if `id` is unknown.

@@ -257,37 +257,25 @@ registers the server's trigger characters under the same `"lsp"` name.
 identifiers LSP also returns; there is no dedup across sources. The two rank
 by score first (`CompletionSession::rank`, score desc before priority desc),
 so once something is typed a `'fuzzy` LSP candidate that scores well can
-outrank a `'string` buffer-words one — an empty pattern, though, scores
-*every* haystack `0` (`hume-editor/src/editor/fuzzy.rs`'s
-`empty_query_scores_every_haystack_equally`), so on a bare trigger with
-nothing typed yet — buffer-words' own headline case, since it exists to
-populate a menu before the user has narrowed anything — both sources tie at
-score `0` and priority is what actually orders them: `core:lsp` registers
-`#:priority 10`, buffer-words defaults to `0`, so LSP items rank first.
-`#:config (hash "match" 'fuzzy)` opts buffer-words into subsequence scoring
-too, at which point it competes with LSP on score like any other `'fuzzy`
-source and the two can interleave — the priority tiebreak stops being the
-deciding factor for that config, not "was never needed" in general.
+outrank a `'string` buffer-words one. An empty pattern scores *every*
+haystack `0` (`hume-editor/src/editor/fuzzy.rs`'s
+`empty_query_scores_every_haystack_equally`), so on a bare trigger — buffer-
+words' own headline case — both sources tie at score `0` and priority
+decides: `core:lsp` registers `#:priority 10`, buffer-words defaults to `0`,
+so LSP items rank first. `#:config (hash "match" 'fuzzy)` opts buffer-words
+into subsequence scoring too, at which point it competes with LSP on score
+like any other `'fuzzy` source and the priority tiebreak no longer decides.
 
 **Q-A5 — buffer-words matching — answered, `#:match 'string`, not
 prefix-at-collection.** The source emits its *whole* cached word set on
 every trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
 keystroke, via `MatchKind::String`, same as this doc's `MatchKind` table
-already describes for any `'string` source. Filtering by prefix in Steel at
-collection time — the shape this question originally proposed — turns out
-to be wrong at the time this was written, not just less convenient: the
-source had no `#:incomplete` then, so it answered once per trigger, and a
-set narrowed to the trigger-time prefix could never widen back out on
-Backspace. It now passes `#:incomplete #t` unconditionally, for an unrelated
-reason (README.md's "Matching" — keeping its exact-token exclusion correct
-as the token changes), which would let Steel-side prefix filtering track
-Backspace correctly too if it existed. The implementation still emits the
-whole cached set regardless: re-invocation only changed *why* prefix
-filtering could work, not the actual design, and there's no reason to move
-filtering into Steel now that it already happens correctly in Rust.
-`#:config (hash "match" 'fuzzy)` opts a user into subsequence scoring
-instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s own
-matching.
+already describes for any `'string` source. It passes `#:incomplete #t`
+unconditionally so the framework re-invokes it after every edit, which keeps
+its exact-token exclusion (README.md's "Matching") correct as the token
+changes. `#:config (hash "match" 'fuzzy)` opts a user into subsequence
+scoring instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s
+own matching.
 
 **Q-A7 — kind display.** `kind: i64` is display-unused (`menu_row` puts
 `label` in the main column and `detail` right-aligned in a trailing one).

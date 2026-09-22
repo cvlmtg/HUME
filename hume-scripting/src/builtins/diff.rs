@@ -8,7 +8,7 @@ use crate::SteelCtx;
 use crate::host::{DiffHunk, WordDiffHunk};
 
 use super::SteelResult;
-use super::args::{BidArg, cons_pair, string_arg};
+use super::args::{BidArg, cons_pair, list_of, string_arg, string_list};
 use super::errors::require_cap;
 
 /// `(diff-lines old-text new-text)` → list of hunk tuples, oldest side
@@ -45,10 +45,6 @@ pub(crate) fn diff_buffer_lines(
     Ok(hunks_to_steel(hunks))
 }
 
-fn list_of(items: impl IntoIterator<Item = SteelVal>) -> SteelVal {
-    SteelVal::ListV(items.into_iter().collect::<Vec<_>>().into())
-}
-
 fn hunks_to_steel(hunks: Vec<DiffHunk>) -> SteelVal {
     list_of(hunks.into_iter().map(hunk_to_steel))
 }
@@ -64,10 +60,6 @@ fn hunk_to_steel(hunk: DiffHunk) -> SteelVal {
         string_list(hunk.old_lines),
         string_list(hunk.new_lines),
     ])
-}
-
-fn string_list(lines: Vec<String>) -> SteelVal {
-    list_of(lines.into_iter().map(|s| SteelVal::StringV(s.into())))
 }
 
 /// `(diff-words old-text new-text)` → `(hunks . deadline-hit?)`. `hunks` is
