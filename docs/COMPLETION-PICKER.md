@@ -267,15 +267,17 @@ into subsequence scoring too, at which point it competes with LSP on score
 like any other `'fuzzy` source and the priority tiebreak no longer decides.
 
 **Q-A5 — buffer-words matching — answered, `#:match 'string`, not
-prefix-at-collection.** The source emits its *whole* cached word set on
-every trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
+prefix-at-collection.** The source emits its *whole* cached word set once
+per trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
 keystroke, via `MatchKind::String`, same as this doc's `MatchKind` table
-already describes for any `'string` source. It passes `#:incomplete #t`
-unconditionally so the framework re-invokes it after every edit, which keeps
-its exact-token exclusion (README.md's "Matching") correct as the token
-changes. `#:config (hash "match" 'fuzzy)` opts a user into subsequence
-scoring instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s
-own matching.
+already describes for any `'string` source. It carries no `#:incomplete` —
+`CompletionSession::rank`'s own no-op check (`CompletionItem::is_noop_for`)
+drops the exact-typed token for every source, derived fresh from the live
+cursor on every keystroke, so this source never needs re-invoking just to
+keep that exclusion correct as the token changes (README.md's "Matching").
+`#:config (hash "match" 'fuzzy)` opts a user into subsequence scoring
+instead, at the same per-keystroke, Rust-side cost as `core:lsp`'s own
+matching.
 
 **Q-A7 — kind display.** `kind: i64` is display-unused (`menu_row` puts
 `label` in the main column and `detail` right-aligned in a trailing one).

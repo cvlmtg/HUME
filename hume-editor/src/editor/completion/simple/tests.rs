@@ -4,14 +4,11 @@ use super::*;
 // ── complete_command ────────────────────────────────────────────────────
 //
 // `complete_command` is a `MatchKind::String` source: it returns the whole
-// universe of canonical command names, unfiltered — prefix filtering and
-// non-ASCII boundary safety are the session's own job (`CompletionSession::
-// rank`'s `MatchKind::String` arm, backed by the boundary-safe
-// `prefix_matches`), exercised end-to-end by the `:` Tab integration tests
-// in `editor/tests/completion/minibuf.rs`. Unlike the old `CommandCompleter`,
-// `prefix_matches` does not exclude an exact match — harmless in practice (a
-// fully-typed command name completes to itself, a byte-identical no-op
-// replace), so it isn't special-cased.
+// universe of canonical command names, unfiltered — prefix filtering,
+// non-ASCII boundary safety, and dropping a fully-typed exact match are all
+// the session's own job (`CompletionSession::rank`'s `MatchKind::String`
+// arm and its `CompletionItem::is_noop_for` check), exercised end-to-end by
+// the `:` Tab integration tests in `editor/tests/completion/minibuf.rs`.
 
 #[test]
 fn command_completer_returns_every_canonical_name() {

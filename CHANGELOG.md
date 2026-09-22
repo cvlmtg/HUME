@@ -33,6 +33,7 @@
 - Triggering completion (Ctrl-Space, or a trigger character) after already typing part of a word now filters the list immediately by what's typed so far, instead of showing every candidate until the next keystroke.
 - The completion menu now shows a candidate's detail (its type signature, say) right-aligned in its own column, rather than run into the label on one line — and the menu's width tracks only the candidates currently scrolled into view, so one very long candidate elsewhere in the list no longer widens the whole menu.
 - While a server's completion list is incomplete, typing re-asks the server without clearing the menu first — the previous answer stays up until the new one arrives, and a late answer to an earlier keystroke can no longer overwrite a newer one.
+- A completion item that would do nothing beyond leaving the typed text in place (no replacement range, no additional edits elsewhere) no longer appears in the menu, for every source — previously only `:set`'s and `:theme`'s own completers dropped an exact match this way.
 - Backspacing over the character just before the completed word closes the menu; backspacing within the word (including a prefix typed before the menu opened) keeps it open and widens the list.
 
 ### Plugins & scripting

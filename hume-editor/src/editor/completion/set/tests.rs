@@ -31,9 +31,11 @@ fn set_completer_scope_prefix_filters() {
 }
 
 #[test]
-fn set_completer_scope_exact_match_excluded() {
+fn set_completer_scope_includes_an_exact_match() {
+    // `complete_set` only prefix-filters — an exact match is dropped
+    // later, by `CompletionSession::rank`'s no-op check, not here.
     let result = set_result("set global");
-    assert!(result.1.is_empty());
+    assert_eq!(names_of(&result), vec!["global"]);
 }
 
 // ── complete_set: key phase ───────────────────────────────────────────────
@@ -95,9 +97,10 @@ fn set_completer_key_prefix_filters() {
 }
 
 #[test]
-fn set_completer_key_exact_match_excluded() {
+fn set_completer_key_includes_an_exact_match() {
+    // See `set_completer_scope_includes_an_exact_match`'s doc.
     let result = set_result("set global tab-width");
-    assert!(!names_of(&result).contains(&"tab-width"));
+    assert!(names_of(&result).contains(&"tab-width"));
 }
 
 // ── complete_set: value phase (static enums / bools) ──────────────────────
@@ -151,9 +154,10 @@ fn set_completer_value_prefix_filters() {
 }
 
 #[test]
-fn set_completer_value_exact_match_excluded() {
+fn set_completer_value_includes_an_exact_match() {
+    // See `set_completer_scope_includes_an_exact_match`'s doc.
     let result = set_result("set buffer tab-style=hard");
-    assert!(result.1.is_empty());
+    assert_eq!(names_of(&result), vec!["hard"]);
 }
 
 #[test]
@@ -274,9 +278,9 @@ fn set_completer_value_language_prefix_filters() {
 }
 
 #[test]
-fn set_completer_value_language_excludes_exact_match() {
-    // The completer must drop a language whose name equals the typed
-    // prefix — Tab on a fully-typed value is a no-op.
+fn set_completer_value_language_includes_an_exact_match() {
+    // See `set_completer_scope_includes_an_exact_match`'s doc — a fully-
+    // typed language name is prefix-filtered in, dropped later by rank.
     let (reg, store, dir) = make_ctx_parts();
     let mut langs = LanguageRegistry::new();
     langs.register_identity("ru", &[], &[], &[], None).unwrap();
@@ -287,5 +291,5 @@ fn set_completer_value_language_excludes_exact_match() {
     let result = complete_set("set buffer language=ru", 22, &ctx);
     let names = names_of(&result);
     assert!(names.contains(&"rust"));
-    assert!(!names.contains(&"ru"));
+    assert!(names.contains(&"ru"));
 }

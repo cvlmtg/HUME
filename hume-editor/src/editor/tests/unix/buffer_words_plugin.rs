@@ -626,9 +626,10 @@ fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
 
 /// The exact-token exclusion (README.md's "Matching") filters against the
 /// *live* token, not the prefix at the moment `Ctrl-Space` was first
-/// pressed — possible only because `completion-emit!` now passes
-/// `#:incomplete #t` unconditionally, so the source is re-invoked after
-/// every edit while the menu stays open.
+/// pressed. This needs no re-invocation: `CompletionSession::rerank_
+/// open_session` re-ranks the session's already-answered items against the
+/// live token after every edit regardless, and `CompletionItem::
+/// is_noop_for` is what that re-rank consults.
 #[test]
 fn the_exact_token_exclusion_tracks_further_typing() {
     let tmp = safe_tempdir();
@@ -655,17 +656,14 @@ fn the_exact_token_exclusion_tracks_further_typing() {
     assert!(got.contains(&"catalog".to_string()), "{got:?}");
 }
 
-/// `#:incomplete #t`'s other consequence: a trigger fired while the
-/// background walk is still partial no longer freezes that partial answer
-/// for the rest of the session. The framework only re-invokes a source as
-/// part of processing an edit (`completion_observe_edit` is what calls
-/// `sources_to_reinvoke`, not the passage of time on its own), so this
-/// checks the realistic shape — the background walk finishes on its own
-/// timer regardless of what the completion session is doing, and the
-/// *next* ordinary keystroke, not a fresh `Ctrl-Space`, is what picks up
-/// the now-complete index.
+/// A trigger fired while the background walk is still partial freezes that
+/// partial answer for the rest of the session: `completion-emit!` carries
+/// no `#:incomplete`, so nothing re-invokes this source again once it has
+/// answered once — even once the walk finishes and further edits land.
+/// Closing the menu (`Esc`) and pressing `Ctrl-Space` again reads the by-
+/// then-complete index instead.
 #[test]
-fn an_edit_after_the_walk_finishes_refreshes_an_already_open_menu() {
+fn a_menu_opened_before_the_walk_finishes_is_frozen_until_reopened() {
     let tmp = safe_tempdir();
     let guard = HumeRuntimeGuard::new();
     let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
@@ -694,14 +692,26 @@ fn an_edit_after_the_walk_finishes_refreshes_an_already_open_menu() {
         }
     }
 
-    // One ordinary edit — not a fresh `Ctrl-Space` — is what re-invokes the
-    // still-open session's sources.
+    // An ordinary edit on the still-open menu does not re-invoke the
+    // source — the answer from before the walk finished stands.
     ed.feed_key(key(' '));
     ed.feed_key(key_backspace());
     ed.settle();
     assert!(
+        !labels(&ed).contains(&"late_word".to_string()),
+        "the source isn't re-invoked without #:incomplete, so its answer stays frozen"
+    );
+
+    // Closing and reopening the menu re-invokes it against the by-then-
+    // complete index. One Escape closes the still-open completion popup
+    // without leaving Insert mode (see `a_global_word_chars_change_
+    // reindexes_an_already_open_buffer`'s own doc for the same two-step
+    // shape), so no `key('i')` is needed before the next trigger.
+    ed.feed_key(key_esc());
+    trigger(&mut ed);
+    assert!(
         labels(&ed).contains(&"late_word".to_string()),
-        "an edit on an already-open menu must pick up the walk's progress"
+        "a fresh trigger reads the now-complete index"
     );
 }
 

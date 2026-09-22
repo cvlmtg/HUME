@@ -187,6 +187,27 @@ impl CompletionItem {
         &self.insert_text
     }
 
+    /// Whether accepting this item would change nothing beyond leaving
+    /// `typed` in place — `rank` drops these before scoring, so a source
+    /// doesn't have to filter its own already-typed token back out by hand
+    /// (three call sites did, independently, before this method existed).
+    ///
+    /// An LSP item survives this by construction, not by exemption: HUME
+    /// advertises no `completionItem.resolveSupport`
+    /// (`hume-lsp/src/client.rs`), so a server must send whatever
+    /// `additionalTextEdits` it has *with* the item, not lazily via
+    /// `completionItem/resolve` — an auto-import on an otherwise-typed name
+    /// arrives as a non-empty `additional_text_edits` here, which is a real
+    /// edit, not a no-op. A `text_edit` is excluded from this check for the
+    /// same reason: its range may cover more than the typed token (a
+    /// case-correction, a snippet), so `insert_text` alone can't stand in
+    /// for what accepting it actually does.
+    pub(super) fn is_noop_for(&self, typed: &str) -> bool {
+        self.text_edit.is_none()
+            && self.additional_text_edits.is_empty()
+            && self.insert_text == typed
+    }
+
     /// `source` is the contributing source's name. `session.rs` pairs each
     /// item with its source's index into its own source list rather than
     /// storing the name on `Self`, so the caller — the only one that knows

@@ -14,17 +14,18 @@ use hume_editing::tab_style::TabStyle;
 
 pub(in crate::editor) const SET_SOURCE: &str = "set";
 
-/// Prefix-filter `items`, dropping an exact match (a fully-typed value is a
-/// no-op), and wrap each into a `CompletionItem` with an empty `sort_text`
-/// — a `Delegated` source's own order is what the session's rank key
-/// preserves (see `MatchKind::Delegated`'s doc), so these are sorted right
-/// here rather than left to that tiebreak.
+/// Prefix-filter `items` and wrap each into a `CompletionItem` with an
+/// empty `sort_text` — a `Delegated` source's own order is what the
+/// session's rank key preserves (see `MatchKind::Delegated`'s doc), so
+/// these are sorted right here rather than left to that tiebreak. A fully-
+/// typed value is filtered out later, by `CompletionSession::rank`'s own
+/// no-op check — not here.
 fn prefix_completions<'a>(
     items: impl Iterator<Item = &'a str>,
     prefix: &str,
 ) -> Vec<CompletionItem> {
     let mut candidates: Vec<CompletionItem> = items
-        .filter(|s| s.starts_with(prefix) && *s != prefix)
+        .filter(|s| s.starts_with(prefix))
         .map(|s| CompletionItem::plain(s.to_owned(), s.to_owned(), String::new()))
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));

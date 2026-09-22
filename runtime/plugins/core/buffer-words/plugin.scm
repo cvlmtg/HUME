@@ -127,21 +127,21 @@
 ;; ── Completion source ─────────────────────────────────────────────────────────
 
 ;;; Reads the cache `bw/walk!` builds — see README.md's "Double-buffered
-;;; cache" and "Matching".
-(define (bw/items bid prefix)
+;;; cache" and "Matching". The typed word itself is not filtered out
+;;; here — the editor's own ranking drops any item that's a no-op against
+;;; what's typed, the same rule every other completion source relies on.
+(define (bw/items bid)
   (let ([entry (bw/entry bid)])
     (if (not entry)
         '()
         (let ([ready (hash-ref entry "words")])
           (if ready
-              (filter (lambda (it) (not (equal? (hash-ref it "label") prefix))) ready)
+              ready
               (let ([words (hash-ref entry "building")])
                 (if words
-                    (map (lambda (w) (hash "label" w))
-                         (filter (lambda (w) (not (equal? w prefix))) (hashset->list words)))
+                    (map (lambda (w) (hash "label" w)) (hashset->list words))
                     '())))))))
 
 (register-completion-source! "buffer-words"
-  (lambda (id bid prefix)
-    (completion-emit! id (bw/items bid prefix) #:incomplete #t))
+  (lambda (id bid prefix) (completion-emit! id (bw/items bid)))
   #:target 'buffer #:token 'word #:match bw/match)

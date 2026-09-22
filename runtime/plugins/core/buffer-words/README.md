@@ -184,29 +184,21 @@ nothing.
 The completion framework re-filters this source's items against whatever's
 typed on every keystroke, without re-invoking the source
 (`#:match 'string`'s prefix gate, or `#:match 'fuzzy`'s subsequence score —
-both run in Rust). So this plugin emits its *whole* cached set on every
-trigger rather than pre-filtering by what's typed so far in Steel: a
-narrower Steel-side prefix filter would be pinned to whatever was typed at
-trigger time, and Backspace could never widen the list back out, since the
-source itself isn't asked again. The cached set never includes the exact
-word being typed either — the scan collects it like any other word, but
-offering it back would be a no-op to accept, so it's filtered out at read
-time.
+both run in Rust). So this plugin emits its *whole* cached set once per
+trigger rather than pre-filtering by what's typed so far in Steel — the
+cached set is exactly what `bw/walk!` found, no per-keystroke rebuild and
+no re-invocation while the menu stays open (`completion-emit!` carries no
+`#:incomplete`).
 
-That exclusion is computed against `prefix`, the live token *at invocation
-time* — so it can only ever stay correct if the source is asked again as the
-token changes. `completion-emit!` passes `#:incomplete #t` unconditionally
-for exactly this reason: it asks the framework to re-invoke this source after
-every edit for as long as the completion menu stays open, not just on the
-first trigger. Without it, typing past an excluded word (`ca` → `cat`, where
-`cat` was excluded as the prefix at trigger time) would offer the just-typed
-word back as a no-op candidate, and backspacing away from a longer word back
-to one that should be legitimately offered (`catx` → `ca`, where `cat` was
-excluded because *it* was the prefix at some earlier trigger) would leave
-that word permanently missing for the rest of the session. The cost is
-answering once per keystroke instead of once per trigger while a menu is
-open — the same whole-set-emit cost this plugin already pays once, now paid
-at keystroke frequency; still cheap enough for an in-memory hashset read.
+The scan collects the word under the cursor like any other word, but
+offering it back would be a no-op to accept — this plugin doesn't filter it
+out itself. The editor's own ranking (`CompletionSession::rank`) drops any
+item that exactly matches the live token before scoring, for every source,
+not just this one; it re-derives that comparison from the *live* cursor on
+every keystroke, so typing past an excluded word (`ca` → `cat`) drops `cat`
+the instant it's typed, and backspacing away from it (`cat` → `ca`) brings
+it straight back — both for free, since the comparison is never pinned to
+whatever was typed at trigger time the way a Steel-side filter would be.
 
 ### `word-chars` invalidation
 

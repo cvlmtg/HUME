@@ -603,7 +603,9 @@ impl CompletionSession {
 
     /// Re-scores every shown item against its own slot's token text —
     /// `live[start..head]` for a `Buffer` session, `input[start..cursor]`
-    /// for a `Minibuf` one — with its source's `MatchKind`. Rank key:
+    /// for a `Minibuf` one — with its source's `MatchKind`, dropping any
+    /// item that's a no-op against that text first (`CompletionItem::
+    /// is_noop_for`) regardless of `MatchKind`. Rank key:
     /// score descending, then source priority descending (a tiebreaker
     /// only — match quality stays king — applied before sortText so a
     /// higher-priority source's item wins a tie regardless of how its label
@@ -654,6 +656,9 @@ impl CompletionSession {
             let pattern = self.matcher.parse(&filter);
             let mut contributed = false;
             for (i, item) in inv.items().iter().enumerate() {
+                if item.is_noop_for(&filter) {
+                    continue;
+                }
                 let score = match entry.match_kind {
                     MatchKind::Fuzzy => self.matcher.score(&pattern, &item.filter_text),
                     MatchKind::String { case_sensitive } => {

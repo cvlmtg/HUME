@@ -92,9 +92,10 @@ pub(in crate::editor) fn token_end_at(input: &str, cursor: usize, stops: &[char]
 }
 
 /// Scan `themes/*.toml` in every search path and return the stems that start
-/// with `prefix` (excluding an exact match, so a fully-typed theme name
-/// isn't re-offered). User themes (earlier in the search path list) shadow
-/// bundled themes with the same stem.
+/// with `prefix` (a fully-typed theme name is filtered out later, by
+/// `CompletionSession::rank`'s own no-op check — not here). User themes
+/// (earlier in the search path list) shadow bundled themes with the same
+/// stem.
 ///
 /// Shared by `:theme` ([`complete_theme`], called with an empty prefix — a
 /// `String`-kind source's full universe) and `:set global theme=`'s value
@@ -133,7 +134,7 @@ fn theme_name_candidates(prefix: &str, delegated: bool) -> Vec<CompletionItem> {
             if !seen.insert(stem.to_owned()) {
                 continue;
             }
-            if stem.starts_with(prefix) && stem != prefix {
+            if stem.starts_with(prefix) {
                 let sort_text = if delegated {
                     String::new()
                 } else {

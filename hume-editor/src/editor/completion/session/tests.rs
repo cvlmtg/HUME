@@ -176,6 +176,141 @@ fn priority_breaks_a_score_tie_before_sort_text() {
     assert_eq!(ranked_labels(&session, &reg), vec!["zzz", "aaa"]);
 }
 
+// ── No-op items ──────────────────────────────────────────────────────────────
+
+/// An item carrying a `text_edit`/`additional_text_edits` — the shape a
+/// server sends for a case-correction or an auto-import — built directly
+/// rather than through `item()`/`CompletionItem::plain`, which leaves both
+/// empty.
+fn item_with_edits(
+    label: &str,
+    text_edit: Option<lsp_types::TextEdit>,
+    additional_text_edits: Vec<lsp_types::TextEdit>,
+) -> CompletionItem {
+    let has_additional_text_edits = !additional_text_edits.is_empty();
+    CompletionItem {
+        label: label.into(),
+        kind: None,
+        detail: None,
+        sort_text: label.into(),
+        filter_text: label.into(),
+        insert_text: label.into(),
+        text_edit,
+        additional_text_edits,
+        has_additional_text_edits,
+        raw: serde_json::Value::Null,
+    }
+}
+
+fn some_edit(new_text: &str) -> lsp_types::TextEdit {
+    lsp_types::TextEdit {
+        range: lsp_types::Range::default(),
+        new_text: new_text.into(),
+    }
+}
+
+#[test]
+fn rank_drops_an_item_that_exactly_matches_what_was_typed() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("cat\n");
+    invoke_and_answer(
+        &mut session,
+        id_of(&reg, "s"),
+        &text,
+        0,
+        3,
+        &["cat", "category"],
+    );
+    session.rank(&reg, live(&text, 3));
+    assert_eq!(
+        ranked_labels(&session, &reg),
+        vec!["category"],
+        "the typed word itself is a no-op to accept"
+    );
+}
+
+#[test]
+fn backspacing_past_the_dropped_word_brings_it_back() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("cat\n");
+    invoke_and_answer(
+        &mut session,
+        id_of(&reg, "s"),
+        &text,
+        0,
+        3,
+        &["cat", "category"],
+    );
+    session.rank(&reg, live(&text, 3));
+    assert_eq!(ranked_labels(&session, &reg), vec!["category"], "sanity");
+
+    // Backspace: "cat" -> "ca". The item list is unchanged (the source
+    // wasn't re-invoked) — only the live token narrows, so "cat" is no
+    // longer an exact match and reappears.
+    let (cs, text) = edit(&text, 2, 3, "");
+    assert!(session.observe_edit(&cs, 1, CharOffset::new(2)));
+    session.rank(&reg, live(&text, 2));
+    let mut ranked = ranked_labels(&session, &reg);
+    ranked.sort();
+    assert_eq!(ranked, vec!["cat", "category"]);
+}
+
+#[test]
+fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("cat\n");
+    let inv = Invocation::buffer(
+        text.rope().clone(),
+        CharOffset::new(3),
+        Some(CharOffset::new(0)..CharOffset::new(3)),
+    );
+    let id = session.invoke(id_of(&reg, "s"), inv);
+    session
+        .contribute(
+            id,
+            vec![item_with_edits("cat", Some(some_edit("cat")), Vec::new())],
+            false,
+            None,
+        )
+        .unwrap();
+    session.rank(&reg, live(&text, 3));
+    assert_eq!(
+        ranked_labels(&session, &reg),
+        vec!["cat"],
+        "a textEdit's range may cover more than the typed token — never a no-op by inspection alone"
+    );
+}
+
+#[test]
+fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("cat\n");
+    let inv = Invocation::buffer(
+        text.rope().clone(),
+        CharOffset::new(3),
+        Some(CharOffset::new(0)..CharOffset::new(3)),
+    );
+    let id = session.invoke(id_of(&reg, "s"), inv);
+    session
+        .contribute(
+            id,
+            vec![item_with_edits(
+                "cat",
+                None,
+                vec![some_edit("use std::cat;\n")],
+            )],
+            false,
+            None,
+        )
+        .unwrap();
+    session.rank(&reg, live(&text, 3));
+    assert_eq!(
+        ranked_labels(&session, &reg),
+        vec!["cat"],
+        "additionalTextEdits (e.g. an auto-import) make accepting a real edit"
+    );
+}
+
 // ── Invocations and answers ──────────────────────────────────────────────────
 
 #[test]
