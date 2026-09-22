@@ -59,6 +59,28 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
+;;; `:toggle-git-signs`/`:toggle-inline-diff`'s shared completion universe:
+;;; every local branch, tag, and remote-tracking ref the focused buffer's
+;;; repo knows about — spawned async against its directory, same shape as
+;;; `git-diff/fetch-branch!` (branch.scm). Answers `'()` on any failure (no
+;;; path, not a repo, git missing) — a ref name is a nice-to-have
+;;; completion, never worth erroring the command line over.
+(register-completion-source! "git-diff:refs"
+  (lambda (id input cursor)
+    (let ([path (buffer-path (current-buffer))])
+      (if (not path)
+          (completion-emit! id '())
+          (spawn-async! "git"
+            '("for-each-ref" "--format=%(refname:short)" "refs/heads" "refs/tags" "refs/remotes")
+            (parent-name path)
+            (lambda (stdout stderr exit-code)
+              (completion-emit! id
+                (if (= exit-code 0)
+                    (map (lambda (name) (hash "label" name))
+                         (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n")))
+                    '())))))))
+  #:target 'minibuf #:match 'string)
+
 ;;; Shared body for both toggles below — see docs/architecture.md's "Ref
 ;;; handling" for the ref-argument contract.
 (define (git-diff/run-toggle! bid key label arg)
@@ -81,8 +103,10 @@
 
 (define-typed-command! "toggle-git-signs"
   "Toggle gutter +/~ signs and deletion boundary marks for the current buffer's git diff. Optional argument: a git ref to diff against, e.g. :toggle-git-signs HEAD~2 (default: the `ref` config value, shared with toggle-inline-diff)."
-  (lambda (arg) (git-diff/run-toggle! (current-buffer) "signs?" "signs" arg)))
+  (lambda (arg) (git-diff/run-toggle! (current-buffer) "signs?" "signs" arg))
+  #:complete "git-diff:refs")
 
 (define-typed-command! "toggle-inline-diff"
   "Toggle inline git diff rendering (virtual deleted lines, word highlights, background tint). Optional argument: a git ref to diff against, e.g. :toggle-inline-diff HEAD~2 (default: the `ref` config value, shared with toggle-git-signs)."
-  (lambda (arg) (git-diff/run-toggle! (current-buffer) "inline?" "inline diff" arg)))
+  (lambda (arg) (git-diff/run-toggle! (current-buffer) "inline?" "inline diff" arg))
+  #:complete "git-diff:refs")

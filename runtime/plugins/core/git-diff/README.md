@@ -36,8 +36,8 @@ elements](https://cvlmtg.github.io/HUME/configuration.html#custom-elements)).
 
 | Command | Effect |
 |---|---|
-| `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
-| `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
+| `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer — Tab-completes branches/tags |
+| `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer — Tab-completes branches/tags |
 
 ## Documentation
 

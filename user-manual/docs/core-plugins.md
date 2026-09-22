@@ -143,10 +143,11 @@ you type.
 | `:toggle-git-signs [ref]` | Toggle gutter signs for the current buffer |
 | `:toggle-inline-diff [ref]` | Toggle inline rendering (virtual deleted lines, word highlights, background tint) for the current buffer |
 
-Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`. Giving a ref always turns
-that rendering on and points it at that ref; it's sticky across a later bare toggle off/on.
-The ref is shared between the two commands. A file git doesn't know about yet (untracked,
-brand-new, or outside a repo) shows no diff.
+Both take an optional git ref, e.g. `:toggle-inline-diff HEAD~2`, Tab-completing branches and
+tags from the current buffer's repo. Giving a ref always turns that rendering on and points it
+at that ref; it's sticky across a later bare toggle off/on. The ref is shared between the two
+commands. A file git doesn't know about yet (untracked, brand-new, or outside a repo) shows no
+diff.
 
 Also keeps a `"steel:git-branch"` statusline element fresh for the focused buffer, e.g.
 `(main)` — no config needed, just add it to your own `configure-statusline!` call (see

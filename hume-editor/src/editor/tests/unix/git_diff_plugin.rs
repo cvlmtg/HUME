@@ -705,6 +705,63 @@ fn explicit_ref_toggle_sets_ref_and_re_renders_the_other_enabled_rendering() {
     );
 }
 
+// ── Ref completion ────────────────────────────────────────────────────────────
+
+/// Tab on `:toggle-git-signs`'/`:toggle-inline-diff`'s shared ref argument
+/// completes against the focused buffer's own repo — branches and tags
+/// alike, fetched async (`git for-each-ref`), same shape as the branch-
+/// tracking statusline element (branch.scm).
+#[test]
+fn toggle_git_signs_tab_completes_a_ref() {
+    // `setup()`'s claim must be held before any `git` spawn below.
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let (repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    git(repo.path(), &["tag", "v1.2.3"]);
+    open(&mut ed, &path);
+    wait_for_refresh(&mut ed);
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "toggle-git-signs v1.2");
+    ed.handle_key(key_tab());
+    drain_until(&mut ed, |ed| minibuf_input(ed) == "toggle-git-signs v1.2.3");
+}
+
+/// The `:toggle-inline-diff` twin — same source, named by
+/// `#:complete` on both commands.
+#[test]
+fn toggle_inline_diff_tab_completes_a_ref() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    let (repo, path) = commit_and_checkout("f.txt", "one\ntwo\nthree\n", "feature-x");
+    git(repo.path(), &["tag", "v1.2.3"]);
+    open(&mut ed, &path);
+    wait_for_refresh(&mut ed);
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "toggle-inline-diff v1.2");
+    ed.handle_key(key_tab());
+    drain_until(&mut ed, |ed| {
+        minibuf_input(ed) == "toggle-inline-diff v1.2.3"
+    });
+}
+
+/// No path (an unsaved scratch buffer) answers empty rather than spawning
+/// `git` at all or erroring — Tab is simply a no-op.
+#[test]
+fn ref_completion_with_no_buffer_path_is_a_silent_no_op() {
+    let tmp = safe_tempdir();
+    let (mut ed, _guard) = setup(tmp.path(), None);
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "toggle-git-signs HEAD");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "toggle-git-signs HEAD");
+}
+
 // ── Lifecycle and failure ────────────────────────────────────────────────────
 
 #[test]
