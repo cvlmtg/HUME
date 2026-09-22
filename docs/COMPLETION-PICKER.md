@@ -167,7 +167,11 @@ that invocation's `rope` and maps through its `cs_since`; the `insertText`
 fallback replaces its live token span. Both land as one undo step at every
 cursor, with the uniform `(back, forward)` distance model and containment
 check `session/accept.rs` documents. `completionItem/resolve` follows when
-the item lacked `additionalTextEdits` and the server offers it.
+the item's own source declared `#:resolve #t` at registration, it lacked
+`additionalTextEdits`, and the server offers `resolveProvider` — the source
+flag (`core:lsp` sets it, `core:buffer-words` doesn't) keeps a second
+`Buffer` source sharing the same LSP-attached buffer from having a resolve
+request sent for an item the server never produced.
 
 ### The `:` line
 

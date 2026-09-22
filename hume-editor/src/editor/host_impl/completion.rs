@@ -51,6 +51,7 @@ impl crate::editor::Editor {
                     match_kind,
                     priority: reg.priority,
                     proc: reg.proc,
+                    resolve: reg.resolve,
                 }),
             host::CompletionSourceTarget::Minibuf => self
                 .state

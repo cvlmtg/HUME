@@ -25,6 +25,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             match_kind: MatchKind::Fuzzy,
             priority: *priority,
             proc: SteelVal::Void,
+            resolve: false,
         });
     }
     reg

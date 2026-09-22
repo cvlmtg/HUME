@@ -71,13 +71,20 @@ pub(crate) fn register_trigger_chars(
     Ok(SteelVal::Void)
 }
 
-/// `(%register-completion-source! name proc target match priority)` — the
-/// `register-completion-source!` Scheme wrapper supplies `#:match`/
-/// `#:priority`'s defaults; `#:target` has none (every source states its
-/// choice explicitly). `proc` is called as `(proc id bid prefix)` for a
-/// `'buffer` source, `(proc id input cursor)` for a `'minibuf` one, and
-/// answers with `(completion-emit! id …)`. Queued as an `Effect`, not
-/// applied here — see `Effect::RegisterCompletionSource`.
+/// `(%register-completion-source! name proc target match priority resolve)`
+/// — the `register-completion-source!` Scheme wrapper supplies `#:match`/
+/// `#:priority`/`#:resolve`'s defaults; `#:target` has none (every source
+/// states its choice explicitly). `proc` is called as `(proc id bid
+/// prefix)` for a `'buffer` source, `(proc id input cursor)` for a
+/// `'minibuf` one, and answers with `(completion-emit! id …)`. Queued as an
+/// `Effect`, not applied here — see `Effect::RegisterCompletionSource`.
+///
+/// `#:resolve #t` is refused outright on a `'minibuf` source: only a
+/// `'buffer` source's items can ever be a wire `CompletionItem` from a
+/// buffer's attached LSP server (`accept.rs`'s `maybe_send_resolve`, the
+/// only reader of this flag, is itself `Buffer`-target only), so a
+/// `'minibuf` source claiming it is a caller error, not a silently-ignored
+/// no-op.
 pub(crate) fn register_completion_source(
     ctx: &mut SteelCtx,
     name: String,
@@ -85,11 +92,17 @@ pub(crate) fn register_completion_source(
     target: SteelVal,
     match_kind: SteelVal,
     priority: SteelVal,
+    resolve: SteelVal,
 ) -> SteelResult {
     let proc = callable_arg(proc, "register-completion-source! proc")?;
     let target = target_arg(target)?;
     let match_kind = match_kind_arg(match_kind, "register-completion-source! #:match")?;
     let priority = int_arg(priority, "register-completion-source! #:priority")?;
+    let resolve = bool_arg(resolve, "register-completion-source! #:resolve")?;
+    if resolve && target != CompletionSourceTarget::Buffer {
+        steel::stop!(Generic =>
+            "register-completion-source! #:resolve: only a 'buffer source can set this");
+    }
     ctx.push_effect(Effect::RegisterCompletionSource(
         crate::host::PendingCompletionSource {
             name,
@@ -97,6 +110,7 @@ pub(crate) fn register_completion_source(
             target,
             match_kind,
             priority,
+            resolve,
         },
     ));
     Ok(SteelVal::Void)

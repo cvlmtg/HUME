@@ -30,7 +30,7 @@
                   (completion-emit! id (car decoded) #:incomplete (cadr decoded))))))
           #:supersede "completion")
         (completion-emit! id '())))
-  #:target 'buffer #:priority 10)
+  #:target 'buffer #:priority 10 #:resolve #t)
 
 ;; ── Trigger chars ─────────────────────────────────────────────────────────────
 

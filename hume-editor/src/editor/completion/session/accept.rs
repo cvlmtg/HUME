@@ -33,14 +33,24 @@ impl CompletionSession {
     /// document, has its own snapshot, so no contributor's positions are
     /// ever read against another's document.
     ///
-    /// If the item lacks `additionalTextEdits` entirely (not just an empty
-    /// array — see [`CompletionItem::has_additional_text_edits`]) and
-    /// the server advertises `completionProvider.resolveProvider`, sends
-    /// `completionItem/resolve` and applies whatever it returns once the
-    /// response lands (via the ordinary `LspCallback`/`stale_check`
-    /// machinery every other `lsp-request` uses — dropped silently if the
-    /// buffer has moved past the accept's own generation by then, same
-    /// staleness discipline as any other LSP response).
+    /// If the accepted item's own source declared `#:resolve #t`
+    /// (`BufferSourceEntry::resolve` — a claim that its items are wire
+    /// items from this buffer's attached server, not merely that a server
+    /// happens to be attached) and the item lacks `additionalTextEdits`
+    /// entirely (not just an empty array — see [`CompletionItem::
+    /// has_additional_text_edits`]) and the server advertises
+    /// `completionProvider.resolveProvider`, sends `completionItem/resolve`
+    /// and applies whatever it returns once the response lands (via the
+    /// ordinary `LspCallback`/`stale_check` machinery every other
+    /// `lsp-request` uses — dropped silently if the buffer has moved past
+    /// the accept's own generation by then, same staleness discipline as
+    /// any other LSP response). Without the source's own flag, an item from
+    /// a source that merely *shares* an LSP-attached buffer
+    /// (`core:buffer-words`) would otherwise send the server an item it
+    /// never produced — the server has no way to recognize it (most key a
+    /// resolve lookup off an opaque `data` field only their own items
+    /// carry), so the response is unspecified best case and a spurious
+    /// error every accept worst case.
     pub(in crate::editor) fn accept(
         &self,
         state: &mut EditorState,
@@ -51,10 +61,14 @@ impl CompletionSession {
         let Target::Buffer { bt, .. } = &self.target else {
             return Err("completion-accept!: not a buffer-target session".to_string());
         };
-        let (invocation, item) = self
+        let (source, invocation, item) = self
             .ranked_buffer(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let BufferSpan { doc, live } = &invocation.span;
+        // Copied out now — a plain `bool`, so there's no reason to keep the
+        // registry borrow (or `source`) alive across the `&mut state` uses
+        // below just to read it again at the bottom.
+        let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 
@@ -321,7 +335,7 @@ impl CompletionSession {
             item: item.raw.clone(),
         });
 
-        if !item.has_additional_text_edits {
+        if may_resolve && !item.has_additional_text_edits {
             maybe_send_resolve(bt, state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())

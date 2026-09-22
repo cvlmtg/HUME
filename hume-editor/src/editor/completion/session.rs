@@ -834,17 +834,22 @@ impl CompletionSession {
         Some((s, i))
     }
 
-    /// The ranked invocation/item at `idx` for a `Buffer` session — `None`
-    /// for a `Minibuf` session or an unranked `idx`. `accept` is the only
-    /// caller that needs the invocation itself (for its span); every other
+    /// The source/invocation/item at ranked `idx` for a `Buffer` session —
+    /// `None` for a `Minibuf` session or an unranked `idx`. `accept` is the
+    /// only caller that needs the source id (to read `BufferSourceEntry::
+    /// resolve`) and the invocation itself (for its span); every other
     /// reader just wants the item ([`Self::selected_item`]).
-    fn ranked_buffer(&self, idx: usize) -> Option<(&Invocation<BufferSpan>, &CompletionItem)> {
+    fn ranked_buffer(
+        &self,
+        idx: usize,
+    ) -> Option<(BufferSourceId, &Invocation<BufferSpan>, &CompletionItem)> {
         let Target::Buffer { slots, .. } = &self.target else {
             return None;
         };
         let (s, i) = self.ranked_indices(idx)?;
-        let inv = slots[s as usize].shown.as_ref()?;
-        Some((inv, &inv.items()[i as usize]))
+        let slot = &slots[s as usize];
+        let inv = slot.shown.as_ref()?;
+        Some((slot.source, inv, &inv.items()[i as usize]))
     }
 
     /// The item behind ranked position `idx`, for a caller (`accept`) that

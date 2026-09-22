@@ -490,7 +490,7 @@ pub(crate) fn register_all(steel: &mut Engine) {
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.
-        config "%register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, match_kind: SteelVal, priority: SteelVal);
+        config "%register-completion-source!" completion::register_completion_source(name: String, proc: SteelVal, target: SteelVal, match_kind: SteelVal, priority: SteelVal, resolve: SteelVal);
         cmd "%completion-emit!" completion::completion_emit(id: SteelVal, items: SteelVal, incomplete: SteelVal);
         cmd "completion-top" completion::completion_top(n: SteelVal);
         cmd "completion-accept!" completion::completion_accept(idx: SteelVal);

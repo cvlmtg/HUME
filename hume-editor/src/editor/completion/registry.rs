@@ -57,6 +57,14 @@ pub(in crate::editor) struct BufferSourceEntry {
     /// Invoked via `EditorState::queue_steel_call` as `(proc id bid
     /// prefix)`, answered by `(completion-emit! id …)`.
     pub(in crate::editor) proc: SteelVal,
+    /// `#:resolve` — this source's own claim that its items are wire
+    /// `CompletionItem`s from the buffer's attached LSP server, so
+    /// `completionItem/resolve` may be sent for an accepted one on its
+    /// behalf (`session/accept.rs`'s `maybe_send_resolve`). `false` by
+    /// default: a source that didn't ask for this (`core:buffer-words`, any
+    /// other synthetic-item source) never has a resolve request sent for
+    /// its items, however the buffer's own LSP server capabilities read.
+    pub(in crate::editor) resolve: bool,
 }
 
 pub(in crate::editor) struct MinibufSourceEntry {

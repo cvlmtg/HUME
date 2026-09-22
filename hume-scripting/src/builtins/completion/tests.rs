@@ -16,6 +16,16 @@ fn effects(h: &SteelCtxTestHarness) -> Vec<&Effect> {
 }
 
 fn register(ctx: &mut SteelCtx, target: &str, match_kind: &str, priority: isize) -> SteelResult {
+    register_with_resolve(ctx, target, match_kind, priority, false)
+}
+
+fn register_with_resolve(
+    ctx: &mut SteelCtx,
+    target: &str,
+    match_kind: &str,
+    priority: isize,
+    resolve: bool,
+) -> SteelResult {
     register_completion_source(
         ctx,
         "src".into(),
@@ -23,6 +33,7 @@ fn register(ctx: &mut SteelCtx, target: &str, match_kind: &str, priority: isize)
         sym(target),
         sym(match_kind),
         SteelVal::IntV(priority),
+        SteelVal::BoolV(resolve),
     )
 }
 
@@ -50,6 +61,33 @@ fn register_queues_an_effect_with_the_decoded_fields() {
         }
     );
     assert_eq!(reg.priority, 7);
+    assert!(!reg.resolve, "#:resolve defaults to #f");
+}
+
+/// `#:resolve #t` on a `'buffer` source decodes straight through.
+#[test]
+fn register_decodes_resolve_true_on_a_buffer_source() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    register_with_resolve(&mut ctx, "buffer", "fuzzy", 0, true).expect("valid registration");
+    drop(ctx);
+    let Effect::RegisterCompletionSource(reg) = effects(&h)[0] else {
+        panic!("expected RegisterCompletionSource");
+    };
+    assert!(reg.resolve);
+}
+
+/// `#:resolve #t` on a `'minibuf` source is a caller error, not a silently
+/// dropped claim — only a `'buffer` source's items can ever be a wire item
+/// from the buffer's own attached server.
+#[test]
+fn register_rejects_resolve_true_on_a_minibuf_source() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    let err = register_with_resolve(&mut ctx, "minibuf", "fuzzy", 0, true)
+        .expect_err("resolve is buffer-only")
+        .to_string();
+    assert!(err.contains("#:resolve"), "got: {err}");
 }
 
 /// `#:target 'minibuf` decodes to the minibuffer target.
@@ -90,6 +128,7 @@ fn register_rejects_a_non_callable_proc() {
         sym("buffer"),
         sym("fuzzy"),
         SteelVal::IntV(0),
+        SteelVal::BoolV(false),
     )
     .expect_err("a string is not callable")
     .to_string();

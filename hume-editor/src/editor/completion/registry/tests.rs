@@ -6,6 +6,7 @@ fn steel_buffer_entry(name: &str) -> BufferSourceEntry {
         match_kind: MatchKind::Fuzzy,
         priority: 0,
         proc: SteelVal::Void,
+        resolve: false,
     }
 }
 
