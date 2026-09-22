@@ -45,13 +45,14 @@ The rebuild walks outward from the cursor's line in both directions, one
 bounded batch of lines (`"lines"`) per direction per tick, fetched with
 `(buffer-lines bid #:start #:end)` and scanned to completion in the same
 tick — a word can't span two lines, so there's nothing to carry across a
-tick boundary. Each tick yields back to the editor loop via `(after 0 …)`
-before the next runs. That buys three things: nothing blocks, however large
-the buffer; the words nearest the cursor — the ones most likely to matter
-right now — are indexed first; and an edit that interrupts a walk
-(cancelling it, restarting from the new cursor position) has already
-covered the region most likely to have changed. `Ctrl-Space` never scans —
-it only ever reads whatever the background walk has indexed so far.
+tick boundary. Each tick yields back to the editor loop via a short `after`
+delay before the next runs (see below for why not zero). That buys three
+things: nothing blocks, however large the buffer; the words nearest the
+cursor — the ones most likely to matter right now — are indexed first; and
+an edit that interrupts a walk (cancelling it, restarting from the new
+cursor position) has already covered the region most likely to have
+changed. `Ctrl-Space` never scans — it only ever reads whatever the
+background walk has indexed so far.
 
 Worth being precise about what this buys and what it doesn't: starting at
 the cursor *reorders* the work, it doesn't reduce it. `on-text-changed`
@@ -105,6 +106,63 @@ replace guard runs when `:reload-config` replays `on-buffer-open` on an
 already-open buffer — without it, a walk already in flight would keep
 running against the entry that replay just replaced.
 
+"The entry is gone" isn't the only stale-tick shape: `cancel-timer!` cannot
+stop a tick that's already been dequeued off the timer wheel and queued to
+run — cancelling at that point is a no-op, and the tick fires anyway against
+whatever entry now exists. Since `bw/reindex!` can start a *new* walk before
+that orphaned tick runs, "an entry exists" alone isn't enough to tell the old
+walk apart from the new one — the orphan would union its stale words into the
+new walk's `"building"` set and clobber its `"timer"` slot with its own,
+leaving the live chain uncancellable. Each entry therefore also carries a
+`"gen"` counter, bumped by every `bw/reindex!`; a walk closes over the
+generation it started under and a tick no-ops unless the entry's `"gen"`
+still matches. `bw/cancel-timer!` stays — it still saves a wasted tick when
+it lands in time — but `"gen"` is what makes correctness not depend on that
+timing.
+
+Each tick reschedules itself with a short, non-zero delay rather than
+`(after 0 …)`: a zero-delay timer is already due the instant it's scheduled,
+which pins the event loop's wake timeout at zero for the whole walk — the
+loop never blocks on input and repaints a full, unchanged frame once per
+tick, as fast as it can, until the walk finishes. A large buffer's walk is
+hundreds of ticks; that's hundreds of full display-line rebuilds and
+terminal flushes producing no visible change. A short delay lets the loop
+block between ticks instead, at the cost of the walk taking proportionally
+longer in wall-clock time — an acceptable trade, since nothing waits on the
+walk finishing (`Ctrl-Space` reads whatever's indexed so far, complete or
+not).
+
+The in-progress `"building"` set survives a `bw/reindex!` restart instead of
+being reset to empty. The walk is monotone — each tick only ever adds words,
+never removes them — so on a large buffer, an edit that keeps interrupting
+the walk near the cursor (the common case: a user typing continuously) still
+makes progress at the far ends across restarts, rather than the walk
+restarting its far-end coverage from nothing on every keystroke.
+
+The backward window's upper bound is clamped against the live line count the
+same way the forward window's is (`fwd-hi`) — both sides carry their anchor
+across ticks, and a buffer that shrinks mid-walk (`:e!` onto a shorter file,
+a large undo, an LSP `applyEdit`) would otherwise let the backward side ask
+for a range past the buffer's new end, which `buffer-lines` raises on rather
+than clamps.
+
+Closing the buffer this plugin's entry belongs to doesn't always mean the
+entry should be dropped for good. Closing the *last* open buffer reuses that
+same `BufferId` in place for a fresh scratch buffer rather than opening a new
+one — and that reuse fires no `on-buffer-open`, only the `on-text-changed`
+this plugin already reacts to (the swap still bumps the buffer's text
+generation). `bw/forget!` drops the entry on `on-buffer-close` as usual;
+`bw/reindex!` resurrects a missing entry before indexing rather than
+no-opping, so the debounced `on-text-changed` that follows a few keystrokes
+into the replacement scratch buffer rebuilds it instead of leaving the index
+dead for the rest of the session. The resurrection is gated on the buffer
+still being open (`(member bid (buffers))`) — a debounced reindex that
+outlives a *genuine* close, with nothing reusing the id, must not
+resurrect state for a buffer that's actually gone, the same reason
+`core:git-diff`'s `entry-set!` no-ops rather than resurrects
+(`runtime/plugins/core/git-diff/state.scm`) while its own `ensure-entry!`
+does the opposite for a write path that must succeed regardless.
+
 ### Double-buffered cache
 
 Each buffer keeps two sets: the last *complete* index (what `Ctrl-Space`
@@ -131,6 +189,34 @@ source itself isn't asked again. The cached set never includes the exact
 word being typed either — the scan collects it like any other word, but
 offering it back would be a no-op to accept, so it's filtered out at read
 time.
+
+That exclusion is computed against `prefix`, the live token *at invocation
+time* — so it can only ever stay correct if the source is asked again as the
+token changes. `completion-emit!` passes `#:incomplete #t` unconditionally
+for exactly this reason: it asks the framework to re-invoke this source after
+every edit for as long as the completion menu stays open, not just on the
+first trigger. Without it, typing past an excluded word (`ca` → `cat`, where
+`cat` was excluded as the prefix at trigger time) would offer the just-typed
+word back as a no-op candidate, and backspacing away from a longer word back
+to one that should be legitimately offered (`catx` → `ca`, where `cat` was
+excluded because *it* was the prefix at some earlier trigger) would leave
+that word permanently missing for the rest of the session. The cost is
+answering once per keystroke instead of once per trigger while a menu is
+open — the same whole-set-emit cost this plugin already pays once, now paid
+at keystroke frequency; still cheap enough for an in-memory hashset read.
+
+### `word-chars` invalidation
+
+`word-chars` is read once per `bw/reindex!` and baked into the cached word
+set for as long as that index stands — nothing about the cache invalidates
+on its own when the option changes later. A global `:set global word-chars=…`
+reindexes every open buffer (`on-option-change`), so that case stays live.
+A *buffer-scoped* `:set buffer word-chars=…` does not: `on-option-change`
+is raised only by the global write path, never by the buffer-scoped one, so
+there is no Steel-visible event this plugin can subscribe to for that case.
+That buffer's index stays stale — classifying by the old value — until its
+next edit triggers the normal debounced reindex. Closing this gap needs a
+Rust-side event this plugin cannot add on its own.
 
 ### Non-ASCII words
 

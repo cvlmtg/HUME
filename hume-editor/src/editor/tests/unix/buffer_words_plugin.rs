@@ -105,6 +105,18 @@ fn wait_for_word(ed: &mut Editor, target: &str) {
     }
 }
 
+/// Jumps to 1-based `line` and makes a one-character edit there (typed then
+/// left in place), leaving the editor in Insert mode. `on-text-changed`
+/// hands the hook only a buffer id, so this is how a test anchors the
+/// background walk's next restart at a specific line: `:goto` alone moves
+/// the cursor but fires no reindex on its own — only an actual edit does.
+fn goto_line_and_edit(ed: &mut Editor, line: usize, ch: char) {
+    type_cmd(ed, &format!(":{line}"));
+    ed.feed_key(key('i'));
+    ed.feed_key(key(ch));
+    ed.feed_key(key_esc());
+}
+
 /// [`wait_for_word`]'s negation, for the "an edit removed this word" half of
 /// the refresh test.
 fn wait_for_word_gone(ed: &mut Editor, target: &str) {
@@ -209,6 +221,13 @@ fn backspace_widens_the_candidate_list_again() {
     assert!(narrow.contains(&"catalog".to_string()), "{narrow:?}");
     assert!(!narrow.contains(&"cat".to_string()), "{narrow:?}");
 
+    // Backspace to "ca", not all the way to "cat": "cat" is itself a whole
+    // word in the buffer, and the exact-token exclusion now correctly tracks
+    // the live token as it's re-invoked (see
+    // `the_exact_token_exclusion_tracks_further_typing`), so a live token
+    // that exactly equals "cat" would exclude it — accepting it right then
+    // really would be a no-op. "ca" isn't a whole word, so both survive.
+    ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
     ed.settle();
@@ -292,11 +311,17 @@ fn word_chars_extends_what_counts_as_a_word() {
     open(&mut ed, &path);
     ed.feed_key(key('i'));
     trigger(&mut ed);
-    assert!(
-        labels(&ed).contains(&"foo-bar".to_string()),
-        "{:?}",
-        labels(&ed)
-    );
+    let got = labels(&ed);
+    assert!(got.contains(&"foo-bar".to_string()), "{got:?}");
+    // Negative control: without this, "foo-bar" being present would just as
+    // well be explained by "foo" and "bar" each separately matching the
+    // (empty) prefix and Rust's own re-ranking coincidentally listing
+    // "foo-bar" too — it wouldn't prove the tokenizer actually joined them
+    // into one word. Since "foo-bar" is the *only* text in the buffer, "foo"
+    // and "bar" can only appear as their own labels if the scan split on
+    // `-` instead of treating it as a word char.
+    assert!(!got.contains(&"foo".to_string()), "{got:?}");
+    assert!(!got.contains(&"bar".to_string()), "{got:?}");
 }
 
 #[test]
@@ -366,6 +391,292 @@ fn closing_a_buffer_drops_its_index() {
         ed.settle();
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Regression test for the steel-core 0.8.2 `append` bug
+/// (runtime/plugins/core/git-diff/render.scm:99-113 has the full
+/// explanation): a direct 2-argument `(append fwd-lines bwd-lines)` silently
+/// drops every `bwd-lines` entry past the 4th once `fwd-lines` is the
+/// literal empty list — which happens on every tick once the forward side
+/// exhausts the buffer, the common case once the cursor is near the end.
+///
+/// `a_word_many_lines_past_the_cursor_is_offered` doesn't exercise this: it
+/// anchors at line 0, where the forward side never empties out and the
+/// backward side never has anything to scan, so `append`'s first argument
+/// is always non-empty there. This test anchors at the buffer's *last*
+/// line instead — the forward side exhausts on tick 1, so every later tick
+/// hits exactly the buggy shape — and places the target word squarely past
+/// the 4th line of one of the backward ticks' own windows (`"lines" 10`,
+/// so a dropped word is at a fixed, predictable offset).
+#[test]
+fn a_word_before_the_cursor_survives_the_forward_side_emptying_out() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 10)"#));
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    // 60 lines, 1-based. Line 57 sits inside the backward window
+    // (47..57) a tick fetches once the walk has stepped back to anchor 59
+    // — offset 5 into that 10-line window, past the 4-element survivor cap
+    // the bug leaves behind.
+    let mut lines: Vec<String> = (1..=60)
+        .map(|n| {
+            if n == 57 {
+                "buried_word".to_string()
+            } else {
+                "filler".to_string()
+            }
+        })
+        .collect();
+    lines.push(String::new());
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    open(&mut ed, &path);
+    goto_line_and_edit(&mut ed, 60, 'z');
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "buried_word");
+}
+
+/// Closing the *last* open buffer reuses its `BufferId` in place for a
+/// fresh scratch buffer rather than opening a new one — see
+/// README.md's "Cursor-outward, line-windowed indexing". Nothing fires
+/// `on-buffer-open` for that reuse, only the `on-text-changed` this plugin
+/// already reacts to, so a naive `bw/reindex!` that no-ops on a missing
+/// entry leaves the index dead for the rest of the session.
+#[test]
+fn typing_in_the_replacement_scratch_after_closing_the_last_buffer_is_indexed() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "alpha\n").unwrap();
+    let bid = open(&mut ed, &path);
+    // `Editor::open` always seeds a startup scratch buffer alongside `bid`
+    // (`Editor::open`'s own doc), so `bid` isn't the *only* open buffer yet
+    // — closing it now would just switch focus to that scratch, not hit
+    // the reuse path. Switch to it and close it first, so `bid` really is
+    // the last buffer standing when it's closed next.
+    type_cmd(&mut ed, ":bprev");
+    ed.execute_typed("bd", None).unwrap();
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "closing the startup scratch must fall back to the only other buffer"
+    );
+
+    ed.execute_typed("bd", None).unwrap();
+    assert_eq!(
+        ed.focused_buffer_id(),
+        bid,
+        "closing the last buffer must reuse its BufferId for the replacement scratch"
+    );
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "resurrected_word ");
+    wait_for_word(&mut ed, "resurrected_word");
+}
+
+/// Not a reproduction of the exact timer-batch race the review flagged
+/// (an orphaned tick, already dequeued off the timer wheel, firing after a
+/// fresh `bw/reindex!` has installed a new entry generation): that needs
+/// `drain_due_timers` to pop the walk's own pending tick and a fresh
+/// debounce timer in the *same* batch, in that order, which isn't something
+/// a black-box, wall-clock-driven test can force deterministically — the
+/// walk's own tick is always due far sooner (16ms) than a fresh debounce
+/// (150ms), so in ordinary settle-driven tests the walk tick always drains
+/// first. What this test does check, deterministically: restarting the walk
+/// twice in quick succession — once while the first walk is still mid-
+/// flight — doesn't lose coverage at either end. That's the property the
+/// `"gen"` guard and the building-set-survives-a-restart change
+/// (README.md's "Cursor-outward, line-windowed indexing") exist to protect.
+#[test]
+fn restarting_the_walk_mid_flight_still_reaches_both_ends() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    let mut lines: Vec<String> = (1..=400)
+        .map(|n| match n {
+            10 => "far_back".to_string(),
+            390 => "far_fwd".to_string(),
+            _ => "filler".to_string(),
+        })
+        .collect();
+    lines.push(String::new());
+    std::fs::write(&path, lines.join("\n")).unwrap();
+    open(&mut ed, &path);
+    goto_line_and_edit(&mut ed, 200, 'z');
+    // Long enough for the debounce to fire and the walk to make real
+    // progress outward from line 200 — not long enough to finish (400
+    // lines at "lines" 5 is ~80 ticks).
+    std::thread::sleep(Duration::from_millis(200));
+    ed.settle();
+    // A second edit restarts the walk again while the first is still
+    // mid-flight.
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "y");
+    ed.feed_key(key_esc());
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "far_back");
+    wait_for_word(&mut ed, "far_fwd");
+}
+
+/// `bw/reindex!` clamps the backward window's upper bound against the
+/// buffer's *live* line count on every tick, the same way the forward
+/// window's is already clamped — see README.md's "Cursor-outward,
+/// line-windowed indexing". Without it, a walk started on a large buffer
+/// whose backward anchor is still well above 0 raises once the buffer
+/// shrinks out from under it (`:e!` onto a shorter file, a big delete, an
+/// LSP `applyEdit`) instead of adapting: `buffer-lines` raises on an
+/// out-of-bounds range rather than clamping it.
+#[test]
+fn the_index_recovers_when_the_buffer_shrinks_mid_walk() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    let big_content = "filler\n".repeat(500);
+    std::fs::write(&path, &big_content).unwrap();
+    open(&mut ed, &path);
+    goto_line_and_edit(&mut ed, 250, 'z');
+    // The walk starts (debounce) and makes real progress outward from line
+    // 250 in both directions, but 500 lines at "lines" 5 is far from done.
+    std::thread::sleep(Duration::from_millis(200));
+    ed.settle();
+
+    std::fs::write(&path, "tiny\n").unwrap();
+    ed.execute_typed("e!", None).unwrap();
+
+    for _ in 0..15 {
+        ed.settle();
+        if let Some(msg) = &ed.state.status_msg {
+            assert!(
+                !msg.contains("buffer-lines"),
+                "the stale walk's backward window must clamp instead of raising: {msg}"
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "tiny");
+}
+
+/// The exact-token exclusion (README.md's "Matching") filters against the
+/// *live* token, not the prefix at the moment `Ctrl-Space` was first
+/// pressed — possible only because `completion-emit!` now passes
+/// `#:incomplete #t` unconditionally, so the source is re-invoked after
+/// every edit while the menu stays open.
+#[test]
+fn the_exact_token_exclusion_tracks_further_typing() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "cat catalog\n\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "ca");
+    trigger(&mut ed);
+    let got = labels(&ed);
+    assert!(got.contains(&"cat".to_string()), "{got:?}");
+
+    ed.feed_key(key('t'));
+    ed.settle();
+    let got = labels(&ed);
+    assert!(
+        !got.contains(&"cat".to_string()),
+        "typing to an exact word match must exclude it once re-invoked: {got:?}"
+    );
+    assert!(got.contains(&"catalog".to_string()), "{got:?}");
+}
+
+/// `#:incomplete #t`'s other consequence: a trigger fired while the
+/// background walk is still partial no longer freezes that partial answer
+/// for the rest of the session. The framework only re-invokes a source as
+/// part of processing an edit (`completion_observe_edit` is what calls
+/// `sources_to_reinvoke`, not the passage of time on its own), so this
+/// checks the realistic shape — the background walk finishes on its own
+/// timer regardless of what the completion session is doing, and the
+/// *next* ordinary keystroke, not a fresh `Ctrl-Space`, is what picks up
+/// the now-complete index.
+#[test]
+fn an_edit_after_the_walk_finishes_refreshes_an_already_open_menu() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 20)"#));
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    let mut content = "filler\n".repeat(300);
+    content.push_str("late_word\n");
+    std::fs::write(&path, &content).unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    // One trigger, up front, before the background walk can possibly have
+    // reached `late_word` (300 lines at "lines" 20 needs multiple ticks).
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+    assert!(!labels(&ed).contains(&"late_word".to_string()));
+
+    // Let the background walk run to completion — it advances on its own
+    // timer chain, independent of the completion session, so no keystroke
+    // is needed here.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        ed.settle();
+        std::thread::sleep(Duration::from_millis(10));
+        if Instant::now() >= deadline {
+            break;
+        }
+    }
+
+    // One ordinary edit — not a fresh `Ctrl-Space` — is what re-invokes the
+    // still-open session's sources.
+    ed.feed_key(key(' '));
+    ed.feed_key(key_backspace());
+    ed.settle();
+    assert!(
+        labels(&ed).contains(&"late_word".to_string()),
+        "an edit on an already-open menu must pick up the walk's progress"
+    );
+}
+
+/// A *global* `word-chars` change reindexes every open buffer
+/// (`on-option-change`, README.md's "`word-chars` invalidation") — unlike
+/// `word_chars_extends_what_counts_as_a_word` above, which sets the option
+/// before the buffer is even opened (so the very first index already sees
+/// it), this sets it on an *already-indexed* buffer with no intervening
+/// edit, which only the new hook can catch.
+#[test]
+fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "foo-bar\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    assert!(
+        !labels(&ed).contains(&"foo-bar".to_string()),
+        "sanity: default word-chars must not join foo-bar yet: {:?}",
+        labels(&ed)
+    );
+
+    // Two Escapes, not one: the first closes the still-open completion
+    // popup from `trigger` above, the second leaves Insert mode. A single
+    // Escape here would leave the editor in Insert mode, and the ":set..."
+    // below would be typed as literal buffer text instead of run as a
+    // command.
+    ed.feed_key(key_esc());
+    ed.feed_key(key_esc());
+    type_cmd(&mut ed, ":set global word-chars=-");
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "foo-bar");
 }
 
 /// The plan's reason for existing: `core:buffer-words` and `core:lsp`
