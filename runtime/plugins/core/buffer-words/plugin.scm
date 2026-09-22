@@ -144,4 +144,4 @@
 
 (register-completion-source! "buffer-words"
   (lambda (id bid prefix) (completion-emit! id (bw/items bid)))
-  #:target 'buffer #:token 'word #:match bw/match)
+  #:target 'buffer #:match bw/match)

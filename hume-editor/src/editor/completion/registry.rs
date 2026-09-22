@@ -7,12 +7,12 @@
 //! from the natives by construction and a Steel entry never outlives the
 //! config that registered it.
 //!
-//! A source's *static* facts live here (what it targets, where its token
-//! starts, how its items are scored, its priority); everything about one
-//! particular invocation of it — the document it saw, the span it answered
-//! for, the items — is `session.rs`'s [`super::Invocation`]. A session
-//! refers back here by [`SourceId`] rather than copying any of this, so a
-//! name/priority/match kind has exactly one home.
+//! A source's *static* facts live here (what it targets, how its items are
+//! scored, its priority); everything about one particular invocation of it
+//! — the document it saw, the span it answered for, the items — is
+//! `session.rs`'s [`super::Invocation`]. A session refers back here by
+//! [`SourceId`] rather than copying any of this, so a name/priority/match
+//! kind has exactly one home.
 
 use std::ops::Range;
 
@@ -20,65 +20,40 @@ use steel::rvals::SteelVal;
 
 use super::{CompletionCtx, CompletionItem, MatchKind};
 
-/// Where a `Buffer`-target source's token starts — resolved by Rust against
-/// the invocation's own snapshot *before* the source runs, so it is
-/// deterministic, identical on every re-invocation, and known (for the
-/// seeded filter and the menu anchor) even while the source is still
-/// pending. Chosen once, at registration: the framework never guesses a
-/// boundary on a source's behalf.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::editor) enum BufferToken {
-    /// `hume_ops::edit::word_start_before(text, head, word_chars)..head` —
-    /// the identifier run before the cursor, the LSP source's choice.
-    Word,
-    /// `head..head` — no seeding, and accept replaces nothing before the
-    /// cursor. The right choice right after a non-identifier trigger.
-    Cursor,
-    /// The answer's own `#:span` is authoritative; an emission without one
-    /// is an error.
-    Custom,
-}
-
-/// [`BufferToken`]'s minibuffer counterpart, in byte offsets of the `:`
-/// line's input.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::editor) enum MinibufToken {
-    /// The whitespace-delimited argument token the cursor is in —
-    /// [`super::arg_prefix`]'s start through [`super::token_end_at`]'s
-    /// whitespace stop. The framework's own command-line grammar, so a
-    /// source that just enumerates a universe never has to spell it.
-    Arg,
-    /// The answer's own span is authoritative (`:e`'s path, `:set`'s
-    /// phase-dependent token).
-    Custom,
-}
-
-/// Which target a source serves, carrying that target's own token rule —
-/// the pairing is a type, not two fields validated against each other, so
-/// a `Buffer` source with an `Arg` token can't be built.
+/// Which target a source serves. A `Buffer` source's token is always the
+/// identifier run before the cursor
+/// (`hume_ops::edit::word_start_before(text, head, word_chars)..head`) —
+/// resolved by Rust against the invocation's own snapshot *before* the
+/// source runs, so it is deterministic, identical on every re-invocation,
+/// and known (for the seeded filter and the menu anchor) even while the
+/// source is still pending. A `Minibuf` source's token is the whitespace-
+/// delimited argument the cursor is in
+/// ([`super::arg_prefix`]'s start through [`super::token_end_at`]'s
+/// whitespace stop) — except a [`SourceBody::NativeDelegated`] source,
+/// which computes its own span synchronously instead (`:e`'s path, `:set`'s
+/// phase-dependent token).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::editor) enum SourceTarget {
-    Buffer(BufferToken),
-    Minibuf(MinibufToken),
+    Buffer,
+    Minibuf,
 }
 
 /// A native minibuffer source that enumerates a stable universe — the
 /// session's own matcher narrows it, and the orchestrator supplies the
-/// [`MinibufToken::Arg`] span it never has to compute.
+/// `'arg` span it never has to compute.
 pub(in crate::editor) type NativeUniverseFn = fn(&CompletionCtx<'_>) -> Vec<CompletionItem>;
 
 /// A native minibuffer source whose universe *is* the live input (a
 /// directory listing, a parse phase): computes its own finished, ordered
-/// result and its own [`MinibufToken::Custom`] byte span, fresh every
-/// attempt.
+/// result and its own byte span, fresh every attempt.
 pub(in crate::editor) type NativeDelegatedFn =
     fn(&str, usize, &CompletionCtx<'_>) -> (Range<usize>, Vec<CompletionItem>);
 
 /// How a source produces its answer. The two native shapes each imply
-/// their target and token rule (see [`SourceEntry::target`]) — a native
-/// source's signature *is* its contract, so there is no second field to
-/// keep in agreement with it. No native `Buffer`-target shape exists yet; a
-/// future buffer-words source adds its own variant here.
+/// their target (see [`SourceEntry::target`]) — a native source's signature
+/// *is* its contract, so there is no second field to keep in agreement with
+/// it. No native `Buffer`-target shape exists yet; a future source that
+/// scans the buffer itself adds its own variant here.
 pub(in crate::editor) enum SourceBody {
     NativeUniverse(NativeUniverseFn),
     NativeDelegated(NativeDelegatedFn),
@@ -102,8 +77,7 @@ pub(in crate::editor) struct SourceEntry {
 impl SourceEntry {
     pub(in crate::editor) fn target(&self) -> SourceTarget {
         match &self.body {
-            SourceBody::NativeUniverse(_) => SourceTarget::Minibuf(MinibufToken::Arg),
-            SourceBody::NativeDelegated(_) => SourceTarget::Minibuf(MinibufToken::Custom),
+            SourceBody::NativeUniverse(_) | SourceBody::NativeDelegated(_) => SourceTarget::Minibuf,
             SourceBody::Steel { target, .. } => *target,
         }
     }
@@ -205,7 +179,7 @@ impl SourceRegistry {
         self.entries
             .iter()
             .enumerate()
-            .filter(|(_, e)| matches!(e.target(), SourceTarget::Buffer(_)))
+            .filter(|(_, e)| e.target() == SourceTarget::Buffer)
             .map(|(i, _)| SourceId(i as u32))
             .collect()
     }

@@ -30,8 +30,7 @@ pub(in crate::editor) use item::CompletionItem;
 pub(in crate::editor) use orchestrate::Trigger;
 pub(in crate::editor) use path::{PATH_DIRS_ONLY_SOURCE, PATH_SOURCE};
 pub(in crate::editor) use registry::{
-    BufferToken, MinibufToken, RegisterOutcome, SourceBody, SourceEntry, SourceRegistry,
-    SourceTarget,
+    RegisterOutcome, SourceBody, SourceEntry, SourceRegistry, SourceTarget,
 };
 pub(in crate::editor) use session::{CompletionMenuUi, CompletionSession, MatchKind};
 pub(in crate::editor) use set::SET_SOURCE;
@@ -62,9 +61,9 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 ///
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
 /// `Delegated` sources use this for their own filtering; the orchestrator
-/// (`orchestrate.rs`) uses it too, for a `MinibufToken::Arg` source's span —
-/// that source's own function doesn't see the input at all, so nothing else
-/// computes this for it.
+/// (`orchestrate.rs`'s `arg_span`) uses it too, for any minibuffer source
+/// but `NativeDelegated` — that source's own function doesn't see the input
+/// at all, so nothing else computes this for it.
 pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
     let up_to_cursor = &input[..cursor.min(input.len())];
     match up_to_cursor.find(' ') {

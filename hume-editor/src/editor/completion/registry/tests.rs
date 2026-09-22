@@ -16,10 +16,7 @@ fn steel_entry(name: &str, target: SourceTarget) -> SourceEntry {
 fn register_under_a_fresh_name_adds() {
     let mut reg = SourceRegistry::with_defaults();
     let before = reg.entries.len();
-    let outcome = reg.register(steel_entry(
-        "my-source",
-        SourceTarget::Buffer(BufferToken::Word),
-    ));
+    let outcome = reg.register(steel_entry("my-source", SourceTarget::Buffer));
     assert!(matches!(outcome, RegisterOutcome::Added));
     assert_eq!(reg.entries.len(), before + 1);
 }
@@ -28,10 +25,7 @@ fn register_under_a_fresh_name_adds() {
 fn register_under_a_same_target_name_replaces_in_place() {
     let mut reg = SourceRegistry::with_defaults();
     let id_before = reg.id_of("path").expect("native path source registered");
-    let outcome = reg.register(steel_entry(
-        "path",
-        SourceTarget::Minibuf(MinibufToken::Custom),
-    ));
+    let outcome = reg.register(steel_entry("path", SourceTarget::Minibuf));
     assert!(matches!(outcome, RegisterOutcome::Replaced));
     let id_after = reg.id_of("path").expect("still registered");
     assert_eq!(
@@ -49,10 +43,10 @@ fn register_under_a_same_target_name_replaces_in_place() {
 fn register_under_a_taken_name_with_a_different_target_is_refused() {
     let mut reg = SourceRegistry::with_defaults();
     let original_id = reg.id_of("path").expect("native path source registered");
-    let outcome = reg.register(steel_entry("path", SourceTarget::Buffer(BufferToken::Word)));
+    let outcome = reg.register(steel_entry("path", SourceTarget::Buffer));
     match outcome {
         RegisterOutcome::TargetMismatch(existing) => {
-            assert_eq!(existing, SourceTarget::Minibuf(MinibufToken::Custom));
+            assert_eq!(existing, SourceTarget::Minibuf);
         }
         other => panic!(
             "expected TargetMismatch, got a different outcome: entries len check below\n{other:?}"

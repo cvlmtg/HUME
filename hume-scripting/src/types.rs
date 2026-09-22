@@ -284,8 +284,8 @@ pub enum Effect {
     /// a host capability for exactly [`Effect::BindKey`]'s reason: a failed
     /// plugin activation's registration is never applied, so there is no
     /// owner ledger to keep and no unregister pass to run. Argument
-    /// validation (a callable `proc`, a `#:target`/`#:token` pair that
-    /// exists) still fails synchronously inside the builtin.
+    /// validation (a callable `proc`, a `#:target` that exists) still fails
+    /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
 }
 

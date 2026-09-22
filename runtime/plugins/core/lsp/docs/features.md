@@ -53,8 +53,9 @@ spec-valid ("nothing to show"), handled the same as a null/void response.
 ## Completion
 
 The plugin is a *source*, not the driver: `register-completion-source!` registers
-`"lsp"` (`#:token 'word`, so the editor seeds the filter from the identifier before
-the cursor and accept replaces it), and the editor calls it — on `Ctrl-Space`, on a
+`"lsp"` (a `#:target 'buffer` source — every buffer source's token is the
+identifier before the cursor, so the editor seeds the filter from it and accept
+replaces it), and the editor calls it — on `Ctrl-Space`, on a
 server trigger character (registered under the same `"lsp"` name at attach, so the
 editor invokes the source by name with no hook round trip), and again after each
 keystroke while the last answer said `isIncomplete`. The source declines with an empty

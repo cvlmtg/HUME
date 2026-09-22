@@ -66,20 +66,17 @@ Six concepts, each with one owner — everything under
 
 ```rust
 enum SourceBody {
-    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // ⇒ Minibuf + MinibufToken::Arg
-    NativeDelegated(fn(&str, usize, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // ⇒ Minibuf + Custom
+    NativeUniverse(fn(&CompletionCtx) -> Vec<CompletionItem>),          // ⇒ Minibuf, 'arg span
+    NativeDelegated(fn(&str, usize, &CompletionCtx) -> (Range<usize>, Vec<CompletionItem>)),  // ⇒ Minibuf, own span
     Steel { proc: SteelVal, target: SourceTarget },
 }
-enum SourceTarget { Buffer(BufferToken), Minibuf(MinibufToken) }
-enum BufferToken  { Word, Cursor, Custom }
-enum MinibufToken { Arg, Custom }
+enum SourceTarget { Buffer, Minibuf }
 ```
 
 A native source's signature *is* its contract (`SourceEntry::target` is
-derived from the body); a Steel source declares `#:target`/`#:token`, decoded
-as one value at the builtin so a `'buffer` source with an `'arg` token is a
-Steel argument error, never a state the editor has to reject later. No native
-`Buffer`-target shape exists — the buffer-words source
+derived from the body); a Steel source declares `#:target` alone — there is
+no separate token keyword, because each target has exactly one token rule
+(below). No native `Buffer`-target shape exists — the buffer-words source
 (`runtime/plugins/core/buffer-words/`) is Steel, deliberately: it dogfoods
 this plugin-facing API rather than the Rust-internal machinery the six native
 minibuffer sources already validate.
@@ -90,27 +87,33 @@ compiled in. `TypedCommand.completer` (`Option<Cow<'static, str>>`) names any
 entry by name — a built-in's `&'static str` constant, or the runtime string
 `define-typed-command! … #:complete "name"` hands over.
 
-**The token rule is the source's, chosen once at registration.** For a
-`Buffer` source the editor resolves it *before* the source runs, against the
-invocation's own snapshot: `Word` is `hume_ops::edit::word_start_before(text,
-head, word_chars)..head` (the LSP source's choice — the seeded filter is that
-text, handed to the proc as its `prefix` argument); `Cursor` is `head..head`
-(no seeding, and accept replaces nothing before the cursor); `Custom` leaves
-it to the answer's `#:span`. For a `Minibuf` source, `Arg` is the
-whitespace-delimited argument the cursor is in (`arg_prefix`/`token_end_at`,
-the framework's own command-line grammar) and `Custom` is the answer's own
-span (`:e`'s path, `:set`'s phase-dependent token). Nothing in the framework
-guesses a boundary on a source's behalf, and nothing forces one source's
-boundary on another.
+**Every buffer source's token is the identifier before the cursor; every
+minibuffer source's is the whitespace-delimited argument the cursor is in —
+except `NativeDelegated`, which computes its own span.** The editor resolves
+a `Buffer` source's token *before* the source runs, against the invocation's
+own snapshot: `hume_ops::edit::word_start_before(text, head,
+word_chars)..head` (the seeded filter is that text, handed to the proc as
+its `prefix` argument). A `Minibuf` source's token is likewise resolved
+upfront, via `arg_prefix`/`token_end_at` (the framework's own command-line
+grammar) — except `NativeDelegated`, whose candidate universe *is* the live
+input, so the orchestrator calls its function first and takes the span it
+returns (`:e`'s path, `:set`'s phase-dependent token). Nothing in the
+framework guesses a boundary on a source's behalf, and nothing forces one
+source's boundary on another. An earlier design let a source name its own
+span via a `'custom` token and `#:span` on every answer, and a buffer source
+could ask for no seeding at all via a `'cursor` token; no shipping source
+ever used either, so both were removed rather than carried as unvalidated
+surface.
 
 ### Invocations and answers
 
 A trigger mints one `Invocation` per source (`widget_token::next()` for its
-id). A native source answers inline; a Steel one is *queued* via
-`EditorState::queue_steel_call` — `(proc id bid prefix)` for a buffer source,
-`(proc id input cursor)` for a `:`-line one — and answers with
-`(completion-emit! id items #:incomplete #:span)`, sync or from any later
-callback, exactly once. An empty list is "nothing from this source".
+id), its span already resolved (above) — a native source answers inline; a
+Steel one is *queued* via `EditorState::queue_steel_call` — `(proc id bid
+prefix)` for a buffer source, `(proc id input cursor)` for a `:`-line one —
+and answers with `(completion-emit! id items #:incomplete)`, sync or from
+any later callback, exactly once. An empty list is "nothing from this
+source".
 
 **An answer applies only to the latest call of its slot.** Re-invoking a
 source (a later keystroke while its last answer was `isIncomplete`, a second
@@ -121,18 +124,6 @@ may stream. This is the entire stale-async story — there is no session
 token, no `async_opener_stale` gate, and no way for a slow LSP response to
 overwrite a newer one. The old answer stays ranked (against the new token
 text) until the new one lands, so the menu never blinks empty.
-
-`#:span` (required for, and only honoured by, a `Custom` token) is in the
-*invocation's own* coordinates — the snapshot a buffer source was handed,
-the `input` a `:`-line source was — never live ones: the source computes it
-from what it was given, and the session maps it forward through whatever was
-typed since. Validated where it enters (`DocSnapshot::resolve_custom_span`):
-in range, grapheme-snapped, containing the cursor as it stood then, on one
-line — a completion token never spans a line, the one bound left on an
-otherwise source-chosen value, since it doubles as accept's replacement span.
-A streaming source's later answer re-resolves and replaces the earlier span,
-same as its items — nothing about a `Custom` token's *first* answer pins the
-ones that follow.
 
 ### Edits
 
@@ -207,15 +198,15 @@ the sources with a ranked candidate.
 
 | Builtin | Notes |
 |---|---|
-| `(register-completion-source! name proc #:target #:token #:match ['fuzzy] #:priority [0])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); re-registering a name replaces it, natives included, *as long as the new source serves the same target* — a name taken by the other target is refused with a loud error, not silently clobbered |
-| `(completion-emit! id items #:incomplete [#f] #:span [#f])` | the one way items enter a session; `#f` once `id` is stale |
+| `(register-completion-source! name proc #:target #:match ['fuzzy] #:priority [0])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); re-registering a name replaces it, natives included, *as long as the new source serves the same target* — a name taken by the other target is refused with a loud error, not silently clobbered |
+| `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(register-trigger-chars! source language chars)` + `on-trigger-char` | unchanged, shared with signature help; the editor additionally invokes the completion source registered under `source`'s name, by name |
 | `(define-typed-command! … #:complete "name")` | a `:` command's argument completer |
 | command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger")` from Steel |
 
 `core:lsp/completion.scm` is the reference source: `register-completion-
-source! "lsp"` with `#:token 'word #:priority 10`, whose proc sends
+source! "lsp"` with `#:priority 10`, whose proc sends
 `textDocument/completion` (`#:supersede "completion"`) and answers with the
 decoded list and its `isIncomplete` flag, declining with an empty answer when
 the buffer's server has no `completionProvider`; `lsp/setup-trigger-chars!`
@@ -224,7 +215,7 @@ registers the server's trigger characters under the same `"lsp"` name.
 ## Tests
 
 - `hume-editor/src/editor/completion/session/tests.rs` — the store alone:
-  per-slot tokens, the crossing rule, stale answers, custom-span validation.
+  per-slot tokens, the crossing rule, stale answers, no-op item drop.
 - `hume-editor/src/editor/tests/completion/` — through the real seams, one
   file per concern: `sources.rs` (registration, invocation, token rules,
   stale answers, re-invocation, several sources), `menu_keys.rs`,
@@ -242,7 +233,7 @@ registers the server's trigger characters under the same `"lsp"` name.
 |----------|--------|-----------|
 | Source registry | **One, in Rust, on `ConfigState`, holding native and Steel sources** | The minibuffer's six native sources must work with `hume --no-config`, so a Rust registry exists regardless; a second, Steel-only registry for Insert mode meant two registries and two source contracts. The frequency-cut rule is about what runs when, not where the list of sources lives — invocation is user-intent frequency either way. |
 | Orchestration | **Rust, `impl EditorState`** | One driver for both targets, reachable from `EditorHostImpl` (`completion-emit!`) and key handlers alike; Steel sources are only ever queued (`queue_steel_call`), the picker's live-source precedent. |
-| Token boundary | **Per source, chosen at registration (`BufferToken`/`MinibufToken`), resolved by Rust before a buffer source runs** | Deterministic, identical on every re-invocation, known while the source is pending; no source is forced onto another's boundary. |
+| Token boundary | **One rule per target (buffer: the word before the cursor; minibuf: the whitespace-delimited argument), resolved by Rust before the source runs** | Deterministic, identical on every re-invocation, known while the source is pending. A `'cursor`/`'custom` per-source choice existed once; no shipping source used either, so both were removed rather than carried as unvalidated surface. |
 | Async identity | **Per-invocation id; an answer applies only to its slot's latest call** | Strictly stronger than a session token plus replace-per-source: a superseded call's late answer can never land at all. |
 | Snapshots | **Per invocation, never session-wide** | An `isIncomplete` re-request is computed against a later document than the first answer; each decodes its own `textEdit` ranges against its own snapshot. |
 | Filter text | **Derived per slot from its live span, never set** | Removes `completion-update-filter!` and the accept-time extension it forced. |

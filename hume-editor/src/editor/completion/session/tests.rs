@@ -3,7 +3,7 @@
 //! `editor/tests/completion/`.
 
 use super::*;
-use crate::editor::completion::registry::{BufferToken, SourceBody, SourceEntry, SourceTarget};
+use crate::editor::completion::registry::{SourceBody, SourceEntry, SourceTarget};
 use hume_editing::changeset::ChangeSetBuilder;
 use steel::rvals::SteelVal;
 
@@ -26,7 +26,7 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
             priority: *priority,
             body: SourceBody::Steel {
                 proc: SteelVal::Void,
-                target: SourceTarget::Buffer(BufferToken::Word),
+                target: SourceTarget::Buffer,
             },
         });
     }
@@ -64,12 +64,10 @@ fn invoke_and_answer(
     let inv = Invocation::buffer(
         text.rope().clone(),
         CharOffset::new(head),
-        Some(CharOffset::new(start)..CharOffset::new(head)),
+        CharOffset::new(start)..CharOffset::new(head),
     );
     let id = session.invoke(source, inv);
-    session
-        .contribute(id, items(labels), false, None)
-        .expect("a resolved-span invocation takes no span");
+    session.contribute(id, items(labels), false);
 }
 
 fn live(text: &BufferText, head: usize) -> Option<LiveDoc<'_>> {
@@ -262,17 +260,14 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
     let inv = Invocation::buffer(
         text.rope().clone(),
         CharOffset::new(3),
-        Some(CharOffset::new(0)..CharOffset::new(3)),
+        CharOffset::new(0)..CharOffset::new(3),
     );
     let id = session.invoke(id_of(&reg, "s"), inv);
-    session
-        .contribute(
-            id,
-            vec![item_with_edits("cat", Some(some_edit("cat")), Vec::new())],
-            false,
-            None,
-        )
-        .unwrap();
+    assert!(session.contribute(
+        id,
+        vec![item_with_edits("cat", Some(some_edit("cat")), Vec::new())],
+        false,
+    ));
     session.rank(&reg, live(&text, 3));
     assert_eq!(
         ranked_labels(&session, &reg),
@@ -288,21 +283,18 @@ fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() 
     let inv = Invocation::buffer(
         text.rope().clone(),
         CharOffset::new(3),
-        Some(CharOffset::new(0)..CharOffset::new(3)),
+        CharOffset::new(0)..CharOffset::new(3),
     );
     let id = session.invoke(id_of(&reg, "s"), inv);
-    session
-        .contribute(
-            id,
-            vec![item_with_edits(
-                "cat",
-                None,
-                vec![some_edit("use std::cat;\n")],
-            )],
-            false,
+    assert!(session.contribute(
+        id,
+        vec![item_with_edits(
+            "cat",
             None,
-        )
-        .unwrap();
+            vec![some_edit("use std::cat;\n")],
+        )],
+        false,
+    ));
     session.rank(&reg, live(&text, 3));
     assert_eq!(
         ranked_labels(&session, &reg),
@@ -321,20 +313,14 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let head = CharOffset::new(0);
     let first = session.invoke(
         src,
-        Invocation::buffer(text.rope().clone(), head, Some(head..head)),
+        Invocation::buffer(text.rope().clone(), head, head..head),
     );
     let second = session.invoke(
         src,
-        Invocation::buffer(text.rope().clone(), head, Some(head..head)),
+        Invocation::buffer(text.rope().clone(), head, head..head),
     );
-    assert_eq!(
-        session.contribute(first, items(&["stale"]), false, None),
-        Ok(false)
-    );
-    assert_eq!(
-        session.contribute(second, items(&["fresh"]), false, None),
-        Ok(true)
-    );
+    assert!(!session.contribute(first, items(&["stale"]), false));
+    assert!(session.contribute(second, items(&["fresh"]), false));
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["fresh"]);
 }
@@ -347,16 +333,10 @@ fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
     let head = CharOffset::new(0);
     let id = session.invoke(
         src,
-        Invocation::buffer(text.rope().clone(), head, Some(head..head)),
+        Invocation::buffer(text.rope().clone(), head, head..head),
     );
-    assert_eq!(
-        session.contribute(id, items(&["x", "y"]), false, None),
-        Ok(true)
-    );
-    assert_eq!(
-        session.contribute(id, items(&["x", "z"]), false, None),
-        Ok(true)
-    );
+    assert!(session.contribute(id, items(&["x", "y"]), false));
+    assert!(session.contribute(id, items(&["x", "z"]), false));
     session.rank(&reg, live(&text, 0));
     assert_eq!(ranked_labels(&session, &reg), vec!["x", "z"]);
 }
@@ -371,10 +351,10 @@ fn pending_and_live_track_each_slots_latest_call() {
     assert!(!session.has_live_sources());
     let id = session.invoke(
         src,
-        Invocation::buffer(text.rope().clone(), head, Some(head..head)),
+        Invocation::buffer(text.rope().clone(), head, head..head),
     );
     assert!(session.is_pending());
-    session.contribute(id, items(&["x"]), true, None).unwrap();
+    assert!(session.contribute(id, items(&["x"]), true));
     assert!(!session.is_pending());
     assert!(session.has_live_sources());
     assert_eq!(
@@ -382,7 +362,7 @@ fn pending_and_live_track_each_slots_latest_call() {
         vec![src],
         "flagged incomplete"
     );
-    session.contribute(id, items(&[]), false, None).unwrap();
+    assert!(session.contribute(id, items(&[]), false));
     assert!(!session.has_live_sources(), "an empty answer is not live");
     assert!(session.sources_to_reinvoke().is_empty());
 }
@@ -495,110 +475,6 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
     assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));
 }
 
-// ── Custom spans ─────────────────────────────────────────────────────────────
-
-fn custom_invocation(text: &BufferText, head: usize) -> Invocation {
-    Invocation::buffer(text.rope().clone(), CharOffset::new(head), None)
-}
-
-#[test]
-fn a_custom_span_is_validated_against_the_snapshot_and_mapped_to_live() {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("x fo\n");
-    let id = session.invoke(id_of(&reg, "s"), custom_invocation(&text, 4));
-    // A keystroke lands before the (still pending) answer.
-    let (cs, text) = edit(&text, 4, 4, "o");
-    assert!(session.observe_edit(&cs, 1, CharOffset::new(5)));
-    // The answer names its span in the snapshot's own coordinates.
-    assert_eq!(
-        session.contribute(id, items(&["foobar"]), false, Some((2, 4))),
-        Ok(true)
-    );
-    session.rank(&reg, live(&text, 5));
-    assert_eq!(
-        ranked_labels(&session, &reg),
-        vec!["foobar"],
-        "filtered on the live \"foo\""
-    );
-    assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(2)));
-}
-
-#[test]
-fn a_custom_span_is_required_and_checked() {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("abc\ndef\n");
-    let src = id_of(&reg, "s");
-    let err = |session: &mut CompletionSession, span| {
-        let id = session.invoke(src, custom_invocation(&text, 5));
-        session
-            .contribute(id, items(&["x"]), false, span)
-            .expect_err("rejected")
-    };
-    assert!(err(&mut session, None).contains("#:span is required"));
-    assert!(err(&mut session, Some((0, 99))).contains("out of range"));
-    assert!(err(&mut session, Some((6, 7))).contains("does not contain the cursor"));
-    assert!(err(&mut session, Some((0, 5))).contains("more than one line"));
-    assert!(
-        !session.is_pending() && !session.has_live_sources(),
-        "a rejected answer leaves the slot with nothing — neither pending nor live"
-    );
-}
-
-#[test]
-fn a_minibuf_custom_span_is_checked_against_the_input() {
-    let reg = registry(&[("s", 0)]);
-    let mut session = CompletionSession::open_minibuf("e src/ma".into(), 8);
-    let src = id_of(&reg, "s");
-    let err = |session: &mut CompletionSession, span| {
-        let id = session.invoke(src, Invocation::minibuf(None));
-        session
-            .contribute(id, items(&["x"]), false, span)
-            .expect_err("rejected")
-    };
-    assert!(err(&mut session, Some((2, 4))).contains("must contain the cursor"));
-    assert!(err(&mut session, Some((2, 99))).contains("must contain the cursor"));
-    let id = session.invoke(src, Invocation::minibuf(None));
-    assert_eq!(
-        session.contribute(id, items(&["src/main.rs"]), false, Some((2, 8))),
-        Ok(true)
-    );
-    session.rank(&reg, None);
-    assert_eq!(session.minibuf_apply(0), Some((2..8, "src/main.rs")));
-    assert_eq!(session.menu_anchor_byte(), Some(2));
-}
-
-/// A source may stream: a repeated answer for a still-latest id replaces
-/// the earlier one wholesale, `#:span` included — the earlier span must
-/// not stick once a later answer names a different one.
-#[test]
-fn a_second_answer_for_a_still_latest_custom_span_replaces_it() {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("ab foo\n");
-    let id = session.invoke(id_of(&reg, "s"), custom_invocation(&text, 6));
-    assert_eq!(
-        session.contribute(id, items(&["ab foobar"]), false, Some((3, 6))),
-        Ok(true)
-    );
-    session.rank(&reg, live(&text, 6));
-    assert_eq!(
-        session.menu_anchor_char(),
-        Some(CharOffset::new(3)),
-        "sanity"
-    );
-
-    assert_eq!(
-        session.contribute(id, items(&["ab foobar"]), false, Some((0, 6))),
-        Ok(true)
-    );
-    session.rank(&reg, live(&text, 6));
-    assert_eq!(
-        session.menu_anchor_char(),
-        Some(CharOffset::new(0)),
-        "a re-emitted #:span for a still-latest id must replace the earlier \
-         span, not be dropped"
-    );
-}
-
 // ── Selection stepping ───────────────────────────────────────────────────────
 
 #[test]
@@ -612,10 +488,8 @@ fn step_selection_on_an_empty_ranking_is_none() {
 fn step_selection_wraps_at_either_end() {
     let reg = registry(&[("s", 0)]);
     let mut session = CompletionSession::open_minibuf("w".into(), 1);
-    let id = session.invoke(id_of(&reg, "s"), Invocation::minibuf(Some(0..1)));
-    session
-        .contribute(id, items(&["wa", "wb"]), false, None)
-        .unwrap();
+    let id = session.invoke(id_of(&reg, "s"), Invocation::minibuf(0..1));
+    assert!(session.contribute(id, items(&["wa", "wb"]), false));
     session.rank(&reg, None);
     assert_eq!(session.step_selection(1, true), Some(0), "wraps forward");
     assert_eq!(session.step_selection(0, false), Some(1), "wraps backward");

@@ -248,14 +248,14 @@ fn open_drawer_via_host(ed: &mut Editor, items: &[&str]) -> u64 {
 
 /// A Steel completion source named `name` that answers `items` — Scheme
 /// item literals, e.g. `(list (hash "label" "foo"))` — synchronously,
-/// registered with `#:target 'buffer #:token 'word` plus `extra` keywords.
-/// The one shape every completion test's script starts from, so the
-/// registration syntax is spelled once.
+/// registered with `#:target 'buffer` plus `extra` keywords. The one shape
+/// every completion test's script starts from, so the registration syntax
+/// is spelled once.
 fn completion_source(name: &str, items: &str, extra: &str) -> String {
     format!(
         r#"(register-completion-source! "{name}"
              (lambda (id bid prefix) (completion-emit! id {items}))
-             #:target 'buffer #:token 'word {extra})"#
+             #:target 'buffer {extra})"#
     )
 }
 

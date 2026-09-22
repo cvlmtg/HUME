@@ -381,7 +381,7 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
         r#"(define captured-id #f)
            (register-completion-source! "names"
              (lambda (id input cursor) (set! captured-id id))
-             #:target 'minibuf #:token 'arg #:match 'string)
+             #:target 'minibuf #:match 'string)
            (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")
            (define-command! "answer-many" "" (lambda ()
              (completion-emit! captured-id

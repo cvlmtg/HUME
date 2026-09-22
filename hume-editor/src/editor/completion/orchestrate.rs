@@ -19,9 +19,7 @@ use hume_rope::offset::CharOffset;
 use hume_scripting::SteelBufferId;
 use steel::rvals::SteelVal;
 
-use super::registry::{
-    BufferToken, MinibufToken, SourceBody, SourceId, SourceRegistry, SourceTarget,
-};
+use super::registry::{SourceBody, SourceId, SourceRegistry, SourceTarget};
 use super::session::{CompletionSession, Invocation, LiveDoc};
 use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
 use crate::editor::buffer::store::BufferStore;
@@ -73,7 +71,7 @@ impl EditorState {
             Trigger::Char { sources: names } => names
                 .iter()
                 .filter_map(|name| sources.id_of(name))
-                .filter(|&id| matches!(sources.get(id).target(), SourceTarget::Buffer(_)))
+                .filter(|&id| sources.get(id).target() == SourceTarget::Buffer)
                 .collect(),
         };
         if ids.is_empty() {
@@ -304,31 +302,26 @@ impl EditorState {
 
     // ── Answers ──────────────────────────────────────────────────────────────
 
-    /// A source's answer to invocation `id` — `completion-emit!`. `Ok(false)`
+    /// A source's answer to invocation `id` — `completion-emit!`. `false`
     /// when no open session has that invocation as a slot's latest call
     /// (superseded, replaced, or dismissed since: expected-normal for a late
     /// async source) — the session is untouched, so it is settled only on
-    /// `Ok(true)`/`Err`: a dropped answer changed nothing, and settling
-    /// anyway would still reset the menu's selection out from under a user
-    /// who has since Tabbed to a row an unrelated, superseded call has no
-    /// bearing on. `Err` still settles — a rejected `Custom` span leaves
-    /// its slot with neither `inflight` nor `shown` (see
-    /// `CompletionSession::contribute`'s own doc), which can spend the
-    /// session and must still be caught.
+    /// `true`: a dropped answer changed nothing, and settling anyway would
+    /// still reset the menu's selection out from under a user who has since
+    /// Tabbed to a row an unrelated, superseded call has no bearing on.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
         id: u64,
         items: Vec<CompletionItem>,
         incomplete: bool,
-        span: Option<(usize, usize)>,
-    ) -> Result<bool, String> {
+    ) -> bool {
         let Some(r) = self.input.ref_of::<CompletionLayer>() else {
-            return Ok(false);
+            return false;
         };
         let session = self.input.completion_mut().expect("ref_of found the layer");
-        let result = session.contribute(id, items, incomplete, span);
-        if !matches!(result, Ok(false)) {
+        let landed = session.contribute(id, items, incomplete);
+        if landed {
             if session.buffer().is_some() {
                 let explicit = session.is_explicit();
                 self.rerank_open_session();
@@ -347,7 +340,7 @@ impl EditorState {
                 self.settle_minibuf_session(view, r);
             }
         }
-        result
+        landed
     }
 
     /// Re-ranks the open session against the live document and resets the
@@ -414,19 +407,13 @@ fn invoke_buffer_sources(
         .filter_map(|&id| {
             let SourceBody::Steel {
                 proc,
-                target: SourceTarget::Buffer(token),
+                target: SourceTarget::Buffer,
             } = &sources.get(id).body
             else {
                 return None;
             };
-            let live = match token {
-                BufferToken::Word => {
-                    let chars = crate::editor::commands::effective_word_chars(buf, settings);
-                    Some(hume_ops::edit::word_start_before(text, head, chars)..head)
-                }
-                BufferToken::Cursor => Some(head..head),
-                BufferToken::Custom => None,
-            };
+            let chars = crate::editor::commands::effective_word_chars(buf, settings);
+            let live = hume_ops::edit::word_start_before(text, head, chars)..head;
             let invocation = Invocation::buffer(text.rope().clone(), head, live);
             let prefix = invocation.prefix(text);
             let invocation_id = session.invoke(id, invocation);
@@ -446,6 +433,13 @@ fn invoke_buffer_sources(
 /// answers inline, a Steel one returns the call to queue. `Err` names a
 /// source that can't serve the `:` line at all (a `Buffer`-target entry a
 /// `TypedCommand.completer` mistakenly names).
+///
+/// `NativeDelegated`'s own span comes from calling its function first — the
+/// only body variant whose span isn't the generic `'arg` one, since its
+/// candidate universe *is* the live input and the two are computed
+/// together. Every other body gets the whitespace-delimited argument span
+/// computed here, upfront, the same way a `Buffer` source's span is always
+/// the word before the cursor (`invoke_buffer_sources`).
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
@@ -455,45 +449,45 @@ fn invoke_minibuf_source(
     cursor: usize,
 ) -> Result<Option<SteelCall>, String> {
     let entry = sources.get(id);
-    let SourceTarget::Minibuf(token) = entry.target() else {
+    if entry.target() != SourceTarget::Minibuf {
         return Err(format!(
             "completion source {:?} serves the buffer, not the command line",
             entry.name
         ));
-    };
-    let bytes = match token {
-        MinibufToken::Arg => {
-            let (start, _) = arg_prefix(input, cursor);
-            Some(start..token_end_at(input, cursor, &[' ']))
-        }
-        MinibufToken::Custom => None,
-    };
-    let invocation_id = session.invoke(id, Invocation::minibuf(bytes));
+    }
     let call = match &entry.body {
         SourceBody::NativeUniverse(f) => {
-            let items = f(ctx);
-            session
-                .contribute(invocation_id, items, false, None)
-                .expect("an Arg-token invocation takes no span");
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg_span(input, cursor)));
+            session.contribute(invocation_id, f(ctx), false);
             None
         }
         SourceBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
-            session
-                .contribute(invocation_id, items, false, Some((span.start, span.end)))
-                .expect("a native source's own span is within its own input");
+            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            session.contribute(invocation_id, items, false);
             None
         }
-        SourceBody::Steel { proc, .. } => Some((
-            proc.clone(),
-            vec![
-                SteelVal::IntV(invocation_id as isize),
-                SteelVal::StringV(input.into()),
-                SteelVal::IntV(cursor as isize),
-            ],
-        )),
+        SourceBody::Steel { proc, .. } => {
+            let invocation_id = session.invoke(id, Invocation::minibuf(arg_span(input, cursor)));
+            Some((
+                proc.clone(),
+                vec![
+                    SteelVal::IntV(invocation_id as isize),
+                    SteelVal::StringV(input.into()),
+                    SteelVal::IntV(cursor as isize),
+                ],
+            ))
+        }
     };
     Ok(call)
+}
+
+/// The whitespace-delimited argument token the cursor is in — the `'arg`
+/// span every minibuffer source but `NativeDelegated` gets, shared by
+/// [`invoke_minibuf_source`]'s `NativeUniverse` and `Steel` arms.
+fn arg_span(input: &str, cursor: usize) -> std::ops::Range<usize> {
+    let (start, _) = arg_prefix(input, cursor);
+    start..token_end_at(input, cursor, &[' '])
 }
 
 /// The `:` line's own command name, stripped of a trailing `!` (alias →

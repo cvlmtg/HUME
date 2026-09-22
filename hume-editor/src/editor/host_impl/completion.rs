@@ -2,9 +2,7 @@
 //! (`completion-emit!`), the ranked view out, accept/dismiss.
 
 use crate::editor::Severity;
-use crate::editor::completion::{
-    BufferToken, MinibufToken, RegisterOutcome, SourceBody, SourceEntry, SourceTarget,
-};
+use crate::editor::completion::{RegisterOutcome, SourceBody, SourceEntry, SourceTarget};
 
 use super::EditorHostImpl;
 use hume_scripting::host::{self, CompletionHost};
@@ -24,15 +22,8 @@ fn match_kind_from_host(m: host::MatchKind) -> crate::editor::completion::MatchK
 
 fn target_from_host(t: host::CompletionSourceTarget) -> SourceTarget {
     match t {
-        host::CompletionSourceTarget::Buffer(token) => SourceTarget::Buffer(match token {
-            host::BufferToken::Word => BufferToken::Word,
-            host::BufferToken::Cursor => BufferToken::Cursor,
-            host::BufferToken::Custom => BufferToken::Custom,
-        }),
-        host::CompletionSourceTarget::Minibuf(token) => SourceTarget::Minibuf(match token {
-            host::MinibufToken::Arg => MinibufToken::Arg,
-            host::MinibufToken::Custom => MinibufToken::Custom,
-        }),
+        host::CompletionSourceTarget::Buffer => SourceTarget::Buffer,
+        host::CompletionSourceTarget::Minibuf => SourceTarget::Minibuf,
     }
 }
 
@@ -90,8 +81,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         id: u64,
         items: Vec<serde_json::Value>,
         incomplete: bool,
-        span: Option<(usize, usize)>,
-    ) -> Result<bool, String> {
+    ) -> bool {
         // A malformed item (e.g. missing the spec-required `label`) is
         // skipped, not fatal to the whole batch — one bad item from a
         // misbehaving server must not silently drop every good one.
@@ -105,8 +95,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                 ),
             }
         }
-        self.state
-            .contribute(self.view, id, parsed, incomplete, span)
+        self.state.contribute(self.view, id, parsed, incomplete)
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {

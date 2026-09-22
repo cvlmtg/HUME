@@ -57,9 +57,6 @@ impl CompletionSession {
         let SpanTrack::Buffer { doc, live } = &invocation.span else {
             unreachable!("`self.buffer()` above confirmed a Buffer-target session")
         };
-        let Some(live) = live.resolved() else {
-            unreachable!("a ranked Buffer invocation always has its live span resolved")
-        };
         edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
         let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
 
@@ -148,11 +145,10 @@ impl CompletionSession {
             // just above — any prefix typed *before* triggering completion
             // (e.g. "fo" before the popup opened) is otherwise left
             // untouched, duplicating it ahead of `insert_text`. The token is
-            // the source's own declared span (`registry.rs`'s token rule, or
-            // a `Custom` answer's `#:span`), tracked through every keystroke
-            // since; there is no well-defined *per-cursor* token independent
-            // of it to fall back to, so this is the one span every cursor
-            // gets.
+            // the source's own declared span (`registry.rs`'s token rule),
+            // tracked through every keystroke since; there is no well-defined
+            // *per-cursor* token independent of it to fall back to, so this
+            // is the one span every cursor gets.
             None => (
                 live.start,
                 live.end,

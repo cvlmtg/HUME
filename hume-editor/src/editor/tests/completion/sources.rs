@@ -42,25 +42,9 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
                (log! 'info (string-append "prefix:" prefix "|bid-ok:"
                              (if (equal? bid (current-buffer)) "yes" "no")))
                (completion-emit! id (list (hash "label" "kitty_support"))))
-             #:target 'buffer #:token 'word)"#,
+             #:target 'buffer)"#,
     );
     assert_eq!(status(&ed), "prefix:ki|bid-ok:yes");
-}
-
-#[test]
-fn a_cursor_source_is_handed_an_empty_prefix_even_mid_word() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("ki-[x]>\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix)
-               (log! 'info (string-append "prefix:[" prefix "]"))
-               (completion-emit! id (list (hash "label" "kitty_support"))))
-             #:target 'buffer #:token 'cursor)"#,
-    );
-    assert_eq!(status(&ed), "prefix:[]");
 }
 
 #[test]
@@ -107,169 +91,6 @@ fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
     );
 }
 
-/// `'cursor` is a first-class choice, not a fallback: no filter at all,
-/// even mid-word.
-#[test]
-fn a_cursor_token_seeds_no_filter_even_mid_word() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("ab-[c]>def\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix) (completion-emit! id (list (hash "label" "kitty_support"))))
-             #:target 'buffer #:token 'cursor)"#,
-    );
-    assert_eq!(
-        labels(&ed),
-        vec!["kitty_support"],
-        "\"kitty_support\" shares no chars with \"ab\" — a word token would filter it out"
-    );
-}
-
-/// `'cursor` is also a declaration that accept replaces nothing before the
-/// cursor: the "fo" already in the buffer is left in place, duplicated ahead
-/// of the inserted text — the documented consequence of choosing it.
-#[test]
-fn a_cursor_token_replaces_nothing_before_the_cursor_on_accept() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("fo-[ ]>\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar" "insertText" "foobar"))))
-             #:target 'buffer #:token 'cursor)"#,
-    );
-    ed.feed_key(key_enter());
-    assert_eq!(ed.doc().text().to_string(), "fofoobar \n");
-}
-
-/// A `'custom` source names its own span, in the coordinates of the
-/// snapshot it was handed — here the two chars before the cursor.
-#[test]
-fn a_custom_token_uses_the_emitted_span_for_filtering_and_accept() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("x fo-[ ]>bar\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix)
-               (completion-emit! id (list (hash "label" "foobar") (hash "label" "zzz"))
-                                 #:span (cons 2 4)))
-             #:target 'buffer #:token 'custom)"#,
-    );
-    assert_eq!(
-        labels(&ed),
-        vec!["foobar"],
-        "filtered on the span's own \"fo\""
-    );
-    ed.feed_key(key_enter());
-    assert_eq!(
-        ed.doc().text().to_string(),
-        "x foobar bar\n",
-        "accept replaces exactly the emitted span"
-    );
-}
-
-#[test]
-fn a_custom_token_answer_without_a_span_is_an_error() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("fo-[ ]>\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar"))))
-             #:target 'buffer #:token 'custom)"#,
-    );
-    assert!(
-        ed.state.input.completion().is_none(),
-        "an unusable answer is \"nothing from this source\" — the session closes"
-    );
-    assert!(
-        status(&ed).contains("#:span is required"),
-        "got {:?}",
-        status(&ed)
-    );
-}
-
-fn custom_span_source(span: &str) -> String {
-    format!(
-        r#"(register-completion-source! "test"
-             (lambda (id bid prefix)
-               (completion-emit! id (list (hash "label" "x")) #:span {span}))
-             #:target 'buffer #:token 'custom)"#
-    )
-}
-
-#[test]
-fn a_custom_span_not_containing_the_cursor_is_an_error() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 3 5)"));
-    assert!(ed.state.input.completion().is_none());
-    assert!(
-        status(&ed).contains("does not contain the cursor"),
-        "got {:?}",
-        status(&ed)
-    );
-}
-
-#[test]
-fn a_custom_span_out_of_range_is_an_error() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
-    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 0 999)"));
-    assert!(ed.state.input.completion().is_none());
-    assert!(
-        status(&ed).contains("out of range"),
-        "got {:?}",
-        status(&ed)
-    );
-}
-
-/// A completion token never spans a line.
-#[test]
-fn a_custom_span_across_lines_is_an_error() {
-    let tmp = safe_tempdir();
-    let mut ed = editor_from("abc\n-[d]>ef\n");
-    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 0 5)"));
-    assert!(ed.state.input.completion().is_none());
-    assert!(
-        status(&ed).contains("more than one line"),
-        "got {:?}",
-        status(&ed)
-    );
-}
-
-/// A mid-cluster span start — between a base character and its combining
-/// mark — snaps outward to the cluster's own start, same as every other
-/// buffer-position seam that admits untrusted input. Proven through
-/// filtering: an unsnapped start seeds a 1-char filter (the orphaned mark
-/// alone), never a *prefix* of the item's filter text — only the correctly
-/// snapped 2-char "é" is.
-#[test]
-fn a_custom_span_starting_mid_cluster_snaps_to_the_cluster_start() {
-    let tmp = safe_tempdir();
-    // "cafe\u{0301}" — one cluster spans chars [3,5); 4 is inside it.
-    let mut ed = editor_from("cafe\u{0301}-[x]>\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        &format!(
-            r#"(register-completion-source! "test"
-                 (lambda (id bid prefix)
-                   (completion-emit! id (list (hash "label" "efoo" "filterText" "e{}foo"))
-                                     #:span (cons 4 5)))
-                 #:target 'buffer #:token 'custom #:match 'string)"#,
-            '\u{0301}'
-        ),
-    );
-    assert_eq!(labels(&ed), vec!["efoo"]);
-}
-
 // ── Answers ───────────────────────────────────────────────────────────────
 
 #[test]
@@ -294,7 +115,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
         r#"(define pending-id #f)
            (register-completion-source! "test"
              (lambda (id bid prefix) (set! pending-id id))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "answer" "" (lambda ()
              (completion-emit! pending-id (list (hash "label" "late")))))"#,
     );
@@ -318,7 +139,7 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
         r#"(define calls '())
            (register-completion-source! "test"
              (lambda (id bid prefix) (set! calls (cons id calls)))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "answer-first" "" (lambda ()
              (log! 'info (if (completion-emit! (cadr calls) (list (hash "label" "stale")))
                              "applied" "dropped"))))
@@ -349,7 +170,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
              (lambda (id bid prefix)
                (set! calls (cons id calls))
                (completion-emit! id (list (hash "label" "foo") (hash "label" "fox")) #:incomplete #t))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "answer-stale" "" (lambda ()
              (log! 'info (if (completion-emit! (car (reverse calls)) (list (hash "label" "OLD")))
                              "applied" "dropped"))))"#,
@@ -398,10 +219,10 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
            (register-completion-source! "a"
              (lambda (id bid prefix)
                (completion-emit! id (list (hash "label" "aaa") (hash "label" "abc"))))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (register-completion-source! "b"
              (lambda (id bid prefix) (set! pending-id id))
-             #:target 'buffer #:token 'word #:priority 10)
+             #:target 'buffer #:priority 10)
            (define-command! "answer-b" "" (lambda ()
              (completion-emit! pending-id (list (hash "label" "zzz")))))"#,
     );
@@ -442,7 +263,7 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
              (lambda (id bid prefix)
                (set! saved id)
                (completion-emit! id (list (hash "label" "x") (hash "label" "y"))))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "again" "" (lambda ()
              (completion-emit! saved (list (hash "label" "x") (hash "label" "z")))))"#,
     );
@@ -460,7 +281,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
         r#"(define saved #f)
            (register-completion-source! "test"
              (lambda (id bid prefix) (set! saved id))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "late" "" (lambda ()
              (log! 'info (if (completion-emit! saved (list (hash "label" "x"))) "applied" "dropped"))))"#,
     );
@@ -519,7 +340,7 @@ fn counting_source(incomplete: &str) -> String {
              (lambda (id bid prefix)
                (set! calls (+ calls 1))
                (completion-emit! id (list (hash "label" "foobar")) #:incomplete {incomplete}))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "report" "" (lambda () (log! 'info (number->string calls))))"#
     )
 }
@@ -572,7 +393,7 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
                (set! calls (+ calls 1))
                (when (= calls 1)
                  (completion-emit! id (list (hash "label" "foo") (hash "label" "bar")) #:incomplete #t)))
-             #:target 'buffer #:token 'word)"#,
+             #:target 'buffer)"#,
     );
     ed.feed_key(key('f'));
     ed.settle();
@@ -597,7 +418,7 @@ fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
         r#"(define ids '())
            (register-completion-source! "test"
              (lambda (id bid prefix) (set! ids (cons (cons id prefix) ids)))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (define-command! "answer-old" "" (lambda ()
              (log! 'info (if (completion-emit! (car (cadr ids)) (list (hash "label" "x"))) "applied" "dropped"))))
            (define-command! "prefixes" "" (lambda ()
@@ -617,10 +438,10 @@ fn two_sources(a: &str, b: &str) -> String {
     format!(
         r#"(register-completion-source! "a"
              (lambda (id bid prefix) (completion-emit! id {a}))
-             #:target 'buffer #:token 'word)
+             #:target 'buffer)
            (register-completion-source! "b"
              (lambda (id bid prefix) (completion-emit! id {b}))
-             #:target 'buffer #:token 'word #:priority 10)"#
+             #:target 'buffer #:priority 10)"#
     )
 }
 
@@ -678,48 +499,16 @@ fn top_carries_the_contributing_source_name() {
     assert_eq!(status(&ed), "test-source");
 }
 
-/// Two sources with different token rules each filter against their own
-/// token and accept replaces the *selected item's* token — the other
-/// source's span never bleeds into it.
-#[test]
-fn each_source_keeps_its_own_token() {
-    let tmp = safe_tempdir();
-    // "./fo" — a path-shaped source claims all four chars, a word source
-    // only "fo".
-    let mut ed = editor_from("./fo-[ ]>\n");
-    insert_with_script(
-        &mut ed,
-        tmp.path(),
-        r#"(register-completion-source! "word"
-             (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar"))))
-             #:target 'buffer #:token 'word)
-           (register-completion-source! "dir"
-             (lambda (id bid prefix)
-               (completion-emit! id (list (hash "label" "./foo.txt")) #:span (cons 0 4)))
-             #:target 'buffer #:token 'custom)"#,
-    );
-    let ranked = labels(&ed);
-    assert_eq!(
-        ranked.len(),
-        2,
-        "both sources' items match their own token: {ranked:?}"
-    );
-    // Select the word source's item: accept must replace "fo", not "./fo".
-    let row = ranked.iter().position(|l| l == "foobar").unwrap();
-    for _ in 0..row {
-        ed.feed_key(key_tab());
-    }
-    ed.feed_key(key_enter());
-    assert_eq!(ed.doc().text().to_string(), "./foobar \n");
-}
-
 /// A trigger char invokes the source registered under its name (via
 /// `register-trigger-chars!`) into the open session — the other source's
 /// slot survives, shown again once the typed char is backspaced away.
 #[test]
 fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let tmp = safe_tempdir();
-    let mut ed = editor_from("-[a]>bcdef\n");
+    // A space, not a word char, right before the cursor — both sources'
+    // `'word` token starts empty, the same "no filter yet" shape `'cursor`
+    // used to give unconditionally.
+    let mut ed = editor_from("-[ ]>bcdef\n");
     let lang = ed.state.config.languages.intern("rust");
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).language = Some(lang);
@@ -731,10 +520,10 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
              (lambda (id bid prefix)
                (set! dot-calls (+ dot-calls 1))
                (completion-emit! id (list (hash "label" (string-append "dot" (number->string dot-calls))))))
-             #:target 'buffer #:token 'cursor)
+             #:target 'buffer)
            (register-completion-source! "other"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "other"))))
-             #:target 'buffer #:token 'cursor)
+             #:target 'buffer)
            (register-trigger-chars! "dot" "rust" (list "."))"#,
     );
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
@@ -820,7 +609,7 @@ fn a_cross_target_registration_under_a_native_name_is_refused() {
         dir.path(),
         r#"(register-completion-source! "path"
              (lambda (id bid prefix) (completion-emit! id '()))
-             #:target 'buffer #:token 'word)"#,
+             #:target 'buffer)"#,
     );
     assert!(
         ed.state
@@ -969,7 +758,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
         r#"(register-completion-source! "names"
              (lambda (id input cursor)
                (completion-emit! id (list (hash "label" "alice") (hash "label" "bob"))))
-             #:target 'minibuf #:token 'arg #:match 'string)
+             #:target 'minibuf #:match 'string)
            (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")"#,
     );
     ed.handle_key(key(':'));
