@@ -76,7 +76,7 @@ mod word;
 pub(crate) use word::prev_word_start;
 pub use word::{
     cmd_select_next_uppercase_word, cmd_select_next_word, cmd_select_prev_uppercase_word,
-    cmd_select_prev_word,
+    cmd_select_prev_word, word_runs,
 };
 mod paragraph;
 pub(crate) use paragraph::paragraph_at;

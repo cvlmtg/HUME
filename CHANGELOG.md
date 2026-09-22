@@ -45,6 +45,7 @@
 - `on-mode-change` no longer fires for the mode transitions a `.` repeat replays internally.
 - The Steel language server (`core:steel-server`) no longer reports `run-capture!` (the builtin behind `core:stdlib`'s `stdlib/run`) as an undefined identifier when editing `core:stdlib`'s own plugin file.
 - New `(buffer-line-count bid)` scripting builtin returns a buffer's content line count directly, without materializing `(buffer-lines bid)`'s full list of line strings just to measure it.
+- New `(split-words line word-chars)` scripting builtin tokenizes a string into words using the same classification `w`/`b` motions and text objects use — a word it returns is, by construction, exactly what one of those would select, unlike a hand-rolled Steel classifier (no Unicode character-category table available to Steel). `core:buffer-words` uses this instead of its own approximation, so non-ASCII punctuation (a curly apostrophe, an em dash, CJK punctuation) no longer merges the words around it into one unreachable candidate.
 
 ### Fixes
 - Mouse-wheel scrolling could get stuck partway through a file and refuse to go further when the view reached a block of virtual lines rendered inline — an inline diff's deletion hunk (`:toggle-inline-diff`), for instance. Scrolling now passes through them normally, in either direction, including a block at the very end of the file.

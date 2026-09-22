@@ -102,6 +102,34 @@ pub(crate) fn prev_word_start(
     pos
 }
 
+/// Every maximal run of `Word`-class characters in `text`, in order — the
+/// full-string counterpart to `next_word_start`/`find_word_end_from`'s
+/// single-boundary queries. Reuses the same grapheme-cluster and
+/// combining-mark handling those already rely on, so a run found here is,
+/// by construction, exactly what `w`/`b` would select — the property
+/// `core:buffer-words`' Steel-side `split-words` builtin
+/// (`hume-scripting/src/builtins/words.rs`) depends on.
+pub fn word_runs(
+    text: &BufferText,
+    is_boundary: impl Fn(CharClass, CharClass) -> bool + Copy,
+    chars: WordChars<'_>,
+) -> Vec<InclusiveRange<CharOffset>> {
+    let end = text.end();
+    let mut runs = Vec::new();
+    let mut pos = CharOffset::new(0);
+    while pos < end {
+        let cat = chars.classify(text.char_at(pos).expect("pos < end"));
+        if cat == CharClass::Word {
+            let run_end = find_word_end_from(text, pos, is_boundary, chars);
+            runs.push(InclusiveRange::new(pos, run_end));
+            pos = next_grapheme_boundary(text, run_end);
+        } else {
+            pos = next_grapheme_boundary(text, pos);
+        }
+    }
+    runs
+}
+
 // ── Word-select helpers ───────────────────────────────────────────────────────
 
 /// Scan forward from the first char of a known word group, returning the

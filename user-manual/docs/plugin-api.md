@@ -258,6 +258,12 @@ Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-pr
 
 Covered with examples, including hunk shapes, in [Comparing text](plugins.md#comparing-text).
 
+## Word tokenization
+
+| Call | Effect |
+|------|--------|
+| `(split-words line word-chars)` | Every word in `line`, in order — the same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. `word-chars` extends what counts as a word, same as the buffer option of the same name (`""` for none) |
+
 ## Filesystem & directories
 
 | Call | Effect |

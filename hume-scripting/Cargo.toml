@@ -8,7 +8,9 @@ edition = "2024"
 test-util = []
 
 [dependencies]
+hume-editing = { path = "../hume-editing" }
 hume-engine = { path = "../hume-engine" }
+hume-ops = { path = "../hume-ops" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
 steel-core = { version = "0.8.2", features = ["custom-hash"] }

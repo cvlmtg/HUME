@@ -1,6 +1,7 @@
 use super::super::*;
 use crate::WordCtx;
-use hume_editing::word::WordChars;
+use hume_editing::text::BufferText;
+use hume_editing::word::{WordChars, is_word_boundary};
 use test_fixtures::assert_state;
 
 // ── cmd_select_next_word (w) ──────────────────────────────────────────────
@@ -1224,5 +1225,78 @@ fn extend_word_chars_anchor_ending_in_combining_cluster_stays_whole() {
         "foo <[cafe\u{0301}-bar]- baz\n",
         |(text, sels)| cmd_select_prev_word(&text, sels, 1, ctx),
         "<[foo cafe\u{0301}-bar]- baz\n"
+    );
+}
+
+// ── word_runs ────────────────────────────────────────────────────────────────
+//
+// The `core:buffer-words` completion plugin's `split-words` builtin reuses
+// this function directly (see `hume-scripting/src/builtins/words.rs`) — its
+// own tokenization is exactly what these tests pin.
+
+fn runs(s: &str, chars: WordChars<'_>) -> Vec<String> {
+    let text = BufferText::from(s);
+    word_runs(&text, is_word_boundary, chars)
+        .into_iter()
+        .map(|range| text.slice(range.to_exclusive()).to_string())
+        .collect()
+}
+
+#[test]
+fn word_runs_splits_a_plain_sentence_on_spaces_and_punctuation() {
+    assert_eq!(
+        runs("hello, world!", WordChars::default()),
+        vec!["hello", "world"]
+    );
+}
+
+#[test]
+fn word_runs_keeps_a_combining_grapheme_cluster_whole() {
+    // "café" = c, a, f, e, U+0301 (combining acute) — the trailing mark must
+    // stay attached to its base char, not classify as a separate run (or as
+    // punctuation splitting the run early).
+    assert_eq!(
+        runs("cafe\u{0301} latte", WordChars::default()),
+        vec!["cafe\u{0301}", "latte"]
+    );
+}
+
+#[test]
+fn word_runs_does_not_absorb_non_ascii_punctuation() {
+    // U+2019 (right single quotation mark) is Punctuation per `classify_char`
+    // — the exact gap the old Steel-side `>= 128` approximation had: it
+    // treated this as a word char and merged the whole thing into one run.
+    assert_eq!(
+        runs("l\u{2019}\u{e9}l\u{e9}ment", WordChars::default()),
+        vec!["l", "\u{e9}l\u{e9}ment"]
+    );
+}
+
+#[test]
+fn word_runs_does_not_absorb_an_em_dash() {
+    assert_eq!(
+        runs("foo\u{2014}bar", WordChars::default()),
+        vec!["foo", "bar"]
+    );
+}
+
+#[test]
+fn word_runs_honors_word_chars() {
+    assert_eq!(
+        runs("foo-bar baz", WordChars::new("-")),
+        vec!["foo-bar", "baz"]
+    );
+    assert_eq!(
+        runs("foo-bar baz", WordChars::default()),
+        vec!["foo", "bar", "baz"]
+    );
+}
+
+#[test]
+fn word_runs_on_an_empty_or_all_punctuation_string_is_empty() {
+    assert_eq!(runs("", WordChars::default()), Vec::<String>::new());
+    assert_eq!(
+        runs("... !!! ,,,", WordChars::default()),
+        Vec::<String>::new()
     );
 }

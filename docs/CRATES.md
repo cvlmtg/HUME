@@ -45,6 +45,7 @@ Platform abstraction layer: terminal control, frame presentation, process spawni
 - test-fixtures
 - hume-editor
 - hume-decorations
+- hume-scripting
 ## Description
 Core text-editing model: the document (`BufferText`, a rope of Unicode scalar values with a recorded line-ending style), the cursor model (`Selection`/`SelectionSet`), edits as data (`ChangeSet`, invertible and composable), and the undo tree (`History`), plus grapheme-cluster boundary utilities. A pure data-and-algorithm layer — no knowledge of the editor, keymaps, rendering, or scripting.
 
@@ -68,6 +69,7 @@ Rendering pipeline and pane geometry: the split/pane layout tree, the frame-rend
 - test-fixtures *(dev-only)*
 ### Used by
 - hume-editor
+- hume-scripting
 ## Description
 Named commands — every edit and motion operation as a pure function of buffer + selections (plus command-specific params like `count` or `MotionMode`); edits also return a `ChangeSet`. Has no dependency on `hume-editor`, so "commands have no knowledge of keys" is compiler-enforced, not just discipline.
 
@@ -83,13 +85,15 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-only wire de
 
 # hume-scripting
 ### Depends on
+- hume-editing
 - hume-engine
+- hume-ops
 - hume-platform
 - hume-rope
 ### Used by
 - hume-editor
 ## Description
-Steel (Scheme) scripting host: owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Reaches editor state only through `EditorHost`, never a direct dependency on `hume-editor` — the inversion that keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else.
+Steel (Scheme) scripting host: owns the Steel `Engine`, the plugin loading/activation pipeline, and the `EditorHost` capability-trait interface that builtins call into. Reaches editor state only through `EditorHost`, never a direct dependency on `hume-editor` — the inversion that keeps the workspace dependency graph acyclic despite scripting needing to drive almost everything else. `hume-editing`/`hume-ops` are the one exception, and a deliberate one: both are pure data-and-algorithm crates with zero knowledge of `hume-editor` or live editor state (`hume-ops` has no dependency on `hume-editor` at all, compiler-enforced — see its own entry), so reaching them directly for a stateless text transform (`split-words`, `hume-scripting/src/builtins/words.rs`) doesn't touch the inversion's actual point: keeping *editor state* funneled through `EditorHost`.
 
 # hume-treesitter
 ### Depends on

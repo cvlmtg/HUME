@@ -32,6 +32,7 @@ pub(crate) mod statusline;
 pub(crate) mod syntax;
 pub(crate) mod timers;
 pub(crate) mod ui;
+pub(crate) mod words;
 
 use std::borrow::Cow;
 
@@ -405,6 +406,8 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "buffer-id=?" ids::buffer_id_equal(a: SteelVal, b: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
         plain "pane-id=?" ids::pane_id_equal(a: SteelVal, b: SteelVal);
+        // Word tokenization — context-free text transform, no host/buffer needed.
+        plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
 
         // Multi-buffer read-only builtins
         cmd "current-buffer" buffers::current_buffer();

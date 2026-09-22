@@ -812,7 +812,9 @@ dependencies = [
 name = "hume-scripting"
 version = "0.1.0"
 dependencies = [
+ "hume-editing",
  "hume-engine",
+ "hume-ops",
  "hume-platform",
  "hume-rope",
  "num-traits",

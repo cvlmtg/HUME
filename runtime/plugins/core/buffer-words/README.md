@@ -221,11 +221,14 @@ Rust-side event this plugin cannot add on its own.
 ### Non-ASCII words
 
 Steel has no Unicode character-category table (no `char-alphabetic?`, no
-regex), so "is this character part of a word" is approximated: ASCII
-letters/digits/`_`, a buffer's configured `word-chars`, or any codepoint
-≥ 128 that isn't whitespace. The last clause is deliberately loose — without
-it, a non-ASCII identifier like `café` would split into two candidates and
-never match what the editor computes as the prefix under the cursor.
-The cost is that non-ASCII *punctuation* reads as a word character too, so
-`foo—bar` can surface as one candidate where a `w` motion would stop at the
-dash. Noise, never a missing candidate.
+regex), so classification isn't done in Steel at all — the scan calls
+`(split-words line word-chars)`, a native builtin that tokenizes a whole
+line at once using `hume-editing`'s `WordChars`/`CharClass` machinery, the
+same classifier `w`/`b` motions and text objects already use. A word this
+plugin offers is, by construction, exactly what a `w` motion would select:
+`café` (with a combining accent) stays one candidate, `l’élément` splits at
+the curly apostrophe into `l` and `élément`, `foo—bar` (em dash) splits into
+`foo` and `bar`, and CJK punctuation behaves the same way — no approximation
+left to apologize for. `word-chars` is honored per buffer exactly as it is
+for motions, so `foo-bar` merges into one candidate wherever `word-chars`
+includes `-` (a CSS buffer, say) and stays two words everywhere else.

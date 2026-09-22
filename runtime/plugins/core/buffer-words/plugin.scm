@@ -57,27 +57,12 @@
     (when entry (bw/cancel-timer! entry)))
   (set-box! bw/*buffers* (hash-remove (unbox bw/*buffers*) bid)))
 
-;; ── Word classification ───────────────────────────────────────────────────────
-
-;;; Word-char approximation — see README.md's "Non-ASCII words".
-(define (bw/word-char? extra ch)
-  (let ([n (char->integer ch)])
-    (or (and (>= n 97) (<= n 122))
-        (and (>= n 65) (<= n 90))
-        (and (>= n 48) (<= n 57))
-        (= n 95)
-        (and (>= n 128) (not (char-whitespace? ch)))
-        (hashset-contains? extra ch))))
-
 ;; ── Scanning ──────────────────────────────────────────────────────────────────
-
-(define (bw/words-in-line word-char? line)
-  (let loop ([chars (string->list line)] [run '()] [found '()])
-    (cond
-      [(null? chars) (if (null? run) found (cons (list->string (reverse run)) found))]
-      [(word-char? (car chars)) (loop (cdr chars) (cons (car chars) run) found)]
-      [(null? run) (loop (cdr chars) run found)]
-      [else (loop (cdr chars) '() (cons (list->string (reverse run)) found))])))
+;;
+;; Classification itself is `split-words` — a native builtin, not Steel: see
+;; README.md's "Non-ASCII words". It's the real `WordChars`/`CharClass`
+;; machinery `w`/`b` motions and text objects already use, so a word found
+;; here is exactly what one of those would select.
 
 (define (bw/union-words set words)
   (if (null? words)
@@ -98,7 +83,7 @@
 ;;; against the entry's own `"gen"` first, since a tick already queued past
 ;;; `bw/cancel-timer!`'s reach must not touch an entry a newer walk now owns
 ;;; (see the "gen" comment on `bw/cancel-timer!`).
-(define (bw/walk! bid word-char? gen fwd-line bwd-line)
+(define (bw/walk! bid word-chars gen fwd-line bwd-line)
   (let ([entry (bw/entry bid)])
     (when (and entry (= (hash-ref entry "gen") gen))
       (let* ([total (buffer-line-count bid)]
@@ -117,7 +102,7 @@
              ;; forward side reaches `total`, which is most ticks on a buffer
              ;; anchored near its end.
              [scanned (if (null? fwd-lines) bwd-lines (append fwd-lines bwd-lines))]
-             [found (apply append (map (lambda (l) (bw/words-in-line word-char? l)) scanned))]
+             [found (apply append (map (lambda (l) (split-words l word-chars)) scanned))]
              [building (or (hash-ref entry "building") (hashset))])
         (bw/set! bid "building" (bw/union-words building found))
         (if (and (>= fwd-hi total) (<= bwd-lo 0))
@@ -127,7 +112,7 @@
               (bw/set! bid "timer" #f))
             (bw/set! bid "timer"
                      (after bw/tick-delay-ms
-                       (lambda () (bw/walk! bid word-char? gen fwd-hi bwd-lo)))))))))
+                       (lambda () (bw/walk! bid word-chars gen fwd-hi bwd-lo)))))))))
 
 ;;; Cancels any in-flight walk and restarts it fresh — see README.md's
 ;;; "Double-buffered cache". Resurrects `bid`'s entry first if it's missing
@@ -151,10 +136,10 @@
     (when entry
       (bw/cancel-timer! entry)
       (let* ([anchor (bw/anchor-line bid)]
-             [extra (list->hashset (string->list (get-option bid "word-chars")))]
+             [word-chars (get-option bid "word-chars")]
              [gen (+ (hash-ref entry "gen") 1)])
         (bw/set! bid "gen" gen)
-        (bw/walk! bid (lambda (ch) (bw/word-char? extra ch)) gen anchor anchor)))))
+        (bw/walk! bid word-chars gen anchor anchor)))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 

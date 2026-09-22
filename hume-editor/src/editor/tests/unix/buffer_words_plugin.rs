@@ -324,6 +324,67 @@ fn word_chars_extends_what_counts_as_a_word() {
     assert!(!got.contains(&"bar".to_string()), "{got:?}");
 }
 
+/// The gap finding 6 of the `/code-review` on `9434e1b4` flagged: the old
+/// Steel-side `>= 128` approximation read non-ASCII *punctuation* as a word
+/// character too, merging an em-dash-joined pair into one unreachable
+/// candidate. `split-words` classifies exactly, so this must now offer both
+/// halves separately.
+#[test]
+fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "foo\u{2014}bar\n").unwrap(); // em dash
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    let got = labels(&ed);
+    assert!(got.contains(&"foo".to_string()), "{got:?}");
+    assert!(got.contains(&"bar".to_string()), "{got:?}");
+    assert!(!got.contains(&"foo\u{2014}bar".to_string()), "{got:?}");
+}
+
+/// Same gap, a different script: a curly apostrophe (U+2019) must split the
+/// word around it rather than being absorbed into it.
+#[test]
+fn a_curly_apostrophe_splits_the_word_around_it() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "l\u{2019}\u{e9}l\u{e9}ment\n").unwrap(); // l'élément
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    let got = labels(&ed);
+    assert!(got.contains(&"\u{e9}l\u{e9}ment".to_string()), "{got:?}");
+}
+
+/// The other half of the old approximation's own reasoning (README's former
+/// "Non-ASCII words" section): a combining-mark accent must stay attached
+/// to its word, not read as a boundary — `café` spelled as `e` + U+0301
+/// (combining acute), not the precomposed codepoint, is the case that
+/// actually exercises grapheme-cluster handling rather than a single-char
+/// classification.
+#[test]
+fn a_combining_mark_stays_attached_to_its_word() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "cafe\u{0301} latte\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    let got = labels(&ed);
+    assert!(got.contains(&"cafe\u{0301}".to_string()), "{got:?}");
+    assert!(got.contains(&"latte".to_string()), "{got:?}");
+}
+
 #[test]
 fn an_invalid_match_config_fails_the_load() {
     use hume_scripting::PluginStatus;
