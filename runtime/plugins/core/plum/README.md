@@ -36,13 +36,13 @@ grammar workflow.
 | `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared |
 | `:plum-update-plugins` | Run `git pull` in every installed third-party plugin |
 | `:plum-list-plugins` | Log declared / installed / orphan / missing plugin lists |
-| `:plum-install-grammar` | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) |
+| `:plum-install-grammar` | Install (or repair) a named grammar: purges old source, re-clones, recompiles (default: current buffer's language) — Tab-completes declared grammar names |
 | `:plum-list-grammars` | Log declared / installed / orphan / missing grammar lists |
 | `:plum-cleanup-grammars` | Delete compiled grammar files no longer declared |
 | `:plum-install-theme` | Install (or reinstall) a theme repo's `themes/*.toml` by `user/repo` GitHub slug |
 | `:plum-update-themes` | Run `git pull` in every installed theme repo and re-sync its `.toml` copies |
 | `:plum-list-themes` | Log installed theme repos, the theme names each provides, and any unmanaged `.toml` |
-| `:plum-remove-theme` | Remove an installed theme repo's `.toml` copies and its clone, by `user/repo` slug |
+| `:plum-remove-theme` | Remove an installed theme repo's `.toml` copies and its clone, by `user/repo` slug — Tab-completes installed slugs |
 
 `plum-ensure-grammars` — install any of the given (list of) grammar names not yet
 compiled — is not in the table above: it's a plain editor command, not a `:` command, and

@@ -351,6 +351,22 @@ fn remove_theme_deletes_copies_and_clone() {
     );
 }
 
+/// Tab on `:plum-remove-theme`'s argument completes against installed theme
+/// repo slugs.
+#[test]
+fn remove_theme_tab_completes_an_installed_slug() {
+    let _lock = lock();
+    let (data_tmp, _origin_tmp, _origin) =
+        installed_fixture(&[("themes/acme_dark.toml", THEME_TOML)]);
+
+    let mut ed = plum_editor(data_tmp.path());
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "plum-remove-theme acme/theme");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "plum-remove-theme acme/theme.hume");
+}
+
 /// A repo that loses its `themes/` directory upstream (a failed
 /// `:plum-update-themes` sync, per `sync_errors_when_repo_has_no_themes_dir`
 /// above) must still be removable — discovery keys on the clone existing,

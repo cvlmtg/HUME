@@ -322,6 +322,27 @@ fn passive_load_registers_grammar_and_unknown_call_logs_warning() {
     );
 }
 
+/// Tab on `:plum-install-grammar`'s argument completes against the real
+/// declared catalog (`runtime/scheme/grammar-sources.scm`), not a fixture —
+/// no network, no install, so it needs neither `require_grammars` nor the
+/// e2e tests' own PATH/tree-sitter setup below. "ag" is unique to "agda"
+/// among every declared name (checked at authoring time; re-verified by
+/// this test every run, same discipline as this file's fixture-server
+/// module doc elsewhere in this test tree).
+#[test]
+fn plum_install_grammar_tab_completes_a_declared_name() {
+    let _lock = lock();
+    let data_tmp = safe_tempdir();
+    let mut ed = editor_from("-[x]>\n");
+    load_plum(&mut ed, data_tmp.path());
+
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "plum-install-grammar ag");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(minibuf_input(&ed), "plum-install-grammar agda");
+}
+
 // ---------------------------------------------------------------------------
 // e2e grammar install (network + tree-sitter CLI required)
 // ---------------------------------------------------------------------------

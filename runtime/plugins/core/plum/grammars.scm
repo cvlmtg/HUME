@@ -156,6 +156,15 @@
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
+;;; `:plum-install-grammar`'s own completion universe: every declared
+;;; grammar source name, installed or not — the same set
+;;; `plum/resolve-grammar-arg`'s "unknown grammar" check reads against.
+(register-completion-source! "plum:grammars"
+  (lambda (id input cursor)
+    (completion-emit! id
+      (map (lambda (name) (hash "label" name)) (grammar-source-names))))
+  #:target 'minibuf #:match 'string)
+
 (define-typed-command! "plum-install-grammar"
   "Install (or repair) a tree-sitter grammar by name, always from a clean re-clone (default: the current buffer's language)."
   (lambda (arg)
@@ -166,7 +175,7 @@
           (lambda (err)
             (log! 'error (string-append "PLUM: install failed: " (to-string err))))
           (plum/install-grammar name)))))
-  #:inline-output #t)
+  #:inline-output #t #:complete "plum:grammars")
 
 (define-command! "plum-ensure-grammars"
   "Install the named grammars (a list) that are not yet compiled."

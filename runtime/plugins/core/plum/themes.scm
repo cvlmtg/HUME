@@ -128,6 +128,14 @@
         (unless (null? unmanaged)
           (log! 'info (string-append "PLUM unmanaged: " (string-join unmanaged ", "))))))))
 
+;;; `:plum-remove-theme`'s own completion universe: every installed theme
+;;; repo's "user/repo" slug — the same set `plum-list-themes` enumerates.
+(register-completion-source! "plum:themes"
+  (lambda (id input cursor)
+    (completion-emit! id
+      (map (lambda (slug) (hash "label" slug)) (plum/installed-theme-repos))))
+  #:target 'minibuf #:match 'string)
+
 (define-typed-command! "plum-remove-theme"
   "Remove an installed theme repo's themes/*.toml and its clone, by \"user/repo\" GitHub slug."
   (lambda (arg)
@@ -147,4 +155,5 @@
                     (call! "stdlib/delete-file" (path-join (plum/themes-dir) (string-append name ".toml"))))
                   names)
                 (call! "stdlib/delete-dir" src-dir)
-                (log! 'info (string-append "PLUM: removed " slug ": " (string-join names ", "))))))))))
+                (log! 'info (string-append "PLUM: removed " slug ": " (string-join names ", ")))))))))
+  #:complete "plum:themes")

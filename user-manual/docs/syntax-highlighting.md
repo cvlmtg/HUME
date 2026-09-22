@@ -43,7 +43,7 @@ Open a file in the language you want highlighted, then run:
 
 When it finishes, the current buffer is highlighted immediately, and any other open buffers in the same language pick it up on the next frame.
 
-You don't need to open a file in that language first — name the grammar directly:
+You don't need to open a file in that language first — name the grammar directly, Tab-completing from every declared grammar:
 
 ```
 :plum-install-grammar python
