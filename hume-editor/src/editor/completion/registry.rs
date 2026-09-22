@@ -119,6 +119,18 @@ pub(in crate::editor) struct SourceRegistry {
     entries: Vec<SourceEntry>,
 }
 
+/// What [`SourceRegistry::register`] did — the caller's own report depends
+/// on which.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(in crate::editor) enum RegisterOutcome {
+    Added,
+    Replaced,
+    /// The name was already taken by a source serving the other target
+    /// (its own target given here); the write was refused, the existing
+    /// entry is untouched.
+    TargetMismatch(SourceTarget),
+}
+
 impl SourceRegistry {
     pub(in crate::editor) fn with_defaults() -> Self {
         use super::{path, set, simple};
@@ -154,17 +166,24 @@ impl SourceRegistry {
     /// source. Replacing keeps the entry's [`SourceId`] stable for any
     /// session still referring to it; overriding a native name is allowed —
     /// a plugin swapping in its own `path` source is a feature, not a
-    /// collision. Returns whether an entry was replaced, for the caller's
-    /// own `Trace` line.
-    pub(in crate::editor) fn register(&mut self, entry: SourceEntry) -> bool {
+    /// collision — *as long as the new entry serves the same target*. A
+    /// name taken by the *other* target is refused rather than silently
+    /// clobbered: a `TypedCommand.completer` naming `"path"` expects a
+    /// `Minibuf` source, and a `Buffer` source quietly taking that name
+    /// would break `:e` completion with no compile-time signal anywhere.
+    pub(in crate::editor) fn register(&mut self, entry: SourceEntry) -> RegisterOutcome {
         match self.id_of(&entry.name) {
             Some(id) => {
+                let existing_target = self.entries[id.0 as usize].target();
+                if existing_target != entry.target() {
+                    return RegisterOutcome::TargetMismatch(existing_target);
+                }
                 self.entries[id.0 as usize] = entry;
-                true
+                RegisterOutcome::Replaced
             }
             None => {
                 self.entries.push(entry);
-                false
+                RegisterOutcome::Added
             }
         }
     }
@@ -191,3 +210,6 @@ impl SourceRegistry {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests;

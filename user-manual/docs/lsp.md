@@ -52,6 +52,12 @@ is registered yet, so nothing attaches, so the event that would trigger activati
 fires. List the languages you want servers for in `#:languages`, list the `lsp-*`
 commands in `#:commands`/`#:typed-commands` (as above), or load `core:lsp` eagerly — any
 one of these gets you a working `:lsp-install`.
+
+Completions are a separate case: `Ctrl-Space` and a server's trigger characters both run
+through the editor's own `completion-trigger` key, never through one of `core:lsp`'s own
+commands, so `#:commands`/`#:typed-commands` alone does not get completions working —
+`core:lsp` has to already be active. List the languages you use in `#:languages`, or load
+it eagerly, to get completions along with everything else.
 :::
 
 Opening a file whose language matches a registered server spawns it automatically (once per

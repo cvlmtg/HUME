@@ -102,6 +102,9 @@ impl EditorState {
                 CompletionSession::open_buffer(bid, pid, buf.text_gen, buf.text().len_chars())
             }
         };
+        if let Trigger::Explicit = trigger {
+            session.mark_explicit_trigger();
+        }
         let calls = invoke_buffer_sources(
             &self.config.completion_sources,
             &self.buffers,
@@ -180,6 +183,20 @@ impl EditorState {
 
     // ── Minibuffer target ────────────────────────────────────────────────────
 
+    /// The `:` line's current target command name, if the minibuf is open
+    /// on a `:` prompt and the cursor sits past it (in its argument) —
+    /// `Editor::activate_minibuf_completion_target` reads this before
+    /// calling [`Self::trigger_minibuf_completion`], to activate a still-
+    /// `TypedBody::Lazy` owner (see that method's own doc) before the
+    /// resolve below runs.
+    pub(in crate::editor) fn minibuf_target_command(&self) -> Option<String> {
+        let mb = self.input.minibuf()?;
+        if mb.prompt != ":" {
+            return None;
+        }
+        Some(target_command_name(&mb.input, mb.cursor)?.to_owned())
+    }
+
     /// The first Tab on the `:` line: resolves the one source the input
     /// shape names (the command name itself, or the command's declared
     /// argument completer), runs it, and applies the `:` line's own
@@ -238,12 +255,21 @@ impl EditorState {
     /// → the popup never shows; one candidate → applied silently, popup
     /// gone; two or more → the first is applied and the popup stays for
     /// Tab to cycle. Runs at open (native sources answer inline) and again
-    /// when a pending Steel source's answer lands.
+    /// when a pending Steel source's answer lands — including a second
+    /// answer to a still-streaming source, so the re-rank resets the
+    /// selection first (`reset_completion_selection`'s own contract, same
+    /// as `rerank_open_session`'s `Buffer` counterpart): the previous
+    /// selection index has no guaranteed meaning against the new order, and
+    /// may point past a narrower list's end entirely.
     fn settle_minibuf_session(&mut self, view: &EngineView, r: LayerRef) {
         let Some(layer) = self.input.at_mut::<CompletionLayer>(r) else {
             return;
         };
         layer.session.rank(&self.config.completion_sources, None);
+        self.reset_completion_selection();
+        let Some(layer) = self.input.at_mut::<CompletionLayer>(r) else {
+            return;
+        };
         if layer.session.is_pending() {
             return;
         }
@@ -285,9 +311,14 @@ impl EditorState {
     /// A source's answer to invocation `id` — `completion-emit!`. `Ok(false)`
     /// when no open session has that invocation as a slot's latest call
     /// (superseded, replaced, or dismissed since: expected-normal for a late
-    /// async source). Whatever the answer did, the session is settled
-    /// afterwards: re-ranked, and closed with "no completions" once every
-    /// source has answered and none had anything.
+    /// async source) — the session is untouched, so it is settled only on
+    /// `Ok(true)`/`Err`: a dropped answer changed nothing, and settling
+    /// anyway would still reset the menu's selection out from under a user
+    /// who has since Tabbed to a row an unrelated, superseded call has no
+    /// bearing on. `Err` still settles — a rejected `Custom` span leaves
+    /// its slot with neither `inflight` nor `shown` (see
+    /// `CompletionSession::contribute`'s own doc), which can spend the
+    /// session and must still be caught.
     pub(in crate::editor) fn contribute(
         &mut self,
         view: &EngineView,
@@ -301,14 +332,24 @@ impl EditorState {
         };
         let session = self.input.completion_mut().expect("ref_of found the layer");
         let result = session.contribute(id, items, incomplete, span);
-        if session.buffer().is_some() {
-            self.rerank_open_session();
-            if self.open_session_is_spent() {
-                self.dismiss_completion(view);
-                self.report(Severity::Info, "no completions".to_string());
+        if !matches!(result, Ok(false)) {
+            if session.buffer().is_some() {
+                let explicit = session.is_explicit();
+                self.rerank_open_session();
+                if self.open_session_is_spent() {
+                    self.dismiss_completion(view);
+                    // Silent for a trigger-char session the user never
+                    // explicitly asked for completion on — same discipline
+                    // as the `Explicit`-only report at this file's own
+                    // `trigger_buffer_completion` (`ids.is_empty()`'s
+                    // `if let Trigger::Explicit = trigger` guard).
+                    if explicit {
+                        self.report(Severity::Info, "no completions".to_string());
+                    }
+                }
+            } else {
+                self.settle_minibuf_session(view, r);
             }
-        } else {
-            self.settle_minibuf_session(view, r);
         }
         result
     }
@@ -450,6 +491,19 @@ fn invoke_minibuf_source(
     Ok(call)
 }
 
+/// The `:` line's own command name, stripped of a trailing `!` (alias →
+/// command), if the cursor sits past it — in its argument, not still typing
+/// the name itself. Shared by [`resolve_minibuf_source`] and
+/// [`EditorState::minibuf_target_command`], the one place both need to
+/// agree on what "past the command name" means.
+fn target_command_name(input: &str, cursor: usize) -> Option<&str> {
+    let (cmd_raw, _) = input.split_once(' ')?;
+    if cursor <= cmd_raw.len() {
+        return None;
+    }
+    Some(cmd_raw.strip_suffix('!').unwrap_or(cmd_raw))
+}
+
 /// Resolves which registered source applies to the current `(input,
 /// cursor)` shape: the command name itself while the cursor is within it
 /// (no space yet, or moved left past the space), else the resolved
@@ -460,13 +514,8 @@ fn resolve_minibuf_source(
     cursor: usize,
 ) -> Option<std::borrow::Cow<'static, str>> {
     use std::borrow::Cow;
-    match input.split_once(' ') {
+    match target_command_name(input, cursor) {
         None => Some(Cow::Borrowed(super::COMMAND_SOURCE)),
-        Some((cmd_raw, _)) if cursor <= cmd_raw.len() => Some(Cow::Borrowed(super::COMMAND_SOURCE)),
-        Some((cmd_raw, _)) => {
-            // Resolve alias → command, and its declared argument completer.
-            let cmd = cmd_raw.strip_suffix('!').unwrap_or(cmd_raw);
-            registry.get_typed(cmd)?.completer.clone()
-        }
+        Some(cmd) => registry.get_typed(cmd)?.completer.clone(),
     }
 }

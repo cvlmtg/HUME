@@ -62,6 +62,38 @@ fn first_dispatch_activates_plugin_and_runs() {
     );
 }
 
+/// `register_lazy_typed_command` hardcodes `completer: None` on the stub —
+/// `#:complete` only reaches the registry once the plugin body actually
+/// runs `define-typed-command!`. Tab on the command's *first* use must
+/// still resolve it: `trigger_minibuf_completion`'s `Editor`-level callers
+/// activate the owning plugin before resolving, same as dispatch already
+/// does on Enter.
+#[test]
+fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin "user/tp" #:typed-commands '("myfetch"))"#,
+        r#"(define-typed-command! "myfetch" "doc" (lambda (arg) (log! 'info arg)) #:complete "path")"#,
+    );
+    let files_dir = safe_tempdir();
+    std::fs::write(files_dir.path().join("hello.txt"), b"").unwrap();
+
+    ed.handle_key(key(':'));
+    for ch in format!("myfetch {}/hel", files_dir.path().display()).chars() {
+        ed.handle_key(key(ch));
+    }
+    ed.handle_key(key_tab());
+
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        format!("myfetch {}/hello.txt", files_dir.path().display()),
+        "the lazy stub's real #:complete completer must resolve on the \
+         command's very first use, not only after it has already run once"
+    );
+}
+
 /// `call!` can never reach a typed command (`typed_command_table` is a
 /// separate table from `command_table` — see its own doc), so a typed-only
 /// lazy stub must not be activatable through `call!`: activating a plugin

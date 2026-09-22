@@ -382,6 +382,24 @@ fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_token() {
     assert_eq!(ed.doc().text().to_string(), "\n");
 }
 
+/// Auto-pair skip-close (typing `)`/`"` when the cursor already sits on the
+/// closer) moves the cursor with a motion, not an edit — same as the arrow
+/// keys above, it can't keep a live session's token tracked, so it
+/// dismisses rather than leave a stale menu an Enter would fail to accept
+/// against (`completion-accept!: insertText token does not contain the
+/// cursor`).
+#[test]
+fn skip_close_dismisses_the_session_instead_of_leaving_a_stale_token() {
+    let mut ed = editor_from("-[)]>\n");
+    ed.feed_key(key('i'));
+    open_completion_session(&mut ed, &["foo"]);
+    assert!(ed.state.input.completion().is_some(), "sanity");
+
+    ed.feed_key(key(')')); // skip-close: moves past the pre-existing `)`
+    assert!(ed.state.input.completion().is_none());
+    assert_eq!(ed.doc().text().to_string(), ")\n");
+}
+
 // ── Regression: typing after accept must not desync the edit group (L4) ─────
 
 #[test]

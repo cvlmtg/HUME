@@ -71,6 +71,61 @@ fn trigger_char_fires_the_completion_request() {
     assert_eq!(request_count(&requests, "textDocument/completion"), 1);
 }
 
+/// A trigger char is unsolicited — the user typed `.`, not "please
+/// complete" — so a server answering with nothing must not flash a status
+/// message on every keystroke that happens not to have anything to offer.
+/// Contrast [`ctrl_space_with_no_completions_reports_it`]: an explicit
+/// Ctrl-Space with the same empty answer does report.
+#[test]
+fn trigger_char_with_no_completions_is_silent() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_foo_fixture(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::json!([]));
+        },
+    );
+
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key('.'));
+    settle(&mut ed);
+
+    assert_eq!(
+        status(&ed),
+        "",
+        "a trigger char answered empty must not flash \"no completions\""
+    );
+}
+
+/// [`trigger_char_with_no_completions_is_silent`]'s contrast: the same
+/// empty answer to an explicit Ctrl-Space does report — the user asked.
+#[test]
+fn ctrl_space_with_no_completions_reports_it() {
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let file = write_foo_fixture(file_dir.path());
+    let (mut ed, _guard, _requests) = setup(
+        &file,
+        tmp.path(),
+        full_completion_caps(),
+        |backend, _sid| {
+            backend.respond_to("textDocument/completion", serde_json::json!([]));
+        },
+    );
+
+    ed.feed_key(key('i'));
+    ed.settle();
+    ed.feed_key(key_ctrl(' '));
+    settle(&mut ed);
+
+    assert_eq!(status(&ed), "no completions");
+}
+
 #[test]
 fn ctrl_space_fires_completion_trigger() {
     let tmp = safe_tempdir();

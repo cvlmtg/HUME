@@ -2,7 +2,9 @@
 //! (`completion-emit!`), the ranked view out, accept/dismiss.
 
 use crate::editor::Severity;
-use crate::editor::completion::{BufferToken, MinibufToken, SourceBody, SourceEntry, SourceTarget};
+use crate::editor::completion::{
+    BufferToken, MinibufToken, RegisterOutcome, SourceBody, SourceEntry, SourceTarget,
+};
 
 use super::EditorHostImpl;
 use hume_scripting::host::{self, CompletionHost};
@@ -41,26 +43,43 @@ impl crate::editor::Editor {
     /// activation's registration is never applied (see `Effect::BindKey`'s
     /// doc for the same reasoning); a re-registration under a taken name,
     /// native or Steel, replaces it — a plugin swapping in its own `path`
-    /// source is a feature — and says so in the log.
+    /// source is a feature — and says so in the log, *unless* the name is
+    /// taken by a source serving the other target, which is refused (see
+    /// `SourceRegistry::register`'s own doc) and reported loudly: silently
+    /// keeping the old entry there would otherwise look, from the plugin's
+    /// side, exactly like a successful registration.
     pub(in crate::editor) fn register_completion_source(
         &mut self,
         reg: hume_scripting::PendingCompletionSource,
     ) {
         let name = reg.name;
-        let replaced = self.state.config.completion_sources.register(SourceEntry {
+        let target = target_from_host(reg.target);
+        let outcome = self.state.config.completion_sources.register(SourceEntry {
             name: name.clone().into(),
             match_kind: match_kind_from_host(reg.match_kind),
             priority: reg.priority,
             body: SourceBody::Steel {
                 proc: reg.proc,
-                target: target_from_host(reg.target),
+                target,
             },
         });
-        if replaced {
-            self.report(
-                Severity::Trace,
-                format!("register-completion-source!: replaced source {name:?}"),
-            );
+        match outcome {
+            RegisterOutcome::Added => {}
+            RegisterOutcome::Replaced => {
+                self.report(
+                    Severity::Trace,
+                    format!("register-completion-source!: replaced source {name:?}"),
+                );
+            }
+            RegisterOutcome::TargetMismatch(existing) => {
+                self.report(
+                    Severity::Error,
+                    format!(
+                        "register-completion-source!: {name:?} is already registered for \
+                         {existing:?}, refusing to replace it with a {target:?} source"
+                    ),
+                );
+            }
         }
     }
 }

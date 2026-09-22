@@ -358,3 +358,58 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
         status(&ed)
     );
 }
+
+// ── A streaming source re-ranking under a moved selection ──────────────────
+
+/// A `Minibuf` source may answer more than once for the same invocation
+/// (the async streaming case `docs/COMPLETION-PICKER.md` documents): once
+/// with a wide answer, again later — via a separate command here, standing
+/// in for a real async callback — with a narrower one. Between the two, the
+/// user Tabs the selection off row 0. `settle_minibuf_session`'s own
+/// re-rank must reset that selection the same way `rerank_open_session`
+/// does for a `Buffer` session, or the splice on the second answer reads a
+/// selection index the new, shorter list no longer has.
+#[test]
+fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define captured-id #f)
+           (register-completion-source! "names"
+             (lambda (id input cursor) (set! captured-id id))
+             #:target 'minibuf #:token 'arg #:match 'string)
+           (define-typed-command! "greet" "" (lambda (arg) (log! 'info arg)) #:complete "names")
+           (define-command! "answer-many" "" (lambda ()
+             (completion-emit! captured-id
+               (list (hash "label" "alice") (hash "label" "bob") (hash "label" "carol")))))
+           (define-command! "answer-one" "" (lambda ()
+             (completion-emit! captured-id (list (hash "label" "zzz")))))"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "greet ");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert!(
+        ed.state.input.completion().is_some_and(|s| s.is_pending()),
+        "sanity: still pending"
+    );
+
+    ed.execute_keymap_command("answer-many".into(), None, false);
+    assert_eq!(candidates(&ed).len(), 3, "sanity: first answer landed");
+    assert_eq!(minibuf_input(&ed), "greet alice");
+
+    ed.handle_key(key_tab());
+    ed.handle_key(key_tab());
+    assert_eq!(selected_row(&ed), 2, "sanity: selection moved off row 0");
+    assert_eq!(minibuf_input(&ed), "greet carol");
+
+    ed.execute_keymap_command("answer-one".into(), None, false);
+    assert_eq!(
+        minibuf_input(&ed),
+        "greet zzz",
+        "the second, shorter answer must settle against a reset selection, \
+         not silently fail to splice under the stale row-2 index"
+    );
+}

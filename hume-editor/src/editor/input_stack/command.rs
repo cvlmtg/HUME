@@ -153,6 +153,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // (`completion_input_minibuf`, `input_stack/completion.rs`) before
         // it ever reaches here again.
         MiniBufferEvent::CompleteRequested { reverse: false } => {
+            ed.activate_minibuf_completion_target();
             ed.state.trigger_minibuf_completion(&ed.view);
         }
         MiniBufferEvent::CompleteRequested { reverse: true } => {}

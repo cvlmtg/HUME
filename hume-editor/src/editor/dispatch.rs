@@ -135,6 +135,25 @@ impl Editor {
         }
     }
 
+    /// Activates the `:` line's current target command's owning plugin, if
+    /// it is still a `TypedBody::Lazy` stub — run before
+    /// `EditorState::trigger_minibuf_completion` at both its call sites, so
+    /// a lazily-declared typed command's `#:complete` completer is visible
+    /// on the command's very first use. Without this, `register_lazy_typed_
+    /// command` (`host_impl/commands.rs`) hardcodes the stub's `completer`
+    /// to `None`, and nothing before dispatch itself would otherwise
+    /// activate the plugin to replace it. A no-op when there is no pending
+    /// activation (a real command, an unresolvable name, or no `:` line).
+    pub(in crate::editor) fn activate_minibuf_completion_target(&mut self) {
+        let Some(name) = self.state.minibuf_target_command() else {
+            return;
+        };
+        let Some(plugin) = self.state.config.registry.lazy_owner(&name).cloned() else {
+            return;
+        };
+        self.activate_lazy_and_report(&plugin, &name);
+    }
+
     /// Run the body of a Steel-backed or Lazy mappable command (bound to a
     /// key, or dispatched via `call!`/dot-repeat).
     ///

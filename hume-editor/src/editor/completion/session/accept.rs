@@ -54,11 +54,10 @@ impl CompletionSession {
         let (_, invocation, item) = self
             .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
-        let SpanTrack::Buffer {
-            doc,
-            live: Some(live),
-        } = &invocation.span
-        else {
+        let SpanTrack::Buffer { doc, live } = &invocation.span else {
+            unreachable!("`self.buffer()` above confirmed a Buffer-target session")
+        };
+        let Some(live) = live.resolved() else {
             unreachable!("a ranked Buffer invocation always has its live span resolved")
         };
         edits::checked_buffer(state, bt.bid, Some(bt.generation))?;

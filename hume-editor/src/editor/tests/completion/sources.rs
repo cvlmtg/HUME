@@ -357,6 +357,57 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     assert_eq!(labels(&ed), vec!["fresh"]);
 }
 
+/// A stale answer changes nothing (`session.contribute` returns `Ok(false)`
+/// before touching `filtered`), so the settle path it would otherwise run
+/// must not reset the menu's selection either — only an answer that
+/// actually re-ranks the list may do that.
+#[test]
+fn a_dropped_stale_answer_does_not_reset_the_selection() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define calls '())
+           (register-completion-source! "test"
+             (lambda (id bid prefix)
+               (set! calls (cons id calls))
+               (completion-emit! id (list (hash "label" "foo") (hash "label" "fox")) #:incomplete #t))
+             #:target 'buffer #:token 'word)
+           (define-command! "answer-stale" "" (lambda ()
+             (log! 'info (if (completion-emit! (car (reverse calls)) (list (hash "label" "OLD")))
+                             "applied" "dropped"))))"#,
+    );
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
+    assert_eq!(labels(&ed), vec!["foo", "fox"], "sanity");
+
+    // Typing narrows the token and, since the last answer was incomplete,
+    // reinvokes the source — the first invocation (`calls`'s oldest id) is
+    // now stale. This re-rank is a real one, so it legitimately resets the
+    // selection; the test only asserts on what happens *after*.
+    ed.feed_key(key('f'));
+    ed.settle();
+    assert_eq!(
+        labels(&ed),
+        vec!["foo", "fox"],
+        "sanity: still both, narrowed to \"f\""
+    );
+
+    // The user moves off row 0 on the settled, post-edit list.
+    ed.feed_key(key_tab());
+    assert_eq!(selected_row(&ed), 1, "sanity");
+
+    // The stale first invocation's answer lands late.
+    ed.execute_keymap_command("answer-stale".into(), None, false);
+    assert_eq!(status(&ed), "dropped");
+    assert_eq!(
+        selected_row(&ed),
+        1,
+        "a dropped answer changed nothing, so the selection must survive"
+    );
+}
+
 /// A second answer for the *same* still-latest invocation replaces the
 /// first — a source may stream.
 #[test]
@@ -640,7 +691,7 @@ fn each_source_keeps_its_own_token() {
         r#"(register-completion-source! "word"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar"))))
              #:target 'buffer #:token 'word)
-           (register-completion-source! "path"
+           (register-completion-source! "dir"
              (lambda (id bid prefix)
                (completion-emit! id (list (hash "label" "./foo.txt")) #:span (cons 0 4)))
              #:target 'buffer #:token 'custom)"#,
@@ -759,6 +810,43 @@ fn re_registering_a_name_replaces_the_source() {
     ed.feed_key(key('i'));
     trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["new"]);
+}
+
+/// A Steel `'buffer` source registered under `"path"` — the native
+/// `Minibuf` source `:e` completion names — must not silently take the
+/// name: the write is refused, an `Error` is reported, and `:e`'s own path
+/// completion keeps working.
+#[test]
+fn a_cross_target_registration_under_a_native_name_is_refused() {
+    let dir = safe_tempdir();
+    std::fs::write(dir.path().join("hello.txt"), b"").unwrap();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        dir.path(),
+        r#"(register-completion-source! "path"
+             (lambda (id bid prefix) (completion-emit! id '()))
+             #:target 'buffer #:token 'word)"#,
+    );
+    assert!(
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.severity == Severity::Error && e.text.contains("path")),
+        "got: {:?}",
+        ed.state.message_log.entries().collect::<Vec<_>>()
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, &format!("e {}/hel", dir.path().display()));
+    ed.handle_key(key_tab());
+    assert_eq!(
+        ed.state
+            .minibuf()
+            .map(|mb| mb.input.clone())
+            .unwrap_or_default(),
+        format!("e {}/hello.txt", dir.path().display()),
+        "the native path source must still be the one serving `:e`"
+    );
 }
 
 /// A registration inside an init that then fails is never applied — the

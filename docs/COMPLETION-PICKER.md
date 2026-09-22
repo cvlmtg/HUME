@@ -127,11 +127,15 @@ typed since. Validated where it enters (`DocSnapshot::resolve_custom_span`):
 in range, grapheme-snapped, containing the cursor as it stood then, on one
 line — a completion token never spans a line, the one bound left on an
 otherwise source-chosen value, since it doubles as accept's replacement span.
+A streaming source's later answer re-resolves and replaces the earlier span,
+same as its items — nothing about a `Custom` token's *first* answer pins the
+ones that follow.
 
 ### Edits
 
-`Editor::apply_insert_edit` — the one chokepoint every Insert-mode keystroke
-goes through — calls `EditorState::completion_observe_edit`, which:
+`Editor::apply_insert_edit` — the chokepoint every Insert-mode keystroke that
+lands an edit goes through — calls `EditorState::completion_observe_edit`,
+which:
 
 1. composes the `ChangeSet` into *every* invocation's `cs_since` (shown and
    in-flight alike) and remaps each live span — `start` with `Assoc::Before`
@@ -150,6 +154,11 @@ goes through — calls `EditorState::completion_observe_edit`, which:
    still pending against the pre-edit document; and
 5. dismisses the session, silently, once no slot has an answer with items
    and nothing is in flight.
+
+Auto-pair skip-close — typing a closer the cursor already sits on just moves
+past it, via a motion rather than an edit — is the one Insert-mode keystroke
+that bypasses this chokepoint entirely: with no `ChangeSet` to remap a
+session's tokens against, it dismisses the session outright instead.
 
 A `ChangeSet` not built against the session's tracked length is an edit the
 session never saw; `observe_edit` refuses it and the session is dismissed.
@@ -195,7 +204,7 @@ the sources with a ranked candidate.
 
 | Builtin | Notes |
 |---|---|
-| `(register-completion-source! name proc #:target #:token #:match ['fuzzy] #:priority [0])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); re-registering a name replaces it, natives included |
+| `(register-completion-source! name proc #:target #:token #:match ['fuzzy] #:priority [0])` | config-time; crosses as `Effect::RegisterCompletionSource`, so a failed activation's registration is never applied (the `Effect::BindKey` rationale); re-registering a name replaces it, natives included, *as long as the new source serves the same target* — a name taken by the other target is refused with a loud error, not silently clobbered |
 | `(completion-emit! id items #:incomplete [#f] #:span [#f])` | the one way items enter a session; `#f` once `id` is stale |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(register-trigger-chars! source language chars)` + `on-trigger-char` | unchanged, shared with signature help; the editor additionally invokes the completion source registered under `source`'s name, by name |

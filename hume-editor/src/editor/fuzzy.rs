@@ -153,6 +153,35 @@ mod tests {
         assert_eq!(m.score(&p, "short"), m.score(&p, "a much longer haystack"));
     }
 
+    /// A space in the query is completion's own token boundary, typed past
+    /// — never a term separator the way it is for `Picker` — so it must
+    /// score every candidate `None`, not fall through to an effectively
+    /// empty pattern that matches everything. Regression guard for the
+    /// deleted hand-rolled matcher's replacement: `Atom` (`AtomKind::Fuzzy`)
+    /// scores the whole string including whitespace, unlike `Pattern::
+    /// parse`, which would word-split on the space and drop the trailing
+    /// empty atom.
+    #[test]
+    fn autocomplete_query_with_a_space_matches_nothing() {
+        let mut m = FuzzyMatcher::new(FuzzyProfile::Autocomplete);
+        let p = m.parse("foo ");
+        assert!(m.score(&p, "foobar").is_none());
+        let p = m.parse(" ");
+        assert!(m.score(&p, "foobar").is_none());
+    }
+
+    /// Smart case applies to `Autocomplete` too, not just `Picker`: an
+    /// uppercase-bearing query must be case-sensitive and reject a
+    /// lowercase-only haystack outright, the same guarantee
+    /// `smart_case_uppercase_query_is_case_sensitive` pins for `Picker`.
+    #[test]
+    fn autocomplete_uppercase_query_is_case_sensitive() {
+        let mut m = FuzzyMatcher::new(FuzzyProfile::Autocomplete);
+        let p = m.parse("FB");
+        assert!(m.score(&p, "foobar").is_none());
+        assert!(m.score(&p, "FooBar").is_some());
+    }
+
     #[test]
     fn smart_case_lowercase_query_matches_mixed_case_haystack() {
         let mut m = FuzzyMatcher::new(FuzzyProfile::Picker);

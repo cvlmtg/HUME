@@ -110,7 +110,7 @@ fn edit(text: &BufferText, from: usize, to: usize, with: &str) -> (ChangeSet, Bu
 /// text: the path-shaped one sees "./fo", the word one "fo".
 #[test]
 fn each_slot_ranks_against_its_own_token() {
-    let reg = registry(&[("word", 0), ("path", 0)]);
+    let reg = registry(&[("word", 0), ("dir", 0)]);
     let (mut session, text) = buffer_session("./fo\n");
     invoke_and_answer(
         &mut session,
@@ -122,7 +122,7 @@ fn each_slot_ranks_against_its_own_token() {
     );
     invoke_and_answer(
         &mut session,
-        id_of(&reg, "path"),
+        id_of(&reg, "dir"),
         &text,
         0,
         4,
@@ -134,7 +134,7 @@ fn each_slot_ranks_against_its_own_token() {
     assert_eq!(
         ranked,
         vec!["./foo.txt", "foobar"],
-        "\"./x\" fails the word slot's \"fo\"; \"bar\" fails the path slot's \"./fo\""
+        "\"./x\" fails the word slot's \"fo\"; \"bar\" fails the dir slot's \"./fo\""
     );
 }
 
@@ -143,12 +143,12 @@ fn each_slot_ranks_against_its_own_token() {
 /// contribute.
 #[test]
 fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
-    let reg = registry(&[("word", 0), ("path", 0)]);
+    let reg = registry(&[("word", 0), ("dir", 0)]);
     let (mut session, text) = buffer_session("./fo\n");
     invoke_and_answer(&mut session, id_of(&reg, "word"), &text, 2, 4, &["foobar"]);
     invoke_and_answer(
         &mut session,
-        id_of(&reg, "path"),
+        id_of(&reg, "dir"),
         &text,
         0,
         4,
@@ -157,7 +157,7 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
     session.rank(&reg, live(&text, 4));
     assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));
 
-    // "b" narrows the path slot out ("./foo.txt" has no 'b') but not the
+    // "b" narrows the dir slot out ("./foo.txt" has no 'b') but not the
     // word slot — the anchor moves to the word token's start.
     let (cs, text) = edit(&text, 4, 4, "b");
     assert!(session.observe_edit(&cs, 1, CharOffset::new(5)));
@@ -430,6 +430,38 @@ fn a_minibuf_custom_span_is_checked_against_the_input() {
     session.rank(&reg, None);
     assert_eq!(session.minibuf_apply(0), Some((2..8, "src/main.rs")));
     assert_eq!(session.menu_anchor_byte(), Some(2));
+}
+
+/// A source may stream: a repeated answer for a still-latest id replaces
+/// the earlier one wholesale, `#:span` included — the earlier span must
+/// not stick once a later answer names a different one.
+#[test]
+fn a_second_answer_for_a_still_latest_custom_span_replaces_it() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("ab foo\n");
+    let id = session.invoke(id_of(&reg, "s"), custom_invocation(&text, 6));
+    assert_eq!(
+        session.contribute(id, items(&["ab foobar"]), false, Some((3, 6))),
+        Ok(true)
+    );
+    session.rank(&reg, live(&text, 6));
+    assert_eq!(
+        session.menu_anchor_char(),
+        Some(CharOffset::new(3)),
+        "sanity"
+    );
+
+    assert_eq!(
+        session.contribute(id, items(&["ab foobar"]), false, Some((0, 6))),
+        Ok(true)
+    );
+    session.rank(&reg, live(&text, 6));
+    assert_eq!(
+        session.menu_anchor_char(),
+        Some(CharOffset::new(0)),
+        "a re-emitted #:span for a still-latest id must replace the earlier \
+         span, not be dropped"
+    );
 }
 
 // ── Selection stepping ───────────────────────────────────────────────────────

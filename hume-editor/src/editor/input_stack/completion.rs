@@ -303,6 +303,7 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
                 .is_some_and(|item| item.insert_text().ends_with('/'));
             if is_dir {
                 ed.state.dismiss_completion(&ed.view);
+                ed.activate_minibuf_completion_target();
                 ed.state.trigger_minibuf_completion(&ed.view);
                 return;
             }

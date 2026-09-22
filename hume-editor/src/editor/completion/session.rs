@@ -84,6 +84,19 @@ pub(in crate::editor) struct BufferTarget {
     /// `ChangeSet`'s `len_before` must equal, or an edit reached the buffer
     /// through a path this session never saw.
     len: usize,
+    /// Whether an explicit `Trigger::Explicit` (Ctrl-Space) has touched
+    /// this session, as opposed to only ever a trigger char — gates the
+    /// settle-time "no completions" report (`orchestrate.rs`'s
+    /// `contribute`): silent for a session the user never explicitly asked
+    /// anything of, reported once they did and got nothing. `false` at
+    /// open; [`CompletionSession::mark_explicit_trigger`] sets it, never
+    /// unset.
+    explicit: bool,
+    /// The leftmost live token start among the slots [`CompletionSession::
+    /// rank`] just gave at least one ranked candidate — folded into that
+    /// same per-slot pass rather than recomputed by a second walk over
+    /// `filtered` on every render frame. `None` with nothing ranked.
+    menu_anchor: Option<CharOffset>,
 }
 
 impl BufferTarget {
@@ -112,6 +125,9 @@ impl BufferTarget {
 pub(in crate::editor) struct MinibufTarget {
     input: String,
     cursor: usize,
+    /// [`BufferTarget::menu_anchor`]'s counterpart, a byte offset into
+    /// `input`.
+    menu_anchor: Option<usize>,
 }
 
 /// The coordinate system one invocation's answer was computed in: the rope
@@ -127,6 +143,48 @@ pub(in crate::editor) struct DocSnapshot {
     cs_since: ChangeSet,
 }
 
+/// A token span that is either computed once at invoke time and never
+/// touched again (`Fixed` — `BufferToken::Word`/`Cursor`,
+/// `MinibufToken::Arg`), or left to the source's own `#:span`, which
+/// `contribute` re-resolves on *every* answer (`Custom`, `None` only while
+/// still awaiting the invocation's first answer). Distinguishing the two as
+/// a type, rather than inferring "still to resolve" vs. "resolved and now
+/// fixed" from a bare `Option`, is what lets a source stream a *second*,
+/// different `#:span` for a still-latest id: with only an `Option` the two
+/// states look identical once resolved, so a later answer's span had
+/// nowhere to land and was silently dropped.
+enum SpanSlot<T> {
+    Fixed(Range<T>),
+    Custom(Option<Range<T>>),
+}
+
+impl<T> SpanSlot<T> {
+    /// The active range, if one has been set — `None` only for a `Custom`
+    /// slot still awaiting its first answer.
+    fn resolved(&self) -> Option<&Range<T>> {
+        match self {
+            SpanSlot::Fixed(r) => Some(r),
+            SpanSlot::Custom(r) => r.as_ref(),
+        }
+    }
+
+    /// [`Self::resolved`]'s mutable counterpart, for `observe`'s in-place
+    /// remap through an edit.
+    fn resolved_mut(&mut self) -> Option<&mut Range<T>> {
+        match self {
+            SpanSlot::Fixed(r) => Some(r),
+            SpanSlot::Custom(r) => r.as_mut(),
+        }
+    }
+}
+
+/// A ranked slot's own token start, in whichever unit its target uses —
+/// `rank`'s own local, folded into `menu_anchor` as each slot is visited.
+enum TokenStart {
+    Buffer(CharOffset),
+    Minibuf(usize),
+}
+
 /// Where one invocation's token sits, tracked through edits.
 enum SpanTrack {
     Buffer {
@@ -134,15 +192,12 @@ enum SpanTrack {
         /// The token in live coordinates — `start` mapped `Assoc::Before`
         /// through every observed edit (text inserted exactly at the token's
         /// start belongs to the token), `end` mapped `Assoc::After` (text
-        /// typed at the token's end extends it). `None` while a
-        /// `BufferToken::Custom` source is still pending: its span arrives
-        /// with its answer.
-        live: Option<Range<CharOffset>>,
+        /// typed at the token's end extends it).
+        live: SpanSlot<CharOffset>,
     },
     /// Byte range in [`MinibufTarget::input`]. Never moves — nothing can
     /// edit the `:` line while a session is open without dismissing it.
-    /// `None` while a `MinibufToken::Custom` source is pending.
-    Minibuf { bytes: Option<Range<usize>> },
+    Minibuf { bytes: SpanSlot<usize> },
 }
 
 enum InvocationState {
@@ -171,6 +226,10 @@ impl Invocation {
         live: Option<Range<CharOffset>>,
     ) -> Self {
         let cs_since = ChangeSet::identity(rope.len_chars());
+        let live = match live {
+            Some(range) => SpanSlot::Fixed(range),
+            None => SpanSlot::Custom(None),
+        };
         Self {
             id: widget_token::next(),
             span: SpanTrack::Buffer {
@@ -188,6 +247,10 @@ impl Invocation {
     /// A `Minibuf`-target invocation. `bytes` is the token per the source's
     /// `MinibufToken` rule, or `None` for `Custom`.
     pub(in crate::editor) fn minibuf(bytes: Option<Range<usize>>) -> Self {
+        let bytes = match bytes {
+            Some(range) => SpanSlot::Fixed(range),
+            None => SpanSlot::Custom(None),
+        };
         Self {
             id: widget_token::next(),
             span: SpanTrack::Minibuf { bytes },
@@ -199,15 +262,14 @@ impl Invocation {
     /// .. head]` as of the invoke — handed to a Steel source as its `prefix`
     /// argument. `""` for a pending `Custom` span.
     pub(in crate::editor) fn prefix(&self, text: &BufferText) -> String {
-        match &self.span {
-            SpanTrack::Buffer {
-                doc,
-                live: Some(live),
-            } => text
-                .slice(ExclusiveRange::new(live.start, doc.head))
-                .to_string(),
-            _ => String::new(),
-        }
+        let SpanTrack::Buffer { doc, live } = &self.span else {
+            return String::new();
+        };
+        let Some(live) = live.resolved() else {
+            return String::new();
+        };
+        text.slice(ExclusiveRange::new(live.start, doc.head))
+            .to_string()
     }
 
     fn items(&self) -> &[CompletionItem] {
@@ -314,13 +376,37 @@ impl CompletionSession {
             pane_id,
             generation,
             len,
+            explicit: false,
+            menu_anchor: None,
         }))
+    }
+
+    /// Whether an explicit `Trigger::Explicit` (Ctrl-Space) has touched
+    /// this session — see [`BufferTarget::explicit`]'s doc. `false` for a
+    /// `Minibuf` session; this axis only applies to `Buffer` ones.
+    pub(in crate::editor) fn is_explicit(&self) -> bool {
+        self.buffer().is_some_and(|bt| bt.explicit)
+    }
+
+    /// Records that an explicit trigger touched this session — called by
+    /// `trigger_buffer_completion` on both the fresh-open and the
+    /// reused-session path, so a session a trigger char opened still
+    /// reports once the user follows up with Ctrl-Space. A no-op for a
+    /// `Minibuf` session (unreachable: only a `Buffer` trigger calls this).
+    pub(in crate::editor) fn mark_explicit_trigger(&mut self) {
+        if let Target::Buffer(bt) = &mut self.target {
+            bt.explicit = true;
+        }
     }
 
     /// A `Minibuf`-target session over the `:` line's `input`, cursor at
     /// byte `cursor`.
     pub(in crate::editor) fn open_minibuf(input: String, cursor: usize) -> Self {
-        Self::new(Target::Minibuf(MinibufTarget { input, cursor }))
+        Self::new(Target::Minibuf(MinibufTarget {
+            input,
+            cursor,
+            menu_anchor: None,
+        }))
     }
 
     /// The `Buffer`-target fields, or `None` for a `Minibuf` session — the
@@ -371,12 +457,14 @@ impl CompletionSession {
     /// latest call of any slot here — a superseded or already-replaced
     /// invocation, expected-normal for a late async source, never an error.
     /// A repeated answer for a still-latest `shown` id replaces it in place
-    /// (a source may stream). `span` is required for, and only honoured by,
-    /// an invocation whose token rule left it to the source (`live`/`bytes`
-    /// still `None`) — in the *invocation's own* coordinates (the snapshot
-    /// a `Buffer` source was handed, the `input` a `Minibuf` one was), never
-    /// live ones: a source computes it from what it was given, and the
-    /// session maps it forward through whatever was typed since.
+    /// (a source may stream). `span` is required for, and re-resolved on
+    /// *every* answer, for a `Custom`-token invocation — in the
+    /// *invocation's own* coordinates (the snapshot a `Buffer` source was
+    /// handed, the `input` a `Minibuf` one was), never live ones: a source
+    /// computes it from what it was given, and the session maps it forward
+    /// through whatever was typed since. A `Fixed`-token invocation's span
+    /// is untouched — it was computed once, from the source's token rule,
+    /// at invoke time.
     pub(in crate::editor) fn contribute(
         &mut self,
         id: u64,
@@ -401,17 +489,23 @@ impl CompletionSession {
         match &mut invocation.span {
             SpanTrack::Buffer {
                 doc,
-                live: live @ None,
-            } => *live = Some(doc.resolve_custom_span(span)?),
+                live: live @ SpanSlot::Custom(_),
+            } => *live = SpanSlot::Custom(Some(doc.resolve_custom_span(span)?)),
             SpanTrack::Minibuf {
-                bytes: bytes @ None,
+                bytes: bytes @ SpanSlot::Custom(_),
             } => {
                 let Target::Minibuf(m) = &self.target else {
                     unreachable!("a Minibuf invocation only ever lives in a Minibuf session")
                 };
-                *bytes = Some(m.resolve_custom_span(span)?);
+                *bytes = SpanSlot::Custom(Some(m.resolve_custom_span(span)?));
             }
-            _ => {}
+            SpanTrack::Buffer {
+                live: SpanSlot::Fixed(_),
+                ..
+            }
+            | SpanTrack::Minibuf {
+                bytes: SpanSlot::Fixed(_),
+            } => {}
         }
         invocation.state = InvocationState::Shown { items, incomplete };
         slot.shown = Some(invocation);
@@ -510,6 +604,13 @@ impl CompletionSession {
     /// is very often duplicated across a server's items).
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry, live: Option<LiveDoc<'_>>) {
         self.rank_scratch.clear();
+        // The leftmost token start among the slots that end up contributing
+        // at least one scored item — folded into this same per-slot pass
+        // (each slot visited once) rather than a second walk over `filtered`
+        // every time a caller needs it (`menu_anchor_char`/`menu_anchor_byte`,
+        // both on the per-frame render path).
+        let mut buffer_anchor: Option<CharOffset> = None;
+        let mut minibuf_anchor: Option<usize> = None;
         for (s, slot) in self.slots.iter().enumerate() {
             let Some(inv) = &slot.shown else { continue };
             let entry = sources.get(slot.source);
@@ -517,23 +618,33 @@ impl CompletionSession {
             // (see its doc), so an inverted range here can only mean an
             // edit this session never saw — skipped rather than sliced,
             // until the settle-time validity check dismisses the session.
-            let filter = match (&inv.span, &self.target, &live) {
-                (
-                    SpanTrack::Buffer {
-                        live: Some(range), ..
-                    },
-                    Target::Buffer(_),
-                    Some(doc),
-                ) if range.start <= doc.head => doc
-                    .text
-                    .slice(ExclusiveRange::new(range.start, doc.head))
-                    .to_string(),
-                (SpanTrack::Minibuf { bytes: Some(range) }, Target::Minibuf(m), _) => {
-                    m.input[range.start..m.cursor].to_owned()
+            let (filter, token_start) = match (&inv.span, &self.target, &live) {
+                (SpanTrack::Buffer { live, .. }, Target::Buffer(_), Some(doc)) => {
+                    let Some(range) = live.resolved() else {
+                        continue;
+                    };
+                    if range.start > doc.head {
+                        continue;
+                    }
+                    let text = doc
+                        .text
+                        .slice(ExclusiveRange::new(range.start, doc.head))
+                        .to_string();
+                    (text, TokenStart::Buffer(range.start))
+                }
+                (SpanTrack::Minibuf { bytes }, Target::Minibuf(m), _) => {
+                    let Some(range) = bytes.resolved() else {
+                        continue;
+                    };
+                    (
+                        m.input[range.start..m.cursor].to_owned(),
+                        TokenStart::Minibuf(range.start),
+                    )
                 }
                 _ => continue,
             };
             let pattern = self.matcher.parse(&filter);
+            let mut contributed = false;
             for (i, item) in inv.items().iter().enumerate() {
                 let score = match entry.match_kind {
                     MatchKind::Fuzzy => self.matcher.score(&pattern, &item.filter_text),
@@ -549,6 +660,17 @@ impl CompletionSession {
                 };
                 if let Some(score) = score {
                     self.rank_scratch.push((score, s as u32, i as u32));
+                    contributed = true;
+                }
+            }
+            if contributed {
+                match token_start {
+                    TokenStart::Buffer(start) => {
+                        buffer_anchor = Some(buffer_anchor.map_or(start, |a| a.min(start)));
+                    }
+                    TokenStart::Minibuf(start) => {
+                        minibuf_anchor = Some(minibuf_anchor.map_or(start, |a| a.min(start)));
+                    }
                 }
             }
         }
@@ -569,6 +691,10 @@ impl CompletionSession {
         self.filtered.clear();
         self.filtered
             .extend(self.rank_scratch.iter().map(|&(_, s, i)| (s, i)));
+        match &mut self.target {
+            Target::Buffer(bt) => bt.menu_anchor = buffer_anchor,
+            Target::Minibuf(m) => m.menu_anchor = minibuf_anchor,
+        }
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────
@@ -604,45 +730,32 @@ impl CompletionSession {
     /// `insert_text` — `None` for a `Buffer` session or an unranked `idx`.
     pub(in crate::editor) fn minibuf_apply(&self, idx: usize) -> Option<(Range<usize>, &str)> {
         let (_, inv, item) = self.ranked(idx)?;
-        match &inv.span {
-            SpanTrack::Minibuf { bytes: Some(bytes) } => Some((bytes.clone(), item.insert_text())),
-            _ => None,
-        }
+        let SpanTrack::Minibuf { bytes } = &inv.span else {
+            return None;
+        };
+        Some((bytes.resolved()?.clone(), item.insert_text()))
     }
 
     /// Where the menu anchors for a `Buffer` session: the leftmost live
     /// token start among the sources with a ranked candidate. Stable while
     /// cycling; moves only when ranking changes which sources contribute.
-    /// `None` with nothing ranked.
+    /// `None` with nothing ranked. Computed once per [`Self::rank`] call,
+    /// not per call to this accessor — both this and
+    /// [`Self::menu_anchor_byte`] run on the per-frame render path.
     pub(in crate::editor) fn menu_anchor_char(&self) -> Option<CharOffset> {
-        self.ranked_slots()
-            .filter_map(|slot| match &slot.shown.as_ref()?.span {
-                SpanTrack::Buffer {
-                    live: Some(range), ..
-                } => Some(range.start),
-                _ => None,
-            })
-            .min()
+        match &self.target {
+            Target::Buffer(bt) => bt.menu_anchor,
+            Target::Minibuf(_) => None,
+        }
     }
 
     /// [`Self::menu_anchor_char`]'s `Minibuf` counterpart, a byte offset
     /// into the `:` line's input.
     pub(in crate::editor) fn menu_anchor_byte(&self) -> Option<usize> {
-        self.ranked_slots()
-            .filter_map(|slot| match &slot.shown.as_ref()?.span {
-                SpanTrack::Minibuf { bytes: Some(range) } => Some(range.start),
-                _ => None,
-            })
-            .min()
-    }
-
-    /// Every slot with at least one ranked candidate, each once.
-    fn ranked_slots(&self) -> impl Iterator<Item = &SourceSlot> {
-        let mut seen = vec![false; self.slots.len()];
-        self.filtered.iter().filter_map(move |&(s, _)| {
-            let s = s as usize;
-            (!std::mem::replace(&mut seen[s], true)).then(|| &self.slots[s])
-        })
+        match &self.target {
+            Target::Minibuf(m) => m.menu_anchor,
+            Target::Buffer(_) => None,
+        }
     }
 
     /// Moves a menu selection by one row, wrapping at either end — `None`
@@ -697,14 +810,14 @@ impl Invocation {
         let SpanTrack::Buffer { doc, live } = &mut self.span else {
             return true;
         };
-        let crossed = live.as_ref().is_some_and(|range| {
+        let crossed = live.resolved().is_some_and(|range| {
             range.start > CharOffset::new(0) && {
                 let mut pair = [range.start.retreat(1), range.start];
                 cs.map_positions(&mut pair, Assoc::Before);
                 pair[0] == pair[1]
             }
         });
-        if let Some(range) = live {
+        if let Some(range) = live.resolved_mut() {
             let mut start = [range.start];
             cs.map_positions(&mut start, Assoc::Before);
             let mut end = [range.end];
@@ -718,12 +831,11 @@ impl Invocation {
     /// Whether `head` is still inside this invocation's live token (a
     /// pending `Custom` span contains everything — nothing to leave yet).
     fn contains(&self, head: CharOffset) -> bool {
-        match &self.span {
-            SpanTrack::Buffer {
-                live: Some(range), ..
-            } => range.start <= head && head <= range.end,
-            _ => true,
-        }
+        let SpanTrack::Buffer { live, .. } = &self.span else {
+            return true;
+        };
+        live.resolved()
+            .is_none_or(|range| range.start <= head && head <= range.end)
     }
 }
 
