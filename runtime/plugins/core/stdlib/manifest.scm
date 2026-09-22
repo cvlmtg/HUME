@@ -9,4 +9,5 @@
                "stdlib/run" "stdlib/git-repo?" "stdlib/git-toplevel" "stdlib/resolve-lang-arg"
                "stdlib/config-boolean" "stdlib/config-string" "stdlib/config-enum"
                "stdlib/config-integer" "stdlib/config-list"
-               "stdlib/with-tab" "stdlib/with-vsplit" "stdlib/with-split" "stdlib/buffer-actions"))
+               "stdlib/with-tab" "stdlib/with-vsplit" "stdlib/with-split" "stdlib/buffer-actions"
+               "stdlib/split-words"))

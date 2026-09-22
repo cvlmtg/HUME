@@ -393,6 +393,52 @@ fn core_stdlib_resolve_lang_arg_falls_back_then_warns() {
     );
 }
 
+/// `stdlib/split-words` must tokenize using the *given* buffer's own
+/// `word-chars` — pulled via `get-option` internally, not a value the
+/// caller fetches and passes itself (the SSOT concern a bare `split-words`
+/// call site would otherwise have to manage by hand). Independent oracle:
+/// each expected token list is hand-written from the literal input.
+/// `current-buffer`/`set-buffer-option!` aren't available during init
+/// evaluation, so this runs the assertions from inside a typed command
+/// (`:probe-split-words`), the same shape
+/// `core_stdlib_resolve_lang_arg_falls_back_then_warns` uses above.
+#[test]
+fn core_stdlib_split_words_uses_the_buffers_own_word_chars() {
+    let (mut ed, mut host, _guard, _init_dir) = setup_stdlib_editor();
+
+    let define_probe = r#"
+(define-typed-command! "probe-split-words" ""
+  (lambda ()
+    (unless (equal? (call! "stdlib/split-words" (current-buffer) "foo-bar baz")
+                    (list "foo" "bar" "baz"))
+      (error "split-words: default word-chars must split on '-'"))
+    (set-buffer-option! (current-buffer) "word-chars" "-")
+    (unless (equal? (call! "stdlib/split-words" (current-buffer) "foo-bar baz")
+                    (list "foo-bar" "baz"))
+      (error "split-words: must pick up the buffer's own word-chars setting"))))
+"#;
+    {
+        let mut ih = init_host!(ed);
+        host.eval_source(define_probe, &mut ih)
+            .expect("define probe-split-words command");
+    }
+    ed.scripting = Some(host);
+
+    type_cmd(&mut ed, ":probe-split-words");
+
+    let errors: Vec<String> = ed
+        .state
+        .message_log
+        .entries()
+        .filter(|e| e.severity == crate::editor::Severity::Error)
+        .map(|e| e.text.clone())
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "stdlib/split-words assertions must all pass: {errors:?}"
+    );
+}
+
 /// `stdlib/git-repo?` and `stdlib/git-toplevel` must both report true/the real
 /// root from inside a work tree, even when the editor's cwd is a
 /// subdirectory of it — the case that actually exercises `--show-toplevel`

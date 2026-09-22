@@ -152,6 +152,19 @@
           (log! 'info (string-append cmd ": no language given and current buffer has no language set"))
           #f))))
 
+;; ── Word tokenization ─────────────────────────────────────────────────────────
+
+;;; `(split-words str word-chars)`, but pulling `word-chars` from `bid`'s own
+;;; setting rather than asking the caller to fetch and thread it through
+;;; itself — the one derivation this buffer's word-chars value should ever
+;;; go through, so a plugin working with "this buffer's own concept of a
+;;; word" can't accidentally pass a stale or mismatched value. A caller with
+;;; a genuine reason to classify differently from `bid`'s own setting (text
+;;; that isn't this buffer's content at all, or another buffer's word-chars
+;;; on purpose) calls `split-words` directly instead.
+(define (stdlib/split-words bid str)
+  (split-words str (get-option bid "word-chars")))
+
 ;; ── Plugin config helpers ────────────────────────────────────────────────────
 
 (define (stdlib/config-value cfg key default)
@@ -296,3 +309,7 @@
 (define-command! "stdlib/buffer-actions"
   "A picker!/live-picker! #:actions alist binding Ctrl-O/T/V/S to the given handler placed in the current pane, a new tab, a vertical split, and a horizontal split respectively."
   stdlib/buffer-actions)
+
+(define-command! "stdlib/split-words"
+  "Every word in the given string, tokenized using the given buffer's own word-chars setting — split-words with word-chars pulled from get-option automatically."
+  stdlib/split-words)

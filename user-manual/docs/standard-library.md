@@ -62,6 +62,14 @@ Both answer for HUME's own working directory (`:pwd`), not necessarily the curre
 
 Use this for a `:` command that takes an optional language name — `arg` is whatever the user typed after the command, or `#f` if they typed nothing. Falling back to the current buffer's language covers the common case of acting on the language you're already looking at; when neither is available, it logs a warning naming `cmd` and returns `#f` so your command can bail out cleanly.
 
+## Word tokenization
+
+| Call | Effect |
+|------|--------|
+| `(call! "stdlib/split-words" bid str)` | Every word in `str`, tokenized using `bid`'s own `word-chars` setting |
+
+Same classification `w`/`b` motions and text objects use, so a word here is exactly what one of those would select. This is `(split-words str (get-option bid "word-chars"))` — use it whenever `str` is `bid`'s own content (typically one of its lines) and you want that buffer's own notion of a word; call `split-words` directly for text that isn't tied to a particular buffer, or when you have a real reason to classify differently from `bid`'s setting.
+
 ## Plugin configuration
 
 | Call | Effect |

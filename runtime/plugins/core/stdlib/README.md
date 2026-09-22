@@ -121,6 +121,18 @@ picker key (movement, `Backspace`, `Enter`, `Escape`, query input), so `buffer-a
 `Ctrl-o`/`t`/`v`/`s` are safe choices precisely because none of them collides with a
 built-in — a plugin adding its own entries should pick keys the same way.
 
+### Word tokenization
+
+`(stdlib/split-words bid str)` is `(split-words str (get-option bid "word-chars"))` —
+tokenizing `str` (typically one of `bid`'s own lines) using that buffer's configured
+`word-chars`, the same classification `w`/`b` motions and text objects use. `bid`'s
+`word-chars` is a fact with exactly one source (the buffer's own setting); asking every
+caller to fetch and thread it through itself is how a caller ends up passing a stale or
+mismatched value by accident. `core:buffer-words` is the first caller — indexing a buffer's
+identifiers with that buffer's own notion of a word, not a caller-supplied one. A plugin
+tokenizing text that isn't `bid`'s own content, or that has a genuine reason to classify
+differently, calls `split-words` directly instead.
+
 ### Plugin config
 
 Every error names the calling plugin (its first argument) and the offending key, so a bad

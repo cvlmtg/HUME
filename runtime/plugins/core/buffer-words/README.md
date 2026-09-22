@@ -222,10 +222,12 @@ Rust-side event this plugin cannot add on its own.
 
 Steel has no Unicode character-category table (no `char-alphabetic?`, no
 regex), so classification isn't done in Steel at all — the scan calls
-`(split-words line word-chars)`, a native builtin that tokenizes a whole
-line at once using `hume-editing`'s `WordChars`/`CharClass` machinery, the
-same classifier `w`/`b` motions and text objects already use. A word this
-plugin offers is, by construction, exactly what a `w` motion would select:
+`core:stdlib`'s `(call! "stdlib/split-words" bid line)`, which resolves
+`bid`'s own `word-chars` and hands it to native `split-words`, a builtin
+that tokenizes a whole line at once using `hume-editing`'s
+`WordChars`/`CharClass` machinery, the same classifier `w`/`b` motions and
+text objects already use. A word this plugin offers is, by construction,
+exactly what a `w` motion would select:
 `café` (with a combining accent) stays one candidate, `l’élément` splits at
 the curly apostrophe into `l` and `élément`, `foo—bar` (em dash) splits into
 `foo` and `bar`, and CJK punctuation behaves the same way — no approximation
