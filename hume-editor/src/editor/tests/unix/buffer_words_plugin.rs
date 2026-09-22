@@ -979,3 +979,94 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
          (surviving) item is the one shown: {top:?}"
     );
 }
+
+/// Once anything is typed, `core:lsp`'s `'fuzzy` match (a real score above
+/// `0`) always outranks `core:buffer-words`' own `'string` match (tied at
+/// `0`) — not merely "can", the way an earlier draft of this doc described
+/// it. This is policy (`MatchKind::String`'s own doc,
+/// `hume-editor/src/editor/completion/session.rs`), not a gap: in an
+/// LSP-attached buffer, LSP should win once the user narrows by typing.
+/// `#:priority` only ever decides a *tied* score, which this typed-prefix
+/// case never reaches — different labels here (unlike the dedup test
+/// above) so nothing gets hidden as a duplicate and this pins ranking
+/// alone.
+#[test]
+fn once_something_is_typed_lsp_always_outranks_buffer_words() {
+    use hume_lsp::backend::ServerId;
+    use hume_lsp::client::LspClient;
+    use hume_lsp::test_util::RecordingLspBackend;
+
+    let tmp = safe_tempdir();
+    let _guard = RealRuntimeGuard::new();
+
+    let (mut backend, _notifications, _requests) = RecordingLspBackend::new();
+    backend.respond_to(
+        "initialize",
+        serde_json::json!({ "capabilities": { "completionProvider": {} } }),
+    );
+    backend.respond_to(
+        "textDocument/completion",
+        serde_json::json!([{"label": "buffer_analog", "insertText": "buffer_analog"}]),
+    );
+    let sid: ServerId = backend
+        .start("rust-analyzer", &[], Path::new("."), &[])
+        .unwrap();
+
+    let mut ed = Editor::open(None, std::sync::Arc::new(|| {})).unwrap();
+    ed.lsp = crate::editor::lsp::LspState::from_backend_for_test(Box::new(backend));
+
+    let mut host = ScriptingHost::new();
+    eval_with_real_host(
+        &mut ed,
+        &mut host,
+        "(load-plugin \"core:stdlib\")\n(load-plugin \"core:buffer-words\")\n(load-plugin \"core:lsp\")",
+        tmp.path(),
+    );
+    ed.scripting = Some(host);
+
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("main.rs");
+    std::fs::write(&path, "buffer_word_target\n\n").unwrap();
+    let bid = open(&mut ed, &path);
+    ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
+    let lang = ed.state.config.languages.intern("rust");
+    ed.state.buffers.get_mut(bid).language = Some(lang);
+
+    let mut client = LspClient::new(sid, std::path::PathBuf::from("."));
+    client.start_handshake(ed.lsp.backend_mut());
+    ed.lsp.insert_client_for_test(client);
+    ed.lsp
+        .insert_server_key_for_test("rust".to_string(), std::path::PathBuf::from("."), sid);
+    let (sid2, ev) = ed.lsp.backend_mut().drain().into_iter().next().unwrap();
+    let actions = ed.lsp.client_for_test(sid2).unwrap().on_event(ev);
+    for action in actions {
+        ed.dispatch_lsp_action(sid2, action);
+    }
+    ed.settle();
+
+    // Second (blank) line, so buffer-words' own index — built from the
+    // whole buffer, "buffer_word_target" included — has a real candidate
+    // to offer for the "buf" typed here, distinct from the typed text
+    // itself (which `is_noop_for` would otherwise drop as an exact match).
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "buf");
+    trigger(&mut ed);
+    ed.drain_lsp();
+    ed.settle();
+
+    let got = labels(&ed);
+    assert!(
+        got.iter().any(|l| l == "buffer_word_target"),
+        "buffer-words' own candidate missing: {got:?}"
+    );
+    assert!(
+        got.iter().any(|l| l == "buffer_analog"),
+        "core:lsp's candidate missing: {got:?}"
+    );
+    assert_eq!(
+        got.iter().position(|l| l == "buffer_analog"),
+        Some(0),
+        "core:lsp's real fuzzy score must beat buffer-words' flat 0, regardless of priority: {got:?}"
+    );
+}
