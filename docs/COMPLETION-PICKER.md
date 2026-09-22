@@ -13,8 +13,9 @@ policy" pattern and the same `hume-editor/src/editor/fuzzy.rs` matcher (each
 with its own `FuzzyProfile`); see `hume-editor/src/editor/input_stack/picker/
 session.rs`'s module doc for why they stay separate session types.
 
-**Status: shipped.** Everything below describes the code as it is; the one
-open item is the buffer-words source (`docs/ROADMAP.md`).
+**Status: shipped**, including the buffer-words source
+(`runtime/plugins/core/buffer-words/`, see its own README for design
+rationale) — everything below describes the code as it is.
 
 ## How to use this document
 
@@ -78,8 +79,10 @@ A native source's signature *is* its contract (`SourceEntry::target` is
 derived from the body); a Steel source declares `#:target`/`#:token`, decoded
 as one value at the builtin so a `'buffer` source with an `'arg` token is a
 Steel argument error, never a state the editor has to reject later. No native
-`Buffer`-target shape exists yet — the buffer-words source adds its own
-variant.
+`Buffer`-target shape exists — the buffer-words source
+(`runtime/plugins/core/buffer-words/`) is Steel, deliberately: it dogfoods
+this plugin-facing API rather than the Rust-internal machinery the six native
+minibuffer sources already validate.
 
 The six native minibuffer sources (`command`, `buffer-name`, `theme` —
 `NativeUniverse`; `path`, `path-dirs-only`, `set` — `NativeDelegated`) are
@@ -250,15 +253,25 @@ registers the server's trigger characters under the same `"lsp"` name.
 
 ## Open questions
 
-**Q-A1 — dedup across sources.** Buffer-words will echo identifiers LSP also
-returns. *Default: no dedup; priority ordering puts the richer (LSP) item
-first. If added, it belongs in `CompletionSession::rank`, keyed on
-`insert_text`, keeping the higher-priority slot's item.*
+**Q-A1 — dedup across sources — answered, no dedup.** Buffer-words echoes
+identifiers LSP also returns; there is no dedup across sources. In practice
+this falls out for free rather than needing `CompletionSession::rank` logic:
+buffer-words registers `#:match 'string`, which scores every match `0`,
+while `core:lsp`'s `#:match 'fuzzy` scores positively — so a tied-*priority*
+tiebreak was never needed, the *score* ordering alone puts every LSP item
+ahead of every buffer-words item.
 
-**Q-A5 — buffer-words matching.** Prefix-only at collection (cheap, vim
-`i_CTRL-N` feel) vs. subsequence (consistent with the session's own filter).
-*Default: prefix at collection time; subsequence-only candidates never reach
-the store — accepted for v1.*
+**Q-A5 — buffer-words matching — answered, `#:match 'string`, not
+prefix-at-collection.** The source emits its *whole* cached word set on
+every trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
+keystroke, via `MatchKind::String`, same as this doc's `MatchKind` table
+already describes for any `'string` source. Filtering by prefix in Steel at
+collection time — the shape this question originally proposed — turns out
+to be wrong, not just less convenient: the source has no `#:incomplete`, so
+it answers once per trigger, and a set narrowed to the trigger-time prefix
+could never widen back out on Backspace. `#:config (hash "match" 'fuzzy)`
+opts a user into subsequence scoring instead, at the same per-keystroke,
+Rust-side cost as `core:lsp`'s own matching.
 
 **Q-A7 — kind display.** `kind: i64` is display-unused (`menu_row` puts
 `label` in the main column and `detail` right-aligned in a trailing one).

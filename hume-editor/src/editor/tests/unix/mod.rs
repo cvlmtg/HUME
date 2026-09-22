@@ -651,6 +651,7 @@ mod async_job;
 mod async_job_steel;
 mod buffer;
 mod buffer_store;
+mod buffer_words_plugin;
 mod cd;
 mod column_display_agreement;
 mod command_mode;

@@ -173,6 +173,37 @@ Configure with `#:config`:
 Inline rendering's background tint and word highlights depend on your theme defining colors
 for them; HUME's bundled themes do.
 
+## core:buffer-words
+
+Offers every identifier already in the buffer as an Insert-mode completion — works in any
+buffer, including a scratch buffer or a `.txt` file where `core:lsp` has no server to ask.
+
+```scheme
+(declare-plugin "core:stdlib")
+(load-plugin "core:buffer-words")
+```
+
+Must be loaded eagerly: `Ctrl-Space` (or a completion source's own trigger char, if one
+applies) is the only thing that can ever invoke the completion source it registers, so a lazy
+`declare-plugin` would have no other trigger to activate it. Requires `core:stdlib` declared
+or loaded first.
+
+Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` reads it, it
+never scans the buffer itself. Ranks alongside `core:lsp`'s own completions in the same menu
+when both are loaded, with `core:lsp`'s answers preferred on a tie.
+
+Configure with `#:config`:
+
+```scheme
+(load-plugin "core:buffer-words"
+  #:config (hash "match" 'string "lines" 200))
+```
+
+| Key | Type | Default | Effect |
+|---|---|---|---|
+| `"match"` | `'string` \| `'fuzzy` | `'string` | `'string` narrows by prefix as you type (the vim `i_CTRL-N` feel); `'fuzzy` scores subsequence matches like `core:lsp`'s own candidates |
+| `"lines"` | integer (≥ 1) | `200` | Lines fetched and scanned per side of the cursor on each background indexing tick — lower to trim a pause on a huge buffer, raise to index a large buffer in fewer ticks |
+
 ## core:vim-keybind
 
 Vim muscle memory: `$`, `^`, `0`, `C` and `D` (change/delete to end of line), `Ctrl-6` (alternate buffer, kitty only), and `o` in Extend mode to swap the selection's ends. It does not bind `G` — that key is HUME's own prefix (`G L`/`G U`/`G C`, plus `G R` with `core:lsp`), and `g e` already goes to the last line.

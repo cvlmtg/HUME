@@ -17,6 +17,7 @@
 (declare-plugin "core:plum")          ; plugin/grammar manager
 (declare-plugin "core:git-diff")      ; live inline git diff
 
+;; (load-plugin "core:buffer-words")     ; identifiers already in the buffer, as completions
 ;; (load-plugin "core:vim-keybind")      ; vim muscle memory
 ;; (load-plugin "core:helix-surround")   ; helix-style surround
 ;; (load-plugin "core:classic-paste")    ; GUI-style paste
