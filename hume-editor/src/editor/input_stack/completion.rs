@@ -27,6 +27,16 @@ pub(in crate::editor) struct CompletionLayer {
     pub(in crate::editor) ui: Option<CompletionMenuUi>,
 }
 
+impl CompletionLayer {
+    /// The menu's selected row — `0` until the first Tab/Down/BackTab/Up
+    /// allocates `ui` (see this type's own doc). The one place that default
+    /// is spelled, for every reader of `ui.selected` in this module and
+    /// `orchestrate.rs`.
+    pub(in crate::editor) fn selected(&self) -> usize {
+        self.ui.as_ref().map_or(0, |ui| ui.selected)
+    }
+}
+
 impl Layer for CompletionLayer {
     fn handler(&self) -> LayerHandler {
         // The session's own target is the one axis further-typing behavior
@@ -118,7 +128,7 @@ impl Editor {
             }
             let placement = popup_placement(self, ctx, anchor_char)?;
 
-            let selected_idx = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
+            let selected_idx = self.state.input.completion_selected();
             let session = self.state.input.completion()?;
             let window =
                 hume_ui::popup::menu_window(session.len(), selected_idx, placement.pane_rect);
@@ -132,7 +142,7 @@ impl Editor {
     }
 }
 
-/// Named sugar over the generic lookup — the ~350 existing call sites
+/// Named sugar over the generic lookup — the existing call sites
 /// (`ed.state.input.completion()`) stay as they are, and `stack.rs` stays
 /// agnostic.
 impl super::stack::InputStack {
@@ -145,10 +155,21 @@ impl super::stack::InputStack {
     }
 
     /// The completion session's UI selection, flattened (`Option<&
-    /// CompletionMenuUi>`, not `Option<&mut Option<CompletionMenuUi>>`).
-    /// Reads only; see [`Self::completion_ui_mut`] to assign or clear it.
+    /// CompletionMenuUi>`, not `Option<&mut Option<CompletionMenuUi>>`) —
+    /// every production caller wants [`Self::completion_selected`]'s
+    /// defaulted read instead; this raw form (distinguishing "no session
+    /// open" from "open, still at its implicit row 0") is a test-only need.
+    #[cfg(test)]
     pub(in crate::editor) fn completion_ui(&self) -> Option<&CompletionMenuUi> {
         self.find::<CompletionLayer>().and_then(|l| l.ui.as_ref())
+    }
+
+    /// The completion menu's selected row, defaulting to `0` — see
+    /// [`CompletionLayer::selected`]. The one accessor every caller that
+    /// doesn't already hold the layer (via [`Self::at`]/[`Self::at_mut`])
+    /// should use, instead of re-spelling `completion_ui().map_or(0, ...)`.
+    pub(in crate::editor) fn completion_selected(&self) -> usize {
+        self.find::<CompletionLayer>().map_or(0, |l| l.selected())
     }
 
     /// The `Completion` layer's UI slot itself (not its content) at `r`,
@@ -289,22 +310,14 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             // it), so dismiss this session and restart completion for the
             // directory's children, rather than falling through to
             // `Command`'s own Confirm handling.
-            let selected = ed
-                .state
-                .input
-                .at::<CompletionLayer>(r)
-                .and_then(|l| l.ui.as_ref())
-                .map_or(0, |ui| ui.selected);
-            let is_dir = ed
-                .state
-                .input
-                .at::<CompletionLayer>(r)
-                .and_then(|l| l.session.selected_item(selected))
-                .is_some_and(|item| item.insert_text().ends_with('/'));
+            let is_dir = ed.state.input.at::<CompletionLayer>(r).is_some_and(|l| {
+                l.session
+                    .selected_item(l.selected())
+                    .is_some_and(|item| item.insert_text().ends_with('/'))
+            });
             if is_dir {
                 ed.state.dismiss_completion(&ed.view);
-                ed.activate_minibuf_completion_target();
-                ed.state.trigger_minibuf_completion(&ed.view);
+                ed.start_minibuf_completion();
                 return;
             }
         }
@@ -324,7 +337,7 @@ fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
     let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
         return;
     };
-    let current = layer.ui.as_ref().map_or(0, |ui| ui.selected);
+    let current = layer.selected();
     let Some(next) = layer.session.step_selection(current, forward) else {
         return;
     };
@@ -346,8 +359,7 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
         .state
         .input
         .at::<CompletionLayer>(r)
-        .and_then(|l| l.ui.as_ref())
-        .map_or(0, |ui| ui.selected);
+        .map_or(0, |l| l.selected());
     let Some(session) = ed.state.take_completion_session(&ed.view) else {
         return;
     };

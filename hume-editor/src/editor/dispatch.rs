@@ -154,6 +154,17 @@ impl Editor {
         self.activate_lazy_and_report(&plugin, &name);
     }
 
+    /// The `:` line's Tab, end to end: [`Self::activate_minibuf_completion_
+    /// target`] then `EditorState::trigger_minibuf_completion` — one call so
+    /// the two can't be split at a call site that forgets the first, which
+    /// would silently leave a lazily-declared command's `#:complete`
+    /// unresolved on its very first use (see `activate_minibuf_completion_
+    /// target`'s own doc).
+    pub(in crate::editor) fn start_minibuf_completion(&mut self) {
+        self.activate_minibuf_completion_target();
+        self.state.trigger_minibuf_completion(&self.view);
+    }
+
     /// Run the body of a Steel-backed or Lazy mappable command (bound to a
     /// key, or dispatched via `call!`/dot-repeat).
     ///

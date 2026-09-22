@@ -102,9 +102,8 @@ struct Wrapped {
     width: u16,
     lines: Arc<Vec<String>>,
     /// Widest line's display width — measured once per wrap, not
-    /// re-measured every frame an unchanged wrap is reused. See
-    /// [`super::menu_box::widest`], the same measurement [`MenuRows`]
-    /// caches for the same reason.
+    /// re-measured every frame an unchanged wrap is reused, via
+    /// [`super::menu_box::widest`].
     inner_width: u16,
     styled_rows: Option<Arc<Vec<StyledRow>>>,
 }
@@ -425,21 +424,23 @@ pub fn resolve_band(
 /// One menu row: a primary label, plus an optional second part right-aligned
 /// against it (an LSP completion candidate's `detail`, e.g.) — see
 /// [`resolve_menu`] for how the two are laid out into one painted string.
-/// `Arc<str>`, not `String`: a completion source clones its own already-
-/// interned label/detail into this every frame the menu is open (for the
-/// handful of rows in the window), so a `.clone()` here is a refcount bump,
-/// not a re-copy.
+/// `String`, not `Arc<str>`: `compose_menu_row` always paints into a fresh
+/// `String` regardless (`truncate_marked` copies), so an `Arc<str>` here
+/// would only ever save a caller's own construction-time clone — and the
+/// caller with the most rows to build (`CompletionItem::menu_row`, one call
+/// per parsed item) never reaches the visible window most of them are built
+/// for; see that method's own doc.
 #[derive(Clone)]
 pub struct MenuRow {
-    pub main: Arc<str>,
-    pub trailing: Option<Arc<str>>,
+    pub main: String,
+    pub trailing: Option<String>,
 }
 
 impl MenuRow {
     /// A single-column row — `trailing` absent.
-    pub fn plain(main: impl Into<Arc<str>>) -> Self {
+    pub fn plain(main: String) -> Self {
         Self {
-            main: main.into(),
+            main,
             trailing: None,
         }
     }

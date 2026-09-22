@@ -384,15 +384,6 @@ pub(crate) fn symbol_under_cursor(ctx: &mut SteelCtx, bid: BidArg) -> SteelResul
     ))
 }
 
-/// `(word-start-before-cursor bid)`.
-pub(crate) fn word_start_before_cursor(ctx: &mut SteelCtx, bid: BidArg) -> SteelResult {
-    let id = bid.0;
-    match ctx.host.cursor().word_start_before_cursor(id) {
-        Some(n) => Ok(SteelVal::IntV(n as isize)),
-        None => Ok(SteelVal::BoolV(false)),
-    }
-}
-
 /// `(set-buffer-language! bid lang-or-#f)` — deferred; applied after the eval returns.
 pub(crate) fn set_buffer_language_steel(
     ctx: &mut SteelCtx,

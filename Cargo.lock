@@ -718,6 +718,7 @@ dependencies = [
  "regex-cursor",
  "ropey",
  "rustc-hash",
+ "serde",
  "serde_json",
  "slotmap",
  "steel-core",

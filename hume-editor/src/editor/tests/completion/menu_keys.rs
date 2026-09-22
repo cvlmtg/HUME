@@ -7,7 +7,6 @@ use crate::editor::buffer::Buffer;
 use crate::editor::host_impl::EditorHostImpl;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
-use hume_engine::pipeline::RenderContext;
 use hume_scripting::host::{PopupKind, UiHost};
 use termina::event::{KeyCode, Modifiers};
 
@@ -61,6 +60,43 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
     assert!(
         ed.state.input.popup().is_some(),
         "signature help must survive a completion session opening alongside it"
+    );
+}
+
+/// The reverse order: a `Popup` (hover, arriving async after a trigger char
+/// opened the menu, say) lands *above* an already-open completion session.
+/// `dismiss_completion`/`take_completion_session` reach the session by its
+/// own `LayerRef` (`ref_of`) rather than a pop-if-top rule — this pins that
+/// a popup landing above it doesn't strand it: `EditorState::dismiss_
+/// completion`'s own doc (`mod.rs`) is explicit that "a `Completion` layer
+/// can sit under a `Popup`, and a pop-if-top rule would leave a stale
+/// session behind one."
+#[test]
+fn a_popup_landing_above_a_live_session_does_not_strand_it() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+    open_completion_session(&mut ed, &["foo"]);
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: session open"
+    );
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
+        .expect("show-popup! must succeed");
+    assert!(
+        ed.state.input.popup().is_some(),
+        "sanity: popup landed above the session"
+    );
+    assert!(
+        ed.state.input.completion().is_some(),
+        "the session must still be reachable, not buried under the popup"
+    );
+
+    assert!(
+        ed.state.take_completion_session(&ed.view).is_some(),
+        "take_completion_session must find the layer wherever it sits on the stack, \
+         not only when it's top-of-stack"
     );
 }
 
@@ -457,9 +493,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     ed.settle();
     assert!(ed.state.input.completion().is_none());
 
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(40, 8);
-    ed.prepare_frame(&mut ctx);
+    frame(&mut ed, 40, 8);
     assert!(ed.state.views.completion_menu.read().is_none());
 }
 

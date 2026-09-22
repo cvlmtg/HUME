@@ -20,7 +20,7 @@ mod accept;
 
 use std::ops::Range;
 
-use hume_editing::changeset::{Assoc, ChangeSet};
+use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
@@ -122,7 +122,7 @@ impl BufferTarget {
 /// span is idempotent in these coordinates — no "what did the previous
 /// candidate leave behind" bookkeeping, and two sources with different
 /// spans coexist by construction.
-pub(in crate::editor) struct MinibufTarget {
+pub(in crate::editor::completion) struct MinibufTarget {
     input: String,
     cursor: usize,
     /// [`BufferTarget::menu_anchor`]'s counterpart, a byte offset into
@@ -137,7 +137,7 @@ pub(in crate::editor) struct MinibufTarget {
 /// *request*, which is this snapshot; `accept` decodes against `rope` and
 /// maps forward through `cs_since` rather than approximating drift as a
 /// scalar shift.
-pub(in crate::editor) struct DocSnapshot {
+struct DocSnapshot {
     rope: ropey::Rope,
     head: CharOffset,
     cs_since: ChangeSet,
@@ -268,8 +268,7 @@ impl Invocation {
         let Some(live) = live.resolved() else {
             return String::new();
         };
-        text.slice(ExclusiveRange::new(live.start, doc.head))
-            .to_string()
+        token_text(text, live.start, doc.head)
     }
 
     fn items(&self) -> &[CompletionItem] {
@@ -330,12 +329,15 @@ pub(in crate::editor) struct LiveDoc<'a> {
 pub(in crate::editor) struct CompletionSession {
     target: Target,
     slots: Vec<SourceSlot>,
-    /// Ranked `(slot index, item index)` pairs, rebuilt by every
-    /// [`Self::rank`] call.
-    filtered: Vec<(u32, u32)>,
-    /// Retained across `rank` calls so per-keystroke filtering doesn't
-    /// allocate a fresh Vec every time. `(score, slot, item)`.
-    rank_scratch: Vec<(u32, u32, u32)>,
+    /// `(score, priority, slot, item)` for every surviving candidate,
+    /// rebuilt and sorted by every [`Self::rank`] call — this *is* the
+    /// session's own ranked list (`len`/`ranked`/`rows_in` all read it
+    /// directly; there is no separate `filtered` copy to keep in sync).
+    /// Retained across calls so per-keystroke filtering doesn't allocate a
+    /// fresh Vec every time. `priority` is `SourceEntry::priority`'s own
+    /// `i64`, not narrowed — this tuple is sorted, never used as a lookup
+    /// key, so there's no reason to risk a truncating cast.
+    rank_scratch: Vec<(u32, i64, u32, u32)>,
     /// Reusable scoring engine — `FuzzyProfile::Autocomplete` (see its doc)
     /// distinguishes this from the picker's own instance. One instance per
     /// session, consulted only for a `MatchKind::Fuzzy` slot.
@@ -356,7 +358,6 @@ impl CompletionSession {
         Self {
             target,
             slots: Vec::new(),
-            filtered: Vec::new(),
             rank_scratch: Vec::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Autocomplete),
         }
@@ -520,8 +521,17 @@ impl CompletionSession {
     /// Whether any source has answered with at least one item — `false`
     /// once every answer is empty or the cursor left every token, at which
     /// point the session has nothing left to show and closes.
-    pub(in crate::editor) fn has_live_sources(&self) -> bool {
+    fn has_live_sources(&self) -> bool {
         self.slots.iter().any(SourceSlot::is_live)
+    }
+
+    /// Whether the session has nothing left to show and nothing on its way
+    /// — every source answered empty, or the cursor typed out of every
+    /// token. The one rule `orchestrate.rs` checks, at every point a
+    /// session might have just run out: right after opening/re-invoking,
+    /// and after each answer lands.
+    pub(in crate::editor) fn is_spent(&self) -> bool {
+        !self.is_pending() && !self.has_live_sources()
     }
 
     /// The sources to call again after an edit: those that flagged their
@@ -606,9 +616,10 @@ impl CompletionSession {
         self.rank_scratch.clear();
         // The leftmost token start among the slots that end up contributing
         // at least one scored item — folded into this same per-slot pass
-        // (each slot visited once) rather than a second walk over `filtered`
-        // every time a caller needs it (`menu_anchor_char`/`menu_anchor_byte`,
-        // both on the per-frame render path).
+        // (each slot visited once) rather than a second walk over
+        // `rank_scratch` every time a caller needs it
+        // (`menu_anchor_char`/`menu_anchor_byte`, both on the per-frame
+        // render path).
         let mut buffer_anchor: Option<CharOffset> = None;
         let mut minibuf_anchor: Option<usize> = None;
         for (s, slot) in self.slots.iter().enumerate() {
@@ -626,10 +637,7 @@ impl CompletionSession {
                     if range.start > doc.head {
                         continue;
                     }
-                    let text = doc
-                        .text
-                        .slice(ExclusiveRange::new(range.start, doc.head))
-                        .to_string();
+                    let text = token_text(doc.text, range.start, doc.head);
                     (text, TokenStart::Buffer(range.start))
                 }
                 (SpanTrack::Minibuf { bytes }, Target::Minibuf(m), _) => {
@@ -659,7 +667,8 @@ impl CompletionSession {
                     MatchKind::Delegated => Some(0),
                 };
                 if let Some(score) = score {
-                    self.rank_scratch.push((score, s as u32, i as u32));
+                    self.rank_scratch
+                        .push((score, entry.priority, s as u32, i as u32));
                     contributed = true;
                 }
             }
@@ -677,20 +686,16 @@ impl CompletionSession {
         let slots = &self.slots;
         let item_of =
             |s: u32, i: u32| &slots[s as usize].shown.as_ref().expect("ranked").items()[i as usize];
-        let priority_of = |s: u32| sources.get(slots[s as usize].source).priority;
         self.rank_scratch.sort_unstable_by(|a, b| {
             b.0.cmp(&a.0)
-                .then_with(|| priority_of(b.1).cmp(&priority_of(a.1)))
+                .then_with(|| b.1.cmp(&a.1))
                 .then_with(|| {
-                    item_of(a.1, a.2)
+                    item_of(a.2, a.3)
                         .sort_text
-                        .cmp(&item_of(b.1, b.2).sort_text)
+                        .cmp(&item_of(b.2, b.3).sort_text)
                 })
-                .then((a.1, a.2).cmp(&(b.1, b.2)))
+                .then((a.2, a.3).cmp(&(b.2, b.3)))
         });
-        self.filtered.clear();
-        self.filtered
-            .extend(self.rank_scratch.iter().map(|&(_, s, i)| (s, i)));
         match &mut self.target {
             Target::Buffer(bt) => bt.menu_anchor = buffer_anchor,
             Target::Minibuf(m) => m.menu_anchor = minibuf_anchor,
@@ -703,18 +708,18 @@ impl CompletionSession {
     /// callers (menu navigation, the visible-menu check) that don't need the
     /// items themselves.
     pub(in crate::editor) fn len(&self) -> usize {
-        self.filtered.len()
+        self.rank_scratch.len()
     }
 
     /// Whether the current ranking matches nothing. A session can be open
     /// with this `true` — narrowed to empty by continued typing, or awaiting
     /// every source's first answer — in which case no menu is visibly shown.
     pub(in crate::editor) fn is_empty(&self) -> bool {
-        self.filtered.is_empty()
+        self.rank_scratch.is_empty()
     }
 
     fn ranked(&self, idx: usize) -> Option<(&SourceSlot, &Invocation, &CompletionItem)> {
-        let &(s, i) = self.filtered.get(idx)?;
+        let &(_, _, s, i) = self.rank_scratch.get(idx)?;
         let slot = &self.slots[s as usize];
         let inv = slot.shown.as_ref()?;
         Some((slot, inv, &inv.items()[i as usize]))
@@ -759,12 +764,12 @@ impl CompletionSession {
     }
 
     /// Moves a menu selection by one row, wrapping at either end — `None`
-    /// when `filtered` is empty, so a caller can't divide by, or subtract
-    /// from, zero computing the wrapped index itself. `current` is the
-    /// caller's own UI state (`CompletionMenuUi` lives outside this type —
-    /// see its own doc), not tracked here.
+    /// when the ranked list is empty, so a caller can't divide by, or
+    /// subtract from, zero computing the wrapped index itself. `current` is
+    /// the caller's own UI state (`CompletionMenuUi` lives outside this type
+    /// — see its own doc), not tracked here.
     pub(in crate::editor) fn step_selection(&self, current: usize, forward: bool) -> Option<usize> {
-        let n = self.filtered.len();
+        let n = self.rank_scratch.len();
         if n == 0 {
             return None;
         }
@@ -780,7 +785,7 @@ impl CompletionSession {
         n: usize,
         sources: &SourceRegistry,
     ) -> Vec<serde_json::Value> {
-        (0..n.min(self.filtered.len()))
+        (0..n.min(self.rank_scratch.len()))
             .filter_map(|idx| self.ranked(idx))
             .map(|(slot, _, item)| item.to_json(&sources.get(slot.source).name))
             .collect()
@@ -810,19 +815,23 @@ impl Invocation {
         let SpanTrack::Buffer { doc, live } = &mut self.span else {
             return true;
         };
-        let crossed = live.resolved().is_some_and(|range| {
-            range.start > CharOffset::new(0) && {
-                let mut pair = [range.start.retreat(1), range.start];
-                cs.map_positions(&mut pair, Assoc::Before);
-                pair[0] == pair[1]
-            }
-        });
+        let mut crossed = false;
         if let Some(range) = live.resolved_mut() {
-            let mut start = [range.start];
-            cs.map_positions(&mut start, Assoc::Before);
-            let mut end = [range.end];
-            cs.map_positions(&mut end, Assoc::After);
-            *range = start[0]..end[0];
+            // One cursor over the non-decreasing sequence
+            // `[start-1, start, end]` — `map_anchor`'s `anchor_deleted` on
+            // `start-1` answers "was the token's start character itself
+            // deleted?" (a Backspace at the token's own start) directly,
+            // rather than inferring it from two positions mapping to the
+            // same spot.
+            let mut cursor = PosMapCursor::new(cs.ops());
+            if range.start > CharOffset::new(0) {
+                crossed = cursor
+                    .map_anchor(range.start.retreat(1), Assoc::Before)
+                    .anchor_deleted;
+            }
+            let start = cursor.map_anchor(range.start, Assoc::Before).pos;
+            let end = cursor.map(range.end, Assoc::After);
+            *range = start..end;
         }
         doc.cs_since = doc.cs_since.clone().compose(cs.clone());
         !crossed
@@ -835,7 +844,7 @@ impl Invocation {
             return true;
         };
         live.resolved()
-            .is_none_or(|range| range.start <= head && head <= range.end)
+            .is_none_or(|range| contains_cursor(range, head))
     }
 }
 
@@ -869,7 +878,7 @@ impl DocSnapshot {
                 })
         };
         let (start, end) = (mint(start)?, mint(end)?);
-        if !(start <= self.head && self.head <= end) {
+        if !contains_cursor(&(start..end), self.head) {
             return Err("completion-emit!: #:span does not contain the cursor".to_string());
         }
         if hume_rope::lines::char_to_ropey_line(rope, start)
@@ -891,7 +900,7 @@ impl MinibufTarget {
         let Some((start, end)) = span else {
             return Err(SPAN_REQUIRED.to_string());
         };
-        if !(start <= self.cursor && self.cursor <= end && end <= self.input.len()) {
+        if !contains_cursor(&(start..end), self.cursor) || end > self.input.len() {
             return Err(format!(
                 "completion-emit!: #:span ({start}, {end}) must contain the cursor ({}) \
                  within the input ({} bytes)",
@@ -904,6 +913,26 @@ impl MinibufTarget {
         }
         Ok(start..end)
     }
+}
+
+/// Whether `pos` sits within the closed interval `[range.start, range.end]`
+/// — the completion model's own span-containment convention (a token or
+/// replacement span always includes both its own endpoints, since the
+/// cursor is allowed to sit exactly at either — unlike
+/// `hume_rope::offset::ExclusiveRange`'s half-open one, which doesn't apply
+/// here). Shared by every span-containment check in this module and by
+/// `accept.rs`.
+fn contains_cursor<T: PartialOrd>(range: &Range<T>, pos: T) -> bool {
+    range.start <= pos && pos <= range.end
+}
+
+/// `text[start..head]` — a `Buffer` invocation's token text, in whatever
+/// document `text` is (the invocation's own snapshot for
+/// [`Invocation::prefix`]'s Steel-facing seed, the live buffer for
+/// [`CompletionSession::rank`]'s scoring pass). Both callers already know
+/// `start <= head` before calling this.
+fn token_text(text: &BufferText, start: CharOffset, head: CharOffset) -> String {
+    text.slice(ExclusiveRange::new(start, head)).to_string()
 }
 
 /// Boundary-safe prefix check shared by every `MatchKind::String` source —

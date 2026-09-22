@@ -34,7 +34,7 @@ fn ctrl_space_invokes_a_registered_source_and_shows_its_answer() {
 fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("ki-[x]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
@@ -44,8 +44,6 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
                (completion-emit! id (list (hash "label" "kitty_support"))))
              #:target 'buffer #:token 'word)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(status(&ed), "prefix:ki|bid-ok:yes");
 }
 
@@ -53,7 +51,7 @@ fn a_word_source_is_handed_the_word_before_the_cursor_as_its_prefix() {
 fn a_cursor_source_is_handed_an_empty_prefix_even_mid_word() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("ki-[x]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
@@ -62,8 +60,6 @@ fn a_cursor_source_is_handed_an_empty_prefix_even_mid_word() {
                (completion-emit! id (list (hash "label" "kitty_support"))))
              #:target 'buffer #:token 'cursor)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(status(&ed), "prefix:[]");
 }
 
@@ -117,15 +113,13 @@ fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
 fn a_cursor_token_seeds_no_filter_even_mid_word() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("ab-[c]>def\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "kitty_support"))))
              #:target 'buffer #:token 'cursor)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(
         labels(&ed),
         vec!["kitty_support"],
@@ -140,15 +134,13 @@ fn a_cursor_token_seeds_no_filter_even_mid_word() {
 fn a_cursor_token_replaces_nothing_before_the_cursor_on_accept() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("fo-[ ]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar" "insertText" "foobar"))))
              #:target 'buffer #:token 'cursor)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "fofoobar \n");
 }
@@ -159,7 +151,7 @@ fn a_cursor_token_replaces_nothing_before_the_cursor_on_accept() {
 fn a_custom_token_uses_the_emitted_span_for_filtering_and_accept() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("x fo-[ ]>bar\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
@@ -168,8 +160,6 @@ fn a_custom_token_uses_the_emitted_span_for_filtering_and_accept() {
                                  #:span (cons 2 4)))
              #:target 'buffer #:token 'custom)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(
         labels(&ed),
         vec!["foobar"],
@@ -187,15 +177,13 @@ fn a_custom_token_uses_the_emitted_span_for_filtering_and_accept() {
 fn a_custom_token_answer_without_a_span_is_an_error() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("fo-[ ]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "test"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foobar"))))
              #:target 'buffer #:token 'custom)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert!(
         ed.state.input.completion().is_none(),
         "an unusable answer is \"nothing from this source\" — the session closes"
@@ -220,9 +208,7 @@ fn custom_span_source(span: &str) -> String {
 fn a_custom_span_not_containing_the_cursor_is_an_error() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(&mut ed, tmp.path(), &custom_span_source("(cons 3 5)"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 3 5)"));
     assert!(ed.state.input.completion().is_none());
     assert!(
         status(&ed).contains("does not contain the cursor"),
@@ -235,9 +221,7 @@ fn a_custom_span_not_containing_the_cursor_is_an_error() {
 fn a_custom_span_out_of_range_is_an_error() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(&mut ed, tmp.path(), &custom_span_source("(cons 0 999)"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 0 999)"));
     assert!(ed.state.input.completion().is_none());
     assert!(
         status(&ed).contains("out of range"),
@@ -251,9 +235,7 @@ fn a_custom_span_out_of_range_is_an_error() {
 fn a_custom_span_across_lines_is_an_error() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("abc\n-[d]>ef\n");
-    run(&mut ed, tmp.path(), &custom_span_source("(cons 0 5)"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &custom_span_source("(cons 0 5)"));
     assert!(ed.state.input.completion().is_none());
     assert!(
         status(&ed).contains("more than one line"),
@@ -273,7 +255,7 @@ fn a_custom_span_starting_mid_cluster_snaps_to_the_cluster_start() {
     let tmp = safe_tempdir();
     // "cafe\u{0301}" — one cluster spans chars [3,5); 4 is inside it.
     let mut ed = editor_from("cafe\u{0301}-[x]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &format!(
@@ -285,8 +267,6 @@ fn a_custom_span_starting_mid_cluster_snaps_to_the_cluster_start() {
             '\u{0301}'
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["efoo"]);
 }
 
@@ -308,7 +288,7 @@ fn an_empty_answer_closes_the_session_and_reports_no_completions() {
 fn the_session_is_open_but_empty_until_the_source_answers() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define pending-id #f)
@@ -318,8 +298,6 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
            (define-command! "answer" "" (lambda ()
              (completion-emit! pending-id (list (hash "label" "late")))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     let session = ed.state.input.completion().expect("open while pending");
     assert!(session.is_pending());
     assert!(session.is_empty());
@@ -334,7 +312,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
 fn an_answer_to_a_superseded_invocation_is_dropped() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define calls '())
@@ -347,8 +325,6 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
            (define-command! "answer-second" "" (lambda ()
              (completion-emit! (car calls) (list (hash "label" "fresh")))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     trigger(&mut ed);
     ed.execute_keymap_command("answer-first".into(), None, false);
     assert_eq!(status(&ed), "dropped");
@@ -365,7 +341,7 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
 fn a_dropped_stale_answer_does_not_reset_the_selection() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define calls '())
@@ -378,8 +354,6 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
              (log! 'info (if (completion-emit! (car (reverse calls)) (list (hash "label" "OLD")))
                              "applied" "dropped"))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["foo", "fox"], "sanity");
 
     // Typing narrows the token and, since the last answer was incomplete,
@@ -408,13 +382,59 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
     );
 }
 
+/// The positive twin of the test above: a landing answer that *is* a live,
+/// still-latest contribution (not stale, not dropped) resets the selection
+/// to row 0 — the row the user had scrolled to on the narrower ranking has
+/// no guaranteed meaning against the wider one the new source's items
+/// produce.
+#[test]
+fn a_landing_answer_resets_the_selection_to_row_zero() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(define pending-id #f)
+           (register-completion-source! "a"
+             (lambda (id bid prefix)
+               (completion-emit! id (list (hash "label" "aaa") (hash "label" "abc"))))
+             #:target 'buffer #:token 'word)
+           (register-completion-source! "b"
+             (lambda (id bid prefix) (set! pending-id id))
+             #:target 'buffer #:token 'word #:priority 10)
+           (define-command! "answer-b" "" (lambda ()
+             (completion-emit! pending-id (list (hash "label" "zzz")))))"#,
+    );
+    assert_eq!(
+        labels(&ed),
+        vec!["aaa", "abc"],
+        "sanity: only source a has answered, b is still pending"
+    );
+
+    ed.feed_key(key_tab());
+    assert_eq!(selected_row(&ed), 1, "sanity: moved off row 0");
+
+    // b's answer is a fresh, still-latest contribution — not stale.
+    ed.execute_keymap_command("answer-b".into(), None, false);
+    assert_eq!(
+        labels(&ed),
+        vec!["zzz", "aaa", "abc"],
+        "sanity: b's higher-priority item now ranks first"
+    );
+    assert_eq!(
+        selected_row(&ed),
+        0,
+        "a live landing answer must reset the selection"
+    );
+}
+
 /// A second answer for the *same* still-latest invocation replaces the
 /// first — a source may stream.
 #[test]
 fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define saved #f)
@@ -426,8 +446,6 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
            (define-command! "again" "" (lambda ()
              (completion-emit! saved (list (hash "label" "x") (hash "label" "z")))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.execute_keymap_command("again".into(), None, false);
     assert_eq!(labels(&ed), vec!["x", "z"], "replaced, not appended");
 }
@@ -436,7 +454,7 @@ fn a_repeated_answer_for_a_live_invocation_replaces_the_first() {
 fn an_answer_after_the_session_closed_is_dropped() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define saved #f)
@@ -446,8 +464,6 @@ fn an_answer_after_the_session_closed_is_dropped() {
            (define-command! "late" "" (lambda ()
              (log! 'info (if (completion-emit! saved (list (hash "label" "x"))) "applied" "dropped"))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key_esc());
     assert_eq!(
         ed.state.mode(),
@@ -515,9 +531,7 @@ fn counting_source(incomplete: &str) -> String {
 fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(&mut ed, tmp.path(), &counting_source("#t"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &counting_source("#t"));
     ed.feed_key(key('f'));
     ed.settle();
     ed.feed_key(key('o'));
@@ -531,9 +545,7 @@ fn an_incomplete_source_is_reinvoked_on_each_keystroke() {
 fn a_complete_source_is_not_reinvoked_on_typing() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(&mut ed, tmp.path(), &counting_source("#f"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key('f'));
     ed.settle();
     ed.execute_keymap_command("report".into(), None, false);
@@ -551,7 +563,7 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
 fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define calls 0)
@@ -562,8 +574,6 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
                  (completion-emit! id (list (hash "label" "foo") (hash "label" "bar")) #:incomplete #t)))
              #:target 'buffer #:token 'word)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key('f'));
     ed.settle();
     let session = ed.state.input.completion().expect("still open");
@@ -581,7 +591,7 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
 fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define ids '())
@@ -593,8 +603,6 @@ fn a_pending_source_is_reinvoked_after_an_edit_and_its_old_call_goes_stale() {
            (define-command! "prefixes" "" (lambda ()
              (log! 'info (string-join (map cdr (reverse ids)) ","))))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key('f'));
     ed.settle();
     ed.execute_keymap_command("prefixes".into(), None, false);
@@ -623,7 +631,7 @@ fn two_sources(a: &str, b: &str) -> String {
 fn two_sources_rank_together_by_score() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("rn-[ ]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &two_sources(
@@ -631,8 +639,6 @@ fn two_sources_rank_together_by_score() {
             r#"(list (hash "label" "rnorm" "sortText" "z"))"#,
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["rnorm", "random"]);
 }
 
@@ -643,7 +649,7 @@ fn two_sources_rank_together_by_score() {
 fn priority_breaks_a_score_tie_before_sort_text() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &two_sources(
@@ -651,8 +657,6 @@ fn priority_breaks_a_score_tie_before_sort_text() {
             r#"(list (hash "label" "zzz"))"#,
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["zzz", "aaa"]);
 }
 
@@ -660,7 +664,7 @@ fn priority_breaks_a_score_tie_before_sort_text() {
 fn top_carries_the_contributing_source_name() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &format!(
@@ -670,8 +674,6 @@ fn top_carries_the_contributing_source_name() {
                  (log! 'info (hash-ref (car (completion-top 1)) "source"))))"#
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.execute_keymap_command("src".into(), None, false);
     assert_eq!(status(&ed), "test-source");
 }
@@ -685,7 +687,7 @@ fn each_source_keeps_its_own_token() {
     // "./fo" — a path-shaped source claims all four chars, a word source
     // only "fo".
     let mut ed = editor_from("./fo-[ ]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(register-completion-source! "word"
@@ -696,8 +698,6 @@ fn each_source_keeps_its_own_token() {
                (completion-emit! id (list (hash "label" "./foo.txt")) #:span (cons 0 4)))
              #:target 'buffer #:token 'custom)"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     let ranked = labels(&ed);
     assert_eq!(
         ranked.len(),
@@ -723,7 +723,7 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
     let lang = ed.state.config.languages.intern("rust");
     let bid = ed.focused_buffer_id();
     ed.state.buffers.get_mut(bid).language = Some(lang);
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         r#"(define dot-calls 0)
@@ -737,8 +737,6 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
              #:target 'buffer #:token 'cursor)
            (register-trigger-chars! "dot" "rust" (list "."))"#,
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
 
     ed.feed_key(key('.'));
@@ -781,9 +779,7 @@ fn a_trigger_char_nobody_registered_for_does_nothing() {
 fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(&mut ed, tmp.path(), &counting_source("#f"));
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
+    insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key_tab());
     trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["foobar"]);
@@ -798,7 +794,7 @@ fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
 fn re_registering_a_name_replaces_the_source() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &format!(
@@ -807,8 +803,6 @@ fn re_registering_a_name_replaces_the_source() {
             completion_source("test", &completion_labels(&["new"]), ""),
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     assert_eq!(labels(&ed), vec!["new"]);
 }
 
@@ -840,10 +834,7 @@ fn a_cross_target_registration_under_a_native_name_is_refused() {
     type_chars(&mut ed, &format!("e {}/hel", dir.path().display()));
     ed.handle_key(key_tab());
     assert_eq!(
-        ed.state
-            .minibuf()
-            .map(|mb| mb.input.clone())
-            .unwrap_or_default(),
+        minibuf_input(&ed),
         format!("e {}/hello.txt", dir.path().display()),
         "the native path source must still be the one serving `:e`"
     );
@@ -961,10 +952,7 @@ fn a_steel_typed_command_can_declare_a_native_completer() {
     type_chars(&mut ed, &format!("look {}/hel", dir.path().display()));
     ed.handle_key(key_tab());
     assert_eq!(
-        ed.state
-            .minibuf()
-            .map(|mb| mb.input.clone())
-            .unwrap_or_default(),
+        minibuf_input(&ed),
         format!("look {}/hello.txt", dir.path().display())
     );
 }
@@ -989,10 +977,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
     ed.handle_key(key_tab());
     ed.settle();
     assert_eq!(
-        ed.state
-            .minibuf()
-            .map(|mb| mb.input.clone())
-            .unwrap_or_default(),
+        minibuf_input(&ed),
         "greet alice",
         "the sole prefix match lands silently once the async source answers"
     );
@@ -1018,13 +1003,7 @@ fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
     type_chars(&mut ed, "greet a");
     ed.handle_key(key_tab());
     assert!(ed.state.input.completion().is_none());
-    assert_eq!(
-        ed.state
-            .minibuf()
-            .map(|mb| mb.input.clone())
-            .unwrap_or_default(),
-        "greet a"
-    );
+    assert_eq!(minibuf_input(&ed), "greet a");
     assert!(
         ed.state
             .message_log

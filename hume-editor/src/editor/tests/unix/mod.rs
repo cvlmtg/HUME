@@ -317,6 +317,17 @@ fn setup_trigger_char_feature(
     (ed, guard, requests)
 }
 
+/// How many requests logged in `requests` were sent for `method` — shared by
+/// `lsp_sighelp.rs`, `lsp_inlay_feature.rs`, and `lsp_completion_feature.rs`,
+/// every trigger-char feature's own re-request/debounce assertions.
+fn request_count(requests: &RequestLog, method: &str) -> usize {
+    requests
+        .borrow()
+        .iter()
+        .filter(|(_sid, m, _params)| m == method)
+        .count()
+}
+
 /// `((start_line, start_char), (end_line, end_char), severity, message)`.
 type DiagFixture<'a> = ((u32, u32), (u32, u32), i64, &'a str);
 

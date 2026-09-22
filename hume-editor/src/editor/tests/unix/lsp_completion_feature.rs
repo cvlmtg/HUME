@@ -37,18 +37,6 @@ fn settle(ed: &mut Editor) {
     ed.settle();
 }
 
-fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests
-        .borrow()
-        .iter()
-        .filter(|(_sid, m, _params)| m == method)
-        .count()
-}
-
-fn status(ed: &Editor) -> String {
-    ed.state.status_msg.clone().unwrap_or_default()
-}
-
 #[test]
 fn trigger_char_fires_the_completion_request() {
     let tmp = safe_tempdir();
@@ -243,18 +231,7 @@ fn accept_applies_main_edit_and_additional_text_edits_as_one_undo_step() {
         },
     );
     // Char 1 is the start of "foo" on line 1 (char 0 is line 0's newline).
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(1)),
-    ));
+    set_cursor(&mut ed, 1);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -307,18 +284,7 @@ fn typing_after_an_accept_with_additional_text_edits_composes_into_the_same_grou
             );
         },
     );
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(1)),
-    ));
+    set_cursor(&mut ed, 1);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -381,18 +347,7 @@ fn additional_edit_on_the_same_line_as_a_text_edit_main_edit_shifts_with_it() {
     );
     // Char 5 is right after "foo.b" — matches the server's textEdit end
     // exactly, so accept() never extends the range past what's specified.
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(5)),
-    ));
+    set_cursor(&mut ed, 5);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -447,18 +402,7 @@ fn additional_edit_on_the_same_line_with_an_astral_prefix_lands_correctly() {
     );
     // Char 6: right after "🎉foo.b" (1 + 5 = 6) — matches the server's
     // textEdit end exactly.
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(6)),
-    ));
+    set_cursor(&mut ed, 6);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -516,18 +460,7 @@ fn resolved_additional_edits_land_through_the_accept_edit_on_the_same_line() {
             );
         },
     );
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(5)),
-    ));
+    set_cursor(&mut ed, 5);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -581,18 +514,7 @@ fn resolved_additional_edits_are_dropped_after_a_post_accept_edit() {
             );
         },
     );
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(1)),
-    ));
+    set_cursor(&mut ed, 1);
 
     ed.feed_key(key('i'));
     ed.settle();
@@ -639,18 +561,7 @@ fn resolve_does_not_apply_anything_after_lsp_stop() {
             // :lsp-stop must sweep it before any reply would matter.
         },
     );
-    let bid = ed.focused_buffer_id();
-    let pid = ed.state.focus.id();
-    let pbs = ed
-        .state
-        .panes
-        .state
-        .get_mut(pid)
-        .and_then(|by_buf| by_buf.get_mut(bid))
-        .expect("pane buffer state must exist");
-    pbs.set_selections(hume_editing::selection::SelectionSet::single(
-        hume_editing::selection::Selection::collapsed(co(1)),
-    ));
+    set_cursor(&mut ed, 1);
 
     ed.feed_key(key('i'));
     ed.settle();

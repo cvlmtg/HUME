@@ -103,7 +103,6 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | `(selections-linewise? bid)` | `#t` if every one of `bid`'s selections covers whole lines. A cursor sitting alone on a blank line doesn't count either way — it neither satisfies this nor breaks it when a real whole-line selection is also present — and `#f` if every selection is such a cursor |
 | `(selections-charwise? bid)` | `#t` if none of `bid`'s selections covers whole lines, with the same blank-line-cursor exception as above; `#t` if every selection is such a cursor |
 | `(symbol-under-cursor bid)` | The identifier under `bid`'s primary cursor, as a string |
-| `(word-start-before-cursor bid)` | Char offset where the word before `bid`'s cursor starts, or the cursor's own position when nothing word-like precedes it; `#f` if `bid` isn't shown in any pane |
 | `(buffer-id? v)`, `(pane-id? v)` | `#t` if `v` is an opaque BufferId/PaneId |
 | `(buffer-id=? a b)`, `(pane-id=? a b)` | Value-equality for two BufferId/PaneId handles |
 

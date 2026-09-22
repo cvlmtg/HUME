@@ -15,17 +15,13 @@ use hume_lsp::completion_item::{parse_additional_text_edits_lenient, strip_snipp
 /// `raw` keeps the pristine, unstripped JSON (Steel's `on-completion-accept`
 /// hook and `completionItem/resolve` both see the server's original text).
 pub(in crate::editor) struct CompletionItem {
-    /// `Arc<str>`, not `String`: [`Self::menu_row`] reads this fresh every
-    /// frame the menu is open (`CompletionSession::rows_in`) — a refcount
-    /// bump per visible row beats re-copying each label every frame.
-    pub(super) label: std::sync::Arc<str>,
+    pub(super) label: String,
     /// Raw `CompletionItemKind` number — display-only (icon choice), no
     /// v1 reader maps it to a name. Read straight from JSON rather than the
     /// typed field: `CompletionItemKind` wraps a private `i32` with no
     /// accessor.
     pub(super) kind: Option<i64>,
-    /// `Arc<str>` for the same reason as `label`.
-    pub(super) detail: Option<std::sync::Arc<str>>,
+    pub(super) detail: Option<String>,
     pub(super) sort_text: String,
     pub(super) filter_text: String,
     pub(super) insert_text: String,
@@ -58,10 +54,9 @@ impl CompletionItem {
     /// `kind`/`detail`/`text_edit` absent, no `additionalTextEdits`, `raw`
     /// null — nothing here is a wire concern.
     pub(super) fn plain(label: String, insert_text: String, sort_text: String) -> Self {
-        let filter_text = label.clone();
         Self {
-            filter_text,
-            label: label.into(),
+            filter_text: label.clone(),
+            label,
             insert_text,
             sort_text,
             kind: None,
@@ -73,25 +68,30 @@ impl CompletionItem {
         }
     }
 
-    /// Parses one item, strict first: `v` itself is never consumed, so
-    /// `raw: v.clone()` (below) still captures the full item, including
-    /// fields this projection drops. A strict deserialize into
+    /// Parses one item, strict first. Takes `v` by value and deserializes
+    /// against `&v` (`serde_json::Value` implements `Deserializer` for a
+    /// reference) rather than `serde_json::from_value(v.clone())`, so the
+    /// common (`Ok`) path moves `v` into `raw` (below) instead of cloning it
+    /// — every item in a response pays this once, every keystroke a
+    /// streaming LSP source re-answers. A strict deserialize into
     /// `lsp_types::CompletionItem` rejects on *any* off-spec field (an
     /// out-of-range `kind`, a malformed `textEdit`, ...), not just the ones
     /// this store reads — [`Self::from_json_lenient`] then recovers what it
-    /// can straight from JSON. `Err` only when even that fails (`label`
-    /// itself missing/non-string); callers skip the item and report a Trace
-    /// line rather than fabricating a placeholder.
-    pub(in crate::editor) fn from_json(v: &serde_json::Value) -> Result<Self, serde_json::Error> {
-        match serde_json::from_value::<lsp_types::CompletionItem>(v.clone()) {
+    /// can straight from JSON (against `&v`, since `v` is still needed for
+    /// its own `raw` on that path too). `Err` only when even that fails
+    /// (`label` itself missing/non-string); callers skip the item and
+    /// report a Trace line rather than fabricating a placeholder.
+    pub(in crate::editor) fn from_json(v: serde_json::Value) -> Result<Self, serde_json::Error> {
+        match <lsp_types::CompletionItem as serde::Deserialize>::deserialize(&v) {
             Ok(item) => Ok(Self::from_typed(item, v)),
-            Err(strict_err) => Self::from_json_lenient(v).ok_or(strict_err),
+            Err(strict_err) => Self::from_json_lenient(&v).ok_or(strict_err),
         }
     }
 
     /// Builds from an already-typed item — the common case, when the whole
-    /// response round-trips through strict deserialize.
-    fn from_typed(item: lsp_types::CompletionItem, v: &serde_json::Value) -> Self {
+    /// response round-trips through strict deserialize. Takes `v` by value
+    /// and moves it into `raw` — see [`Self::from_json`]'s own doc.
+    fn from_typed(item: lsp_types::CompletionItem, v: serde_json::Value) -> Self {
         let label = item.label;
         let kind = v.get("kind").and_then(|x| x.as_i64());
         let sort_text = item.sort_text.unwrap_or_else(|| label.clone());
@@ -111,16 +111,7 @@ impl CompletionItem {
                 new_text: ire.new_text,
             },
         });
-        let text_edit = text_edit.map(|te| {
-            if is_snippet {
-                lsp_types::TextEdit {
-                    new_text: strip_snippet(&te.new_text),
-                    ..te
-                }
-            } else {
-                te
-            }
-        });
+        let text_edit = text_edit.map(|te| strip_snippet_from_edit(te, is_snippet));
         // `Option<Vec<T>>` fields deserialize key-absent -> `None` (serde's
         // built-in special case for `Option`, no `#[serde(default)]`
         // needed), so `is_some()` here really does mean "the server sent
@@ -128,16 +119,16 @@ impl CompletionItem {
         let has_additional_text_edits = item.additional_text_edits.is_some();
         let additional_text_edits = item.additional_text_edits.unwrap_or_default();
         Self {
-            label: label.into(),
+            label,
             kind,
-            detail: item.detail.map(Into::into),
+            detail: item.detail,
             sort_text,
             filter_text,
             insert_text,
             text_edit,
             additional_text_edits,
             has_additional_text_edits,
-            raw: v.clone(),
+            raw: v,
         }
     }
 
@@ -151,10 +142,7 @@ impl CompletionItem {
     fn from_json_lenient(v: &serde_json::Value) -> Option<Self> {
         let label = v.get("label")?.as_str()?.to_string();
         let kind = v.get("kind").and_then(|x| x.as_i64());
-        let detail = v
-            .get("detail")
-            .and_then(|x| x.as_str())
-            .map(std::sync::Arc::from);
+        let detail = v.get("detail").and_then(|x| x.as_str()).map(str::to_string);
         let string_or_label = |key: &str| -> String {
             v.get(key)
                 .and_then(|x| x.as_str())
@@ -173,20 +161,11 @@ impl CompletionItem {
         let text_edit = v
             .get("textEdit")
             .and_then(hume_lsp::completion_item::text_edit_from_json_lenient);
-        let text_edit = text_edit.map(|te| {
-            if is_snippet {
-                lsp_types::TextEdit {
-                    new_text: strip_snippet(&te.new_text),
-                    ..te
-                }
-            } else {
-                te
-            }
-        });
+        let text_edit = text_edit.map(|te| strip_snippet_from_edit(te, is_snippet));
         let has_additional_text_edits = v.get("additionalTextEdits").is_some();
         let additional_text_edits = parse_additional_text_edits_lenient(v);
         Some(Self {
-            label: label.into(),
+            label,
             kind,
             detail,
             sort_text,
@@ -215,7 +194,7 @@ impl CompletionItem {
     /// `completion-top` surfaces.
     pub(super) fn to_json(&self, source: &str) -> serde_json::Value {
         serde_json::json!({
-            "label": &*self.label,
+            "label": &self.label,
             "kind": self.kind,
             "detail": self.detail.as_deref(),
             "source": source,
@@ -226,15 +205,30 @@ impl CompletionItem {
     /// non-empty) as the right-aligned trailing one — reads both directly
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
-    /// (`hume_ui::popup`), not this store's. Both clones are refcount bumps
-    /// (`label`/`detail` are `Arc<str>`) — called fresh every frame by
-    /// `CompletionSession::rows_in`, for the handful of candidates in the
-    /// visible window only.
+    /// (`hume_ui::popup`), not this store's. Called fresh every frame the
+    /// menu is open (`CompletionSession::rows_in`), but only for the
+    /// handful of rows in the visible window — a `String` clone per row per
+    /// frame there is cheaper than paying an `Arc<str>` conversion for
+    /// every parsed item, most of which are never scrolled into view.
     pub(super) fn menu_row(&self) -> hume_ui::popup::MenuRow {
         hume_ui::popup::MenuRow {
             main: self.label.clone(),
             trailing: self.detail.clone().filter(|d| !d.is_empty()),
         }
+    }
+}
+
+/// Strips snippet syntax from `te.new_text` when `is_snippet` — shared by
+/// the strict (`from_typed`) and lenient (`from_json_lenient`) decode paths,
+/// which both apply this same rule to the item's own `text_edit`.
+fn strip_snippet_from_edit(te: lsp_types::TextEdit, is_snippet: bool) -> lsp_types::TextEdit {
+    if is_snippet {
+        lsp_types::TextEdit {
+            new_text: strip_snippet(&te.new_text),
+            ..te
+        }
+    } else {
+        te
     }
 }
 

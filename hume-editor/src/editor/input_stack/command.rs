@@ -60,7 +60,7 @@ impl Editor {
             let session = self.state.input.completion()?;
             session.minibuf_input()?;
             let anchor_byte = session.menu_anchor_byte()?;
-            let selected = self.state.input.completion_ui().map_or(0, |ui| ui.selected);
+            let selected = self.state.input.completion_selected();
             let anchor_x = self
                 .state
                 .input
@@ -153,8 +153,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // (`completion_input_minibuf`, `input_stack/completion.rs`) before
         // it ever reaches here again.
         MiniBufferEvent::CompleteRequested { reverse: false } => {
-            ed.activate_minibuf_completion_target();
-            ed.state.trigger_minibuf_completion(&ed.view);
+            ed.start_minibuf_completion();
         }
         MiniBufferEvent::CompleteRequested { reverse: true } => {}
         MiniBufferEvent::HistoryPrev => {

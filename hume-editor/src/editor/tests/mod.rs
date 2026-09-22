@@ -199,6 +199,18 @@ fn drawer_rows(ed: &Editor) -> Vec<String> {
     guard.as_ref().expect("drawer must be open").rows.to_vec()
 }
 
+/// The `:` line's current input, `""` when no minibuffer is open. Shared by
+/// `command_mode.rs` and `completion/minibuf.rs`.
+fn minibuf_input(ed: &Editor) -> &str {
+    ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
+}
+
+/// The last status-line message, `""` when none is set. Shared by
+/// `completion/mod.rs` and `unix/lsp_completion_feature.rs`.
+fn status(ed: &Editor) -> String {
+    ed.state.status_msg.clone().unwrap_or_default()
+}
+
 /// Extracts and parses the `params` payload back out of a scripted
 /// `publishDiagnostics` notification `Message` — for tests that call
 /// `ingest_publish_diagnostics`/`dispatch_lsp_action` directly rather than
@@ -994,6 +1006,17 @@ fn run_probe(
     let before = state(ed);
     type_cmd(ed, ":probe");
     state(ed) != before
+}
+
+/// [`run_probe`]'s "log a value" sibling: defines a `:check` command that
+/// logs `expr`'s value via `log! 'info`, dispatches it, and returns the
+/// resulting status message — for a test that wants one Scheme
+/// expression's value read back, not a boolean signal.
+fn log_probe(ed: &mut Editor, tmp: &std::path::Path, expr: &str) -> String {
+    let source = format!(r#"(define-typed-command! "check" "" (lambda () (log! 'info {expr})))"#);
+    run(ed, tmp, &source);
+    type_cmd(ed, ":check");
+    ed.state.status_msg.clone().unwrap()
 }
 
 /// Write `content` to a temp file and return its path (kept alive by the

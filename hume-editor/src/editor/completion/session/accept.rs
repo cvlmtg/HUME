@@ -8,7 +8,7 @@ use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
-use super::{BufferTarget, CompletionSession, SpanTrack};
+use super::{BufferTarget, CompletionSession, SpanTrack, contains_cursor};
 use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
@@ -170,7 +170,7 @@ impl CompletionSession {
         // silently computing a span from a stale reference point. This also
         // keeps the `chars_since` calls below from tripping their inversion
         // assert.
-        if !(start_now <= head_now && head_now <= end_now) {
+        if !contains_cursor(&(start_now..end_now), head_now) {
             return Err(format!(
                 "completion-accept!: {what} does not contain the cursor"
             ));

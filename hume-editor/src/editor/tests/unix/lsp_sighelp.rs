@@ -10,7 +10,6 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::*;
-use hume_engine::pipeline::RenderContext;
 use hume_lsp::backend::ServerId;
 use hume_lsp::test_util::{RecordingLspBackend, RequestLog};
 
@@ -43,10 +42,7 @@ fn type_char_and_settle(ed: &mut Editor, ch: char) {
 }
 
 fn popup_lines(ed: &mut Editor) -> Vec<String> {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(80, 25);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
+    crate::editor::tests::render(ed);
     ed.state
         .views
         .popup
@@ -54,14 +50,6 @@ fn popup_lines(ed: &mut Editor) -> Vec<String> {
         .as_ref()
         .map(|s| (*s.lines).clone())
         .unwrap_or_default()
-}
-
-fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests
-        .borrow()
-        .iter()
-        .filter(|(_sid, m, _params)| m == method)
-        .count()
 }
 
 fn signature_help_response(

@@ -5,17 +5,7 @@
 use super::*;
 use crate::editor::{commands, cursor};
 use hume_engine::pane::WrapMode;
-use hume_engine::pipeline::RenderContext;
 use hume_grid::Rect;
-
-/// A one-shot frame at `cols`×`rows`, as `Editor::run` would produce it.
-fn frame_at(ed: &mut Editor, cols: u16, rows: u16) -> RenderContext {
-    let mut ctx = RenderContext::new();
-    ed.sync_viewport_dims(cols, rows);
-    ed.settle();
-    ed.prepare_frame(&mut ctx);
-    ctx
-}
 
 // ── Pane-fit clamp: the menu renders clamped, never vanishes ────────────────
 //
@@ -32,7 +22,7 @@ fn completion_menu_clamps_to_a_short_pane_instead_of_vanishing() {
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     open_completion_session(&mut ed, &labels);
 
-    frame_at(&mut ed, 40, 6);
+    frame(&mut ed, 40, 6);
 
     let pane_rect = ed.view.pane_rect(ed.state.focus.id()).expect("rect");
     let view = ed.state.views.completion_menu.read();
@@ -51,7 +41,7 @@ fn completion_menu_clamps_to_a_narrow_pane_instead_of_vanishing() {
         &["a_very_long_candidate_label_that_overflows_the_pane"],
     );
 
-    frame_at(&mut ed, 20, 8);
+    frame(&mut ed, 20, 8);
 
     let pane_rect = ed.view.pane_rect(ed.state.focus.id()).expect("rect");
     let view = ed.state.views.completion_menu.read();
@@ -78,7 +68,7 @@ fn menu_appears_with_top_items_after_the_source_answers() {
                  (hash "label" "food" "detail" "field"))"#,
     );
 
-    frame_at(&mut ed, 40, 8);
+    frame(&mut ed, 40, 8);
     let snap = render_snapshot::render_to_styled_string(&mut ed, Rect::new(0, 0, 40, 8));
     insta::assert_snapshot!(snap);
 }
@@ -132,7 +122,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
 
     // Ample room on every side: no flip, no clamp, so the popup's (x, y) is
     // exactly (anchor_x, anchor_y + 1).
-    frame_at(&mut ed, 80, 24);
+    frame(&mut ed, 80, 24);
 
     let (x, y) = {
         let view = ed.state.views.completion_menu.read();

@@ -14,7 +14,7 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
 use hume_ops::auto_pairs::{delete_pair, insert_pair_close};
@@ -109,6 +109,24 @@ impl Editor {
             .completion_observe_edit(&self.view, buf, &cs, text_gen);
     }
 
+    /// Moves the cursor right past an existing closer instead of inserting
+    /// a duplicate — both auto-pair skip-close branches below (`"` typed
+    /// while sitting on a `"`, `)` typed while sitting on a `)`). A motion,
+    /// not an edit — bypasses `apply_insert_edit`, so `completion_observe_
+    /// edit` never runs and a live session's token would go untracked.
+    /// Dismiss rather than reintroduce a keystroke-driven refilter for a
+    /// motion path that carries no `ChangeSet` to remap.
+    fn skip_over_close(&mut self, pane: PaneId, buf: BufferId) {
+        doc_ops::apply_doc_motion(
+            &self.state.buffers,
+            &mut self.state.panes.state,
+            pane,
+            buf,
+            |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
+        );
+        self.state.dismiss_completion(&self.view);
+    }
+
     pub(in crate::editor) fn handle_insert(&mut self, key: KeyEvent) {
         // Walk the insert trie first: handles Esc, Ctrl-c, and arrow keys.
         // Regular characters (Char without CONTROL) and Backspace/Delete/Enter
@@ -191,20 +209,8 @@ impl Editor {
                         if symmetric && self.should_skip_close(ch) {
                             // e.g. typing `"` when cursor already sits on `"`.
                             // NLL ends the `ap_pairs` borrow at its last use (the `find` above),
-                            // so `&mut self.state.panes.state` here does not conflict with it.
-                            doc_ops::apply_doc_motion(
-                                &self.state.buffers,
-                                &mut self.state.panes.state,
-                                focused,
-                                buf,
-                                |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
-                            );
-                            // A motion, not an edit — bypasses `apply_insert_edit`,
-                            // so `completion_observe_edit` never runs and a live
-                            // session's token would go untracked. Dismiss rather
-                            // than reintroduce a keystroke-driven refilter for a
-                            // motion path that carries no `ChangeSet` to remap.
-                            self.state.dismiss_completion(&self.view);
+                            // so `skip_over_close`'s own `&mut self` here does not conflict with it.
+                            self.skip_over_close(focused, buf);
                             inserted = false;
                         } else if self.should_auto_pair(pair, ap_pairs) {
                             // Context is clear: insert open+close or wrap selection.
@@ -219,17 +225,7 @@ impl Editor {
                         && self.should_skip_close(ch)
                     {
                         // Asymmetric close (e.g. `)`) when cursor is already on it.
-                        doc_ops::apply_doc_motion(
-                            &self.state.buffers,
-                            &mut self.state.panes.state,
-                            focused,
-                            buf,
-                            |b, s| cmd_move_right(b, s, 1, MotionMode::Move),
-                        );
-                        // See the symmetric branch above: a motion bypasses
-                        // `apply_insert_edit`, so a live session must be
-                        // dismissed here rather than left to go stale.
-                        self.state.dismiss_completion(&self.view);
+                        self.skip_over_close(focused, buf);
                         inserted = false;
                     } else {
                         self.apply_insert_edit(|b, s| insert_char(b, s, ch));

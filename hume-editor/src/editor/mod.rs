@@ -793,12 +793,13 @@ impl EditorState {
     }
 
     /// Resets the open completion menu's selection back to row 0 — every
-    /// path that re-ranks a session's `filtered` list (`add_items`,
-    /// `update_filter`, a post-edit refilter) must call this, since the
-    /// previous selection index has no guaranteed meaning against the new
-    /// order (it can point past the new list's end, or simply land on a
-    /// different candidate than the one visibly highlighted). A no-op when
-    /// no session is open.
+    /// path that re-ranks a session's ranked list (`CompletionSession::
+    /// rank`, called from `contribute`/`rerank_open_session`/
+    /// `settle_minibuf_session`) must call this, since the previous
+    /// selection index has no guaranteed meaning against the new order (it
+    /// can point past the new list's end, or simply land on a different
+    /// candidate than the one visibly highlighted). A no-op when no session
+    /// is open.
     pub(in crate::editor) fn reset_completion_selection(&mut self) {
         let Some(r) = self.input.ref_of::<input_stack::CompletionLayer>() else {
             return;

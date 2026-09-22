@@ -114,9 +114,7 @@ impl EditorState {
             bid,
             head,
         );
-        for (proc, args) in calls {
-            self.queue_steel_call(proc, args);
-        }
+        self.queue_steel_calls(calls);
         session.rank(
             &self.config.completion_sources,
             Some(LiveDoc {
@@ -124,7 +122,7 @@ impl EditorState {
                 head,
             }),
         );
-        if !session.is_pending() && !session.has_live_sources() {
+        if session.is_spent() {
             self.report(Severity::Info, "no completions".to_string());
             return;
         }
@@ -170,9 +168,7 @@ impl EditorState {
             bid,
             head,
         );
-        for (proc, args) in calls {
-            self.queue_steel_call(proc, args);
-        }
+        self.queue_steel_calls(calls);
         self.rerank_open_session();
         // Typed out of every token, and nothing on its way: silent — the
         // user left, nothing "failed".
@@ -291,7 +287,7 @@ impl EditorState {
         let Some(layer) = self.input.at::<CompletionLayer>(r) else {
             return;
         };
-        let selected = layer.ui.as_ref().map_or(0, |ui| ui.selected);
+        let selected = layer.selected();
         let Some(input) = layer.session.minibuf_input() else {
             return;
         };
@@ -385,7 +381,16 @@ impl EditorState {
     fn open_session_is_spent(&self) -> bool {
         self.input
             .completion()
-            .is_some_and(|s| !s.is_pending() && !s.has_live_sources())
+            .is_some_and(CompletionSession::is_spent)
+    }
+
+    /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned —
+    /// the drain repeated at both its call sites (a fresh/reused trigger,
+    /// and a post-edit re-invocation).
+    fn queue_steel_calls(&mut self, calls: Vec<SteelCall>) {
+        for (proc, args) in calls {
+            self.queue_steel_call(proc, args);
+        }
     }
 }
 

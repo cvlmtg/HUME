@@ -239,10 +239,6 @@ fn status_msg_cleared_on_next_keypress() {
 
 // ── Ctrl-w delete-word in the minibuffer ─────────────────────────────────────
 
-fn minibuf_input(ed: &Editor) -> &str {
-    ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
-}
-
 #[test]
 fn ctrl_w_deletes_word_in_minibuf() {
     let mut ed = editor_from("-[h]>ello\n");

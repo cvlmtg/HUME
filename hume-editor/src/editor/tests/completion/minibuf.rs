@@ -9,10 +9,6 @@ use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use pretty_assertions::assert_eq;
 
-fn minibuf_input(ed: &Editor) -> &str {
-    ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
-}
-
 /// Every candidate's `insert_text`, in ranked order.
 fn candidates(ed: &Editor) -> Vec<String> {
     let session = ed.state.input.completion().expect("popup open");
@@ -53,6 +49,13 @@ fn tab_no_match_is_noop() {
     assert!(ed.state.input.completion().is_none());
 }
 
+// Independent oracle for the three tests below: "w" matches exactly three
+// canonical command names, alphabetically (tied score, sortText-ascending
+// tiebreak — `complete_command`'s own sort_text is the name itself):
+// write, write-all, write-quit. `complete_command` omits aliases and the
+// exact-prefix match, so this candidate set is stable against new commands
+// (see `render.rs`'s own use of the same fact).
+
 #[test]
 fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
     let mut ed = editor_from("-[h]>ello\n");
@@ -60,9 +63,8 @@ fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
     ed.handle_key(key_tab());
     assert!(ed.state.input.completion().is_some(), "popup open");
     assert_eq!(selected_row(&ed), 0);
-    let first = candidates(&ed);
-    assert!(first.len() >= 2);
-    assert_eq!(minibuf_input(&ed), first[0]);
+    assert_eq!(candidates(&ed), vec!["write", "write-all", "write-quit"]);
+    assert_eq!(minibuf_input(&ed), "write");
 }
 
 #[test]
@@ -72,7 +74,7 @@ fn second_tab_cycles_to_next_candidate() {
     ed.handle_key(key_tab());
     ed.handle_key(key_tab());
     assert_eq!(selected_row(&ed), 1);
-    assert_eq!(minibuf_input(&ed), candidates(&ed)[1]);
+    assert_eq!(minibuf_input(&ed), "write-all");
 }
 
 #[test]
@@ -83,7 +85,7 @@ fn shift_tab_cycles_backward() {
     ed.handle_key(key_tab());
     ed.handle_key(key_shift_tab());
     assert_eq!(selected_row(&ed), 0);
-    assert_eq!(minibuf_input(&ed), candidates(&ed)[0]);
+    assert_eq!(minibuf_input(&ed), "write");
 }
 
 #[test]

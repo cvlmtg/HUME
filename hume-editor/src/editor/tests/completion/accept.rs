@@ -77,7 +77,7 @@ fn accept_with_no_text_edit_replaces_the_whole_configured_word_chars_run() {
 fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("fo-[ ]>\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &completion_source(
@@ -89,8 +89,6 @@ fn accept_with_a_text_edit_extends_the_range_over_chars_typed_since() {
             "",
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key('r'));
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "format! \n");
@@ -148,7 +146,7 @@ fn insert_replace_text_edit_applies_the_narrower_insert_range() {
 fn accept_is_one_undo_step() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("fo-[ ]>cdef\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &completion_source(
@@ -157,8 +155,6 @@ fn accept_is_one_undo_step() {
             "",
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "hello cdef\n");
 
@@ -411,7 +407,7 @@ fn accept_with_no_text_edit_never_eats_into_word_chars_an_additional_edit_insert
 fn additional_text_edits_track_a_real_edit_observed_since_the_invocation() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("fo-[,]> extra\n");
-    run(
+    insert_with_script(
         &mut ed,
         tmp.path(),
         &completion_source(
@@ -424,8 +420,6 @@ fn additional_text_edits_track_a_real_edit_observed_since_the_invocation() {
             "",
         ),
     );
-    ed.feed_key(key('i'));
-    trigger(&mut ed);
     ed.feed_key(key('o'));
     assert_eq!(ed.doc().text().to_string(), "foo, extra\n", "sanity");
 

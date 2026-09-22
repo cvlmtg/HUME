@@ -115,14 +115,6 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
         text.slice(range.to_exclusive()).to_string()
     }
 
-    fn word_start_before_cursor(&self, bid: BufferId) -> Option<usize> {
-        let (buf, sels) = self.buffer_and_selections(bid)?;
-        let text = buf.text();
-        let head = sels.primary().head();
-        let chars = effective_word_chars(buf, &self.state.settings);
-        Some(hume_ops::edit::word_start_before(text, head, chars).index())
-    }
-
     fn selections_linewise(&self, bid: BufferId) -> bool {
         self.all_unambiguous_selections(bid, |linewise| linewise)
     }

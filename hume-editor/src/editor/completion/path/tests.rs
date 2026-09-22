@@ -50,12 +50,12 @@ fn path_completer_excludes_hidden_unless_dot_prefix() {
     // Without dot prefix: hidden excluded.
     let (_, candidates) = complete_path("e ", 2, &ctx);
     assert!(!candidates.iter().any(|c| c.label.starts_with('.')));
-    assert!(candidates.iter().any(|c| c.label.as_ref() == "visible"));
+    assert!(candidates.iter().any(|c| c.label == "visible"));
 
     // With dot prefix: hidden included.
     let input = "e .";
     let (_, candidates) = complete_path(input, input.len(), &ctx);
-    assert!(candidates.iter().any(|c| c.label.as_ref() == ".hidden"));
+    assert!(candidates.iter().any(|c| c.label == ".hidden"));
 }
 
 #[test]

@@ -96,7 +96,7 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // skipped, not fatal to the whole batch — one bad item from a
         // misbehaving server must not silently drop every good one.
         let mut parsed = Vec::with_capacity(items.len());
-        for v in &items {
+        for v in items {
             match crate::editor::completion::CompletionItem::from_json(v) {
                 Ok(item) => parsed.push(item),
                 Err(e) => self.state.report(

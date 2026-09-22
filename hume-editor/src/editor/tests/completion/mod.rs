@@ -40,16 +40,10 @@ fn labels(ed: &Editor) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The completion popup's selected row index — `0` when no `CompletionMenuUi`
-/// has been allocated yet, matching `move_completion_selection`'s own
-/// `map_or(0, ...)` convention (a session opens with `ui: None` until the
-/// first Tab/Down/BackTab/Up moves the selection off its implicit default).
+/// The completion popup's selected row index — see `InputStack::
+/// completion_selected`'s own doc for the `0`-default convention.
 fn selected_row(ed: &Editor) -> usize {
-    ed.state.input.completion_ui().map_or(0, |ui| ui.selected)
-}
-
-fn status(ed: &Editor) -> String {
-    ed.state.status_msg.clone().unwrap_or_default()
+    ed.state.input.completion_selected()
 }
 
 /// Ctrl-Space, then settle so the queued Steel source answers.
@@ -58,13 +52,20 @@ fn trigger(ed: &mut Editor) {
     ed.settle();
 }
 
-/// Registers a `'word`-token source answering `items` (Scheme literals),
-/// with a real `i` into Insert mode, then triggers it — the setup nearly
-/// every Insert-mode test starts from.
-fn insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str) {
-    run(ed, tmp, &completion_source("test", items, ""));
+/// `run`s `script`, enters Insert with a real `i`, triggers — the setup
+/// every Insert-mode test starts from, for a test whose own registration
+/// isn't [`insert_with_source`]'s default single-word-source shape.
+fn insert_with_script(ed: &mut Editor, tmp: &std::path::Path, script: &str) {
+    run(ed, tmp, script);
     ed.feed_key(key('i'));
     trigger(ed);
+}
+
+/// [`insert_with_script`] over a `'word`-token source answering `items`
+/// (Scheme literals) — the single-source case, and the more common of the
+/// two.
+fn insert_with_source(ed: &mut Editor, tmp: &std::path::Path, items: &str) {
+    insert_with_script(ed, tmp, &completion_source("test", items, ""));
 }
 
 /// [`insert_with_source`] on a raw `push_mode_layer(Insert)` rather than a

@@ -7,7 +7,7 @@ use super::*;
 fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
     use std::borrow::Cow;
 
-    let home_dir = tempfile::tempdir().unwrap();
+    let home_dir = crate::editor::tests::safe_tempdir();
     std::fs::write(home_dir.path().join("notes.md"), b"").unwrap();
     std::fs::create_dir(home_dir.path().join("code")).unwrap();
 
@@ -54,7 +54,7 @@ fn path_completer_tilde_expands_for_lookup_keeps_literal_replacement() {
 fn path_completer_dollar_var_expands_for_lookup() {
     use std::borrow::Cow;
 
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::editor::tests::safe_tempdir();
     std::fs::write(dir.path().join("main.rs"), b"").unwrap();
 
     let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
@@ -92,7 +92,7 @@ fn path_completer_dollar_var_expands_for_lookup() {
 
 #[test]
 fn path_completer_dirs_only_mode() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::editor::tests::safe_tempdir();
     let subdir = dir.path().join("mysubdir");
     let file = dir.path().join("myfile.txt");
     std::fs::create_dir(&subdir).unwrap();

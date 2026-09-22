@@ -483,7 +483,6 @@ pub(crate) fn register_all(steel: &mut Engine) {
         // Minibuffer prompt.
         cmd "%prompt!" ui::prompt(label: SteelVal, prefill: SteelVal, on_confirm: SteelVal);
         cmd "symbol-under-cursor" buffers::symbol_under_cursor(bid: args::BidArg);
-        cmd "word-start-before-cursor" buffers::word_start_before_cursor(bid: args::BidArg);
 
         // Completion: sources register at config time; answers, the ranked
         // view, and accept/dismiss are command-time.

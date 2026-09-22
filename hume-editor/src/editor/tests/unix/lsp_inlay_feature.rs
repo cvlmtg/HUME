@@ -105,14 +105,6 @@ fn settle_after_debounce(ed: &mut Editor) {
     ed.settle();
 }
 
-fn request_count(requests: &RequestLog, method: &str) -> usize {
-    requests
-        .borrow()
-        .iter()
-        .filter(|(_sid, m, _params)| m == method)
-        .count()
-}
-
 fn inlay_hint_response(entries: &[(u32, u32, serde_json::Value)]) -> serde_json::Value {
     serde_json::Value::Array(
         entries

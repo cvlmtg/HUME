@@ -332,6 +332,5 @@
 (#%register-global "unregister-lsp-server!")
 (#%register-global "update-drawer-list!")
 (#%register-global "viewport-range")
-(#%register-global "word-start-before-cursor")
 (#%register-global "write-register!")
 (#%register-global "yank")

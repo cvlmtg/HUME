@@ -172,7 +172,7 @@ mod testing {
     {
         let reg = CommandRegistry::with_defaults();
         let store = BufferStore::new();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::editor::tests::safe_tempdir();
         (reg, store, dir)
     }
 
