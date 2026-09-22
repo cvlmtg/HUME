@@ -35,3 +35,17 @@ You know, you start small: you add a new feature, you refactor a bit... Nothing 
 So when Claude tells you that you don't need that, that it will be an easy addition, no expensive retrofit, etc... don't believe it. *It's a trap!* (Insert the usual Star Wars meme here.)
 
 If things go awry, you might want to restart from scratch. Re-prompt Claude with the things you learned along the way — a clear description of the whole picture will (hopefully) lead to a better implementation plan.
+
+## 22/09/2026 The real mistake
+
+A serious entry for once: today I think I learned something valuable. It isn't just about "how to design a piece of software," but rather "how to design a piece of software with an AI". The line is probably a bit blurry here, but since this is a project about agentic programming, I'll focus on the latter.
+Here is the context: after the third redesign of the completion system, I finally asked the right question: What are we doing wrong?
+The answer might seem simple:
+
+*Every rewrite generalized the framework for multiple sources, and every rewrite has only ever been fed by one: core:lsp. "Sources are first-class", per-invocation snapshots, a pluggable registry, multi-source ranking — all built and re-built for a plurality that, in production, has never existed.*
+
+What does that mean? You cannot build a generalized system and ask the AI to review and validate it without real, concrete usage. When everything remains just theory, there is no way to truly test if it works. As a result, every `/code-review` or `/simplify` run will always find some hypothetical hole or bug that cannot be verified.
+
+The fix has to land before the plan is approved, not after the code exists, however elegant the architecture looks. Words like "first-class", "pluggable", "per-invocation" in a plan are the tripwire — reject at reading time, not in `/code-review`, because by then the code exists and killing it feels like a loss.
+
+If `/simplify` flags a bug with no second source in sight: does it break `core:lsp` today? If not, it's not a bug — it's a bill for a future that hasn't shown up.
