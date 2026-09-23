@@ -9,7 +9,10 @@ fn from_json(v: serde_json::Value) -> Option<CompletionItem> {
     let serde_json::Value::Array(items) = response.value() else {
         unreachable!("just constructed as a one-element array")
     };
-    CompletionItem::from_json(&items[0], RawItem::new(response.clone(), 0))
+    let raw_item = response
+        .indexed_child(None, 0)
+        .expect("index 0 is within the one-element array just constructed");
+    CompletionItem::from_json(&items[0], raw_item)
 }
 
 #[test]

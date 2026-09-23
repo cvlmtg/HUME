@@ -63,6 +63,7 @@
 - Selecting a row in the `:diagnostics` drawer after switching to a different buffer now jumps into the buffer the diagnostics were listed for, instead of whichever buffer is currently focused.
 - `:plum-install-plugins`/`:plum-update-plugins` no longer hang indefinitely when git needs to prompt for credentials (a private repository, an expired token) — the prompt is now denied outright, and the command fails fast with git's own error instead.
 - A counted undo/redo (`5u`, `3 Ctrl-r`) now applies as a single change instead of replaying each revision individually — much faster over a long history, and a connected language server sees one update instead of one per revision crossed.
+- A server capability advertised as JSON `null` (e.g. `"hoverProvider": null`) is now correctly treated as unsupported — previously it was treated the same as `true`, so a feature-gated command (hover, code actions, …) would fire a doomed request instead of reporting "not supported by \<server\>".
 
 ## [0.12.0] - 2026-09-08
 

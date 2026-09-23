@@ -114,8 +114,8 @@ See [Hooks](plugins.md#hooks) for the full table of hook names and their lambda 
 | Call | Effect |
 |------|--------|
 | `(apply-text-edits! bid edits #:expect-generation)` | Apply a list of edits to `bid` — each entry either a `((start-line . start-char) (end-line . end-char) text)` wire-position tuple, or a JSON handle onto a wire `TextEdit` (e.g. a `textDocument/formatting` response element, passed straight through) |
-| `(apply-workspace-edit! wsedit)` | Apply a decoded LSP `WorkspaceEdit` hashmap across every buffer it touches; returns the count of buffers modified |
-| `(goto-location! loc)` | Jump to `loc` — a raw LSP `Location`/`LocationLink` hashmap, or `(list target line char-col)` with `target` a BufferId, path, or `file://` URI and `line`/`char-col` char-indexed |
+| `(apply-workspace-edit! wsedit)` | Apply an LSP `WorkspaceEdit` — a hashmap you built, or a JSON handle onto one (e.g. straight from an `lsp-request` response) — across every buffer it touches; returns the count of buffers modified |
+| `(goto-location! loc)` | Jump to `loc` — an LSP `Location`/`LocationLink` hashmap or JSON handle, or `(list target line char-col)` with `target` a BufferId, path, or `file://` URI and `line`/`char-col` char-indexed |
 
 `#:expect-generation` guards against applying a stale edit: pass a `buffer-generation` snapshot and the call fails if the buffer has mutated since. `apply-text-edits!`/`apply-workspace-edit!` exist to apply LSP responses, but take already-decoded shapes — nothing here is LSP-transport-specific.
 
@@ -284,6 +284,12 @@ An `lsp-request` response, `lsp-capabilities`, a `diagnostics-for-buffer`
 entry's `"raw"` field, `on-lsp-notification`'s params, `on-completion-accept`'s
 item, and `json-parse`'s result are all opaque JSON handles rather than
 decoded hashmaps. Read one with these instead of `hash-ref`/`hash?`/`list?`:
+
+Other values stay ordinary hashmaps: `lsp-request`'s `err`, `lsp-server-status`,
+and a `diagnostics-for-buffer` entry itself (outside its `"raw"` field) are
+built by HUME, not decoded from server JSON, and read with `hash-ref` as
+usual — see [Advanced: custom requests](lsp.md#advanced-custom-requests) for
+the `err`/`res` distinction in practice.
 
 | Call | Effect |
 |------|--------|

@@ -25,21 +25,20 @@
     (lambda (err res) (when err (lsp/report-error "code action" err)))))
 
 (define (lsp/run-action action #:resolved? [resolved? #f])
-  (cond
-    ((or (json-contains? action "edit") (json-contains? action "command"))
-     (when (json-contains? action "edit")
-       (apply-workspace-edit! (json-ref action "edit")))
-     (when (json-contains? action "command")
-       (let ((cmd (json-ref action "command")))
-         (lsp/exec-command (if (string? cmd) action cmd)))))
-    ((and (not resolved?) (lsp/action-resolve-provider?))
-     (lsp-request #f "codeAction/resolve" action
-       (lambda (err resolved)
-         (cond
-           (err (lsp/report-error "code action" err))
-           ((void? resolved) (log! 'info "Code action has no edit or command"))
-           (else (lsp/run-action resolved #:resolved? #t))))))
-    (else (log! 'info "Code action has no edit or command"))))
+  (let ((edit (json-ref-or action #f "edit"))
+        (command (json-ref-or action #f "command")))
+    (cond
+      ((or edit command)
+       (when edit (apply-workspace-edit! edit))
+       (when command (lsp/exec-command (if (string? command) action command))))
+      ((and (not resolved?) (lsp/action-resolve-provider?))
+       (lsp-request #f "codeAction/resolve" action
+         (lambda (err resolved)
+           (cond
+             (err (lsp/report-error "code action" err))
+             ((void? resolved) (log! 'info "Code action has no edit or command"))
+             (else (lsp/run-action resolved #:resolved? #t))))))
+      (else (log! 'info "Code action has no edit or command")))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
   (lambda ()

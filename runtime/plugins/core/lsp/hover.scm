@@ -5,11 +5,12 @@
 ;; ── Response decoding ───────────────────────────────────────────────────────
 
 (define (lsp/marked-string->text ms)
-  (cond
-    ((string? ms) ms)
-    ((json-contains? ms "language")
-     (string-append "```" (json-ref ms "language") "\n" (json-ref ms "value") "\n```"))
-    (else (json-ref ms "value"))))
+  (if (string? ms)
+      ms
+      (let ((lang (json-ref-or ms #f "language")))
+        (if lang
+            (string-append "```" lang "\n" (json-ref ms "value") "\n```")
+            (json-ref ms "value")))))
 
 (define (lsp/hover-contents->text contents)
   (cond

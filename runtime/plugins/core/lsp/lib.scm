@@ -8,7 +8,9 @@
 ;; ── Capability guard ────────────────────────────────────────────────────────
 
 (define (lsp/caps-has-cap? caps cap-key)
-  (and caps (not (equal? (json-ref-or caps #f cap-key) #f))))
+  (and caps
+       (let ((v (json-ref-or caps #f cap-key)))
+         (not (or (equal? v #f) (void? v))))))
 
 (define (lsp/supports? cap-key)
   (lsp/caps-has-cap? (lsp-capabilities #f) cap-key))
@@ -26,10 +28,8 @@
                              (if name name "server"))))))
 
 (define (lsp/cap-field caps cap-key field default)
-  (if (and caps (json-contains? caps cap-key))
-      (let ((cap (json-ref caps cap-key)))
-        (if (json-object? cap) (json-ref-or cap default field) default))
-      default))
+  (let ((cap (and caps (json-ref-or caps #f cap-key))))
+    (if (json-object? cap) (json-ref-or cap default field) default)))
 
 (define (lsp/cap-flag? cap-key field)
   (equal? (lsp/cap-field (lsp-capabilities #f) cap-key field #f) #t))

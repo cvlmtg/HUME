@@ -192,15 +192,34 @@ pub struct JsonHandle {
 }
 
 /// Resolves one path step against `v`, or `None` if `v` isn't the matching
-/// container kind or the key/index doesn't exist. Shared by
-/// [`JsonHandle::value`] (which trusts its own path and `expect`s) and
-/// [`JsonHandle::contains`] (which only wants a yes/no).
+/// container kind or the key/index doesn't exist.
 fn step<'v>(v: &'v serde_json::Value, seg: &Seg) -> Option<&'v serde_json::Value> {
     match (v, seg) {
         (serde_json::Value::Object(map), Seg::Key(k)) => map.get(k.as_ref()),
         (serde_json::Value::Array(arr), Seg::Index(i)) => arr.get(*i),
         _ => None,
     }
+}
+
+/// Walks `path` from `start` one [`step`] at a time — the one navigation
+/// loop [`JsonHandle::value`], [`JsonHandle::lookup`], [`JsonHandle::contains`],
+/// and [`JsonHandle::resolve`] all go through, so a path is only ever walked
+/// once per call. `Ok` is the resolved value; `Err` is the value the failing
+/// step started from, the segment that failed, and the segments consumed so
+/// far (relative to `start`) — everything [`miss_reason`] needs to classify
+/// *why*, without a second walk to find the failure point again.
+fn walk<'v, 's>(
+    start: &'v serde_json::Value,
+    path: &'s [Seg],
+) -> Result<&'v serde_json::Value, (&'v serde_json::Value, &'s Seg, &'s [Seg])> {
+    let mut current = start;
+    for (i, seg) in path.iter().enumerate() {
+        match step(current, seg) {
+            Some(next) => current = next,
+            None => return Err((current, seg, &path[..i])),
+        }
+    }
+    Ok(current)
 }
 
 /// The wrong-kind/missing-key/out-of-range text `resolve` raises, given the
@@ -306,21 +325,17 @@ impl JsonHandle {
     /// is only ever extended by [`JsonHandle::resolve`] after that exact
     /// step already proved it resolves.
     pub fn value(&self) -> &serde_json::Value {
-        let mut v: &serde_json::Value = &self.root;
-        for seg in self.path.iter() {
-            v = step(v, seg)
-                .expect("JsonHandle path only grows through a successful navigation step");
-        }
-        v
+        walk(&self.root, &self.path)
+            .expect("JsonHandle path only grows through a successful navigation step")
     }
 
     /// Walks `path` from this handle's own position, `None` if any step
-    /// doesn't resolve. Shared by [`JsonHandle::contains`] (yes/no),
-    /// [`JsonHandle::resolve`] (`json-ref`'s success case), and
-    /// `json-ref-or`'s host builtin — the one navigation every accessor
-    /// funnels through, `step` doing the actual per-segment work.
+    /// doesn't resolve. `json-ref-or`'s host builtin — the one caller that
+    /// wants a container result wrapped in a handle (unlike
+    /// [`JsonHandle::contains`], which only needs a yes/no and so calls
+    /// [`walk`] directly rather than paying for a child handle nobody wants).
     pub(crate) fn lookup(&self, path: &[Seg]) -> Option<SteelVal> {
-        let current = path.iter().try_fold(self.value(), step)?;
+        let current = walk(self.value(), path).ok()?;
         Some(scalar_or_child(current, &self.root, || {
             self.path.iter().chain(path).cloned().collect()
         }))
@@ -328,23 +343,18 @@ impl JsonHandle {
 
     /// `(json-ref j seg ...)`'s implementation. `Err` names the full path
     /// and the reason: a missing key, an out-of-range index, or indexing
-    /// into the wrong container kind (or a scalar) — [`miss_reason`]
-    /// re-walks `path` only in this (cold) failure case to classify which.
+    /// into the wrong container kind (or a scalar) — [`walk`]'s `Err` arm
+    /// already carries everything [`miss_reason`] needs, no second walk.
     pub(crate) fn resolve(&self, path: &[Seg], ctx_name: &str) -> Result<SteelVal, String> {
-        self.lookup(path).ok_or_else(|| {
-            let mut current = self.value();
-            for (i, seg) in path.iter().enumerate() {
-                match step(current, seg) {
-                    Some(next) => current = next,
-                    None => {
-                        let so_far: Vec<Seg> =
-                            self.path.iter().chain(&path[..i]).cloned().collect();
-                        return miss_reason(current, seg, &so_far, ctx_name);
-                    }
-                }
+        match walk(self.value(), path) {
+            Ok(current) => Ok(scalar_or_child(current, &self.root, || {
+                self.path.iter().chain(path).cloned().collect()
+            })),
+            Err((current, seg, so_far)) => {
+                let so_far: Vec<Seg> = self.path.iter().chain(so_far).cloned().collect();
+                Err(miss_reason(current, seg, &so_far, ctx_name))
             }
-            unreachable!("resolve's Err case implies lookup found a failing step")
-        })
+        }
     }
 
     /// `(json-contains? j seg ...)`'s implementation. `#t` iff `path`
@@ -353,7 +363,7 @@ impl JsonHandle {
     /// [`JsonHandle::lookup`]: a container match there still pays for a
     /// child handle nobody wants, where this only needs a yes/no.
     pub(crate) fn contains(&self, path: &[Seg]) -> bool {
-        path.iter().try_fold(self.value(), step).is_some()
+        walk(self.value(), path).is_ok()
     }
 
     /// `(json-list j)`'s implementation. `Err` if this handle isn't an
@@ -375,6 +385,32 @@ impl JsonHandle {
                 .collect()),
             _ => Err(format!("{ctx_name}: expected a JSON array")),
         }
+    }
+
+    /// A child handle onto `key`'s array (or this handle's own value, if
+    /// `key` is `None`) at `index` — the one shape a `textDocument/completion`
+    /// response's per-item slice needs (a bare `CompletionItem[]` array, or
+    /// a `CompletionList`'s `"items"` array), so a Rust caller that already
+    /// holds a slice reference into `self.value()` (e.g.
+    /// `hume_lsp::completion_item::completion_response_items`'s result) can
+    /// hand Steel a live pointer into the original response — sharing this
+    /// handle's root `Arc` — instead of cloning the item out. `None` if
+    /// either step doesn't resolve, same contract as [`JsonHandle::lookup`],
+    /// just returning the handle unconditionally rather than routing a
+    /// container result through [`scalar_or_child`] — the caller already
+    /// knows it wants a handle regardless of whether the target is a
+    /// container or a scalar (see [`JsonHandle::new`]'s own reasoning).
+    pub fn indexed_child(&self, key: Option<&str>, index: usize) -> Option<JsonHandle> {
+        let path: Vec<Seg> = key
+            .map(|k| Seg::Key(Arc::from(k)))
+            .into_iter()
+            .chain(std::iter::once(Seg::Index(index)))
+            .collect();
+        walk(self.value(), &path).ok()?;
+        Some(JsonHandle {
+            root: Arc::clone(&self.root),
+            path: self.path.iter().chain(path.iter()).cloned().collect(),
+        })
     }
 
     /// Convert to a `SteelVal` without returning `Result` — `IntoSteelVal`

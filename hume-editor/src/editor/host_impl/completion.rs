@@ -93,7 +93,12 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // conflicts with an explicit `#:incomplete #t`), so both raise
         // rather than leaving the invocation stuck pending forever on a
         // silent empty answer.
-        let (items, incomplete) =
+        // `items_key`: `Some("items")` for a `CompletionList` (its items
+        // live under that key), `None` for a bare `CompletionItem[]` array
+        // (its items are the response's own elements) — the same
+        // distinction `completion_response_items` makes, carried forward so
+        // each item's `indexed_child` below walks the correct path.
+        let (items, incomplete, items_key) =
             match hume_lsp::completion_item::completion_response_items(response.value()) {
                 Some((_, Some(own))) if incomplete => {
                     return Err(format!(
@@ -103,8 +108,8 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
                         if own { "#t" } else { "#f" }
                     ));
                 }
-                Some((items, Some(own))) => (items, own),
-                Some((items, None)) => (items, incomplete),
+                Some((items, Some(own))) => (items, own, Some("items")),
+                Some((items, None)) => (items, incomplete, None),
                 None => {
                     return Err(
                         "completion-emit!: handle is not a textDocument/completion response \
@@ -118,7 +123,9 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // server must not silently drop every good one.
         let mut parsed = Vec::with_capacity(items.len());
         for (i, v) in items.iter().enumerate() {
-            let raw_item = crate::editor::completion::RawItem::new(response.clone(), i);
+            let raw_item = response
+                .indexed_child(items_key, i)
+                .expect("index i is within items, already resolved from response.value()");
             match crate::editor::completion::CompletionItem::from_json(v, raw_item) {
                 Some(item) => parsed.push(item),
                 None => self.state.report(

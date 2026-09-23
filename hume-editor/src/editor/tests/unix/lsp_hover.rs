@@ -487,6 +487,29 @@ fn capability_gate_skips_the_request_when_hover_unsupported() {
 }
 
 #[test]
+fn capability_gate_skips_the_request_when_the_provider_field_is_null() {
+    // A `null` capability field is not the same as advertising support —
+    // same oracle as the missing-key case above, just via an explicit
+    // `null` rather than an absent key.
+    let tmp = safe_tempdir();
+    let file_dir = safe_tempdir();
+    let (mut ed, _guard, _sid) = setup(
+        file_dir.path(),
+        tmp.path(),
+        serde_json::json!({"capabilities": {"hoverProvider": null}}),
+        |_backend, _sid| {},
+    );
+
+    run_hover(&mut ed);
+
+    let msg = ed.state.status_msg.clone().unwrap_or_default();
+    assert!(
+        msg.to_lowercase().contains("not supported"),
+        "expected a not-supported message, got {msg:?}"
+    );
+}
+
+#[test]
 fn allow_stale_is_honored_despite_an_intervening_edit() {
     let tmp = safe_tempdir();
     let file_dir = safe_tempdir();
