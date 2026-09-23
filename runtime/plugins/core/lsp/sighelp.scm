@@ -2,9 +2,12 @@
 
 (require "lib.scm")
 
-;;; `#f` back means no attached server to name the label-offset encoding.
+;;; `param-label` is a native string, or a JSON array handle for the raw
+;;; `[start, end)` offset pair — `lsp-label-offsets->text` accepts either
+;;; shape directly. `#f` back means no attached server to name the
+;;; label-offset encoding.
 (define (lsp/param-text bid sig-label param)
-  (let ((param-label (hash-ref param "label")))
+  (let ((param-label (json-ref param "label")))
     (if (string? param-label)
         param-label
         (lsp-label-offsets->text bid sig-label param-label))))
@@ -12,9 +15,12 @@
 (define (lsp/clamp-index idx lst)
   (max 0 (min idx (- (length lst) 1))))
 
+;;; `params`/`sigs` (below) are unpacked to Steel lists via `json-list` —
+;;; `lsp/clamp-index`/`list-ref`/`null?` are list operations, not JSON handle
+;;; ones.
 (define (lsp/sighelp-text bid sig active-idx)
-  (let* ((label (hash-ref sig "label"))
-         (params (if (hash-contains? sig "parameters") (hash-ref sig "parameters") (list))))
+  (let* ((label (json-ref sig "label"))
+         (params (if (json-contains? sig "parameters") (json-list (json-ref sig "parameters")) (list))))
     (if (or (not active-idx) (null? params))
         label
         (let* ((idx (lsp/clamp-index active-idx params))
@@ -22,13 +28,13 @@
           (if text (string-append label "\n⟨" text "⟩") label)))))
 
 (define (lsp/show-sighelp bid res)
-  (let ((sigs (hash-ref res "signatures")))
+  (let ((sigs (json-list (json-ref res "signatures"))))
     (if (null? sigs)
         (close-popup!)
-        (let* ((active-sig-idx (if (hash-contains? res "activeSignature") (hash-ref res "activeSignature") 0))
+        (let* ((active-sig-idx (if (json-contains? res "activeSignature") (json-ref res "activeSignature") 0))
                (idx (lsp/clamp-index active-sig-idx sigs))
                (sig (list-ref sigs idx))
-               (active-param-idx (if (hash-contains? res "activeParameter") (hash-ref res "activeParameter") #f)))
+               (active-param-idx (if (json-contains? res "activeParameter") (json-ref res "activeParameter") #f)))
           (show-popup! (lsp/sighelp-text bid sig active-param-idx))))))
 
 (define lsp/sighelp-request
@@ -39,7 +45,8 @@
           (cond
             (err (lsp/report-error "signature help" err) (close-popup!))
             ((void? res) (close-popup!))
-            (else (lsp/show-sighelp bid res))))))))
+            (else (lsp/show-sighelp bid res))))
+        #:raw #t))))
 
 ;;; ")" is a dismiss trigger, not a request trigger.
 (lsp/setup-trigger-chars! "signatureHelpProvider" "lsp-sighelp" (list ")")
