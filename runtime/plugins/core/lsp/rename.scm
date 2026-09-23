@@ -16,5 +16,6 @@
                     (cond
                       (err (lsp/report-error "rename" err))
                       ((void? res) (log! 'info "Nothing to rename"))
-                      (else (apply-workspace-edit! res)))))))
+                      (else (apply-workspace-edit! res))))
+                  #:raw #t)))
             #:prefill (symbol-under-cursor bid)))))))
