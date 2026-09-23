@@ -83,10 +83,10 @@ fn insert_mode_paste_dismisses_open_completion_session() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo", "bar"]);
-    assert!(ed.state.input.completion().is_some());
+    assert!(ed.state.input.buffer_completion().is_some());
 
     ed.feed_paste("xyz");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 }
 
 #[test]

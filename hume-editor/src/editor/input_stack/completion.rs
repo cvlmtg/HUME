@@ -1,17 +1,20 @@
-//! The completion overlay — pushed above `Insert` for a `Buffer`-target
-//! session, or above `Command` for a `Minibuf` one. One `CompletionLayer`
-//! type serves both; `dispatch_at` (`mappings/mod.rs`) routes into whichever
-//! key handler `handler()` names, chosen by the session's own target — see
-//! `completion/session.rs`'s `Target` doc for what genuinely differs
-//! between the two (the accept mechanism, further-typing behavior) and
-//! what doesn't (this layer's own `Layer` impl, menu navigation).
+//! The completion overlay — [`BufferCompletionLayer`] pushed above `Insert`,
+//! [`MinibufCompletionLayer`] pushed above `Command`. Two concrete layer
+//! types, not one: `completion/session.rs`'s module doc explains why a
+//! `Buffer`/`Minibuf` session are different types rather than one enum —
+//! the same split carries into their layers, so `dispatch_at`
+//! (`mappings/mod.rs`) routes by ordinary generic layer lookup
+//! (`find`/`at`/`ref_of`) rather than a runtime target check. What the two
+//! layers' `Layer` impls share (`mode`, `popup_eviction`, `removal_scope`)
+//! and menu navigation stay written once, in the free functions below, and
+//! called from both.
 
 use termina::event::KeyCode;
 
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::super::completion::{CompletionItem, CompletionMenuUi, CompletionSession};
+use super::super::completion::{BufferSession, CompletionItem, MinibufSession};
 use super::super::keymap::WalkResult;
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
@@ -19,37 +22,22 @@ use super::stack::{
     InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal, RemovalScope,
 };
 
-/// An open completion session, pushed above whichever base layer opened it
-/// — an overlay, not a mode layer (`mode()` returns `None`;
+/// An open Insert-mode completion session, pushed above whichever base
+/// layer opened it — an overlay, not a mode layer (`mode()` returns `None`;
 /// `InputStack::mode_layer()` skips it, reading the mode from the layer
-/// beneath). `ui` is `None` until the first Tab/Down/BackTab/Up moves the
-/// selection off its implicit default of 0.
-pub(in crate::editor) struct CompletionLayer {
-    pub(in crate::editor) session: CompletionSession,
-    pub(in crate::editor) ui: Option<CompletionMenuUi>,
+/// beneath).
+pub(in crate::editor) struct BufferCompletionLayer {
+    pub(in crate::editor) session: BufferSession,
 }
 
-impl CompletionLayer {
-    /// The menu's selected row — `0` until the first Tab/Down/BackTab/Up
-    /// allocates `ui` (see this type's own doc). The one place that default
-    /// is spelled, for every reader of `ui.selected` in this module and
-    /// `orchestrate.rs`.
-    pub(in crate::editor) fn selected(&self) -> usize {
-        self.ui.as_ref().map_or(0, |ui| ui.selected)
-    }
+/// [`BufferCompletionLayer`]'s `:` command-line counterpart.
+pub(in crate::editor) struct MinibufCompletionLayer {
+    pub(in crate::editor) session: MinibufSession,
 }
 
-impl Layer for CompletionLayer {
+impl Layer for BufferCompletionLayer {
     fn handler(&self) -> LayerHandler {
-        // The session's own target is the one axis further-typing behavior
-        // follows — see `Target`'s own doc (`completion/session.rs`) for why
-        // a `Buffer` session always refilters in place and a `Minibuf` one
-        // always cycles/dismisses.
-        if self.session.minibuf_input().is_some() {
-            completion_input_minibuf
-        } else {
-            completion_input_buffer
-        }
+        completion_input_buffer
     }
     fn mode(&self) -> Option<EditorMode> {
         None
@@ -66,7 +54,7 @@ impl Layer for CompletionLayer {
         PopupEviction::LayerOnly
     }
     /// A non-modal `Popup` (hover, `gn`/`gp`, a `Sticky` signature-help
-    /// popup) can land directly above a `Completion` layer by design — see
+    /// popup) can land directly above a completion layer by design — see
     /// this type's own doc and `popup_eviction`'s `LayerOnly` override just
     /// above, which exists for the same coexistence. The default `Stack`
     /// scope would otherwise take that popup down along with the session on
@@ -75,17 +63,25 @@ impl Layer for CompletionLayer {
         RemovalScope::SelfOnly
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        // Both targets share this one layer type, but each renders into its
-        // own slot (`Buffer` → `completion_menu`, `Minibuf` →
-        // `minibuf_completion`) — clearing the wrong one leaves a stale
-        // `PopupState` in the other until the next frame's sync silently
-        // clears it for us (see `sync_minibuf_completion_view`'s own
-        // is-open check), which is a lucky accident, not a guarantee.
-        if self.session.minibuf_input().is_some() {
-            state.views.minibuf_completion.set(None);
-        } else {
-            state.views.completion_menu.set(None);
-        }
+        state.views.completion_menu.set(None);
+    }
+}
+
+impl Layer for MinibufCompletionLayer {
+    fn handler(&self) -> LayerHandler {
+        completion_input_minibuf
+    }
+    fn mode(&self) -> Option<EditorMode> {
+        None
+    }
+    fn popup_eviction(&self) -> PopupEviction {
+        PopupEviction::LayerOnly
+    }
+    fn removal_scope(&self) -> RemovalScope {
+        RemovalScope::SelfOnly
+    }
+    fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
+        state.views.minibuf_completion.set(None);
     }
 }
 
@@ -103,11 +99,7 @@ impl Editor {
     /// reason: it needs `EngineView::pane_rect`, which reads
     /// `last_pane_area` — only current after step 9 runs.
     pub(in crate::editor) fn sync_completion_menu_view(&mut self, ctx: &mut RenderContext) {
-        let buffer_session_open = self
-            .state
-            .input
-            .completion()
-            .is_some_and(|s| s.buffer().is_some());
+        let buffer_session_open = self.state.input.buffer_completion().is_some();
         if !buffer_session_open && self.state.views.completion_menu.read().is_none() {
             return;
         }
@@ -127,20 +119,19 @@ impl Editor {
         // before `popup_placement` takes `&mut self`.
         let border = self.state.settings.popup_border;
         let resolved = (|| -> Option<hume_ui::popup::PopupState> {
-            let session = self.state.input.completion()?;
-            let bt = session.buffer()?;
-            if bt.bid() != self.focused_buffer_id() {
+            let session = self.state.input.buffer_completion()?;
+            if session.bid() != self.focused_buffer_id() {
                 return None;
             }
             let anchor_char = session.menu_anchor_char()?;
-            let len = self.state.buffers.get(bt.bid()).text().end();
+            let len = self.state.buffers.get(session.bid()).text().end();
             if anchor_char >= len {
                 return None;
             }
             let placement = popup_placement(self, ctx, anchor_char)?;
 
             let selected_idx = self.state.input.completion_selected();
-            let session = self.state.input.completion()?;
+            let session = self.state.input.buffer_completion()?;
             let window =
                 hume_ui::popup::menu_window(session.len(), selected_idx, placement.pane_rect);
             let rows = session.rows_in(window.range.clone());
@@ -154,45 +145,36 @@ impl Editor {
 }
 
 /// Named sugar over the generic lookup — the existing call sites
-/// (`ed.state.input.completion()`) stay as they are, and `stack.rs` stays
-/// agnostic.
+/// (`ed.state.input.buffer_completion()`) stay as they are, and `stack.rs`
+/// stays agnostic.
 impl super::stack::InputStack {
-    pub(in crate::editor) fn completion(&self) -> Option<&CompletionSession> {
-        self.find::<CompletionLayer>().map(|l| &l.session)
+    pub(in crate::editor) fn buffer_completion(&self) -> Option<&BufferSession> {
+        self.find::<BufferCompletionLayer>().map(|l| &l.session)
     }
 
-    pub(in crate::editor) fn completion_mut(&mut self) -> Option<&mut CompletionSession> {
-        self.find_mut::<CompletionLayer>().map(|l| &mut l.session)
+    pub(in crate::editor) fn buffer_completion_mut(&mut self) -> Option<&mut BufferSession> {
+        self.find_mut::<BufferCompletionLayer>()
+            .map(|l| &mut l.session)
     }
 
-    /// The completion session's UI selection, flattened (`Option<&
-    /// CompletionMenuUi>`, not `Option<&mut Option<CompletionMenuUi>>`) —
-    /// every production caller wants [`Self::completion_selected`]'s
-    /// defaulted read instead; this raw form (distinguishing "no session
-    /// open" from "open, still at its implicit row 0") is a test-only need.
-    #[cfg(test)]
-    pub(in crate::editor) fn completion_ui(&self) -> Option<&CompletionMenuUi> {
-        self.find::<CompletionLayer>().and_then(|l| l.ui.as_ref())
+    pub(in crate::editor) fn minibuf_completion(&self) -> Option<&MinibufSession> {
+        self.find::<MinibufCompletionLayer>().map(|l| &l.session)
     }
 
-    /// The completion menu's selected row, defaulting to `0` — see
-    /// [`CompletionLayer::selected`]. The one accessor every caller that
-    /// doesn't already hold the layer (via [`Self::at`]/[`Self::at_mut`])
-    /// should use, instead of re-spelling `completion_ui().map_or(0, ...)`.
+    pub(in crate::editor) fn minibuf_completion_mut(&mut self) -> Option<&mut MinibufSession> {
+        self.find_mut::<MinibufCompletionLayer>()
+            .map(|l| &mut l.session)
+    }
+
+    /// The open completion menu's selected row, defaulting to `0` when
+    /// neither layer is open. The one accessor every caller that doesn't
+    /// already hold the layer (via [`Self::at`]/[`Self::at_mut`]) should
+    /// use.
     pub(in crate::editor) fn completion_selected(&self) -> usize {
-        self.find::<CompletionLayer>().map_or(0, |l| l.selected())
-    }
-
-    /// The `Completion` layer's UI slot itself (not its content) at `r`,
-    /// unflattened so a caller can `get_or_insert` into it — see
-    /// [`move_completion_selection`]'s own use. Address-based, not
-    /// `find_mut`-based: both callers already know `r` from their own
-    /// dispatch.
-    pub(in crate::editor) fn completion_ui_mut(
-        &mut self,
-        r: LayerRef,
-    ) -> Option<&mut Option<CompletionMenuUi>> {
-        self.at_mut::<CompletionLayer>(r).map(|l| &mut l.ui)
+        self.buffer_completion()
+            .map(BufferSession::selected)
+            .or_else(|| self.minibuf_completion().map(MinibufSession::selected))
+            .unwrap_or(0)
     }
 }
 
@@ -234,16 +216,16 @@ fn completion_input_buffer(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let non_empty = ed
         .state
         .input
-        .at::<CompletionLayer>(r)
+        .at::<BufferCompletionLayer>(r)
         .is_some_and(|l| !l.session.is_empty());
     if non_empty {
         match key.code {
             KeyCode::Tab | KeyCode::Down => {
-                move_completion_selection(ed, r, true);
+                move_buffer_completion_selection(ed, r, true);
                 return;
             }
             KeyCode::BackTab | KeyCode::Up => {
-                move_completion_selection(ed, r, false);
+                move_buffer_completion_selection(ed, r, false);
                 return;
             }
             KeyCode::Enter => {
@@ -305,12 +287,12 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     };
     match key.code {
         KeyCode::Tab => {
-            move_completion_selection(ed, r, true);
+            move_minibuf_completion_selection(ed, r, true);
             ed.state.apply_minibuf_candidate(r);
             return;
         }
         KeyCode::BackTab => {
-            move_completion_selection(ed, r, false);
+            move_minibuf_completion_selection(ed, r, false);
             ed.state.apply_minibuf_candidate(r);
             return;
         }
@@ -325,11 +307,15 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             // `'minibuf` source's item can opt in this way, and an
             // unrelated candidate that merely ends in `/` (a URL, a
             // namespaced tag) is never mistaken for one.
-            let is_dir = ed.state.input.at::<CompletionLayer>(r).is_some_and(|l| {
-                l.session
-                    .selected_item(l.selected())
-                    .is_some_and(CompletionItem::is_folder)
-            });
+            let is_dir = ed
+                .state
+                .input
+                .at::<MinibufCompletionLayer>(r)
+                .is_some_and(|l| {
+                    l.session
+                        .selected_item(l.session.selected())
+                        .is_some_and(CompletionItem::is_folder)
+                });
             if is_dir {
                 ed.state.dismiss_completion(&ed.view);
                 ed.start_minibuf_completion();
@@ -342,26 +328,22 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     ed.fall_through(r, InputEvent::Key(key));
 }
 
-/// Moves the completion menu's selection by one row. The popup scrolls
-/// to keep the selection visible, so the bound is the full ranked
-/// candidate list, not just the visible window. Shared by both targets —
-/// already target-agnostic. A no-op on an empty session — reachable for a
-/// `Minibuf`-target session, whose key handler has no non-empty guard the
-/// way `completion_input_buffer`'s does.
-fn move_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
-    let Some(layer) = ed.state.input.at::<CompletionLayer>(r) else {
-        return;
-    };
-    let current = layer.selected();
-    let Some(next) = layer.session.step_selection(current, forward) else {
-        return;
-    };
-    let Some(ui_slot) = ed.state.input.completion_ui_mut(r) else {
-        return;
-    };
-    ui_slot
-        .get_or_insert(CompletionMenuUi { selected: 0 })
-        .selected = next;
+/// Moves the Insert-mode completion menu's selection by one row. The popup
+/// scrolls to keep the selection visible, so the bound is the full ranked
+/// candidate list, not just the visible window.
+fn move_buffer_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
+    if let Some(layer) = ed.state.input.at_mut::<BufferCompletionLayer>(r) {
+        layer.session.step_selection(forward);
+    }
+}
+
+/// [`move_buffer_completion_selection`]'s `Minibuf` counterpart — a no-op
+/// on an empty session, reachable here since this key handler has no
+/// non-empty guard the way `completion_input_buffer`'s does.
+fn move_minibuf_completion_selection(ed: &mut Editor, r: LayerRef, forward: bool) {
+    if let Some(layer) = ed.state.input.at_mut::<MinibufCompletionLayer>(r) {
+        layer.session.step_selection(forward);
+    }
 }
 
 /// Accepts the currently-selected completion item through the same
@@ -373,9 +355,9 @@ fn accept_completion_selection(ed: &mut Editor, r: LayerRef) {
     let selected = ed
         .state
         .input
-        .at::<CompletionLayer>(r)
-        .map_or(0, |l| l.selected());
-    let Some(session) = ed.state.take_completion_session(&ed.view) else {
+        .at::<BufferCompletionLayer>(r)
+        .map_or(0, |l| l.session.selected());
+    let Some(session) = ed.state.take_buffer_completion(&ed.view) else {
         return;
     };
     if let Err(msg) = session.accept(&mut ed.state, &ed.view, &mut ed.lsp, selected) {

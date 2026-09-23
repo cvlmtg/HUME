@@ -772,45 +772,31 @@ impl EditorState {
         self.push_layer(view, layer);
     }
 
-    /// Retires the completion layer wherever it is on the stack — a
-    /// `Completion` layer can sit under a `Popup`, and a pop-if-top rule
-    /// would leave a stale session behind one. A no-op when no session is
-    /// open.
+    /// Retires whichever completion layer is open, wherever it is on the
+    /// stack — a completion layer can sit under a `Popup`, and a
+    /// pop-if-top rule would leave a stale session behind one. At most one
+    /// of the two is ever actually open; `retire` no-ops on the other. A
+    /// no-op when no session is open at all.
     pub(in crate::editor) fn dismiss_completion(&mut self, view: &EngineView) {
-        self.retire::<input_stack::CompletionLayer>(view);
+        self.retire::<input_stack::BufferCompletionLayer>(view);
+        self.retire::<input_stack::MinibufCompletionLayer>(view);
     }
 
     /// [`Self::dismiss_completion`]'s variant for the two accept paths,
     /// which need the session *by value* rather than merely retired —
     /// [`Self::take_layer`] handles the truncate-and-pull-out; this clears
-    /// the menu view directly rather than through `CompletionLayer::tear_down`
-    /// (`take_layer` never runs `Completion`'s own teardown, only whatever
-    /// was pushed above it). `None` when no session is open.
-    pub(in crate::editor) fn take_completion_session(
+    /// the menu view directly rather than through the layer's own
+    /// `tear_down` (`take_layer` never runs it, only whatever was pushed
+    /// above it). `Buffer`-target only — both accept paths only ever act on
+    /// one. `None` when no `Buffer` session is open.
+    pub(in crate::editor) fn take_buffer_completion(
         &mut self,
         view: &EngineView,
-    ) -> Option<completion::CompletionSession> {
-        let r = self.input.ref_of::<input_stack::CompletionLayer>()?;
-        let completion = self.take_layer::<input_stack::CompletionLayer>(view, r);
+    ) -> Option<completion::BufferSession> {
+        let r = self.input.ref_of::<input_stack::BufferCompletionLayer>()?;
+        let completion = self.take_layer::<input_stack::BufferCompletionLayer>(view, r);
         self.views.completion_menu.set(None);
         Some(completion.session)
-    }
-
-    /// Resets the open completion menu's selection back to row 0 — every
-    /// path that re-ranks a session's ranked list (`CompletionSession::
-    /// rank`, called from `contribute`/`rerank_open_session`/
-    /// `settle_minibuf_session`) must call this, since the previous
-    /// selection index has no guaranteed meaning against the new order (it
-    /// can point past the new list's end, or simply land on a different
-    /// candidate than the one visibly highlighted). A no-op when no session
-    /// is open.
-    pub(in crate::editor) fn reset_completion_selection(&mut self) {
-        let Some(r) = self.input.ref_of::<input_stack::CompletionLayer>() else {
-            return;
-        };
-        if let Some(slot) = self.input.completion_ui_mut(r) {
-            *slot = None;
-        }
     }
 
     /// Enqueue `event` to fire after the current command returns — the

@@ -4,7 +4,7 @@
 //! mature, heavily-used ones). Snippet stripping and the lenient `TextEdit`
 //! decode this relies on live in `hume_lsp::completion_item` — pure
 //! protocol work with no editor dependency — but the item type itself is
-//! HUME's completion-store item: `CompletionSession` ranks/filters it and
+//! HUME's completion-store item: `SlotSet` ranks/filters it and
 //! `to_json`/`menu_row` render it, neither of which is a wire concern.
 //! The wire type is always spelled `lsp_types::CompletionItem`; the bare
 //! name here is this store's own item.
@@ -31,7 +31,7 @@ pub(in crate::editor) struct CompletionItem {
     /// "server sent an empty array" — an empty array still means "nothing
     /// more to apply *and* don't bother resolving", same as a present-but-
     /// empty list; only the key's absence means resolve might have more to
-    /// offer. See `CompletionSession::accept`'s resolve gate.
+    /// offer. See `BufferSession::accept`'s resolve gate.
     pub(super) has_additional_text_edits: bool,
     /// The full response item, unparsed — handed to `on-completion-accept`
     /// so Steel can read `data` or any other field this store doesn't
@@ -109,9 +109,7 @@ impl CompletionItem {
         // being missing entirely — only a genuine (possibly empty) array
         // means "the server answered this and there's nothing more to
         // resolve" (see this field's own doc).
-        let has_additional_text_edits = v
-            .get("additionalTextEdits")
-            .is_some_and(|x| !x.is_null());
+        let has_additional_text_edits = v.get("additionalTextEdits").is_some_and(|x| !x.is_null());
         let additional_text_edits = parse_additional_text_edits_lenient(&v);
         Some(Self {
             label,
@@ -139,7 +137,7 @@ impl CompletionItem {
     /// The accept-time replacement text — read from outside this module by
     /// the `Minibuf`-target accept path (`input_stack/completion.rs`,
     /// `input_stack/command.rs`), which splices it into the minibuffer's
-    /// own input directly rather than through `CompletionSession::accept`
+    /// own input directly rather than through `BufferSession::accept`
     /// (`Buffer`-target only).
     pub(in crate::editor) fn insert_text(&self) -> &str {
         &self.insert_text
@@ -165,7 +163,7 @@ impl CompletionItem {
 
     /// No `textEdit`, no `additionalTextEdits` — accepting this item does
     /// nothing beyond inserting `insert_text` at the cursor. Shared by
-    /// [`Self::is_noop_for`] and `CompletionSession::recompute_dedup`'s
+    /// [`Self::is_noop_for`] and `BufferSession::recompute_dedup`'s
     /// cross-source duplicate check: only a plain item is ever hidden as
     /// someone else's duplicate, since an item carrying edits does
     /// something a duplicate-looking plain item from another source
@@ -193,7 +191,7 @@ impl CompletionItem {
     /// rather than going through [`Self::to_json`], since the menu never
     /// needs `kind`. Column layout/alignment is `resolve_menu`'s job
     /// (`hume_ui::popup`), not this store's. Called fresh every frame the
-    /// menu is open (`CompletionSession::rows_in`), but only for the
+    /// menu is open (`SlotSet::rows_in`), but only for the
     /// handful of rows in the visible window — a `String` clone per row per
     /// frame there is cheaper than paying an `Arc<str>` conversion for
     /// every parsed item, most of which are never scrolled into view.

@@ -84,7 +84,7 @@ impl Editor {
     /// instead resolves through the insert trie is a separate case —
     /// `completion_input_buffer`'s own trie peek dismisses the session
     /// outright once any of those returns, since none of them route back
-    /// through here.) See `CompletionSession::observe_edit` for why every
+    /// through here.) See `BufferSession::observe_edit` for why every
     /// keystroke reaching this function needs recording, not just ones at
     /// the primary cursor.
     fn apply_insert_edit(

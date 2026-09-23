@@ -55,7 +55,7 @@ fn open(ed: &mut Editor, path: &Path) -> BufferId {
 fn labels(ed: &Editor) -> Vec<String> {
     ed.state
         .input
-        .completion()
+        .buffer_completion()
         .map(|s| {
             s.top(20, &ed.state.config.completion_sources)
                 .iter()
@@ -327,7 +327,12 @@ fn reindex_via_option_change(ed: &mut Editor) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         ed.settle();
-        if ed.state.input.completion().is_none_or(|s| s.is_pending()) {
+        if ed
+            .state
+            .input
+            .buffer_completion()
+            .is_none_or(|s| s.is_pending())
+        {
             std::thread::sleep(Duration::from_millis(10));
             assert!(Instant::now() < deadline, "the walk never finished");
             continue;
@@ -1086,7 +1091,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     let top = ed
         .state
         .input
-        .completion()
+        .buffer_completion()
         .expect("session open")
         .top(20, &ed.state.config.completion_sources);
     assert_eq!(

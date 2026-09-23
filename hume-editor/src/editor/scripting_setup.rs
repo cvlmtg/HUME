@@ -424,7 +424,7 @@ impl Editor {
     /// losing focus, closing the buffer, or the buffer changing through a
     /// path `observe_edit` never witnessed (an LSP `workspace/applyEdit`,
     /// `:e!`, or any other out-of-band edit, same-length ones included —
-    /// see `BufferTarget::observe_edit`'s own doc for why a length-changing
+    /// see `BufferSession::observe_edit`'s own doc for why a length-changing
     /// one is already caught sooner, by the next keystroke's length check)
     /// all leave the session silently stale, and none of them has a single
     /// write-site chokepoint to hang a synchronous dismiss on — same shape
@@ -434,10 +434,10 @@ impl Editor {
     /// `Minibuf`-target session has nothing to invalidate here — it isn't
     /// watching a buffer.
     fn dismiss_invalid_completion(&mut self) {
-        let Some(bt) = self.state.input.completion().and_then(|s| s.buffer()) else {
+        let Some(session) = self.state.input.buffer_completion() else {
             return;
         };
-        if !bt.still_valid(&self.state, &self.view) {
+        if !session.still_valid(&self.state, &self.view) {
             self.state.dismiss_completion(&self.view);
         }
     }

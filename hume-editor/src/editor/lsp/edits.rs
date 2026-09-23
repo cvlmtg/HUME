@@ -26,7 +26,7 @@ use crate::editor::pane_state;
 /// Shared precondition check for every edit entry point in this module: the
 /// buffer exists, is writable, and hasn't moved since the caller computed its
 /// positions against it. One definition so `build_edit_changeset` and
-/// `CompletionSession::accept` (which needs the same guard but isn't
+/// `BufferSession::accept` (which needs the same guard but isn't
 /// building from wire `TextEdit`s) can't drift apart. `pub(in crate::editor)`
 /// — `accept` lives in `editor::completion` now, outside this subtree; see
 /// `wire_range_to_chars`'s doc (`lsp/mod.rs`) for why this is the narrowest

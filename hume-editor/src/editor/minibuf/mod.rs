@@ -203,7 +203,7 @@ impl MiniBuffer {
     /// candidate silently). `span` is the *token's own* range, not
     /// `span_start..self.cursor` — replacing up to a mid-token cursor
     /// instead would leave the token's uncompleted tail duplicated after
-    /// the applied candidate (see `MinibufTarget`'s doc).
+    /// the applied candidate (see `MinibufSession`'s doc).
     pub(in crate::editor) fn splice(&mut self, span: std::ops::Range<usize>, text: &str) {
         let span_start = span.start;
         self.input.replace_range(span, text);

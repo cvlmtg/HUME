@@ -58,7 +58,7 @@ fn ctrl_space_outside_insert_mode_only_reports() {
     );
     ed.execute_keymap_command("completion-trigger".into(), None, false);
     ed.settle();
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "completion-trigger: only in Insert mode");
 }
 
@@ -67,7 +67,7 @@ fn ctrl_space_with_no_buffer_source_registered_reports() {
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
     trigger(&mut ed);
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "no completion sources registered");
 }
 
@@ -98,7 +98,7 @@ fn an_empty_answer_closes_the_session_and_reports_no_completions() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_source(&mut ed, tmp.path(), "(list)");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "no completions");
 }
 
@@ -119,7 +119,11 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
            (define-command! "answer" "" (lambda ()
              (completion-emit! pending-id (list (hash "label" "late")))))"#,
     );
-    let session = ed.state.input.completion().expect("open while pending");
+    let session = ed
+        .state
+        .input
+        .buffer_completion()
+        .expect("open while pending");
     assert!(session.is_pending());
     assert!(session.is_empty());
     ed.execute_keymap_command("answer".into(), None, false);
@@ -293,7 +297,7 @@ fn an_answer_after_the_session_closed_is_dropped() {
     );
     ed.execute_keymap_command("late".into(), None, false);
     assert_eq!(status(&ed), "dropped");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 }
 
 /// A malformed item (missing the spec-required `label`) must not take down
@@ -327,7 +331,7 @@ fn an_all_malformed_answer_behaves_like_an_empty_one() {
         tmp.path(),
         r#"(list (hash "kind" 1) (hash "kind" 2))"#,
     );
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "no completions");
 }
 
@@ -448,7 +452,7 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
     );
     ed.feed_key(key('f'));
     ed.settle();
-    let session = ed.state.input.completion().expect("still open");
+    let session = ed.state.input.buffer_completion().expect("still open");
     assert!(session.is_pending(), "the second call is in flight");
     assert_eq!(
         labels(&ed),
@@ -613,7 +617,7 @@ fn a_trigger_char_nobody_registered_for_does_nothing() {
     ed.feed_key(key('i'));
     ed.feed_key(key('.'));
     ed.settle();
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(ed.doc().text().to_string(), ".abcdef\n");
 }
 
@@ -775,13 +779,11 @@ fn minibuffer_tab_completion_opens_a_minibuf_session() {
     ed.handle_key(key(':'));
     type_chars(&mut ed, &format!("e {}/", tmp.path().display()));
     ed.handle_key(key_tab());
-    let session = ed
-        .state
-        .input
-        .completion()
-        .expect("2+ path candidates must open a popup");
-    assert!(session.minibuf_input().is_some());
-    assert!(session.buffer().is_none());
+    assert!(
+        ed.state.input.minibuf_completion().is_some(),
+        "2+ path candidates must open a popup"
+    );
+    assert!(ed.state.input.buffer_completion().is_none());
 }
 
 #[test]
@@ -790,7 +792,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     ed.feed_key(key('i'));
     type_chars(&mut ed, "hello");
     open_completion_session(&mut ed, &["candidate"]);
-    assert!(ed.state.input.completion().is_some(), "sanity: open");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity: open");
 
     let other = ed.open_buffer(Buffer::new(
         BufferText::from("other\n"),
@@ -799,7 +801,7 @@ fn a_buffer_switch_dismisses_the_session_at_settle() {
     ed.switch_to_buffer_with_jump(other);
     ed.settle();
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "dismiss_invalid_completion must dismiss the session once its pane shows \
          a different buffer"
     );
@@ -853,7 +855,7 @@ fn a_steel_minibuf_source_completes_a_typed_commands_argument() {
         "greet alice",
         "the sole prefix match lands silently once the async source answers"
     );
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 }
 
 /// A completer naming a `'buffer` source can't serve the `:` line — the
@@ -877,7 +879,7 @@ fn a_buffer_source_named_as_a_completer_is_ignored_with_a_trace() {
     ed.handle_key(key(':'));
     type_chars(&mut ed, "greet a");
     ed.handle_key(key_tab());
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(minibuf_input(&ed), "greet a");
     assert!(
         ed.state

@@ -136,7 +136,7 @@ fn completion_popup_anchor_matches_an_independent_content_pos_walk_when_wrapped(
     let anchor = ed
         .state
         .input
-        .completion()
+        .buffer_completion()
         .unwrap()
         .menu_anchor_char()
         .unwrap();

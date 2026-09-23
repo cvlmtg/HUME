@@ -25,7 +25,7 @@ use hume_engine::types::EditorMode;
 use super::super::minibuf::MiniBuffer;
 use super::super::{Editor, EditorState, Severity};
 use super::base::BaseLayer;
-use super::completion::CompletionLayer;
+use super::completion::{BufferCompletionLayer, MinibufCompletionLayer};
 use super::popup::PopupLayer;
 
 /// Addresses one layer by position — minted only by [`InputStack::push`] and
@@ -61,10 +61,11 @@ pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
 /// Which popup home(s) landing here evicts — read by
 /// [`EditorState::push_layer`] right after [`Layer::setup`] runs, so no
 /// layer calls [`InputStack::clear_popups`]/[`InputStack::clear_popup_layer`]
-/// by hand. [`Both`](Self::Both) (the default) matches every layer but
-/// `CompletionLayer`: a completion session must coexist with a `Sticky`
-/// signature-help popup sitting in the current mode layer's own slot, so it
-/// evicts only the pushed-layer home.
+/// by hand. [`Both`](Self::Both) (the default) matches every layer but a
+/// completion layer (`BufferCompletionLayer`/`MinibufCompletionLayer`): a
+/// completion session must coexist with a `Sticky` signature-help popup
+/// sitting in the current mode layer's own slot, so it evicts only the
+/// pushed-layer home.
 pub(in crate::editor) enum PopupEviction {
     /// [`InputStack::clear_popups`] — a pushed `PopupLayer`, if any, and the
     /// current mode layer's sticky slot.
@@ -586,21 +587,26 @@ impl InputStack {
     /// one of the four minibuf-backed mode layers, even if one is open
     /// buried beneath a picker or menu (a mouse click always falls through
     /// under a minibuf-mode layer, so focus and the picker/menu it opens can
-    /// land above one without ever closing it). A `Minibuf`-target
-    /// `CompletionLayer` is not such a takeover — it's a dropdown drawn
-    /// above the command line, not a replacement for it — so it's skipped
-    /// here the same way `mode_layer()` skips it (its own `mode()` is
-    /// `None`) rather than counting as "something else is on top now".
-    /// Distinct from [`Self::minibuf`] (topmost-of-any-depth), which every
-    /// minibuf-mode layer's *own* handler uses safely — dispatch only ever
-    /// reaches it while it's already `top()`. [`EditorState::minibuf`] is
-    /// the gated reader every external (non-owning-layer) consumer — the
-    /// statusline, the hardware-cursor placement — must use instead.
+    /// land above one without ever closing it). A `MinibufCompletionLayer`
+    /// is not such a takeover — it's a dropdown drawn above the command
+    /// line, not a replacement for it — so it's skipped here the same way
+    /// `mode_layer()` skips it (its own `mode()` is `None`) rather than
+    /// counting as "something else is on top now". `BufferCompletionLayer`
+    /// can never actually sit above a minibuf-mode layer in practice (it
+    /// opens over `InsertLayer`), but is skipped too for the same reason,
+    /// not by argument from reachability alone. Distinct from
+    /// [`Self::minibuf`] (topmost-of-any-depth), which every minibuf-mode
+    /// layer's *own* handler uses safely — dispatch only ever reaches it
+    /// while it's already `top()`. [`EditorState::minibuf`] is the gated
+    /// reader every external (non-owning-layer) consumer — the statusline,
+    /// the hardware-cursor placement — must use instead.
     pub(in crate::editor) fn top_minibuf(&self) -> Option<&MiniBuffer> {
         self.layers
             .iter()
             .rev()
-            .find(|(_, layer)| !layer.is::<CompletionLayer>())
+            .find(|(_, layer)| {
+                !layer.is::<BufferCompletionLayer>() && !layer.is::<MinibufCompletionLayer>()
+            })
             .and_then(|(_, layer)| layer.minibuf())
     }
 
@@ -647,7 +653,7 @@ impl InputStack {
 
     /// Clears the pushed-layer popup home alone — a [`PopupLayer`] layer, if
     /// one is open (always `top()`, enforced below), leaving the current
-    /// mode layer's sticky slot untouched. `CompletionLayer`'s
+    /// mode layer's sticky slot untouched. A completion layer's
     /// [`PopupEviction::LayerOnly`] override reaches this instead of
     /// [`Self::clear_popups`]: a completion session must evict a
     /// `Scrollable` popup (hover, the `gn`/`gp` diagnostic overlay — both
@@ -674,7 +680,7 @@ impl InputStack {
     /// plus the current mode layer's sticky slot. Called automatically by
     /// [`EditorState::push_layer`] for every layer whose
     /// [`Layer::popup_eviction`] is [`PopupEviction::Both`] (the default —
-    /// every layer but `CompletionLayer`) — no layer calls this by hand.
+    /// every layer but a completion layer) — no layer calls this by hand.
     /// The two callers that reach it *without* going through `push_layer`
     /// are `show_popup`'s `Sticky` arm (which writes straight into a mode
     /// layer's slot rather than pushing anything, so `(show-popup! …)`
@@ -1060,7 +1066,7 @@ mod tests {
 
     #[test]
     fn clear_popup_layer_leaves_the_sticky_slot_intact() {
-        // `CompletionLayer::setup`'s narrower need than `clear_popups`: evict
+        // A completion layer's narrower need than `clear_popups`: evict
         // a pushed `Popup` layer without dismissing a `Sticky` popup sitting
         // in the current mode layer's own slot.
         let mut stack = InputStack::new();

@@ -1,21 +1,22 @@
-//! `CompletionSession::accept` — the churn hotspot: applies the selected
+//! `BufferSession::accept` — the churn hotspot: applies the selected
 //! candidate's `textEdit` (or a synthesized token-replacement fallback) at
 //! every cursor, then best-effort `completionItem/resolve`.
 
 use hume_editing::changeset::Assoc;
-use hume_engine::pipeline::EngineView;
+use hume_engine::pipeline::{BufferId, EngineView};
 use hume_rope::offset::CharOffset;
 
 use hume_lsp::completion_item::parse_additional_text_edits_lenient;
 
-use super::{BufferSpan, BufferTarget, CompletionSession, Target, contains_cursor};
-use crate::editor::completion::CompletionItem;
+use super::super::item::CompletionItem;
+use super::buffer::{BufferSession, BufferSpan};
+use super::contains_cursor;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
 use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
 
-impl CompletionSession {
+impl BufferSession {
     /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
     /// over its own source's live token span when absent) at *every* cursor
     /// in the session's pane, as if the completion had been typed at each —
@@ -58,18 +59,16 @@ impl CompletionSession {
         lsp: &mut LspState,
         idx: usize,
     ) -> Result<(), String> {
-        let Target::Buffer { bt, .. } = &self.target else {
-            return Err("completion-accept!: not a buffer-target session".to_string());
-        };
         let (source, invocation, item) = self
-            .ranked_buffer(idx)
+            .ranked(idx)
             .ok_or_else(|| "completion-accept!: index out of range".to_string())?;
         let BufferSpan { doc, live } = &invocation.span;
+        let bid = self.bid();
         // Copied out now — a plain `bool`, so there's no reason to keep the
         // registry borrow (or `source`) alive across the `&mut state` uses
         // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
-        edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
+        edits::checked_buffer(state, bid, Some(self.generation))?;
         // A source that hasn't declared `#:resolve` isn't claiming to be
         // genuine LSP-server-origin (that flag's own doc), so its own
         // `textEdit`/`additionalTextEdits` have no wire encoding to honor —
@@ -79,7 +78,7 @@ impl CompletionSession {
         // counts chars, never code units) is the spec-defined choice for
         // "no server involved."
         let encoding = if may_resolve {
-            introspect::encoding_for_buffer(state, lsp, bt.bid)
+            introspect::encoding_for_buffer(state, lsp, bid)
         } else {
             hume_rope::position_encoding::PositionEncoding::Utf32
         };
@@ -93,7 +92,7 @@ impl CompletionSession {
         // yet", not for "this session's own point of reference is gone" —
         // so this errors instead of silently landing the edit at the top of
         // the file.
-        if state.focus.id() != bt.pane_id {
+        if state.focus.id() != self.pane_id {
             return Err("completion-accept!: the session's pane is no longer focused".to_string());
         }
         // Focus alone doesn't prove the pane still *shows* this buffer —
@@ -101,14 +100,14 @@ impl CompletionSession {
         // retained, not removed, when a pane switches away, so it can't
         // detect this. `view.panes` is the engine's live pane→buffer
         // mapping — the actual on-screen truth.
-        if view.panes.get(bt.pane_id).map(|p| p.buffer_id) != Some(bt.bid) {
+        if view.panes.get(self.pane_id).map(|p| p.buffer_id) != Some(bid) {
             return Err(
                 "completion-accept!: the session's pane no longer shows its buffer".to_string(),
             );
         }
-        let pid = bt.pane_id;
+        let pid = self.pane_id;
         let (head_now, heads_now) = {
-            let pbs = state.panes.buffer_state(pid, bt.bid).ok_or_else(|| {
+            let pbs = state.panes.buffer_state(pid, bid).ok_or_else(|| {
                 "completion-accept!: buffer is no longer shown in the session's pane".to_string()
             })?;
             // The "as if typed at each cursor" model has no meaning for a
@@ -204,7 +203,7 @@ impl CompletionSession {
         // up sent below) is computed against this exact pre-accept document,
         // and its wire positions must be decoded against it, not whatever
         // the buffer holds once the response actually arrives.
-        let rope_pre = state.buffers.get(bt.bid).text().rope().clone();
+        let rope_pre = state.buffers.get(bid).text().rope().clone();
 
         // Decoded and mapped here (pure — no mutation yet) so an overlap
         // with the main edit's own range (checked just below) can be caught
@@ -231,9 +230,9 @@ impl CompletionSession {
         let per_cursor_back: Vec<usize> = match &item.text_edit {
             Some(_) => heads_now.iter().map(|_| back).collect(),
             None => {
-                let live_text = state.buffers.get(bt.bid).text();
+                let live_text = state.buffers.get(bid).text();
                 let word_chars = crate::editor::commands::effective_word_chars(
-                    state.buffers.get(bt.bid),
+                    state.buffers.get(bid),
                     &state.settings,
                 );
                 heads_now
@@ -287,13 +286,13 @@ impl CompletionSession {
         // the ongoing session); a Steel-triggered accept outside Insert mode
         // does not, so open one here — both edits below then land as one
         // undo step regardless of caller.
-        let opened_group = state.panes.state[pid][bt.bid].edit_group.is_none();
+        let opened_group = state.panes.state[pid][bid].edit_group.is_none();
         if opened_group {
             crate::editor::doc_ops::begin_edit_group(
                 &state.buffers,
                 &mut state.panes.state,
                 pid,
-                bt.bid,
+                bid,
             );
         }
 
@@ -310,7 +309,7 @@ impl CompletionSession {
         // composed in) before propagating the error.
         // `commit_char_edits` is a no-op `Ok(None)` for an empty batch, so no
         // separate `is_empty()` branch is needed here.
-        let cs_additional = match edits::commit_char_edits(state, bt.bid, additional_char_edits) {
+        let cs_additional = match edits::commit_char_edits(state, bid, additional_char_edits) {
             Ok(cs) => cs,
             Err(e) => {
                 if opened_group {
@@ -318,7 +317,7 @@ impl CompletionSession {
                         &mut state.buffers,
                         &mut state.panes.state,
                         pid,
-                        bt.bid,
+                        bid,
                     );
                 }
                 return Err(e);
@@ -358,7 +357,7 @@ impl CompletionSession {
                 &mut state.panes.state,
                 &mut state.panes.jumps,
                 pid,
-                bt.bid,
+                bid,
                 move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
             ),
             None => crate::editor::doc_ops::apply_doc_edit_grouped(
@@ -367,7 +366,7 @@ impl CompletionSession {
                 &mut state.panes.state,
                 &mut state.panes.jumps,
                 pid,
-                bt.bid,
+                bid,
                 move |b, s| {
                     replace_span_around_cursors(
                         b,
@@ -385,7 +384,7 @@ impl CompletionSession {
                 &mut state.buffers,
                 &mut state.panes.state,
                 pid,
-                bt.bid,
+                bid,
             );
         }
 
@@ -401,12 +400,12 @@ impl CompletionSession {
         // edit lands — an extension point for anything this store doesn't
         // parse (e.g. `command`); Rust owns additionalTextEdits/resolve.
         state.queue_event(EditorEvent::OnCompletionAccept {
-            buffer: bt.bid,
+            buffer: bid,
             item: item.raw.clone(),
         });
 
         if may_resolve && !item.has_additional_text_edits {
-            maybe_send_resolve(bt, state, lsp, item, rope_pre, accept_cs, encoding);
+            maybe_send_resolve(bid, state, lsp, item, rope_pre, accept_cs, encoding);
         }
         Ok(())
     }
@@ -415,10 +414,10 @@ impl CompletionSession {
 /// Sends `completionItem/resolve` when the server advertised
 /// `completionProvider.resolveProvider` — best-effort: a resolution error,
 /// timeout, or a server that's gone by send time only logs, it never fails
-/// the accept that already landed. `bt` is the same `BufferTarget` `accept`
-/// already resolved — its only caller.
+/// the accept that already landed. `bid` is `accept`'s own buffer — its
+/// only caller.
 fn maybe_send_resolve(
-    bt: &BufferTarget,
+    bid: BufferId,
     state: &mut EditorState,
     lsp: &mut LspState,
     item: &CompletionItem,
@@ -426,7 +425,7 @@ fn maybe_send_resolve(
     accept_cs: hume_editing::changeset::ChangeSet,
     encoding: hume_rope::position_encoding::PositionEncoding,
 ) {
-    let Some(server_id) = state.buffers.try_get(bt.bid).and_then(|b| b.lsp_server) else {
+    let Some(server_id) = state.buffers.try_get(bid).and_then(|b| b.lsp_server) else {
         return;
     };
     if !introspect::completion_resolve_provider(lsp, server_id) {
@@ -437,7 +436,6 @@ fn maybe_send_resolve(
     // minted here must not reach the wire ahead of the didChange
     // describing the edit `accept` just applied.
     crate::editor::lsp::sync::flush_lsp_pending_changes(state, lsp);
-    let bid = bt.bid;
     let timeout_ms = state.settings.lsp_request_timeout_ms as u64;
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     let meta = hume_lsp::client::RequestMeta {

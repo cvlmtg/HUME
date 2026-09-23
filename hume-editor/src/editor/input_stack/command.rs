@@ -45,11 +45,7 @@ impl Editor {
     /// `last_pane_area` (settled in step 0), unlike its cursor-anchored
     /// siblings, which need the current frame's scroll result too.
     pub(in crate::editor) fn sync_minibuf_completion_view(&self) {
-        let is_open = self
-            .state
-            .input
-            .completion()
-            .is_some_and(|s| s.minibuf_input().is_some());
+        let is_open = self.state.input.minibuf_completion().is_some();
         // Skip the write-lock when both sides are already None — common case
         // while no popup is open.
         if !is_open && self.state.views.minibuf_completion.read().is_none() {
@@ -57,8 +53,7 @@ impl Editor {
         }
         let pane_rect = self.view.last_pane_area;
         let view = (|| -> Option<hume_ui::popup::PopupState> {
-            let session = self.state.input.completion()?;
-            session.minibuf_input()?;
+            let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
             let selected = self.state.input.completion_selected();
             let anchor_x = self
@@ -97,7 +92,7 @@ pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEv
 
 fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     // No completion-dismiss calls in this function, on any arm: a
-    // `CompletionLayer` sits *above* `Command` whenever a popup is open, and
+    // `MinibufCompletionLayer` sits *above* `Command` whenever a popup is open, and
     // `completion_input_minibuf` (`input_stack/completion.rs`) dismisses it
     // before falling through to whatever runs here — by the time any of
     // these arms sees an event, either no popup was open, or one already
@@ -147,7 +142,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 .demote_to_scratch();
         }
         // Shift-Tab with no open popup is a no-op; once one opens (a
-        // `CompletionLayer` pushed above this one), every subsequent
+        // `MinibufCompletionLayer` pushed above this one), every subsequent
         // Tab/Shift-Tab — and the directory-descend-on-Enter check — is
         // handled by that layer's own key handler
         // (`completion_input_minibuf`, `input_stack/completion.rs`) before

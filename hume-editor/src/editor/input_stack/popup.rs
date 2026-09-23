@@ -21,8 +21,8 @@ use super::stack::{InputEvent, Layer, LayerHandler, LayerRef};
 /// `hume_ui::popup::PopupState` or a `PopupBandState`. Never buried: every
 /// layer's own `Layer::setup` retires it before landing (`PopupLayer`'s own,
 /// for its self-replace contract; `MenuLayer`/`DrawerLayer`/`PickerLayer`,
-/// which evict any open popup outright; `CompletionLayer`, which evicts only
-/// this home via `InputStack::clear_popup_layer`, leaving a `Sticky` popup
+/// which evict any open popup outright; a completion layer, which evicts
+/// only this home via `InputStack::clear_popup_layer`, leaving a `Sticky` popup
 /// in a mode layer's slot untouched) or is itself gated on the stack being
 /// settled, so `close-popup!`/`popup()` never need to look past `top()`.
 pub(in crate::editor) struct PopupLayer {

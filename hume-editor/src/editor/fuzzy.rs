@@ -2,9 +2,9 @@
 //! small API so no caller names it directly (mirrors the `ropey`/`termina`
 //! wrapping precedent elsewhere in the editor).
 //!
-//! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and `CompletionSession`
-//! (`editor/completion/session.rs`), one instance per profile — see
-//! [`FuzzyProfile`].
+//! Consumed by `PickerSession` (`editor/input_stack/picker/session.rs`) and
+//! `SlotSet` (`editor/completion/session/slots.rs`), one instance per
+//! profile — see [`FuzzyProfile`].
 
 use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Config, Matcher, Utf32Str};
@@ -54,8 +54,8 @@ pub(in crate::editor) enum FuzzyPattern {
 }
 
 /// Owns the reusable scoring engine. One instance per picker/completion
-/// session (parallels `CompletionSession::rank_scratch` — caller-owned state
-/// reused across every keystroke, never rebuilt per call).
+/// session (parallels `SlotSet::ranked` — caller-owned state reused across
+/// every keystroke, never rebuilt per call).
 pub(in crate::editor) struct FuzzyMatcher {
     matcher: Matcher,
     haystack_buf: Vec<char>,

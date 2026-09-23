@@ -20,10 +20,12 @@ use hume_scripting::SteelBufferId;
 use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
-use super::session::{CompletionSession, Invocation, LiveDoc};
+use super::session::{BufferSession, Invocation, LiveDoc, MinibufSession};
 use super::{CompletionCtx, CompletionItem, arg_span};
 use crate::editor::buffer::store::BufferStore;
-use crate::editor::input_stack::{CompletionLayer, InsertLayer, LayerRef};
+use crate::editor::input_stack::{
+    BufferCompletionLayer, InsertLayer, LayerRef, MinibufCompletionLayer,
+};
 use crate::editor::registry::CommandRegistry;
 use crate::editor::settings::EditorSettings;
 use crate::editor::{EditorState, Severity};
@@ -97,11 +99,11 @@ impl EditorState {
         else {
             return;
         };
-        let mut session = match self.take_completion_session(view) {
-            Some(open) if open.buffer().is_some_and(|bt| bt.still_valid(self, view)) => open,
+        let mut session = match self.take_buffer_completion(view) {
+            Some(open) if open.still_valid(self, view) => open,
             _ => {
                 let buf = self.buffers.get(bid);
-                CompletionSession::open_buffer(bid, pid, buf.text_gen, buf.text().len_chars())
+                BufferSession::open(bid, pid, buf.text_gen, buf.text().len_chars())
             }
         };
         if let Trigger::Explicit = trigger {
@@ -128,7 +130,7 @@ impl EditorState {
             self.report(Severity::Info, "no completions".to_string());
             return;
         }
-        self.push_layer(view, CompletionLayer { session, ui: None });
+        self.push_layer(view, BufferCompletionLayer { session });
     }
 
     /// Records an Insert-mode edit that landed on `bid` — called from the
@@ -156,10 +158,10 @@ impl EditorState {
         let buf = self.buffers.get(bid);
         let chars = crate::editor::commands::effective_word_chars(buf, &self.settings);
         let text = buf.text();
-        let Some(session) = self.input.completion_mut() else {
+        let Some(session) = self.input.buffer_completion_mut() else {
             return;
         };
-        if session.buffer().is_none_or(|bt| bt.bid() != bid) {
+        if session.bid() != bid {
             return;
         }
         if !session.observe_edit(
@@ -184,12 +186,9 @@ impl EditorState {
             head,
         );
         self.queue_steel_calls(calls);
-        self.rerank_open_session();
         // Typed out of every token, and nothing on its way: silent — the
         // user left, nothing "failed".
-        if self.open_session_is_spent() {
-            self.dismiss_completion(view);
-        }
+        self.settle_buffer_completion(view, false);
     }
 
     // ── Minibuffer target ────────────────────────────────────────────────────
@@ -234,7 +233,7 @@ impl EditorState {
             );
             return;
         };
-        let mut session = CompletionSession::open_minibuf(input.clone(), cursor);
+        let mut session = MinibufSession::open(input.clone(), cursor);
         let ctx = CompletionCtx {
             registry: &self.config.registry,
             buffers: &self.buffers,
@@ -252,7 +251,7 @@ impl EditorState {
         if let Some((proc, args)) = call {
             self.queue_steel_call(proc, args);
         }
-        let r = self.push_layer(view, CompletionLayer { session, ui: None });
+        let r = self.push_layer(view, MinibufCompletionLayer { session });
         self.settle_minibuf_session(view, r);
     }
 
@@ -261,20 +260,16 @@ impl EditorState {
     /// gone; two or more → the first is applied and the popup stays for
     /// Tab to cycle. Runs at open (native sources answer inline) and again
     /// when a pending Steel source's answer lands — including a second
-    /// answer to a still-streaming source, so the re-rank resets the
-    /// selection first (`reset_completion_selection`'s own contract, same
-    /// as `rerank_open_session`'s `Buffer` counterpart): the previous
-    /// selection index has no guaranteed meaning against the new order, and
-    /// may point past a narrower list's end entirely.
+    /// answer to a still-streaming source, so the re-rank (which resets the
+    /// selection itself — `SlotSet::rank_with`'s own contract) always runs
+    /// first: the previous selection index has no guaranteed meaning
+    /// against the new order, and may point past a narrower list's end
+    /// entirely.
     fn settle_minibuf_session(&mut self, view: &EngineView, r: LayerRef) {
-        let Some(layer) = self.input.at_mut::<CompletionLayer>(r) else {
+        let Some(layer) = self.input.at_mut::<MinibufCompletionLayer>(r) else {
             return;
         };
-        layer.session.rank(&self.config.completion_sources, None);
-        self.reset_completion_selection();
-        let Some(layer) = self.input.at_mut::<CompletionLayer>(r) else {
-            return;
-        };
+        layer.session.rank(&self.config.completion_sources);
         if layer.session.is_pending() {
             return;
         }
@@ -293,17 +288,14 @@ impl EditorState {
     /// sources saw first, so cycling from one candidate to the next never
     /// has to know what the previous one left behind.
     pub(in crate::editor) fn apply_minibuf_candidate(&mut self, r: LayerRef) {
-        let Some(layer) = self.input.at::<CompletionLayer>(r) else {
+        let Some(layer) = self.input.at::<MinibufCompletionLayer>(r) else {
             return;
         };
-        let selected = layer.selected();
-        let Some(input) = layer.session.minibuf_input() else {
+        let selected = layer.session.selected();
+        let Some((span, text)) = layer.session.selected_apply(selected) else {
             return;
         };
-        let Some((span, text)) = layer.session.minibuf_apply(selected) else {
-            return;
-        };
-        let (input, text) = (input.to_owned(), text.to_owned());
+        let (input, text) = (layer.session.input().to_owned(), text.to_owned());
         let Some(mb) = self.input.minibuf_mut() else {
             return;
         };
@@ -327,29 +319,32 @@ impl EditorState {
         items: Vec<CompletionItem>,
         incomplete: bool,
     ) -> bool {
-        let Some(r) = self.input.ref_of::<CompletionLayer>() else {
+        if self.input.ref_of::<BufferCompletionLayer>().is_some() {
+            let session = self
+                .input
+                .buffer_completion_mut()
+                .expect("ref_of found the layer");
+            let landed = session.contribute(&self.config.completion_sources, id, items, incomplete);
+            if landed {
+                // Silent for a trigger-char session the user never
+                // explicitly asked for completion on — same discipline as
+                // the `Explicit`-only report at this file's own
+                // `trigger_buffer_completion` (`ids.is_empty()`'s `if let
+                // Trigger::Explicit = trigger` guard).
+                self.settle_buffer_completion(view, true);
+            }
+            return landed;
+        }
+        let Some(r) = self.input.ref_of::<MinibufCompletionLayer>() else {
             return false;
         };
-        let session = self.input.completion_mut().expect("ref_of found the layer");
-        let landed = session.contribute(&self.config.completion_sources, id, items, incomplete);
+        let session = self
+            .input
+            .minibuf_completion_mut()
+            .expect("ref_of found the layer");
+        let landed = session.contribute(id, items, incomplete);
         if landed {
-            if session.buffer().is_some() {
-                let explicit = session.is_explicit();
-                self.rerank_open_session();
-                if self.open_session_is_spent() {
-                    self.dismiss_completion(view);
-                    // Silent for a trigger-char session the user never
-                    // explicitly asked for completion on — same discipline
-                    // as the `Explicit`-only report at this file's own
-                    // `trigger_buffer_completion` (`ids.is_empty()`'s
-                    // `if let Trigger::Explicit = trigger` guard).
-                    if explicit {
-                        self.report(Severity::Info, "no completions".to_string());
-                    }
-                }
-            } else {
-                self.settle_minibuf_session(view, r);
-            }
+            self.settle_minibuf_session(view, r);
         }
         landed
     }
@@ -357,43 +352,46 @@ impl EditorState {
     /// Recovery for a Steel call batch that failed (see
     /// `Editor::run_call_batch`'s own call site): drops every completion
     /// invocation still `Pending`, since nothing will ever call
-    /// `completion-emit!` for it now — see `CompletionSession::
-    /// drop_stalled_invocations`'s own doc for why this is always safe. A
-    /// no-op with no completion session open, or when nothing was actually
-    /// pending.
+    /// `completion-emit!` for it now — see `SlotSet::drop_stalled`'s own
+    /// doc for why this is always safe. A no-op with no completion session
+    /// open, or when nothing was actually pending.
     pub(in crate::editor) fn settle_completion_after_call_failure(&mut self, view: &EngineView) {
-        let Some(r) = self.input.ref_of::<CompletionLayer>() else {
-            return;
-        };
-        let session = self.input.completion_mut().expect("ref_of found the layer");
-        if !session.drop_stalled_invocations() {
+        if let Some(session) = self.input.buffer_completion_mut() {
+            if session.drop_stalled_invocations() {
+                self.settle_buffer_completion(view, false);
+            }
             return;
         }
-        if session.buffer().is_some() {
-            self.rerank_open_session();
-            if self.open_session_is_spent() {
-                self.dismiss_completion(view);
-            }
-        } else {
+        let Some(r) = self.input.ref_of::<MinibufCompletionLayer>() else {
+            return;
+        };
+        let session = self
+            .input
+            .minibuf_completion_mut()
+            .expect("ref_of found the layer");
+        if session.drop_stalled_invocations() {
             self.settle_minibuf_session(view, r);
         }
     }
 
-    /// Re-ranks the open session against the live document and resets the
-    /// menu selection to row 0 — every path that changes the ranked list
-    /// must, since the previous selection index has no guaranteed meaning
-    /// against the new order.
-    fn rerank_open_session(&mut self) {
-        let live = self
+    /// Re-ranks the open `Buffer` session and dismisses it if it's now
+    /// spent — every path that lands new information into it (`contribute`,
+    /// `completion_observe_edit`, a failed call batch) ends here.
+    /// `report_empty`: report "no completions" if the session dismisses as
+    /// spent and was ever explicitly triggered. Only `contribute` wants
+    /// this — a raw edit narrowing to nothing, or a call-batch failure,
+    /// isn't the user "asking and getting nothing".
+    fn settle_buffer_completion(&mut self, view: &EngineView, report_empty: bool) {
+        let explicit = self
             .input
-            .completion()
-            .and_then(|s| s.buffer())
-            .map(|bt| bt.bid())
-            .and_then(|bid| {
-                self.focused_buffer_state(bid)
-                    .map(|pbs| (bid, pbs.selections().primary().head()))
-            });
-        let Some(session) = self.input.completion_mut() else {
+            .buffer_completion()
+            .is_some_and(BufferSession::is_explicit);
+        let live = self.input.buffer_completion().and_then(|s| {
+            let bid = s.bid();
+            self.focused_buffer_state(bid)
+                .map(|pbs| (bid, pbs.selections().primary().head()))
+        });
+        let Some(session) = self.input.buffer_completion_mut() else {
             return;
         };
         let live = live.map(|(bid, head)| LiveDoc {
@@ -401,16 +399,16 @@ impl EditorState {
             head,
         });
         session.rank(&self.config.completion_sources, live);
-        self.reset_completion_selection();
-    }
-
-    /// Whether the open session has nothing left to show and nothing on
-    /// its way — every source answered empty, or the cursor typed out of
-    /// every token.
-    fn open_session_is_spent(&self) -> bool {
-        self.input
-            .completion()
-            .is_some_and(CompletionSession::is_spent)
+        if self
+            .input
+            .buffer_completion()
+            .is_some_and(BufferSession::is_spent)
+        {
+            self.dismiss_completion(view);
+            if report_empty && explicit {
+                self.report(Severity::Info, "no completions".to_string());
+            }
+        }
     }
 
     /// Queues every `(proc, args)` pair `invoke_buffer_sources` returned —
@@ -432,7 +430,7 @@ fn invoke_buffer_sources(
     sources: &SourceRegistry,
     buffers: &BufferStore,
     settings: &EditorSettings,
-    session: &mut CompletionSession,
+    session: &mut BufferSession,
     ids: &[BufferSourceId],
     bid: BufferId,
     head: CharOffset,
@@ -446,19 +444,19 @@ fn invoke_buffer_sources(
     let chars = crate::editor::commands::effective_word_chars(buf, settings);
     let live = hume_ops::edit::word_start_before(text, head, chars)..head;
     ids.iter()
-        .filter_map(|&id| {
+        .map(|&id| {
             let entry = sources.buffer_get(id);
             let invocation = Invocation::buffer(text.rope().clone(), live.clone());
             let prefix = invocation.prefix(text);
-            let invocation_id = session.invoke_buffer(id, invocation)?;
-            Some((
+            let invocation_id = session.invoke(id, invocation);
+            (
                 entry.proc.clone(),
                 vec![
                     SteelVal::IntV(invocation_id as isize),
                     SteelBufferId::new(bid).into_steel_val(),
                     SteelVal::StringV(prefix.into()),
                 ],
-            ))
+            )
         })
         .collect()
 }
@@ -475,7 +473,7 @@ fn invoke_buffer_sources(
 fn invoke_minibuf_source(
     sources: &SourceRegistry,
     ctx: &CompletionCtx<'_>,
-    session: &mut CompletionSession,
+    session: &mut MinibufSession,
     id: MinibufSourceId,
     input: &str,
     cursor: usize,
@@ -484,19 +482,19 @@ fn invoke_minibuf_source(
     match &entry.body {
         MinibufBody::NativeUniverse(f) => {
             let span = arg_span(input, cursor, ' ', &[' ']);
-            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
-            session.contribute(sources, invocation_id, f(ctx), false);
+            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            session.contribute(invocation_id, f(ctx), false);
             None
         }
         MinibufBody::NativeDelegated(f) => {
             let (span, items) = f(input, cursor, ctx);
-            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
-            session.contribute(sources, invocation_id, items, false);
+            let invocation_id = session.invoke(id, Invocation::minibuf(span));
+            session.contribute(invocation_id, items, false);
             None
         }
         MinibufBody::Steel(proc) => {
             let span = arg_span(input, cursor, ' ', &[' ']);
-            let invocation_id = session.invoke_minibuf(id, Invocation::minibuf(span))?;
+            let invocation_id = session.invoke(id, Invocation::minibuf(span));
             Some((
                 proc.clone(),
                 vec![

@@ -11,7 +11,7 @@ use pretty_assertions::assert_eq;
 
 /// Every candidate's `insert_text`, in ranked order.
 fn candidates(ed: &Editor) -> Vec<String> {
-    let session = ed.state.input.completion().expect("popup open");
+    let session = ed.state.input.minibuf_completion().expect("popup open");
     (0..session.len())
         .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())
         .collect()
@@ -35,7 +35,7 @@ fn tab_on_command_prefix_single_match_completes_silently() {
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "reload-config");
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.minibuf_completion().is_none(),
         "single match: no popup"
     );
 }
@@ -46,7 +46,7 @@ fn tab_no_match_is_noop() {
     command_line(&mut ed, "zzz");
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "zzz");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 // Independent oracle for the three tests below: "w" matches exactly three
@@ -61,7 +61,7 @@ fn tab_multiple_matches_opens_popup_with_first_candidate_applied() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
-    assert!(ed.state.input.completion().is_some(), "popup open");
+    assert!(ed.state.input.minibuf_completion().is_some(), "popup open");
     assert_eq!(selected_row(&ed), 0);
     assert_eq!(candidates(&ed), vec!["write", "write-all", "write-quit"]);
     assert_eq!(minibuf_input(&ed), "write");
@@ -93,7 +93,7 @@ fn tab_wraps_at_end() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
-    let n = ed.state.input.completion().unwrap().len();
+    let n = ed.state.input.minibuf_completion().unwrap().len();
     for _ in 0..n {
         ed.handle_key(key_tab());
     }
@@ -105,9 +105,9 @@ fn typing_a_char_dismisses_the_popup() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
-    assert!(ed.state.input.completion().is_some());
+    assert!(ed.state.input.minibuf_completion().is_some());
     ed.handle_key(key('r'));
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn enter_mid_completion_executes_the_applied_candidate() {
     ed.handle_key(key_tab());
     ed.handle_key(key_enter());
     assert!(ed.state.should_quit);
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
     assert!(ed.state.minibuf().is_none());
 }
 
@@ -130,7 +130,7 @@ fn esc_dismisses_minibuf_and_clears_completion() {
     ed.handle_key(key_esc());
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(ed.state.minibuf().is_none());
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn shift_tab_with_no_popup_is_noop() {
     command_line(&mut ed, "wri");
     ed.handle_key(key_shift_tab());
     assert_eq!(minibuf_input(&ed), "wri");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn tab_in_search_mode_is_noop() {
     ed.handle_key(key('e'));
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "e");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 /// Ctrl-w edits the input, so it dismisses the popup like any other key.
@@ -158,9 +158,9 @@ fn ctrl_w_dismisses_the_open_popup() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.minibuf_completion().is_some(), "sanity");
     ed.handle_key(key_ctrl('w'));
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 // ── Mid-token Tab: the replaced span is the token, not up to the cursor ─────
@@ -223,7 +223,7 @@ fn tab_on_edit_arg_completes_path() {
         minibuf_input(&ed),
         format!("e {}/hello.txt", dir.path().display())
     );
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn tab_on_cd_arg_completes_dirs_only() {
         format!("cd {}/mysubdir/", dir.path().display())
     );
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.minibuf_completion().is_none(),
         ":cd excludes files, leaving a single dir match"
     );
 }
@@ -278,7 +278,11 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
     );
     assert!(minibuf_input(&ed).contains("/alpha/"));
     assert_eq!(
-        ed.state.input.completion().expect("restarted").len(),
+        ed.state
+            .input
+            .minibuf_completion()
+            .expect("restarted")
+            .len(),
         2,
         "the directory's children"
     );
@@ -316,7 +320,7 @@ fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
         "sanity: popup open, first candidate applied"
     );
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.minibuf_completion().is_some(),
         "sanity: two candidates keep the popup open"
     );
 
@@ -411,7 +415,7 @@ fn tab_on_set_g_silently_completes_global() {
     command_line(&mut ed, "set g");
     ed.handle_key(key_tab());
     assert_eq!(minibuf_input(&ed), "set global");
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.minibuf_completion().is_none());
 }
 
 // ── A Buffer-only builtin reaching a Minibuf session ───────────────────────
@@ -424,7 +428,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
     let mut ed = editor_from("-[h]>ello\n");
     command_line(&mut ed, "w");
     ed.handle_key(key_tab());
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.minibuf_completion().is_some(), "sanity");
 
     run(
         &mut ed,
@@ -441,7 +445,7 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
     // rejected `completion-accept!` must leave the popup exactly as it
     // was, not destroy it on the way to discovering it was the wrong call.
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.minibuf_completion().is_some(),
         "the session must survive a rejected completion-accept!"
     );
     ed.handle_key(key_tab());
@@ -480,7 +484,7 @@ fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
         status(&ed)
     );
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.minibuf_completion().is_none(),
         "a source that will never answer must not leave the popup stuck \
          pending forever"
     );
@@ -519,7 +523,10 @@ fn a_second_answer_settles_against_a_reset_selection_not_a_stale_one() {
     ed.handle_key(key_tab());
     ed.settle();
     assert!(
-        ed.state.input.completion().is_some_and(|s| s.is_pending()),
+        ed.state
+            .input
+            .minibuf_completion()
+            .is_some_and(|s| s.is_pending()),
         "sanity: still pending"
     );
 

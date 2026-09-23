@@ -363,8 +363,8 @@ impl Editor {
         if self
             .state
             .input
-            .completion()
-            .is_some_and(|session| session.buffer().is_some_and(|bt| bids.contains(&bt.bid())))
+            .buffer_completion()
+            .is_some_and(|session| bids.contains(&session.bid()))
         {
             self.state.dismiss_completion(&self.view);
         }

@@ -841,14 +841,14 @@ fn detach_dismisses_an_open_completion_session_for_that_buffer() {
     ed.feed_key(key_ctrl(' '));
     settle(&mut ed);
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "sanity: a session must be open"
     );
 
     ed.lsp_stop(Some("rust"));
 
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "an open completion session for the detached buffer must be dismissed, \
          not left showing stale items from a server that's no longer running"
     );

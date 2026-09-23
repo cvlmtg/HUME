@@ -20,7 +20,7 @@ use termina::event::{KeyCode, Modifiers};
 
 /// A completion session opening while a `Scrollable` popup (hover, or the
 /// `gn`/`gp` diagnostic overlay) is up must retire the popup first —
-/// `CompletionLayer`'s `LayerOnly` eviction clears the pushed-layer popup
+/// a completion layer's `LayerOnly` eviction clears the pushed-layer popup
 /// home before landing, keeping `PopupLayer`'s "never buried" invariant.
 #[test]
 fn completion_over_a_live_scrollable_popup_clears_it() {
@@ -34,7 +34,10 @@ fn completion_over_a_live_scrollable_popup_clears_it() {
 
     open_completion_session(&mut ed, &["foo"]);
 
-    assert!(ed.state.input.completion().is_some(), "the session opened");
+    assert!(
+        ed.state.input.buffer_completion().is_some(),
+        "the session opened"
+    );
     assert!(
         ed.state.input.popup().is_none(),
         "the popup must be cleared, not buried, when completion lands above it"
@@ -56,7 +59,10 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
 
     open_completion_session(&mut ed, &["foo"]);
 
-    assert!(ed.state.input.completion().is_some(), "the session opened");
+    assert!(
+        ed.state.input.buffer_completion().is_some(),
+        "the session opened"
+    );
     assert!(
         ed.state.input.popup().is_some(),
         "signature help must survive a completion session opening alongside it"
@@ -65,7 +71,7 @@ fn completion_over_a_sticky_popup_leaves_it_open() {
 
 /// The reverse order: a `Popup` (hover, arriving async after a trigger char
 /// opened the menu, say) lands *above* an already-open completion session.
-/// `dismiss_completion`/`take_completion_session` reach the session by its
+/// `dismiss_completion`/`take_buffer_completion` reach the session by its
 /// own `LayerRef` (`ref_of`) rather than a pop-if-top rule — this pins that
 /// a popup landing above it doesn't strand it: `EditorState::dismiss_
 /// completion`'s own doc (`mod.rs`) is explicit that "a `Completion` layer
@@ -77,7 +83,7 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo"]);
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "sanity: session open"
     );
 
@@ -89,22 +95,22 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
         "sanity: popup landed above the session"
     );
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "the session must still be reachable, not buried under the popup"
     );
 
     assert!(
-        ed.state.take_completion_session(&ed.view).is_some(),
-        "take_completion_session must find the layer wherever it sits on the stack, \
+        ed.state.take_buffer_completion(&ed.view).is_some(),
+        "take_buffer_completion must find the layer wherever it sits on the stack, \
          not only when it's top-of-stack"
     );
 }
 
 /// A background dismiss (`dismiss_completion`, e.g. the session going spent)
-/// must not take a popup stacked above it down too — `CompletionLayer`'s
+/// must not take a popup stacked above it down too — a completion layer's
 /// `removal_scope` is `SelfOnly` for exactly the same coexistence
 /// `popup_eviction`'s `LayerOnly` override already declares. The default
-/// `Stack` scope would otherwise have `retire::<CompletionLayer>` reach for
+/// `Stack` scope would otherwise have `retire::<BufferCompletionLayer>` reach for
 /// `truncate_layers`, destroying the popup as collateral.
 #[test]
 fn dismissing_the_session_leaves_a_popup_above_it_open() {
@@ -123,7 +129,7 @@ fn dismissing_the_session_leaves_a_popup_above_it_open() {
     ed.state.dismiss_completion(&ed.view);
 
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "the session itself is gone"
     );
     assert!(
@@ -155,9 +161,10 @@ fn typing_resets_the_selection_to_row_zero() {
     ed.feed_key(key_tab());
     assert_eq!(selected_row(&ed), 2, "sanity: two Tabs move off row 0");
     ed.feed_key(key('a'));
-    assert!(
-        ed.state.input.completion_ui().is_none(),
-        "a re-rank clears the selection back to its implicit row 0"
+    assert_eq!(
+        selected_row(&ed),
+        0,
+        "a re-rank clears the selection back to row 0"
     );
 }
 
@@ -170,7 +177,7 @@ fn enter_applies_the_selected_item_and_closes_the_session() {
     ed.feed_key(key_enter());
 
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "session must close after accept"
     );
     assert!(ed.state.views.completion_menu.read().is_none());
@@ -182,7 +189,7 @@ fn enter_with_no_session_inserts_a_newline() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
     ed.feed_key(key('a'));
-    assert!(ed.state.input.completion().is_none(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_none(), "sanity");
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "a\n\n");
 }
@@ -196,7 +203,7 @@ fn esc_dismisses_the_session_but_keeps_typed_text_and_stays_in_insert() {
 
     ed.feed_key(key_esc());
 
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(
         ed.state.mode(),
         Mode::Insert,
@@ -215,7 +222,10 @@ fn enter_at_zero_matches_inserts_a_newline_instead_of_erroring() {
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo"]);
     ed.feed_key(key('z'));
-    assert!(ed.state.input.completion().is_some(), "sanity: survives");
+    assert!(
+        ed.state.input.buffer_completion().is_some(),
+        "sanity: survives"
+    );
 
     ed.feed_key(key_enter());
 
@@ -234,9 +244,10 @@ fn tab_at_zero_matches_falls_through_to_normal_insert() {
 
     ed.feed_key(key_tab());
 
-    assert!(
-        ed.state.input.completion_ui().is_none(),
-        "Tab must not create selection UI for a menu that isn't shown"
+    assert_eq!(
+        selected_row(&ed),
+        0,
+        "Tab must not move the selection for a menu that isn't shown"
     );
     assert_ne!(ed.doc().text().to_string(), before);
 }
@@ -250,13 +261,13 @@ fn typing_to_zero_matches_keeps_the_session_but_a_single_esc_still_exits_insert(
     open_completion_session(&mut ed, &["foo"]);
     ed.feed_key(key('z'));
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "a transient zero-match must not kill the session outright"
     );
 
     ed.feed_key(key_esc());
     assert_eq!(ed.state.mode(), Mode::Normal);
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 }
 
 // ── Backspace: within the token narrows, past it dismisses ──────────────────
@@ -270,7 +281,7 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
     ed.feed_key(key('g')); // "gg" matches neither
 
     ed.feed_key(key_backspace());
-    assert!(ed.state.input.completion().is_some());
+    assert!(ed.state.input.buffer_completion().is_some());
     assert_eq!(labels(&ed), vec!["grape"], "back down to \"g\"");
 }
 
@@ -288,7 +299,7 @@ fn backspace_past_the_token_start_dismisses_the_session() {
     ed.feed_key(key_backspace());
 
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "backspace at the token start must dismiss the session"
     );
     assert_eq!(
@@ -311,7 +322,7 @@ fn backspace_within_a_seeded_prefix_narrows_instead_of_dismissing() {
 
     ed.feed_key(key_backspace());
 
-    assert!(ed.state.input.completion().is_some());
+    assert!(ed.state.input.buffer_completion().is_some());
     assert_eq!(labels(&ed), vec!["foo"], "back down to \"f\"");
     assert_eq!(ed.doc().text().to_string(), "f\n");
 }
@@ -326,7 +337,7 @@ fn backspace_on_the_tokens_first_char_keeps_the_session() {
     ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "the token is now empty but not crossed"
     );
     assert_eq!(
@@ -336,7 +347,7 @@ fn backspace_on_the_tokens_first_char_keeps_the_session() {
     );
     ed.feed_key(key_backspace());
     assert!(
-        ed.state.input.completion().is_some(),
+        ed.state.input.buffer_completion().is_some(),
         "at the buffer's start there is nothing before the token to cross — a \
          Backspace that deletes nothing leaves the session as it was"
     );
@@ -378,7 +389,7 @@ fn ctrl_c_exits_insert_and_dismisses_the_session() {
     ed.feed_key(key_ctrl('c'));
 
     assert_eq!(ed.state.mode(), Mode::Normal);
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert!(ed.state.views.completion_menu.read().is_none());
 }
 
@@ -390,12 +401,12 @@ fn mode_change_outside_key_dispatch_dismisses_the_session_synchronously() {
     let mut ed = editor_from("-[\n]>");
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo"]);
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     let r = ed.state.input.mode_layer();
     ed.state.truncate_layers(&ed.view, r);
 
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert!(ed.state.views.completion_menu.read().is_none());
 }
 
@@ -412,7 +423,7 @@ fn left_arrow_dismisses_the_session_immediately() {
     open_completion_session(&mut ed, &["abc"]);
 
     ed.feed_key(KeyEvent::new(KeyCode::Left, Modifiers::NONE));
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 
     ed.feed_key(key('x'));
     assert_eq!(ed.doc().text().to_string(), "abxc\n");
@@ -423,10 +434,10 @@ fn right_arrow_then_enter_dismisses_instead_of_swallowing_the_passed_over_char()
     let mut ed = editor_from("pri-[X]>\n");
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["print"]);
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     ed.feed_key(KeyEvent::new(KeyCode::Right, Modifiers::NONE));
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 
     ed.feed_key(key_enter());
     assert_eq!(
@@ -444,10 +455,10 @@ fn ctrl_w_dismisses_the_session_instead_of_leaving_a_stale_token() {
     ed.feed_key(key('i'));
     type_chars(&mut ed, "pri");
     open_completion_session(&mut ed, &["print"]);
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     ed.feed_key(key_ctrl('w'));
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(ed.doc().text().to_string(), "\n");
 }
 
@@ -462,10 +473,10 @@ fn skip_close_dismisses_the_session_instead_of_leaving_a_stale_token() {
     let mut ed = editor_from("-[)]>\n");
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo"]);
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     ed.feed_key(key(')')); // skip-close: moves past the pre-existing `)`
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(ed.doc().text().to_string(), ")\n");
 }
 
@@ -479,7 +490,7 @@ fn typing_after_accept_composes_into_the_open_edit_group_without_panicking() {
     open_completion_session(&mut ed, &["DEFAULT_WIDTH"]);
 
     ed.feed_key(key_enter());
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 
     ed.feed_key(key(','));
     assert_eq!(ed.doc().text().to_string(), "DEFAULT_WIDTH,\n");
@@ -512,7 +523,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     assert!(
         ed.state
             .input
-            .completion()
+            .buffer_completion()
             .unwrap()
             .menu_anchor_char()
             .unwrap()
@@ -524,7 +535,7 @@ fn a_stale_session_after_a_buffer_reload_is_dismissed_at_settle() {
     ed.reload_buffer_in_place(bid, replacement);
 
     ed.settle();
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 
     frame(&mut ed, 40, 8);
     assert!(ed.state.views.completion_menu.read().is_none());
@@ -550,9 +561,9 @@ fn a_same_length_out_of_band_edit_dismisses_the_session_at_settle() {
     );
     ed.feed_key(key('i'));
     trigger(&mut ed);
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     ed.execute_keymap_command("corrupt".into(), None, false);
     ed.settle();
-    assert!(ed.state.input.completion().is_none());
+    assert!(ed.state.input.buffer_completion().is_none());
 }

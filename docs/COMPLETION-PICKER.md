@@ -51,17 +51,26 @@ this design respects them:
 
 ## The model
 
-Six concepts, each with one owner — everything under
-`hume-editor/src/editor/completion/`:
+Each concept below has one owner — everything under
+`hume-editor/src/editor/completion/`. There are two completion *targets*
+(Insert mode, the `:` line), and rather than one session type with a
+`Target` enum inside it, each target is its own concrete type
+(`BufferSession`/`MinibufSession`) over one generic core (`SlotSet`) that
+holds the bookkeeping genuinely shared by both — the slot list, the ranked
+index, the matcher, the menu's selected row. What differs per target (the
+accept mechanism, cross-source dedup, further-typing behavior) lives only
+on that target's own type, so there is no arm for the other target that
+can never run, and an outside caller's own type (`&BufferSession` vs.
+`&MinibufSession`) already answers "which target is this" without asking.
 
 | Concept | Type | Where |
 |---|---|---|
 | **Source** — a named producer of candidates, with its static facts: how its items score, its priority, and its body (a native fn or a Steel proc). Two separate namespaces, one per target — a name in one has no bearing on the same name in the other | `BufferSourceEntry`/`MinibufSourceEntry` in `SourceRegistry` (`buffer`/`minibuf` fields, `BufferSourceId`/`MinibufSourceId` index them) | `registry.rs`; the registry lives on `ConfigState.completion_sources`, so `:reload-config` rebuilds it from the natives by construction |
-| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + `head` + every edit observed since, composed, `Buffer`-target only), its token span in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session.rs` |
-| **Session** — the one open session: one `SourceSlot<Id, S>` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher, a rank-time dedup mask | `CompletionSession` | `session.rs`; `session/accept.rs` applies the accepted item |
-| **Target** — where an accepted item lands, and each target's own slots, typed against that target's own id/span shape so a `Minibuf` session can't hold `Buffer` coordinates or vice versa | `Target::{Buffer{bt,slots}, Minibuf{mt,slots}}` | `session.rs` |
+| **Invocation** — one call of one source for one trigger: the id the source answers to, the document snapshot it saw (`rope` + every edit observed since, composed, `Buffer`-target only), its token span in live coordinates, and its answer once it has one | `Invocation<S>` (generic over the span shape, `BufferSpan`/`MinibufSpan`) | `session/slots.rs` (the generic base), `session/buffer.rs`/`session/minibuf.rs` (each target's own constructor) |
+| **Slot core** — one `SourceSlot<Id, S>` per participating source (its latest `shown` invocation and, if re-invoked since, the newer `inflight` one), the ranked `(slot, item)` index, the matcher, the menu's selected row | `SlotSet<Id, S>` | `session/slots.rs` |
+| **Session** — one per target: the slot core plus whatever is genuinely that target's own (`BufferSession` adds the buffer/pane/generation it's tracking and the cross-source dedup mask; `MinibufSession` adds the `:` line input every source saw) | `BufferSession`, `MinibufSession` | `session/buffer.rs`, `session/minibuf.rs`; `session/accept.rs` applies `BufferSession`'s accepted item |
 | **Orchestrator** — the one driver for both targets: picks the sources a trigger applies to, mints invocations, runs them, lands answers, reacts to edits, applies the `:` line's eager policy | `impl EditorState` | `orchestrate.rs` |
-| **Layer** — keys, selection, render sync | `CompletionLayer` | `input_stack/completion.rs` |
+| **Layer** — keys, selection, render sync | `BufferCompletionLayer`, `MinibufCompletionLayer` | `input_stack/completion.rs` |
 
 ### Sources
 
@@ -149,10 +158,12 @@ which:
    is still live (Backspace brings its items back). A dropped slot also
    rebuilds the cross-source dedup mask (Q-A1, below) — the item set it
    compared against changed;
-3. re-ranks (`CompletionSession::rank`: score desc, source priority desc,
+3. re-ranks (`SlotSet::rank_with`: score desc, source priority desc,
    sortText asc, index asc — each shown item scored against *its own* slot's
    token text with its source's `MatchKind`, after skipping a no-op item and
-   any item the dedup mask already hid), resets the menu selection;
+   any item the dedup mask already hid), resetting the menu selection as
+   part of the same call — every path that rebuilds the ranked list gets
+   this for free rather than having to remember a separate reset step;
 4. re-invokes every source whose last answer was `isIncomplete` or that is
    still pending against the pre-edit document; and
 5. dismisses the session, silently, once no slot has an answer with items
@@ -170,7 +181,7 @@ caught by `Editor::dismiss_invalid_completion`'s settle-time generation check.
 
 ### Accept
 
-`CompletionSession::accept` reads everything from the *selected item's own*
+`BufferSession::accept` reads everything from the *selected item's own*
 invocation: a server `textEdit` (and `additionalTextEdits`) decodes against
 that invocation's `rope` and maps through its `cs_since`; the `insertText`
 fallback replaces its live token span. Both land as one undo step at every
@@ -200,7 +211,7 @@ caller yet.
 
 `sync_completion_menu_view`/`sync_minibuf_completion_view` (and
 `show-menu!`'s `sync_menu_view`) all go through `hume_ui::popup::menu_window`
-— the visible window from *counts alone* — then `CompletionSession::rows_in`
+— the visible window from *counts alone* — then `SlotSet::rows_in`
 for exactly that range, then `resolve_menu`, which measures width over the
 rows it is handed. There is no full-list row accessor, so a candidate
 scrolled out of view cannot inflate the box: the property is unwritable,
@@ -263,9 +274,9 @@ registers the server's trigger characters as `"lsp"`'s own, via
 | `:` line cycle-apply | **Restore the invoke-time input, then splice over the slot's span** | Idempotent in invoke-time coordinates; two sources with different spans coexist by construction. |
 | Menu width | **`menu_window` from counts, `rows_in(range)`, `resolve_menu(&rows[window])`** | No full-list accessor exists, so width over the whole list is unwritable. |
 | Source registry namespaces | **Two, `SourceRegistry::{buffer,minibuf}`, distinct `BufferSourceId`/`MinibufSourceId` — not one `Vec` plus a runtime target tag** | A name taken in one namespace was refused as "the wrong target" for the other, at runtime, only once a second real `Buffer` source (buffer-words) existed to collide with `core:lsp`. Splitting the namespace makes the collision impossible by construction instead. |
-| Session slots | **Typed inside their own `Target` variant (`SourceSlot<BufferSourceId, BufferSpan>` vs. `<MinibufSourceId, MinibufSpan>`) — not one flat span enum re-checked at every read** | The old `SpanTrack` enum could disagree with which `Target` variant held it (a fallback arm, a silent `_ => continue`, an `unreachable!` in accept) even though a slot's target has never actually been able to vary independently of its own span shape. |
+| Session slots | **Typed inside their own session type (`SourceSlot<BufferSourceId, BufferSpan>` inside `BufferSession`'s `SlotSet`, vs. `<MinibufSourceId, MinibufSpan>` inside `MinibufSession`'s) — not one flat span enum, nor one session type with a `Target` enum inside it, re-checked at every read** | A slot's target has never actually been able to vary independently of its own span shape, so a runtime tag to re-check was always redundant. An intermediate design kept one `CompletionSession { target: Target }` type with the two shapes as enum variants — cheaper to type initially, but every method still had to match on `target` and carry an arm for the other variant that could never run (`invoke_buffer` returning `None` on a `Minibuf` session, `mark_explicit_trigger` a no-op there, etc.), and 8+ outside callers had to probe `.buffer().is_some()` as a poor-man's type tag. Splitting into two concrete types removes both: `stack.rs`'s generic layer lookup (`find`/`at`/`ref_of`, all typed over `L: Layer`) becomes the type check for free. |
 | `completionItem/resolve` gating | **A source's own `#:resolve #t` claim (`BufferSourceEntry::resolve`), checked in `accept`, not just "the buffer has a server with `resolveProvider`"** | A second `Buffer` source sharing an LSP-attached buffer (buffer-words) would otherwise have a resolve request sent for an item the server never produced — a real gap the first source (`core:lsp`) never surfaced, since "an item in an LSP-attached buffer" and "an LSP item" were the same fact until a second source existed. |
-| Cross-source dedup | **Rank-time, priority-ordered, plain items only (`CompletionSession::recompute_dedup`)** | See Q-A1, below — the same identifier from two sources otherwise shows twice. |
+| Cross-source dedup | **Rank-time, priority-ordered, plain items only (`BufferSession::recompute_dedup`), `Buffer`-target only** | See Q-A1, below — the same identifier from two sources otherwise shows twice. `Minibuf` invokes exactly one source, so it carries no dedup mask at all rather than an always-empty one. |
 | Trigger-char join for `Buffer` sources | **A source's own table (`completion-set-trigger-chars!`, `BufferSourceEntry::trigger_chars`), not `register-trigger-chars!`'s shared, listener-agnostic one** | The shared table has to accept an unknown name (it serves non-completion listeners too), so a typo on either side of the join silently disabled trigger-char completion with no error anywhere. The new table validates against the `Buffer` namespace and errors on a miss. `register-trigger-chars!`/`on-trigger-char` are unchanged for every other listener (signature help). |
 | Item schema | **LSP `CompletionItem` JSON shape as lingua franca** | The store already parses it with label-fallbacks; the minimal item is `{"label": …}`; a non-LSP source omits `textEdit` and rides the token-span accept path. |
 | Completion vs picker core | **Siblings sharing the matcher, not a shared session type** | See `hume-editor/src/editor/input_stack/picker/session.rs`. |
@@ -273,7 +284,7 @@ registers the server's trigger characters as `"lsp"`'s own, via
 ## Open questions
 
 **Q-A1 — dedup across sources — answered, priority-ordered dedup of plain
-items.** `CompletionSession::recompute_dedup` hides a *plain* item (no
+items.** `BufferSession::recompute_dedup` hides a *plain* item (no
 `textEdit`, no `additionalTextEdits`) when a strictly-higher-priority slot's
 shown answer has an item with the same `filter_text` — so the same
 identifier from `core:lsp` and buffer-words shows once, as `core:lsp`'s own
@@ -282,9 +293,13 @@ edits is never hidden this way — accepting it does something a
 duplicate-*looking* plain item wouldn't, e.g. an auto-import buffer-words
 could never offer. This only compares *shown* answers, and only recomputes
 when the shown item set changes (an answer lands, a slot is dropped by
-`observe_edit`), not every keystroke — `rank` reads the precomputed result.
+`observe_edit`), not every keystroke — `rank_with` reads the precomputed
+result. Computed in one pass over every item's highest-priority-carrying
+`filter_text`, not an all-pairs scan across slots, so a large `MatchKind::
+String` slot (buffer-words) sitting alongside a large `Fuzzy` one (LSP)
+costs O(total items), not O(items²).
 
-Ranking otherwise still runs by score first (`CompletionSession::rank`,
+Ranking otherwise still runs by score first (`SlotSet::rank_with`,
 score desc before priority desc): once something is typed, a `'fuzzy` LSP
 candidate that scores well *always* outranks a `'string` buffer-words one
 scoring a flat `0` — deliberate policy, not a gap (see `MatchKind::String`'s
@@ -307,7 +322,7 @@ per trigger; the prefix gate (vim `i_CTRL-N` feel) happens in Rust, per
 keystroke, via `MatchKind::String` (see that enum's own doc,
 `hume-editor/src/editor/completion/session.rs`) — the same rule any
 `'string` source gets. It carries no `#:incomplete` —
-`CompletionSession::rank`'s own no-op check (`CompletionItem::is_noop_for`)
+`SlotSet::rank_with`'s own no-op check (`CompletionItem::is_noop_for`)
 drops the exact-typed token for every source, derived fresh from the live
 cursor on every keystroke, so this source never needs re-invoking just to
 keep that exclusion correct as the token changes (README.md's "Matching").

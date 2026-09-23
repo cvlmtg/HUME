@@ -18,7 +18,7 @@ pub(in crate::editor) const SET_SOURCE: &str = "set";
 /// alphabetically — a `Delegated` source's own order is what the session's
 /// rank key preserves (see `MatchKind::Delegated`'s doc), so the order is
 /// established right here rather than left to a tiebreak. A fully-typed
-/// value is filtered out later, by `CompletionSession::rank`'s own no-op
+/// value is filtered out later, by `SlotSet::rank_with`'s own no-op
 /// check — not here.
 fn prefix_completions<'a>(
     items: impl Iterator<Item = &'a str>,

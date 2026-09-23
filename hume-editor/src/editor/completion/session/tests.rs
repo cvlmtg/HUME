@@ -2,9 +2,17 @@
 //! — no editor, no Steel. The orchestration around it is covered by
 //! `editor/tests/completion/`.
 
+use super::super::item::CompletionItem;
+use super::super::registry::{
+    BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, MinibufSourceId,
+    SourceRegistry,
+};
 use super::*;
-use crate::editor::completion::registry::{BufferSourceEntry, MinibufBody, MinibufSourceEntry};
-use hume_editing::changeset::ChangeSetBuilder;
+use hume_editing::changeset::{ChangeSet, ChangeSetBuilder};
+use hume_editing::text::BufferText;
+use hume_editing::word::WordChars;
+use hume_engine::pipeline::{BufferId, PaneId};
+use hume_rope::offset::CharOffset;
 use steel::rvals::SteelVal;
 
 fn item(label: &str) -> CompletionItem {
@@ -62,17 +70,16 @@ fn text(s: &str) -> BufferText {
 /// A `Buffer` session over `content` — the store never consults the
 /// buffer/pane ids except through `still_valid`, unused here, so the null
 /// keys do.
-fn buffer_session(content: &str) -> (CompletionSession, BufferText) {
+fn buffer_session(content: &str) -> (BufferSession, BufferText) {
     let text = text(content);
-    let session =
-        CompletionSession::open_buffer(BufferId::default(), PaneId::default(), 0, text.len_chars());
+    let session = BufferSession::open(BufferId::default(), PaneId::default(), 0, text.len_chars());
     (session, text)
 }
 
 /// One `Word`-rule invocation with token `start..head`, answered with
 /// `labels` at once.
 fn invoke_and_answer(
-    session: &mut CompletionSession,
+    session: &mut BufferSession,
     reg: &SourceRegistry,
     source: BufferSourceId,
     text: &BufferText,
@@ -84,7 +91,7 @@ fn invoke_and_answer(
         text.rope().clone(),
         CharOffset::new(start)..CharOffset::new(head),
     );
-    let id = session.invoke_buffer(source, inv).expect("buffer session");
+    let id = session.invoke(source, inv);
     session.contribute(reg, id, items(labels), false);
 }
 
@@ -95,7 +102,7 @@ fn live(text: &BufferText, head: usize) -> Option<LiveDoc<'_>> {
     })
 }
 
-fn ranked_labels(session: &CompletionSession, reg: &SourceRegistry) -> Vec<String> {
+fn ranked_labels(session: &BufferSession, reg: &SourceRegistry) -> Vec<String> {
     session
         .top(10, reg)
         .iter()
@@ -212,7 +219,7 @@ fn priority_breaks_a_score_tie_before_sort_text() {
 
 // ── Cross-source dedup ───────────────────────────────────────────────────────
 
-fn ranked_sources(session: &CompletionSession, reg: &SourceRegistry) -> Vec<String> {
+fn ranked_sources(session: &BufferSession, reg: &SourceRegistry) -> Vec<String> {
     session
         .top(10, reg)
         .iter()
@@ -265,9 +272,7 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
     let (mut session, text) = buffer_session("\n");
     let head = CharOffset::new(0);
     let inv = Invocation::buffer(text.rope().clone(), head..head);
-    let id = session
-        .invoke_buffer(id_of(&reg, "lo"), inv)
-        .expect("buffer session");
+    let id = session.invoke(id_of(&reg, "lo"), inv);
     assert!(session.contribute(
         &reg,
         id,
@@ -383,9 +388,7 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
     let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
-    let id = session
-        .invoke_buffer(id_of(&reg, "s"), inv)
-        .expect("buffer session");
+    let id = session.invoke(id_of(&reg, "s"), inv);
     assert!(session.contribute(
         &reg,
         id,
@@ -405,9 +408,7 @@ fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() 
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
     let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
-    let id = session
-        .invoke_buffer(id_of(&reg, "s"), inv)
-        .expect("buffer session");
+    let id = session.invoke(id_of(&reg, "s"), inv);
     assert!(session.contribute(
         &reg,
         id,
@@ -434,18 +435,8 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let first = session
-        .invoke_buffer(
-            src,
-            Invocation::buffer(text.rope().clone(), head..head),
-        )
-        .expect("buffer session");
-    let second = session
-        .invoke_buffer(
-            src,
-            Invocation::buffer(text.rope().clone(), head..head),
-        )
-        .expect("buffer session");
+    let first = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
+    let second = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
     assert!(!session.contribute(&reg, first, items(&["stale"]), false));
     assert!(session.contribute(&reg, second, items(&["fresh"]), false));
     session.rank(&reg, live(&text, 0));
@@ -458,12 +449,7 @@ fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
     let (mut session, text) = buffer_session("\n");
     let src = id_of(&reg, "s");
     let head = CharOffset::new(0);
-    let id = session
-        .invoke_buffer(
-            src,
-            Invocation::buffer(text.rope().clone(), head..head),
-        )
-        .expect("buffer session");
+    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
     assert!(session.contribute(&reg, id, items(&["x", "y"]), false));
     assert!(session.contribute(&reg, id, items(&["x", "z"]), false));
     session.rank(&reg, live(&text, 0));
@@ -478,12 +464,7 @@ fn pending_and_live_track_each_slots_latest_call() {
     let head = CharOffset::new(0);
     assert!(!session.is_pending());
     assert!(!session.has_live_sources());
-    let id = session
-        .invoke_buffer(
-            src,
-            Invocation::buffer(text.rope().clone(), head..head),
-        )
-        .expect("buffer session");
+    let id = session.invoke(src, Invocation::buffer(text.rope().clone(), head..head));
     assert!(session.is_pending());
     assert!(session.contribute(&reg, id, items(&["x"]), true));
     assert!(!session.is_pending());
@@ -708,23 +689,27 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
 // ── Selection stepping ───────────────────────────────────────────────────────
 
 #[test]
-fn step_selection_on_an_empty_ranking_is_none() {
-    let session = CompletionSession::open_minibuf(String::new(), 0);
-    assert_eq!(session.step_selection(0, true), None);
-    assert_eq!(session.step_selection(0, false), None);
+fn step_selection_on_an_empty_ranking_does_not_move() {
+    let mut session = MinibufSession::open(String::new(), 0);
+    assert!(!session.step_selection(true));
+    assert!(!session.step_selection(false));
+    assert_eq!(session.selected(), 0);
 }
 
 #[test]
 fn step_selection_wraps_at_either_end() {
     let reg = minibuf_registry(&[("s", 0)]);
-    let mut session = CompletionSession::open_minibuf("w".into(), 1);
-    let id = session
-        .invoke_minibuf(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1))
-        .expect("minibuf session");
-    assert!(session.contribute(&reg, id, items(&["wa", "wb"]), false));
-    session.rank(&reg, None);
-    assert_eq!(session.step_selection(1, true), Some(0), "wraps forward");
-    assert_eq!(session.step_selection(0, false), Some(1), "wraps backward");
+    let mut session = MinibufSession::open("w".into(), 1);
+    let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
+    assert!(session.contribute(id, items(&["wa", "wb"]), false));
+    session.rank(&reg);
+    assert_eq!(session.selected(), 0, "rank resets to row 0");
+    assert!(session.step_selection(true));
+    assert_eq!(session.selected(), 1);
+    assert!(session.step_selection(true));
+    assert_eq!(session.selected(), 0, "wraps forward");
+    assert!(session.step_selection(false));
+    assert_eq!(session.selected(), 1, "wraps backward");
 }
 
 // ── prefix_matches ───────────────────────────────────────────────────────────

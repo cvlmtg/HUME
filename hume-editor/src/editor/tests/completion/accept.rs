@@ -230,7 +230,7 @@ fn accept_after_the_session_pane_loses_focus_errors_instead_of_writing_at_char_z
         r#"(list (hash "label" "x" "insertText" "z"))"#,
         ACCEPT_0,
     );
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     // Nothing dismisses a session on a focused-pane change synchronously —
     // `pane_state::ensure` would otherwise fabricate a cursor at char 0 for
@@ -258,7 +258,7 @@ fn accept_after_the_pane_switched_buffers_errors() {
         r#"(list (hash "label" "x" "insertText" "z"))"#,
         ACCEPT_0,
     );
-    assert!(ed.state.input.completion().is_some(), "sanity");
+    assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     // The window between the switch and the next settle (which is when
     // `dismiss_invalid_completion` runs) is real.

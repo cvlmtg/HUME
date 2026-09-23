@@ -78,7 +78,7 @@ pub(super) fn server_language(lsp: &LspState, server_id: ServerId) -> Option<Lan
 }
 
 /// Whether `server` advertises `completionProvider.resolveProvider` — the
-/// gate `CompletionSession::accept`'s resolve round trip reads
+/// gate `BufferSession::accept`'s resolve round trip reads
 /// (`editor/completion/session/accept.rs`). A narrow reader rather than
 /// widening `LspState.servers`/`ServerEntry.client` themselves: the
 /// completion store lives outside this module now, and one bool is all it

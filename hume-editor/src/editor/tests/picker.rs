@@ -369,7 +369,7 @@ fn open_from_insert_mode_allowed_and_clears_completion() {
 
     open_test_picker(&mut ed, &["one", "two"]);
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "opening a picker must clear a live completion session"
     );
 

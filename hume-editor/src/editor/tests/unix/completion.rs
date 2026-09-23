@@ -59,7 +59,7 @@ fn theme_candidates_for(input: &str) -> Vec<String> {
     let session = ed
         .state
         .input
-        .completion()
+        .minibuf_completion()
         .expect("two themes must open a popup");
     (0..session.len())
         .map(|i| session.selected_item(i).unwrap().insert_text().to_owned())

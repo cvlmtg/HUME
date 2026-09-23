@@ -994,13 +994,16 @@ fn click_in_insert_under_completion_ends_insert_and_drops_the_session() {
     ed.view.last_pane_area = Rect::new(0, 0, 80, 24);
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["hello", "help"]);
-    assert!(ed.state.input.completion().is_some(), "setup: session open");
+    assert!(
+        ed.state.input.buffer_completion().is_some(),
+        "setup: session open"
+    );
 
     ed.handle_input(mouse_left_down(3, 0));
 
     assert_eq!(ed.state.mode(), Mode::Normal, "the click must end Insert");
     assert!(
-        ed.state.input.completion().is_none(),
+        ed.state.input.buffer_completion().is_none(),
         "the completion session must not survive Insert ending"
     );
     assert_eq!(ed.current_selections().primary().head(), co(3));

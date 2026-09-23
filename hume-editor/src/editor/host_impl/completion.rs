@@ -99,10 +99,17 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     }
 
     fn completion_top(&self, n: usize) -> Vec<serde_json::Value> {
+        let sources = &self.state.config.completion_sources;
         self.state
             .input
-            .completion()
-            .map(|s| s.top(n, &self.state.config.completion_sources))
+            .buffer_completion()
+            .map(|s| s.top(n, sources))
+            .or_else(|| {
+                self.state
+                    .input
+                    .minibuf_completion()
+                    .map(|s| s.top(n, sources))
+            })
             .unwrap_or_default()
     }
 
@@ -110,21 +117,16 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };
-        // Checked *before* `take_completion_session` — that call is
+        // Checked *before* `take_buffer_completion` — that call is
         // destructive (truncates the layer off the stack, per its own doc),
         // so erroring here first leaves a `Minibuf` session (and its own
         // `minibuf_completion` view slot, which `take_layer` never clears —
-        // see `take_completion_session`'s doc) fully intact instead of torn
+        // see `take_buffer_completion`'s doc) fully intact instead of torn
         // down on a call that was never going to succeed anyway.
-        if self
-            .state
-            .input
-            .completion()
-            .is_some_and(|s| s.buffer().is_none())
-        {
+        if self.state.input.minibuf_completion().is_some() {
             return Err("completion-accept!: not a buffer-target session".to_string());
         }
-        let Some(session) = self.state.take_completion_session(self.view) else {
+        let Some(session) = self.state.take_buffer_completion(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
         session.accept(self.state, self.view, lsp, idx)

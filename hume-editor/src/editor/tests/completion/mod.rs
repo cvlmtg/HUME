@@ -26,11 +26,11 @@ mod minibuf;
 mod render;
 mod sources;
 
-/// The ranked labels the open session would show, top 10.
+/// The ranked labels the open Insert-mode session would show, top 10.
 fn labels(ed: &Editor) -> Vec<String> {
     ed.state
         .input
-        .completion()
+        .buffer_completion()
         .map(|s| {
             s.top(10, &ed.state.config.completion_sources)
                 .iter()

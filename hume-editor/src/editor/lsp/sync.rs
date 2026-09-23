@@ -131,7 +131,7 @@ impl Editor {
 /// disjoint `state`/`lsp` borrows only (no other `Editor` field), so it's
 /// also callable from `EditorHostImpl` (completion's accept path needs this
 /// same flush, synchronously, before sending a `completionItem/resolve`
-/// request — see `completion::CompletionSession::accept`).
+/// request — see `completion::BufferSession::accept`).
 pub(in crate::editor) fn flush_lsp_pending_changes(state: &mut EditorState, lsp: &mut LspState) {
     let with_pending: Vec<BufferId> = state
         .buffers
