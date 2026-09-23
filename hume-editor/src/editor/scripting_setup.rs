@@ -119,6 +119,24 @@ impl Editor {
                     .keymap
                     .unbind_user(to_editor_bind_mode(mode), &keys),
                 Effect::RegisterCompletionSource(reg) => self.register_completion_source(reg),
+                Effect::SetCompletionTriggerChars {
+                    source,
+                    language,
+                    chars,
+                } => {
+                    // The "does `source` exist" check moved here from the
+                    // builtin (`completion.rs`'s own doc) — an earlier
+                    // effect in this same batch may have just registered
+                    // it, so this can't run any sooner.
+                    if let Err(e) = self
+                        .state
+                        .config
+                        .completion_sources
+                        .set_buffer_trigger_chars(&source, language, chars)
+                    {
+                        self.report(Severity::Error, e);
+                    }
+                }
             }
         }
         self.detect_pending_languages();
@@ -574,6 +592,14 @@ impl Editor {
             host_scr.run_steel_calls(calls, pid, bid, &mut impl_host)
         };
         self.flush_script_messages();
+        if result.is_err() {
+            // A queued completion invocation this batch was supposed to
+            // answer for (via `completion-emit!`) never will now — see
+            // `EditorState::settle_completion_after_call_failure`'s own
+            // doc. Runs before `apply_script_result` reports the error, but
+            // the ordering doesn't matter to either side.
+            self.state.settle_completion_after_call_failure(&self.view);
+        }
         self.apply_script_result(result, "steel call error: ");
     }
 

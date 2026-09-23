@@ -100,6 +100,39 @@ fn a_popup_landing_above_a_live_session_does_not_strand_it() {
     );
 }
 
+/// A background dismiss (`dismiss_completion`, e.g. the session going spent)
+/// must not take a popup stacked above it down too — `CompletionLayer`'s
+/// `removal_scope` is `SelfOnly` for exactly the same coexistence
+/// `popup_eviction`'s `LayerOnly` override already declares. The default
+/// `Stack` scope would otherwise have `retire::<CompletionLayer>` reach for
+/// `truncate_layers`, destroying the popup as collateral.
+#[test]
+fn dismissing_the_session_leaves_a_popup_above_it_open() {
+    let mut ed = editor_from("-[a]>bc\n");
+    ed.feed_key(key('i'));
+    open_completion_session(&mut ed, &["foo"]);
+
+    let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
+    host.show_popup("hover".to_string(), PopupKind::Scrollable, false, None)
+        .expect("show-popup! must succeed");
+    assert!(
+        ed.state.input.popup().is_some(),
+        "sanity: popup landed above the session"
+    );
+
+    ed.state.dismiss_completion(&ed.view);
+
+    assert!(
+        ed.state.input.completion().is_none(),
+        "the session itself is gone"
+    );
+    assert!(
+        ed.state.input.popup().is_some(),
+        "the popup above it must survive — it's stacked over the session by \
+         coincidence, not by dependency on it staying open"
+    );
+}
+
 // ── Typing narrows / Enter / Esc ──────────────────────────────────────────────
 
 #[test]

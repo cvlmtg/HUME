@@ -11,11 +11,15 @@ use termina::event::KeyCode;
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::super::completion::{CompletionMenuUi, CompletionSession};
+use super::super::completion::{
+    CompletionMenuUi, CompletionSession, PATH_DIRS_ONLY_SOURCE, PATH_SOURCE,
+};
 use super::super::keymap::WalkResult;
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal};
+use super::stack::{
+    InputEvent, Layer, LayerHandler, LayerRef, PopupEviction, Removal, RemovalScope,
+};
 
 /// An open completion session, pushed above whichever base layer opened it
 /// — an overlay, not a mode layer (`mode()` returns `None`;
@@ -62,6 +66,15 @@ impl Layer for CompletionLayer {
     /// on every completion open.
     fn popup_eviction(&self) -> PopupEviction {
         PopupEviction::LayerOnly
+    }
+    /// A non-modal `Popup` (hover, `gn`/`gp`, a `Sticky` signature-help
+    /// popup) can land directly above a `Completion` layer by design — see
+    /// this type's own doc and `popup_eviction`'s `LayerOnly` override just
+    /// above, which exists for the same coexistence. The default `Stack`
+    /// scope would otherwise take that popup down along with the session on
+    /// every dismiss, contradicting both.
+    fn removal_scope(&self) -> RemovalScope {
+        RemovalScope::SelfOnly
     }
     fn tear_down(&mut self, state: &mut EditorState, _view: &EngineView, _why: Removal) {
         // Both targets share this one layer type, but each renders into its
@@ -304,16 +317,24 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             return;
         }
         KeyCode::Enter => {
-            // If the selected candidate is a directory (trailing `/`),
-            // Enter descends into it instead of confirming the command
-            // line: the candidate is already in the input (Tab applied
-            // it), so dismiss this session and restart completion for the
-            // directory's children, rather than falling through to
-            // `Command`'s own Confirm handling.
+            // If the selected candidate is a directory (trailing `/`) *and*
+            // came from one of the path sources, Enter descends into it
+            // instead of confirming the command line: the candidate is
+            // already in the input (Tab applied it), so dismiss this
+            // session and restart completion for the directory's children,
+            // rather than falling through to `Command`'s own Confirm
+            // handling. Gated on the source's own identity, not just the
+            // candidate's text — an unrelated source's candidate ending in
+            // `/` (a URL, a namespaced tag) must not be treated the same way.
+            let sources = &ed.state.config.completion_sources;
             let is_dir = ed.state.input.at::<CompletionLayer>(r).is_some_and(|l| {
+                let idx = l.selected();
                 l.session
-                    .selected_item(l.selected())
-                    .is_some_and(|item| item.insert_text().ends_with('/'))
+                    .minibuf_source_name(idx, sources)
+                    .is_some_and(|name| name == PATH_SOURCE || name == PATH_DIRS_ONLY_SOURCE)
+                    && l.session
+                        .selected_item(idx)
+                        .is_some_and(|item| item.insert_text().ends_with('/'))
             });
             if is_dir {
                 ed.state.dismiss_completion(&ed.view);

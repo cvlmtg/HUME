@@ -18,11 +18,17 @@ use crate::line::RopeyLine;
 use crate::lines::line_terminator_start;
 use crate::offset::{CharOffset, ExclusiveRange};
 
-/// Wire-format position encoding negotiated with an LSP server.
+/// Wire-format position encoding negotiated with an LSP server. `Utf32` is
+/// LSP 3.17's own third `PositionEncodingKind` — `character` counts Unicode
+/// scalar values (chars), never negotiated with a real server here, but the
+/// right, spec-defined choice for a `textEdit` from a non-`#:resolve`
+/// completion source (`hume-editor`'s `session/accept.rs`), which has no
+/// wire encoding to honor at all.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PositionEncoding {
     Utf8,
     Utf16,
+    Utf32,
 }
 
 /// A raw LSP wire position: `line` is a 0-based line number, `character` a
@@ -51,6 +57,11 @@ pub fn char_to_wire(text: &Rope, char_idx: CharOffset, enc: PositionEncoding) ->
         PositionEncoding::Utf16 => {
             let line_start = crate::lines::line_start_char(text, RopeyLine::new(line)).index();
             text.char_to_utf16_cu(char_idx) - text.char_to_utf16_cu(line_start)
+        }
+        // `character` already *is* a char index — no code-unit conversion,
+        // unlike the two wire encodings above.
+        PositionEncoding::Utf32 => {
+            char_idx - crate::lines::line_start_char(text, RopeyLine::new(line)).index()
         }
     };
     WirePos { line, character }
@@ -90,6 +101,9 @@ fn wire_offset_to_char_index(text: RopeSlice<'_>, offset: usize, enc: PositionEn
     match enc {
         PositionEncoding::Utf8 => text.byte_to_char(offset.min(text.len_bytes())),
         PositionEncoding::Utf16 => text.utf16_cu_to_char(offset.min(text.len_utf16_cu())),
+        // `offset` already *is* a char index into `text` — clamp, no
+        // conversion.
+        PositionEncoding::Utf32 => offset.min(text.len_chars()),
     }
 }
 

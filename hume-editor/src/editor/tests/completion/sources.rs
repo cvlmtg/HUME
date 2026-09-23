@@ -378,6 +378,57 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
     );
 }
 
+/// A source that raises instead of ever calling `completion-emit!` must not
+/// be retried on every subsequent keystroke — `drop_stalled_invocations`
+/// clears its slot once the failed batch is reported, so it drops out of
+/// `sources_to_reinvoke` until a fresh explicit trigger, instead of erroring
+/// again on every edit. A second, working source registered alongside it
+/// stays open and unaffected — `drop_stalled_invocations` only clears a
+/// still-`inflight` slot, never a `shown` one.
+#[test]
+fn a_raising_source_is_not_retried_on_every_keystroke() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[a]>bcdef\n");
+    insert_with_script(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "ok"
+             (lambda (id bid prefix) (completion-emit! id (list (hash "label" "foo"))))
+             #:target 'buffer)
+           (register-completion-source! "boom"
+             (lambda (id bid prefix) (error "boom"))
+             #:target 'buffer)"#,
+    );
+    let error_count = |ed: &Editor| {
+        ed.state
+            .message_log
+            .entries()
+            .filter(|e| e.text.contains("boom"))
+            .count()
+    };
+    assert_eq!(
+        error_count(&ed),
+        1,
+        "sanity: the trigger's own batch failed once"
+    );
+    assert_eq!(
+        labels(&ed),
+        vec!["foo"],
+        "the working source's answer survives"
+    );
+
+    for ch in "def".chars() {
+        ed.feed_key(key(ch));
+        ed.settle();
+    }
+    assert_eq!(
+        error_count(&ed),
+        1,
+        "a source that will never answer must not be retried on every \
+         subsequent keystroke"
+    );
+}
+
 /// The old answer stays ranked (against the new token text) until the
 /// re-invocation's own answer lands — the menu never blinks empty.
 #[test]
@@ -524,16 +575,14 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            (register-completion-source! "other"
              (lambda (id bid prefix) (completion-emit! id (list (hash "label" "other"))))
              #:target 'buffer)
-           (define-command! "set-dot-trigger" "" (lambda ()
-             (completion-set-trigger-chars! "dot" "rust" (list "."))))"#,
+           ;; Same eval as the "dot" registration above — `register-
+           ;; completion-source!` only queues an `Effect`, applied after
+           ;; this whole eval returns, and `completion-set-trigger-chars!`
+           ;; is queued too (`Effect::SetCompletionTriggerChars`), so the
+           ;; two apply in emission order rather than racing each other.
+           (completion-set-trigger-chars! "dot" "rust" (list "."))"#,
     );
     assert_eq!(labels(&ed), vec!["dot1", "other"]);
-    // `register-completion-source!` above only queues an `Effect`, applied
-    // after `insert_with_script`'s own eval returns — the same ordering a
-    // real `completion-set-trigger-chars!` caller (`on-lsp-attach`, a later
-    // hook fire) always sees in practice, so this is called as its own
-    // command rather than inline in the registering eval.
-    ed.execute_keymap_command("set-dot-trigger".into(), None, false);
 
     ed.feed_key(key('.'));
     ed.settle();

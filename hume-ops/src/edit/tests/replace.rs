@@ -1,4 +1,5 @@
 use super::super::*;
+use hume_editing::word::WordChars;
 use hume_rope::offset::CharOffset;
 use pretty_assertions::assert_eq;
 use test_fixtures::assert_state;
@@ -133,6 +134,69 @@ fn replace_around_cursors_forward_past_the_end_does_not_delete_the_structural_ne
     assert!(
         new_sels.primary().head() < new_text.end(),
         "cursor must land before the structural newline, not on/after it"
+    );
+}
+
+// ── replace_span_around_cursors ─────────────────────────────────────────────
+//
+// The general primitive `replace_around_cursors` wraps with a uniform-count
+// `start_of` — these pin the genuinely per-cursor case: a `start_of` that
+// computes a *different* start at each cursor (LSP completion accept's own
+// `insertText`-fallback use, via `word_start_before`).
+
+#[test]
+fn replace_span_around_cursors_start_of_receives_each_cursors_own_index_and_head() {
+    // Two cursors, each retreating by its *own* index-selected count (3 for
+    // the first, 1 for the second) rather than one shared count — proves
+    // `i` and `head` both reach `start_of` correctly, independent of
+    // `replace_around_cursors`'s own (uniform) wrapper.
+    let text = BufferText::from("abcdefgh\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(3)),
+            Selection::collapsed(CharOffset::new(8)),
+        ],
+        0,
+    );
+    let counts = [3usize, 1usize];
+    let (new_text, _sels, _cs) = replace_span_around_cursors(
+        text,
+        sels,
+        |_text, i, head| head.retreat_saturating(counts[i]),
+        0,
+        "Z",
+    );
+    // Cursor 1: retreat 3 from char 3 → char 0, deletes "abc" → "Z".
+    // Cursor 2: retreat 1 from char 8 → char 7, deletes "h" → "Z".
+    assert_eq!(new_text.to_string(), "ZdefgZ\n");
+}
+
+#[test]
+fn replace_span_around_cursors_word_start_before_stops_each_cursor_at_its_own_boundary() {
+    // The actual `accept.rs` shape: each cursor's own `word_start_before`
+    // scan, not a shared count — a shorter word before the second cursor
+    // must not retreat into the (unrelated, longer) word before the first.
+    let text = BufferText::from("ab c\n");
+    let sels = SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(2)), // right after "ab"
+            Selection::collapsed(CharOffset::new(4)), // right after "c"
+        ],
+        0,
+    );
+    let chars = WordChars::default();
+    let (new_text, _sels, _cs) = replace_span_around_cursors(
+        text,
+        sels,
+        |text, _i, head| word_start_before(text, head, chars),
+        0,
+        "Z",
+    );
+    assert_eq!(
+        new_text.to_string(),
+        "Z Z\n",
+        "each cursor's own word is replaced in place, not a uniform count \
+         derived from the other"
     );
 }
 

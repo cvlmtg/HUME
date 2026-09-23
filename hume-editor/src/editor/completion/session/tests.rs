@@ -188,7 +188,14 @@ fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
     // "b" narrows the dir slot out ("./foo.txt" has no 'b') but not the
     // word slot — the anchor moves to the word token's start.
     let (cs, text) = edit(&text, 4, 4, "b");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(5)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(5),
+        &text,
+        WordChars::default()
+    ));
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
     assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(2)));
@@ -358,7 +365,14 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
     // wasn't re-invoked) — only the live token narrows, so "cat" is no
     // longer an exact match and reappears.
     let (cs, text) = edit(&text, 2, 3, "");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(2)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(2),
+        &text,
+        WordChars::default()
+    ));
     session.rank(&reg, live(&text, 2));
     let mut ranked = ranked_labels(&session, &reg);
     ranked.sort();
@@ -511,9 +525,51 @@ fn typing_at_the_tokens_end_extends_it() {
         &["foobar", "fox", "bar"],
     );
     let (cs, text) = edit(&text, 2, 2, "o");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(3)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(3),
+        &text,
+        WordChars::default()
+    ));
     session.rank(&reg, live(&text, 3));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
+}
+
+/// A non-word char landing exactly at the token's end (an auto-paired `(`,
+/// say) must *not* extend the tracked span the way a continued-typing word
+/// char does above — the token's own definition ("the word before the
+/// cursor") never includes one. `head` moving past it then sits outside
+/// `[start, end]`, so the ordinary "cursor left the token" containment
+/// check drops the slot, same as leaving the token any other way.
+#[test]
+fn a_non_word_char_at_the_tokens_end_does_not_extend_it() {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("fo\n");
+    invoke_and_answer(
+        &mut session,
+        &reg,
+        id_of(&reg, "s"),
+        &text,
+        0,
+        2,
+        &["foobar"],
+    );
+    let (cs, text) = edit(&text, 2, 2, "(");
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(3),
+        &text,
+        WordChars::default()
+    ));
+    assert!(
+        !session.has_live_sources(),
+        "the '(' must not have joined the token — the cursor past it is outside \
+         [start, end], so the slot is dropped like any other token exit"
+    );
 }
 
 /// Deleting the token's own first char stays inside it; deleting the char
@@ -528,9 +584,23 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
 
     // Backspace twice: "o", then "f" — the token's own chars.
     let (cs, text) = edit(&text, 3, 4, "");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(3)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(3),
+        &text,
+        WordChars::default()
+    ));
     let (cs, text) = edit(&text, 2, 3, "");
-    assert!(session.observe_edit(&reg, &cs, 2, CharOffset::new(2)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        2,
+        CharOffset::new(2),
+        &text,
+        WordChars::default()
+    ));
     assert!(
         session.has_live_sources(),
         "an empty token is still a token"
@@ -539,8 +609,15 @@ fn deleting_before_the_token_drops_the_slot_but_deleting_its_first_char_does_not
     assert_eq!(ranked_labels(&session, &reg), vec!["foo"]);
 
     // A third Backspace deletes the space before the token.
-    let (cs, _) = edit(&text, 1, 2, "");
-    assert!(session.observe_edit(&reg, &cs, 3, CharOffset::new(1)));
+    let (cs, text) = edit(&text, 1, 2, "");
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        3,
+        CharOffset::new(1),
+        &text,
+        WordChars::default()
+    ));
     assert!(!session.has_live_sources(), "crossed the token's start");
 }
 
@@ -552,7 +629,14 @@ fn a_deletion_elsewhere_shifts_the_token_without_dropping_it() {
     let (mut session, text) = buffer_session("abc fo\n");
     invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 4, 6, &["foo"]);
     let (cs, text) = edit(&text, 0, 1, "");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(5)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(5),
+        &text,
+        WordChars::default()
+    ));
     assert!(session.has_live_sources());
     session.rank(&reg, live(&text, 5));
     assert_eq!(ranked_labels(&session, &reg), vec!["foo"]);
@@ -566,7 +650,14 @@ fn a_cursor_outside_the_token_drops_the_slot() {
     invoke_and_answer(&mut session, &reg, id_of(&reg, "s"), &text, 0, 2, &["foo"]);
     // No edit — the cursor just moved (an out-of-band motion).
     let cs = ChangeSet::identity(text.len_chars());
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(5)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(5),
+        &text,
+        WordChars::default()
+    ));
     assert!(!session.has_live_sources());
 }
 
@@ -578,7 +669,14 @@ fn an_edit_the_session_never_saw_is_refused() {
     let longer = BufferText::from("fooooo\n");
     let cs = ChangeSet::identity(longer.len_chars());
     assert!(
-        !session.observe_edit(&reg, &cs, 1, CharOffset::new(2)),
+        !session.observe_edit(
+            &reg,
+            &cs,
+            1,
+            CharOffset::new(2),
+            &text,
+            WordChars::default()
+        ),
         "a changeset built against a different length is an unseen edit"
     );
 }
@@ -592,11 +690,25 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
     let src = id_of(&reg, "s");
     invoke_and_answer(&mut session, &reg, src, &text, 0, 2, &["foo"]);
     let (cs, text) = edit(&text, 2, 2, "o");
-    assert!(session.observe_edit(&reg, &cs, 1, CharOffset::new(3)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        1,
+        CharOffset::new(3),
+        &text,
+        WordChars::default()
+    ));
     // Re-invoked against the post-edit document.
     invoke_and_answer(&mut session, &reg, src, &text, 0, 3, &["foobar"]);
     let (cs, text) = edit(&text, 3, 3, "b");
-    assert!(session.observe_edit(&reg, &cs, 2, CharOffset::new(4)));
+    assert!(session.observe_edit(
+        &reg,
+        &cs,
+        2,
+        CharOffset::new(4),
+        &text,
+        WordChars::default()
+    ));
     session.rank(&reg, live(&text, 4));
     assert_eq!(ranked_labels(&session, &reg), vec!["foobar"]);
     assert_eq!(session.menu_anchor_char(), Some(CharOffset::new(0)));

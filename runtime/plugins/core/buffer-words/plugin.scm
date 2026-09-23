@@ -74,11 +74,17 @@
 ;;; stashed when the completion source itself last ran. See README.md's
 ;;; "Pushing a finished index to an open menu". A stale id — no menu open,
 ;;; or a newer trigger already replaced it — is silently dropped by
-;;; `completion-emit!` itself; nothing here needs to know which.
-(define (bw/push-finished-answer! entry)
+;;; `completion-emit!` itself; nothing here needs to know which. Clears
+;;; `"live-id"` once used: the completion source only answers (and so only
+;;; sets a fresh id) once per session, not once per keystroke, so without
+;;; this a *second* background walk finishing while the same menu is still
+;;; open would re-emit under the same still-live id and reset the menu's
+;;; selection a second time, with no new trigger to justify it.
+(define (bw/push-finished-answer! bid entry)
   (let ([id (hash-ref entry "live-id")])
     (when id
-      (completion-emit! id (hash-ref entry "words")))))
+      (completion-emit! id (hash-ref entry "words"))
+      (bw/install! bid (hash-insert entry "live-id" #f)))))
 
 ;;; One reindex tick — see README.md's "Cursor-outward, line-windowed
 ;;; indexing".
@@ -96,7 +102,7 @@
         (if (and (>= fwd-hi total) (<= bwd-lo 0))
             (let ([finished (bw/finish-entry entry building)])
               (bw/install! bid finished)
-              (bw/push-finished-answer! finished))
+              (bw/push-finished-answer! bid finished))
             (bw/install! bid
               (bw/continue-entry entry building
                                   (after bw/tick-delay-ms
@@ -104,7 +110,11 @@
 
 ;;; Cancels any in-flight walk and restarts it fresh, resurrecting `bid`'s
 ;;; entry first if missing — see README.md's "Double-buffered cache" and
-;;; "Cursor-outward, line-windowed indexing".
+;;; "Cursor-outward, line-windowed indexing". Clears `"building"` along with
+;;; bumping `"gen"`: `bw/walk!` reads it back as its own starting set, and
+;;; without this a cancelled walk's partial (and possibly now-stale — the
+;;; reindex was likely triggered by an edit) set would carry into the fresh
+;;; one instead of that one starting empty.
 (define (bw/reindex! bid)
   (unless (bw/entry bid)
     (when (member bid (buffers))
@@ -115,7 +125,7 @@
       (let* ([anchor (bw/anchor-line bid)]
              [gen (+ (hash-ref entry "gen") 1)]
              [wc (get-option bid "word-chars")])
-        (bw/install! bid (hash-insert entry "gen" gen))
+        (bw/install! bid (hash-insert (hash-insert entry "gen" gen) "building" #f))
         (bw/walk! bid gen wc anchor anchor)))))
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────

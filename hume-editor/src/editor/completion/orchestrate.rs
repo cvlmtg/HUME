@@ -21,7 +21,7 @@ use steel::rvals::SteelVal;
 
 use super::registry::{BufferSourceId, MinibufBody, MinibufSourceId, SourceRegistry};
 use super::session::{CompletionSession, Invocation, LiveDoc};
-use super::{CompletionCtx, CompletionItem, arg_prefix, token_end_at};
+use super::{CompletionCtx, CompletionItem, token_end_at};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::input_stack::{CompletionLayer, InsertLayer, LayerRef};
 use crate::editor::registry::CommandRegistry;
@@ -150,13 +150,26 @@ impl EditorState {
         else {
             return;
         };
+        // Computed before `session` borrows `self.input` mutably — needed
+        // only to classify a newly-included end-of-token slice
+        // (`Invocation::observe`'s own doc).
+        let buf = self.buffers.get(bid);
+        let chars = crate::editor::commands::effective_word_chars(buf, &self.settings);
+        let text = buf.text();
         let Some(session) = self.input.completion_mut() else {
             return;
         };
         if session.buffer().is_none_or(|bt| bt.bid() != bid) {
             return;
         }
-        if !session.observe_edit(&self.config.completion_sources, cs, text_gen, head) {
+        if !session.observe_edit(
+            &self.config.completion_sources,
+            cs,
+            text_gen,
+            head,
+            text,
+            chars,
+        ) {
             self.dismiss_completion(view);
             return;
         }
@@ -341,6 +354,31 @@ impl EditorState {
         landed
     }
 
+    /// Recovery for a Steel call batch that failed (see
+    /// `Editor::run_call_batch`'s own call site): drops every completion
+    /// invocation still `Pending`, since nothing will ever call
+    /// `completion-emit!` for it now — see `CompletionSession::
+    /// drop_stalled_invocations`'s own doc for why this is always safe. A
+    /// no-op with no completion session open, or when nothing was actually
+    /// pending.
+    pub(in crate::editor) fn settle_completion_after_call_failure(&mut self, view: &EngineView) {
+        let Some(r) = self.input.ref_of::<CompletionLayer>() else {
+            return;
+        };
+        let session = self.input.completion_mut().expect("ref_of found the layer");
+        if !session.drop_stalled_invocations() {
+            return;
+        }
+        if session.buffer().is_some() {
+            self.rerank_open_session();
+            if self.open_session_is_spent() {
+                self.dismiss_completion(view);
+            }
+        } else {
+            self.settle_minibuf_session(view, r);
+        }
+    }
+
     /// Re-ranks the open session against the live document and resets the
     /// menu selection to row 0 — every path that changes the ranked list
     /// must, since the previous selection index has no guaranteed meaning
@@ -469,9 +507,17 @@ fn invoke_minibuf_source(
 
 /// The whitespace-delimited argument token the cursor is in — the `'arg`
 /// span every minibuffer source but `NativeDelegated` gets, shared by
-/// [`invoke_minibuf_source`]'s `NativeUniverse` and `Steel` arms.
+/// [`invoke_minibuf_source`]'s `NativeUniverse` and `Steel` arms. Finds the
+/// *last* space at or before the cursor, not the first — a typed command
+/// with more than one argument (`:mycmd alpha be|`) has the cursor in its
+/// second token, not everything after the command name; `arg_prefix`'s own
+/// "first space" split is right for `path.rs`'s single-argument commands
+/// only (its own doc names those as its actual callers), never for this.
+/// Same technique `set.rs`'s own multi-phase parser already uses for the
+/// identical shape (`up_to.rfind(' ')`).
 fn arg_span(input: &str, cursor: usize) -> std::ops::Range<usize> {
-    let (start, _) = arg_prefix(input, cursor);
+    let up_to = &input[..cursor.min(input.len())];
+    let start = up_to.rfind(' ').map_or(0, |i| i + 1);
     start..token_end_at(input, cursor, &[' '])
 }
 

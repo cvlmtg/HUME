@@ -11,6 +11,7 @@
 
 use super::*;
 use hume_editing::selection::{Selection, SelectionSet};
+use hume_rope::offset::CharOffset;
 
 const ACCEPT_0: &str = r#"(define-command! "finish" "" (lambda () (completion-accept! 0)))"#;
 
@@ -470,12 +471,17 @@ fn accepting_lands_at_every_cursor_not_just_the_primary() {
     assert_eq!(ed.doc().text().to_string(), "std std\n");
 }
 
-/// The `insertText` fallback's span is uniform across cursors — the
-/// primary's own token, re-expressed as a `(back, forward)` distance — not
-/// each cursor's own preceding word-chars run: "abc" before the second
-/// cursor (with '-' a word char, one run with the typed prefix) survives.
+/// The `insertText` fallback's span is *not* uniform across cursors — each
+/// cursor gets its own `word_start_before` scan from its own head, not the
+/// primary's own tracked token re-expressed as a shared `(back, forward)`
+/// distance: "abc" before the second cursor (with '-' a word char, one
+/// contiguous run with its own typed prefix, no separator) is consumed
+/// along with it, since it really is part of that cursor's own word —
+/// unlike a uniform count, which would only ever eat as many chars as the
+/// *primary*'s own prefix happened to be long, regardless of what actually
+/// precedes each other cursor.
 #[test]
-fn accepting_uses_the_same_span_at_every_cursor_regardless_of_surrounding_text() {
+fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[foo]> abc-[bar]>\n");
     ed.state.settings.word_chars = "-".into();
@@ -495,7 +501,14 @@ fn accepting_uses_the_same_span_at_every_cursor_regardless_of_surrounding_text()
     trigger(&mut ed);
     type_chars(&mut ed, "st");
     ed.feed_key(key_enter());
-    assert_eq!(ed.doc().text().to_string(), "std abcstd\n");
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "std std\n",
+        "cursor 1 has no preceding word chars (\"x-st\" alone, at the buffer \
+         start); cursor 2's own scan continues back through \"abc\" too \
+         (contiguous with its \"x-st\", '-' configured as a word char), \
+         consuming both"
+    );
 }
 
 #[test]
@@ -525,6 +538,46 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
     trigger(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "STD STD\n");
+}
+
+/// A `textEdit` from a source that never declared `#:resolve` decodes
+/// `character` as a raw char count, not the buffer's attached-server wire
+/// encoding — `completion_source`'s helper registers with no `#:resolve`
+/// (defaults `#f`), so this pins the general case every other `textEdit`
+/// test here already exercises without noticing, since none of them put a
+/// multi-UTF-16-unit character earlier on the line to expose the
+/// divergence. "😀" is 1 char but 2 UTF-16 units — a `character` position
+/// counted in UTF-16 would land one char short of what this source, having
+/// no wire encoding to honor, actually meant.
+#[test]
+fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[😀foo]>\n");
+    ed.feed_key(key('c'));
+    // Cursor now sits right after "😀foo" was deleted, at char 0 — retype
+    // "😀" so the line matches the fixture the test's own doc describes,
+    // then trigger completion for a `textEdit` covering "foo" (chars 1..4).
+    type_chars(&mut ed, "\u{1F600}");
+    run(
+        &mut ed,
+        tmp.path(),
+        &completion_source(
+            "test",
+            r#"(list (hash "label" "std" "insertText" "ignored-fallback"
+                           "textEdit" (hash "range" (hash "start" (hash "line" 0 "character" 1)
+                                                        "end" (hash "line" 0 "character" 4))
+                                       "newText" "bar")))"#,
+            "",
+        ),
+    );
+    trigger(&mut ed);
+    ed.feed_key(key_enter());
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "\u{1F600}bar\n",
+        "character 1..4 must decode as chars 1..4 (\"foo\"), not UTF-16 units \
+         1..4 (which would land one char short, on \"😀fo\")"
+    );
 }
 
 #[test]
@@ -605,8 +658,14 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
     let mut ed = editor_from("-[foo]> abc-[bar]>\n");
     ed.feed_key(key('c'));
     type_chars(&mut ed, "xy");
-    // Buffer "xy abcxy\n": cursor1 (primary) at char 2, cursor2 at char 8;
-    // char 4 is right before 'b', strictly between the two spans.
+    // Buffer "xy abcxy\n": cursor1 (primary) at char 2. Per-cursor word
+    // scanning (this arm has no server `textEdit`) widens cursor2's own
+    // span to [3, 8) — the whole "abcxy" run, not just its own typed "xy"
+    // suffix — since 'a'/'b'/'c' are word chars too. Char 3, right at that
+    // span's own start, is the one position strictly between the two spans
+    // that overlaps neither: safely before cursor2's span (an insertion at
+    // a span's own start shifts it uniformly ahead, per the overlap
+    // check's own doc) and strictly after cursor1's.
     run(
         &mut ed,
         tmp.path(),
@@ -614,15 +673,53 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
             "test",
             r#"(list (hash "label" "std" "insertText" "std" "filterText" "xy"
                            "additionalTextEdits"
-                             (list (hash "range" (hash "start" (hash "line" 0 "character" 4)
-                                                      "end" (hash "line" 0 "character" 4))
+                             (list (hash "range" (hash "start" (hash "line" 0 "character" 3)
+                                                      "end" (hash "line" 0 "character" 3))
                                      "newText" "H"))))"#,
             "",
         ),
     );
     trigger(&mut ed);
     ed.feed_key(key_enter());
-    assert_eq!(ed.doc().text().to_string(), "std aHbcstd\n");
+    assert_eq!(ed.doc().text().to_string(), "std Hstd\n");
+}
+
+/// A cramped cursor's own preceding word must never retreat across a line
+/// boundary into unrelated text on the line above, however long the
+/// *primary* cursor's own word happens to be — the finding this whole
+/// per-cursor-scan design exists for: a uniform count derived from one
+/// cursor's word and blindly applied to another can walk past that
+/// cursor's own line start.
+#[test]
+fn accepting_never_retreats_a_shorter_cursor_across_a_line_boundary() {
+    let tmp = safe_tempdir();
+    // Primary's own word "ab" (2 chars) is longer than the second cursor's
+    // own word "x" (1 char, on the line below) — a uniform 2-char retreat
+    // from the second cursor's head would cross its line's own start and
+    // eat the preceding newline plus a char of "ab".
+    // The marker is a placeholder — real selections are set explicitly
+    // below (`editor_from` requires at least one).
+    let mut ed = editor_from("let a-[b]>\nx\n");
+    ed.set_current_selections(SelectionSet::from_vec(
+        vec![
+            Selection::collapsed(CharOffset::new(6)), // right after "ab"
+            Selection::collapsed(CharOffset::new(8)), // right after "x"
+        ],
+        0,
+    ));
+    raw_insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list (hash "label" "abstd" "insertText" "std"))"#,
+        ACCEPT_0,
+    );
+    accept_via_steel(&mut ed);
+    assert_eq!(
+        ed.doc().text().to_string(),
+        "let std\nstd\n",
+        "each cursor's own word is replaced in place — neither line is \
+         corrupted or joined with the other"
+    );
 }
 
 /// Two cursors from one `c` with the SECOND primary: every keystroke at

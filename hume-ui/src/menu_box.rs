@@ -82,7 +82,12 @@ pub(crate) fn widest<'a>(texts: impl Iterator<Item = &'a str>) -> u16 {
 /// comment on the ordering) and so has no `inner_width` to hand that
 /// function yet.
 pub(crate) fn outer_rows(row_count: usize, row_cap: u16) -> u16 {
-    (row_count as u16).min(row_cap) + 2
+    // Clamp in `usize` before casting down — `(row_count as u16)` truncates
+    // first and can wrap a huge `row_count` (a large `buffer-words` index on
+    // an empty prefix) to a value *smaller* than `row_cap`, which then wins
+    // the min and produces a near-zero menu height. Same fix as
+    // `outer_dims_from_width`'s own sibling below.
+    (row_count.min(row_cap as usize) + 2) as u16
 }
 
 /// Outer footprint (including the 1-cell frame) for a box showing `row_count`

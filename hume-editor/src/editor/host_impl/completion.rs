@@ -109,6 +109,20 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         let Some(lsp) = self.lsp.as_deref_mut() else {
             return Err("completion-accept!: no LSP state available".to_string());
         };
+        // Checked *before* `take_completion_session` — that call is
+        // destructive (truncates the layer off the stack, per its own doc),
+        // so erroring here first leaves a `Minibuf` session (and its own
+        // `minibuf_completion` view slot, which `take_layer` never clears —
+        // see `take_completion_session`'s doc) fully intact instead of torn
+        // down on a call that was never going to succeed anyway.
+        if self
+            .state
+            .input
+            .completion()
+            .is_some_and(|s| s.buffer().is_none())
+        {
+            return Err("completion-accept!: not a buffer-target session".to_string());
+        }
         let Some(session) = self.state.take_completion_session(self.view) else {
             return Err("completion-accept!: no active completion session".to_string());
         };
@@ -118,17 +132,5 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
     fn completion_dismiss(&mut self) -> Result<(), String> {
         self.state.dismiss_completion(self.view);
         Ok(())
-    }
-
-    fn completion_set_trigger_chars(
-        &mut self,
-        source: &str,
-        language: &str,
-        chars: Vec<char>,
-    ) -> Result<(), String> {
-        self.state
-            .config
-            .completion_sources
-            .set_buffer_trigger_chars(source, language.to_string(), chars)
     }
 }

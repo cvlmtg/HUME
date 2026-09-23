@@ -131,6 +131,14 @@ fn wire_pos_to_byte(text: &str, pos: lsp_types::Position, enc: PositionEncoding)
             }
             byte_off
         }
+        // `character` counts chars, not code units — the byte offset of
+        // the `character`-th char directly, unlike the UTF-16 arm's own
+        // manual `len_utf16()` accumulation (chars have no fixed unit
+        // count to accumulate here; `char_indices` already walks by char).
+        PositionEncoding::Utf32 => line
+            .char_indices()
+            .nth(pos.character as usize)
+            .map_or(line.len(), |(byte_off, _)| byte_off),
     };
     line_start + within_line
 }

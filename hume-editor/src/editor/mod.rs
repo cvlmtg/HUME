@@ -127,15 +127,19 @@ pub(crate) struct ConfigState {
     pub(in crate::editor) completion_sources: completion::SourceRegistry,
     /// Registry of configured language identities.
     pub(crate) languages: LanguageRegistry,
-    /// Chars that fire `OnTriggerChar` in Insert mode — and invoke the
-    /// completion source registered under the same `source` name, if any
-    /// (`EditorState::trigger_buffer_completion`) — keyed by `(source,
-    /// language)`: a `(register-trigger-chars! source language chars)` call
-    /// only ever replaces its own `(source, language)` entry, so two
-    /// languages sharing a source (e.g. the `"lsp"` completion source
-    /// registered separately for `"rust"` and `"python"`) never clobber
-    /// each other. An empty `chars` removes the entry entirely (matches
-    /// `on-lsp-detach`'s clear-on-detach usage).
+    /// Chars that fire `OnTriggerChar` in Insert mode — the shared,
+    /// listener-agnostic table set by `(register-trigger-chars! source
+    /// language chars)`, keyed by `(source, language)`: a call only ever
+    /// replaces its own `(source, language)` entry, so two languages
+    /// sharing a source (e.g. the `"lsp"` completion source registered
+    /// separately for `"rust"` and `"python"`) never clobber each other.
+    /// An empty `chars` removes the entry entirely (matches
+    /// `on-lsp-detach`'s clear-on-detach usage). Distinct from a `Buffer`
+    /// completion source's own trigger chars (`SourceRegistry`'s
+    /// `BufferSourceEntry::trigger_chars`, set by
+    /// `completion-set-trigger-chars!`) — *that* table, not this one,
+    /// decides which completion sources a keystroke invokes
+    /// (`EditorState::trigger_buffer_completion`'s `Trigger::Char` arm).
     pub(in crate::editor) trigger_chars: rustc_hash::FxHashMap<(String, String), Vec<char>>,
     /// Steel-writable decoration stores (inlay hints, signs, virtual
     /// lines, EOL text, extra highlights, line backgrounds) — the render

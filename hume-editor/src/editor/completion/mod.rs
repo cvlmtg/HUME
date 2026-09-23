@@ -60,10 +60,11 @@ pub(in crate::editor) struct CompletionCtx<'a> {
 /// `prefix` is the unfinished argument text up to the cursor.
 ///
 /// If there is no space (command-only input), returns `(0, input[..cursor])`.
-/// `Delegated` sources use this for their own filtering; the orchestrator
-/// (`orchestrate.rs`'s `arg_span`) uses it too, for any minibuffer source
-/// but `NativeDelegated` — that source's own function doesn't see the input
-/// at all, so nothing else computes this for it.
+/// Correct only for a *single*-argument command, where "everything after
+/// the command name" genuinely is the one argument (`path.rs`'s own
+/// `:e`/`:w`/`:cd` callers) — a multi-argument command's own argument span
+/// is `orchestrate.rs`'s `arg_span`, which finds the *last* space before
+/// the cursor instead.
 pub(in crate::editor) fn arg_prefix(input: &str, cursor: usize) -> (usize, &str) {
     let up_to_cursor = &input[..cursor.min(input.len())];
     match up_to_cursor.find(' ') {

@@ -149,6 +149,40 @@ fn register_is_blocked_in_command_mode() {
     );
 }
 
+// ── completion-set-trigger-chars! ─────────────────────────────────────────
+
+/// Queues an `Effect::SetCompletionTriggerChars` with the decoded fields —
+/// nothing applied inline, same shape as `register-completion-source!`'s
+/// own test above. This is what lets a same-eval
+/// `register-completion-source!` + `completion-set-trigger-chars!` pair
+/// apply in emission order instead of racing the registration.
+#[test]
+fn set_trigger_chars_queues_an_effect_with_the_decoded_fields() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx_init();
+    completion_set_trigger_chars(
+        &mut ctx,
+        SteelVal::StringV("src".into()),
+        SteelVal::StringV("rust".into()),
+        SteelVal::ListV(vec![SteelVal::StringV(".".into()), SteelVal::StringV(":".into())].into()),
+    )
+    .expect("valid call");
+    drop(ctx);
+    let effects = effects(&h);
+    assert_eq!(effects.len(), 1);
+    let Effect::SetCompletionTriggerChars {
+        source,
+        language,
+        chars,
+    } = effects[0]
+    else {
+        panic!("expected SetCompletionTriggerChars, got {:?}", effects[0]);
+    };
+    assert_eq!(source, "src");
+    assert_eq!(language, "rust");
+    assert_eq!(chars, &['.', ':']);
+}
+
 // ── completion-emit! ──────────────────────────────────────────────────────
 
 /// `completion-emit!` is `cmd`-gated: an answer can't land from an

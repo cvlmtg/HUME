@@ -13,7 +13,7 @@ use crate::editor::completion::CompletionItem;
 use crate::editor::event::EditorEvent;
 use crate::editor::lsp::{LspCallback, LspState, edits, introspect, wire_range_to_chars};
 use crate::editor::{EditorState, Severity};
-use hume_ops::edit::replace_around_cursors;
+use hume_ops::edit::{replace_around_cursors, replace_span_around_cursors, word_start_before};
 
 impl CompletionSession {
     /// Applies the ranked candidate at `idx`'s `textEdit` (falling back to `insertText`
@@ -70,7 +70,19 @@ impl CompletionSession {
         // below just to read it again at the bottom.
         let may_resolve = state.config.completion_sources.buffer_get(source).resolve;
         edits::checked_buffer(state, bt.bid, Some(bt.generation))?;
-        let encoding = introspect::encoding_for_buffer(state, lsp, bt.bid);
+        // A source that hasn't declared `#:resolve` isn't claiming to be
+        // genuine LSP-server-origin (that flag's own doc), so its own
+        // `textEdit`/`additionalTextEdits` have no wire encoding to honor —
+        // the buffer's *attached-server* negotiated encoding would silently
+        // misinterpret positions a plugin author never meant in that unit.
+        // `Utf32` (LSP 3.17's own third `PositionEncodingKind` — `character`
+        // counts chars, never code units) is the spec-defined choice for
+        // "no server involved."
+        let encoding = if may_resolve {
+            introspect::encoding_for_buffer(state, lsp, bt.bid)
+        } else {
+            hume_rope::position_encoding::PositionEncoding::Utf32
+        };
 
         // The session's pane/buffer pairing may no longer be live — a pane
         // switch (nothing dismisses the session on one), or the Steel
@@ -203,38 +215,68 @@ impl CompletionSession {
             encoding,
             &item.additional_text_edits,
         )?;
-        // The span is uniform across cursors (see the match above), applied
-        // at *every* cursor — so this check runs per cursor too, not just
-        // the primary's, and protects the `insertText` fallback as well as
-        // a server-provided `textEdit` range.
-        let overlaps = heads_now.iter().any(|&head| {
-            let (start_now, end_now) =
-                (head.retreat_saturating(back), head.shift(forward as isize));
-            additional_char_edits.iter().any(|(r, _)| {
-                // The half-open overlap test alone (`s < end_now && start_now
-                // < e`) misses a *zero-width* additional edit sitting
-                // exactly at `head` (equivalently `end_now` when `forward ==
-                // 0` — the only case where the two coincide, and the only
-                // one this can reach: an edit strictly ahead of `head` leaves
-                // `head` itself untouched by `Assoc::After`, so it can never
-                // land inside this span's own `back` retreat): the header
-                // inserts before the cursor edit lands, so
-                // `translate_in_place`'s `Assoc::After` on selection heads
-                // (`hume-editing/src/selection/mod.rs`) walks the live head
-                // past the inserted text — the cursor edit's `back` chars
-                // then eat that inserted text instead of the span the server
-                // asked for. Guarded on `back > 0`: a zero-width completion
-                // span (a pure insert, `back == forward == 0`) never
-                // retreats into anything, so flagging it here would reject
-                // the ordinary "accept immediately after the trigger char"
-                // shape whenever a source also sends an `additionalTextEdits`
-                // insertion at that same point. An insertion at `start_now`
-                // is safe (it shifts the whole span uniformly ahead of the
-                // edit) and stays excluded.
-                (r.start < end_now && start_now < r.end)
-                    || (back > 0 && r.start == r.end && r.start == head)
-            })
-        });
+        // Each cursor's own `back` distance — computed once, now, against
+        // the pre-edit document, and applied as a plain char *count* from
+        // here on rather than a live re-scan: `additionalTextEdits` land
+        // document-wide before the per-cursor replacement (just below), and
+        // a `start_of` that re-scanned `text` fresh at that later point
+        // would risk wandering into text that very additionalTextEdits
+        // insertion just added, rather than staying immune to the shift the
+        // way a fixed count is (see `replace_span_around_cursors`'s own
+        // doc). A server-provided `textEdit` reuses the same `back` at
+        // every cursor (LSP spec: the server's range always contains the
+        // request position); the `insertText` fallback has no such
+        // guarantee for a non-primary cursor, so each gets its own
+        // `word_start_before` scan from its own head instead.
+        let per_cursor_back: Vec<usize> = match &item.text_edit {
+            Some(_) => heads_now.iter().map(|_| back).collect(),
+            None => {
+                let live_text = state.buffers.get(bt.bid).text();
+                let word_chars = crate::editor::commands::effective_word_chars(
+                    state.buffers.get(bt.bid),
+                    &state.settings,
+                );
+                heads_now
+                    .iter()
+                    .map(|&head| head.chars_since(word_start_before(live_text, head, word_chars)))
+                    .collect()
+            }
+        };
+        // Applied at *every* cursor, so this check runs per cursor too, not
+        // just the primary's, and protects the `insertText` fallback as
+        // well as a server-provided `textEdit` range.
+        let overlaps = heads_now
+            .iter()
+            .zip(&per_cursor_back)
+            .any(|(&head, &back)| {
+                let start_now = head.retreat_saturating(back);
+                let end_now = head.shift(forward as isize);
+                additional_char_edits.iter().any(|(r, _)| {
+                    // The half-open overlap test alone (`s < end_now && start_now
+                    // < e`) misses a *zero-width* additional edit sitting
+                    // exactly at `head` (equivalently `end_now` when `forward ==
+                    // 0` — the only case where the two coincide, and the only
+                    // one this can reach: an edit strictly ahead of `head` leaves
+                    // `head` itself untouched by `Assoc::After`, so it can never
+                    // land inside this cursor's own retreat): the header inserts
+                    // before the cursor edit lands, so `translate_in_place`'s
+                    // `Assoc::After` on selection heads
+                    // (`hume-editing/src/selection/mod.rs`) walks the live head
+                    // past the inserted text — the cursor edit's own retreat
+                    // then eats that inserted text instead of the span the
+                    // server asked for. Guarded on `start_now < head`: a
+                    // zero-width completion span (a pure insert, or an
+                    // `insertText`-fallback cursor with no preceding word char
+                    // at all) never retreats into anything, so flagging it here
+                    // would reject the ordinary "accept immediately after the
+                    // trigger char" shape whenever a source also sends an
+                    // `additionalTextEdits` insertion at that same point. An
+                    // insertion at `start_now` is safe (it shifts the whole span
+                    // uniformly ahead of the edit) and stays excluded.
+                    (r.start < end_now && start_now < r.end)
+                        || (start_now < head && r.start == r.end && r.start == head)
+                })
+            });
         if overlaps {
             return Err(
                 "completion-accept!: replacement span overlaps additionalTextEdits".to_string(),
@@ -283,13 +325,17 @@ impl CompletionSession {
             }
         };
 
-        // A uniform `(back, forward)` span is expressed relative to each
-        // cursor's own *live* head, so it travels forward through
+        // `forward` chars ahead of each cursor's own *live* head, plus
+        // `per_cursor_back[i]` chars behind it, travels forward through
         // `additionalTextEdits` for free: `apply_doc_edit_grouped` below
         // reads selections `commit_char_edits` above already shifted across
-        // those edits (`translate_in_place`, `Assoc::After` on heads), so
-        // `back`/`forward` chars behind/ahead of the live head is already
-        // the right span at every cursor.
+        // those edits (`translate_in_place`, `Assoc::After` on heads), and
+        // `per_cursor_back` is a fixed count from *before* either edit
+        // landed, immune to that shift the way a live re-scan of the
+        // (already-shifted) text wouldn't be (see `per_cursor_back`'s own
+        // doc, and `replace_span_around_cursors`'s) — so `back`/`forward`
+        // chars behind/ahead of the live head is already the right span at
+        // every cursor.
         //
         // This is also the edit that grows an open Insert session's
         // typed-run selection to cover the whole replacement, not just what
@@ -300,15 +346,39 @@ impl CompletionSession {
         // pin-tracking bug: the accept's own edit rewrote that whole span,
         // so every character in it was written by this session, and
         // selecting the freshly completed token is the useful outcome.
-        let cs_cursors = crate::editor::doc_ops::apply_doc_edit_grouped(
-            &mut state.buffers,
-            &state.config.decorations,
-            &mut state.panes.state,
-            &mut state.panes.jumps,
-            pid,
-            bt.bid,
-            move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
-        );
+        //
+        // A server-provided `textEdit` (`per_cursor_back` uniformly
+        // `back`) goes through the simpler, dedicated `replace_around_
+        // cursors` rather than re-deriving the same uniform count through
+        // `replace_span_around_cursors`'s more general per-cursor form.
+        let cs_cursors = match &item.text_edit {
+            Some(_) => crate::editor::doc_ops::apply_doc_edit_grouped(
+                &mut state.buffers,
+                &state.config.decorations,
+                &mut state.panes.state,
+                &mut state.panes.jumps,
+                pid,
+                bt.bid,
+                move |b, s| replace_around_cursors(b, s, back, forward, &new_text),
+            ),
+            None => crate::editor::doc_ops::apply_doc_edit_grouped(
+                &mut state.buffers,
+                &state.config.decorations,
+                &mut state.panes.state,
+                &mut state.panes.jumps,
+                pid,
+                bt.bid,
+                move |b, s| {
+                    replace_span_around_cursors(
+                        b,
+                        s,
+                        move |_text, i, head| head.retreat_saturating(per_cursor_back[i]),
+                        forward,
+                        &new_text,
+                    )
+                },
+            ),
+        };
 
         if opened_group {
             crate::editor::doc_ops::commit_edit_group(

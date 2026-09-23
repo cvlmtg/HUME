@@ -27,6 +27,7 @@ use std::ops::Range;
 
 use hume_editing::changeset::{Assoc, ChangeSet, PosMapCursor};
 use hume_editing::text::BufferText;
+use hume_editing::word::{CharClass, WordChars};
 use hume_engine::pipeline::{BufferId, EngineView, PaneId};
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -258,8 +259,11 @@ impl Invocation<BufferSpan> {
 
     /// Composes `cs` into this invocation's snapshot and remaps its live
     /// span. Returns `false` when the edit crossed the token's start — see
-    /// [`CompletionSession::observe_edit`].
-    fn observe(&mut self, cs: &ChangeSet) -> bool {
+    /// [`CompletionSession::observe_edit`]. `text`/`chars` are the *live*
+    /// (post-`cs`) document and this buffer's word-chars, needed only to
+    /// classify a newly-included end-of-token slice — see `end`'s own
+    /// comment below.
+    fn observe(&mut self, cs: &ChangeSet, text: &BufferText, chars: WordChars<'_>) -> bool {
         let BufferSpan { doc, live: range } = &mut self.span;
         // One cursor over the non-decreasing sequence `[start-1, start,
         // end]` — `map_anchor`'s `anchor_deleted` on `start-1` answers "was
@@ -275,7 +279,40 @@ impl Invocation<BufferSpan> {
             false
         };
         let start = cursor.map_anchor(range.start, Assoc::Before).pos;
-        let end = cursor.map(range.end, Assoc::After);
+        // Two calls on the same, already-visited position — safe:
+        // `PosMapCursor::map_anchor` only advances its own state past an
+        // op once a *later* position is queried, so re-querying `range.end`
+        // immediately after `start` (itself `<= range.end`) never violates
+        // the cursor's own non-decreasing-queries contract. The two only
+        // ever disagree when an `Insert` op sits exactly at `range.end`:
+        // `Assoc::Before` stops short of it, `Assoc::After` extends past it.
+        let end_before = cursor.map(range.end, Assoc::Before);
+        let end_after = cursor.map(range.end, Assoc::After);
+        // An insertion exactly at the *non-empty* token's end only extends
+        // the tracked span when every newly-included char is itself
+        // word-class — matching the token's own definition ("the word
+        // before the cursor"). Unconditionally taking `end_after` let an
+        // auto-paired bracket (or any other non-word char) landing there
+        // silently join the token: `accept`'s containment check then
+        // trivially succeeds once the live head sits exactly at the grown
+        // boundary, masking the "cursor left the token" case this span
+        // exists to detect. An *empty* token (`range` was already
+        // zero-width — no word typed yet, matching every candidate) has no
+        // word for a non-word char to violate, so it keeps the old
+        // unconditional behavior: it stays "live" (chasing the cursor)
+        // until something more definite ends it (a start-side Backspace,
+        // an out-of-band cursor jump), the same as any other source not
+        // yet narrowed by typing.
+        let end = if range.start == range.end
+            || (end_after > end_before
+                && token_text(text, end_before, end_after)
+                    .chars()
+                    .all(|c| chars.classify(c) == CharClass::Word))
+        {
+            end_after
+        } else {
+            end_before
+        };
         *range = start..end;
         doc.cs_since = doc.cs_since.clone().compose(cs.clone());
         !crossed
@@ -648,6 +685,45 @@ impl CompletionSession {
         }
     }
 
+    /// Clears every still-`inflight` invocation, across every slot of
+    /// whichever target this session has — leaving any existing `shown`
+    /// answer untouched. Returns whether anything was actually cleared.
+    ///
+    /// The recovery path for a Steel call batch that failed before any of
+    /// its queued sources could reach `completion-emit!` (see
+    /// `EditorState::settle_completion_after_call_failure`'s own call
+    /// site): without this, a source that raises — or one that simply never
+    /// answers — leaves its slot permanently `Pending`, since nothing else
+    /// ever tells this session the call didn't happen. For a `Buffer`
+    /// session that's a silent-but-real cost: `sources_to_reinvoke` calls
+    /// it again on every subsequent edit, so a broken source errors on
+    /// every keystroke instead of just once. For a `Minibuf` session
+    /// (no edit-driven reinvocation loop — see `MinibufSpan`'s own doc)
+    /// it's worse: `is_pending()` never becomes `false`, so
+    /// `settle_minibuf_session` never promotes or dismisses the popup and
+    /// every subsequent Tab is silently swallowed.
+    ///
+    /// Safe regardless of *why* the batch failed, or whether it even
+    /// touched completion at all: a source that was merely slow gets asked
+    /// again through the ordinary edit-driven reinvocation path (`Buffer`)
+    /// or a fresh trigger (either target); one that's genuinely broken
+    /// simply stops being asked until then, rather than erroring forever.
+    pub(in crate::editor) fn drop_stalled_invocations(&mut self) -> bool {
+        fn drop_in<Id, S>(slots: &mut [SourceSlot<Id, S>]) -> bool {
+            let mut any = false;
+            for slot in slots {
+                if slot.inflight.take().is_some() {
+                    any = true;
+                }
+            }
+            any
+        }
+        match &mut self.target {
+            Target::Buffer { slots, .. } => drop_in(slots),
+            Target::Minibuf { slots, .. } => drop_in(slots),
+        }
+    }
+
     /// Whether any source has answered with at least one item — `false`
     /// once every answer is empty or the cursor left every token, at which
     /// point the session has nothing left to show and closes.
@@ -705,13 +781,18 @@ impl CompletionSession {
     /// `ChangeSet::compose` would otherwise turn into a hard panic (its
     /// `len_before`/`len_after` check is a release `assert_eq!`). The caller
     /// must dismiss the session in that case. `text_gen` is the buffer's
-    /// generation *after* `cs` landed.
+    /// generation *after* `cs` landed. `text`/`chars` are the live
+    /// (post-`cs`) document and this buffer's word-chars — threaded through
+    /// to [`Invocation::observe`], which needs them only to classify a
+    /// newly-included end-of-token slice.
     pub(in crate::editor) fn observe_edit(
         &mut self,
         sources: &SourceRegistry,
         cs: &ChangeSet,
         text_gen: u64,
         head: CharOffset,
+        text: &BufferText,
+        chars: WordChars<'_>,
     ) -> bool {
         let Target::Buffer { bt, slots } = &mut self.target else {
             return true;
@@ -727,10 +808,10 @@ impl CompletionSession {
         let mut dropped = false;
         for slot in slots {
             if let Some(inv) = &mut slot.inflight {
-                inv.observe(cs);
+                inv.observe(cs, text, chars);
             }
             if let Some(inv) = &mut slot.shown
-                && !inv.observe(cs)
+                && !inv.observe(cs, text, chars)
             {
                 slot.shown = None;
                 dropped = true;
@@ -963,6 +1044,25 @@ impl CompletionSession {
             inv.span.bytes.clone(),
             inv.items()[i as usize].insert_text(),
         ))
+    }
+
+    /// The `Minibuf`-target source name behind ranked position `idx` —
+    /// `None` for a `Buffer` session or an unranked `idx`. The one place
+    /// `completion_input_minibuf`'s own directory-descent check
+    /// (`input_stack/completion.rs`) asks *which source* produced the
+    /// selected candidate, rather than sniffing the item's own text — a
+    /// non-path source whose candidate happens to end in `/` (a URL, a
+    /// namespaced tag) must not be mistaken for a directory to descend into.
+    pub(in crate::editor) fn minibuf_source_name<'a>(
+        &self,
+        idx: usize,
+        sources: &'a SourceRegistry,
+    ) -> Option<&'a str> {
+        let Target::Minibuf { slots, .. } = &self.target else {
+            return None;
+        };
+        let (s, _) = self.ranked_indices(idx)?;
+        Some(&sources.minibuf_get(slots[s as usize].source).name)
     }
 
     /// Where the menu anchors for a `Buffer` session: the leftmost live

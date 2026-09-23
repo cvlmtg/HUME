@@ -259,6 +259,122 @@ fn an_edit_refreshes_the_index() {
     wait_for_word_gone(&mut ed, "newword");
 }
 
+/// A background walk finishing while the menu is already open must not
+/// reset the user's navigation *twice* under one still-live invocation —
+/// `bw/push-finished-answer!` clears `"live-id"` once used, so a *second*
+/// walk completing with no fresh trigger in between is a no-op instead of
+/// re-emitting under the same id and resetting the selection again. The
+/// global `word-chars` option change is the trigger: `'on-option-change`
+/// reindexes every open buffer without touching this buffer's own text or
+/// cursor, so it can't also disturb the session through
+/// `completion_observe_edit`'s own token tracking — the one thing under
+/// test here is `bw/push-finished-answer!` itself.
+#[test]
+fn a_second_background_finish_does_not_reset_the_menu_selection() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "alpha beta gamma\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+    wait_for_word(&mut ed, "gamma");
+    assert!(
+        labels(&ed).len() >= 2,
+        "sanity: enough candidates to move off row 0: {:?}",
+        labels(&ed)
+    );
+
+    // A fresh reindex now legitimately re-emits under the trigger's still-
+    // live id and resets the selection once — expected, not the bug under
+    // test. `reindex_and_wait` drives one full cycle.
+    reindex_via_option_change(&mut ed);
+    assert_eq!(
+        ed.state.input.completion_selected(),
+        0,
+        "sanity: the first finish under a fresh id does reset the selection"
+    );
+
+    ed.feed_key(key_down());
+    let moved = ed.state.input.completion_selected();
+    assert_ne!(moved, 0, "sanity: selection moved off row 0");
+
+    // A *second* reindex, no fresh trigger in between: `"live-id"` was
+    // already consumed and cleared by the push above, so this one must be
+    // a silent no-op.
+    reindex_via_option_change(&mut ed);
+    assert_eq!(
+        ed.state.input.completion_selected(),
+        moved,
+        "a second background reindex finishing under the same already-\
+         consumed id must not silently reset the user's navigation"
+    );
+}
+
+/// Fires `'on-option-change` for `"word-chars"` (reindexing every open
+/// buffer without touching this buffer's own text or cursor — see this
+/// file's own test doc for why that matters) and waits, bounded, for the
+/// walk it restarts to finish.
+fn reindex_via_option_change(ed: &mut Editor) {
+    ed.state.settings.word_chars = "-".into();
+    ed.state
+        .queue_event(crate::editor::event::EditorEvent::OnOptionChange {
+            key: "word-chars".into(),
+            value: "-".into(),
+        });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        ed.settle();
+        if ed.state.input.completion().is_none_or(|s| s.is_pending()) {
+            std::thread::sleep(Duration::from_millis(10));
+            assert!(Instant::now() < deadline, "the walk never finished");
+            continue;
+        }
+        break;
+    }
+}
+
+/// A walk cancelled mid-way through a large buffer must not leave its
+/// partial `"building"` set to survive into the fresh walk that replaces
+/// it — `bw/reindex!` clears `"building"` in the same install that bumps
+/// `"gen"`, so a word removed by the edit that triggered the reindex can't
+/// resurface from a stale partial scan the old (cancelled) walk already
+/// folded it into.
+#[test]
+fn a_reindex_that_interrupts_a_running_walk_does_not_resurrect_a_removed_word() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    // A small per-tick budget over many lines: the first tick (anchored at
+    // line 0, where "targetword" lives) picks the word up almost
+    // immediately, while the walk as a whole takes many further ticks —
+    // wide enough a window to land the edit below before it finishes.
+    let mut ed = setup(&guard, tmp.path(), Some(r#"(hash "lines" 5)"#));
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    let mut content = "targetword\n".to_string();
+    content.push_str(&"filler\n".repeat(400));
+    std::fs::write(&path, &content).unwrap();
+    open(&mut ed, &path);
+
+    // Give the `on-buffer-open`-triggered walk a few ticks to fold
+    // "targetword" into "building" before interrupting it.
+    ed.settle();
+    std::thread::sleep(Duration::from_millis(80));
+    ed.settle();
+
+    // Delete "targetword" from line 1 — the edit `on-text-changed`'s
+    // debounced `bw/reindex!` restarts the walk over.
+    type_cmd(&mut ed, ":1");
+    ed.feed_key(key('d'));
+    ed.feed_key(key('w'));
+    ed.settle();
+
+    ed.feed_key(key('i'));
+    wait_for_word_gone(&mut ed, "targetword");
+}
+
 #[test]
 fn fuzzy_match_is_opt_in() {
     let tmp = safe_tempdir();

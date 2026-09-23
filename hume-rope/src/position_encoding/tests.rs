@@ -68,6 +68,25 @@ fn char_to_wire_astral_char_diverges_utf8_vs_utf16() {
     );
 }
 
+/// LSP 3.17's third `PositionEncodingKind` — `character` counts Unicode
+/// scalar values (chars), diverging from both `Utf8` (bytes) and `Utf16`
+/// (code units, 2 for a surrogate pair) at the same astral character.
+#[test]
+fn char_to_wire_astral_char_diverges_utf32_from_both() {
+    let text = fixture();
+    // 😀 itself: every encoding agrees at its own start.
+    assert_eq!(
+        char_to_wire(&text, co(6), PositionEncoding::Utf32),
+        wp(2, 0)
+    );
+    // 'd', right after 😀 — Utf32 counts it as 1 char (the whole astral
+    // char, not its 2 UTF-16 units or 4 UTF-8 bytes).
+    assert_eq!(
+        char_to_wire(&text, co(7), PositionEncoding::Utf32),
+        wp(2, 1)
+    );
+}
+
 #[test]
 fn char_to_wire_line_start_and_on_the_newline() {
     let text = fixture();
@@ -164,7 +183,11 @@ fn wire_to_char_counts_a_cr_as_line_content() {
     // char 3 (the `\n`), not to 2 — the `\r` is inside the content, not part
     // of a two-char terminator.
     let text = Rope::from_str("ab\r\ncd\n");
-    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+    for enc in [
+        PositionEncoding::Utf8,
+        PositionEncoding::Utf16,
+        PositionEncoding::Utf32,
+    ] {
         assert_eq!(
             wire_to_char(&text, wp(0, 9_999), enc),
             co(3),
@@ -177,7 +200,11 @@ fn wire_to_char_counts_a_cr_as_line_content() {
 fn wire_to_char_matches_char_to_wire_for_exact_positions() {
     let text = fixture();
     for &idx in &[0usize, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
-        for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        for enc in [
+            PositionEncoding::Utf8,
+            PositionEncoding::Utf16,
+            PositionEncoding::Utf32,
+        ] {
             let pos = char_to_wire(&text, co(idx), enc);
             assert_eq!(
                 wire_to_char(&text, pos, enc),
@@ -222,10 +249,28 @@ fn wire_to_char_clamps_surrogate_pair_split_down_not_mid_char() {
 }
 
 #[test]
+fn wire_to_char_utf32_character_one_is_the_char_after_the_astral_one() {
+    // Line 2 starts with 😀 (char_idx 6). Under Utf16, character=1 lands
+    // mid-surrogate and clamps *down* to 6 (see the sibling test above);
+    // under Utf32, character=1 unambiguously means "1 char past the line
+    // start" — the whole astral char already consumed — landing on 'd'
+    // (char_idx 7), never clamped.
+    let text = fixture();
+    assert_eq!(
+        wire_to_char(&text, wp(2, 1), PositionEncoding::Utf32),
+        co(7)
+    );
+}
+
+#[test]
 fn wire_to_line_char_col_matches_wire_to_char_minus_line_start() {
     let text = fixture();
     for &(line, character) in &[(0usize, 1usize), (1, 3), (2, 2)] {
-        for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+        for enc in [
+            PositionEncoding::Utf8,
+            PositionEncoding::Utf16,
+            PositionEncoding::Utf32,
+        ] {
             let (clamped_line, char_col) = wire_to_line_char_col(&text, wp(line, character), enc);
             assert_eq!(clamped_line.index(), line);
             assert_eq!(
@@ -305,7 +350,11 @@ fn wire_range_to_char_range_reversed_input_is_not_reordered() {
 #[test]
 fn wire_range_to_char_range_round_trips_through_char_range_to_wire_range() {
     let text = fixture();
-    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+    for enc in [
+        PositionEncoding::Utf8,
+        PositionEncoding::Utf16,
+        PositionEncoding::Utf32,
+    ] {
         let wire_range = char_range_to_wire_range(&text, ExclusiveRange::new(co(1), co(8)), enc);
         assert_eq!(
             wire_range_to_char_range(&text, wire_range, enc),
@@ -368,7 +417,11 @@ fn wire_offset_to_char_index_rounds_a_split_char_down_to_its_start() {
 #[test]
 fn wire_offset_to_char_index_clamps_past_the_end_of_the_text() {
     let text = RopeSlice::from(LABEL);
-    for enc in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+    for enc in [
+        PositionEncoding::Utf8,
+        PositionEncoding::Utf16,
+        PositionEncoding::Utf32,
+    ] {
         assert_eq!(wire_offset_to_char_index(text, 9_999, enc), 4);
     }
 }

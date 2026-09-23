@@ -35,41 +35,54 @@ pub fn word_start_before(text: &BufferText, pos: CharOffset, chars: WordChars<'_
     cursor
 }
 
-/// Replaces `back` chars behind each selection's head and `forward` chars
-/// ahead of it with `replacement` — the multi-cursor form of "the user typed
-/// this text here." Used by LSP completion accept, for both a server-provided
-/// `textEdit` range and the `insertText` fallback: a conforming server's
-/// completion range always contains the request position (LSP spec), and the
-/// fallback's `(back, forward)` is derived from the session's own tracked
-/// anchor the same way — either way, a pair derived from one cursor's own
-/// edit is the same char span typing would have consumed at any cursor, so
-/// applying it uniformly gives every cursor the completion, not just the one
-/// the server (or the session) saw.
+/// General multi-cursor "replace around each head" primitive: for every
+/// selection, `start_of(text, i, head)` determines where the deletion begins
+/// and `forward` chars ahead of the head are replaced along with it,
+/// uniformly, by `replacement`. [`replace_around_cursors`] is the common case
+/// (`start_of` is a uniform backward char count) — a server-provided
+/// `textEdit` range, where a conforming server's completion range always
+/// contains the request position (LSP spec), so the primary cursor's own
+/// edit, re-expressed as a char count, is the same span typing would have
+/// consumed at any cursor. LSP completion's `insertText` fallback (no
+/// server-provided range) calls this directly instead: it has no such
+/// uniform-count guarantee, since only the *primary* cursor's token start is
+/// precisely tracked (`CompletionSession`'s own `BufferSpan`) — every other
+/// cursor's own start is instead each cursor's *own* word-boundary scan
+/// (`word_start_before`), matching what typing would actually have produced
+/// there rather than assuming every cursor's preceding text has the same
+/// shape as the primary's.
+///
+/// `text` is *this* call's own live document — already shifted across any
+/// edit applied earlier in the same grouped edit (e.g. `additionalTextEdits`,
+/// landed document-wide before the per-cursor replacement runs) — so a
+/// `start_of` that re-scans it fresh per cursor, rather than working from a
+/// count fixed before that earlier edit landed, risks the scan wandering
+/// into text the earlier edit just inserted. `i` (this cursor's 0-based,
+/// sorted-order index, matching [`apply_edit`]'s own) is threaded through
+/// for exactly that reason: `accept.rs`'s own `start_of` indexes a
+/// per-cursor char *count* it computed once against the pre-edit document,
+/// immune to the shift, rather than reading `text`/`head` at all.
 ///
 /// Two cursors closer together than the resulting span, or a cursor nearer
 /// the buffer start than it, would otherwise produce a delete range starting
 /// before `b.old_pos()` (the previous selection's edit already claimed that
 /// text) — clamped to `b.old_pos()` instead of erroring, so a cramped cursor
 /// simply replaces less and every cursor still receives `replacement`.
-pub fn replace_around_cursors(
+pub fn replace_span_around_cursors(
     text: BufferText,
     sels: SelectionSet,
-    back: usize,
+    start_of: impl Fn(&BufferText, usize, CharOffset) -> CharOffset,
     forward: usize,
     replacement: &str,
 ) -> (BufferText, SelectionSet, ChangeSet) {
-    apply_edit(text, sels, |b, text, _i, sel, new_sels| {
+    apply_edit(text, sels, |b, text, i, sel, new_sels| {
         let head = sel.head();
-        // `head - back`/`head + forward` bound a char span that can land
-        // mid-cluster when this cursor's surrounding text differs from the
-        // one the span was derived from (e.g. a combining mark). Snap
+        // `start_of(i, head)`/`head + forward` bound a char span that can
+        // land mid-cluster when this cursor's surrounding text differs from
+        // the one the span was derived from (e.g. a combining mark). Snap
         // outward — floor `start` down, ceil `end` up — to the enclosing
         // cluster boundary rather than splitting it.
-        //
-        // Saturating, not `retreat`: a cramped cursor's `head` can sit fewer
-        // than `back` chars into the buffer — the `.max(b.old_pos())` clamp
-        // below does the real repair, so this must not panic first.
-        let raw_start = head.retreat_saturating(back);
+        let raw_start = start_of(text, i, head);
         let start = snap_to_cluster_start(text, raw_start).max(b.old_pos());
         // Capped at `len_chars()` (not `len_chars() - 1`) so the boundary
         // lookups below never see an out-of-range offset; the structural
@@ -100,6 +113,34 @@ pub fn replace_around_cursors(
         let sel = Selection::collapsed(b.new_pos());
         new_sels.push(sel);
     })
+}
+
+/// Replaces `back` chars behind each selection's head and `forward` chars
+/// ahead of it with `replacement` — the multi-cursor form of "the user typed
+/// this text here." Used by LSP completion accept for a server-provided
+/// `textEdit` range: a conforming server's completion range always contains
+/// the request position (LSP spec), so a `(back, forward)` pair derived from
+/// one cursor's own edit is the same char span typing would have consumed at
+/// any cursor, and applying it uniformly gives every cursor the completion,
+/// not just the one the server saw.
+pub fn replace_around_cursors(
+    text: BufferText,
+    sels: SelectionSet,
+    back: usize,
+    forward: usize,
+    replacement: &str,
+) -> (BufferText, SelectionSet, ChangeSet) {
+    replace_span_around_cursors(
+        text,
+        sels,
+        // Saturating, not `retreat`: a cramped cursor's `head` can sit fewer
+        // than `back` chars into the buffer — `replace_span_around_cursors`'s
+        // own `.max(b.old_pos())` clamp does the real repair, so this must
+        // not panic first.
+        |_text, _i, head| head.retreat_saturating(back),
+        forward,
+        replacement,
+    )
 }
 
 /// Replace every grapheme in every selection with `ch` (normal-mode `r`).

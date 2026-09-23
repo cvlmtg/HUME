@@ -174,6 +174,15 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
 /// `CompletionHost::completion_set_trigger_chars`'s own doc. Callable from
 /// any context, same as `register-trigger-chars!` (`on-lsp-attach` runs as
 /// plain command context).
+///
+/// Queued as an `Effect`, not applied here — see
+/// `Effect::SetCompletionTriggerChars`'s own doc. This means "does `source`
+/// name a registered `Buffer` source" can no longer be checked synchronously
+/// (an earlier *queued* `register-completion-source!` in the same eval may
+/// supply it): that check moves to apply time, reported as a log message
+/// with the same text `completion_set_trigger_chars` used to return as an
+/// `Err`, rather than raised back to the caller. Argument decoding — a
+/// well-formed `chars` list — still fails synchronously here.
 pub(crate) fn completion_set_trigger_chars(
     ctx: &mut SteelCtx,
     source: SteelVal,
@@ -183,10 +192,12 @@ pub(crate) fn completion_set_trigger_chars(
     let source = string_arg(source, "completion-set-trigger-chars! source")?;
     let language = string_arg(language, "completion-set-trigger-chars! language")?;
     let chars = chars_arg(chars, "completion-set-trigger-chars! chars")?;
-    require_cap(ctx.host.completions(), "completion-set-trigger-chars!")?
-        .completion_set_trigger_chars(&source, &language, chars)
-        .map(|()| SteelVal::Void)
-        .map_err(generic_err)
+    ctx.push_effect(Effect::SetCompletionTriggerChars {
+        source,
+        language,
+        chars,
+    });
+    Ok(SteelVal::Void)
 }
 
 #[cfg(test)]

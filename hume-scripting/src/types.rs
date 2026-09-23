@@ -287,6 +287,20 @@ pub enum Effect {
     /// validation (a callable `proc`, a `#:target` that exists) still fails
     /// synchronously inside the builtin.
     RegisterCompletionSource(crate::host::PendingCompletionSource),
+    /// `(completion-set-trigger-chars! source language chars)` — applied
+    /// into the named `Buffer` source's own trigger-char table. Queued
+    /// alongside [`Effect::RegisterCompletionSource`] for the same ordering
+    /// reason `Effect::UnbindKey` gives for the three binders it follows: a
+    /// source registered earlier in the *same* eval must exist by the time
+    /// this applies, and `ScriptingHost`'s effects are one ordered queue
+    /// applied in emission order — checking the registry synchronously (as
+    /// this builtin used to) raced a same-eval `register-completion-source!`,
+    /// which only takes effect once the whole eval succeeds.
+    SetCompletionTriggerChars {
+        source: String,
+        language: String,
+        chars: Vec<char>,
+    },
 }
 
 /// One entry in the shared effect log (`ScriptingHost::effects`).

@@ -598,3 +598,21 @@ fn draw_menu_box_clips_extra_rows_at_the_bottom_border() {
 
     ");
 }
+
+// ── outer_rows ───────────────────────────────────────────────────────────────
+
+/// A `row_count` well past `u16::MAX` (a large `buffer-words` index on an
+/// empty prefix) must still clamp to `row_cap`, not wrap through a `u16`
+/// truncation before the `min` runs.
+#[test]
+fn outer_rows_clamps_a_huge_row_count_instead_of_wrapping() {
+    // 65_536 is an exact multiple of u16::MAX + 1 — truncating to u16
+    // *before* the min wraps it to 0, which then wins the min against
+    // `row_cap` and produces the wrong (much too small) result.
+    assert_eq!(outer_rows(65_536, MAX_MENU_ROWS), MAX_MENU_ROWS + 2);
+}
+
+#[test]
+fn outer_rows_stays_under_the_cap_for_a_small_row_count() {
+    assert_eq!(outer_rows(3, MAX_MENU_ROWS), 3 + 2);
+}

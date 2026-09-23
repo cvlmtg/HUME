@@ -284,6 +284,83 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
     );
 }
 
+/// A non-path source's candidate that happens to end in `/` (a namespaced
+/// tag, say) must not be treated as a directory to descend into — only
+/// `PATH_SOURCE`/`PATH_DIRS_ONLY_SOURCE` license that. Enter runs the
+/// command line as normal instead of restarting completion. Two candidates
+/// (not one) so the popup stays open after Tab instead of the `:` line's
+/// own single-match eager-apply-and-dismiss closing it before Enter is
+/// even reachable — `enter_on_directory_candidate_restarts_completion_
+/// inside_it`'s own multi-candidate directory hits the same shape.
+#[test]
+fn enter_on_a_non_path_candidate_ending_in_slash_does_not_restart_completion() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "tags"
+             (lambda (id input cursor)
+               (completion-emit! id (list (hash "label" "ns/") (hash "label" "other"))))
+             #:target 'minibuf #:match 'string)
+           (define-typed-command! "tag" "" (lambda (arg) (log! 'info arg)) #:complete "tags")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "tag ");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(
+        minibuf_input(&ed),
+        "tag ns/",
+        "sanity: popup open, first candidate applied"
+    );
+    assert!(
+        ed.state.input.completion().is_some(),
+        "sanity: two candidates keep the popup open"
+    );
+
+    ed.handle_key(key_enter());
+
+    assert!(
+        ed.state.minibuf().is_none(),
+        "Enter must run the command, not descend into \"ns/\" as a directory"
+    );
+    assert_eq!(
+        status(&ed),
+        "ns/",
+        "the typed command ran with its argument"
+    );
+}
+
+/// `arg_span` (a Steel `'minibuf` source's own token) must be the argument
+/// the cursor is *in*, not everything after the command name — a
+/// multi-argument typed command's second argument must not drag the first
+/// one along into the span/filter. Independent oracle: `"bexyz"` only
+/// `starts_with` `"be"` (the second argument alone), never `"alpha be"`
+/// (what a first-space split would wrongly hand over).
+#[test]
+fn a_minibuf_source_gets_only_the_argument_the_cursor_is_in() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "two-arg"
+             (lambda (id input cursor) (completion-emit! id (list (hash "label" "bexyz"))))
+             #:target 'minibuf #:match 'string)
+           (define-typed-command! "mycmd" "" (lambda (arg) (log! 'info arg)) #:complete "two-arg")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "mycmd alpha be");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert_eq!(
+        minibuf_input(&ed),
+        "mycmd alpha bexyz",
+        "only the second argument (\"be\") should have been replaced"
+    );
+}
+
 // ── Buffer-name completion ───────────────────────────────────────────────────
 
 #[test]
@@ -358,6 +435,53 @@ fn completion_accept_on_a_minibuffer_session_errors_instead_of_aborting() {
         status(&ed).contains("not a buffer-target session"),
         "got {:?}",
         status(&ed)
+    );
+    // The error must be checked *before* the session is torn down — a
+    // rejected `completion-accept!` must leave the popup exactly as it
+    // was, not destroy it on the way to discovering it was the wrong call.
+    assert!(
+        ed.state.input.completion().is_some(),
+        "the session must survive a rejected completion-accept!"
+    );
+    ed.handle_key(key_tab());
+    assert_eq!(
+        selected_row(&ed),
+        1,
+        "the popup must still be usable — a follow-up Tab still cycles"
+    );
+}
+
+/// A `Minibuf` source that raises instead of ever calling `completion-emit!`
+/// must not leave the popup stuck pending forever — `drop_stalled_
+/// invocations` clears the slot once the failed call batch is reported, so
+/// `settle_minibuf_session` runs its ordinary "nothing landed" policy
+/// (dismiss) instead of `is_pending()` staying `true` with no source left
+/// that will ever answer.
+#[test]
+fn a_raising_minibuf_source_does_not_leave_the_popup_stuck_pending() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[h]>ello\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(register-completion-source! "boom"
+             (lambda (id input cursor) (error "boom"))
+             #:target 'minibuf #:match 'string)
+           (define-typed-command! "mycmd" "" (lambda (arg) (log! 'info arg)) #:complete "boom")"#,
+    );
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "mycmd ");
+    ed.handle_key(key_tab());
+    ed.settle();
+    assert!(
+        status(&ed).contains("boom"),
+        "sanity: the error was reported: {:?}",
+        status(&ed)
+    );
+    assert!(
+        ed.state.input.completion().is_none(),
+        "a source that will never answer must not leave the popup stuck \
+         pending forever"
     );
 }
 
