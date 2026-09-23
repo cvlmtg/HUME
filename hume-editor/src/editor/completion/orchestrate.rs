@@ -439,12 +439,16 @@ fn invoke_buffer_sources(
 ) -> Vec<SteelCall> {
     let buf = buffers.get(bid);
     let text = buf.text();
+    // Every source shares one token: the word before the cursor. Computed
+    // once here rather than per source in the loop below — neither
+    // `effective_word_chars` nor the `word_start_before` scan depends on
+    // which source is being invoked.
+    let chars = crate::editor::commands::effective_word_chars(buf, settings);
+    let live = hume_ops::edit::word_start_before(text, head, chars)..head;
     ids.iter()
         .filter_map(|&id| {
             let entry = sources.buffer_get(id);
-            let chars = crate::editor::commands::effective_word_chars(buf, settings);
-            let live = hume_ops::edit::word_start_before(text, head, chars)..head;
-            let invocation = Invocation::buffer(text.rope().clone(), head, live);
+            let invocation = Invocation::buffer(text.rope().clone(), head, live.clone());
             let prefix = invocation.prefix(text);
             let invocation_id = session.invoke_buffer(id, invocation)?;
             Some((

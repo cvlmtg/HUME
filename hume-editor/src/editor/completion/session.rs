@@ -314,7 +314,11 @@ impl Invocation<BufferSpan> {
             end_before
         };
         *range = start..end;
-        doc.cs_since = doc.cs_since.clone().compose(cs.clone());
+        // `compose` takes `self` by value; swap the accumulated changeset
+        // out (rather than cloning its whole op list, including every
+        // typed-text `Insert` op, just to feed it in) and compose in place.
+        let prev = std::mem::replace(&mut doc.cs_since, ChangeSet::identity(0));
+        doc.cs_since = prev.compose(cs.clone());
         !crossed
     }
 
@@ -846,6 +850,25 @@ impl CompletionSession {
         let Target::Buffer { slots, .. } = &self.target else {
             return;
         };
+        // The highest priority among every shown item (plain or not, any
+        // slot) carrying a given `filter_text` — O(total items), not the
+        // O(items²) an all-pairs scan across slots costs (a 20k-word
+        // buffer-words slot against a 1k-item LSP slot is ~20M string
+        // compares per landed answer with the naive version). A slot's own
+        // priority never exceeds its own contribution to this map, so
+        // below, a strict `>` against it already excludes comparing a slot
+        // against itself — no separate index check needed.
+        let mut max_priority: rustc_hash::FxHashMap<&str, i64> = rustc_hash::FxHashMap::default();
+        for slot in slots {
+            let Some(inv) = &slot.shown else { continue };
+            let priority = sources.buffer_get(slot.source).priority;
+            for item in inv.items() {
+                max_priority
+                    .entry(item.filter_text.as_str())
+                    .and_modify(|p| *p = (*p).max(priority))
+                    .or_insert(priority);
+            }
+        }
         for (s, slot) in slots.iter().enumerate() {
             let Some(inv) = &slot.shown else { continue };
             let priority = sources.buffer_get(slot.source).priority;
@@ -853,15 +876,9 @@ impl CompletionSession {
                 if !item.is_plain() {
                     continue;
                 }
-                let outranked = slots.iter().enumerate().any(|(s2, slot2)| {
-                    s2 != s
-                        && sources.buffer_get(slot2.source).priority > priority
-                        && slot2.shown.as_ref().is_some_and(|inv2| {
-                            inv2.items()
-                                .iter()
-                                .any(|item2| item2.filter_text == item.filter_text)
-                        })
-                });
+                let outranked = max_priority
+                    .get(item.filter_text.as_str())
+                    .is_some_and(|&p| p > priority);
                 if outranked {
                     self.dedup_hidden.insert((s as u32, i as u32));
                 }
