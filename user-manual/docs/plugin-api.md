@@ -259,7 +259,9 @@ Covered with examples in [Filesystem and processes](plugins.md#filesystem-and-pr
 
 Covered with examples, including hunk shapes, in [Comparing text](plugins.md#comparing-text).
 
-## Word tokenization
+## Text & strings
+
+Everyday string work — trimming, splitting on a separator, case conversion, prefix/suffix tests, search and replace — uses Steel's own string functions directly; see Steel's [string reference](https://mattwparas.github.io/steel/book/builtins/steel_strings.html). `string-length`, `substring`, and `string-ref` count Unicode characters (codepoints), not bytes and not on-screen columns.
 
 | Call | Effect |
 |------|--------|
@@ -273,10 +275,9 @@ Covered with examples, including hunk shapes, in [Comparing text](plugins.md#com
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
-| `(json-parse str)` | Decode a JSON string — an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively, and top-level `null` is void |
 | `(hume-target)` | Install-target identifier for the current platform — one of `"darwin-arm64"`, `"darwin-x64"`, `"linux-x64"`, `"windows-x64"` — or `#f` on any other platform |
 
-`json-parse` and the pattern for reading a plugin's own files are covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
+The pattern for reading a plugin's own files is covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
 ## JSON handles
 
@@ -293,6 +294,7 @@ the `err`/`res` distinction in practice.
 
 | Call | Effect |
 |------|--------|
+| `(json-parse str)` | Decode a JSON string — an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively, and top-level `null` is void |
 | `(json-ref j seg ...)` | Look up a path of string keys / integer indices inside handle `j`. A nested object or array field comes back as another handle; a scalar field comes back as a native string/number/boolean; a `null` field comes back as void. Errors, naming the full path, on a missing key, an out-of-range index, or indexing into the wrong container kind |
 | `(json-ref-or j default seg ...)` | `json-ref`, but `default` in place of erroring when the path doesn't resolve — a present `null` still comes back as void, not `default` |
 | `(json-contains? j seg ...)` | `#t` iff the path resolves — a `null` value at the end still counts as present |
