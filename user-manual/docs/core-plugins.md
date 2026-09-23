@@ -42,13 +42,13 @@ PLUM never installs anything on its own: the commands below do the work when you
 | `:plum-cleanup-plugins` | Remove on-disk plugins no longer declared |
 | `:plum-update-plugins` | Pull the latest version of every installed third-party plugin |
 | `:plum-list-plugins` | Show declared / installed / orphan / missing plugins |
-| `:plum-install-grammar <lang>` | Install and compile one grammar |
+| `:plum-install-grammar <lang>` | Install and compile one grammar — Tab-completes declared grammar names |
 | `:plum-list-grammars` | Show the grammar catalog and what's installed |
 | `:plum-cleanup-grammars` | Remove compiled grammars you no longer need |
 | `:plum-install-theme <user/repo>` | Install (or reinstall) a theme repo's themes |
 | `:plum-update-themes` | Pull the latest version of every installed theme repo |
 | `:plum-list-themes` | Show installed theme repos and the themes each provides |
-| `:plum-remove-theme <user/repo>` | Remove an installed theme repo |
+| `:plum-remove-theme <user/repo>` | Remove an installed theme repo — Tab-completes installed slugs |
 
 `plum-ensure-grammars` — install a list of grammars not yet compiled — is for `init.scm`, not the command mode prompt; it takes a list argument.
 
