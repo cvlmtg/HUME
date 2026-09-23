@@ -170,19 +170,19 @@ pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
         .map_err(generic_err)
 }
 
-/// `(completion-set-trigger-chars! source language chars)` — see
-/// `CompletionHost::completion_set_trigger_chars`'s own doc. Callable from
-/// any context, same as `register-trigger-chars!` (`on-lsp-attach` runs as
-/// plain command context).
+/// `(completion-set-trigger-chars! source language chars)` — a `'buffer`
+/// completion source's own trigger characters for `language`, replacing
+/// that pair's previous set (`SourceRegistry::set_buffer_trigger_chars`).
+/// Callable from any context, same as `register-trigger-chars!`
+/// (`on-lsp-attach` runs as plain command context).
 ///
 /// Queued as an `Effect`, not applied here — see
-/// `Effect::SetCompletionTriggerChars`'s own doc. This means "does `source`
-/// name a registered `Buffer` source" can no longer be checked synchronously
+/// `Effect::SetCompletionTriggerChars`'s own doc. Whether `source` names a
+/// registered `Buffer` source can only be checked once the effect applies
 /// (an earlier *queued* `register-completion-source!` in the same eval may
-/// supply it): that check moves to apply time, reported as a log message
-/// with the same text `completion_set_trigger_chars` used to return as an
-/// `Err`, rather than raised back to the caller. Argument decoding — a
-/// well-formed `chars` list — still fails synchronously here.
+/// be the one supplying it): a miss is reported as a log message there,
+/// never raised back to the caller. Argument decoding — a well-formed
+/// `chars` list — still fails synchronously here.
 pub(crate) fn completion_set_trigger_chars(
     ctx: &mut SteelCtx,
     source: SteelVal,

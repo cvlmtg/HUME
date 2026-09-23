@@ -2,7 +2,7 @@
 //! the `:` command line), on one model:
 //!
 //! - `registry.rs` — every *source*, native or Steel-registered, keyed by
-//!   name: what it targets, where its token starts, how its items score.
+//!   name: what it targets, how its items score.
 //! - `session.rs` — the one open *session*: each participating source's
 //!   latest invocation (the document it saw, the span it answered for, its
 //!   items), ranked per keystroke against each source's own token;

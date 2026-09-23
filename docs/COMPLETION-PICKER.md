@@ -140,10 +140,12 @@ which:
    (text inserted exactly at the token's start belongs to the token), `end`
    with `Assoc::After` (text typed at its end extends it);
 2. drops a slot's answer if the cursor left its token (`head ∉ [start,
-   end]`) or the character *before* the token was deleted — detected by
-   `start` and `start - 1` mapping to the same live position, which a
-   deletion elsewhere (a second cursor's, say) cannot cause. Deleting the
-   token's own first char stays inside it; a slot narrowed to zero *matches*
+   end]`) or the character *before* the token was deleted — detected via
+   `PosMapCursor::map_anchor`'s `anchor_deleted` on `start - 1`, which
+   answers "was the token's own start character deleted?" directly, rather
+   than inferring it from two positions mapping to the same spot (a
+   deletion elsewhere, a second cursor's, say, cannot trigger it). Deleting
+   the token's own first char stays inside it; a slot narrowed to zero *matches*
    is still live (Backspace brings its items back). A dropped slot also
    rebuilds the cross-source dedup mask (Q-A1, below) — the item set it
    compared against changed;
@@ -213,7 +215,7 @@ the sources with a ranked candidate.
 | `(completion-emit! id items #:incomplete [#f])` | the one way items enter a session; `#f` once `id` is stale |
 | `(completion-top n)`, `(completion-accept! idx)`, `(completion-dismiss!)` | unchanged |
 | `(register-trigger-chars! source language chars)` + `on-trigger-char` | shared, listener-agnostic table (signature help uses it) — *not* how a `'buffer` completion source's own trigger chars are joined |
-| `(completion-set-trigger-chars! source language chars)` | a `'buffer` completion source's own trigger chars for `language`, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. `Err` when `source` names no registered `'buffer` source |
+| `(completion-set-trigger-chars! source language chars)` | a `'buffer` completion source's own trigger chars for `language`, replacing that pair's previous set; the editor invokes `source` directly when one lands, no hook round trip. Crosses as `Effect::SetCompletionTriggerChars` (a `register-completion-source!` queued earlier in the same eval may still be the one supplying `source`); `source` naming no registered `'buffer` source at apply time is reported as a log message, not raised back to the caller |
 | `(define-typed-command! … #:complete "name")` | a `:` command's argument completer |
 | command `completion-trigger` (Insert, default `Ctrl-Space`) | native; `(call! "completion-trigger")` from Steel |
 

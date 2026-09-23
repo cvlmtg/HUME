@@ -131,7 +131,7 @@ pub(crate) fn band_visible_rows(content_rows: usize, chrome_rows: u16, max: u16)
 
 /// The `[start, end)` window of `max_height` entries out of `total`,
 /// starting as close to `desired_start` as the total allows — clamped so the
-/// window never runs past the end. Resolved on the *write* side now (every
+/// window never runs past the end. Resolved on the write side (every
 /// `resolve_popup`/`resolve_band`/`resolve_menu` caller), not at paint time:
 /// a menu passes `selected.saturating_sub(max_height / 2)` to keep the
 /// selected row anchored near the window's center; a plain popup passes its

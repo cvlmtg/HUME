@@ -298,11 +298,10 @@ impl Invocation<BufferSpan> {
         // boundary, masking the "cursor left the token" case this span
         // exists to detect. An *empty* token (`range` was already
         // zero-width — no word typed yet, matching every candidate) has no
-        // word for a non-word char to violate, so it keeps the old
-        // unconditional behavior: it stays "live" (chasing the cursor)
-        // until something more definite ends it (a start-side Backspace,
-        // an out-of-band cursor jump), the same as any other source not
-        // yet narrowed by typing.
+        // word for a non-word char to violate, so it stays "live" (chasing
+        // the cursor) unconditionally until something more definite ends
+        // it (a start-side Backspace, an out-of-band cursor jump), the
+        // same as any other source not yet narrowed by typing.
         let end = if range.start == range.end
             || (end_after > end_before
                 && token_text(text, end_before, end_after)

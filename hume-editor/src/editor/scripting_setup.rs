@@ -124,10 +124,10 @@ impl Editor {
                     language,
                     chars,
                 } => {
-                    // The "does `source` exist" check moved here from the
-                    // builtin (`completion.rs`'s own doc) — an earlier
-                    // effect in this same batch may have just registered
-                    // it, so this can't run any sooner.
+                    // Checked at apply time, not by the builtin that queued
+                    // this effect: an earlier effect in the same batch may
+                    // have just registered `source`, so whether it exists
+                    // can't be known any sooner than this.
                     if let Err(e) = self
                         .state
                         .config

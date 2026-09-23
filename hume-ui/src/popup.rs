@@ -340,8 +340,7 @@ impl BottomBandProvider for PopupBandWidget {
 /// budget. Three facts about the cursor — no per-widget size cap here: a
 /// popup wraps to ⅓ pane height and `MAX_POPUP_WIDTH`, a menu doesn't wrap
 /// at all and uses `MAX_MENU_ROWS` instead, so folding either onto this
-/// shared value would leave the other caller discarding it (as the old
-/// combined 4-tuple this replaced did for its two menu-shaped callers).
+/// shared value would leave the other caller discarding it.
 #[derive(Clone, Copy)]
 pub struct PopupPlacement {
     pub anchor: (u16, u16),

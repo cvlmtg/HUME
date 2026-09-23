@@ -188,9 +188,8 @@ impl CompletionItem {
     }
 
     /// Whether accepting this item would change nothing beyond leaving
-    /// `typed` in place — `rank` drops these before scoring, so a source
-    /// doesn't have to filter its own already-typed token back out by hand
-    /// (three call sites did, independently, before this method existed).
+    /// `typed` in place — `rank` drops these before scoring, so no source
+    /// has to filter its own already-typed token back out by hand.
     ///
     /// An LSP item survives this by construction, not by exemption: HUME
     /// advertises no `completionItem.resolveSupport`
