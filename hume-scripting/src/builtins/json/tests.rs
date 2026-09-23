@@ -8,18 +8,23 @@ fn steel_list(vals: Vec<SteelVal>) -> SteelVal {
 }
 
 #[test]
-fn parses_a_nested_object() {
+fn parses_a_nested_object_into_a_json_handle() {
     let result = json_parse(r#"{"a": [1, 2], "b": {"c": true}}"#.into_steelval().unwrap())
         .expect("well-formed JSON must parse");
-    let SteelVal::HashMapV(hm) = result else {
-        panic!("expected a hashmap");
-    };
-    assert_eq!(
-        hm.get(&SteelVal::StringV("a".into())),
-        Some(&SteelVal::ListV(
-            vec![SteelVal::IntV(1), SteelVal::IntV(2)].into()
-        ))
-    );
+    let handle = downcast_json_handle(&result).expect("top-level object must be a JsonHandle");
+    assert_eq!(handle.value(), &json!({"a": [1, 2], "b": {"c": true}}));
+}
+
+#[test]
+fn parses_a_top_level_scalar_natively() {
+    let result = json_parse("42".into_steelval().unwrap()).expect("well-formed JSON must parse");
+    assert_eq!(result, SteelVal::IntV(42));
+}
+
+#[test]
+fn parses_top_level_null_as_void() {
+    let result = json_parse("null".into_steelval().unwrap()).expect("well-formed JSON must parse");
+    assert!(matches!(result, SteelVal::Void));
 }
 
 #[test]

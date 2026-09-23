@@ -273,7 +273,7 @@ Covered with examples, including hunk shapes, in [Comparing text](plugins.md#com
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg ...)` | Join path segments with the OS-native separator |
 | `(path->display path)` | Run an absolute `path` string through HUME's display-form pipeline (Windows `\\?\` stripping, `~`-collapse); no filesystem access |
-| `(json-parse str)` | Decode a JSON string into hashmaps/lists/strings/numbers/booleans |
+| `(json-parse str)` | Decode a JSON string — an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively, and top-level `null` is void |
 | `(hume-target)` | Install-target identifier for the current platform — one of `"darwin-arm64"`, `"darwin-x64"`, `"linux-x64"`, `"windows-x64"` — or `#f` on any other platform |
 
 `json-parse` and the pattern for reading a plugin's own files are covered in [Filesystem and processes](plugins.md#filesystem-and-processes).

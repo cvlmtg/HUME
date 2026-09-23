@@ -371,7 +371,7 @@ A few extra functions cover things Scheme has no way to know on its own:
 | `(data-dir)` | HUME's data directory, or `#f` if unavailable |
 | `(runtime-dir)` | HUME's runtime directory, or `#f` if unavailable |
 | `(path-join seg…)` | Join path segments with the OS-native separator |
-| `(json-parse str)` | Decode a JSON string into hashmaps/lists/strings/numbers/booleans — errors on malformed input |
+| `(json-parse str)` | Decode a JSON string — an object/array becomes a JSON handle (read with `json-ref`/`json-contains?`/`json-list`), a scalar crosses natively — errors on malformed input |
 
 `run-inline-output!` also takes a `#:cwd` keyword to set the working directory, and raises an error if the command exits non-zero — wrap it in a handler if a failure is expected.
 
