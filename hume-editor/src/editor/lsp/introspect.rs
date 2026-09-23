@@ -95,13 +95,14 @@ pub(in crate::editor) fn completion_resolve_provider(lsp: &LspState, server: Ser
 
 /// The server's raw wire capabilities — see `LspClient::capabilities_json`'s
 /// doc comment for why this, not the typed decode, is what
-/// `(lsp-capabilities …)` must hand to Steel.
+/// `(lsp-capabilities …)` must hand to Steel. `Arc`-wrapped: this clone is
+/// just a refcount bump, not a deep copy of the capabilities blob.
 pub(in crate::editor) fn capabilities(
     state: &EditorState,
     lsp: &LspState,
     focused_bid: BufferId,
     server: Option<&str>,
-) -> Option<serde_json::Value> {
+) -> Option<std::sync::Arc<serde_json::Value>> {
     let sid = resolve_server(state, lsp, focused_bid, server).ok()?;
     lsp.servers.get(&sid)?.client.capabilities_json().cloned()
 }

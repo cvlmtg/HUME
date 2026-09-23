@@ -175,7 +175,7 @@ Every Steel-visible surface the LSP platform introduces — the lookup table for
 | `(lsp-request server method params callback #:allow-stale bool #:supersede string #:raw bool)` — `#:raw #t` delivers a real (non-null) response as one opaque handle instead of the ordinary decode; see the "`lsp-request` result representation" decision row above | builtin |
 | `(lsp-notify server method params)` | builtin |
 | `(on-lsp-notification method handler)` | builtin |
-| `(lsp-capabilities server)` → decoded caps or `#f` | builtin |
+| `(lsp-capabilities server)` → a `JsonHandle` onto the server's wire `ServerCapabilities`, or `#f` | builtin |
 | `(lsp-server-status)` → list of status records | builtin |
 | `(lsp-server-for-buffer bid)` → server name or `#f` | builtin |
 | `(buffer-generation bid)` → int | builtin |

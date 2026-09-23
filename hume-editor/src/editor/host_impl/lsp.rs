@@ -6,7 +6,7 @@ use super::EditorHostImpl;
 use hume_scripting::host::{LocationDisplay, LspHost};
 
 impl<'a> LspHost for EditorHostImpl<'a> {
-    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value> {
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<std::sync::Arc<serde_json::Value>> {
         let lsp = self.lsp.as_deref()?;
         let bid = crate::editor::commands::focused_buffer_id(self.state, self.view);
         crate::editor::lsp::introspect::capabilities(self.state, lsp, bid, server)

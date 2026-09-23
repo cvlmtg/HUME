@@ -6,11 +6,13 @@
          lsp/setup-trigger-chars! lsp/format-position lsp/cap-field lsp/cap-flag?)
 
 ;; ── Capability guard ────────────────────────────────────────────────────────
+;;; `caps`, throughout this section, is `#f` or the JSON handle
+;;; `(lsp-capabilities …)` returns onto the server's wire `ServerCapabilities`.
 
 (define (lsp/caps-has-cap? caps cap-key)
   (and caps
-       (hash-contains? caps cap-key)
-       (not (equal? (hash-ref caps cap-key) #f))))
+       (json-contains? caps cap-key)
+       (not (equal? (json-ref caps cap-key) #f))))
 
 (define (lsp/supports? cap-key)
   (lsp/caps-has-cap? (lsp-capabilities #f) cap-key))
@@ -28,11 +30,15 @@
                            (let ((name (lsp-server-for-buffer (current-buffer))))
                              (if name name "server"))))))
 
+;;; `field`'s value inside `cap-key`'s CapabilityOptions object (a scalar —
+;;; a native value, never a container — `"resolveProvider"`/`"rangesSupport"`,
+;;; the only two `field`s any caller reads), or `default` when `cap-key` is
+;;; absent or is a bare boolean rather than an options object.
 (define (lsp/cap-field caps cap-key field default)
-  (if (and caps (hash-contains? caps cap-key))
-      (let ((cap (hash-ref caps cap-key)))
-        (if (and (hash? cap) (hash-contains? cap field))
-            (hash-ref cap field)
+  (if (and caps (json-contains? caps cap-key))
+      (let ((cap (json-ref caps cap-key)))
+        (if (and (json-object? cap) (json-contains? cap field))
+            (json-ref cap field)
             default))
       default))
 
@@ -54,9 +60,16 @@
   (register-hook! 'on-lsp-attach
     (lambda (bid server-name)
       (let ((caps (lsp-capabilities server-name)))
-        (when (and caps (hash-contains? caps cap-key))
-          (set-chars! server-name
-            (append extra-chars (lsp/cap-field caps cap-key "triggerCharacters" (list))))))))
+        (when (and caps (json-contains? caps cap-key))
+          ;; "triggerCharacters" is a JSON array, unlike lsp/cap-field's
+          ;; other (scalar) callers — unpacked to a Steel list of strings
+          ;; here, at this one call site, rather than folding an
+          ;; array-vs-scalar branch into lsp/cap-field's own contract.
+          (let* ((cap (json-ref caps cap-key))
+                 (trigger-chars (if (and (json-object? cap) (json-contains? cap "triggerCharacters"))
+                                     (json-list (json-ref cap "triggerCharacters"))
+                                     (list))))
+            (set-chars! server-name (append extra-chars trigger-chars)))))))
   (register-hook! 'on-lsp-detach
     (lambda (bid server-name)
       (set-chars! server-name '())))

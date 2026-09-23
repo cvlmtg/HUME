@@ -151,7 +151,7 @@ These are editor-builtin commands any LSP plugin can drive — an LSP plugin reg
 | `(lsp-request server method params callback #:allow-stale #:supersede #:raw)` | Send a raw request to `server` (a registered language name, or `#f` for the focused buffer's server); `callback` is `(lambda (err result) ...)`. `#:raw #t` delivers a real response as an opaque value instead of decoding it into a hashmap — pass it straight to `completion-emit!` rather than reading it yourself |
 | `(lsp-notify server method params)` | Fire-and-forget notification, no callback |
 | `(on-lsp-notification method handler)` | Register `handler` — `(lambda (server params) ...)` — for every `method` notification HUME doesn't already special-case (`window/logMessage`, `window/showMessage`, `$/progress`, `publishDiagnostics`) |
-| `(lsp-capabilities server)` | Decoded `ServerCapabilities` hashmap, or `#f` if unresolved or mid-handshake |
+| `(lsp-capabilities server)` | A JSON handle onto the server's `ServerCapabilities` (read with `json-ref`/`json-contains?`), or `#f` if unresolved or mid-handshake |
 | `(lsp-server-status)` | List of `{"language" "root" "state" "pending"}` hashmaps, one per registered server |
 | `(lsp-server-for-buffer bid)` | Registered language name attached to `bid`, or `#f` |
 | `(lsp-registered-for-language? language)` | `#t` if a server is registered for `language` |

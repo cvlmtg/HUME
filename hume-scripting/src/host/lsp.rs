@@ -1,13 +1,17 @@
 //! LSP server introspection.
 
+use std::sync::Arc;
+
 use hume_engine::pipeline::BufferId;
 
 /// LSP server introspection — accessed through [`EditorHost::lsp`](super::EditorHost::lsp).
 pub trait LspHost {
-    /// Decoded `ServerCapabilities` for `server` (a registered language name,
-    /// or `None` for the focused buffer's attached server) — `None` if
+    /// The wire `ServerCapabilities` for `server` (a registered language
+    /// name, or `None` for the focused buffer's attached server) — `None` if
     /// unresolvable or the server hasn't finished its handshake yet.
-    fn lsp_capabilities(&self, server: Option<&str>) -> Option<serde_json::Value>;
+    /// `Arc`-wrapped so the `JsonHandle` `(lsp-capabilities …)` hands Steel
+    /// shares this allocation instead of a value rebuilt per call.
+    fn lsp_capabilities(&self, server: Option<&str>) -> Option<Arc<serde_json::Value>>;
 
     /// One entry per running (language, root) server.
     fn lsp_server_status(&self) -> Vec<crate::types::LspServerStatusEntry>;

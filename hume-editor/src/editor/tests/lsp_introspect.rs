@@ -52,7 +52,7 @@ fn lsp_capabilities_reads_raw_wire_caps_after_handshake() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (hash-ref (lsp-capabilities #f) "hoverProvider") #t)"#,
+        r#"(equal? (json-ref (lsp-capabilities #f) "hoverProvider") #t)"#,
     );
     assert!(
         fired,
@@ -82,8 +82,7 @@ fn lsp_capabilities_surfaces_a_field_lsp_types_does_not_model() {
         &mut ed,
         ScriptingHost::new(),
         tmp.path(),
-        r#"(equal? (hash-ref (hash-ref (lsp-capabilities #f) "documentRangeFormattingProvider")
-                             "rangesSupport")
+        r#"(equal? (json-ref (lsp-capabilities #f) "documentRangeFormattingProvider" "rangesSupport")
                    #t)"#,
     );
     assert!(

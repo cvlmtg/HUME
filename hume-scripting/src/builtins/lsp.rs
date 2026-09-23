@@ -3,6 +3,8 @@
 //! completion, edit/navigation primitives, and the minibuffer prompt live in
 //! their own modules — LSP is a client of those, not their owner.
 
+use std::sync::Arc;
+
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -19,10 +21,22 @@ use super::errors::generic_err;
 
 /// `Some(json)` → decoded to a Steel hashmap; `None` (unresolvable, no
 /// attached server, handshake incomplete, …) → `#f`. Shared by the three
-/// introspection builtins below.
+/// params-builder introspection builtins below — every field in these is
+/// HUME-computed, not server JSON, so they stay a native decode; see
+/// `handle_or_false` for `lsp-capabilities`, which isn't.
 fn json_or_false(json: Option<serde_json::Value>) -> SteelVal {
     match json {
         Some(json) => json_to_steel(&json),
+        None => SteelVal::BoolV(false),
+    }
+}
+
+/// `Some(json)` → an opaque `JsonHandle` sharing `json`'s own `Arc`; `None`
+/// → `#f`. `lsp-capabilities`'s own converter — the server's own wire JSON,
+/// unlike the params builders `json_or_false` serves.
+fn handle_or_false(json: Option<Arc<serde_json::Value>>) -> SteelVal {
+    match json {
+        Some(json) => crate::json::to_steel_handle(json),
         None => SteelVal::BoolV(false),
     }
 }
@@ -207,11 +221,12 @@ pub(crate) fn on_lsp_notification(
     Ok(SteelVal::Void)
 }
 
-/// `(lsp-capabilities server)` → decoded `ServerCapabilities` hashmap, or
-/// `#f` if `server` doesn't resolve or hasn't finished its handshake.
+/// `(lsp-capabilities server)` → an opaque `JsonHandle` onto the server's
+/// wire `ServerCapabilities`, or `#f` if `server` doesn't resolve or hasn't
+/// finished its handshake. Read it with `json-ref`/`json-contains?`.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     let server = optional_string_arg(server, "lsp-capabilities server")?;
-    Ok(json_or_false(
+    Ok(handle_or_false(
         ctx.host
             .lsp()
             .and_then(|lsp| lsp.lsp_capabilities(server.as_deref())),

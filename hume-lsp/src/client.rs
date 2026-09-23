@@ -3,6 +3,7 @@
 
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use hume_rope::position_encoding::PositionEncoding;
@@ -211,7 +212,10 @@ pub struct LspClient {
     /// drops any field the pinned `lsp_types` version doesn't model (e.g.
     /// LSP 3.18's `documentRangeFormattingProvider.rangesSupport`), and
     /// `(lsp-capabilities …)` must hand Steel the wire value verbatim.
-    caps_json: Option<serde_json::Value>,
+    /// `Arc`-wrapped so every capability-guarded command's read of it (a
+    /// `JsonHandle`, once it crosses to Steel) shares this one allocation
+    /// instead of cloning the whole capabilities blob per read.
+    caps_json: Option<Arc<serde_json::Value>>,
     /// Negotiated position encoding; UTF-16 until `initialize` proves UTF-8.
     /// A decode-once cache of `caps.position_encoding` — `handle_initialize_
     /// response` is the only writer of either field, an invariant field
@@ -275,7 +279,7 @@ impl LspClient {
     }
 
     /// See `caps_json`'s doc comment.
-    pub fn capabilities_json(&self) -> Option<&serde_json::Value> {
+    pub fn capabilities_json(&self) -> Option<&Arc<serde_json::Value>> {
         self.caps_json.as_ref()
     }
 
@@ -607,8 +611,11 @@ impl LspClient {
                 }];
             }
         };
-        // Captured before `from_value` below consumes `value`.
-        let raw_caps = value.get("capabilities").cloned();
+        // Captured before `from_value` below consumes `value`. Arc-wrapped
+        // here, at the one clone this data ever needs — every later read
+        // (`capabilities_json`, and the `JsonHandle` it becomes crossing to
+        // Steel) shares this allocation instead of cloning again.
+        let raw_caps = value.get("capabilities").cloned().map(Arc::new);
         let parsed: InitializeResult = match serde_json::from_value(value) {
             Ok(r) => r,
             Err(e) => {
