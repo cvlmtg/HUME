@@ -163,7 +163,6 @@ pub(in crate::editor::completion) struct MinibufTarget {
 /// scalar shift.
 struct DocSnapshot {
     rope: ropey::Rope,
-    head: CharOffset,
     cs_since: ChangeSet,
 }
 
@@ -230,21 +229,14 @@ impl<S> Invocation<S> {
 
 impl Invocation<BufferSpan> {
     /// A `Buffer`-target invocation. `live` is the word before the cursor —
-    /// every buffer source's token rule.
-    pub(in crate::editor) fn buffer(
-        rope: ropey::Rope,
-        head: CharOffset,
-        live: Range<CharOffset>,
-    ) -> Self {
+    /// every buffer source's token rule — so `live.end` *is* the cursor at
+    /// invoke time; there is no separate "head" to track alongside it.
+    pub(in crate::editor) fn buffer(rope: ropey::Rope, live: Range<CharOffset>) -> Self {
         let cs_since = ChangeSet::identity(rope.len_chars());
         Self {
             id: widget_token::next(),
             span: BufferSpan {
-                doc: DocSnapshot {
-                    rope,
-                    head,
-                    cs_since,
-                },
+                doc: DocSnapshot { rope, cs_since },
                 live,
             },
             state: InvocationState::Pending,
@@ -252,10 +244,10 @@ impl Invocation<BufferSpan> {
     }
 
     /// The seeded filter text for this invocation — `text[live.start ..
-    /// head]` as of the invoke — handed to a Steel source as its `prefix`
-    /// argument.
+    /// live.end]` as of the invoke — handed to a Steel source as its
+    /// `prefix` argument.
     pub(in crate::editor) fn prefix(&self, text: &BufferText) -> String {
-        token_text(text, self.span.live.start, self.span.doc.head)
+        token_text(text, self.span.live.start, self.span.live.end)
     }
 
     /// Composes `cs` into this invocation's snapshot and remaps its live

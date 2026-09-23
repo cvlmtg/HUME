@@ -82,7 +82,6 @@ fn invoke_and_answer(
 ) {
     let inv = Invocation::buffer(
         text.rope().clone(),
-        CharOffset::new(head),
         CharOffset::new(start)..CharOffset::new(head),
     );
     let id = session.invoke_buffer(source, inv).expect("buffer session");
@@ -265,7 +264,7 @@ fn an_item_with_edits_is_never_hidden_as_a_duplicate() {
     let reg = registry(&[("lo", 0), ("hi", 10)]);
     let (mut session, text) = buffer_session("\n");
     let head = CharOffset::new(0);
-    let inv = Invocation::buffer(text.rope().clone(), head, head..head);
+    let inv = Invocation::buffer(text.rope().clone(), head..head);
     let id = session
         .invoke_buffer(id_of(&reg, "lo"), inv)
         .expect("buffer session");
@@ -383,11 +382,7 @@ fn backspacing_past_the_dropped_word_brings_it_back() {
 fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
-    let inv = Invocation::buffer(
-        text.rope().clone(),
-        CharOffset::new(3),
-        CharOffset::new(0)..CharOffset::new(3),
-    );
+    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
     let id = session
         .invoke_buffer(id_of(&reg, "s"), inv)
         .expect("buffer session");
@@ -409,11 +404,7 @@ fn an_item_with_a_text_edit_is_kept_even_if_its_insert_text_matches() {
 fn an_item_with_additional_text_edits_is_kept_even_if_its_insert_text_matches() {
     let reg = registry(&[("s", 0)]);
     let (mut session, text) = buffer_session("cat\n");
-    let inv = Invocation::buffer(
-        text.rope().clone(),
-        CharOffset::new(3),
-        CharOffset::new(0)..CharOffset::new(3),
-    );
+    let inv = Invocation::buffer(text.rope().clone(), CharOffset::new(0)..CharOffset::new(3));
     let id = session
         .invoke_buffer(id_of(&reg, "s"), inv)
         .expect("buffer session");
@@ -446,13 +437,13 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
     let first = session
         .invoke_buffer(
             src,
-            Invocation::buffer(text.rope().clone(), head, head..head),
+            Invocation::buffer(text.rope().clone(), head..head),
         )
         .expect("buffer session");
     let second = session
         .invoke_buffer(
             src,
-            Invocation::buffer(text.rope().clone(), head, head..head),
+            Invocation::buffer(text.rope().clone(), head..head),
         )
         .expect("buffer session");
     assert!(!session.contribute(&reg, first, items(&["stale"]), false));
@@ -470,7 +461,7 @@ fn a_repeated_answer_for_the_latest_invocation_replaces_it() {
     let id = session
         .invoke_buffer(
             src,
-            Invocation::buffer(text.rope().clone(), head, head..head),
+            Invocation::buffer(text.rope().clone(), head..head),
         )
         .expect("buffer session");
     assert!(session.contribute(&reg, id, items(&["x", "y"]), false));
@@ -490,7 +481,7 @@ fn pending_and_live_track_each_slots_latest_call() {
     let id = session
         .invoke_buffer(
             src,
-            Invocation::buffer(text.rope().clone(), head, head..head),
+            Invocation::buffer(text.rope().clone(), head..head),
         )
         .expect("buffer session");
     assert!(session.is_pending());

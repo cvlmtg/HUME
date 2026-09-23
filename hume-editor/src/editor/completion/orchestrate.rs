@@ -448,7 +448,7 @@ fn invoke_buffer_sources(
     ids.iter()
         .filter_map(|&id| {
             let entry = sources.buffer_get(id);
-            let invocation = Invocation::buffer(text.rope().clone(), head, live.clone());
+            let invocation = Invocation::buffer(text.rope().clone(), live.clone());
             let prefix = invocation.prefix(text);
             let invocation_id = session.invoke_buffer(id, invocation)?;
             Some((
