@@ -181,6 +181,68 @@ completes there is no complete index yet, so a trigger falls back to the
 in-progress hashset's own word list instead — otherwise the very first
 `Ctrl-Space` after a buffer opens would show nothing.
 
+### Case twins
+
+`#:match 'string`'s prefix gate is case-sensitive (`session.rs`'s
+`MatchKind::String { case_sensitive: true }` — `core:buffer-words` is that
+gate's own reason for existing, per that type's doc), so a word cached
+exactly as written only ever answers a prefix typed in that same case. A
+buffer holding `Apply` (capitalized because it started a sentence) then
+offers nothing for `app` typed mid-sentence, where the word is never
+capitalized — the case that's actually typed most of the time is the one
+the cache can't answer.
+
+Fixing this by lowercasing every candidate at scan time was rejected: it's
+lossy and irreversible (`HashMap` → `hashmap`, `MAX_LEN` → `max_len`, a
+proper noun loses its capital) and it only relocates the same bug to
+sentence starts, which would then need the capitalized form and not find
+it.
+
+Instead, `bw/add-word` inserts a *plain* word's other-case twin alongside
+it: an all-lowercase word's twin is Titlecase (`apply` → `Apply`), and a
+Titlecase word's twin is all-lowercase (`Apply` → `apply`). "Plain" means
+everything after the first letter is already lowercase (`bw/case-twin`) — a
+word with an inner capital (`HashMap`, `iPhone`) or in ALL-CAPS (`MAX_LEN`)
+gets no twin, since flipping only the head would destroy case information
+the tail still carries, not merely restate it. The existing case-sensitive
+gate then does the rest for free: typing `app` matches only the `apply`
+twin, typing `App` matches only `Apply`, exactly the vim `'infercase'`
+feel, with no sentence-boundary detection anywhere in this plugin — the
+first letter actually typed is itself the signal for which case is wanted,
+so there's nothing to infer from context.
+
+Nothing is ever rewritten — both the original word and its twin sit in the
+index as two independent candidates, so a genuine mixed-case identifier
+(the only kind capable of being mangled) never has one. This does mean a
+plain lowercase identifier in a code buffer also gets a capitalized twin
+that was never actually written (`config` conjures `Config`), and vice
+versa — accepted rather than gated behind a config key, since `core:lsp`
+already outranks `core:buffer-words` on any real score once the user types
+anything (`MatchKind::String`'s doc, `session.rs`), so a code buffer with an
+attached server rarely surfaces the fake twin at all. Revisit this once
+real-world use says otherwise.
+
+The twin is computed once per word per walk (`bw/add-word` skips it when
+the word's already in the set), at **scan time**, inside `bw/add-lines`'s
+own fold — not as a second pass over the finished set in
+`bw/finish-entry`. Scanning stays a bounded per-tick cost (`"lines"`) either
+way; doing it here also means the not-yet-finished fallback `bw/items` (see
+"Double-buffered cache" above) already carries twins for whatever's been
+walked so far, with no second site to keep in sync.
+
+In `#:match 'fuzzy` mode the same twins are still inserted — there's no
+second case-twin rule for fuzzy matching, only the one set `bw/add-lines`
+builds — so a lowercase fuzzy query matches both a word and its Titlecase
+twin and can show both. Left as is: fuzzy mode's whole point is subsequence
+scoring, not an exact case discipline, and it's the only way a fuzzy query
+can ever reach the lowercase form of a capitalized word at all.
+
+Steel has no `char-upper-case?` to read a character's case directly
+(`bw/case-twin`'s own comment) — the flip direction is instead read off
+which of `char-upcase`/`char-downcase` is a no-op on the head, which also
+correctly declines to produce a twin for a caseless head (a digit, `_`) by
+construction, with no separate check needed.
+
 ### Pushing a finished index to an open menu
 
 A trigger only ever answers the invocation it was called for — it has no

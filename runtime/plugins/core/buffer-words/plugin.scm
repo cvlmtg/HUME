@@ -43,10 +43,45 @@
 
 ;; ── Scanning ──────────────────────────────────────────────────────────────────
 
+;;; The other-case form of `w`'s first letter, or `#f` when `w` isn't
+;;; "plain" enough for the flip to be safe — see README.md's "Case twins".
+;;; Plain means everything after the first letter is already lowercase: an
+;;; all-lowercase word (`apply`) or a Titlecase one (`Apply`). A word with an
+;;; inner capital (`HashMap`, `iPhone`) or in ALL-CAPS (`MAX_LEN`) returns
+;;; `#f` — flipping only the head would destroy case information the tail
+;;; still carries, not merely restate it.
+;;;
+;;; Steel has no `char-upper-case?` to pick a flip direction directly, so the
+;;; head's own case is read off which of `char-upcase`/`char-downcase`
+;;; changes it: an already-uppercase head is a `char-upcase` no-op, so the
+;;; flip goes the other way. A caseless head (`123abc`, `_foo`) is a no-op
+;;; both ways, so `flipped` comes back equal to `head` and the final
+;;; `equal?` check below drops it — same outcome as the empty-string case
+;;; (`string-ref`/`substring` on `""` would error, never reached because
+;;; `rest` of a 1-char `w` is `""`, and `equal? "" (string-downcase "")` is
+;;; true, so the case only ever reaches the no-op check, never a bounds error).
+(define (bw/case-twin w)
+  (let ([rest (substring w 1 (string-length w))])
+    (and (equal? rest (string-downcase rest))
+         (let* ([head (string-ref w 0)]
+                [flipped (if (equal? (char-upcase head) head) (char-downcase head) (char-upcase head))]
+                [twin (string-append (string flipped) rest)])
+           (and (not (equal? twin w)) twin)))))
+
+;;; Inserts `w` into `set`, plus its case twin (`bw/case-twin`) when `w` is
+;;; plain — skipped when `w` is already present, so a repeated word pays for
+;;; its twin once per walk rather than once per occurrence.
+(define (bw/add-word set w)
+  (if (hashset-contains? set w)
+      set
+      (let ([twin (bw/case-twin w)])
+        (if twin
+            (hashset-insert (hashset-insert set w) twin)
+            (hashset-insert set w)))))
+
 ;;; Folds every word `(split-words line wc)` finds across `lines` into `set`.
 (define (bw/add-lines set lines wc)
-  (foldl (lambda (line words)
-           (foldl (lambda (w s) (hashset-insert s w)) words (split-words line wc)))
+  (foldl (lambda (line words) (foldl (lambda (w s) (bw/add-word s w)) words (split-words line wc)))
          set lines))
 
 ;;; 0-indexed cursor line, or the top of the buffer for a background bid.

@@ -979,7 +979,10 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
 
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("main.rs");
-    std::fs::write(&path, "buffer_word\n").unwrap();
+    // Mixed-case identifier, not `bw/case-twin`-eligible (an inner capital
+    // means its tail isn't already all-lowercase) — this test's exact-list
+    // assertion needs buffer-words to answer with exactly one item.
+    std::fs::write(&path, "bufferWord\n").unwrap();
     let bid = open(&mut ed, &path);
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     let lang = ed.state.config.languages.intern("rust");
@@ -1005,7 +1008,7 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     let got = labels(&ed);
     assert_eq!(
         got,
-        vec!["buffer_word"],
+        vec!["bufferWord"],
         "core:lsp answered empty; only buffer-words' item is on offer: {got:?}"
     );
     ed.feed_key(key_enter());
@@ -1038,7 +1041,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     );
     backend.respond_to(
         "textDocument/completion",
-        serde_json::json!([{"label": "buffer_word", "insertText": "buffer_word"}]),
+        serde_json::json!([{"label": "bufferWord", "insertText": "bufferWord"}]),
     );
     let sid: ServerId = backend
         .start("rust-analyzer", &[], Path::new("."), &[])
@@ -1058,7 +1061,11 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
 
     let file_dir = safe_tempdir();
     let path = file_dir.path().join("main.rs");
-    std::fs::write(&path, "buffer_word\n").unwrap();
+    // Mixed-case identifier, not `bw/case-twin`-eligible — see the sibling
+    // test above's identical comment; this test needs LSP's and
+    // buffer-words' items to carry the exact same one label for the dedup
+    // check below to mean anything.
+    std::fs::write(&path, "bufferWord\n").unwrap();
     let bid = open(&mut ed, &path);
     ed.state.buffers.get_mut(bid).lsp_server = Some(sid);
     let lang = ed.state.config.languages.intern("rust");
@@ -1084,7 +1091,7 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     let got = labels(&ed);
     assert_eq!(
         got,
-        vec!["buffer_word"],
+        vec!["bufferWord"],
         "the same label from two sources must be deduplicated to one row: {got:?}"
     );
 
@@ -1190,4 +1197,97 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
         Some(0),
         "core:lsp's real fuzzy score must beat buffer-words' flat 0, regardless of priority: {got:?}"
     );
+}
+
+/// A capitalized word (Titlecase — first letter up, rest down) also indexes
+/// as its all-lowercase twin, so typing it mid-sentence (never capitalized
+/// there) still finds it — see `plugin.scm`'s `bw/case-twin`. Covers a
+/// non-ASCII first letter too: `Élan`'s twin is `élan`, not merely `Apply`'s
+/// ASCII `apply`.
+#[test]
+fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "Apply the patch. Élan vital.\n\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "ap");
+    wait_for_word(&mut ed, "apply");
+    let got = labels(&ed);
+    assert!(!got.contains(&"Apply".to_string()), "{got:?}");
+
+    for _ in 0..2 {
+        ed.feed_key(key_backspace());
+    }
+    type_in_insert(&mut ed, "él");
+    wait_for_word(&mut ed, "élan");
+    let got = labels(&ed);
+    assert!(!got.contains(&"Élan".to_string()), "{got:?}");
+}
+
+/// The reverse of the above: an all-lowercase word's Titlecase twin is
+/// offered after an uppercase-led prefix, and only the twin — not the
+/// as-written lowercase form — since that wouldn't match the case-sensitive
+/// prefix gate at all.
+#[test]
+fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "we apply it\n\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+    type_in_insert(&mut ed, "Ap");
+    wait_for_word(&mut ed, "Apply");
+    let got = labels(&ed);
+    assert!(!got.contains(&"apply".to_string()), "{got:?}");
+}
+
+/// A word with an inner capital (`HashMap`, `iPhone`) or in ALL-CAPS
+/// (`MAX_LEN`) gets no twin at all — `bw/case-twin` only flips a *plain*
+/// word's first letter, never one whose tail already carries case
+/// information that flipping the head would destroy. Not a red/green
+/// oracle for the case-twin change: this passes identically before and
+/// after it, by design (behavior-preserving on this input shape), so there
+/// is no red run to record here — see `docs/LESSONS.md`'s red-first rule,
+/// "When Red-First Does Not Apply".
+#[test]
+fn mixed_case_and_all_caps_words_get_no_twin() {
+    let tmp = safe_tempdir();
+    let guard = HumeRuntimeGuard::new();
+    let mut ed = setup(&guard, tmp.path(), None);
+    let file_dir = safe_tempdir();
+    let path = file_dir.path().join("f.txt");
+    std::fs::write(&path, "HashMap MAX_LEN iPhone\n\n").unwrap();
+    open(&mut ed, &path);
+    ed.feed_key(key_down());
+    ed.feed_key(key('i'));
+
+    type_in_insert(&mut ed, "Hash");
+    wait_for_word(&mut ed, "HashMap");
+    let got = labels(&ed);
+    assert!(!got.contains(&"hashMap".to_string()), "{got:?}");
+
+    for _ in 0..4 {
+        ed.feed_key(key_backspace());
+    }
+    type_in_insert(&mut ed, "MAX");
+    wait_for_word(&mut ed, "MAX_LEN");
+    let got = labels(&ed);
+    assert!(!got.contains(&"mAX_LEN".to_string()), "{got:?}");
+
+    for _ in 0..3 {
+        ed.feed_key(key_backspace());
+    }
+    type_in_insert(&mut ed, "iPho");
+    wait_for_word(&mut ed, "iPhone");
+    let got = labels(&ed);
+    assert!(!got.contains(&"IPhone".to_string()), "{got:?}");
 }

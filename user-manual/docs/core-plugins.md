@@ -193,6 +193,11 @@ Keeps a per-buffer index of identifiers, refreshed as you type; `Ctrl-Space` rea
 never scans the buffer itself. Ranks alongside `core:lsp`'s own completions in the same menu
 when both are loaded, with `core:lsp`'s answers preferred on a tie.
 
+A word written capitalized (`Apply`) is also offered lowercase (`apply`), and the reverse,
+following the case you type — so a word capitalized only because it started a sentence is
+still found when you type it lowercase mid-sentence. A word with an inner capital (`HashMap`)
+or written in all caps (`MAX_LEN`) is offered only as written.
+
 Configure with `#:config`:
 
 ```scheme
