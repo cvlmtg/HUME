@@ -278,6 +278,18 @@ Covered with examples, including hunk shapes, in [Comparing text](plugins.md#com
 
 `json-parse` and the pattern for reading a plugin's own files are covered in [Filesystem and processes](plugins.md#filesystem-and-processes).
 
+## JSON handles
+
+An `lsp-request #:raw #t` response is an opaque JSON handle rather than a
+decoded hashmap. Read it with these instead of `hash-ref`/`hash?`/`list?`:
+
+| Call | Effect |
+|------|--------|
+| `(json-ref j seg ...)` | Look up a path of string keys / integer indices inside handle `j`. A nested object or array field comes back as another handle; a scalar field comes back as a native string/number/boolean; a `null` field comes back as void. Errors, naming the full path, on a missing key, an out-of-range index, or indexing into the wrong container kind |
+| `(json-contains? j seg ...)` | `#t` iff the path resolves — a `null` value at the end still counts as present |
+| `(json-list j)` | `j`, a JSON array handle, as a Steel list of its elements (each one funneled through the same handle/native-value rule as `json-ref`). Errors if `j` isn't an array |
+| `(json-array? v)`, `(json-object? v)` | `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else (including a non-handle value) |
+
 ## Grammar & install pipeline
 
 These back `:plum-*` and `:lsp-install`/`:lsp-uninstall` — full-trust primitives most plugins won't call directly unless they're building an installer of their own.

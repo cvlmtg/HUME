@@ -406,6 +406,14 @@ pub(crate) fn register_all(steel: &mut Engine) {
         plain "buffer-id=?" ids::buffer_id_equal(a: SteelVal, b: SteelVal);
         plain "json-parse" json::json_parse(s: SteelVal);
         plain "pane-id=?" ids::pane_id_equal(a: SteelVal, b: SteelVal);
+        // JsonHandle accessors — %json-ref/%json-contains? back the variadic
+        // json-ref/json-contains? wrappers in bootstrap.scm; json-list and
+        // the two predicates are fixed-arity and registered directly.
+        plain "%json-ref" json::json_ref(handle: SteelVal, segs: SteelVal);
+        plain "%json-contains?" json::json_contains(handle: SteelVal, segs: SteelVal);
+        plain "json-list" json::json_list(handle: SteelVal);
+        plain "json-array?" json::is_json_array(val: SteelVal);
+        plain "json-object?" json::is_json_object(val: SteelVal);
         // Word tokenization — context-free text transform, no host/buffer needed.
         plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
 

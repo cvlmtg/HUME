@@ -65,6 +65,13 @@
                                                      #:raw [raw #f])
   (%lsp-request server method params callback allow-stale supersede raw))
 
+;; (json-ref j "a" 0 "b") reads a JsonHandle's "a"[0]"b" field. Variadic
+;; keyword-free sugar over %json-ref, which takes the path as one list —
+;; Steel doesn't support a variadic Rust builtin registered via register_fn,
+;; so the rest-arg collection happens here instead.
+(define (json-ref j . segs) (%json-ref j segs))
+(define (json-contains? j . segs) (%json-contains? j segs))
+
 (define (get-option . args)
   (let ([n (length args)])
     (cond
