@@ -62,7 +62,7 @@
 (define (bw/finish-entry entry building)
   (hash-insert
     (hash-insert
-      (hash-insert entry "words" (map (lambda (w) (hash "label" w)) (hashset->list building)))
+      (hash-insert entry "words" (hashset->list building))
       "building" #f)
     "timer" #f))
 
@@ -166,7 +166,7 @@
               ready
               (let ([words (hash-ref entry "building")])
                 (if words
-                    (map (lambda (w) (hash "label" w)) (hashset->list words))
+                    (hashset->list words)
                     '())))))))
 
 ;;; Stashes `id` as the invocation a still-in-progress walk should push its

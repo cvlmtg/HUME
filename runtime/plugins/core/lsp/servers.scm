@@ -255,8 +255,7 @@
 ;;; seeded for" check reads against.
 (register-completion-source! "lsp:languages"
   (lambda (id input cursor)
-    (completion-emit! id
-      (map (lambda (lang) (hash "label" lang)) (hash-keys->list *lsp-lang->server*))))
+    (completion-emit! id (hash-keys->list *lsp-lang->server*)))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "lsp-install"
@@ -280,7 +279,7 @@
     (let ((sdir (lsp/servers-dir)))
       (completion-emit! id
         (if (path-exists? sdir)
-            (map (lambda (name) (hash "label" name)) (call! "stdlib/list-subdirs" sdir))
+            (call! "stdlib/list-subdirs" sdir)
             '()))))
   #:target 'minibuf #:match 'string)
 

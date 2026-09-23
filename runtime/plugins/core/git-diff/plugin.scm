@@ -76,8 +76,7 @@
             (lambda (stdout stderr exit-code)
               (completion-emit! id
                 (if (= exit-code 0)
-                    (map (lambda (name) (hash "label" name))
-                         (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n")))
+                    (filter (lambda (s) (not (equal? s ""))) (split-many stdout "\n"))
                     '())))))))
   #:target 'minibuf #:match 'string)
 

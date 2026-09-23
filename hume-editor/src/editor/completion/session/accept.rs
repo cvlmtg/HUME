@@ -398,10 +398,18 @@ impl BufferSession {
 
         // Fire on-completion-accept with the raw (pristine) item after the
         // edit lands — an extension point for anything this store doesn't
-        // parse (e.g. `command`); Rust owns additionalTextEdits/resolve.
+        // parse (e.g. `command`); Rust owns additionalTextEdits/resolve. A
+        // label-only item (`plain()`'s own constructor, `core:buffer-words`'
+        // bare-string answers) has no real wire payload to hand over —
+        // `{"label": …}` is a more useful hook payload than a bare `null`.
+        let hook_item = if item.raw.is_null() {
+            serde_json::json!({"label": &item.label})
+        } else {
+            item.raw.clone()
+        };
         state.queue_event(EditorEvent::OnCompletionAccept {
             buffer: bid,
-            item: item.raw.clone(),
+            item: hook_item,
         });
 
         if may_resolve && !item.has_additional_text_edits {

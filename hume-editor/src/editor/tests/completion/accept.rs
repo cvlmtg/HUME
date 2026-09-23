@@ -454,6 +454,28 @@ fn accept_fires_on_completion_accept_with_the_raw_item_after_the_edit() {
     );
 }
 
+/// A label-only item (a bare string from `completion-emit!`, no wire
+/// payload at all) still gives the hook something useful — `{"label": …}`
+/// — rather than `null`.
+#[test]
+fn accept_fires_on_completion_accept_with_a_synthesized_label_for_a_plain_item() {
+    let tmp = safe_tempdir();
+    let mut ed = editor_from("-[ ]>cdef\n");
+    raw_insert_with_source(
+        &mut ed,
+        tmp.path(),
+        r#"(list "foobar")"#,
+        &format!(
+            "{ACCEPT_0}\n{}",
+            r#"(register-hook! 'on-completion-accept (lambda (bid item)
+                 (log! 'info (hash-ref item "label"))))"#
+        ),
+    );
+    accept_via_steel(&mut ed);
+    ed.settle();
+    assert_eq!(status(&ed), "foobar");
+}
+
 // ── Multi-cursor ──────────────────────────────────────────────────────────
 //
 // `c` on two selections leaves two collapsed cursors in one Insert session

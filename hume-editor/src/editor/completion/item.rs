@@ -75,9 +75,17 @@ impl CompletionItem {
     /// than fabricating a placeholder. Reads against `&v` and moves `v`
     /// into `raw` at the end, so every item in a response pays one JSON
     /// walk, not a clone plus a second deserialize pass.
+    ///
+    /// A bare JSON string decodes as [`Self::plain`] with that string as
+    /// its own label — the completion-emit! shape a source with nothing
+    /// but a label needs (`core:buffer-words`, a word list) uses, without
+    /// building `{"label": …}` by hand for every candidate.
     pub(in crate::editor) fn from_json(v: serde_json::Value) -> Option<Self> {
         use serde::Deserialize;
 
+        if let serde_json::Value::String(label) = v {
+            return Some(Self::plain(label.clone(), label));
+        }
         let label = v.get("label")?.as_str()?.to_string();
         let kind = v
             .get("kind")

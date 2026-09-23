@@ -86,6 +86,21 @@ fn a_malformed_text_edit_drops_just_the_edit_not_the_item() {
 }
 
 #[test]
+fn a_bare_string_decodes_as_a_plain_item_with_that_label() {
+    let v = serde_json::json!("foobar");
+    let item = CompletionItem::from_json(v).expect("a bare string is a well-formed item");
+    assert_eq!(&*item.label, "foobar");
+    assert_eq!(item.sort_text, "foobar");
+    assert_eq!(item.filter_text, "foobar");
+    assert_eq!(item.insert_text, "foobar");
+    assert_eq!(item.kind, None);
+    assert!(
+        item.raw.is_null(),
+        "no wire payload to keep — nothing parsed it from JSON"
+    );
+}
+
+#[test]
 fn missing_label_is_rejected() {
     let v = serde_json::json!({"kind": 1});
     assert!(

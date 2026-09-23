@@ -169,17 +169,17 @@ does the opposite for a write path that must succeed regardless.
 
 Each buffer keeps two sets: the last *complete* index (what `Ctrl-Space`
 reads) and the walk in progress. The in-progress set is a raw hashset,
-rebuilt tick by tick; once a walk finishes, it's promoted into the ready
-completion-item shape (`(hash "label" w)` per word) a trigger can hand
-straight to `completion-emit!` with no per-keystroke rebuild. Until then,
-the complete index keeps answering triggers untouched. A deleted word can
-therefore linger for up to one refresh cycle — the same bounded staleness
-the completion framework already accepts elsewhere ("the old answer stays
-ranked until the new one lands, so the menu never blinks empty"). Before the
-first walk ever completes there is no complete index yet, so a trigger
-falls back to mapping the in-progress hashset into that same shape instead
-— otherwise the very first `Ctrl-Space` after a buffer opens would show
-nothing.
+rebuilt tick by tick; once a walk finishes, it's promoted into a plain word
+list a trigger can hand straight to `completion-emit!` — a bare string per
+word is a complete completion item on its own, with no per-word wrapping
+and no per-keystroke rebuild. Until then, the complete index keeps
+answering triggers untouched. A deleted word can therefore linger for up to
+one refresh cycle — the same bounded staleness the completion framework
+already accepts elsewhere ("the old answer stays ranked until the new one
+lands, so the menu never blinks empty"). Before the first walk ever
+completes there is no complete index yet, so a trigger falls back to the
+in-progress hashset's own word list instead — otherwise the very first
+`Ctrl-Space` after a buffer opens would show nothing.
 
 ### Pushing a finished index to an open menu
 

@@ -132,8 +132,7 @@
 ;;; repo's "user/repo" slug — the same set `plum-list-themes` enumerates.
 (register-completion-source! "plum:themes"
   (lambda (id input cursor)
-    (completion-emit! id
-      (map (lambda (slug) (hash "label" slug)) (plum/installed-theme-repos))))
+    (completion-emit! id (plum/installed-theme-repos)))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "plum-remove-theme"

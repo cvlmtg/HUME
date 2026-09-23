@@ -161,8 +161,7 @@
 ;;; `plum/resolve-grammar-arg`'s "unknown grammar" check reads against.
 (register-completion-source! "plum:grammars"
   (lambda (id input cursor)
-    (completion-emit! id
-      (map (lambda (name) (hash "label" name)) (grammar-source-names))))
+    (completion-emit! id (grammar-source-names)))
   #:target 'minibuf #:match 'string)
 
 (define-typed-command! "plum-install-grammar"
