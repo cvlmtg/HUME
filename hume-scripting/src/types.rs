@@ -187,13 +187,6 @@ pub struct PendingLspRequest {
     /// two features issuing the same method concurrently never cancel each
     /// other by accident.
     pub supersede: Option<String>,
-    /// `#:raw` — an `Ok` response crosses as one opaque `JsonHandle`
-    /// (`crate::json`) instead of the usual full `json_to_steel` decode,
-    /// for a caller that never reads a field of it in Scheme (`core:lsp`'s
-    /// own completion source, which hands the whole response straight to
-    /// `completion-emit!`). `false` for every other caller — the ordinary
-    /// decode still applies.
-    pub raw: bool,
 }
 
 // Manual (not derived): `SteelVal` has no `Debug` impl. Placeholder the
@@ -207,7 +200,6 @@ impl std::fmt::Debug for PendingLspRequest {
             .field("callback", &"<closure>")
             .field("allow_stale", &self.allow_stale)
             .field("supersede", &self.supersede)
-            .field("raw", &self.raw)
             .finish()
     }
 }

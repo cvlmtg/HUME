@@ -82,9 +82,9 @@ impl<'a> CompletionHost for EditorHostImpl<'a> {
         // decoding a `LspResponse` into its own items/isIncomplete happens
         // here, the one place that already depends on both `hume_lsp` and
         // this store's `CompletionItem`. An unrecognized shape (a plugin
-        // handed `#:raw #t`'s handle something that isn't actually a
-        // completion response) lands as an empty answer rather than
-        // leaving the invocation stuck pending forever.
+        // handed `completion-emit!` an `lsp-request` handle that isn't
+        // actually a completion response) lands as an empty answer rather
+        // than leaving the invocation stuck pending forever.
         let (items, incomplete) = match answer {
             host::CompletionAnswer::Items { items, incomplete } => (items, incomplete),
             host::CompletionAnswer::LspResponse(response) => {

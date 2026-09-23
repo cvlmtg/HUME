@@ -61,9 +61,8 @@
   (%register-lsp-server! language command args root-markers init-options settings env))
 
 (define (lsp-request server method params callback #:allow-stale [allow-stale #f]
-                                                     #:supersede [supersede #f]
-                                                     #:raw [raw #f])
-  (%lsp-request server method params callback allow-stale supersede raw))
+                                                     #:supersede [supersede #f])
+  (%lsp-request server method params callback allow-stale supersede))
 
 ;; (json-ref j "a" 0 "b") reads a JsonHandle's "a"[0]"b" field. Variadic
 ;; keyword-free sugar over %json-ref, which takes the path as one list —

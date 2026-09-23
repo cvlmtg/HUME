@@ -27,7 +27,7 @@
 (define (lsp/goto-request method cap)
   (lsp/guard-capability cap
     (lambda ()
-      (lsp-request #f method (lsp-position-params (current-buffer)) lsp/goto-response #:raw #t))))
+      (lsp-request #f method (lsp-position-params (current-buffer)) lsp/goto-response))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -55,5 +55,4 @@
           (lambda (err res)
             (lsp/goto-response err res #:always-drawer? #t
                                        #:what "references"
-                                       #:not-found-msg "No references found"))
-          #:raw #t)))))
+                                       #:not-found-msg "No references found")))))))

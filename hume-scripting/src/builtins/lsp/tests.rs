@@ -505,7 +505,6 @@ fn lsp_request_queues_the_supersede_key() {
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         "completion".into_steelval().unwrap(),
-        SteelVal::BoolV(false),
     );
     assert!(result.is_ok());
     let requests = lsp_requests(&ctx);
@@ -525,33 +524,11 @@ fn lsp_request_with_false_supersede_queues_none() {
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
         SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
     );
     assert!(result.is_ok());
     let requests = lsp_requests(&ctx);
     assert_eq!(requests.len(), 1);
-    assert!(!requests[0].raw, "sanity: false is the default");
     assert_eq!(requests[0].supersede, None);
-}
-
-#[test]
-fn lsp_request_queues_the_raw_flag() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let result = lsp_request(
-        &mut ctx,
-        SteelVal::BoolV(false),
-        "textDocument/completion".into_steelval().unwrap(),
-        list_of(&[]),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(false),
-        SteelVal::BoolV(true),
-    );
-    assert!(result.is_ok());
-    let requests = lsp_requests(&ctx);
-    assert_eq!(requests.len(), 1);
-    assert!(requests[0].raw);
 }
 
 #[test]

@@ -6,12 +6,13 @@
 
 ;; ── The source ───────────────────────────────────────────────────────────────
 ;;
-;; #:raw #t: this source never reads a field of the response — it hands the
-;; whole thing straight to `completion-emit!`, which decodes its own
+;; This source never reads a field of the response — it hands the whole
+;; thing straight to `completion-emit!`, which decodes its own
 ;; `isIncomplete`/`items` on the Rust side (`hume_lsp::completion_item::
-;; completion_response_items`). See `JsonHandle`'s own doc
-;; (`hume-scripting/src/json.rs`) for why this skips the ordinary
-;; Steel<->JSON round trip.
+;; completion_response_items`). `res` crosses as a `JsonHandle` (every
+;; lsp-request response does), so this skips the ordinary Steel<->JSON
+;; round trip without needing any opt-in of its own — see `JsonHandle`'s
+;; own doc (`hume-scripting/src/json.rs`) for why.
 
 (register-completion-source! "lsp"
   (lambda (id bid prefix)
@@ -23,7 +24,7 @@
                    (completion-emit! id '()))
               ((void? res) (completion-emit! id '()))
               (else (completion-emit! id res))))
-          #:supersede "completion" #:raw #t)
+          #:supersede "completion")
         (completion-emit! id '())))
   #:target 'buffer #:priority 10 #:resolve #t)
 

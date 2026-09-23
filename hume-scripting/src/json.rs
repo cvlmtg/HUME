@@ -261,9 +261,10 @@ pub fn to_steel_handle(value: Arc<serde_json::Value>) -> SteelVal {
 impl JsonHandle {
     /// Wraps a value as a handle unconditionally, even when it happens to be
     /// a scalar — for a caller that already knows it wants a handle
-    /// regardless (`hume-editor`'s `lsp-request #:raw #t` path treats the
-    /// whole non-null response as one handle, by design: an LSP response is
-    /// always an object or array by protocol, never a bare scalar).
+    /// regardless. `json_arg`'s fallback path (`builtins/args.rs`) is the
+    /// one caller: a hand-built Steel value it has just converted via
+    /// `steel_to_json` is always meant to reach a JSON-consuming builtin as
+    /// a handle, the same shape an already-handle argument would take.
     /// [`to_steel_handle`] is the general funnel for a value whose shape
     /// isn't known ahead of time; this is for a caller that already knows.
     pub fn new(value: serde_json::Value) -> Self {

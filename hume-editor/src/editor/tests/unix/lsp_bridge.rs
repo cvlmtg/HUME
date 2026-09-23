@@ -33,10 +33,10 @@ fn supersede_cancels_the_prior_request_under_the_same_key() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker"))))
+               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")
              (lsp-request #f "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker"))))
+               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker"))))
                #:supersede "k")))"#,
         tmp.path(),
     );

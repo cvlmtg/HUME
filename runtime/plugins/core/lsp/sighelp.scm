@@ -46,7 +46,7 @@
             (err (lsp/report-error "signature help" err) (close-popup!))
             ((void? res) (close-popup!))
             (else (lsp/show-sighelp bid res))))
-        #:raw #t))))
+        ))))
 
 ;;; ")" is a dismiss trigger, not a request trigger.
 (lsp/setup-trigger-chars! "signatureHelpProvider" "lsp-sighelp" (list ")")

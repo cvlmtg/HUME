@@ -24,16 +24,14 @@
 ;;; `cmd-obj`: a Command JSON handle `{title, command, arguments?}`.
 ;;; "arguments" crosses straight into the new request hash as a JSON array
 ;;; handle when present — no reconversion, since steel_to_json's own handle
-;;; arm resolves it once this hash goes out over the wire. The response is
-;;; never read, so this too crosses raw rather than paying a useless decode.
+;;; arm resolves it once this hash goes out over the wire.
 (define (lsp/exec-command cmd-obj)
   (lsp-request #f "workspace/executeCommand"
     (hash "command" (json-ref cmd-obj "command")
           "arguments" (if (json-contains? cmd-obj "arguments")
                            (json-ref cmd-obj "arguments")
                            (list)))
-    (lambda (err res) (when err (lsp/report-error "code action" err)))
-    #:raw #t))
+    (lambda (err res) (when err (lsp/report-error "code action" err)))))
 
 ;;; See docs/features.md for the edit-then-command ordering and the
 ;;; resolve-fallback round trip. `action` is a JSON handle throughout —
@@ -55,8 +53,7 @@
          (cond
            (err (lsp/report-error "code action" err))
            ((void? resolved) (log! 'info "Code action has no edit or command"))
-           (else (lsp/run-action resolved #:resolved? #t))))
-       #:raw #t))
+           (else (lsp/run-action resolved #:resolved? #t))))))
     (else (log! 'info "Code action has no edit or command"))))
 
 (define-command! "lsp-code-actions" "Show available code actions for the cursor or selection."
@@ -80,5 +77,4 @@
                       (if (null? actions)
                           (log! 'info "No code actions")
                           (show-menu! (map lsp/action-title actions)
-                            (lambda (idx) (when idx (lsp/run-action (list-ref actions idx))))))))))
-              #:raw #t)))))))
+                            (lambda (idx) (when idx (lsp/run-action (list-ref actions idx)))))))))))))))))

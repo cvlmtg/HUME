@@ -52,8 +52,7 @@
                       (if (void? res)
                           '()
                           (filter (lambda (e) e)
-                                  (map (lambda (h) (lsp/hint->store-entry bid h)) (json-list res)))))))
-                #:raw #t))))))))
+                                  (map (lambda (h) (lsp/hint->store-entry bid h)) (json-list res)))))))))))))))
 
 (register-hook! 'on-viewport-change
   (lambda (bid first end) (lsp/refresh-hints bid)))

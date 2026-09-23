@@ -6,8 +6,7 @@
 
 ;;; `MarkedString` (bare string or `{language, value}`) vs `MarkupContent`
 ;;; (`{kind, value}`) — told apart by key. `ms` is a native string or a JSON
-;;; object handle (`res` — this file's whole response — crosses via
-;;; `#:raw #t`; see the command below).
+;;; object handle (`res` — this file's whole response — is one too).
 (define (lsp/marked-string->text ms)
   (cond
     ((string? ms) ms)
@@ -56,4 +55,4 @@
               (else (let ((contents (json-ref res "contents")))
                       (lsp/show-hover (lsp/hover-contents->text contents)
                                        (lsp/hover-lang contents))))))
-          #:allow-stale #t #:raw #t)))))
+          #:allow-stale #t)))))

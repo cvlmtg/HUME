@@ -141,10 +141,10 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
     Ok(SteelVal::Void)
 }
 
-/// `(%lsp-request server method params callback allow-stale supersede raw)`.
-/// The `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s,
-/// `#:supersede`'s, and `#:raw`'s defaults. Pushes an `Effect::LspRequest`,
-/// sent by `Editor::send_one_lsp_request` right after this eval returns —
+/// `(%lsp-request server method params callback allow-stale supersede)`.
+/// The `lsp-request` Scheme wrapper (BOOTSTRAP) supplies `#:allow-stale`'s
+/// and `#:supersede`'s defaults. Pushes an `Effect::LspRequest`, sent by
+/// `Editor::send_one_lsp_request` right after this eval returns —
 /// `SteelCtx` has no route to the transport (crate fence), and queuing
 /// keeps every LSP send on one chokepoint regardless of which eval kind
 /// (command, hook, or a queued callback) triggered it.
@@ -152,7 +152,6 @@ pub(crate) fn lsp_show_status(ctx: &mut SteelCtx) -> SteelResult {
 // `lsp-request`'s own Steel signature — bundling them into a struct would
 // break that direct correspondence for no benefit, since every arg is
 // already decoded and validated independently right below.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn lsp_request(
     ctx: &mut SteelCtx,
     server: SteelVal,
@@ -161,14 +160,12 @@ pub(crate) fn lsp_request(
     callback: SteelVal,
     allow_stale: SteelVal,
     supersede: SteelVal,
-    raw: SteelVal,
 ) -> SteelResult {
     let server = optional_string_arg(server, "lsp-request server")?;
     let method = string_arg(method, "lsp-request method")?;
     let params = json_params(params, "lsp-request params")?;
     let allow_stale = bool_arg(allow_stale, "lsp-request #:allow-stale")?;
     let supersede = optional_string_arg(supersede, "lsp-request supersede")?;
-    let raw = bool_arg(raw, "lsp-request #:raw")?;
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
         server,
         method,
@@ -176,7 +173,6 @@ pub(crate) fn lsp_request(
         callback,
         allow_stale,
         supersede,
-        raw,
     }));
     Ok(SteelVal::Void)
 }

@@ -88,9 +88,9 @@ fn requests_without_a_supersede_key_do_not_cancel_each_other() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker")))))
+               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))
              (lsp-request #f "textDocument/completion" (hash)
-               (lambda (err result) (log! 'trace (string-append "marker-" (hash-ref result "marker")))))))"#,
+               (lambda (err result) (log! 'trace (string-append "marker-" (json-ref result "marker")))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -152,7 +152,7 @@ fn lsp_stop_clears_supersede_entries() {
 }
 
 #[test]
-fn response_delivers_decoded_result_to_callback() {
+fn response_delivers_a_handle_to_callback() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
@@ -164,7 +164,7 @@ fn response_delivers_decoded_result_to_callback() {
         &mut host,
         r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/hover" (hash) (lambda (err result)
-               (when (equal? (hash-ref result "contents") "hi")
+               (when (equal? (json-ref result "contents") "hi")
                  (call! "move-right"))))))"#,
         tmp.path(),
     );
@@ -182,11 +182,10 @@ fn response_delivers_decoded_result_to_callback() {
     );
 }
 
-/// `#:raw #t` skips the ordinary `json_to_steel` decode — the callback's
-/// `result` is an opaque handle, not a hashmap, for a real (non-null)
-/// response.
+/// Every `lsp-request` response crosses as an opaque handle, not a
+/// hashmap, for a real (non-null) response.
 #[test]
-fn raw_request_delivers_an_opaque_handle_not_a_hashmap() {
+fn request_delivers_an_opaque_handle_not_a_hashmap() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
@@ -202,8 +201,7 @@ fn raw_request_delivers_an_opaque_handle_not_a_hashmap() {
         r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
                (when (not (hash? result))
-                 (call! "move-right")))
-             #:raw #t)))"#,
+                 (call! "move-right"))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -216,15 +214,15 @@ fn raw_request_delivers_an_opaque_handle_not_a_hashmap() {
     assert_ne!(
         state(&ed),
         before,
-        "a #:raw response must not decode into a hashmap"
+        "a response must not decode into a hashmap"
     );
 }
 
-/// A `null` response still crosses as `Void` under `#:raw` — the
-/// `(void? result)` check every LSP feature already uses to detect a
-/// server declining with no data stays meaningful regardless.
+/// A `null` response still crosses as `Void` — the `(void? result)` check
+/// every LSP feature already uses to detect a server declining with no
+/// data stays meaningful.
 #[test]
-fn raw_request_with_a_null_response_still_gives_void() {
+fn request_with_a_null_response_still_gives_void() {
     let tmp = safe_tempdir();
     let mut ed = editor_from("-[a]>bcdef\n");
     setup_with(&mut ed, |b, _sid| {
@@ -237,8 +235,7 @@ fn raw_request_with_a_null_response_still_gives_void() {
         r#"(define-typed-command! "test-cmd" "" (lambda ()
              (lsp-request #f "textDocument/completion" (hash) (lambda (err result)
                (when (void? result)
-                 (call! "move-right")))
-             #:raw #t)))"#,
+                 (call! "move-right"))))))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -251,7 +248,7 @@ fn raw_request_with_a_null_response_still_gives_void() {
     assert_ne!(
         state(&ed),
         before,
-        "a null response must still cross as Void even with #:raw"
+        "a null response must still cross as Void"
     );
 }
 

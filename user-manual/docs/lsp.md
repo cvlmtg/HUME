@@ -327,16 +327,17 @@ returns its generated code:
       (lambda (err res)
         (cond
           (err (log! 'error (string-append "expand macro: "
-                                           (if (string? err) err (hash-ref err "message")))))
-          ((not res) (log! 'info "Not inside a macro"))
-          (else (show-popup! (hash-ref res "expansion"))))))))
+                                           (if (string? err) err (json-ref err "message")))))
+          ((void? res) (log! 'info "Not inside a macro"))
+          (else (show-popup! (json-ref res "expansion"))))))))
 ```
 
 The shape is always the same three steps: send a request built from `lsp-position-params` or
 `lsp-primary-range-params`, transform the server's response, and hand the result to a UI or store
 builtin (`show-popup!`, `show-menu!`, `show-drawer-list!`, `apply-text-edits!`,
 `apply-workspace-edit!`, …). `err` and `res` are never both set — check `err` first and stop
-on it, the way every built-in feature does.
+on it, the way every built-in feature does. `res` is a JSON handle — read a field with
+`json-ref`/`json-contains?`/`json-list`, not `hash-ref`; a `null` response arrives as void, not `#f`.
 
 `lsp-request` also takes two keyword args for requests that fire more than once. `#:supersede "<key>"` cancels the caller's own previous still-pending request filed under the same key — the server gets `$/cancelRequest` and the old callback never fires — which is how completion's re-request of an incomplete list avoids piling up stale requests as you type. `#:allow-stale #t` lets the callback run even if the buffer has changed since the request was sent, for requests where a slightly-out-of-date answer is still useful.
 

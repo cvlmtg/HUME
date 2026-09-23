@@ -45,8 +45,7 @@
                     (set-box! edits (append (unbox edits) (lsp/format-edits res)))
                     (set-box! pending (- (unbox pending) 1))
                     (when (= (unbox pending) 0)
-                      (lsp/format-apply! bid gen (unbox edits)))))))
-          #:raw #t))
+                      (lsp/format-apply! bid gen (unbox edits)))))))))
       ranges)))
 
 (define (lsp/format-linewise! bid gen td ranges)
@@ -58,8 +57,7 @@
           ((and (> n 1) (lsp/cap-flag? "documentRangeFormattingProvider" "rangesSupport"))
            (lsp-request #f "textDocument/rangesFormatting"
              (hash "textDocument" td "ranges" ranges "options" (lsp/format-options))
-             (lsp/format-callback bid gen)
-             #:raw #t))
+             (lsp/format-callback bid gen)))
           ((> n cap)
            (log! 'info
                  (string-append (number->string n)
@@ -86,8 +84,7 @@
                (lambda ()
                  (lsp-request #f "textDocument/formatting"
                    (hash "textDocument" td "options" (lsp/format-options))
-                   (lsp/format-callback bid gen)
-                   #:raw #t))))
+                   (lsp/format-callback bid gen)))))
             (else (log! 'info "mixed whole-line and partial selections — nothing formatted")))))))
 
 (define-command! "lsp-fmt"
