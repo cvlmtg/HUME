@@ -132,12 +132,14 @@ longer in wall-clock time — an acceptable trade, since nothing waits on the
 walk finishing (`Ctrl-Space` reads whatever's indexed so far, complete or
 not).
 
-The in-progress `"building"` set survives a `bw/reindex!` restart instead of
-being reset to empty. The walk is monotone — each tick only ever adds words,
-never removes them — so on a large buffer, an edit that keeps interrupting
-the walk near the cursor (the common case: a user typing continuously) still
-makes progress at the far ends across restarts, rather than the walk
-restarting its far-end coverage from nothing on every keystroke.
+The in-progress `"building"` set is reset to empty on every `bw/reindex!`
+restart, along with bumping `"gen"` — a cancelled walk's partial set is
+likely stale by the time a new one starts (the reindex was itself triggered
+by an edit), so the fresh walk starts from nothing rather than carrying it
+forward. On a large buffer, an edit that keeps interrupting the walk near
+the cursor (the common case: a user typing continuously) means the far ends
+never finish indexing as long as edits keep arriving — a known cost of this
+trade-off, not a gap to close by preserving partial progress across restarts.
 
 The backward window's upper bound is clamped against the live line count the
 same way the forward window's is (`fwd-hi`) — both sides carry their anchor
