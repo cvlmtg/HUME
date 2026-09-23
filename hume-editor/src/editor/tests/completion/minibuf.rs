@@ -285,9 +285,10 @@ fn enter_on_directory_candidate_restarts_completion_inside_it() {
 }
 
 /// A non-path source's candidate that happens to end in `/` (a namespaced
-/// tag, say) must not be treated as a directory to descend into — only
-/// `PATH_SOURCE`/`PATH_DIRS_ONLY_SOURCE` license that. Enter runs the
-/// command line as normal instead of restarting completion. Two candidates
+/// tag, say) must not be treated as a directory to descend into — only an
+/// item whose own `kind` is `CompletionItemKind::FOLDER` licenses that, and
+/// this source's items carry no `kind` at all. Enter runs the command line
+/// as normal instead of restarting completion. Two candidates
 /// (not one) so the popup stays open after Tab instead of the `:` line's
 /// own single-match eager-apply-and-dismiss closing it before Enter is
 /// even reachable — `enter_on_directory_candidate_restarts_completion_

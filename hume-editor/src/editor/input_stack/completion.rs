@@ -11,9 +11,7 @@ use termina::event::KeyCode;
 use hume_engine::pipeline::{EngineView, RenderContext};
 use hume_engine::types::EditorMode;
 
-use super::super::completion::{
-    CompletionMenuUi, CompletionSession, PATH_DIRS_ONLY_SOURCE, PATH_SOURCE,
-};
+use super::super::completion::{CompletionItem, CompletionMenuUi, CompletionSession};
 use super::super::keymap::WalkResult;
 use super::super::{Editor, EditorState, Severity};
 use super::placement::popup_placement;
@@ -317,24 +315,20 @@ fn completion_input_minibuf(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
             return;
         }
         KeyCode::Enter => {
-            // If the selected candidate is a directory (trailing `/`) *and*
-            // came from one of the path sources, Enter descends into it
-            // instead of confirming the command line: the candidate is
-            // already in the input (Tab applied it), so dismiss this
-            // session and restart completion for the directory's children,
-            // rather than falling through to `Command`'s own Confirm
-            // handling. Gated on the source's own identity, not just the
-            // candidate's text — an unrelated source's candidate ending in
-            // `/` (a URL, a namespaced tag) must not be treated the same way.
-            let sources = &ed.state.config.completion_sources;
+            // If the selected candidate names a directory, Enter descends
+            // into it instead of confirming the command line: the
+            // candidate is already in the input (Tab applied it), so
+            // dismiss this session and restart completion for the
+            // directory's children, rather than falling through to
+            // `Command`'s own Confirm handling. Gated on the item's own
+            // declared kind, not its source's identity or its text — any
+            // `'minibuf` source's item can opt in this way, and an
+            // unrelated candidate that merely ends in `/` (a URL, a
+            // namespaced tag) is never mistaken for one.
             let is_dir = ed.state.input.at::<CompletionLayer>(r).is_some_and(|l| {
-                let idx = l.selected();
                 l.session
-                    .minibuf_source_name(idx, sources)
-                    .is_some_and(|name| name == PATH_SOURCE || name == PATH_DIRS_ONLY_SOURCE)
-                    && l.session
-                        .selected_item(idx)
-                        .is_some_and(|item| item.insert_text().ends_with('/'))
+                    .selected_item(l.selected())
+                    .is_some_and(CompletionItem::is_folder)
             });
             if is_dir {
                 ed.state.dismiss_completion(&ed.view);

@@ -127,6 +127,15 @@ impl CompletionItem {
         })
     }
 
+    /// Whether this item names a directory to descend into — the `:` line's
+    /// Enter handler (`input_stack/completion.rs`) reads this generically
+    /// rather than checking which source produced the candidate; any
+    /// source's item can opt in the same way `path.rs`'s directory entries
+    /// do.
+    pub(in crate::editor) fn is_folder(&self) -> bool {
+        self.kind == Some(lsp_types::CompletionItemKind::FOLDER)
+    }
+
     /// The accept-time replacement text — read from outside this module by
     /// the `Minibuf`-target accept path (`input_stack/completion.rs`,
     /// `input_stack/command.rs`), which splices it into the minibuffer's

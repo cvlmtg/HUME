@@ -1072,25 +1072,6 @@ impl CompletionSession {
         ))
     }
 
-    /// The `Minibuf`-target source name behind ranked position `idx` —
-    /// `None` for a `Buffer` session or an unranked `idx`. The one place
-    /// `completion_input_minibuf`'s own directory-descent check
-    /// (`input_stack/completion.rs`) asks *which source* produced the
-    /// selected candidate, rather than sniffing the item's own text — a
-    /// non-path source whose candidate happens to end in `/` (a URL, a
-    /// namespaced tag) must not be mistaken for a directory to descend into.
-    pub(in crate::editor) fn minibuf_source_name<'a>(
-        &self,
-        idx: usize,
-        sources: &'a SourceRegistry,
-    ) -> Option<&'a str> {
-        let Target::Minibuf { slots, .. } = &self.target else {
-            return None;
-        };
-        let (s, _) = self.ranked_indices(idx)?;
-        Some(&sources.minibuf_get(slots[s as usize].source).name)
-    }
-
     /// Where the menu anchors for a `Buffer` session: the leftmost live
     /// token start among the sources with a ranked candidate. Stable while
     /// cycling; moves only when ranking changes which sources contribute.

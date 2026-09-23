@@ -101,7 +101,15 @@ where
             let label = format!("{name}{suffix}");
             // Build the full insert text: dir_str + name + suffix.
             let insert_text = format!("{dir_str}{name}{suffix}");
-            Some(CompletionItem::plain(label, insert_text))
+            let mut item = CompletionItem::plain(label, insert_text);
+            // The `:` line's Enter handler reads this to decide whether the
+            // selected candidate is a directory to descend into, rather
+            // than naming this source explicitly — any source's item can
+            // opt in the same way.
+            if is_dir {
+                item.kind = Some(lsp_types::CompletionItemKind::FOLDER);
+            }
+            Some(item)
         })
         .collect();
     candidates.sort_unstable_by(|a, b| a.label.cmp(&b.label));

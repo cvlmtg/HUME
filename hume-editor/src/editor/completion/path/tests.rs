@@ -24,6 +24,29 @@ fn path_completer_lists_directory() {
 }
 
 #[test]
+fn path_completer_tags_directories_with_folder_kind_files_with_none() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("file.txt"), b"").unwrap();
+    std::fs::create_dir(dir.path().join("subdir")).unwrap();
+
+    let (reg, store) = (CommandRegistry::with_defaults(), BufferStore::new());
+    let ctx = ctx(&reg, &store, dir.path());
+    let input = "e ";
+    let (_, candidates) = complete_path(input, input.len(), &ctx);
+
+    let file = candidates
+        .iter()
+        .find(|c| c.label == "file.txt")
+        .expect("file.txt");
+    assert_eq!(file.kind, None);
+    let dir_item = candidates
+        .iter()
+        .find(|c| c.label == "subdir/")
+        .expect("subdir/");
+    assert_eq!(dir_item.kind, Some(lsp_types::CompletionItemKind::FOLDER));
+}
+
+#[test]
 fn path_completer_filters_by_prefix() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("foo.txt"), b"").unwrap();
