@@ -39,7 +39,7 @@ fn diag(start: usize, end: usize, severity: DiagSeverity) -> StoredDiag {
         message: "boom".to_string(),
         code: None,
         source: None,
-        raw: serde_json::Value::Null,
+        raw: std::sync::Arc::new(serde_json::Value::Null),
     }
 }
 

@@ -346,7 +346,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     bid: BufferId,
     severity_floor: Option<&str>,
     range: Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>>,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
     const CAP: usize = 1000;
     let floor = match severity_floor.map(str::parse::<DiagSeverity>) {
         None => state.settings.lsp_diagnostics_severity_floor,
@@ -391,24 +391,20 @@ pub(in crate::editor) fn diagnostics_for_buffer(
             // plugin expands `[line, end-line]` inclusive to mark every line
             // a multi-line diagnostic touches.
             let end_line = text.char_to_line(d.end.retreat_saturating(1).min(last_content_char));
-            serde_json::json!({
-                "start": d.start.index(),
-                "end": d.end.index(),
-                "line": line.index(),
-                "end-line": end_line.index(),
-                "char-col": char_col.index(),
-                "grapheme-col": grapheme_col.index(),
-                "severity": d.severity.to_string(),
-                // `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 =
-                // hint, lower is more severe) — the single encoding of
-                // severity order, so Scheme compares by this instead of
-                // re-deriving the same ranking from the `severity` string.
-                "severity-rank": d.severity as u8,
-                "message": d.message,
-                "code": d.code,
-                "source": d.source,
-                "raw": d.raw,
-            })
+            hume_scripting::host::DiagnosticEntry {
+                start: d.start.index(),
+                end: d.end.index(),
+                line: line.index(),
+                end_line: end_line.index(),
+                char_col: char_col.index(),
+                grapheme_col: grapheme_col.index(),
+                severity: d.severity.to_string(),
+                severity_rank: d.severity as u8,
+                message: d.message.clone(),
+                code: d.code.clone(),
+                source: d.source.clone(),
+                raw: std::sync::Arc::clone(&d.raw),
+            }
         })
         .collect();
     Ok(entries)

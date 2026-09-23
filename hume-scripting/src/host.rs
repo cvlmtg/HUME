@@ -30,7 +30,7 @@ pub use completion::{
     CompletionAnswer, CompletionHost, CompletionSourceTarget, MatchKind, PendingCompletionSource,
 };
 pub use cursor::CursorHost;
-pub use decorations::DecorationHost;
+pub use decorations::{DecorationHost, DiagnosticEntry};
 pub use diff::{DiffHost, DiffHunk, WordDiffHunk};
 pub use edits::{EditHost, WireTextEdit};
 pub use events::EventHost;

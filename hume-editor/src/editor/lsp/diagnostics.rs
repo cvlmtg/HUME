@@ -3,6 +3,8 @@
 //! subsequent edit. Bulk never reaches Steel — Steel gets
 //! a signal + bounded pulls.
 
+use std::sync::Arc;
+
 use hume_editing::changeset::ChangeSet;
 use hume_engine::pipeline::BufferId;
 use hume_lsp::backend::ServerId;
@@ -77,8 +79,10 @@ pub(in crate::editor) struct StoredDiag {
     /// mean Steel fabricating wire positions itself, which the
     /// encoding-safety rule forbids). The roundtrip preserves every spec
     /// field, including `data` (some servers need it echoed back for
-    /// `codeAction` too).
-    pub(in crate::editor) raw: serde_json::Value,
+    /// `codeAction` too). `Arc`-wrapped so `diagnostics-for-buffer` can hand
+    /// each entry's `"raw"` to Scheme as a `JsonHandle` sharing this same
+    /// allocation, instead of cloning the value to build one.
+    pub(in crate::editor) raw: Arc<serde_json::Value>,
 }
 
 impl Positioned for StoredDiag {
@@ -337,7 +341,7 @@ impl Editor {
             .diagnostics
             .into_iter()
             .map(|d| {
-                let raw = serde_json::to_value(&d).unwrap_or(serde_json::Value::Null);
+                let raw = Arc::new(serde_json::to_value(&d).unwrap_or(serde_json::Value::Null));
                 let range = super::wire_range_to_chars(&rope, &d.range, encoding);
                 let range = if range.start == range.end {
                     widen_zero_length(&rope, range.start)

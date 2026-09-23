@@ -1,6 +1,8 @@
 //! Inlay hints, signs, virtual lines, extra highlights, EOL text,
 //! statusline text, and the diagnostic pull/count reads.
 
+use std::sync::Arc;
+
 use hume_engine::pipeline::BufferId;
 
 use crate::types::VirtualLineSpec;
@@ -110,11 +112,10 @@ pub trait DecorationHost {
     ) -> Result<(), String>;
 
     /// `(diagnostics-for-buffer bid #:severity floor #:range (start end))` —
-    /// decoded `{"start" "end" "line" "char-col" "grapheme-col" "severity"
-    /// "message" "code" "source"}` hashmaps, filtered then capped at 1000.
-    /// `char-col` is an addressing unit (feeds `goto-location!`);
-    /// `grapheme-col` is the display unit (the one every HUME surface shows
-    /// the user) — never render `char-col` directly. `severity_floor`
+    /// one [`DiagnosticEntry`] per diagnostic, filtered then capped at 1000.
+    /// `char_col` is an addressing unit (feeds `goto-location!`);
+    /// `grapheme_col` is the display unit (the one every HUME surface shows
+    /// the user) — never render `char_col` directly. `severity_floor`
     /// is `None` for "no floor" (everything); `range` is `None` for the
     /// whole buffer. `Err` on an unknown `#:severity` name.
     fn diagnostics_for_buffer(
@@ -122,8 +123,35 @@ pub trait DecorationHost {
         bid: BufferId,
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
-    ) -> Result<Vec<serde_json::Value>, String>;
+    ) -> Result<Vec<DiagnosticEntry>, String>;
 
     /// `(diagnostic-counts bid)` → `(errors . warnings)`.
     fn diagnostic_counts(&self, bid: BufferId) -> (usize, usize);
+}
+
+/// One `diagnostics-for-buffer` result entry — see
+/// [`DecorationHost::diagnostics_for_buffer`]. A typed struct rather than a
+/// `serde_json::Value` blob because every field but `raw` is HUME-computed
+/// (native Steel data the builtin decodes field-by-field), while `raw` is
+/// the server's own wire `Diagnostic` — the one field that crosses as an
+/// opaque `JsonHandle` sharing the same `Arc` the diagnostics store already
+/// holds, instead of a value rebuilt (and reconverted) just to carry it.
+#[derive(Debug, Clone)]
+pub struct DiagnosticEntry {
+    pub start: usize,
+    pub end: usize,
+    pub line: usize,
+    pub end_line: usize,
+    pub char_col: usize,
+    pub grapheme_col: usize,
+    pub severity: String,
+    /// `DiagSeverity`'s own `Ord` discriminant (0 = error … 3 = hint, lower
+    /// is more severe) — the single encoding of severity order, so Scheme
+    /// compares by this instead of re-deriving the same ranking from
+    /// `severity`'s string form.
+    pub severity_rank: u8,
+    pub message: String,
+    pub code: Option<String>,
+    pub source: Option<String>,
+    pub raw: Arc<serde_json::Value>,
 }

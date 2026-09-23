@@ -3,11 +3,14 @@
 //! API. Not LSP-specific — any Steel plugin can populate these — but LSP is
 //! the first and heaviest client.
 
+use steel::HashMap as SteelHashMap;
+use steel::gc::Gc;
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::json::json_to_steel;
+use crate::host::DiagnosticEntry;
+use crate::json::to_steel_handle;
 use crate::types::VirtualLineSpec;
 
 use super::SteelResult;
@@ -387,8 +390,56 @@ pub(crate) fn diagnostics_for_buffer(
             .map_err(|e| generic_err(format!("diagnostics-for-buffer: {e}")))?,
         None => Vec::new(),
     };
-    let list: Vec<SteelVal> = entries.iter().map(json_to_steel).collect();
+    let list: Vec<SteelVal> = entries.into_iter().map(diagnostic_entry_to_steel).collect();
     Ok(SteelVal::ListV(list.into()))
+}
+
+/// `DiagnosticEntry` -> a Steel hashmap, field-by-field native except
+/// `"raw"` — the one field that crosses as a `JsonHandle` sharing the
+/// entry's own `Arc` rather than a value rebuilt (and reconverted) just to
+/// carry it. Written by hand rather than `json_to_steel` on a
+/// `serde_json::Value` blob precisely so `"raw"` can take that different
+/// path from every other field.
+fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
+    let mut hm = SteelHashMap::new();
+    let mut insert = |k: &'static str, v: SteelVal| {
+        hm.insert(SteelVal::StringV(k.into()), v);
+    };
+    insert("start", SteelVal::IntV(entry.start as isize));
+    insert("end", SteelVal::IntV(entry.end as isize));
+    insert("line", SteelVal::IntV(entry.line as isize));
+    insert("end-line", SteelVal::IntV(entry.end_line as isize));
+    insert("char-col", SteelVal::IntV(entry.char_col as isize));
+    insert("grapheme-col", SteelVal::IntV(entry.grapheme_col as isize));
+    insert(
+        "severity",
+        SteelVal::StringV(entry.severity.as_str().into()),
+    );
+    insert(
+        "severity-rank",
+        SteelVal::IntV(entry.severity_rank as isize),
+    );
+    insert("message", SteelVal::StringV(entry.message.as_str().into()));
+    // `None` -> Void, matching json_to_steel's null mapping — the original
+    // shape before this hand-written conversion existed serialized
+    // `Option<String>` through serde (None -> JSON null -> Void), and
+    // nothing about switching to a manual build should change that.
+    insert(
+        "code",
+        match entry.code {
+            Some(c) => SteelVal::StringV(c.as_str().into()),
+            None => SteelVal::Void,
+        },
+    );
+    insert(
+        "source",
+        match entry.source {
+            Some(s) => SteelVal::StringV(s.as_str().into()),
+            None => SteelVal::Void,
+        },
+    );
+    insert("raw", to_steel_handle(entry.raw));
+    SteelVal::HashMapV(Gc::new(hm).into())
 }
 
 /// `(diagnostic-counts bid)` → `(errors . warnings)` dotted pair.

@@ -156,20 +156,20 @@ fn end_line_equals_line_for_single_line_and_diverges_for_multiline() {
     let find = |msg: &str| {
         entries
             .iter()
-            .find(|e| e["message"] == msg)
+            .find(|e| e.message == msg)
             .unwrap_or_else(|| panic!("missing diagnostic {msg:?}"))
     };
 
     let single_entry = find("single-line");
     assert_eq!(
-        single_entry["line"], single_entry["end-line"],
+        single_entry.line, single_entry.end_line,
         "a diagnostic that stays on one line has end-line == line"
     );
 
     let multi_entry = find("multi-line");
-    assert_eq!(multi_entry["line"], 0);
+    assert_eq!(multi_entry.line, 0);
     assert_eq!(
-        multi_entry["end-line"], 1,
+        multi_entry.end_line, 1,
         "a diagnostic crossing a line boundary has end-line > line"
     );
 }

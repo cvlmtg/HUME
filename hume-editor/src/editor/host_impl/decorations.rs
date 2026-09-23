@@ -239,7 +239,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         severity_floor: Option<&str>,
         range: Option<(usize, usize)>,
-    ) -> Result<Vec<serde_json::Value>, String> {
+    ) -> Result<Vec<hume_scripting::host::DiagnosticEntry>, String> {
         let Some(lsp) = self.lsp.as_deref() else {
             return Ok(Vec::new());
         };
