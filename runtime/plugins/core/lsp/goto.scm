@@ -6,23 +6,28 @@
 ;; ── Response handling ────────────────────────────────────────────────────────
 ;; Shared by all four goto-family methods and `lsp-references` below.
 
+;;; `res` is void (null), a JSON array handle (unpacked to a Steel list of
+;;; Location/LocationLink handles — `length`/`car`/`null?` need list
+;;; operations, not JSON handle ones), or a single Location/LocationLink
+;;; handle.
 (define (lsp/goto-response err res #:always-drawer? [always-drawer? #f]
                                     #:what [what "goto"]
                                     #:not-found-msg [not-found-msg "No definition found"])
   (cond
     (err (lsp/report-error what err))
     ((void? res) (log! 'info not-found-msg))
-    ((list? res)
-     (cond
-       ((null? res) (log! 'info not-found-msg))
-       ((and (not always-drawer?) (= (length res) 1)) (goto-location! (car res)))
-       (else (lsp/show-locations! res))))
+    ((json-array? res)
+     (let ((locs (json-list res)))
+       (cond
+         ((null? locs) (log! 'info not-found-msg))
+         ((and (not always-drawer?) (= (length locs) 1)) (goto-location! (car locs)))
+         (else (lsp/show-locations! locs)))))
     (else (goto-location! res))))
 
 (define (lsp/goto-request method cap)
   (lsp/guard-capability cap
     (lambda ()
-      (lsp-request #f method (lsp-position-params (current-buffer)) lsp/goto-response))))
+      (lsp-request #f method (lsp-position-params (current-buffer)) lsp/goto-response #:raw #t))))
 
 ;; ── Commands ─────────────────────────────────────────────────────────────────
 
@@ -50,4 +55,5 @@
           (lambda (err res)
             (lsp/goto-response err res #:always-drawer? #t
                                        #:what "references"
-                                       #:not-found-msg "No references found")))))))
+                                       #:not-found-msg "No references found"))
+          #:raw #t)))))
