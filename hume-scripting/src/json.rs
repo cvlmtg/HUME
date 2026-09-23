@@ -421,12 +421,11 @@ fn hash_json_value<H: std::hash::Hasher>(v: &serde_json::Value, state: &mut H) {
         }
         serde_json::Value::Number(n) => {
             2u8.hash(state);
-            // Number's Display is exact for its own internal representation
-            // (integer prints without a decimal point, float with one), so
-            // two Numbers equal under PartialEq always print identically —
-            // this stays consistent with equality without needing a
-            // separate numeric-canonicalization step.
-            n.to_string().hash(state);
+            // Number derives Hash directly (this workspace doesn't enable
+            // its arbitrary_precision feature), so this stays consistent
+            // with equality by construction — including its float arm,
+            // which hashes +0.0 and -0.0 alike to agree with their PartialEq.
+            n.hash(state);
         }
         serde_json::Value::String(s) => {
             3u8.hash(state);

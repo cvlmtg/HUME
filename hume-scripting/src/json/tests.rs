@@ -211,6 +211,24 @@ fn json_handle_is_usable_as_a_steel_hash_key() {
     assert_eq!(results.into_iter().next().unwrap(), SteelVal::IntV(42));
 }
 
+/// `-0.0` and `0.0` compare equal under `serde_json::Number`'s `PartialEq`
+/// but print as different strings — hashing via `Number`'s own derived
+/// `Hash` (rather than its `Display`) keeps `try_as_dyn_hash` consistent
+/// with `equality_hint` for this pair the way it already is for every
+/// other Number.
+#[test]
+fn negative_zero_and_zero_handles_share_a_hash_key() {
+    let mut steel = steel::steel_vm::engine::Engine::new();
+    crate::builtins::register_all(&mut steel);
+    steel.register_value("a", JsonHandle::new(json!({"x": -0.0})).into_steel_val());
+    steel.register_value("b", JsonHandle::new(json!({"x": 0.0})).into_steel_val());
+
+    let results = steel
+        .compile_and_run_raw_program("(hash-ref (hash-insert (hash) a 42) b)")
+        .expect("eval must succeed");
+    assert_eq!(results.into_iter().next().unwrap(), SteelVal::IntV(42));
+}
+
 /// A sub-handle produced by navigating a container must share its parent's
 /// root `Arc` rather than cloning the subtree — the whole point of rooting
 /// a handle instead of wrapping each navigation result independently.
