@@ -39,13 +39,15 @@ fn match_kind_arg(val: SteelVal, ctx_name: &str) -> Result<MatchKind, SteelErr> 
 /// token rule (see `CompletionSourceTarget`'s doc), so there is no separate
 /// `#:token` to decode.
 fn target_arg(target: SteelVal) -> Result<CompletionSourceTarget, SteelErr> {
-    let target = string_arg(target, "register-completion-source! #:target")?;
-    match target.as_str() {
-        "buffer" => Ok(CompletionSourceTarget::Buffer),
-        "minibuf" => Ok(CompletionSourceTarget::Minibuf),
-        other => steel::stop!(Generic =>
-            "register-completion-source! #:target: expected 'buffer or 'minibuf, got '{}", other),
-    }
+    let ctx_name = "register-completion-source! #:target";
+    symbol_enum_arg(
+        string_arg(target, ctx_name)?.as_str(),
+        ctx_name,
+        &[
+            ("buffer", CompletionSourceTarget::Buffer),
+            ("minibuf", CompletionSourceTarget::Minibuf),
+        ],
+    )
 }
 
 /// `(register-trigger-chars! source language chars)` — `chars` is a list of
