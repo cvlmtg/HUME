@@ -420,10 +420,7 @@ fn diagnostic_entry_to_steel(entry: DiagnosticEntry) -> SteelVal {
         SteelVal::IntV(entry.severity_rank as isize),
     );
     insert("message", SteelVal::StringV(entry.message.as_str().into()));
-    // `None` -> Void, matching json_to_steel's null mapping — the original
-    // shape before this hand-written conversion existed serialized
-    // `Option<String>` through serde (None -> JSON null -> Void), and
-    // nothing about switching to a manual build should change that.
+    // `None` -> Void, matching json_to_steel's null mapping.
     insert(
         "code",
         match entry.code {
